@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp/
+.venv/
+.venv-*/
+
+# Env & secrets (never commit)
+.env
+.env.*
+!.env.example
+secrets/
+*service-account*.json
+firebaseServiceAccountKey.json
+
+# Build output
+dist/
+build/
+.next/
+out/
+coverage/
+
+# Data / DB (tenant data stays out of git)
+*.db
+*.sqlite
+*.sqlite3
+data/
+uploads/
+
+# Logs
+*.log
+logs/
+
+# Caches
+.cache/
+__pycache__/
+*.pyc
+
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+AlbumArtSmall.jpg
+Folder.jpg
+.idea/
