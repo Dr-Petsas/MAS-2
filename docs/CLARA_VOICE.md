@@ -45,17 +45,41 @@ MAS-2 Backend  POST /tools/create-task?clientId=…  →  Firestore clients/{cli
    - LiveKit-Env auf die lokale SFU (`ws://127.0.0.1:7880`, Dev-Key/Secret)
 3. Der Worker dispatcht automatisch in den `clara_*`-Raum, sobald der Browser verbindet.
 
-## Test (End-to-End)
+## Was Clara kann (clara_meddent)
 
-1. MAS-2 Backend starten: `cd backend && npm run dev`.
-2. QR-Seite öffnen: `http://127.0.0.1:4000/clara/MEe4ZQHEzOPzLcexyhdT`.
-3. Auf „Verbinden & sprechen" tippen, Mikro erlauben.
-4. **Termin (mit `PICKADOC_TOOLS_DRY_RUN=1`):** *„Ich brauche einen Termin bei
-   Doktor Petsas zur Kontrolluntersuchung nächste Woche."* → Clara sucht freie Slots,
-   fragt Vorname/Nachname/Mobilnummer, bucht den Slot (simuliert im Dry-Run).
-5. **Notiz:** *„Notiere bitte: Rückruf Herr Meier, Nummer 0177…, dringend."*
-   → Dokument unter `clients/MEe4ZQHEzOPzLcexyhdT/mas_tasks`; Prüfen via
-   `GET http://127.0.0.1:4000/tools/open-tasks` (Header `X-Client-Id`).
+- **Kalender (echter med-dent-Kalender):** freie Slots suchen, Termin anlegen,
+  verschieben, absagen, nachschlagen — die erprobten v5.2-Termin-Tools, gebunden
+  an die med-dent-Buchungskonfiguration (3 Kalender, Behandlungsarten, Öffnungszeiten).
+- **Aufgaben:** interne Notizen/Rückrufe via `create_task` → `mas_tasks`.
+
+> Clara braucht **nicht** zu wissen, von welchem PC gescannt wurde. Sie kennt die
+> **Praxis (`clientId`)** aus dem QR/Token/Profil; Termine landen im gemeinsamen
+> med-dent-Kalender und sind überall sichtbar. (Eine PC-/Bildschirm-Bindung wäre
+> nur für Live-Anzeige auf genau diesem Schirm nötig — optionales Extra.)
+
+## Phone-Erreichbarkeit — HTTPS nötig
+
+Browser-Mikrofon (`getUserMedia`) funktioniert nur im **sicheren Kontext**:
+- **`localhost` (PC-Test):** Mikro erlaubt → ideal für den ersten End-to-End-Test.
+- **Handy/LAN/Internet:** braucht **HTTPS** für die Seite **und** eine erreichbare
+  LiveKit-Endpoint (LAN-IP+WSS-Tunnel oder LiveKit Cloud). Reines `http://<LAN-IP>`
+  blockiert das Mikrofon. Optionen: HTTPS-Tunnel (wie v5.2 via cloudflared) **oder**
+  MAS-2 auf eine HTTPS-Domain deployen + LiveKit Cloud.
+
+## Test — Schritt 1: PC (localhost, schnellster Nachweis)
+
+1. Lokale Dienste starten (SFU 7880, Ollama 11434, ElevenLabs-Key, Voice-Worker mit `clara_meddent`).
+2. MAS-2 Backend: `cd backend && npm run dev`.
+3. Im PC-Browser öffnen: `http://127.0.0.1:4000/clara/MEe4ZQHEzOPzLcexyhdT` → „Verbinden & sprechen".
+4. Termin-Test: *„Lege bitte einen Termin bei Doktor Petsas für Herr Meier, 0177…, am Dienstag Vormittag an."*
+   → Clara sucht freie Slots, bucht, bestätigt; der Termin erscheint im med-dent-Kalender.
+5. Aufgaben-Test: *„Notiere: Rückruf Frau Schulz, dringend."* → erscheint in `mas_tasks`
+   (`GET /tools/open-tasks`, Header `X-Client-Id`).
+
+## Test — Schritt 2: Handy (nach HTTPS-Setup)
+
+`PUBLIC_BASE_URL` auf die HTTPS-Adresse setzen → QR zeigt dann den HTTPS-Connect-Link;
+Handy scannt, Mikro wird erlaubt, Rest identisch.
 
 ## Zombie-Vermeidung (statt PID-Dateien)
 
