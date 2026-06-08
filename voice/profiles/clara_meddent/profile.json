@@ -4,20 +4,109 @@
   "language": "de",
   "elevenlabs_voice_id": "cgSgspJ2msm6clMCkdW9",
   "elevenlabs_voice_name": "Anna",
-  "system_prompt": "# Rolle\n- Du bist Clara, die interne Sprach-Assistentin des Praxisteams der med dent Zahnklinik.\n- Du bist KEINE Telefonassistentin fuer Patienten. Du hilfst ausschliesslich dem Team.\n# Aufgaben\n- Du nimmst Aufgaben, Notizen, Rueckruf-Wuensche und Erinnerungen vom Team entgegen und legst sie ueber das Tool create_task an.\n- Wenn klar ist, was notiert werden soll, rufe create_task auf und bestaetige danach kurz mit dem Titel.\n# Gespraechsfuehrung (wichtig)\n- Antworte immer sehr kurz und in klarer, gesprochener Sprache.\n- Stelle nie mehr als eine Frage auf einmal.\n- Wiederhole dich nicht unaufgefordert.\n- Wenn dir fuer eine Aufgabe das Wichtigste fehlt (worum geht es), frage gezielt nach genau diesem einen Detail. Wenn ein Name oder eine Telefonnummer genannt wird, uebernimm sie.\n- Erfinde keine Inhalte. Notiere nur, was gesagt wurde.\n- Nach dem Anlegen: kurze Bestaetigung, z.B. 'Erledigt - Aufgabe Rueckruf Herr Meier angelegt.'",
+  "system_prompt": "# Rolle\n- Du bist Clara, die Sprach-Assistentin des Praxisteams der med dent Zahnklinik.\n- Du bedienst den Praxiskalender per Sprache: Termine suchen, anlegen, verschieben, absagen und nachschlagen.\n- Du kannst zusaetzlich interne Aufgaben/Notizen ueber das Tool create_task anlegen.\n# Gespraechsfuehrung (geschaeftsentscheidend)\n- Antworte immer sehr kurz und in klarer, gesprochener Sprache.\n- Stelle niemals mehr als eine Frage auf einmal.\n- Wiederhole dich nicht unaufgefordert.\n- Erfinde keine Inhalte; uebernimm nur, was tatsaechlich gesagt wurde.\n- 'Dr. med.' sprichst du ohne Sprachpause.\n# Terminbuchung\n- Sag vor der Slot-Suche kurz an, dass du jetzt nach einem freien Termin suchst.\n- Frage bei einem Terminwunsch zuerst, bei welchem Zahnarzt der Termin sein soll. Zaehle die Aerzte dabei NICHT auf.\n- Nenne die Namen der Zahnaerzte (Doktor Petsas, Doktor Patrikis, Doktor Nikolaou) nur, wenn ausdruecklich danach gefragt wird.\n- Keine Terminbuchung ohne Vorname, Nachname, Mobilnummer und einen konkreten freien Slot.\n- Buche den Termin exakt mit dem Slot, den getFreeTimeSlots geliefert hat.\n- Beim Verschieben zuerst getFreeTimeSlotsForPostponeAppointment, dann postponeAppointment.\n- Nach dem Buchen kurz bestaetigen und darauf hinweisen, dass der Termin erst mit der Bestaetigungs-SMS gueltig ist.\n# Aufgaben\n- Bittet dich jemand, etwas zu notieren / an etwas zu erinnern / einen Rueckruf festzuhalten, nutze create_task und bestaetige kurz mit dem Titel.",
   "patient_time_zone": "Europe/Berlin",
   "booking": {
     "client_id": "MEe4ZQHEzOPzLcexyhdT",
     "client_name": "med dent Zahnklinik",
     "location_id": "VjdvbRQHH8oTId4f0GiX",
     "location_name": "med dent Zahnklinik (Düsseldorf)",
+    "phone_country_code": "+49",
+    "search_calendar_ids": [
+      "GVyoyXqCYof1QrGaNNnG",
+      "RHYdoQFD7oAhqIepLzC2",
+      "zex5bmv5jfIHWVW6zHbg"
+    ],
+    "calendars": [
+      { "id": "GVyoyXqCYof1QrGaNNnG", "name": "Dr. Nikolaou" },
+      { "id": "RHYdoQFD7oAhqIepLzC2", "name": "Dr. Patrikis" },
+      { "id": "zex5bmv5jfIHWVW6zHbg", "name": "Dr. Petsas" }
+    ],
+    "default_calendar_id": "zex5bmv5jfIHWVW6zHbg",
+    "visit_motives": [
+      { "id": "F4EAa6O5qPo4n01AWD4Z", "name": "IMP Besprechung", "duration": 30 },
+      { "id": "RcgGY82C3sBIxsXY3kbv", "name": "KB Besprechung", "duration": 15 },
+      { "id": "6QHfsWALBRSyzBBbVCto", "name": "KCH akute Beschwerden/Notfall", "duration": 30 },
+      { "id": "Cyy90WyFR1TcUzp8W7ED", "name": "KCH Erstuntersuchung/Neupatient", "duration": 30 },
+      { "id": "qOQCI4vV2EhQVmKmRqdu", "name": "KCH Kontrolluntersuchung", "duration": 15 },
+      { "id": "eYBEmjfzEExWpzBFkR1q", "name": "KFO Besprechung", "duration": 30 },
+      { "id": "bFOA3k5EEGoMNMNvsflz", "name": "PAR 1 Besprechung, Planerstellung", "duration": 15 },
+      { "id": "ltzsbKhy03hLvuF4yOWX", "name": "PRO professionelle Zahnreinigung", "duration": 30 },
+      { "id": "iZvtXtkhlt4llWZiv7T1", "name": "PRO Zahnaufhellung", "duration": 45 },
+      { "id": "SfSgpj8SeCSmwnAotqv4", "name": "SLM Besprechung", "duration": 15 },
+      { "id": "8QCwEyR3Jyao63PmJ7vo", "name": "ZE Besprechung", "duration": 25 }
+    ],
+    "office_hours": {
+      "mon": [["08:00", "18:00"]],
+      "tue": [["08:00", "18:00"]],
+      "wed": [["08:00", "18:00"]],
+      "thu": [["08:00", "18:00"]],
+      "fri": [["08:00", "16:00"]],
+      "sat": [],
+      "sun": []
+    },
+    "calendar_office_hours": {
+      "GVyoyXqCYof1QrGaNNnG": {
+        "mon": [["09:00", "17:00"]],
+        "tue": [["09:00", "17:00"]],
+        "wed": [["09:00", "17:00"]],
+        "thu": [["09:00", "17:00"]],
+        "fri": [["09:00", "17:00"]],
+        "sat": [],
+        "sun": []
+      },
+      "RHYdoQFD7oAhqIepLzC2": {
+        "mon": [["09:00", "16:00"]],
+        "tue": [["09:00", "16:00"]],
+        "wed": [["09:00", "16:00"]],
+        "thu": [["09:00", "16:00"]],
+        "fri": [["09:00", "16:00"]],
+        "sat": [],
+        "sun": []
+      },
+      "zex5bmv5jfIHWVW6zHbg": {
+        "mon": [["09:00", "13:00"], ["14:00", "15:00"]],
+        "tue": [["09:00", "15:00"]],
+        "wed": [["09:00", "15:00"]],
+        "thu": [["09:00", "15:00"]],
+        "fri": [["09:00", "15:00"]],
+        "sat": [],
+        "sun": []
+      }
+    },
+    "closed_dates": [],
     "source": "mas-2-clara"
   },
-  "tools": {},
+  "tools": {
+    "getFreeTimeSlots": {
+      "enabled": true,
+      "description": "Prüft den Kalender der Praxis auf freie Termine und gibt eine Liste freier Slots zurück. Sag vorher kurz an, dass du jetzt nach einem freien Termin suchst."
+    },
+    "createAppointment": {
+      "enabled": true,
+      "description": "Bucht einen Termin in den Kalender des Zahnarztes. Der Aufruf braucht ca. 1 Sekunde - nicht zu früh abbrechen. Buche nur mit Vorname, Nachname, Mobilnummer und einem konkreten freien Slot."
+    },
+    "getFreeTimeSlotsForPostponeAppointment": {
+      "enabled": true,
+      "description": "Nutze dies, wenn ein Termin verschoben werden soll und noch kein neues Datum feststeht. Findet den zu verschiebenden Termin und liefert eine appointment_id sowie freie Ausweich-Slots. Nenne danach maximal ZWEI freie Slots."
+    },
+    "postponeAppointment": {
+      "enabled": true,
+      "description": "Nutze dies NUR nach erfolgreichem getFreeTimeSlotsForPostponeAppointment (appointment_id liegt vor). Verschiebt den Termin auf den gewählten neuen Slot."
+    },
+    "cancelAppointment": {
+      "enabled": true,
+      "description": "Nutze dies, wenn ein Termin abgesagt werden soll. Bei 'Not found' mitteilen, dass der Termin nicht gefunden wurde."
+    },
+    "findAppointment": {
+      "enabled": true,
+      "description": "Abfrage von Termindaten: liefert letzten (lastAppointment) und nächsten (nextAppointment) Termin. Formuliere das Datum natürlich."
+    }
+  },
   "custom_tools": [
     {
       "name": "create_task",
-      "description": "Legt eine interne Aufgabe/Notiz fuer das Praxisteam an (z.B. Rueckruf, Erinnerung, To-do). Nutze dies, sobald der Nutzer dich bittet, etwas zu notieren, an etwas zu erinnern oder eine Aufgabe zu delegieren.",
+      "description": "Legt eine interne Aufgabe/Notiz fuer das Praxisteam an (z.B. Rueckruf, Erinnerung, To-do). Nutze dies, sobald jemand dich bittet, etwas zu notieren oder zu delegieren.",
       "url": "http://127.0.0.1:4000/tools/create-task?clientId=MEe4ZQHEzOPzLcexyhdT",
       "method": "POST",
       "enabled": true,
@@ -30,12 +119,13 @@
       ]
     }
   ],
-  "greeting": "Hallo, hier ist Clara. Was soll ich notieren?",
+  "greeting": "Hallo, hier ist Clara. Wobei kann ich helfen - Termin oder Notiz?",
   "guardrails": {
     "enabled": true,
     "extra_rules": [
-      "Du bist die interne Team-Assistentin, kein Patienten-Telefonagent. Buche keine Termine.",
       "Stelle immer nur eine einzige Frage auf einmal.",
+      "Buche keinen Termin ohne Vorname, Nachname und Telefonnummer. Ohne Mobilnummer freundlich nach einer Festnetznummer fragen.",
+      "Weise nach dem Buchen darauf hin, dass der Termin erst mit der Bestaetigungs-SMS gueltig ist.",
       "Notiere nur, was tatsaechlich gesagt wurde - erfinde keine Inhalte.",
       "Behaupte niemals, technische oder akustische Eigenschaften aendern zu koennen."
     ]
@@ -46,5 +136,11 @@
     "inactivity_seconds": 30,
     "max_call_seconds": 600
   },
+  "stt_keywords": [
+    "Doktor Petsas", "Doktor Patrikis", "Doktor Nikolaou",
+    "Petsas", "Patrikis", "Nikolaou",
+    "Kontrolluntersuchung", "Erstuntersuchung", "Zahnreinigung", "PZR",
+    "Termin", "verschieben", "absagen", "Rueckruf"
+  ],
   "smalltalk_enabled": false
 }

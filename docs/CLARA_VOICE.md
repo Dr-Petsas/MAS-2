@@ -50,9 +50,11 @@ MAS-2 Backend  POST /tools/create-task?clientId=…  →  Firestore clients/{cli
 1. MAS-2 Backend starten: `cd backend && npm run dev`.
 2. QR-Seite öffnen: `http://127.0.0.1:4000/clara/MEe4ZQHEzOPzLcexyhdT`.
 3. Auf „Verbinden & sprechen" tippen, Mikro erlauben.
-4. Sagen: *„Notiere bitte: Rückruf Herr Meier, Nummer 0177…, dringend."*
-5. Erwartung: Clara bestätigt kurz; in Firestore erscheint ein Dokument unter
-   `clients/MEe4ZQHEzOPzLcexyhdT/mas_tasks`. Prüfen via
+4. **Termin (mit `PICKADOC_TOOLS_DRY_RUN=1`):** *„Ich brauche einen Termin bei
+   Doktor Petsas zur Kontrolluntersuchung nächste Woche."* → Clara sucht freie Slots,
+   fragt Vorname/Nachname/Mobilnummer, bucht den Slot (simuliert im Dry-Run).
+5. **Notiz:** *„Notiere bitte: Rückruf Herr Meier, Nummer 0177…, dringend."*
+   → Dokument unter `clients/MEe4ZQHEzOPzLcexyhdT/mas_tasks`; Prüfen via
    `GET http://127.0.0.1:4000/tools/open-tasks` (Header `X-Client-Id`).
 
 ## Zombie-Vermeidung (statt PID-Dateien)
