@@ -61,8 +61,9 @@ Untergeordnete Agenten (getrennte, kurze Prompts): **Nadine** (Posteingang/Mail/
 
 Die Telefon-KI ist bereits mandantenfähig über **Basisprofil + Overlay**
 (`campaign_overlay.py`). Dieses Muster wird im MAS gespiegelt:
-- **Tenant = Basisprofil** (Praxis-Setup) + **Entitlements** (freigeschaltete KIs).
-- Konfiguration pro Kunde lebt in Daten/Config, **nie** in kundenspezifischem Code.
+- **Tenant = `clientId`** (gleicher Kundenbegriff wie Plattform + Telefon-KI) + **Entitlements** (freigeschaltete KIs).
+- Konfiguration pro Kunde lebt in Daten/Config (Firestore), **nie** in kundenspezifischem Code.
+- Konkretes Datenlayout: siehe Abschnitt 8.
 
 ## 6. Integrationsverträge (aus `inherited/PICKADOC-API-ANFORDERUNGEN.md`)
 
@@ -80,10 +81,46 @@ Die Telefon-KI ist bereits mandantenfähig über **Basisprofil + Overlay**
 | Aufgaben-/Memory-Konzept (`inherited/KONZEPT-AUFGABEN-MEMORY-CHAT.md`) | flache `src/`-Struktur ohne Module |
 | Integrationsverträge zu Pickadoc | Altlast-/Debug-Logs, `delete/`-Ordner |
 
-## 8. Offene Entscheidungen (vor dem ersten Code-Schnitt)
+## 8. Festgelegte Entscheidungen (2026-06-08)
 
-- **Stack:** Backend (Node/TypeScript vs. anderes), DB (Postgres empfohlen statt SQLite
-  wegen Multi-Tenant + Skalierung), Frontend (React/Vite wie gehabt?).
-- **Tenant-Isolation:** Shared-DB mit `tenant_id` (Row-Level) vs. DB-pro-Tenant.
-- **Auth/Identity:** woher kommt der Tenant-Kontext (Pickadoc OS SSO?).
-- **Entitlement-Schema:** Felder/Format der Lizenz-Freischaltung.
+- **Stack:** Node.js + `firebase-admin` (Frontend voraussichtlich React/Vite, später).
+- **Datenbank:** vorhandenes **Firestore** im Pickadoc-Firebase-Projekt. **Kein** Postgres, **kein** SQLite.
+- **Mandant (tenant):** `clientId` — identisch zu Plattform und Telefon-KI (`clients/{clientId}`).
+- **Daten-Ablage:** unter dem Kunden, `clients/{clientId}/...`.
+
+### Firestore-Datenlayout (MAS-2)
+
+```
+clients/{clientId}                  <- Mandant (existiert bereits)
+  |- mas_inbox/{itemId}             Posteingang (Mails + Briefe)
+  |- mas_tasks/{taskId}             Aufgaben (Clara-Delegation, Lisa-Anrufe)
+  |- mas_cases/{caseId}             Vorgaenge (kanaluebergreifend)
+  |     \- events/{eventId}         Zeitleiste je Vorgang
+  |- mas_drafts/{draftId}           Entwuerfe (Mail/Brief)
+  \- mas_config/{docId}             z. B. "entitlements", "settings"
+```
+
+- **Mandantentrennung ist eingebaut:** jede Abfrage laeuft unter `clients/{clientId}/...`;
+  Cross-Tenant-Zugriff ist strukturell ausgeschlossen.
+- **Harte Sperre ueber Firestore Security Rules:** ein Nutzer der Praxis X darf nur
+  `clients/X/**` lesen/schreiben — DB-seitig erzwungen, nicht nur Code-Disziplin.
+- **Entitlements (Lizenz):** `clients/{clientId}/mas_config/entitlements`, z. B.
+  `{ "clara": true, "lisa": true, "nadine": false, "telefonki": true }`. Clara prueft das
+  vor jedem Tool-Aufruf -> Feature-Freischaltung pro Kunde ohne Code-Forks.
+- **Neuer Kunde = neues `clientId`-Dokument + entitlements-Eintrag.** Kein neuer Code,
+  keine neue DB, keine Kopie.
+
+## 9. Sicherheits-Leitplanke (verbindlich)
+
+Bestehende Strukturen werden bei der Umsetzung **nicht gefaehrdet**:
+- **Keine Aenderungen** am Plattform-Firestore-Schema, an der Telefon-KI oder am alten MAS.
+- MAS-2 schreibt **ausschliesslich** in eigene `mas_*`-Sammlungen unterhalb von `clients/{clientId}`.
+- Entwicklung zuerst **read-only** bzw. gegen einen **Test-Client**, bevor Produktivdaten
+  beruehrt werden.
+- Firestore Security Rules werden additiv erweitert (nur `mas_*`), bestehende Regeln bleiben.
+
+## 10. Noch offen (kleiner)
+
+- Auth/Identity: woher der `clientId`-Kontext kommt (Firebase Auth / Pickadoc OS SSO).
+- Genaues Feld-Schema je Sammlung (wird je Feature festgelegt).
+- Frontend-Stack final bestaetigen.

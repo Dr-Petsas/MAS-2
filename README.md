@@ -36,5 +36,11 @@ Altstand liegen in [`docs/inherited/`](docs/inherited/).
 
 ## Entwicklung
 
-Stack-Entscheidung noch offen (siehe ARCHITECTURE, Abschnitt „Offene Entscheidungen").
-Das Code-Gerüst folgt mit dem ersten Implementierungs-Schnitt.
+- **Stack:** Node.js + `firebase-admin`.
+- **Datenbank:** vorhandenes **Firestore** (Pickadoc-Firebase-Projekt), Mandant = `clientId`,
+  Ablage unter `clients/{clientId}/mas_*`.
+- **Sicherheits-Leitplanke:** MAS-2 schreibt nur in eigene `mas_*`-Sammlungen; bestehende
+  Strukturen (Plattform, Telefon-KI, alter MAS) bleiben unangetastet (siehe ARCHITECTURE §9).
+
+Details und Datenlayout: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Das Code-Gerüst
+folgt mit dem ersten Implementierungs-Schnitt.
