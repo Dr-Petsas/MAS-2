@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clara</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, "Segoe UI", Roboto, sans-serif; background:#0f172a; color:#e2e8f0;
+           margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+    .card { background:#1e293b; border-radius:20px; padding:28px; width:min(440px,92vw);
+            box-shadow:0 20px 60px rgba(0,0,0,.4); }
+    h1 { margin:0 0 2px; font-size:22px; }
+    .sub { color:#94a3b8; font-size:13px; margin:0 0 18px; }
+    .orb { width:120px;height:120px;border-radius:50%;margin:8px auto 18px;
+           background:radial-gradient(circle at 30% 30%, #818cf8, #4f46e5);
+           box-shadow:0 0 0 0 rgba(99,102,241,.6); transition:transform .15s; }
+    .orb.live { animation:pulse 1.4s infinite; }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(99,102,241,.5)} 70%{box-shadow:0 0 0 26px rgba(99,102,241,0)} 100%{box-shadow:0 0 0 0 rgba(99,102,241,0)} }
+    button { width:100%; padding:14px; border:0; border-radius:12px; font-size:16px; font-weight:600;
+             cursor:pointer; }
+    .connect { background:#6366f1; color:#fff; }
+    .hangup { background:#ef4444; color:#fff; }
+    .status { text-align:center; margin:14px 0 4px; font-weight:600; }
+    .log { margin-top:16px; max-height:160px; overflow:auto; font-size:12px; color:#94a3b8;
+           background:#0b1220; border-radius:10px; padding:10px; }
+    .log div { padding:1px 0; }
+    code { color:#cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Clara</h1>
+    <p class="sub">Sprich mit deiner Praxis-Assistentin · <code id="who"></code></p>
+    <div class="orb" id="orb"></div>
+    <div class="status" id="status">bereit</div>
+    <button class="connect" id="btn">Verbinden &amp; sprechen</button>
+    <audio id="agentAudio" autoplay></audio>
+    <div class="log" id="log"></div>
+  </div>
+
+  <script type="module">
+    import {
+      Room, RoomEvent, Track,
+    } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
+
+    const els = {
+      btn: document.getElementById("btn"),
+      status: document.getElementById("status"),
+      log: document.getElementById("log"),
+      orb: document.getElementById("orb"),
+      who: document.getElementById("who"),
+      audio: document.getElementById("agentAudio"),
+    };
+
+    // /clara/:clientId/connect  ->  pull clientId out of the path.
+    const parts = location.pathname.split("/").filter(Boolean);
+    const clientId = decodeURIComponent(parts[1] || "");
+    els.who.textContent = clientId;
+
+    let room = null;
+    let connected = false;
+
+    function log(msg) {
+      const d = document.createElement("div");
+      d.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
+      els.log.prepend(d);
+    }
+    function setStatus(s) { els.status.textContent = s; }
+
+    async function publishCmd(payload) {
+      if (!room?.localParticipant) return false;
+      const data = new TextEncoder().encode(JSON.stringify(payload));
+      await room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true });
+      return true;
+    }
+
+    async function connect() {
+      setStatus("hole Token…");
+      const resp = await fetch("/clara/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        setStatus("Fehler: " + (err.error || resp.status));
+        return;
+      }
+      const cfg = await resp.json();
+      log(`session room=${cfg.room} profile=${cfg.profileId}`);
+
+      room = new Room({ adaptiveStream: true, dynacast: true });
+
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Audio) {
+          track.attach(els.audio);
+          log("Agent-Audio verbunden");
+        }
+      });
+      room.on(RoomEvent.ConnectionStateChanged, (s) => log(`conn: ${s}`));
+      room.on(RoomEvent.Disconnected, () => { connected = false; teardownUI(); });
+      room.on(RoomEvent.Reconnected, () => {
+        publishCmd({ type: "set_profile", profile_id: cfg.profileId }).catch(() => {});
+      });
+
+      setStatus("verbinde…");
+      await room.connect(cfg.url, cfg.token, { autoSubscribe: true });
+      await room.localParticipant.setMicrophoneEnabled(true);
+      connected = true;
+      els.orb.classList.add("live");
+      setStatus("verbunden – sprich einfach");
+      els.btn.textContent = "Auflegen";
+      els.btn.className = "hangup";
+      log("Mikrofon aktiv");
+
+      // Push the profile so the worker loads Clara's persona + tools.
+      for (let i = 1; i <= 5; i++) {
+        try { await publishCmd({ type: "set_profile", profile_id: cfg.profileId }); log(`set_profile (${i})`); }
+        catch (e) { log("set_profile fehlgeschlagen: " + e); }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+
+    function teardownUI() {
+      els.orb.classList.remove("live");
+      setStatus("getrennt");
+      els.btn.textContent = "Verbinden & sprechen";
+      els.btn.className = "connect";
+    }
+
+    async function hangup() {
+      if (room) { await room.disconnect(); room = null; }
+      connected = false;
+      teardownUI();
+    }
+
+    els.btn.addEventListener("click", () => {
+      if (connected) hangup(); else connect().catch((e) => { setStatus("Fehler"); log(String(e)); });
+    });
+  </script>
+</body>
+</html>
