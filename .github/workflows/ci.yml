@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The test suite exercises an isolated Firestore tenant (zzz-mas2-*) and
+      # cleans up after itself. Provide a service-account key via the GCP_SA_KEY
+      # repo secret (raw JSON). Without it, Firestore-backed tests cannot run.
+      - name: Write service account key
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          if [ -n "$GCP_SA_KEY" ]; then
+            printf '%s' "$GCP_SA_KEY" > "$RUNNER_TEMP/sa.json"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+          else
+            echo "::warning::GCP_SA_KEY secret not set — Firestore tests will be skipped."
+          fi
+
+      - name: Run tests
+        env:
+          FIREBASE_STORAGE_BUCKET: ${{ vars.FIREBASE_STORAGE_BUCKET }}
+          MAIL_DRY_RUN: "1"
+          MAS_BOOKING_DRY_RUN: "1"
+        run: |
+          if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+            echo "::warning::GCP_SA_KEY secret not set — skipping Firestore-backed tests."
+            echo "Set the GCP_SA_KEY repository secret to enable the full suite."
+            exit 0
+          fi
+          npm test

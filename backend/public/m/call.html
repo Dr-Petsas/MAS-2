@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Clara ruft an</title>
+  <link rel="manifest" href="/m/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/m/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0f172a" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, "Segoe UI", Roboto, sans-serif; margin:0; color:#e2e8f0;
+           background: radial-gradient(120% 90% at 50% 0%, #1e293b 0%, #0f172a 55%, #090f1e 100%);
+           min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;
+           padding: calc(env(safe-area-inset-top) + 28px) 22px calc(env(safe-area-inset-bottom) + 26px); }
+    .top { text-align:center; }
+    .calling { color:#94a3b8; font-size:15px; letter-spacing:.4px; min-height:20px; }
+    .name { font-size:34px; font-weight:700; margin:6px 0 2px; }
+    .reason { color:#a5b4fc; font-size:16px; margin-top:4px; min-height:22px; }
+    .mid { flex:1; display:flex; align-items:center; justify-content:center; }
+    .ava-wrap { position:relative; width:170px; height:170px; }
+    .ava { width:170px; height:170px; border-radius:50%; object-fit:cover;
+           box-shadow:0 16px 60px rgba(99,102,241,.45); }
+    .ring1, .ring2 { position:absolute; inset:-14px; border-radius:50%; border:2px solid rgba(129,140,248,.5); opacity:0; }
+    body.ringing .ring1 { animation: rip 1.6s ease-out infinite; }
+    body.ringing .ring2 { animation: rip 1.6s ease-out .8s infinite; }
+    @keyframes rip { 0% { transform:scale(.92); opacity:.8; } 100% { transform:scale(1.35); opacity:0; } }
+    body.live .ava { animation: glow 1.6s ease-in-out infinite alternate; }
+    @keyframes glow { from { box-shadow:0 16px 50px rgba(99,102,241,.35);} to { box-shadow:0 16px 80px rgba(129,140,248,.75);} }
+    .bottom { display:flex; justify-content:center; gap:64px; }
+    .action { display:flex; flex-direction:column; align-items:center; gap:10px; background:none; border:0; color:#cbd5e1;
+              font-size:14px; font-weight:600; cursor:pointer; }
+    .circle { width:76px; height:76px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+              font-size:32px; box-shadow:0 10px 30px rgba(0,0,0,.45); }
+    .accept .circle { background:#22c55e; animation: bounce 1.2s ease-in-out infinite; }
+    .decline .circle { background:#ef4444; }
+    @keyframes bounce { 0%,100% { transform:translateY(0);} 50% { transform:translateY(-7px);} }
+    .single { display:flex; justify-content:center; }
+    .hangup-btn { background:#ef4444; color:#fff; border:0; border-radius:16px; padding:16px 44px;
+                  font-size:17px; font-weight:700; cursor:pointer; }
+    .status { text-align:center; color:#94a3b8; font-size:14px; min-height:20px; margin-bottom:14px; }
+    .enable { display:none; margin:0 auto 14px; background:#f59e0b; color:#0f172a; border:0; border-radius:12px;
+              padding:12px 20px; font-size:15px; font-weight:700; }
+    .enable.show { display:block; }
+    .hidden { display:none !important; }
+  </style>
+</head>
+<body class="ringing">
+  <div class="top">
+    <div class="calling" id="calling">ruft an …</div>
+    <div class="name">Clara</div>
+    <div class="reason" id="reason"></div>
+  </div>
+
+  <div class="mid">
+    <div class="ava-wrap">
+      <div class="ring1"></div><div class="ring2"></div>
+      <img class="ava" src="/m/icon-512.png" alt="Clara" />
+    </div>
+  </div>
+
+  <button class="enable" id="enableBtn">🔊 Ton aktivieren (tippen)</button>
+  <div class="status" id="status"></div>
+
+  <!-- incoming-call buttons -->
+  <div class="bottom" id="ringButtons">
+    <button class="action decline" id="btnDecline"><span class="circle">✕</span>Ablehnen</button>
+    <button class="action accept" id="btnAccept"><span class="circle">📞</span>Annehmen</button>
+  </div>
+
+  <!-- in-call button -->
+  <div class="single hidden" id="liveButtons">
+    <button class="hangup-btn" id="btnHangup">Auflegen</button>
+  </div>
+
+  <audio id="agentAudio" autoplay playsinline></audio>
+
+  <script type="module">
+    import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
+
+    const qs = new URLSearchParams(location.search);
+    const STORE_KEY = "clara.device.v1";
+    let device = null;
+    try { device = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch {}
+    const clientId = (qs.get("c") || device?.clientId || "").trim();
+    const reasonText = (qs.get("reason") || "").trim();
+    const incoming = !!reasonText; // opened from a push -> behave like a ringing call
+
+    const els = {
+      calling: document.getElementById("calling"),
+      reason: document.getElementById("reason"),
+      status: document.getElementById("status"),
+      ringButtons: document.getElementById("ringButtons"),
+      liveButtons: document.getElementById("liveButtons"),
+      btnAccept: document.getElementById("btnAccept"),
+      btnDecline: document.getElementById("btnDecline"),
+      btnHangup: document.getElementById("btnHangup"),
+      enableBtn: document.getElementById("enableBtn"),
+      audio: document.getElementById("agentAudio"),
+    };
+
+    els.reason.textContent = reasonText;
+    if (!incoming) {
+      els.calling.textContent = device?.operatorName ? `Hallo ${device.operatorName}` : "Deine Praxis-Assistentin";
+      els.btnAccept.querySelector("span").textContent = "🎙️";
+      els.btnAccept.childNodes[1].textContent = "";
+      els.btnAccept.append("Sprechen");
+      els.btnDecline.classList.add("hidden");
+    }
+
+    function setStatus(s) { els.status.textContent = s; }
+    function showEnable(on) { els.enableBtn.classList.toggle("show", !!on); }
+
+    // ── Ringtone (best effort): WebAudio dual-tone like a classic phone ring.
+    // Browsers may block sound until a gesture — then the push notification's
+    // own system sound has already done the audible part.
+    let ringCtx = null;
+    let ringTimer = null;
+    function startRing() {
+      try {
+        ringCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const ringOnce = () => {
+          if (!ringCtx) return;
+          const t0 = ringCtx.currentTime;
+          for (const f of [440, 480]) {
+            const o = ringCtx.createOscillator();
+            const g = ringCtx.createGain();
+            o.frequency.value = f;
+            g.gain.setValueAtTime(0.0001, t0);
+            g.gain.linearRampToValueAtTime(0.08, t0 + 0.05);
+            g.gain.setValueAtTime(0.08, t0 + 1.6);
+            g.gain.linearRampToValueAtTime(0.0001, t0 + 1.8);
+            o.connect(g).connect(ringCtx.destination);
+            o.start(t0); o.stop(t0 + 1.9);
+          }
+        };
+        ringOnce();
+        ringTimer = setInterval(ringOnce, 3600); // ring … pause … ring
+        if (navigator.vibrate) navigator.vibrate([400,150,400,150,400]);
+      } catch {}
+    }
+    function stopRing() {
+      if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
+      if (ringCtx) { try { ringCtx.close(); } catch {} ringCtx = null; }
+      if (navigator.vibrate) navigator.vibrate(0);
+    }
+    if (incoming) startRing();
+
+    // ── LiveKit (same hardened logic as the car/connect page) ───────────────
+    let room = null;
+    let connected = false;
+    let connecting = false;
+    let audioAttached = false;
+
+    async function tryPlayAudio() {
+      try {
+        els.audio.muted = false;
+        els.audio.volume = 1;
+        if (room && typeof room.startAudio === "function" && room.canPlaybackAudio === false) {
+          await room.startAudio();
+        }
+        await els.audio.play();
+        showEnable(false);
+        return true;
+      } catch { showEnable(true); return false; }
+    }
+
+    function attachRouteRecovery() {
+      if (!navigator.mediaDevices || attachRouteRecovery._wired) return;
+      attachRouteRecovery._wired = true;
+      navigator.mediaDevices.addEventListener("devicechange", () => {
+        if (!connected) return;
+        setTimeout(tryPlayAudio, 300);
+      });
+    }
+
+    async function connect() {
+      if (connecting || connected) return;
+      connecting = true;
+      stopRing();
+      document.body.classList.remove("ringing");
+      els.ringButtons.classList.add("hidden");
+      setStatus("Verbinde …");
+      try {
+        const body = { clientId };
+        // Paired phone -> Clara knows WHO answers, no PIN needed.
+        if (device?.deviceId && device?.deviceKey && device.clientId === clientId) {
+          body.deviceId = device.deviceId;
+          body.deviceKey = device.deviceKey;
+        }
+        const resp = await fetch("/clara/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+        const cfg = await resp.json();
+        if (cfg.operator?.name) els.calling.textContent = `Verbunden · ${cfg.operator.name}`;
+
+        room = new Room({
+          adaptiveStream: true,
+          dynacast: true,
+          audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        room.on(RoomEvent.TrackSubscribed, (track) => {
+          if (track.kind === Track.Kind.Audio && !audioAttached) {
+            track.attach(els.audio);
+            audioAttached = true;
+            tryPlayAudio();
+          }
+        });
+        room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+          showEnable(room && room.canPlaybackAudio === false);
+        });
+        room.on(RoomEvent.Disconnected, () => {
+          connected = false; audioAttached = false; showEnable(false);
+          teardownUI();
+        });
+
+        // Psychologie der Verbindung: NICHT sofort "Verbunden" zeigen und dann
+        // Stille. Der Status bleibt im Verbinde-Modus, bis Clara wirklich zu
+        // sprechen beginnt (erstes audio_state=speaking = die Begruessung).
+        let claraLive = false;
+        const markClaraLive = () => {
+          if (claraLive || !connected) return;
+          claraLive = true;
+          setStatus("Verbunden – sprich einfach.");
+        };
+        room.on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+          if (topic && topic !== "pickadoc.evt") return;
+          try {
+            const obj = JSON.parse(new TextDecoder().decode(payload));
+            if (obj && obj.type === "audio_state" && obj.state === "speaking") markClaraLive();
+          } catch {}
+        });
+
+        await room.connect(cfg.url, cfg.token, { autoSubscribe: true });
+        await room.localParticipant.setMicrophoneEnabled(true);
+        connected = true;
+        connecting = false;
+        document.body.classList.add("live");
+        els.liveButtons.classList.remove("hidden");
+        setStatus("Clara meldet sich gleich …");
+        // Sicherheitsnetz: falls die Begruessung ausbleibt (z.B. Mikro-Freigabe
+        // verzoegert), nach 30 s trotzdem auf "Verbunden" umschalten.
+        setTimeout(markClaraLive, 30000);
+        attachRouteRecovery();
+        await tryPlayAudio();
+        // Load Clara's persona + tools in the worker (once).
+        try {
+          const data = new TextEncoder().encode(JSON.stringify({ type: "set_profile", profile_id: cfg.profileId }));
+          await room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true });
+        } catch {}
+      } catch (e) {
+        connecting = false;
+        setStatus("Verbindung fehlgeschlagen: " + String(e.message || e));
+        els.ringButtons.classList.remove("hidden");
+        document.body.classList.add("ringing");
+      }
+    }
+
+    function teardownUI() {
+      document.body.classList.remove("live");
+      els.liveButtons.classList.add("hidden");
+      els.ringButtons.classList.remove("hidden");
+      els.btnDecline.classList.add("hidden");
+      els.btnAccept.querySelector("span").textContent = "📞";
+      els.calling.textContent = "Anruf beendet";
+      setStatus("Du kannst erneut verbinden oder das Fenster schließen.");
+    }
+
+    async function hangup() {
+      if (room) { try { await room.disconnect(); } catch {} room = null; }
+      connected = false;
+      teardownUI();
+    }
+
+    els.btnAccept.addEventListener("click", connect);
+    els.btnDecline.addEventListener("click", () => {
+      stopRing();
+      document.body.classList.remove("ringing");
+      els.calling.textContent = "Abgelehnt";
+      setStatus("Du kannst das Fenster schließen.");
+      els.ringButtons.classList.add("hidden");
+      setTimeout(() => { try { window.close(); } catch {} }, 400);
+    });
+    els.btnHangup.addEventListener("click", hangup);
+    els.enableBtn.addEventListener("click", tryPlayAudio);
+  </script>
+</body>
+</html>

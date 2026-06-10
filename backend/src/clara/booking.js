@@ -25,19 +25,33 @@ function norm(s) {
 }
 
 // Fuzzy-resolve a calendar id from a spoken doctor name (token overlap).
-function resolveCalendar(booking, doctorName) {
+// Generische Titel-Tokens ("Dr.", "Prof.") duerfen NICHT matchen: "Dr. Michael
+// Petsas" traf sonst den ERSTEN Kalender mit "Dr." im Namen (Dr. Nikolaou) und
+// der Chef bekam einen leeren Tag vorgelesen, obwohl er Termine hatte.
+const GENERIC_DOCTOR_TOKENS = new Set([
+  "dr", "med", "dent", "prof", "doktor", "doctor", "herr", "frau",
+  "zahnarzt", "zahnaerztin", "praxis",
+]);
+export function resolveCalendar(booking, doctorName) {
   const cals = Array.isArray(booking.calendars) ? booking.calendars : [];
   const q = norm(doctorName).toLowerCase();
   if (!q) return null;
   let exact = cals.find((c) => norm(c.name).toLowerCase() === q);
   if (exact) return exact;
-  const qTokens = q.split(/\s+/).filter((t) => t.length > 2);
-  return (
-    cals.find((c) => {
-      const name = norm(c.name).toLowerCase();
-      return qTokens.some((t) => name.includes(t));
-    }) || null
-  );
+  const qTokens = q
+    .split(/\s+/)
+    .map((t) => t.replace(/[.,;:]/g, ""))
+    .filter((t) => t.length > 2 && !GENERIC_DOCTOR_TOKENS.has(t));
+  if (!qTokens.length) return null;
+  // Bester Treffer gewinnt (meiste matchende Namens-Tokens), nicht der erste.
+  let best = null;
+  let bestScore = 0;
+  for (const c of cals) {
+    const name = norm(c.name).toLowerCase();
+    const score = qTokens.filter((t) => name.includes(t)).length;
+    if (score > bestScore) { best = c; bestScore = score; }
+  }
+  return best;
 }
 
 function resolveVisitMotive(booking, visitMotiveName) {
@@ -61,7 +75,7 @@ function berlinOffset(date) {
   return m ? `${m[1]}:${m[2]}` : "+01:00";
 }
 
-function ensureBerlinTz(iso) {
+export function ensureBerlinTz(iso) {
   const s = norm(iso).replace(" ", "T");
   if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return s;
   const d = new Date(s);

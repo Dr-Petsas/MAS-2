@@ -38,3 +38,15 @@ export async function listOpenTasks(clientId, limit = 20) {
     .get();
   return snap.docs.map((d) => d.data());
 }
+
+// Close the loop on a delegation task. Without this, open tasks accumulate
+// forever — completing them keeps "offene Aufgaben" meaningful.
+export async function completeTask(clientId, id, { by } = {}) {
+  const taskId = (id || "").trim();
+  if (!taskId) return { ok: false, reason: "missing_id" };
+  const ref = masCollection(clientId, "mas_tasks").doc(taskId);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "not_found" };
+  await ref.update({ status: "done", doneBy: (by || "Team").trim(), doneAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  return { ok: true, id: taskId, status: "done" };
+}

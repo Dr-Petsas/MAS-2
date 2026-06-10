@@ -21,6 +21,13 @@
              cursor:pointer; }
     .connect { background:#6366f1; color:#fff; }
     .hangup { background:#ef4444; color:#fff; }
+    .enable { background:#f59e0b; color:#0f172a; margin-top:10px; display:none; }
+    .enable.show { display:block; }
+    .pin { width:100%; box-sizing:border-box; padding:12px 14px; margin:0 0 12px; border-radius:12px;
+           border:1px solid #334155; background:#0b1220; color:#e2e8f0; font-size:18px; letter-spacing:4px;
+           text-align:center; }
+    .pin::placeholder { letter-spacing:normal; color:#64748b; }
+    .me { text-align:center; color:#a5b4fc; font-size:13px; margin:0 0 12px; min-height:16px; }
     .status { text-align:center; margin:14px 0 4px; font-weight:600; }
     .log { margin-top:16px; max-height:160px; overflow:auto; font-size:12px; color:#94a3b8;
            background:#0b1220; border-radius:10px; padding:10px; }
@@ -33,9 +40,15 @@
     <h1>Clara</h1>
     <p class="sub">Sprich mit deiner Praxis-Assistentin · <code id="who"></code></p>
     <div class="orb" id="orb"></div>
+    <div class="me" id="me"></div>
+    <input class="pin" id="pin" type="tel" inputmode="numeric" autocomplete="off"
+           maxlength="8" placeholder="PIN (wer spricht?)" />
     <div class="status" id="status">bereit</div>
     <button class="connect" id="btn">Verbinden &amp; sprechen</button>
-    <audio id="agentAudio" autoplay></audio>
+    <button class="enable" id="enableBtn">🔊 Ton aktivieren (tippen)</button>
+    <!-- playsinline: iOS darf Audio nicht in einen Vollbild-Player zwingen.
+         Über Bluetooth/Auto wird Audio sonst evtl. gar nicht abgespielt. -->
+    <audio id="agentAudio" autoplay playsinline></audio>
     <div class="log" id="log"></div>
   </div>
 
@@ -51,15 +64,28 @@
       orb: document.getElementById("orb"),
       who: document.getElementById("who"),
       audio: document.getElementById("agentAudio"),
+      enableBtn: document.getElementById("enableBtn"),
+      pin: document.getElementById("pin"),
+      me: document.getElementById("me"),
     };
 
     // /clara/:clientId/connect  ->  pull clientId out of the path.
+    // NOTE: must be declared BEFORE first use — referencing the const earlier
+    // threw a ReferenceError that killed the whole page script.
     const parts = location.pathname.split("/").filter(Boolean);
     const clientId = decodeURIComponent(parts[1] || "");
     els.who.textContent = clientId;
 
+    // Remember the PIN per device so the car case is type-once. It's an internal
+    // team convenience code, scoped to this practice page.
+    const PIN_KEY = `clara.pin.${clientId}`;
+    try { els.pin.value = localStorage.getItem(PIN_KEY) || ""; } catch {}
+    const ROLE_LABEL = { doctor: "Arzt/Ärztin", frontdesk: "Rezeption", admin: "Praxisleitung" };
+
     let room = null;
     let connected = false;
+    let connecting = false;
+    let audioAttached = false;
 
     function log(msg) {
       const d = document.createElement("div");
@@ -75,50 +101,124 @@
       return true;
     }
 
+    function showEnable(on) { els.enableBtn.classList.toggle("show", !!on); }
+
+    // Best-effort: make the agent audio actually play. Browsers (esp. iOS) and
+    // car head units block autoplay until a gesture; when blocked we surface a
+    // tap-to-enable button instead of failing silently.
+    async function tryPlayAudio() {
+      try {
+        els.audio.muted = false;
+        els.audio.volume = 1;
+        if (room && typeof room.startAudio === "function" && room.canPlaybackAudio === false) {
+          await room.startAudio();
+        }
+        await els.audio.play();
+        showEnable(false);
+        return true;
+      } catch {
+        showEnable(true);
+        return false;
+      }
+    }
+
+    // Bluetooth/Auto: connecting or dropping a BT device changes the audio route
+    // (A2DP <-> HFP) mid-call. The <audio> element can stall on that switch — so
+    // we nudge playback back to life whenever the device list changes.
+    function attachRouteRecovery() {
+      if (!navigator.mediaDevices || attachRouteRecovery._wired) return;
+      attachRouteRecovery._wired = true;
+      navigator.mediaDevices.addEventListener("devicechange", () => {
+        if (!connected) return;
+        log("Audio-Route gewechselt – stelle Wiedergabe sicher");
+        setTimeout(tryPlayAudio, 300);
+      });
+    }
+
     async function connect() {
+      // Guard against double-connect: each connect mints a NEW room, and two
+      // rooms = two Clara workers talking at once (= every answer heard twice).
+      if (connecting || connected) return;
+      connecting = true;
+      els.btn.disabled = true;
       setStatus("hole Token…");
+      const pin = (els.pin.value || "").trim();
+      try { if (pin) localStorage.setItem(PIN_KEY, pin); } catch {}
       const resp = await fetch("/clara/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId }),
+        body: JSON.stringify({ clientId, pin }),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         setStatus("Fehler: " + (err.error || resp.status));
+        connecting = false;
+        els.btn.disabled = false;
         return;
       }
       const cfg = await resp.json();
       log(`session room=${cfg.room} profile=${cfg.profileId}`);
+      if (cfg.operator?.name) {
+        els.me.textContent = `Angemeldet als ${cfg.operator.name}` +
+          (cfg.operator.role ? ` · ${ROLE_LABEL[cfg.operator.role] || cfg.operator.role}` : "");
+      } else if (pin) {
+        els.me.textContent = "PIN nicht erkannt – Briefing zeigt alles";
+      } else {
+        els.me.textContent = "";
+      }
 
-      room = new Room({ adaptiveStream: true, dynacast: true });
+      // Echo cancellation / noise suppression / AGC matter a lot in a car: the
+      // cabin mic picks up Clara's own voice over the speakers, which otherwise
+      // loops back and confuses the agent.
+      room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
 
       room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Audio) {
+        // Attach the agent's voice exactly once. Guards against double playback
+        // if more than one audio track ever shows up in the room.
+        if (track.kind === Track.Kind.Audio && !audioAttached) {
           track.attach(els.audio);
+          audioAttached = true;
           log("Agent-Audio verbunden");
+          tryPlayAudio();
         }
       });
-      room.on(RoomEvent.ConnectionStateChanged, (s) => log(`conn: ${s}`));
-      room.on(RoomEvent.Disconnected, () => { connected = false; teardownUI(); });
-      room.on(RoomEvent.Reconnected, () => {
-        publishCmd({ type: "set_profile", profile_id: cfg.profileId }).catch(() => {});
+      // Canonical LiveKit autoplay handling: if the browser/car blocks playback,
+      // canPlaybackAudio flips false -> we show the tap-to-enable button.
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        if (room && room.canPlaybackAudio === false) showEnable(true);
+        else showEnable(false);
       });
+      room.on(RoomEvent.ConnectionStateChanged, (s) => log(`conn: ${s}`));
+      room.on(RoomEvent.Disconnected, () => { connected = false; audioAttached = false; showEnable(false); teardownUI(); });
 
       setStatus("verbinde…");
       await room.connect(cfg.url, cfg.token, { autoSubscribe: true });
       await room.localParticipant.setMicrophoneEnabled(true);
       connected = true;
+      connecting = false;
+      els.btn.disabled = false;
       els.orb.classList.add("live");
       setStatus("verbunden – sprich einfach");
       els.btn.textContent = "Auflegen";
       els.btn.className = "hangup";
       log("Mikrofon aktiv");
-
-      // Push the profile so the worker loads Clara's persona + tools.
-      for (let i = 1; i <= 5; i++) {
-        try { await publishCmd({ type: "set_profile", profile_id: cfg.profileId }); log(`set_profile (${i})`); }
-        catch (e) { log("set_profile fehlgeschlagen: " + e); }
-        await new Promise((r) => setTimeout(r, 500));
+      attachRouteRecovery();
+      // Try to start playback within the connect gesture chain (covers most
+      // phone + car cases); falls back to the tap button if the route blocks it.
+      await tryPlayAudio();
+      // Load Clara's persona + booking config + tools in the worker. This is the
+      // worker's intended profile-load path; the profile is staged on the worker
+      // side at .run/sessions/profile_<id>/. Sent exactly ONCE (the old 5x retry
+      // loop was unnecessary and noisy).
+      try {
+        await publishCmd({ type: "set_profile", profile_id: cfg.profileId });
+        log("Profil geladen: " + cfg.profileId);
+      } catch (e) {
+        log("set_profile fehlgeschlagen: " + e);
       }
     }
 
@@ -132,11 +232,25 @@
     async function hangup() {
       if (room) { await room.disconnect(); room = null; }
       connected = false;
+      showEnable(false);
       teardownUI();
     }
 
+    // Tap-to-enable: a real user gesture that reliably unlocks audio on the car
+    // head unit / iOS when autoplay was blocked.
+    els.enableBtn.addEventListener("click", () => { tryPlayAudio(); });
+
     els.btn.addEventListener("click", () => {
-      if (connected) hangup(); else connect().catch((e) => { setStatus("Fehler"); log(String(e)); });
+      if (connected) {
+        hangup();
+      } else {
+        connect().catch((e) => {
+          setStatus("Fehler");
+          log(String(e));
+          connecting = false;
+          els.btn.disabled = false;
+        });
+      }
     });
   </script>
 </body>

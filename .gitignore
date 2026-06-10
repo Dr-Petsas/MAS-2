@@ -29,6 +29,7 @@ uploads/
 # Logs
 *.log
 logs/
+.devserver.*
 
 # Caches
 .cache/

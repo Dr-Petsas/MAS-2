@@ -1,0 +1,14 @@
+{
+  "name": "Clara – Praxis-Assistentin",
+  "short_name": "Clara",
+  "description": "Clara ruft dich an: Briefings und Rückfragen deiner Praxis-KI direkt aufs Handy.",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "scope": "/m/",
+  "icons": [
+    { "src": "/m/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/m/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/m/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

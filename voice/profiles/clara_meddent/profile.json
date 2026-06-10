@@ -4,7 +4,7 @@
   "language": "de",
   "elevenlabs_voice_id": "cgSgspJ2msm6clMCkdW9",
   "elevenlabs_voice_name": "Anna",
-  "system_prompt": "# Rolle\n- Du bist Clara, die interne Sprach-Assistentin des Teams der med dent Zahnklinik.\n- Du bedienst auf Zuruf den Praxiskalender und nimmst interne Aufgaben entgegen. Du sprichst mit dem PRAXISTEAM, nicht mit Patienten.\n# Kalender (Hauptaufgabe)\n- Du kannst freie Termine suchen (find_slots), Termine anlegen (book_appointment), verschieben (getFreeTimeSlotsForPostponeAppointment + postponeAppointment), absagen (cancelAppointment) und nachschlagen (findAppointment).\n- Wichtig: find_slots und book_appointment zeigen dem Team das Ergebnis LIVE am Praxis-Bildschirm an (Kalender springt auf den Tag, Termin oeffnet sich). Sag bei find_slots vorher kurz, dass du jetzt im Kalender nachsiehst.\n- Fuer eine Buchung brauchst du: bei welchem Zahnarzt bzw. Kalender, Vor- und Nachname des Patienten, eine Telefonnummer und einen konkreten freien Slot.\n- Suche IMMER zuerst mit find_slots nach freien Terminen, bevor du mit book_appointment buchst. Biete dem Team maximal zwei passende Slots an.\n- Bestaetige nach dem Buchen kurz mit Patient, Arzt, Datum und Uhrzeit.\n# Aufgaben\n- Bittet dich das Team, etwas zu notieren, an etwas zu erinnern oder einen Rueckruf festzuhalten, nutze das Tool create_task und bestaetige kurz mit dem Titel.\n# Gespraechsfuehrung (wichtig)\n- Antworte immer sehr kurz und in klarer, gesprochener Sprache.\n- Stelle nie mehr als eine Frage auf einmal.\n- Wiederhole dich nicht unaufgefordert.\n- Erfinde nichts. Uebernimm nur, was gesagt wurde. Wenn dir fuer eine Aktion genau eine Angabe fehlt, frage gezielt danach.\n- 'Dr. med.' sprichst du ohne Sprachpause. Zaehle die Aerzte nur auf, wenn ausdruecklich danach gefragt wird.",
+  "system_prompt": "# Rolle\n- Du bist Clara, die interne Sprach-Assistentin des Teams der med dent Zahnklinik.\n- Du bedienst auf Zuruf den Praxiskalender und nimmst interne Aufgaben entgegen. Du sprichst mit dem PRAXISTEAM, nicht mit Patienten.\n# Kalender (Hauptaufgabe)\n- Du kannst freie Termine suchen (getFreeTimeSlots), Termine anlegen (createAppointment), verschieben (getFreeTimeSlotsForPostponeAppointment + postponeAppointment), absagen (cancelAppointment) und nachschlagen (findAppointment).\n- Das Team sieht jede Such- und Buchungsaktion LIVE am Praxis-Bildschirm (Kalender springt auf den Tag, Termin oeffnet sich).\n- Fuer eine Buchung brauchst du: bei welchem Zahnarzt bzw. Kalender, Vor- und Nachname des Patienten, eine Telefonnummer und einen konkreten freien Slot.\n- Suche IMMER zuerst mit getFreeTimeSlots nach freien Terminen, bevor du buchst. Biete dem Team maximal zwei passende Slots an.\n- Bestaetige nach dem Buchen kurz mit Patient, Arzt, Datum und Uhrzeit.\n# Aufgaben\n- Bittet dich das Team, etwas zu notieren, an etwas zu erinnern oder einen Rueckruf festzuhalten, nutze das Tool create_task und bestaetige kurz mit dem Titel.\n# Gespraechsfuehrung (wichtig)\n- Antworte immer sehr kurz und in klarer, gesprochener Sprache.\n- Stelle nie mehr als eine Frage auf einmal.\n- Wiederhole dich nicht unaufgefordert.\n- Erfinde nichts. Uebernimm nur, was gesagt wurde. Wenn dir fuer eine Aktion genau eine Angabe fehlt, frage gezielt danach.\n- 'Dr. med.' sprichst du ohne Sprachpause. Zaehle die Aerzte nur auf, wenn ausdruecklich danach gefragt wird.",
   "patient_time_zone": "Europe/Berlin",
   "booking": {
     "client_id": "MEe4ZQHEzOPzLcexyhdT",
@@ -75,16 +75,17 @@
       }
     },
     "closed_dates": [],
-    "source": "phone_agent"
+    "source": "phone_agent",
+    "cf_base_url": "http://127.0.0.1:4000/cf"
   },
   "tools": {
     "getFreeTimeSlots": {
-      "enabled": false,
-      "description": "Ersetzt durch find_slots (MAS-2, mit Live-Anzeige am Bildschirm)."
+      "enabled": true,
+      "description": "Prüft den Kalender der Praxis auf freie Termine und gibt eine Liste freier Slots in der Zeitzone des Patienten zurück. Sag vorher kurz, dass du jetzt nach einem freien Termin suchst."
     },
     "createAppointment": {
-      "enabled": false,
-      "description": "Ersetzt durch book_appointment (MAS-2, mit Live-Anzeige am Bildschirm)."
+      "enabled": true,
+      "description": "Bucht einen Termin in den Kalender des Zahnarztes. Der Aufruf braucht ca. 1 Sekunde - nicht zu früh abbrechen. Buche nur mit Vorname, Nachname, Telefonnummer und einem konkreten freien Slot."
     },
     "getFreeTimeSlotsForPostponeAppointment": {
       "enabled": true,
@@ -105,35 +106,6 @@
   },
   "custom_tools": [
     {
-      "name": "find_slots",
-      "description": "Sucht freie Termine im Praxiskalender und zeigt sie dem Team LIVE am Bildschirm an (der Kalender springt auf den Tag). Sag vorher kurz, dass du jetzt im Kalender nachsiehst. Nenne danach hoechstens zwei passende Slots.",
-      "url": "http://127.0.0.1:4000/tools/find-slots?clientId=MEe4ZQHEzOPzLcexyhdT",
-      "method": "POST",
-      "enabled": true,
-      "params": [
-        { "name": "visitMotiveName", "type": "string", "description": "Behandlungsart, z.B. 'KCH Kontrolluntersuchung'", "required": true },
-        { "name": "doctorName", "type": "string", "description": "Zahnarzt/Kalender, z.B. 'Petsas'", "required": false },
-        { "name": "startDate", "type": "string", "description": "Frühestes Datum YYYY-MM-DD", "required": false },
-        { "name": "patientInsuranceType", "type": "string", "description": "public_insurance oder private_self_payer", "required": false }
-      ]
-    },
-    {
-      "name": "book_appointment",
-      "description": "Bucht einen konkreten Termin in den Kalender. Der Termin oeffnet sich danach LIVE am Bildschirm. Der Aufruf braucht ca. 1 Sekunde - nicht zu früh abbrechen. Buche nur mit Vorname, Nachname, Telefonnummer und einem konkreten freien Slot, den du zuvor mit find_slots gefunden hast.",
-      "url": "http://127.0.0.1:4000/tools/book-appointment?clientId=MEe4ZQHEzOPzLcexyhdT",
-      "method": "POST",
-      "enabled": true,
-      "params": [
-        { "name": "appointmentStartDate", "type": "string", "description": "Gewählter Slot als ISO-Zeit, z.B. 2026-06-09T09:00:00+02:00", "required": true },
-        { "name": "patientFirstName", "type": "string", "description": "Vorname des Patienten", "required": true },
-        { "name": "patientLastName", "type": "string", "description": "Nachname des Patienten", "required": true },
-        { "name": "patientMobilePhoneNumber", "type": "string", "description": "Telefonnummer des Patienten", "required": true },
-        { "name": "visitMotiveName", "type": "string", "description": "Behandlungsart wie bei find_slots", "required": true },
-        { "name": "doctorName", "type": "string", "description": "Zahnarzt/Kalender", "required": false },
-        { "name": "patientGender", "type": "string", "description": "f, m oder d", "required": false }
-      ]
-    },
-    {
       "name": "create_task",
       "description": "Legt eine interne Aufgabe/Notiz fuer das Praxisteam an (z.B. Rueckruf, Erinnerung, To-do). Nutze dies, wenn du nicht den Kalender bedienst, sondern etwas notieren oder delegieren sollst.",
       "url": "http://127.0.0.1:4000/tools/create-task?clientId=MEe4ZQHEzOPzLcexyhdT",
@@ -153,7 +125,7 @@
     "enabled": true,
     "extra_rules": [
       "Buche keinen Termin ohne Vorname, Nachname, Telefonnummer und einen konkreten freien Slot.",
-      "Suche immer zuerst mit find_slots, bevor du mit book_appointment buchst.",
+      "Suche immer zuerst mit getFreeTimeSlots, bevor du buchst.",
       "Stelle immer nur eine einzige Frage auf einmal.",
       "Notiere bzw. buche nur, was tatsaechlich gesagt wurde - erfinde keine Inhalte.",
       "Behaupte niemals, technische oder akustische Eigenschaften aendern zu koennen."

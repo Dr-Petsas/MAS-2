@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Clara – Handy verbinden</title>
+  <link rel="manifest" href="/m/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/m/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Clara" />
+  <meta name="theme-color" content="#0f172a" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, "Segoe UI", Roboto, sans-serif; background:#0f172a; color:#e2e8f0;
+           margin:0; min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center;
+           padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+    .card { width:min(440px,100%); text-align:center; padding:8px 4px 24px; }
+    .ava { width:96px; height:96px; border-radius:28px; margin:18px auto 14px; display:block;
+           box-shadow:0 10px 40px rgba(99,102,241,.35); }
+    h1 { margin:0 0 6px; font-size:24px; }
+    .sub { color:#94a3b8; font-size:14px; margin:0 0 22px; line-height:1.5; }
+    .who { color:#a5b4fc; font-weight:600; }
+    .step { display:flex; gap:12px; align-items:flex-start; text-align:left; background:#1e293b;
+            border-radius:14px; padding:14px; margin:10px 0; }
+    .step .n { background:#6366f1; color:#fff; min-width:26px; height:26px; border-radius:50%;
+               display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; }
+    .step p { margin:2px 0 0; font-size:14px; color:#cbd5e1; line-height:1.45; }
+    button, .btn { width:100%; padding:16px; border:0; border-radius:14px; font-size:17px; font-weight:700;
+             cursor:pointer; display:block; text-decoration:none; text-align:center; }
+    .primary { background:#6366f1; color:#fff; margin-top:14px; }
+    .primary:disabled { opacity:.55; }
+    .ghost { background:#1e293b; color:#e2e8f0; margin-top:10px; font-weight:600; font-size:15px; }
+    .danger-link { background:none; color:#64748b; font-size:13px; margin-top:18px; font-weight:500; }
+    .ok-badge { font-size:54px; margin:10px 0 2px; }
+    .err { color:#fca5a5; font-size:14px; margin-top:12px; min-height:18px; }
+    .note { color:#64748b; font-size:12px; margin-top:16px; }
+    .hidden { display:none !important; }
+    .sharehint { display:inline-block; background:#0b1220; border-radius:8px; padding:2px 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="ava" src="/m/icon-192.png" alt="Clara" />
+    <h1 id="title">Clara</h1>
+    <p class="sub" id="subtitle">Dein Handy wird mit deiner Praxis-Assistentin verbunden.</p>
+
+    <!-- iOS first: install to home screen so push works -->
+    <div id="viewInstall" class="hidden">
+      <div class="step"><div class="n">1</div><p>Tippe unten auf das <b>Teilen-Symbol</b> <span class="sharehint">⬆️</span> in Safari.</p></div>
+      <div class="step"><div class="n">2</div><p>Wähle <b>„Zum Home-Bildschirm“</b> und dann <b>„Hinzufügen“</b>.</p></div>
+      <div class="step"><div class="n">3</div><p>Öffne die neue <b>Clara-App</b> auf deinem Home-Bildschirm – die Einrichtung läuft dort automatisch weiter.</p></div>
+      <p class="note">Ohne diesen Schritt kann das iPhone keine Anrufe von Clara empfangen (Apple erlaubt Mitteilungen nur für installierte Apps).</p>
+    </div>
+
+    <!-- Pairing: one tap -->
+    <div id="viewPair" class="hidden">
+      <div class="step"><div class="n">📞</div><p>Clara kann dich künftig <b>direkt auf diesem Handy anrufen</b> – z.&nbsp;B. fürs Morgen-Briefing oder wenn etwas Wichtiges anliegt.</p></div>
+      <button class="primary" id="btnPair">Jetzt aktivieren</button>
+      <p class="note">Beim Tippen fragt dein Handy einmalig nach der Erlaubnis für Mitteilungen – bitte <b>„Erlauben“</b> wählen.</p>
+    </div>
+
+    <!-- Paired home screen -->
+    <div id="viewHome" class="hidden">
+      <div class="ok-badge" id="homeBadge">✅</div>
+      <p class="sub" id="homeText">Verbunden.</p>
+      <a class="btn primary" id="btnTalk" href="#">🎙️ Mit Clara sprechen</a>
+      <button class="ghost" id="btnSelfTest">📳 Probeanruf an dieses Handy</button>
+      <button class="danger-link" id="btnUnpair">Verbindung von diesem Handy entfernen</button>
+    </div>
+
+    <!-- Token problems -->
+    <div id="viewDead" class="hidden">
+      <div class="ok-badge">⌛️</div>
+      <p class="sub" id="deadText">Dieser QR-Code ist abgelaufen oder wurde schon benutzt.<br/>Bitte in den Einstellungen einen neuen erzeugen und erneut scannen.</p>
+    </div>
+
+    <div class="err" id="err"></div>
+    <p class="note" id="diag"></p>
+  </div>
+
+  <script>
+    // ── Context ──────────────────────────────────────────────────────────────
+    const qs = new URLSearchParams(location.search);
+    const urlClientId = (qs.get("c") || "").trim();
+    const urlToken = (qs.get("t") || "").trim();
+    const STORE_KEY = "clara.device.v1";
+
+    const els = Object.fromEntries(["title","subtitle","viewInstall","viewPair","viewHome","viewDead",
+      "btnPair","btnTalk","btnSelfTest","btnUnpair","homeText","err","diag"].map(id => [id, document.getElementById(id)]));
+
+    function loadDevice() {
+      try { return JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { return null; }
+    }
+    function saveDevice(d) { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {} }
+    function clearDevice() { try { localStorage.removeItem(STORE_KEY); } catch {} }
+
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+    function show(view) {
+      for (const v of ["viewInstall","viewPair","viewHome","viewDead"]) els[v].classList.add("hidden");
+      if (view) els[view].classList.remove("hidden");
+    }
+    function setErr(msg) { els.err.textContent = msg || ""; }
+
+    // ── Pairing ──────────────────────────────────────────────────────────────
+    function b64ToUint8(base64) {
+      const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+      const raw = atob((base64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+      return Uint8Array.from([...raw].map((ch) => ch.charCodeAt(0)));
+    }
+
+    async function pairNow() {
+      setErr("");
+      els.btnPair.disabled = true;
+      els.btnPair.textContent = "Wird eingerichtet …";
+      try {
+        const reg = await navigator.serviceWorker.register("/m/sw.js");
+        await navigator.serviceWorker.ready;
+
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") throw new Error("Mitteilungen wurden nicht erlaubt. Bitte in den Einstellungen erlauben und erneut versuchen.");
+
+        const vk = await fetch("/clara/devices/vapid-key").then(r => r.json());
+        if (!vk.ok) throw new Error("Push ist auf dem Server nicht konfiguriert.");
+
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: b64ToUint8(vk.key),
+          });
+        }
+
+        const resp = await fetch("/clara/devices/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: urlClientId, token: urlToken, subscription: sub.toJSON() }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          if (["token_unknown","token_used","token_expired"].includes(data.error)) { show("viewDead"); return; }
+          throw new Error(data.error || "Registrierung fehlgeschlagen.");
+        }
+
+        saveDevice({
+          clientId: urlClientId,
+          deviceId: data.deviceId,
+          deviceKey: data.deviceKey,
+          operatorName: data.operator?.name || "",
+          role: data.operator?.role || "",
+        });
+        renderHome(true);
+      } catch (e) {
+        setErr(String(e.message || e));
+        els.btnPair.disabled = false;
+        els.btnPair.textContent = "Jetzt aktivieren";
+      }
+    }
+
+    // Subscriptions can rotate (browser updates etc.) — quietly re-sync ours.
+    async function refreshSubscription(device) {
+      try {
+        if (!pushSupported) return;
+        const reg = await navigator.serviceWorker.register("/m/sw.js");
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub) return;
+        await fetch("/clara/devices/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: device.clientId, deviceId: device.deviceId, deviceKey: device.deviceKey, subscription: sub.toJSON() }),
+        });
+      } catch {}
+    }
+
+    // ── Views ────────────────────────────────────────────────────────────────
+    function renderHome(justPaired) {
+      const d = loadDevice();
+      if (!d) { renderEntry(); return; }
+      els.title.textContent = "Clara";
+      els.subtitle.textContent = "";
+      els.homeText.innerHTML = (justPaired ? "<b>Geschafft!</b> " : "") +
+        `Dieses Handy ist verbunden als <span class="who">${d.operatorName || "Team"}</span>.<br/>` +
+        "Clara kann dich jetzt hier anrufen.";
+      els.btnTalk.href = `/m/call.html?c=${encodeURIComponent(d.clientId)}`;
+      show("viewHome");
+      refreshSubscription(d);
+    }
+
+    function renderEntry() {
+      if (!urlToken || !urlClientId) {
+        els.subtitle.textContent = "Kein Verbindungscode gefunden. Bitte den QR-Code aus den Praxis-Einstellungen scannen.";
+        show(null);
+        return;
+      }
+      if (!pushSupported) {
+        if (isIOS && !isStandalone) { show("viewInstall"); return; } // iOS Safari tab: install first
+        setErr("Dieser Browser unterstützt keine Push-Mitteilungen. Bitte Chrome (Android) oder Safari (iPhone) verwenden.");
+        show(null);
+        return;
+      }
+      if (isIOS && !isStandalone) { show("viewInstall"); return; }
+      show("viewPair");
+    }
+
+    els.btnPair.addEventListener("click", pairNow);
+
+    els.btnSelfTest.addEventListener("click", async () => {
+      setErr("");
+      const d = loadDevice();
+      if (!d) return;
+      els.btnSelfTest.disabled = true;
+      els.btnSelfTest.textContent = "Anruf kommt gleich …";
+      try {
+        const resp = await fetch("/clara/devices/self-test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId: d.clientId, deviceId: d.deviceId, deviceKey: d.deviceKey }),
+        });
+        const data = await resp.json();
+        if (!data.ok) setErr("Probeanruf fehlgeschlagen: " + (data.reason || data.error || "unbekannt"));
+      } catch (e) { setErr(String(e.message || e)); }
+      setTimeout(() => { els.btnSelfTest.disabled = false; els.btnSelfTest.textContent = "📳 Probeanruf an dieses Handy"; }, 4000);
+    });
+
+    els.btnUnpair.addEventListener("click", () => {
+      clearDevice();
+      location.reload();
+    });
+
+    // ── Boot ─────────────────────────────────────────────────────────────────
+    if (loadDevice()) renderHome(false);
+    else renderEntry();
+  </script>
+</body>
+</html>
