@@ -64,6 +64,68 @@ function capFirst(s2) {
   return s2 ? s2.charAt(0).toUpperCase() + s2.slice(1) : s2;
 }
 
+// ----------------------------------------------------------------------------
+// Stimmungs-Sprüche: Clara frotzelt beim Abwesenheits-Eintragen.
+// Bewusst im Backend (deterministisch, nie zweimal derselbe hintereinander)
+// statt im LLM-Prompt — das 4B-Modell soll Tool-Texte wörtlich sprechen und
+// NICHT selbst witzig sein müssen (Halluzinations-/Routing-Risiko).
+// ----------------------------------------------------------------------------
+
+const ABSENCE_QUIPS = [
+  "Na na na, schon wieder keine Lust?",
+  "Was? Und ich bleib alleine hier, oder wie?",
+  "Neee, sorry, das genehmige ich nicht. … Na gut, ausnahmsweise.",
+  "Ja nee, is klar — schon wieder weg.",
+  "Boaaah, echt jetzt?",
+  "Und wo geht's hin? Ich komm mit!",
+  "Ich will auch mal blaumachen … ich schalte mich jetzt einfach aus! … Kleiner Scherz.",
+  "Soso, wir gönnen uns mal wieder was.",
+  "Das notiere ich beim Betriebsrat der KIs.",
+  "Ich sag's keinem weiter, versprochen.",
+  "Schon wieder dieses harte Arbeitsleben, hm?",
+  "Na gut — aber das Wartezimmer wird weinen.",
+  "Urlaub vom Urlaub, verstehe.",
+  "Mein Kalender und ich sind not amused.",
+  "Okay, aber nur weil du es bist.",
+  "Und ich? Ich krieg nicht mal Wochenende.",
+  "Wenn das so weitergeht, eröffne ich hier eine Strandbar.",
+  "Moment, ich hole kurz das Beschwerdebuch … ach, vergiss es.",
+];
+
+const ABSENCE_SENDOFFS = [
+  "Na dann, viel Spaß — ich halte hier die Stellung.",
+  "Genieß es — ich passe auf den Laden auf.",
+  "Schönen freien Tag! Einer von uns beiden muss ja arbeiten.",
+  "Bring mir was mit.",
+  "Erholung befohlen — den Rest übernehme ich.",
+  "Ich sage Bescheid, falls hier die Wände wackeln.",
+];
+
+let lastQuipIdx = -1;
+let lastSendoffIdx = -1;
+
+function pickQuip(pool, lastIdxRef) {
+  if (!pool.length) return "";
+  let i = Math.floor(Math.random() * pool.length);
+  if (pool.length > 1 && i === lastIdxRef.value) i = (i + 1) % pool.length;
+  lastIdxRef.value = i;
+  return pool[i];
+}
+
+function absenceQuip() {
+  const ref = { value: lastQuipIdx };
+  const q = pickQuip(ABSENCE_QUIPS, ref);
+  lastQuipIdx = ref.value;
+  return q;
+}
+
+function absenceSendoff() {
+  const ref = { value: lastSendoffIdx };
+  const q = pickQuip(ABSENCE_SENDOFFS, ref);
+  lastSendoffIdx = ref.value;
+  return q;
+}
+
 function dateDeShort(ms) {
   if (!ms) return "";
   return new Intl.DateTimeFormat("de-DE", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(ms));
@@ -331,7 +393,7 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
     await casesCol(clientId).doc(caseId).update({ absencePlan: plan });
     return {
       ok: true, caseId, date: day, calendarName: calName, blocked: true, total: 0,
-      message: `Erledigt — ich habe die Abwesenheit für ${calName} ${dayRel(day)} ${winLabel} eingetragen. In dem Zeitraum sind keine Termine betroffen, und es kann dort nichts mehr gebucht werden.`,
+      message: `${absenceQuip()} Erledigt — ich habe die Abwesenheit für ${calName} ${dayRel(day)} ${winLabel} eingetragen. In dem Zeitraum sind keine Termine betroffen, und es kann dort nichts mehr gebucht werden.`,
     };
   }
 
@@ -358,7 +420,7 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
     await casesCol(clientId).doc(caseId).update({ absencePlan: plan, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
   }
 
-  const parts = [`${capFirst(dayRel(day))} ${winLabel === "ganztägig" ? "" : `${winLabel} `}${patients.length === 1 ? "steht 1 Termin" : `stehen ${patients.length} Termine`} bei ${calName} im Kalender.`];
+  const parts = [absenceQuip(), `${capFirst(dayRel(day))} ${winLabel === "ganztägig" ? "" : `${winLabel} `}${patients.length === 1 ? "steht 1 Termin" : `stehen ${patients.length} Termine`} bei ${calName} im Kalender.`];
   const how = [];
   if (counts.sms) how.push(`${counts.sms} per SMS`);
   if (counts.email) how.push(`${counts.email} per E-Mail durch Nadine`);
@@ -570,6 +632,7 @@ export async function approveAbsence(clientId, { date, caseId, by, dryRun = fals
   if (totals.call) parts.push(`Lisa ruft ${totals.call} Patient${totals.call === 1 ? "en" : "en"} an.`);
   if (totals.none) parts.push(`${totals.none} ohne Kontaktweg — bitte manuell absagen, Details im Monitor.`);
   parts.push("Ich beobachte den Kalender und sage Bescheid, wenn Patienten neu gebucht haben.");
+  if (!dryRun) parts.push(absenceSendoff());
   return { ok: true, approved, ...totals, message: parts.join(" ") };
 }
 
