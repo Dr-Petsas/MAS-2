@@ -4172,9 +4172,33 @@ function assertLocalLlm() {
   log.warn("llm endpoint is NOT local — patient data may leave the practice network", { base: info.base, model: info.model });
 }
 
+// Aktuelle öffentliche Backend-URL nach Firestore veröffentlichen
+// (settings/masRuntime, public read). Die deployte Web-App löst die MAS-URL
+// ZUR LAUFZEIT von dort auf — die Cloudflare-Quick-Tunnel-URL wechselt bei
+// jedem Tunnel-Neustart, eine im Frontend-Build eingebackene URL veraltet
+// zwangsläufig ("Failed to fetch" beim Handy-Koppeln). Nur HTTPS-URLs werden
+// veröffentlicht, damit ein lokaler Dev-Boot (127.0.0.1) die Produktion
+// niemals umbiegt.
+async function publishRuntimeConfig() {
+  if (!PUBLIC_BASE_URL.startsWith("https://")) {
+    log.info("runtime config not published (PUBLIC_BASE_URL not public https)", { baseUrl: PUBLIC_BASE_URL });
+    return;
+  }
+  try {
+    await admin.firestore().collection("settings").doc("masRuntime").set({
+      baseUrl: PUBLIC_BASE_URL.replace(/\/+$/, ""),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    log.info("runtime config published", { baseUrl: PUBLIC_BASE_URL });
+  } catch (e) {
+    log.warn("runtime config publish failed", { err: String(e?.message || e) });
+  }
+}
+
 app.listen(PORT, () => {
   assertLocalLlm();
   log.info("backend listening", { port: PORT, authEnforced: AUTH_ENFORCED });
+  publishRuntimeConfig();
   startMailScheduler();
   // Lisa call finalizer: fetch transcripts of finished outbound calls and
   // write the outcome to the shared brain. Cheap no-op when nothing is calling.
