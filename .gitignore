@@ -36,6 +36,9 @@ logs/
 __pycache__/
 *.pyc
 
+# Lokale Verifikations-Screenshots (UI-Checks)
+backend/scripts/shots/
+
 # OS / editor artifacts
 .DS_Store
 Thumbs.db

@@ -3,52 +3,123 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Clara ruft an</title>
+  <title>Clara</title>
   <link rel="manifest" href="/m/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/m/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#0a1322" />
   <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, "Segoe UI", Roboto, sans-serif; margin:0; color:#e2e8f0;
-           background: radial-gradient(120% 90% at 50% 0%, #1e293b 0%, #0f172a 55%, #090f1e 100%);
-           min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;
-           padding: calc(env(safe-area-inset-top) + 28px) 22px calc(env(safe-area-inset-bottom) + 26px); }
-    .top { text-align:center; }
-    .calling { color:#94a3b8; font-size:15px; letter-spacing:.4px; min-height:20px; }
-    .name { font-size:34px; font-weight:700; margin:6px 0 2px; }
-    .reason { color:#a5b4fc; font-size:16px; margin-top:4px; min-height:22px; }
-    .mid { flex:1; display:flex; align-items:center; justify-content:center; }
-    .ava-wrap { position:relative; width:170px; height:170px; }
-    .ava { width:170px; height:170px; border-radius:50%; object-fit:cover;
-           box-shadow:0 16px 60px rgba(99,102,241,.45); }
-    .ring1, .ring2 { position:absolute; inset:-14px; border-radius:50%; border:2px solid rgba(129,140,248,.5); opacity:0; }
-    body.ringing .ring1 { animation: rip 1.6s ease-out infinite; }
-    body.ringing .ring2 { animation: rip 1.6s ease-out .8s infinite; }
-    @keyframes rip { 0% { transform:scale(.92); opacity:.8; } 100% { transform:scale(1.35); opacity:0; } }
-    body.live .ava { animation: glow 1.6s ease-in-out infinite alternate; }
-    @keyframes glow { from { box-shadow:0 16px 50px rgba(99,102,241,.35);} to { box-shadow:0 16px 80px rgba(129,140,248,.75);} }
-    .bottom { display:flex; justify-content:center; gap:64px; }
-    .action { display:flex; flex-direction:column; align-items:center; gap:10px; background:none; border:0; color:#cbd5e1;
-              font-size:14px; font-weight:600; cursor:pointer; }
-    .circle { width:76px; height:76px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-              font-size:32px; box-shadow:0 10px 30px rgba(0,0,0,.45); }
-    .accept .circle { background:#22c55e; animation: bounce 1.2s ease-in-out infinite; }
-    .decline .circle { background:#ef4444; }
-    @keyframes bounce { 0%,100% { transform:translateY(0);} 50% { transform:translateY(-7px);} }
-    .single { display:flex; justify-content:center; }
-    .hangup-btn { background:#ef4444; color:#fff; border:0; border-radius:16px; padding:16px 44px;
-                  font-size:17px; font-weight:700; cursor:pointer; }
-    .status { text-align:center; color:#94a3b8; font-size:14px; min-height:20px; margin-bottom:14px; }
-    .enable { display:none; margin:0 auto 14px; background:#f59e0b; color:#0f172a; border:0; border-radius:12px;
-              padding:12px 20px; font-size:15px; font-weight:700; }
-    .enable.show { display:block; }
-    .hidden { display:none !important; }
+    :root {
+      color-scheme: dark;
+      /* Pickadoc CI – dunkles Schema mit dezenten Neon-Akzenten */
+      --bg-1: #13203a;
+      --bg-2: #0a1322;
+      --bg-3: #060b16;
+      --ink: #e6edf6;
+      --ink-soft: #8fa3bd;
+      --turq: #2ee6c8;       /* neon türkis  – Clara */
+      --amber: #ffb347;      /* neon gelborange – Nutzer spricht */
+      --red: #ff4d6d;        /* neon rot – Denken / Tools / Auflegen */
+      --accent: var(--turq); /* wird je Zustand umgeschaltet */
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: system-ui, "Segoe UI", Roboto, sans-serif; margin: 0; color: var(--ink);
+      background: radial-gradient(130% 95% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
+      min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
+      padding: calc(env(safe-area-inset-top) + 18px) 22px calc(env(safe-area-inset-bottom) + 26px);
+      user-select: none; -webkit-user-select: none;
+    }
+
+    /* ── Header: Pickadoc-Logo + Einstellungen ─────────────────────────── */
+    .brand { display: flex; align-items: center; justify-content: center; gap: 9px; position: relative; }
+    .brand img { height: 22px; width: auto; display: block; opacity: .95; }
+    .brand .word { font-size: 19px; font-weight: 700; letter-spacing: .3px; color: var(--ink); }
+    .brand .word b { color: var(--turq); font-weight: 700; }
+    .gear { position: absolute; right: -6px; top: -2px; color: var(--ink-soft); text-decoration: none;
+            font-size: 17px; padding: 8px; opacity: .65; }
+
+    .top { text-align: center; margin-top: 26px; }
+    .calling { color: var(--ink-soft); font-size: 15px; letter-spacing: .4px; min-height: 20px; }
+    .name { font-size: 34px; font-weight: 700; margin: 6px 0 2px; }
+    .reason { color: var(--turq); font-size: 16px; margin-top: 4px; min-height: 22px; opacity: .85; }
+
+    /* ── Zentraler Button – der einzige Kontrollpunkt ──────────────────── */
+    .mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; }
+    .orb-wrap { position: relative; width: 196px; height: 196px; }
+    .orb {
+      position: relative; z-index: 2; width: 196px; height: 196px; border-radius: 50%;
+      border: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+      background:
+        radial-gradient(100% 100% at 30% 25%, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 60%),
+        radial-gradient(120% 120% at 50% 50%, #101b30 0%, #0a1424 70%);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+      box-shadow: 0 0 42px color-mix(in srgb, var(--accent) 28%, transparent),
+                  inset 0 0 30px color-mix(in srgb, var(--accent) 10%, transparent);
+      transition: border-color .45s ease, box-shadow .45s ease;
+      touch-action: manipulation;
+    }
+    .orb:active { transform: scale(.97); }
+    .orb img { width: 84px; height: auto; opacity: .92; pointer-events: none;
+               filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 55%, transparent)); transition: filter .45s ease; }
+
+    /* Ripples – Farbe folgt dem Zustand */
+    .ring { position: absolute; inset: -4px; border-radius: 50%; z-index: 1;
+            border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); opacity: 0; pointer-events: none; }
+    @keyframes rip { 0% { transform: scale(.96); opacity: .75; } 100% { transform: scale(1.5); opacity: 0; } }
+    @keyframes ripSoft { 0% { transform: scale(.98); opacity: .4; } 100% { transform: scale(1.28); opacity: 0; } }
+    @keyframes breathe {
+      0%, 100% { box-shadow: 0 0 34px color-mix(in srgb, var(--accent) 20%, transparent), inset 0 0 26px color-mix(in srgb, var(--accent) 8%, transparent); }
+      50%      { box-shadow: 0 0 58px color-mix(in srgb, var(--accent) 42%, transparent), inset 0 0 34px color-mix(in srgb, var(--accent) 14%, transparent); }
+    }
+    @keyframes thinkPulse {
+      0%, 100% { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+      50%      { border-color: color-mix(in srgb, var(--accent) 90%, transparent); }
+    }
+
+    /* Zustände: Akzentfarbe + Animationen */
+    body.st-ringing    { --accent: var(--turq); }
+    body.st-ringing .ring.r1 { animation: rip 1.5s ease-out infinite; }
+    body.st-ringing .ring.r2 { animation: rip 1.5s ease-out .75s infinite; }
+    body.st-connecting { --accent: var(--amber); }
+    body.st-connecting .orb { animation: breathe 1.1s ease-in-out infinite; }
+    body.st-listening  { --accent: var(--turq); }
+    body.st-listening .orb { animation: breathe 3.2s ease-in-out infinite; }
+    body.st-user       { --accent: var(--amber); }
+    body.st-user .ring.r1 { animation: ripSoft 1s ease-out infinite; }
+    body.st-user .orb { animation: breathe 1.4s ease-in-out infinite; }
+    body.st-thinking   { --accent: var(--red); }
+    body.st-thinking .orb { animation: thinkPulse 1s ease-in-out infinite; }
+    body.st-thinking .ring.r1 { animation: ripSoft 1.6s ease-out infinite; }
+    body.st-clara      { --accent: var(--turq); }
+    body.st-clara .orb { animation: breathe 1.3s ease-in-out infinite; }
+    body.st-clara .ring.r1 { animation: rip 1.6s ease-out infinite; }
+    body.st-clara .ring.r2 { animation: rip 1.6s ease-out .8s infinite; }
+    body.st-ended      { --accent: var(--ink-soft); }
+
+    /* Zustand-Label unter dem Button */
+    .state-label { font-size: 15px; font-weight: 600; letter-spacing: .3px; min-height: 22px;
+                   color: var(--accent); transition: color .45s ease; text-align: center; }
+    .hint { color: var(--ink-soft); font-size: 13px; min-height: 18px; text-align: center; }
+
+    .bottom { display: flex; flex-direction: column; align-items: center; gap: 12px; min-height: 64px; }
+    .decline-link { background: none; border: 0; color: var(--red); opacity: .8; font-size: 15px;
+                    font-weight: 600; cursor: pointer; padding: 10px 18px; }
+    .enable { display: none; margin: 0 auto; background: var(--amber); color: #131a26; border: 0; border-radius: 12px;
+              padding: 12px 20px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .enable.show { display: block; }
+    .status { text-align: center; color: var(--ink-soft); font-size: 13px; min-height: 18px; }
+    .hidden { display: none !important; }
   </style>
 </head>
-<body class="ringing">
+<body class="st-ringing">
+  <header class="brand">
+    <img src="/m/logo-mark.png" alt="" />
+    <span class="word">pickadoc</span>
+    <a class="gear" href="/m/pair.html?manage=1" aria-label="Einstellungen">&#9881;</a>
+  </header>
+
   <div class="top">
     <div class="calling" id="calling">ruft an …</div>
     <div class="name">Clara</div>
@@ -56,24 +127,22 @@
   </div>
 
   <div class="mid">
-    <div class="ava-wrap">
-      <div class="ring1"></div><div class="ring2"></div>
-      <img class="ava" src="/m/icon-512.png" alt="Clara" />
+    <div class="orb-wrap">
+      <div class="ring r1"></div><div class="ring r2"></div>
+      <button class="orb" id="orb" aria-label="Clara">
+        <img src="/m/logo-mark.png" alt="" />
+      </button>
+    </div>
+    <div>
+      <div class="state-label" id="stateLabel"></div>
+      <div class="hint" id="hint"></div>
     </div>
   </div>
 
-  <button class="enable" id="enableBtn">🔊 Ton aktivieren (tippen)</button>
-  <div class="status" id="status"></div>
-
-  <!-- incoming-call buttons -->
-  <div class="bottom" id="ringButtons">
-    <button class="action decline" id="btnDecline"><span class="circle">✕</span>Ablehnen</button>
-    <button class="action accept" id="btnAccept"><span class="circle">📞</span>Annehmen</button>
-  </div>
-
-  <!-- in-call button -->
-  <div class="single hidden" id="liveButtons">
-    <button class="hangup-btn" id="btnHangup">Auflegen</button>
+  <div class="bottom">
+    <button class="enable" id="enableBtn">&#128266; Ton aktivieren (tippen)</button>
+    <button class="decline-link hidden" id="btnDecline">Ablehnen</button>
+    <div class="status" id="status"></div>
   </div>
 
   <audio id="agentAudio" autoplay playsinline></audio>
@@ -93,30 +162,53 @@
       calling: document.getElementById("calling"),
       reason: document.getElementById("reason"),
       status: document.getElementById("status"),
-      ringButtons: document.getElementById("ringButtons"),
-      liveButtons: document.getElementById("liveButtons"),
-      btnAccept: document.getElementById("btnAccept"),
+      stateLabel: document.getElementById("stateLabel"),
+      hint: document.getElementById("hint"),
+      orb: document.getElementById("orb"),
       btnDecline: document.getElementById("btnDecline"),
-      btnHangup: document.getElementById("btnHangup"),
       enableBtn: document.getElementById("enableBtn"),
       audio: document.getElementById("agentAudio"),
     };
 
+    // ── Zustandsmaschine: ein Button, Farben erzählen den Rest ───────────────
+    // phase: idle | ringing | connecting | live | ended
+    // voice (nur live): listening | user | thinking | clara
+    const ALL_ST = ["st-ringing","st-connecting","st-listening","st-user","st-thinking","st-clara","st-ended"];
+    let phase = incoming ? "ringing" : "idle";
+    let voice = "listening";
+
+    const LABELS = {
+      idle:       ["", "Tippen zum Sprechen"],
+      ringing:    ["Clara ruft an", "Tippen zum Annehmen"],
+      connecting: ["Verbinde …", ""],
+      listening:  ["Ich höre zu", "Tippen zum Auflegen"],
+      user:       ["Du sprichst", ""],
+      thinking:   ["Clara denkt nach …", ""],
+      clara:      ["Clara spricht", ""],
+      ended:      ["Anruf beendet", "Tippen für neue Verbindung"],
+    };
+
+    function render() {
+      const st = phase === "live" ? voice : (phase === "idle" ? "listening" : phase);
+      document.body.classList.remove(...ALL_ST);
+      document.body.classList.add("st-" + st);
+      const key = phase === "live" ? voice : phase;
+      const [label, hint] = LABELS[key] || ["", ""];
+      els.stateLabel.textContent = label;
+      els.hint.textContent = hint;
+      els.btnDecline.classList.toggle("hidden", phase !== "ringing");
+    }
+
     els.reason.textContent = reasonText;
     if (!incoming) {
       els.calling.textContent = device?.operatorName ? `Hallo ${device.operatorName}` : "Deine Praxis-Assistentin";
-      els.btnAccept.querySelector("span").textContent = "🎙️";
-      els.btnAccept.childNodes[1].textContent = "";
-      els.btnAccept.append("Sprechen");
-      els.btnDecline.classList.add("hidden");
     }
+    render();
 
     function setStatus(s) { els.status.textContent = s; }
     function showEnable(on) { els.enableBtn.classList.toggle("show", !!on); }
 
     // ── Ringtone (best effort): WebAudio dual-tone like a classic phone ring.
-    // Browsers may block sound until a gesture — then the push notification's
-    // own system sound has already done the audible part.
     let ringCtx = null;
     let ringTimer = null;
     function startRing() {
@@ -177,13 +269,55 @@
       });
     }
 
+    // ── Mikro-Pegel: erkennt lokal, ob der Nutzer gerade spricht ─────────────
+    let micCtx = null;
+    let micRaf = 0;
+    let userQuietSince = 0;
+    function watchMicLevel() {
+      try {
+        const pubs = room?.localParticipant?.audioTrackPublications;
+        const pub = pubs ? [...pubs.values()][0] : null;
+        const mst = pub?.track?.mediaStreamTrack;
+        if (!mst) { setTimeout(watchMicLevel, 500); return; }
+        micCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const srcNode = micCtx.createMediaStreamSource(new MediaStream([mst]));
+        const analyser = micCtx.createAnalyser();
+        analyser.fftSize = 512;
+        srcNode.connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          micRaf = requestAnimationFrame(tick);
+          if (phase !== "live") return;
+          analyser.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+          const rms = Math.sqrt(sum / buf.length);
+          const now = performance.now();
+          // Clara-Sprechen und Denken haben Vorrang vor dem Mikro-Pegel
+          if (voice === "clara" || voice === "thinking") return;
+          if (rms > 0.045) {
+            userQuietSince = 0;
+            if (voice !== "user") { voice = "user"; render(); }
+          } else if (voice === "user") {
+            if (!userQuietSince) userQuietSince = now;
+            if (now - userQuietSince > 700) { voice = "listening"; render(); }
+          }
+        };
+        tick();
+      } catch {}
+    }
+    function stopMicWatch() {
+      if (micRaf) { cancelAnimationFrame(micRaf); micRaf = 0; }
+      if (micCtx) { try { micCtx.close(); } catch {} micCtx = null; }
+    }
+
     async function connect() {
       if (connecting || connected) return;
       connecting = true;
       stopRing();
-      document.body.classList.remove("ringing");
-      els.ringButtons.classList.add("hidden");
-      setStatus("Verbinde …");
+      phase = "connecting";
+      render();
+      setStatus("");
       try {
         const body = { clientId };
         // Paired phone -> Clara knows WHO answers, no PIN needed.
@@ -230,13 +364,25 @@
         const markClaraLive = () => {
           if (claraLive || !connected) return;
           claraLive = true;
-          setStatus("Verbunden – sprich einfach.");
+          if (phase === "connecting") { phase = "live"; voice = "listening"; render(); }
         };
         room.on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
           if (topic && topic !== "pickadoc.evt") return;
           try {
             const obj = JSON.parse(new TextDecoder().decode(payload));
-            if (obj && obj.type === "audio_state" && obj.state === "speaking") markClaraLive();
+            if (!obj || !obj.type) return;
+            if (obj.type === "audio_state") {
+              if (obj.state === "speaking") {
+                markClaraLive();
+                phase = "live"; voice = "clara"; render();
+              } else if (phase === "live" && voice === "clara") {
+                voice = "listening"; render();
+              }
+            } else if (obj.type === "final_transcript" && phase === "live") {
+              // Nutzer-Satz ist fertig -> Clara holt Tools / denkt nach,
+              // bis das naechste audio_state=speaking kommt.
+              voice = "thinking"; render();
+            }
           } catch {}
         });
 
@@ -244,13 +390,12 @@
         await room.localParticipant.setMicrophoneEnabled(true);
         connected = true;
         connecting = false;
-        document.body.classList.add("live");
-        els.liveButtons.classList.remove("hidden");
         setStatus("Clara meldet sich gleich …");
         // Sicherheitsnetz: falls die Begruessung ausbleibt (z.B. Mikro-Freigabe
         // verzoegert), nach 30 s trotzdem auf "Verbunden" umschalten.
         setTimeout(markClaraLive, 30000);
         attachRouteRecovery();
+        watchMicLevel();
         await tryPlayAudio();
         // Load Clara's persona + tools in the worker (once).
         try {
@@ -260,19 +405,18 @@
       } catch (e) {
         connecting = false;
         setStatus("Verbindung fehlgeschlagen: " + String(e.message || e));
-        els.ringButtons.classList.remove("hidden");
-        document.body.classList.add("ringing");
+        phase = incoming ? "ringing" : "idle";
+        render();
       }
     }
 
     function teardownUI() {
-      document.body.classList.remove("live");
-      els.liveButtons.classList.add("hidden");
-      els.ringButtons.classList.remove("hidden");
-      els.btnDecline.classList.add("hidden");
-      els.btnAccept.querySelector("span").textContent = "📞";
+      stopMicWatch();
+      phase = "ended";
+      voice = "listening";
       els.calling.textContent = "Anruf beendet";
-      setStatus("Du kannst erneut verbinden oder das Fenster schließen.");
+      setStatus("");
+      render();
     }
 
     async function hangup() {
@@ -281,16 +425,20 @@
       teardownUI();
     }
 
-    els.btnAccept.addEventListener("click", connect);
+    // Ein Button für alles: annehmen, verbinden, auflegen, neu verbinden.
+    els.orb.addEventListener("click", () => {
+      if (phase === "connecting") return;
+      if (phase === "live") { hangup(); return; }
+      connect();
+    });
+
     els.btnDecline.addEventListener("click", () => {
       stopRing();
-      document.body.classList.remove("ringing");
+      phase = "ended";
       els.calling.textContent = "Abgelehnt";
-      setStatus("Du kannst das Fenster schließen.");
-      els.ringButtons.classList.add("hidden");
+      render();
       setTimeout(() => { try { window.close(); } catch {} }, 400);
     });
-    els.btnHangup.addEventListener("click", hangup);
     els.enableBtn.addEventListener("click", tryPlayAudio);
   </script>
 </body>

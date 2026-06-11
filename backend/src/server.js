@@ -63,6 +63,8 @@ import { listBlocks, createBlock, updateBlock, deleteBlock, seedDefaultBlocks } 
 import { draftLetter, llmInfo, letterContextSummary, rewritePassage } from "./mail/letterAI.js";
 import { llmHealth, isLocalLlm } from "./mail/llm.js";
 import { extractText } from "./mail/extract.js";
+import { listRuns, getRun, startRun, cancelRun, runStatus, catalogInfo } from "./testtrain/runner.js";
+import { listPlatformRuns, getPlatformRun, startPlatformRun, cancelPlatformRun, platformRunStatus, PLATFORM_GROUPS } from "./testtrain/platformRunner.js";
 import { authMiddleware, AUTH_ENFORCED, SERVICE_TOKEN } from "./auth.js";
 import admin from "./firebase.js";
 import { log } from "./log.js";
@@ -1723,6 +1725,19 @@ const SPOKEN_NAME_VARIANTS = [
   [/^c(?!h)/, "k"], [/^k/, "c"], [/^ch/, "k"],
   [/^v/, "w"], [/^w/, "v"], [/^f/, "ph"], [/^ph/, "f"],
   [/^j/, "y"], [/^y/, "j"],
+  // Beobachtete STT-Hörfehler aus dem Testlauf 2026-06-10 (Token-Mitte,
+  // jeweils nur die erste Fundstelle wird ersetzt):
+  [/ay/, "ei"], [/ey/, "ei"], [/ai/, "ei"], [/ei/, "ay"], // Mayer/Meyer/Maier -> Meier
+  [/äu/, "eu"], [/eu/, "äu"],                             // Häuser -> Heuser
+  [/^tr/, "thr"], [/^thr/, "tr"],                         // Trandorf -> Thrandorf
+  [/t/, "d"], [/d/, "t"],                                 // Dietershagen -> Diedershagen
+  [/id/, "ied"], [/ied/, "id"],                           // Didershagen -> Diedershagen
+  [/ahn/, "ann"], [/ann/, "ahn"],                         // Zahnis -> Zannis/Tzannis
+  [/z/, "ts"], [/ts/, "z"],                               // Pezas -> Petsas
+  // Parakeet-Testlauf 2026-06-11: verschluckte Konsonanten in der Wortmitte.
+  [/nor/, "ndor"], [/ndor/, "nor"],                       // Tranorf -> Trandorf
+  [/sagen/, "shagen"], [/shagen/, "sagen"],               // Diedersagen -> Diedershagen
+  [/iu$/, "iou"], [/iou$/, "iu"],                         // Vassiliu -> Vassiliou
 ];
 async function searchPatientSpoken(clientId, name) {
   const first = await searchPatient(clientId, name);
@@ -1741,7 +1756,7 @@ async function searchPatientSpoken(clientId, name) {
       if (candidate !== name.toLowerCase()) variants.push(candidate);
     }
   }
-  for (const v of [...new Set(variants)].slice(0, 8)) {
+  for (const v of [...new Set(variants)].slice(0, 12)) {
     const r = await searchPatient(clientId, v).catch(() => null);
     if (r?.ok && (r.patients || []).length) return { ...r, variantUsed: v };
   }
@@ -2114,6 +2129,172 @@ app.post("/brain/prompt/:agent/rollback", async (req, res) => {
 });
 
 // ============================================================================
+// Test & Train — Superuser-Cockpit fuer die Clara-Testsuite + Gespraechs-Review.
+//
+// Die Testlaeufe (Python, F:\Clara-Voice\testsuite) laufen auf DIESER Maschine;
+// die Endpunkte hier sind die Bruecke fuer das Superuser-UI. Lessons/Prompt-
+// Versionen (der "Train"-Teil) nutzen die bestehenden /brain/lessons- und
+// /brain/prompt-Routen — Test & Train ergaenzt nur Runs + Gespraechs-Sicht.
+//
+// Zugriff: NUR Superuser (oder Service-Token/Dev) — Testlaeufe belegen GPU
+// und Ollama, das darf kein Praxis-Account ausloesen koennen.
+// ============================================================================
+
+function requireSuperuser(req, res) {
+  const a = req.auth || {};
+  if (a.kind === "user" && !a.superUser) {
+    res.status(403).json({ error: "superuser_only" });
+    return false;
+  }
+  return true;
+}
+
+// Historische Testlaeufe (kompakte Zusammenfassungen, neueste zuerst).
+app.get("/testtrain/runs", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    res.json({ ok: true, runs: listRuns({ limit: Number(req.query?.limit) || 50 }), catalog: catalogInfo() });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Ein Lauf im Detail (alle Faelle inkl. Fails/Antworten).
+app.get("/testtrain/runs/:file", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    const run = getRun(req.params.file);
+    if (!run) return res.status(404).json({ error: "run_not_found" });
+    res.json({ ok: true, ...run });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Neuen Lauf starten. Body: { model?, stt?, tts?, limit?, noAudio?, noDialogs?, ids? }
+app.post("/testtrain/runs", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    const by = req.auth?.kind === "user" ? req.auth.userId || "Superuser" : "Service";
+    const out = startRun(req.body || {}, { by });
+    if (!out.ok) return res.status(409).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Status des aktiven Laufs (+ Log-Tail fuer die Live-Konsole im UI).
+app.get("/testtrain/status", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  res.json({ ok: true, ...runStatus() });
+});
+
+// Aktiven Lauf abbrechen.
+app.post("/testtrain/cancel", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  const out = cancelRun();
+  if (!out.ok) return res.status(409).json(out);
+  res.json(out);
+});
+
+// --- Plattform-Testsuite (Cloud Functions, Apps, Landingpages, Browser) ---
+
+// Historische Plattform-Laeufe + Gruppen-Katalog.
+app.get("/testtrain/platform/runs", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    res.json({ ok: true, runs: listPlatformRuns({ limit: Number(req.query?.limit) || 50 }), groups: PLATFORM_GROUPS });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Ein Plattform-Lauf im Detail (alle Checks + Markdown-Report mit Agent-Briefing).
+app.get("/testtrain/platform/runs/:file", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    const run = getPlatformRun(req.params.file);
+    if (!run) return res.status(404).json({ error: "run_not_found" });
+    res.json({ ok: true, ...run });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Plattform-Lauf starten. Body: { groups?: string[], noBrowser?: boolean }
+app.post("/testtrain/platform/runs", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    const by = req.auth?.kind === "user" ? req.auth.userId || "Superuser" : "Service";
+    const out = startPlatformRun({ ...(req.body || {}), trigger: "ui" }, { by });
+    if (!out.ok) return res.status(409).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get("/testtrain/platform/status", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  res.json({ ok: true, ...platformRunStatus() });
+});
+
+app.post("/testtrain/platform/cancel", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  const out = cancelPlatformRun();
+  if (!out.ok) return res.status(409).json(out);
+  res.json(out);
+});
+
+// Echte Gespraeche (Clara/Bianca/Lisa) der letzten Tage als Review-Liste:
+// kompakt, mit Signalen (Abbruch/negativ/Beschwerde) und Prompt-Version-Tag,
+// damit Auffaelligkeiten direkt einer Version zuzuordnen sind.
+app.get("/testtrain/conversations", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const sinceDays = Math.min(90, Number(req.query?.sinceDays) || 7);
+    const events = await queryRecent(clientId, Date.now() - sinceDays * 86400000, 1000);
+    const CALL_CHANNELS = new Set(["bianca_call", "clara_voice", "lisa_call", "lisa_outbound"]);
+    const conversations = events
+      .filter((e) => e.type === "interaction" && CALL_CHANNELS.has(e.channel))
+      .map((e) => {
+        const sig = e.signals || {};
+        const flags = [];
+        if (sig.abortedEarly) flags.push("abgebrochen");
+        if (sig.sentiment === "negative") flags.push("negativ");
+        if (sig.complaintStated) flags.push("beschwerde");
+        // ts ist epoch ms; aeltere Events tragen z. T. Firestore-Timestamps in
+        // "at" — beides auf eine Zahl normalisieren, damit das UI sortieren kann.
+        const rawTs = e.ts ?? e.at ?? e.createdAt ?? 0;
+        const at = typeof rawTs === "object" && rawTs
+          ? Number(rawTs._seconds || rawTs.seconds || 0) * 1000
+          : Number(rawTs) || 0;
+        return {
+          id: e.id,
+          at,
+          channel: e.channel,
+          direction: e.direction,
+          summary: e.summary || "",
+          counterparty: e.counterparty?.name || e.counterparty?.kind || "",
+          status: e.status || "",
+          flags,
+          promptVersion: (e.tags || []).find((t) => typeof t === "string" && t.startsWith("pv:")) || null,
+        };
+      })
+      .sort((a, b) => (b.at || 0) - (a.at || 0));
+    const flagged = conversations.filter((c) => c.flags.length).length;
+    res.json({ ok: true, clientId, sinceDays, count: conversations.length, flagged, conversations });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// ============================================================================
 // Lückenfüller (Umsatz-Coach Stufe 1) + Caller-ID-Lookup
 // ============================================================================
 
@@ -2198,6 +2379,10 @@ app.post("/tools/recall-approve", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const op = await getOperator(clientId);
+    // Testsuite-Schutz: niemand wird kontaktiert, keine Liste freigegeben.
+    if (req.body?.dryRun) {
+      return res.json({ ok: true, dryRun: true, message: "Testlauf: Die wartenden Anruflisten wären jetzt freigegeben worden. Es wurde niemand kontaktiert." });
+    }
     const out = await approveAndExecute(clientId, {
       date: req.body?.date,
       caseId: req.body?.caseId,
@@ -2917,6 +3102,11 @@ app.post("/tools/send-sms", async (req, res) => {
     if (!target.phone) {
       return res.json({ ok: false, message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen." });
     }
+    // Testsuite-Schutz: validiert den kompletten Pfad (Kontakt, Nummer),
+    // verschickt aber NICHTS über Twilio.
+    if (req.body?.dryRun) {
+      return res.json({ ok: true, dryRun: true, message: `Testlauf: Die SMS an ${target.name || target.phone} wäre jetzt verschickt worden.` });
+    }
     const out = await lisaSendSms(clientId, {
       phone: target.phone,
       message: req.body?.message || req.body?.text,
@@ -2939,6 +3129,10 @@ app.post("/tools/delegate-call", async (req, res) => {
     const target = await resolveDelegationTarget(clientId, req.body);
     if (!target.phone) {
       return res.json({ ok: false, message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen." });
+    }
+    // Testsuite-Schutz: validiert Kontakt + Nummer, ruft aber NIEMANDEN an.
+    if (req.body?.dryRun) {
+      return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${target.name || target.phone} angerufen.` });
     }
     const out = await lisaStartCall(clientId, {
       phone: target.phone,
@@ -3302,6 +3496,11 @@ app.post("/tools/book-for-patient", async (req, res) => {
     }
 
     const who = `${selected.firstName || ""} ${selected.lastName || ""}`.trim();
+    // Testsuite-Schutz: Kalender/Behandlung/Zeit sind validiert (resolveBooking
+    // lief durch), aber es wird NICHTS gebucht und kein Dialog geöffnet.
+    if (req.body?.dryRun) {
+      return res.json({ ok: true, dryRun: true, message: `Testlauf: Der Termin für ${who} am ${r.slotIso} bei ${r.calendarName} wäre jetzt gebucht worden.` });
+    }
     const patientPayload = {
       id: selected.id,
       firstName: selected.firstName,
