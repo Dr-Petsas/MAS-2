@@ -31,6 +31,23 @@ function p50(values) {
   return Math.round(v[Math.floor(v.length / 2)]);
 }
 
+// Kaltstart-Filter: Ollama (bzw. Whisper/TTS) laedt das Modell beim ersten
+// Request frisch in den VRAM (10-20 s). Bei kleinen Laeufen kippt so EIN
+// Ausreisser den Median komplett (2 Faelle: 13.917 ms + 749 ms => p50 "14 s").
+// Regel: Ein Wert fliegt raus, wenn er >8 s ist UND mehr als 4x ueber dem
+// Median der uebrigen Werte liegt. Ist ein Lauf insgesamt langsam (alle Werte
+// hoch), bleibt alles drin — das waere ein echtes Problem, kein Kaltstart.
+function dropColdStarts(values) {
+  const v = values.filter((x) => Number.isFinite(x) && x > 0);
+  if (v.length < 2) return v;
+  return v.filter((x, i) => {
+    if (x <= 8000) return true;
+    const rest = v.filter((_, j) => j !== i).sort((a, b) => a - b);
+    const med = rest[Math.floor(rest.length / 2)];
+    return x <= 4 * med;
+  });
+}
+
 function parseRunFile(file) {
   const raw = fs.readFileSync(file, "utf-8");
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -72,10 +89,10 @@ function summarize(file) {
     passRate: results.length ? Math.round((100 * passed) / results.length) : 0,
     byCategory,
     latency: {
-      stt_ms_p50: p50(results.map((r) => r.stt_ms || 0)),
-      ttft_ms_p50: p50(results.map((r) => r.llm1_ttft_ms || 0)),
-      total_ms_p50: p50(results.map((r) => r.total_ms || 0)),
-      tts_ttfa_ms_p50: p50(results.map((r) => r.tts_ttfa_ms || 0)),
+      stt_ms_p50: p50(dropColdStarts(results.map((r) => r.stt_ms || 0))),
+      ttft_ms_p50: p50(dropColdStarts(results.map((r) => r.llm1_ttft_ms || 0))),
+      total_ms_p50: p50(dropColdStarts(results.map((r) => r.total_ms || 0))),
+      tts_ttfa_ms_p50: p50(dropColdStarts(results.map((r) => r.tts_ttfa_ms || 0))),
     },
   };
 }
