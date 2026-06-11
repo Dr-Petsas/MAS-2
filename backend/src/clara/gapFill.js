@@ -8,6 +8,7 @@ import { CASE_STATUS } from "../brain/cases.js";
 import { getActivePrompt } from "../brain/livingPrompt.js";
 import { queryRecent } from "../brain/eventStore.js";
 import { normalizePhone } from "./callerLookup.js";
+import { pick as pickPhrase } from "./variation.js";
 
 // ============================================================================
 // Lückenfüller / Umsatz-Coach — Stufe 1 (Clara is the coach, Lisa executes).
@@ -513,6 +514,32 @@ export async function approveCallList(clientId, caseId, { by } = {}) {
   return { ok: true, caseId: c.id, approvedBy: who, candidates: c.callList.candidates?.length || 0 };
 }
 
+// Lücken-Radar mit Euro-Zahl (Jawdropper ③, 12.06.2026): Kalenderlücken in
+// Umsatzpotenzial übersetzen. Kalkulationssatz konfigurierbar über
+// MAS_GAP_HOUR_RATE_EUR (Entscheidung Chef: 300 EUR/h Startwert).
+const GAP_HOUR_RATE_EUR = Number(process.env.MAS_GAP_HOUR_RATE_EUR || 300);
+
+/** Summe freier Behandlungsminuten eines Coach-Laufs -> grobe Euro-Schätzung. */
+export function gapRevenuePotential(run) {
+  const minutes = (run?.gaps || []).reduce((sum, g) => sum + (Number(g.minutes) || 0), 0);
+  // Auf 10er runden — eine Schätzung, die auf den Euro genau klingt, wäre
+  // Pseudo-Präzision (und genau der numerische Ton, den der Chef nicht will).
+  const euro = Math.round(((minutes / 60) * GAP_HOUR_RATE_EUR) / 10) * 10;
+  return { minutes, euro, rate: GAP_HOUR_RATE_EUR };
+}
+
+/** Gesprochener Euro-Satz fürs Lücken-Radar (auch im Morgen-Moment genutzt). */
+export function spokenGapEuro(run) {
+  const { minutes, euro } = gapRevenuePotential(run);
+  if (!minutes || euro < 50) return "";
+  const hours = minutes >= 90 ? `${(minutes / 60).toFixed(1).replace(".", ",")} Stunden` : `${minutes} Minuten`;
+  return pickPhrase([
+    `Zusammen sind das ${hours} freie Behandlungszeit — grob ${euro} Euro Umsatzpotenzial, wenn wir sie füllen.`,
+    `Unterm Strich liegen da etwa ${euro} Euro auf dem Tisch — ${hours}, die wir füllen könnten.`,
+    `Das entspricht ungefähr ${euro} Euro offenem Potenzial über ${hours}.`,
+  ]);
+}
+
 /** Spoken German summary of a coach run (for /tools/gap-briefing). */
 export function buildSpokenGapBriefing(run, { operatorName } = {}) {
   const hi = operatorName ? `${operatorName}, ` : "";
@@ -523,6 +550,8 @@ export function buildSpokenGapBriefing(run, { operatorName } = {}) {
   const total = run.gaps.length;
   const withCands = run.gaps.filter((g) => g.candidateCount > 0).length;
   parts.push(`${hi}ich habe ${total} ${total === 1 ? "Lücke" : "Lücken"} gefunden, davon ${withCands} mit passenden Recall-Kandidaten.`);
+  const euroLine = spokenGapEuro(run);
+  if (euroLine) parts.push(euroLine);
   for (const g of run.gaps.slice(0, 4)) {
     parts.push(`${g.calendarName}: ${g.label} (${g.minutes} Minuten)${g.candidateCount ? ` — ${g.candidateCount} Kandidat${g.candidateCount === 1 ? "" : "en"}` : " — kein passender Kandidat"}.`);
   }

@@ -13,6 +13,7 @@ import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
 import { reflectOnce } from "./brain/reflect.js";
 import { runGapFill, gapFillOverview, approveCallList, buildSpokenGapBriefing } from "./clara/gapFill.js";
+import { spokenMorningBriefing } from "./clara/morningBriefing.js";
 import { approveAndExecute, sweepRecallOutcomes, dailyInitiativeScan, snoozeInitiative, initiativeSuffix, recallStatusSpoken } from "./clara/recallCoach.js";
 import { planAbsence, approveAbsence, sweepAbsenceRebookings, absenceStatusSpoken } from "./clara/absencePlanner.js";
 import { runRetentionSweep, RETENTION_DAYS } from "./brain/retention.js";
@@ -44,6 +45,8 @@ import {
 } from "./clara/devices.js";
 import { proxyGetFreeTimeSlots, proxyCreateAppointment, proxyUpdateOrCancel } from "./clara/cfProxy.js";
 import { lisaSendSms, lisaStartCall, finalizeLisaCalls, listLisaTasks, smsConfigured as lisaSmsConfigured, callConfigured as lisaCallConfigured } from "./lisa/outbound.js";
+import { ingestBiancaCalls, biancaConfigured } from "./bianca/ingest.js";
+import { buildCallerContext } from "./bianca/callerContext.js";
 import { appendEvent, queryRecent, queryByPatient, resolveItem, annotateEvent } from "./brain/eventStore.js";
 import { buildBriefing, buildSpokenBriefing } from "./brain/briefing.js";
 import { extractFromTranscript, extractPatientName } from "./brain/extractor.js";
@@ -599,6 +602,25 @@ app.get("/brain/patients", async (req, res) => {
     res.json({ ok: true, clientId, patients: result.patients || [] });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Rückrufer-Kontext (Telefon-Loop 2/2): die Plattform-CF onInboundPhoneCall
+// fragt beim Klingeln "Was weiß die Praxis über diese Nummer?" und reicht die
+// Antwort als dynamic_variable caller_context in Biancas Agent-Prompt. Muss
+// SCHNELL sein (die CF wartet mit kurzem Timeout) und darf nie werfen.
+app.get("/brain/caller-context", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const phone = String(req.query?.phone || "").trim();
+    if (!phone) return res.json({ ok: true, found: false, context: "" });
+    const out = await buildCallerContext(clientId, phone);
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    res.status(200).json({ ok: false, found: false, context: "", error: String(e?.message || e) });
   }
 });
 
@@ -1910,6 +1932,30 @@ async function resolveDayCalendarScope(clientId, body) {
 // Clara: "Was steht heute (oder am …) im Kalender?" — reads the ACTUAL booked
 // appointments and speaks a per-Behandler overview incl. free gaps + highlights.
 // Optional doctorName scopes it; the monitor jumps to the day for context.
+// Morgen-Moment (Jawdropper ②): "Guten Morgen, Clara" -> EIN flüssiger
+// Auftakt aus Tagesplan, Über-Nacht-Eingängen, offenen Anliegen und dem
+// Lücken-Radar mit Euro-Zahl. Salient und variierend statt Bandansage.
+app.post("/tools/morning-briefing", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const op = await getOperator(clientId);
+    const mailAccountIds = await operatorMailAccountIds(clientId);
+    const message = await spokenMorningBriefing(clientId, {
+      operatorName: op?.name || "",
+      operatorDoctorName: operatorDoctorNameOf(op),
+      mailAccountIds,
+    });
+    // Den Tag auf dem Monitor aufschlagen (best-effort).
+    try { await emitCommand(clientId, { type: "navigate", date: todayBerlin() }); } catch { /* keine Session */ }
+    return res.json({ ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
 app.post("/tools/day-briefing", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -3044,6 +3090,25 @@ async function findExternalContact(clientId, name, hintLower) {
   return { displayName: displayName || name, phone, email, provenance };
 }
 
+// "null eins sieben sieben ..." / "0177 600 46 00" -> "01776004600".
+// Liefert NUR dann Ziffern, wenn der gesamte Text eine reine Nummer ist
+// (Ziffern + deutsche Zahlwoerter) — sonst "" (echter Name).
+const GERMAN_DIGIT_WORDS = {
+  null: "0", eins: "1", zwei: "2", zwo: "2", drei: "3", vier: "4",
+  fuenf: "5", "fünf": "5", sechs: "6", sieben: "7", acht: "8", neun: "9",
+};
+function spokenDigitsOf(text) {
+  const tokens = String(text || "").toLowerCase().split(/[\s\-\/.,()+]+/).filter(Boolean);
+  if (!tokens.length) return "";
+  let out = "";
+  for (const t of tokens) {
+    if (/^\d+$/.test(t)) out += t;
+    else if (GERMAN_DIGIT_WORDS[t] != null) out += GERMAN_DIGIT_WORDS[t];
+    else return "";
+  }
+  return out;
+}
+
 app.post("/tools/find-contact", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -3053,6 +3118,26 @@ app.post("/tools/find-contact", async (req, res) => {
     const rawName = String(req.body?.name || "").trim();
     const hint = String(req.body?.hint || "").trim();
     const hintLower = hint.toLowerCase();
+
+    // Rettungsanker (Testlauf 00:33, sms-06/07): Das Modell ruft find_contact
+    // mit einer TELEFONNUMMER als Name auf ("0177 600 46 00" oder diktiert
+    // "null eins sieben sieben ..."). Eine Namenssuche darauf matcht im
+    // schlimmsten Fall einen FALSCHEN Patienten. Stattdessen: Nummer erkennen,
+    // als Ziel merken (send_sms/delegate_call ohne phone greifen darauf zu)
+    // und das Modell zur direkten Aktion lotsen.
+    {
+      const purePhone = spokenDigitsOf(rawName || hint);
+      if (purePhone && purePhone.length >= 6) {
+        await setPatientCandidates(clientId, [], {
+          id: null, firstName: "", lastName: "",
+          mobilePhoneNumber: purePhone, hasPhone: true, external: true,
+        });
+        return res.json({
+          ok: true,
+          message: `Verstanden, die Nummer ${purePhone} ist als Ziel gemerkt. Sende jetzt direkt mit send_sms beziehungsweise delegate_call — phone kann leer bleiben.`,
+        });
+      }
+    }
 
     // Ordinal-Antworten ("der erste") IMMER gegen die zuletzt vorgelesene
     // Kandidatenliste aufloesen — nie gegen eine frische Suche (siehe
@@ -3141,7 +3226,7 @@ app.post("/tools/find-contact", async (req, res) => {
           }
         }
         await setPatientCandidates(clientId, candidates, null);
-        return res.json({ ok: true, message: `Dazu finde ich keinen passenden Treffer. ${disambiguationQuestion(candidates)}` });
+        return res.json({ ok: true, message: `Der Hinweis hilft mir leider nicht weiter. ${disambiguationQuestion(candidates)}` });
       }
     }
 
@@ -3401,8 +3486,11 @@ app.post("/tools/search-patient", async (req, res) => {
         await setPatientCandidates(clientId, r.narrowed, null);
         return res.json({ ok: true, message: `Das trifft noch auf mehrere zu. ${disambiguationQuestion(r.narrowed)}` });
       } else {
+        // "none" heisst: die NAMEN passen, nur der HINWEIS grenzt nicht ein
+        // ("der gestern da war" traf keinen). Das ehrlich sagen statt des
+        // verwirrenden "kein passender Treffer" (Live-Gespraech 11.06. 16:00).
         await setPatientCandidates(clientId, patients, null);
-        return res.json({ ok: true, message: `Dazu finde ich keinen passenden Treffer. ${disambiguationQuestion(patients)}` });
+        return res.json({ ok: true, message: `Der Hinweis hilft mir leider nicht weiter. ${disambiguationQuestion(patients)}` });
       }
     }
 
@@ -4244,6 +4332,22 @@ app.listen(PORT, () => {
       );
     }, 15_000);
     log.info("lisa finalizer enabled", { intervalMs: 15_000 });
+  }
+
+  // Bianca-Ingest (Telefon-Loop, 12.06.2026): beendete Inbound-Gespräche des
+  // ConvAI-Agenten als bianca_call-Events ins Praxisgedächtnis holen — damit
+  // Clara Anrufe kennt ("Waren Anrufe für mich da?") und Rückrufer für Bianca
+  // Kontext haben. Billig im Leerlauf (eine Listen-Abfrage pro Takt).
+  if (biancaConfigured() && DEFAULT_CLIENT_ID) {
+    setInterval(() => {
+      ingestBiancaCalls(DEFAULT_CLIENT_ID, { port: PORT }).catch((e) =>
+        log.warn("bianca.ingest_loop_error", { error: String(e?.message || e) })
+      );
+    }, 30_000);
+    log.info("bianca ingest enabled", { intervalMs: 30_000 });
+  }
+
+  if (lisaCallConfigured() && DEFAULT_CLIENT_ID) {
 
     // Recall-Sweep: ordnet beendete Lisa-Calls den Anruflisten zu, bucht
     // Zusagen direkt fest und schickt SMS-Fallbacks. Billig im Leerlauf.

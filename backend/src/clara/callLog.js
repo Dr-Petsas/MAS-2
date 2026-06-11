@@ -2,6 +2,7 @@ import { queryRecent } from "../brain/eventStore.js";
 import { applyHumanReview } from "../brain/events.js";
 import { todayBerlin, relativeDayLabel } from "./daySchedule.js";
 import { ensureBerlinTz } from "./booking.js";
+import { pick } from "./variation.js";
 
 // ============================================================================
 // Gesprochenes Anruf-Protokoll — "Waren heute Anrufe für mich da?"
@@ -55,7 +56,11 @@ export async function spokenCallLog(clientId, { date } = {}) {
   const outSms = events.filter((e) => e.channel === "lisa_sms");
 
   if (!events.length) {
-    return cap(`${rel} ist im Praxisgedächtnis kein Anruf verzeichnet — weder eingehend noch von Lisa.`);
+    return cap(pick([
+      `${rel} ist im Praxisgedächtnis kein Anruf verzeichnet — weder eingehend noch von Lisa.`,
+      `${rel} war es am Telefon ruhig — im Praxisgedächtnis steht kein einziger Anruf.`,
+      `${rel} ist nichts im Anruf-Protokoll gelandet, weder eingehend noch ausgehend.`,
+    ]));
   }
 
   const parts = [];
@@ -66,7 +71,11 @@ export async function spokenCallLog(clientId, { date } = {}) {
   };
 
   if (inbound.length) {
-    parts.push(cap(`${rel} ${inbound.length === 1 ? "gab es einen Anruf" : `gab es ${inbound.length} Anrufe`}.`));
+    parts.push(cap(pick([
+      `${rel} ${inbound.length === 1 ? "gab es einen Anruf" : `gab es ${inbound.length} Anrufe`}.`,
+      `${rel} ${inbound.length === 1 ? "kam ein Anruf rein" : `kamen ${inbound.length} Anrufe rein`}.`,
+      `${rel} ${inbound.length === 1 ? "hat es einmal geklingelt" : `hat es ${inbound.length} Mal geklingelt`}.`,
+    ])));
     for (const e of inbound.slice(0, 6)) {
       parts.push(`Um ${spokenTime(e.ts)}: ${who(e)}${short(e) ? ` — ${short(e)}` : ""}`);
     }
