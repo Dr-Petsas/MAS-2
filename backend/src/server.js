@@ -2222,7 +2222,9 @@ app.get("/testtrain/platform/runs/:file", async (req, res) => {
   }
 });
 
-// Plattform-Lauf starten. Body: { groups?: string[], noBrowser?: boolean }
+// Plattform-Lauf starten. Body: { groups?: string[], noBrowser?: boolean,
+// smsNumber?: string } — smsNumber ist die Handynummer des Testers fuer den
+// SMS-Check dieses Laufs (leer = SMS-Check wird uebersprungen).
 app.post("/testtrain/platform/runs", async (req, res) => {
   if (!requireSuperuser(req, res)) return;
   try {

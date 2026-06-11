@@ -75,6 +75,13 @@ export function startPlatformRun(params = {}, { by = "Superuser" } = {}) {
   const logPath = path.join(REPORTS_DIR, `_ui_run_${ts}.log`);
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
+  // SMS-Testnummer kommt PRO LAUF vom Tester selbst (UI-Feld) — nie aus einer
+  // globalen Env, sonst landet die Test-SMS bei jemandem, der gar nicht testet.
+  const smsNumber = String(params.smsNumber || "").replace(/[^\d+]/g, "").slice(0, 20);
+  const env = { ...process.env };
+  delete env.PLATFORM_TEST_SMS_NUMBER;
+  if (smsNumber) env.PLATFORM_TEST_SMS_NUMBER = smsNumber;
+
   const args = ["run.mjs", "--trigger", String(params.trigger || "ui")];
   if (Array.isArray(params.groups) && params.groups.length) {
     const apiGroups = params.groups.filter((g) => g !== "browser");
@@ -91,11 +98,11 @@ export function startPlatformRun(params = {}, { by = "Superuser" } = {}) {
 
   const proc = spawn(NODE_BIN, args, {
     cwd: SUITE_DIR,
-    env: { ...process.env },
+    env,
     windowsHide: true,
   });
   const startedAt = Date.now();
-  active = { proc, startedAt, params, logPath, finished: false, exitCode: null, reportFile: null, by };
+  active = { proc, startedAt, params: { ...params, smsNumber }, logPath, finished: false, exitCode: null, reportFile: null, by };
 
   proc.stdout.on("data", (d) => logStream.write(d));
   proc.stderr.on("data", (d) => logStream.write(d));
