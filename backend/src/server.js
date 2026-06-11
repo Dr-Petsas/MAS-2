@@ -17,6 +17,7 @@ import { approveAndExecute, sweepRecallOutcomes, dailyInitiativeScan, snoozeInit
 import { planAbsence, approveAbsence, sweepAbsenceRebookings, absenceStatusSpoken } from "./clara/absencePlanner.js";
 import { runRetentionSweep, RETENTION_DAYS } from "./brain/retention.js";
 import { lookupCaller, normalizePhone } from "./clara/callerLookup.js";
+import { spokenCallLog } from "./clara/callLog.js";
 import { searchPatient, resolveBooking, commitBooking } from "./clara/agentBooking.js";
 import {
   createSession,
@@ -1865,6 +1866,23 @@ app.post("/tools/read-email", async (req, res) => {
 // liest Dr. Petsas nicht ungefragt die Termine von Dr. Patrikis vor. Mit
 // doctorName "alle"/"Praxis" (oder einem Kollegen-Namen) wird breiter gescopt.
 const ALL_DOCTORS_RE = /^(alle|alles|gesamt|praxis|team|komplett|jede[rn]?)\b/i;
+
+// Operator -> Behandlername fuer die "Sie haben ..."-Ansprache. Das Pairing
+// schreibt role "doctor" (englisch) und doctorName null — die alte Pruefung
+// auf role.startsWith("arzt") griff dadurch nie und Clara sprach den Chef in
+// der dritten Person an ("Morgen hat Dr. Petsas ..."). Jetzt zaehlen beide
+// Sprachen plus ein Titel-Heuristik-Fallback ("Dr. ..." im Namen).
+function operatorDoctorNameOf(op) {
+  if (!op) return "";
+  const explicit = String(op.doctorName || "").trim();
+  if (explicit) return explicit;
+  const role = String(op.role || "").trim().toLowerCase();
+  const name = String(op.name || "").trim();
+  if (/^(arzt|aerztin|ärztin|doctor|doktor|behandler|dentist|zahnarzt|zahnaerztin|zahnärztin)/.test(role)) return name;
+  if (/^(dr|prof)\b/i.test(name)) return name;
+  return "";
+}
+
 async function resolveDayCalendarScope(clientId, body) {
   let calendarId = String(body?.calendarId || "").trim() || null;
   const rawDoctor = String(body?.doctorName || "").trim();
@@ -1906,7 +1924,7 @@ app.post("/tools/day-briefing", async (req, res) => {
 
     const briefing = computeDayBriefing(day.appointments, { calendars: day.calendars });
     const op = await getOperator(clientId);
-    const opDoctor = op?.doctorName || (String(op?.role || "").toLowerCase().startsWith("arzt") ? op?.name : "") || "";
+    const opDoctor = operatorDoctorNameOf(op);
     let message = buildSpokenDayBriefing(briefing, { date: day.date, operatorDoctorName: opDoctor });
     // Offene Recall-Initiative? Clara bringt sich aktiv ein ("morgen ist wenig
     // los — soll ich die Anruflisten freigeben?").
@@ -1936,7 +1954,7 @@ app.post("/tools/day-appointments", async (req, res) => {
 
     // "Sie haben morgen ..." only when the asking operator IS that doctor.
     const op = await getOperator(clientId);
-    const operatorDoctorName = op?.doctorName || (String(op?.role || "").toLowerCase().startsWith("arzt") ? op?.name : "") || "";
+    const operatorDoctorName = operatorDoctorNameOf(op);
     const list = buildSpokenDayList(day.appointments, { date: day.date, calendars: day.calendars, operatorDoctorName });
 
     // Shared brain: surface open cases (e.g. the e-mail Nadine threaded) for
@@ -2497,6 +2515,7 @@ app.post("/tools/plan-absence", async (req, res) => {
       calendarId: calScope.calendarId,
       calendarName: calName,
       by: op?.name || "Operator",
+      operatorDoctorName: operatorDoctorNameOf(op),
     });
     res.json(out);
   } catch (e) {
@@ -2520,6 +2539,22 @@ app.post("/tools/absence-approve", async (req, res) => {
       dryRun: req.body?.dryRun === true,
     });
     res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Voice: "Waren heute Anrufe für mich da?" — ehrliches Anruf-Protokoll aus dem
+// Praxisgedächtnis (eingehend via Bianca, ausgehend via Lisa). Verhindert die
+// beobachtete Halluzination "es gab keine Anrufe" ohne Daten-Check.
+app.post("/tools/call-log", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const message = await spokenCallLog(clientId, { date: req.body?.date });
+    res.json({ ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

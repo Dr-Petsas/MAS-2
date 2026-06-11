@@ -47,8 +47,10 @@ async function run() {
   check(cal1 && cal1.gaps.length === 1 && cal1.gaps[0].minutes === 45, `Lücke 45 min erkannt (war ${cal1?.gaps?.[0]?.minutes})`);
 
   const spoken = buildSpokenDayBriefing(b, { date: DATE, operatorName: "Frau Klein" });
-  check(/Tagesplan/.test(spoken) && /Dr\. Test/.test(spoken), "Sprechtext nennt Tagesplan + Behandler");
-  check(/Freie Lücke/.test(spoken), "Sprechtext nennt freie Lücke");
+  // Gewollter Stil seit dem Natürlichkeits-Rework: ganze Sätze, Zeitangabe
+  // vorn ("Heute stehen insgesamt …"), keine Stichwort-Labels wie "Tagesplan:".
+  check(/insgesamt 3 Termine im Kalender/.test(spoken) && /Dr\. Test/.test(spoken), "Sprechtext nennt Terminzahl + Behandler");
+  check(/Frei ist (dort|dazwischen) noch/.test(spoken), "Sprechtext nennt freie Lücke");
   check(/Neupatient/.test(spoken), "Sprechtext nennt Hinweise (Neupatient)");
   console.log("  spoken: " + spoken);
 
@@ -61,7 +63,8 @@ async function run() {
   check(/Anna A/.test(list) && /Bert B/.test(list) && /Cara C/.test(list), "Liste nennt alle Patientennamen");
   check(/zur Kontrolle/.test(list), "Behandlungsart natürlich formuliert");
   check(/ein Neupatient/.test(list), "Liste markiert Neupatienten");
-  check(/Dr\. Test hat/.test(list) && /Dr\. Zwei hat/.test(list), "Liste gruppiert nach Behandler");
+  // "Heute hat Dr. Test um 9 Uhr …" — Zeitangabe vorn, daher Inversion.
+  check(/hat Dr\. Test um/.test(list) && /Dr\. Zwei hat um/.test(list), "Liste gruppiert nach Behandler");
   console.log("  spoken: " + list);
 
   console.log("\n=== Natürliche Ansage (reales Beispiel) ===");
@@ -71,13 +74,13 @@ async function run() {
     { startMs: at(14, 45).getTime(), endMs: at(15, 0).getTime(), calendarId: "calP", calendarName: "Dr. Petsas", patientId: "pD", patientName: "Michael Diedershagen", patientLastName: "Diedershagen", patientGender: "m", visitMotive: "SLM Besprechung", comments: "bringt vielleicht seine Frau mit zur Kontrolle", docsStatus: "green", newPatient: false, status: "confirmed", isAbsence: false },
   ];
   const own = buildSpokenDayList(day1, { date: DATE, calendars: petsasCal, operatorDoctorName: "Dr. Petsas" });
-  check(/^Sie haben heute um 14 Uhr Frau Thrandorf mit akuten Beschwerden/.test(own), "Eigener Kalender -> 'Sie haben ... Frau Thrandorf mit akuten Beschwerden'");
+  check(/^Heute haben Sie um 14 Uhr Frau Thrandorf mit akuten Beschwerden/.test(own), "Eigener Kalender -> 'Heute haben Sie ... Frau Thrandorf mit akuten Beschwerden'");
   check(/und um 14 Uhr 45 Herrn Diedershagen zur SLM-Besprechung/.test(own), "'um 14 Uhr 45 Herrn Diedershagen zur SLM-Besprechung'");
-  check(/Unterlagen sind noch nicht vollständig/.test(own), "Gelbe Unterlagen-Ampel wird angesagt");
+  check(/Unterlagen sind noch nicht unterschrieben/.test(own), "Gelbe Unterlagen-Ampel wird angesagt");
   check(/Notiz: bringt vielleicht seine Frau mit/.test(own), "Terminnotiz wird vorgelesen");
   console.log("  spoken: " + own);
   const foreign = buildSpokenDayList(day1, { date: DATE, calendars: petsasCal, operatorDoctorName: "Dr. Nikolaou" });
-  check(/^Dr\. Petsas hat heute/.test(foreign), "Fremder Kalender -> 'Dr. Petsas hat ...'");
+  check(/^Heute hat Dr\. Petsas/.test(foreign), "Fremder Kalender -> 'Heute hat Dr. Petsas ...'");
 
   console.log("\n=== Praxisgedächtnis-Hinweise (Shared Memory) ===");
   const caseMap = new Map([["pD", [{

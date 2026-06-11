@@ -103,6 +103,32 @@ async function liveDocsStatusByPatient(clientId, locationId, patientIds) {
   return out;
 }
 
+// Neupatienten-Status LIVE aus dem Patientendokument, mit exakt der Regel des
+// Plattform-Kalenders (models/patient.ts): importierte Patienten (importId +
+// importSource) und Patienten mit mehr als einem Termin sind KEINE Neupatienten
+// — egal was auf dem Termin gestempelt wurde. Das gestempelte
+// ``appointment.patient.newPatient`` veraltet (Folgebuchung korrigiert nur den
+// Patienten, nicht alte Termine) -> Clara meldete Neupatienten, wo der
+// Kalender keinen grünen Rahmen zeigt.
+async function liveNewPatientByPatient(clientId, locationId, patientIds) {
+  const db = admin.firestore();
+  const out = new Map();
+  await Promise.all([...new Set(patientIds)].map(async (pid) => {
+    try {
+      const snap = await db.collection("clients").doc(clientId)
+        .collection("locations").doc(locationId)
+        .collection("patients").doc(pid)
+        .get();
+      if (!snap.exists) return;
+      const p = snap.data() || {};
+      const imported = !!(String(p.importId || "").trim() && String(p.importSource || "").trim());
+      const multi = Array.isArray(p.appointments) && p.appointments.length > 1;
+      out.set(pid, p.newPatient === true && !imported && !multi);
+    } catch { /* Lookup-Fehler: gestempelter Terminwert bleibt als Fallback */ }
+  }));
+  return out;
+}
+
 // --- I/O: read one day's appointments --------------------------------------
 
 /**
@@ -143,6 +169,16 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
       if (a.patientId && live.has(a.patientId)) a.docsStatus = live.get(a.patientId);
     }
   } catch { /* best-effort — Terminliste darf daran nie scheitern */ }
+
+  // Neupatienten-Status: Patientendokument ist die Wahrheit (grüner Rahmen im
+  // Kalender), nicht das auf den Termin gestempelte Feld.
+  try {
+    const liveNew = await liveNewPatientByPatient(clientId, locationId,
+      appts.filter((a) => !a.isAbsence && a.patientId).map((a) => a.patientId));
+    for (const a of appts) {
+      if (a.patientId && liveNew.has(a.patientId)) a.newPatient = liveNew.get(a.patientId);
+    }
+  } catch { /* best-effort */ }
 
   return { ok: true, date: day, locationId, calendars: booking.calendars || [], appointments: appts };
 }
@@ -325,6 +361,8 @@ export function relativeDayLabel(dateStr) {
   if (diff === 0) return "heute";
   if (diff === 1) return "morgen";
   if (diff === 2) return "übermorgen";
+  if (diff === -1) return "gestern";
+  if (diff === -2) return "vorgestern";
   const d = new Date(`${dateStr}T12:00:00Z`);
   if (isNaN(d.getTime())) return `am ${dateStr}`;
   const wd = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, weekday: "long" }).format(d);
@@ -341,8 +379,10 @@ export function relativeDayLabel(dateStr) {
 
 // Gehört der Kalender dem fragenden Operator? Vergleicht tolerant:
 // "Dr. Michael Petsas" (Operator) muss "Dr. Petsas" (Kalender) matchen,
-// daher zählt am Ende der Nachname (letztes Token).
-function isOwnCalendar(calName, operatorDoctorName) {
+// daher zählt am Ende der Nachname (letztes Token). Exportiert, damit jede
+// gesprochene Oberfläche (Abwesenheiten, Briefings, …) dieselbe
+// "Sie/du statt Dr. X"-Logik nutzt.
+export function isOwnCalendar(calName, operatorDoctorName) {
   const norm = (s) => String(s || "").trim().toLowerCase();
   const c = norm(calName);
   const o = norm(operatorDoctorName);

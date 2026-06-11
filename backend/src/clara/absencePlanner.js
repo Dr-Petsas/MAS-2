@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { loadBooking, ensureBerlinTz } from "./booking.js";
-import { todayBerlin, relativeDayLabel } from "./daySchedule.js";
+import { todayBerlin, relativeDayLabel, isOwnCalendar } from "./daySchedule.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
 import { sendMail } from "../mail/mailbox.js";
 import { listAccounts } from "../mail/accounts.js";
@@ -270,7 +270,7 @@ async function loadPatientDoc(clientId, locationId, patientId) {
  * ``startTime``/``endTime`` ("HH:MM", tolerant normalisiert) begrenzen die
  * Abwesenheit auf ein Zeitfenster; ohne beide gilt der ganze Tag.
  */
-export async function planAbsence(clientId, { date, startTime, endTime, calendarId, calendarName, by } = {}) {
+export async function planAbsence(clientId, { date, startTime, endTime, calendarId, calendarName, by, operatorDoctorName } = {}) {
   const day = s(date);
   if (!day || day < todayBerlin()) {
     return { ok: false, message: "Für welchen Tag soll ich die Abwesenheit planen? Der Tag darf nicht in der Vergangenheit liegen." };
@@ -282,6 +282,9 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
   if (!booking?.locationId) return { ok: false, message: "Es ist keine Praxis-Buchungskonfiguration hinterlegt." };
   const locationId = booking.locationId;
   const calName = s(calendarName) || s((booking.calendars || []).find((c) => c.id === calendarId)?.name);
+  // Eigener Kalender -> direkte Ansprache ("deine Abwesenheit", "bei dir")
+  // statt dritter Person ("für Dr. Petsas"). Der Chef weiß, wie er heißt.
+  const own = isOwnCalendar(calName, s(operatorDoctorName));
 
   const win = absenceWindow(day, startTime, endTime);
   if (win.startDt >= win.endDt) {
@@ -393,7 +396,7 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
     await casesCol(clientId).doc(caseId).update({ absencePlan: plan });
     return {
       ok: true, caseId, date: day, calendarName: calName, blocked: true, total: 0,
-      message: `${absenceQuip()} Erledigt — ich habe die Abwesenheit für ${calName} ${dayRel(day)} ${winLabel} eingetragen. In dem Zeitraum sind keine Termine betroffen, und es kann dort nichts mehr gebucht werden.`,
+      message: `${absenceQuip()} Erledigt — ${own ? "deine Abwesenheit" : `die Abwesenheit für ${calName}`} ${dayRel(day)} ${winLabel} ist eingetragen. Es sind keine Termine betroffen, und in der Zeit kann auch nichts mehr gebucht werden.`,
     };
   }
 
@@ -420,7 +423,7 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
     await casesCol(clientId).doc(caseId).update({ absencePlan: plan, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
   }
 
-  const parts = [absenceQuip(), `${capFirst(dayRel(day))} ${winLabel === "ganztägig" ? "" : `${winLabel} `}${patients.length === 1 ? "steht 1 Termin" : `stehen ${patients.length} Termine`} bei ${calName} im Kalender.`];
+  const parts = [absenceQuip(), `${capFirst(dayRel(day))} ${winLabel === "ganztägig" ? "" : `${winLabel} `}${patients.length === 1 ? "steht 1 Termin" : `stehen ${patients.length} Termine`} ${own ? "bei dir" : `bei ${calName}`} im Kalender.`];
   const how = [];
   if (counts.sms) how.push(`${counts.sms} per SMS`);
   if (counts.email) how.push(`${counts.email} per E-Mail durch Nadine`);
