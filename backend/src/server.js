@@ -3019,6 +3019,22 @@ app.post("/tools/find-contact", async (req, res) => {
     const hint = String(req.body?.hint || "").trim();
     const hintLower = hint.toLowerCase();
 
+    // Ordinal-Antworten ("der erste") IMMER gegen die zuletzt vorgelesene
+    // Kandidatenliste aufloesen — nie gegen eine frische Suche (siehe
+    // search-patient: sonst trifft "der erste" den falschen Namensvetter).
+    {
+      const ordinalSource = `${hintLower} ${rawName.toLowerCase()}`.trim();
+      if (ordinalSource) {
+        const remembered = await getPatientCandidates(clientId);
+        // Nur wenn tatsaechlich eine Auswahl offen ist (>1 gemerkte Kandidaten).
+        const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
+        if (byOrd) {
+          await setPatientCandidates(clientId, [byOrd], byOrd);
+          return res.json({ ok: true, message: contactSummary(byOrd) });
+        }
+      }
+    }
+
     // Kandidaten: neue Suche bei Namen, sonst die der letzten Suche (Nachfrage).
     let candidates = [];
     if (rawName) {
@@ -3293,6 +3309,27 @@ app.post("/tools/search-patient", async (req, res) => {
     const rawName = (req.body?.name || req.body?.query || "").trim();
     const hint = String(req.body?.hint || "").trim();
     const hintLower = hint.toLowerCase();
+
+    // Ordinal-Antworten ("der erste") beziehen sich IMMER auf die zuletzt
+    // VORGELESENE Kandidatenliste — nie auf eine frische Namenssuche. Sonst
+    // greift "der erste" auf einer neu sortierten Liste daneben (Testlauf
+    // 2026-06-11: name="Meier" + hint="der erste" traf Rainer statt Stefan).
+    const ordinalSource = `${hintLower} ${rawName.toLowerCase()}`.trim();
+    if (ordinalSource) {
+      const remembered = await getPatientCandidates(clientId);
+      // Nur wenn tatsaechlich eine Auswahl offen ist (>1 gemerkte Kandidaten).
+      const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
+      if (byOrd) {
+        await setPatientCandidates(clientId, [byOrd], byOrd);
+        await emitCommand(clientId, {
+          type: "patient_selected",
+          patient: { firstName: byOrd.firstName, lastName: byOrd.lastName, birthDate: byOrd.birthDate },
+          hasPhone: !!byOrd.hasPhone,
+        });
+        const warn = byOrd.hasPhone ? "" : " Achtung: keine Telefonnummer hinterlegt.";
+        return res.json({ ok: true, message: `${patientLabel(byOrd)} gefunden.${warn}` });
+      }
+    }
 
     // Gleiche Identifikations-Route wie find_contact: bei einer Nachfrage
     // ("der, der gestern da war") OHNE neuen Namen gegen die gemerkten
