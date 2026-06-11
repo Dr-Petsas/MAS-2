@@ -4,7 +4,7 @@
 #
 # Komponenten:
 #   1. MAS-2 Backend      (node, Port 4000)  - Tools/Brain/Mail-API
-#   2. ngrok-Tunnel       (Port 4000 -> https://faceable-darnell-nondiastatic.ngrok-free.dev)
+#   2. Cloudflare-Tunnel  (Port 4000 -> https://<zufall>.trycloudflare.com, siehe logs\tunnel-url.txt)
 #   3. LiveKit SFU        (Port 7880)        - Audio-Transport fuer Clara Voice
 #   4. Clara Voice Worker (Port 8091)        - STT/LLM/TTS-Pipeline
 #   (Ollama startet sich selbst ueber die Ollama-App.)
@@ -39,19 +39,10 @@ if (Test-PortListening 4000) {
     Write-StackLog "Backend: $(if (Test-PortListening 4000) { 'OK' } else { 'FEHLER - siehe Log' })"
 }
 
-# --- 2) ngrok-Tunnel (statische Domain, macht das Backend fuer die Live-Seite erreichbar) ---
-if (Get-Process -Name 'ngrok' -ErrorAction SilentlyContinue) {
-    Write-StackLog "ngrok: laeuft bereits"
-} else {
-    Write-StackLog "ngrok: starte Tunnel..."
-    Start-Process -FilePath 'ngrok' `
-        -ArgumentList 'http', '--url=faceable-darnell-nondiastatic.ngrok-free.dev', '4000', '--log=stdout' `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $LogDir "ngrok_$Stamp.log") `
-        -RedirectStandardError  (Join-Path $LogDir "ngrok_$Stamp.err.log")
-    Start-Sleep -Seconds 3
-    Write-StackLog "ngrok: $(if (Get-Process -Name 'ngrok' -ErrorAction SilentlyContinue) { 'OK' } else { 'FEHLER - siehe Log' })"
-}
+# --- 2) Cloudflare-Tunnel (macht das Backend fuer Handy/Live-Seite erreichbar) ---
+# Startet cloudflared, schreibt die URL in backend\.env (PUBLIC_BASE_URL) und
+# startet das Backend bei URL-Wechsel neu. Aktuelle URL: logs\tunnel-url.txt
+& 'F:\MAS-2\start-cloudflare-tunnel.ps1'
 
 # --- 3) LiveKit SFU (Port 7880, Audio-Transport fuer Clara) ---
 if (Test-PortListening 7880) {

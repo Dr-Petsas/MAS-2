@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { loadBooking, ensureBerlinTz } from "./booking.js";
-import { todayBerlin } from "./daySchedule.js";
+import { todayBerlin, relativeDayLabel } from "./daySchedule.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
 import { sendMail } from "../mail/mailbox.js";
 import { listAccounts } from "../mail/accounts.js";
@@ -44,10 +44,24 @@ function s(v) {
   return v == null ? "" : String(v).trim();
 }
 
+// Volles Datum — NUR für Patienten-Nachrichten (SMS/E-Mail/Anruf): dort muss
+// das konkrete Datum stehen, weil "morgen" beim Lesen längst falsch sein kann.
 function dateDe(isoDate) {
   const d = new Date(`${isoDate}T12:00:00Z`);
   if (isNaN(d.getTime())) return isoDate;
   return new Intl.DateTimeFormat("de-DE", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(d);
+}
+
+// Gesprochene Tagesangabe für den OPERATOR: exakt so, wie ein Mensch es sagt
+// ("morgen", "am Freitag", "nächste Woche Donnerstag"). Sagt der Chef "trag
+// für morgen ein", antwortet Clara mit "morgen" — nicht mit "Freitag, den
+// 12. Juni" (numerische Echos klingen nach Maschine).
+function dayRel(isoDate) {
+  return relativeDayLabel(isoDate);
+}
+
+function capFirst(s2) {
+  return s2 ? s2.charAt(0).toUpperCase() + s2.slice(1) : s2;
 }
 
 function dateDeShort(ms) {
@@ -79,9 +93,50 @@ function apptsCol(clientId, locationId) {
     .collection("appointments");
 }
 
-export function absenceCaseId(clientId, calendarId, date) {
-  const h = createHash("sha256").update(`${clientId}|${calendarId}|${date}`).digest("hex").slice(0, 20);
+export function absenceCaseId(clientId, calendarId, date, window = "") {
+  // ``window`` ("10:00-17:00") macht Teil-Tages-Abwesenheiten am selben Tag
+  // unterscheidbar; leer = ganztägig (alte IDs bleiben stabil).
+  const h = createHash("sha256").update(`${clientId}|${calendarId}|${date}|${window}`).digest("hex").slice(0, 20);
   return `absence_${h}`;
+}
+
+// --- Zeitfenster ("ich bin morgen zwischen 15 und 17 Uhr nicht da") ---------
+
+/** "10", "10:00", "10.30", "10 Uhr 30" -> "HH:MM"; ungültig -> "". */
+export function normalizeClockTime(v) {
+  const t = s(v).toLowerCase().replace(/uhr/g, " ").trim();
+  const m = t.match(/^(\d{1,2})(?:\s*[:.]?\s*(\d{2}))?$/);
+  if (!m) return "";
+  const h = Number(m[1]);
+  const min = Number(m[2] || 0);
+  if (h > 23 || min > 59) return "";
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+/**
+ * Fenstergrenzen eines Tages: ohne Zeiten = ganztägig, nur startTime =
+ * "ab 10 Uhr" (bis Tagesende), nur endTime = "bis 12 Uhr" (ab Tagesanfang).
+ */
+function absenceWindow(date, startTime, endTime) {
+  const st = normalizeClockTime(startTime) || "00:00";
+  const en = normalizeClockTime(endTime) || "23:59";
+  const startDt = new Date(ensureBerlinTz(`${date}T${st}:00`));
+  const endDt = new Date(ensureBerlinTz(`${date}T${en}:00`));
+  const wholeDay = st === "00:00" && en === "23:59";
+  return { st, en, startDt, endDt, wholeDay };
+}
+
+function spokenClock(hhmmStr) {
+  const [h, m] = hhmmStr.split(":").map(Number);
+  return m === 0 ? `${h} Uhr` : `${h} Uhr ${m}`;
+}
+
+/** "ganztägig" / "ab 10 Uhr" / "bis 12 Uhr" / "von 15 Uhr bis 17 Uhr". */
+function windowLabel(win) {
+  if (win.wholeDay) return "ganztägig";
+  if (win.en === "23:59") return `ab ${spokenClock(win.st)}`;
+  if (win.st === "00:00") return `bis ${spokenClock(win.en)}`;
+  return `von ${spokenClock(win.st)} bis ${spokenClock(win.en)}`;
 }
 
 /** Online-Buchungslink der Patienten-App (Neubuchung nach Absage). */
@@ -144,10 +199,16 @@ async function loadPatientDoc(clientId, locationId, patientId) {
 }
 
 /**
- * Legt (idempotent) den Absage-Auftrag für einen Abwesenheitstag an und gibt
- * die gesprochene Zusammenfassung zurück. Führt NICHTS aus — approval-first.
+ * Legt (idempotent) den Absage-Auftrag für eine Abwesenheit an und gibt die
+ * gesprochene Zusammenfassung zurück. Approval-first, mit EINER Ausnahme:
+ * ein Zeitraum OHNE betroffene Patiententermine ("sperr ab 10 Uhr", leerer
+ * Nachmittag) wird SOFORT als Sperrblock eingetragen — es gibt nichts
+ * abzusagen, also auch nichts freizugeben.
+ *
+ * ``startTime``/``endTime`` ("HH:MM", tolerant normalisiert) begrenzen die
+ * Abwesenheit auf ein Zeitfenster; ohne beide gilt der ganze Tag.
  */
-export async function planAbsence(clientId, { date, calendarId, calendarName, by } = {}) {
+export async function planAbsence(clientId, { date, startTime, endTime, calendarId, calendarName, by } = {}) {
   const day = s(date);
   if (!day || day < todayBerlin()) {
     return { ok: false, message: "Für welchen Tag soll ich die Abwesenheit planen? Der Tag darf nicht in der Vergangenheit liegen." };
@@ -160,19 +221,34 @@ export async function planAbsence(clientId, { date, calendarId, calendarName, by
   const locationId = booking.locationId;
   const calName = s(calendarName) || s((booking.calendars || []).find((c) => c.id === calendarId)?.name);
 
-  const caseId = absenceCaseId(clientId, calendarId, day);
+  const win = absenceWindow(day, startTime, endTime);
+  if (win.startDt >= win.endDt) {
+    return { ok: false, message: "Die Endzeit liegt vor der Startzeit — bitte das Zeitfenster noch einmal nennen." };
+  }
+  const winLabel = windowLabel(win);
+  const winKey = win.wholeDay ? "" : `${win.st}-${win.en}`;
+
+  const caseId = absenceCaseId(clientId, calendarId, day, winKey);
   const existingSnap = await casesCol(clientId).doc(caseId).get();
   if (existingSnap.exists && existingSnap.data().status !== CASE_STATUS.WAITING_APPROVAL) {
     const st = existingSnap.data().status;
     return {
       ok: true, caseId, alreadyHandled: true,
       message: st === CASE_STATUS.IN_PROGRESS || st === CASE_STATUS.RESOLVED
-        ? `Die Abwesenheit am ${dateDe(day)} ist bereits in Bearbeitung. Frag mich nach dem Abwesenheits-Status.`
-        : `Für den ${dateDe(day)} gibt es bereits einen Absage-Auftrag (Status ${st}).`,
+        ? `Die Abwesenheit ${dayRel(day)} (${winLabel}) ist bereits eingetragen beziehungsweise in Bearbeitung. Frag mich nach dem Abwesenheits-Status.`
+        : `${capFirst(dayRel(day))} (${winLabel}) gibt es bereits einen Absage-Auftrag (Status ${st}).`,
     };
   }
 
-  const appts = await rawDayAppointments(clientId, locationId, day, calendarId);
+  let appts = await rawDayAppointments(clientId, locationId, day, calendarId);
+  // Nur Termine, die das Abwesenheitsfenster ÜBERLAPPEN, sind betroffen.
+  if (!win.wholeDay) {
+    appts = appts.filter((a) => {
+      const aStart = tsToMs(a.start);
+      const aEnd = tsToMs(a.end) || aStart;
+      return aStart < win.endDt.getTime() && aEnd > win.startDt.getTime();
+    });
+  }
   const emailAvailable = (await listAccounts(clientId).catch(() => [])).length > 0;
 
   const patients = [];
@@ -211,6 +287,9 @@ export async function planAbsence(clientId, { date, calendarId, calendarName, by
   const plan = {
     kind: "absence",
     date: day,
+    startTime: win.wholeDay ? null : win.st,
+    endTime: win.wholeDay ? null : win.en,
+    windowLabel: winLabel,
     calendarId,
     calendarName: calName,
     locationId,
@@ -221,13 +300,48 @@ export async function planAbsence(clientId, { date, calendarId, calendarName, by
     refreshedAt: Date.now(),
   };
 
+  // KEIN Termin betroffen -> Sperrblock SOFORT eintragen. Genau das meint
+  // "sperr ab 10 Uhr Buchungen": ab jetzt findet auch die Telefon-KI dort
+  // keine freien Slots mehr. Es gibt nichts abzusagen, also keine Freigabe.
+  if (!patients.length) {
+    const blockId = await writeAbsenceBlock(clientId, plan, { by }).catch((e) => {
+      log.warn("absence.block_failed", { clientId, caseId, err: String(e?.message || e) });
+      return null;
+    });
+    if (!blockId) {
+      return { ok: false, message: "Der Kalendereintrag hat nicht geklappt — bitte im Monitor prüfen." };
+    }
+    plan.approvedBy = by || "Operator";
+    plan.approvedAt = Date.now();
+    plan.blockAppointmentId = blockId;
+    await createCase(clientId, {
+      id: caseId,
+      title: `Abwesenheit: ${calName} am ${day} (${winLabel})`,
+      topic: "appointment",
+      subject: { name: `Praxisausfall ${calName}` },
+      status: CASE_STATUS.RESOLVED,
+      assignee: "Clara",
+      createdBy: by || "Clara",
+      updates: [{
+        by: by || "Clara",
+        kind: "note",
+        text: `Abwesenheit ${calName} am ${day} (${winLabel}) direkt eingetragen — keine Termine betroffen, Zeitraum im Kalender gesperrt.`,
+      }],
+    });
+    await casesCol(clientId).doc(caseId).update({ absencePlan: plan });
+    return {
+      ok: true, caseId, date: day, calendarName: calName, blocked: true, total: 0,
+      message: `Erledigt — ich habe die Abwesenheit für ${calName} ${dayRel(day)} ${winLabel} eingetragen. In dem Zeitraum sind keine Termine betroffen, und es kann dort nichts mehr gebucht werden.`,
+    };
+  }
+
   const counts = { sms: 0, email: 0, call: 0, none: 0 };
   for (const p of patients) counts[p.channel] = (counts[p.channel] || 0) + 1;
 
   if (!existingSnap.exists) {
     await createCase(clientId, {
       id: caseId,
-      title: `Abwesenheit: ${calName} am ${day}`,
+      title: `Abwesenheit: ${calName} am ${day} (${winLabel})`,
       topic: "appointment",
       subject: { name: `Praxisausfall ${calName}` },
       status: CASE_STATUS.WAITING_APPROVAL,
@@ -236,7 +350,7 @@ export async function planAbsence(clientId, { date, calendarId, calendarName, by
       updates: [{
         by: by || "Clara",
         kind: "note",
-        text: `Abwesenheit ${calName} am ${day} geplant: ${patients.length} Termin(e) betroffen — ${counts.sms} SMS, ${counts.email} E-Mail, ${counts.call} Anruf(e), ${counts.none} ohne Kanal. Wartet auf Freigabe.`,
+        text: `Abwesenheit ${calName} am ${day} (${winLabel}) geplant: ${patients.length} Termin(e) betroffen — ${counts.sms} SMS, ${counts.email} E-Mail, ${counts.call} Anruf(e), ${counts.none} ohne Kanal. Wartet auf Freigabe.`,
       }],
     });
     await casesCol(clientId).doc(caseId).update({ absencePlan: plan });
@@ -244,19 +358,15 @@ export async function planAbsence(clientId, { date, calendarId, calendarName, by
     await casesCol(clientId).doc(caseId).update({ absencePlan: plan, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
   }
 
-  const parts = [`Am ${dateDe(day)} ${patients.length === 1 ? "steht 1 Termin" : `stehen ${patients.length} Termine`} bei ${calName} im Kalender.`];
-  if (!patients.length) {
-    parts.push("Wenn ich den Tag sperre, gibt es nichts abzusagen. Soll ich den Tag blocken? Sage: Abwesenheit freigeben.");
-  } else {
-    const how = [];
-    if (counts.sms) how.push(`${counts.sms} per SMS`);
-    if (counts.email) how.push(`${counts.email} per E-Mail durch Nadine`);
-    if (counts.call) how.push(`${counts.call} per Anruf durch Lisa`);
-    parts.push(`Wenn du freigibst, sperre ich den Tag im Kalender und sage ab: ${how.join(", ")} — jeder Patient bekommt genau eine Nachricht, mit Bitte um Neubuchung.`);
-    if (counts.none) parts.push(`Achtung: für ${counts.none} Patient${counts.none === 1 ? "en" : "en"} habe ich keinen Kontaktweg — die stehen im Monitor zur manuellen Absage.`);
-    parts.push("Soll ich das machen? Sage: Abwesenheit freigeben.");
-  }
-  return { ok: true, caseId, date: day, calendarName: calName, counts, total: patients.length, message: parts.join(" ") };
+  const parts = [`${capFirst(dayRel(day))} ${winLabel === "ganztägig" ? "" : `${winLabel} `}${patients.length === 1 ? "steht 1 Termin" : `stehen ${patients.length} Termine`} bei ${calName} im Kalender.`];
+  const how = [];
+  if (counts.sms) how.push(`${counts.sms} per SMS`);
+  if (counts.email) how.push(`${counts.email} per E-Mail durch Nadine`);
+  if (counts.call) how.push(`${counts.call} per Anruf durch Lisa`);
+  parts.push(`Wenn du freigibst, sperre ich den Zeitraum im Kalender und sage ab: ${how.join(", ")} — jeder Patient bekommt genau eine Nachricht, mit Bitte um Neubuchung.`);
+  if (counts.none) parts.push(`Achtung: für ${counts.none} Patient${counts.none === 1 ? "en" : "en"} habe ich keinen Kontaktweg — die stehen im Monitor zur manuellen Absage.`);
+  parts.push("Soll ich das machen? Sage: Abwesenheit freigeben.");
+  return { ok: true, caseId, date: day, calendarName: calName, window: winLabel, counts, total: patients.length, message: parts.join(" ") };
 }
 
 // ----------------------------------------------------------------------------
@@ -293,10 +403,10 @@ function buildCallInstruction({ name, praxis, date, timeLabel }) {
   );
 }
 
-/** Sperrblock in den Plattform-Kalender schreiben (ganztägig, ein Tag). */
+/** Sperrblock in den Plattform-Kalender schreiben (Zeitfenster oder ganztägig). */
 async function writeAbsenceBlock(clientId, plan, { by } = {}) {
-  const start = new Date(ensureBerlinTz(`${plan.date}T00:00:00`));
-  const end = new Date(ensureBerlinTz(`${plan.date}T23:59:00`));
+  const start = new Date(ensureBerlinTz(`${plan.date}T${plan.startTime || "00:00"}:00`));
+  const end = new Date(ensureBerlinTz(`${plan.date}T${plan.endTime || "23:59"}:00`));
   const now = admin.firestore.FieldValue.serverTimestamp();
   const ref = await apptsCol(clientId, plan.locationId).add({
     clientId,
@@ -308,7 +418,7 @@ async function writeAbsenceBlock(clientId, plan, { by } = {}) {
     end,
     isMultiDay: false,
     status: "confirmed",
-    comments: `Abwesenheit ${plan.calendarName || ""} — eingetragen durch Clara${by ? ` (freigegeben von ${by})` : ""}.`,
+    comments: `Abwesenheit ${plan.calendarName || ""} (${plan.windowLabel || "ganztägig"}) — eingetragen durch Clara${by ? ` (freigegeben von ${by})` : ""}.`,
     createdBy: "clara",
     createdAt: now,
     updatedAt: now,
@@ -454,7 +564,7 @@ export async function approveAbsence(clientId, { date, caseId, by, dryRun = fals
   }
 
   if (!approved) return { ok: false, message: "Die Freigabe hat nicht geklappt — bitte im Monitor prüfen." };
-  const parts = [dryRun ? `Testlauf: ${approved} Abwesenheit${approved === 1 ? "" : "en"} simuliert.` : `Erledigt — der Tag ist im Kalender gesperrt, auch telefonisch kann dort nichts mehr gebucht werden.`];
+  const parts = [dryRun ? `Testlauf: ${approved} Abwesenheit${approved === 1 ? "" : "en"} simuliert.` : `Erledigt — der Zeitraum ist im Kalender gesperrt, auch telefonisch kann dort nichts mehr gebucht werden.`];
   if (totals.sms) parts.push(`${totals.sms} SMS mit Buchungslink ${totals.sms === 1 ? "geht" : "gehen"} raus.`);
   if (totals.email) parts.push(`Nadine verschickt ${totals.email} E-Mail${totals.email === 1 ? "" : "s"}.`);
   if (totals.call) parts.push(`Lisa ruft ${totals.call} Patient${totals.call === 1 ? "en" : "en"} an.`);
@@ -564,15 +674,20 @@ export async function absenceStatusSpoken(clientId) {
   for (const c of relevant) {
     const plan = c.absencePlan;
     const ps = plan.patients || [];
+    const winInfo = plan.windowLabel && plan.windowLabel !== "ganztägig" ? ` (${plan.windowLabel})` : "";
     if (c.status === CASE_STATUS.WAITING_APPROVAL) {
-      parts.push(`${dateDe(plan.date)} bei ${plan.calendarName}: ${ps.length} Termin(e), wartet auf deine Freigabe.`);
+      parts.push(`${capFirst(dayRel(plan.date))}${winInfo} bei ${plan.calendarName}: ${ps.length} Termin(e), wartet auf deine Freigabe.`);
+      continue;
+    }
+    if (!ps.length) {
+      parts.push(`${capFirst(dayRel(plan.date))}${winInfo} bei ${plan.calendarName}: Zeitraum gesperrt, keine Termine betroffen.`);
       continue;
     }
     const rebooked = ps.filter((p) => p.rebooked).length;
     const contacted = ps.filter((p) => p.contact?.ok).length;
     const open = ps.length - rebooked;
     parts.push(
-      `${dateDe(plan.date)} bei ${plan.calendarName}: ${contacted} von ${ps.length} informiert, ${rebooked} ${rebooked === 1 ? "hat" : "haben"} bereits neu gebucht${open > 0 && c.status !== CASE_STATUS.RESOLVED ? `, ${open} noch offen` : ""}.`
+      `${capFirst(dayRel(plan.date))}${winInfo} bei ${plan.calendarName}: ${contacted} von ${ps.length} informiert, ${rebooked} ${rebooked === 1 ? "hat" : "haben"} bereits neu gebucht${open > 0 && c.status !== CASE_STATUS.RESOLVED ? `, ${open} noch offen` : ""}.`
     );
   }
   return `Abwesenheits-Stand: ${parts.join(" ")}`;

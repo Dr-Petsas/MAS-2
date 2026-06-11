@@ -32,6 +32,9 @@ import {
   setOperator,
   getOperator,
 } from "./clara/sessions.js";
+import {
+  disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName,
+} from "./clara/patientDisambig.js";
 import { identifyByPin, listOperators, saveOperators, normalizeRole, OPERATOR_ROLES, roleLabel } from "./clara/operators.js";
 import {
   createPairingToken, redeemPairingToken, listDevices, removeDevice,
@@ -1903,7 +1906,8 @@ app.post("/tools/day-briefing", async (req, res) => {
 
     const briefing = computeDayBriefing(day.appointments, { calendars: day.calendars });
     const op = await getOperator(clientId);
-    let message = buildSpokenDayBriefing(briefing, { date: day.date, operatorName: op?.name });
+    const opDoctor = op?.doctorName || (String(op?.role || "").toLowerCase().startsWith("arzt") ? op?.name : "") || "";
+    let message = buildSpokenDayBriefing(briefing, { date: day.date, operatorDoctorName: opDoctor });
     // Offene Recall-Initiative? Clara bringt sich aktiv ein ("morgen ist wenig
     // los — soll ich die Anruflisten freigeben?").
     try { message += await initiativeSuffix(clientId); } catch { /* optional */ }
@@ -2467,9 +2471,11 @@ app.post("/clara/pending-context", async (req, res) => {
   }
 });
 
-// Voice: "Nächsten Freitag bin ich nicht da" — Abwesenheit PLANEN (Stufe 1).
-// Liest die Termine des Tages, bestimmt pro Patient genau EINEN Absage-Kanal
-// und legt den Auftrag als Case an. Es passiert noch nichts (approval-first).
+// Voice: "Nächsten Freitag bin ich nicht da" / "Morgen zwischen 15 und 17 Uhr
+// bin ich weg" / "Sperr heute ab 10 Uhr die Buchungen" — Abwesenheit PLANEN.
+// Mit startTime/endTime wird nur das Zeitfenster gesperrt; sind KEINE Termine
+// betroffen, trägt planAbsence den Sperrblock sofort ein (nichts abzusagen).
+// Sonst: Auftrag als Case, Ausführung erst nach Freigabe (approval-first).
 app.post("/tools/plan-absence", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -2486,6 +2492,8 @@ app.post("/tools/plan-absence", async (req, res) => {
     const op = await getOperator(clientId);
     const out = await planAbsence(clientId, {
       date,
+      startTime: req.body?.startTime,
+      endTime: req.body?.endTime,
       calendarId: calScope.calendarId,
       calendarName: calName,
       by: op?.name || "Operator",
@@ -2842,17 +2850,24 @@ function contactSummary(p) {
   return `Gemeint ist ${name}, ${parts.join(" und ")}. Ich kann ${can.join(", ")} — was darf es sein?`;
 }
 
-function candidateListSpoken(cands) {
-  return cands.slice(0, 5).map((p) => {
-    const year = String(p.birthDate || "").slice(0, 4);
-    return `${p.firstName || "?"} ${p.lastName || ""}${year ? ` (Jahrgang ${year})` : ""}`.trim();
-  }).join("; ");
-}
-
 // Gemeinsame Disambiguierungs-Route für find_contact UND search_patient (also
 // auch vor jeder Terminbuchung): Vorname/Jahrgang -> Termin-Historie ->
 // Vorgänge. Liefert { status: "one"|"many"|"none", narrowed }.
 async function narrowPatientCandidatesByHint(clientId, candidates, hintLower) {
+  // Deterministische Schnellwege (Stefan-Meier-Loop, 2026-06-11):
+  // 1. Ordinal ("der erste", "nummer zwei", "der letzte") gegen die Liste in
+  //    der Reihenfolge, in der sie angesagt wurde.
+  const byOrdinal = ordinalPick(hintLower, candidates);
+  if (byOrdinal) return { status: "one", narrowed: [byOrdinal] };
+  // 2. Genannte (Teil-)Telefonnummer gegen die hinterlegten Nummern.
+  const byPhone = narrowByPhoneFragment(hintLower, candidates);
+  if (byPhone.length === 1) return { status: "one", narrowed: byPhone };
+  if (byPhone.length > 1) candidates = byPhone;
+  // 3. Exakter voller Name ("Stefan Meier" trifft nicht Stefanie Meierhoefer).
+  const byFullName = narrowByExactName(hintLower, candidates);
+  if (byFullName.length === 1) return { status: "one", narrowed: byFullName };
+  if (byFullName.length > 1) candidates = byFullName;
+
   const byName = candidates.filter((p) =>
     hintLower.includes(String(p.firstName || "").toLowerCase()) && String(p.firstName || "").length >= 3
   );
@@ -2860,7 +2875,13 @@ async function narrowPatientCandidatesByHint(clientId, candidates, hintLower) {
     const y = String(p.birthDate || "").slice(0, 4);
     return y && hintLower.includes(y);
   });
-  let narrowed = byName.length ? byName : byYear;
+  let narrowed = byName.length === candidates.length ? [] : byName;
+  if (!narrowed.length) narrowed = byYear;
+  // Telefon-/Vollname-Eingrenzung zaehlt als Fortschritt, auch wenn am Ende
+  // mehrere bleiben — dann mit MEHR Unterscheidungsmerkmalen nachfragen.
+  if (!narrowed.length && (byPhone.length > 1 || byFullName.length > 1)) {
+    narrowed = candidates;
+  }
   if (!narrowed.length) {
     const offsets = hintDayOffsets(hintLower);
     const mentionsVisit = /\b(da war|hier war|termin|behandlung|gekommen)\b/.test(hintLower);
@@ -2871,6 +2892,15 @@ async function narrowPatientCandidatesByHint(clientId, candidates, hintLower) {
     }
     if (!narrowed.length && (mentionsComm || offsets)) {
       narrowed = await candidatesWithCase(clientId, candidates, hintLower, offsets);
+    }
+  }
+  // Der Hint passt auf ALLE Kandidaten gleichermassen (z.B. der geteilte volle
+  // Name "Stefan Meier" bei Namensvettern): kein "kein Treffer", sondern
+  // gezielt mit Unterscheidungsmerkmalen nachfragen.
+  if (!narrowed.length && candidates.length > 1) {
+    const full = (p) => `${p.firstName || ""} ${p.lastName || ""}`.replace(/\s+/g, " ").trim().toLowerCase();
+    if (candidates.every((p) => full(p).length >= 5 && hintLower.includes(full(p)))) {
+      return { status: "many", narrowed: candidates };
     }
   }
   if (narrowed.length === 1) return { status: "one", narrowed };
@@ -2996,6 +3026,12 @@ app.post("/tools/find-contact", async (req, res) => {
       const found = await searchPatientSpoken(clientId, name);
       if (!found.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` });
       candidates = found.patients || [];
+      // Exakter Voll-Name schlaegt Teil-Treffer ("Stefan Meier" soll nicht an
+      // "Stefanie Meierhoefer" haengen bleiben).
+      if (candidates.length > 1) {
+        const exact = narrowByExactName(name.toLowerCase(), candidates);
+        if (exact.length) candidates = exact;
+      }
       if (!candidates.length) {
         // Kein Patient -> externer Kontakt? (Handwerker, Labor, Lieferant —
         // aus Adressbuch, Posteingang und Anruf-Events im Shared Memory.)
@@ -3034,7 +3070,7 @@ app.post("/tools/find-contact", async (req, res) => {
       if (r.status === "one") candidates = r.narrowed;
       else if (r.status === "many") {
         await setPatientCandidates(clientId, r.narrowed, null);
-        return res.json({ ok: true, message: `Das trifft noch auf mehrere zu: ${candidateListSpoken(r.narrowed)}. Welcher Vorname ist gemeint?` });
+        return res.json({ ok: true, message: `Das trifft noch auf mehrere zu. ${disambiguationQuestion(r.narrowed)}` });
       } else {
         // Passt der Hinweis auf keinen Patienten, ist vielleicht ein EXTERNER
         // Kontakt gemeint ("Herr Kasper wegen der Leuchtreklame" = Werbetechniker,
@@ -3054,16 +3090,16 @@ app.post("/tools/find-contact", async (req, res) => {
           }
         }
         await setPatientCandidates(clientId, candidates, null);
-        return res.json({ ok: true, message: `Dazu finde ich keinen passenden Treffer. Zur Auswahl stehen: ${candidateListSpoken(candidates)}. Welcher Vorname ist gemeint?` });
+        return res.json({ ok: true, message: `Dazu finde ich keinen passenden Treffer. ${disambiguationQuestion(candidates)}` });
       }
     }
 
     if (candidates.length > 1) {
       await setPatientCandidates(clientId, candidates, null);
-      return res.json({
-        ok: true,
-        message: `Ich habe ${candidates.length} Patienten gefunden: ${candidateListSpoken(candidates)}. Wen meinen Sie? Sie können auch sagen: der, der gestern da war — oder: der wegen der Rechnung angerufen hat.`,
-      });
+      // Keine zitierbare Beispielantwort anhaengen ("Sie koennen auch sagen:
+      // ...") — das 4B-Modell uebernimmt solche Saetze woertlich als eigene
+      // Antwort statt die Rueckfrage zu stellen (Testlauf 2026-06-11).
+      return res.json({ ok: true, message: disambiguationQuestion(candidates) });
     }
 
     const sel = candidates[0];
@@ -3273,6 +3309,12 @@ app.post("/tools/search-patient", async (req, res) => {
         await setPatientCandidates(clientId, [], null);
         return res.json({ ok: true, message: `Kein Patient mit dem Namen ${name} gefunden.` });
       }
+      // Exakter Voll-Name schlaegt Teil-Treffer ("Stefan Meier" soll nicht an
+      // "Stefanie Meierhoefer" haengen bleiben) — Stefan-Meier-Loop 2026-06-11.
+      if (patients.length > 1) {
+        const exact = narrowByExactName(name.toLowerCase(), patients);
+        if (exact.length) patients = exact;
+      }
     } else {
       patients = await getPatientCandidates(clientId);
       if (!patients.length) {
@@ -3285,12 +3327,10 @@ app.post("/tools/search-patient", async (req, res) => {
       if (r.status === "one") patients = r.narrowed;
       else if (r.status === "many") {
         await setPatientCandidates(clientId, r.narrowed, null);
-        const list = r.narrowed.slice(0, 5).map((p) => patientLabel(p)).join("; ");
-        return res.json({ ok: true, message: `Das trifft noch auf mehrere zu: ${list}. Welcher Vorname ist gemeint?` });
+        return res.json({ ok: true, message: `Das trifft noch auf mehrere zu. ${disambiguationQuestion(r.narrowed)}` });
       } else {
         await setPatientCandidates(clientId, patients, null);
-        const list = patients.slice(0, 5).map((p) => patientLabel(p)).join("; ");
-        return res.json({ ok: true, message: `Dazu finde ich keinen passenden Treffer. Zur Auswahl stehen: ${list}. Welcher Vorname ist gemeint?` });
+        return res.json({ ok: true, message: `Dazu finde ich keinen passenden Treffer. ${disambiguationQuestion(patients)}` });
       }
     }
 
@@ -3323,11 +3363,8 @@ app.post("/tools/search-patient", async (req, res) => {
         hasPhone: !!p.hasPhone,
       })),
     });
-    const list = patients.slice(0, 5).map((p) => patientLabel(p)).join("; ");
-    return res.json({
-      ok: true,
-      message: `Es gibt mehrere Treffer: ${list}. Welcher Vorname oder Jahrgang ist gemeint? Sie können auch sagen: der, der gestern da war.`,
-    });
+    // Keine zitierbare Beispielantwort anhaengen — siehe find_contact oben.
+    return res.json({ ok: true, message: disambiguationQuestion(patients) });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -3393,14 +3430,12 @@ app.post("/tools/contact-card", async (req, res) => {
       else {
         const pool = r.status === "many" ? r.narrowed : patients;
         await setPatientCandidates(clientId, pool, null);
-        const list = pool.slice(0, 5).map((p) => patientLabel(p)).join("; ");
-        return res.json({ ok: true, message: `Das trifft auf mehrere zu: ${list}. Welcher Vorname ist gemeint?` });
+        return res.json({ ok: true, message: `Das trifft auf mehrere zu. ${disambiguationQuestion(pool)}` });
       }
     }
     if (patients.length > 1) {
       await setPatientCandidates(clientId, patients, null);
-      const list = patients.slice(0, 5).map((p) => patientLabel(p)).join("; ");
-      return res.json({ ok: true, message: `Es gibt mehrere Treffer: ${list}. Welcher Vorname ist gemeint?` });
+      return res.json({ ok: true, message: disambiguationQuestion(patients) });
     }
 
     const sel = patients[0];

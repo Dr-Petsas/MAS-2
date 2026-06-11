@@ -23,7 +23,7 @@ import { recordCommunication } from "../brain/record.js";
 
 const TZ = "Europe/Berlin";
 const SNAPSHOT_DOC = "calendar_watch";
-const DEFAULT_HORIZON_DAYS = 14;
+const DEFAULT_HORIZON_DAYS = 30;
 
 function tsToMs(v) {
   if (v == null) return 0;
@@ -104,7 +104,25 @@ async function fetchWindow(clientId, horizonDays) {
     if (!o.patient?.id) continue; // temporary holds — not patient facts
     items[d.id] = toItem(o, d.id);
   }
-  return { items, calendars: booking.calendars || [] };
+  return { items, calendars: booking.calendars || [], windowEndMs: end.getTime() };
+}
+
+/**
+ * Every tenant with a calendar config (mas_config/booking + locationId) —
+ * the calendar watch must NOT depend on a mail account existing. select()
+ * keeps the sweep cheap even though mas_config also holds fat snapshot docs.
+ */
+export async function tenantsWithCalendar({ limit = 500 } = {}) {
+  const snap = await admin.firestore().collectionGroup("mas_config").select("locationId").get();
+  const ids = [];
+  for (const d of snap.docs) {
+    if (d.id !== "booking") continue;
+    if (!d.get("locationId")) continue;
+    const clientId = d.ref.parent.parent?.id;
+    if (clientId) ids.push(clientId);
+    if (ids.length >= limit) break;
+  }
+  return ids;
 }
 
 // --- pure diff ---------------------------------------------------------------
@@ -112,8 +130,14 @@ async function fetchWindow(clientId, horizonDays) {
 /**
  * Diff two snapshot maps into observation descriptors. Pure + unit-testable.
  * Returns [{ kind, eventId, summary, item, signals }].
+ *
+ * ``prevWindowEndMs``: end of the PREVIOUS sweep's observation window. An
+ * appointment that appears in the snapshot with a start BEYOND that horizon
+ * did not just get booked — the rolling window merely reached it (or the
+ * horizon was widened). Those are tracked silently instead of producing a
+ * misleading "Neuer Termin" event.
  */
-export function diffCalendarSnapshots(prev = {}, next = {}) {
+export function diffCalendarSnapshots(prev = {}, next = {}, { prevWindowEndMs = 0 } = {}) {
   const out = [];
   const dayKey = todayBerlin();
 
@@ -121,6 +145,7 @@ export function diffCalendarSnapshots(prev = {}, next = {}) {
     const p = prev[id];
     const who = spokenName(n);
     if (!p) {
+      if (prevWindowEndMs && n.s > prevWindowEndMs) continue; // window roll, not a new booking
       const by = creatorLabel(n.cb);
       out.push({
         kind: "created",
@@ -211,12 +236,18 @@ export async function watchCalendarOnce(clientId, { horizonDays = DEFAULT_HORIZO
 
   const ref = masCollection(clientId, "mas_config").doc(SNAPSHOT_DOC);
   const prevDoc = await ref.get();
-  const prev = prevDoc.exists ? (prevDoc.data().items || {}) : null;
+  const prevData = prevDoc.exists ? prevDoc.data() : null;
+  const prev = prevData ? (prevData.items || {}) : null;
+  // Older snapshots lack windowEndMs — derive it from sweep time + horizon so
+  // a horizon widening never floods the brain with fake "new" events.
+  const prevWindowEndMs = prevData
+    ? (prevData.windowEndMs || ((prevData.updatedAtMs || 0) + (prevData.horizonDays || DEFAULT_HORIZON_DAYS) * 86400000))
+    : 0;
 
   let recorded = 0;
   let changes = [];
   if (prev !== null) {
-    changes = diffCalendarSnapshots(prev, win.items);
+    changes = diffCalendarSnapshots(prev, win.items, { prevWindowEndMs });
     const eventsCol = masCollection(clientId, "mas_events");
     for (const ch of changes) {
       // Skip facts an action path already recorded with richer context
@@ -250,6 +281,7 @@ export async function watchCalendarOnce(clientId, { horizonDays = DEFAULT_HORIZO
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAtMs: Date.now(),
     horizonDays,
+    windowEndMs: win.windowEndMs,
   });
   return { ok: true, baseline: prev === null, tracked: Object.keys(win.items).length, changes: changes.length, recorded };
 }

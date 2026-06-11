@@ -162,6 +162,21 @@
 
   <audio id="agentAudio" autoplay playsinline></audio>
 
+  <script>
+    // iOS-Kopplung: Die installierte App startet hier (start_url), aber der
+    // gescannte QR-Token liegt noch unbenutzt im Speicher (pair.html hat ihn
+    // vor dem "Zum Home-Bildschirm"-Schritt hinterlegt). Ohne gekoppeltes
+    // Gerät geht es deshalb zuerst zur Kopplungsseite.
+    try {
+      var pendingPair = JSON.parse(localStorage.getItem("clara.pendingPair.v1") || "null");
+      var pairedDevice = JSON.parse(localStorage.getItem("clara.device.v1") || "null");
+      if (pendingPair && pendingPair.c && pendingPair.t && !pairedDevice &&
+          Date.now() - (pendingPair.ts || 0) < 15 * 60 * 1000) {
+        location.replace("/m/pair.html?c=" + encodeURIComponent(pendingPair.c) + "&t=" + encodeURIComponent(pendingPair.t));
+      }
+    } catch (e) {}
+  </script>
+
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
 

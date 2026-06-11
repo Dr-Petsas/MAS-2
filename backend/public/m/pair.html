@@ -93,6 +93,26 @@
     const urlToken = (qs.get("t") || "").trim();
     const manage = qs.get("manage") === "1"; // Zahnrad auf der Anrufseite
     const STORE_KEY = "clara.device.v1";
+    const PENDING_KEY = "clara.pendingPair.v1";
+
+    // iOS-Umweg: Beim "Zum Home-Bildschirm" startet die App auf der Anrufseite
+    // (start_url) und die Token-Parameter der gescannten URL gehen verloren.
+    // Deshalb wird ein frisch gescannter Token hier zwischengespeichert; die
+    // installierte App holt ihn sich beim ersten Start wieder ab.
+    function loadPending() {
+      try {
+        const p = JSON.parse(localStorage.getItem(PENDING_KEY) || "null");
+        if (!p || !p.c || !p.t) return null;
+        if (Date.now() - (p.ts || 0) > 15 * 60 * 1000) { localStorage.removeItem(PENDING_KEY); return null; }
+        return p;
+      } catch { return null; }
+    }
+    function savePending() { try { localStorage.setItem(PENDING_KEY, JSON.stringify({ c: pairClientId, t: pairToken, ts: Date.now() })); } catch {} }
+    function clearPending() { try { localStorage.removeItem(PENDING_KEY); } catch {} }
+
+    const pending = loadPending();
+    const pairClientId = urlClientId || (pending && pending.c) || "";
+    const pairToken = urlToken || (pending && pending.t) || "";
 
     const els = Object.fromEntries(["title","subtitle","viewInstall","viewPair","viewHome","viewDead",
       "btnPair","btnTalk","btnUnpair","homeText","err","diag"].map(id => [id, document.getElementById(id)]));
@@ -145,16 +165,17 @@
         const resp = await fetch("/clara/devices/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId: urlClientId, token: urlToken, subscription: sub.toJSON() }),
+          body: JSON.stringify({ clientId: pairClientId, token: pairToken, subscription: sub.toJSON() }),
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
-          if (["token_unknown","token_used","token_expired"].includes(data.error)) { show("viewDead"); return; }
+          if (["token_unknown","token_used","token_expired"].includes(data.error)) { clearPending(); show("viewDead"); return; }
           throw new Error(data.error || "Registrierung fehlgeschlagen.");
         }
 
+        clearPending();
         saveDevice({
-          clientId: urlClientId,
+          clientId: pairClientId,
           deviceId: data.deviceId,
           deviceKey: data.deviceKey,
           operatorName: data.operator?.name || "",
@@ -205,18 +226,18 @@
     }
 
     function renderEntry() {
-      if (!urlToken || !urlClientId) {
+      if (!pairToken || !pairClientId) {
         els.subtitle.textContent = "Kein Verbindungscode gefunden. Bitte den QR-Code aus den Praxis-Einstellungen scannen.";
         show(null);
         return;
       }
       if (!pushSupported) {
-        if (isIOS && !isStandalone) { show("viewInstall"); return; } // iOS Safari tab: install first
+        if (isIOS && !isStandalone) { savePending(); show("viewInstall"); return; } // iOS Safari tab: install first
         setErr("Dieser Browser unterstützt keine Push-Mitteilungen. Bitte Chrome (Android) oder Safari (iPhone) verwenden.");
         show(null);
         return;
       }
-      if (isIOS && !isStandalone) { show("viewInstall"); return; }
+      if (isIOS && !isStandalone) { savePending(); show("viewInstall"); return; }
       show("viewPair");
     }
 
@@ -228,7 +249,12 @@
     });
 
     // ── Boot ─────────────────────────────────────────────────────────────────
-    if (loadDevice()) renderHome(false);
+    // Ein frischer QR-Token hat IMMER Vorrang: Wer scannt, will (neu) koppeln.
+    // Sonst würde eine alte lokale Kopplung (z.B. nach "Entfernen" in den
+    // Einstellungen, das nur serverseitig löscht) sofort zur Anrufseite
+    // weiterleiten und der neue Token verfiele ungenutzt.
+    if (pairToken && pairClientId) renderEntry();
+    else if (loadDevice()) renderHome(false);
     else renderEntry();
   </script>
 </body>

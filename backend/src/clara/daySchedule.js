@@ -66,6 +66,43 @@ function normalizeAppointment(id, o) {
   };
 }
 
+// --- live docs light (SignR ground truth) -----------------------------------
+// Das auf den Termin gestempelte ``patientDocsStatus`` ist NICHT verlaesslich:
+// die Plattform-Funktion stempelt nur, wenn beim Patienten documentsExpireAt
+// gesetzt ist — sonst bleibt das Feld leer oder veraltet (Sablon stand "gruen",
+// obwohl 4 Pflichtdokumente unsigniert waren). Darum rechnen wir die Ampel
+// live aus den SignR-Dokumenten, mit EXAKT der SignR-Logik
+// (updatePatientDocumentsStatus): irgendein Dokument im Status "none"
+// (ausgewaehlt, noch nicht verschickt) => rot; sonst "sent" (verschickt,
+// nicht unterschrieben) => gelb; sonst gruen.
+
+export function deriveDocsLight(docStatuses = []) {
+  let hasNone = false, hasSent = false;
+  for (const raw of docStatuses) {
+    const st = String(raw || "").toLowerCase();
+    if (st === "none") hasNone = true;
+    else if (st === "sent") hasSent = true;
+  }
+  return hasNone ? "red" : hasSent ? "yellow" : "green";
+}
+
+async function liveDocsStatusByPatient(clientId, locationId, patientIds) {
+  const db = admin.firestore();
+  const out = new Map();
+  await Promise.all([...new Set(patientIds)].map(async (pid) => {
+    try {
+      const snap = await db.collection("clients").doc(clientId)
+        .collection("locations").doc(locationId)
+        .collection("patients").doc(pid)
+        .collection("pdocuments")
+        .where("status", "in", ["none", "sent"])
+        .get();
+      out.set(pid, deriveDocsLight(snap.docs.map((d) => d.data().status)));
+    } catch { /* Lookup-Fehler: gestempelter Terminwert bleibt als Fallback */ }
+  }));
+  return out;
+}
+
 // --- I/O: read one day's appointments --------------------------------------
 
 /**
@@ -97,6 +134,15 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
   // absence block) and multi-day items, so counts match what the team sees.
   appts = appts.filter((a) => (a.patientId || a.isAbsence) && !a.isMultiDay);
   if (calendarId) appts = appts.filter((a) => a.calendarId === calendarId);
+
+  // Unterschriften-Ampel: SignR ist die Wahrheit, nicht das gestempelte Feld.
+  try {
+    const live = await liveDocsStatusByPatient(clientId, locationId,
+      appts.filter((a) => !a.isAbsence && a.patientId).map((a) => a.patientId));
+    for (const a of appts) {
+      if (a.patientId && live.has(a.patientId)) a.docsStatus = live.get(a.patientId);
+    }
+  } catch { /* best-effort — Terminliste darf daran nie scheitern */ }
 
   return { ok: true, date: day, locationId, calendars: booking.calendars || [], appointments: appts };
 }
@@ -183,16 +229,18 @@ function spokenGaps(gaps) {
 
 // Gesprochenes Tagesbriefing in ECHTEN Sätzen. Vorher klang das nach
 // Stichpunkten ("Tagesplan: 1 Termin." / "Petsas: 1 Termin von 09:00 bis
-// 09:30. Hinweise: 1 Neupatient.") — fürs Vorlesen unbrauchbar.
-export function buildSpokenDayBriefing(briefing, { date, operatorName } = {}) {
-  const label = dateLabel(date || todayBerlin());
-  const hi = operatorName ? `${operatorName}, ` : "";
+// 09:30. Hinweise: 1 Neupatient.") — fürs Vorlesen unbrauchbar. Den Anrufer
+// mit eigenem Namen + vollem Datum anzusprechen ("Dr. Michael Petsas,
+// Donnerstag, 11. Juni ...") nervt: er weiß, wer er ist und welcher Tag ist.
+// Daher "Sie haben heute ..." sobald der eigene Kalender gelesen wird.
+export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = "" } = {}) {
+  const rel = relativeDayLabel(date || todayBerlin());
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   if (!briefing || briefing.total === 0) {
     const blocks = briefing?.absences?.length
       ? ` Es ${briefing.absences.length === 1 ? "ist nur eine Sperrzeit" : `sind nur ${briefing.absences.length} Sperrzeiten`} eingetragen.`
       : "";
-    return cap(`${hi}für ${label} sind keine Termine gebucht.${blocks}`).trim();
+    return cap(`${rel} sind keine Termine gebucht.${blocks}`).trim();
   }
 
   const parts = [];
@@ -202,18 +250,23 @@ export function buildSpokenDayBriefing(briefing, { date, operatorName } = {}) {
     // Ein Kalender: Eröffnung und Detail in EINEM Satz statt zwei fast
     // identischen Zeilen hintereinander.
     const c = cals[0];
-    const who = c.calendarName ? ` bei ${c.calendarName}` : "";
-    parts.push(cap(c.count === 1
-      ? `${hi}für ${label} steht nur ein Termin im Kalender: von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}${who}.`
-      : `${hi}für ${label} stehen ${c.count} Termine im Kalender${who}, zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}.`));
+    const span = c.count === 1
+      ? `nur einen Termin, von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}`
+      : `${c.count} Termine, zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}`;
+    // Zeitangabe IMMER nach vorn: "Heute haben Sie ...", "Nächste Woche
+    // Donnerstag haben Sie ...", "Am 15. Juni haben Sie ..."
+    parts.push(isOwnCalendar(c.calendarName, operatorDoctorName)
+      ? cap(`${rel} haben Sie ${span}.`)
+      : cap(`${rel} hat ${c.calendarName || "die Praxis"} ${span}.`));
     if (c.gaps.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(c.gaps)}.`);
   } else {
-    parts.push(cap(`${hi}für ${label} stehen insgesamt ${briefing.total} Termine im Kalender.`));
+    parts.push(cap(`${rel} stehen insgesamt ${briefing.total} Termine im Kalender.`));
     for (const c of cals) {
-      const who = c.calendarName || "Der Kalender";
+      const own = isOwnCalendar(c.calendarName, operatorDoctorName);
+      const who = own ? "Sie haben" : `${c.calendarName || "Der Kalender"} hat`;
       let line = c.count === 1
-        ? `${who} hat einen Termin von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}.`
-        : `${who} hat ${c.count} Termine zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}.`;
+        ? `${who} einen Termin von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}.`
+        : `${who} ${c.count} Termine zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}.`;
       if (c.gaps.length) line += ` Frei ist dort noch ${spokenGaps(c.gaps)}.`;
       parts.push(line);
     }
@@ -262,8 +315,11 @@ export function buildSpokenDayBriefing(briefing, { date, operatorName } = {}) {
 const SPOKEN_LIST_MAX = 25;
 
 // "morgen"/"heute" beats "am Mittwoch, den 10. Juni" — a receptionist says it
-// that way too. Beyond übermorgen we fall back to the full weekday + date.
-function relativeDayLabel(dateStr) {
+// that way too. Within the current week: "am Donnerstag", in the following
+// week: "nächste Woche Donnerstag". Only beyond that (or for past dates) we
+// fall back to the full weekday + date. Exported: every spoken surface
+// (briefings, absence planner, …) should phrase days exactly like this.
+export function relativeDayLabel(dateStr) {
   const today = todayBerlin();
   const diff = Math.round((Date.parse(`${dateStr}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
   if (diff === 0) return "heute";
@@ -272,8 +328,30 @@ function relativeDayLabel(dateStr) {
   const d = new Date(`${dateStr}T12:00:00Z`);
   if (isNaN(d.getTime())) return `am ${dateStr}`;
   const wd = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, weekday: "long" }).format(d);
+  if (diff > 2) {
+    // Mo=1..So=7; noon UTC keeps the calendar day identical in Berlin.
+    const isoDow = (s) => { const n = new Date(`${s}T12:00:00Z`).getUTCDay(); return n === 0 ? 7 : n; };
+    const weekDiff = Math.floor((diff + isoDow(today) - 1) / 7);
+    if (weekDiff === 0) return `am ${wd}`;
+    if (weekDiff === 1) return `nächste Woche ${wd}`;
+  }
   const dm = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, day: "numeric", month: "long" }).format(d);
   return `am ${wd}, den ${dm}`;
+}
+
+// Gehört der Kalender dem fragenden Operator? Vergleicht tolerant:
+// "Dr. Michael Petsas" (Operator) muss "Dr. Petsas" (Kalender) matchen,
+// daher zählt am Ende der Nachname (letztes Token).
+function isOwnCalendar(calName, operatorDoctorName) {
+  const norm = (s) => String(s || "").trim().toLowerCase();
+  const c = norm(calName);
+  const o = norm(operatorDoctorName);
+  if (!c || !o) return false;
+  if (c === o || c.includes(o) || o.includes(c)) return true;
+  const last = (s) => s.split(/\s+/).pop();
+  const cl = last(c);
+  const ol = last(o);
+  return cl.length > 2 && cl === ol;
 }
 
 function spokenTime(ms) {
@@ -323,8 +401,9 @@ function joinSpoken(items) {
 export function buildSpokenDayList(appointments = [], { date, calendars = [], operatorDoctorName = "" } = {}) {
   const day = date || todayBerlin();
   const rel = relativeDayLabel(day);
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   const real = appointments.filter((a) => !a.isAbsence).sort((x, y) => x.startMs - y.startMs);
-  if (!real.length) return `Für ${rel === "heute" || rel === "morgen" || rel === "übermorgen" ? rel : dateLabel(day)} sind keine Termine gebucht.`;
+  if (!real.length) return cap(`${rel} sind keine Termine gebucht.`);
 
   const nameById = new Map((calendars || []).map((c) => [c.id, c.name]));
   const groups = new Map();
@@ -348,11 +427,7 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
     return e;
   };
 
-  const opDoc = (operatorDoctorName || "").trim().toLowerCase();
-  const isOwn = (calName) => {
-    const c = (calName || "").trim().toLowerCase();
-    return !!opDoc && !!c && (c === opDoc || c.includes(opDoc) || opDoc.includes(c));
-  };
+  const isOwn = (calName) => isOwnCalendar(calName, operatorDoctorName);
 
   const truncated = real.length > SPOKEN_LIST_MAX;
   let remaining = SPOKEN_LIST_MAX;
@@ -363,8 +438,11 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
     const who = list[0].calendarName || nameById.get(calId) || "das Team";
     const entries = list.slice(0, remaining).map(entry);
     remaining -= entries.length;
-    // "hat" governs the accusative, which spokenPatient produces ("Herrn X").
-    const lead = isOwn(who) ? `Sie haben ${first ? rel : "außerdem"}` : `${who} hat ${first ? rel : ""}`.replace(/\s+$/, "");
+    // Zeitangabe nach vorn ("Heute haben Sie um 9 Uhr Frau Sablon ...");
+    // "haben"/"hat" governs the accusative, which spokenPatient produces.
+    const lead = isOwn(who)
+      ? (first ? cap(`${rel} haben Sie`) : "Außerdem haben Sie")
+      : (first ? cap(`${rel} hat ${who}`) : `${who} hat`);
     parts.push(`${lead} ${joinSpoken(entries)}.`);
     first = false;
   }
