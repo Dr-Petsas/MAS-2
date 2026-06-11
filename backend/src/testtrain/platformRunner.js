@@ -17,14 +17,22 @@ const REPORTS_DIR = path.join(SUITE_DIR, "reports");
 const NODE_BIN = (process.env.PLATFORM_TESTS_NODE || "node").trim();
 
 export const PLATFORM_GROUPS = [
-  { id: "functions", name: "Cloud Functions Gesundheit" },
-  { id: "calendr", name: "CalendR (Termine)" },
-  { id: "signr", name: "SignR (Dokumente)" },
-  { id: "clonr", name: "ClonR (Video-Clones)" },
-  { id: "campaignr", name: "CampaignR (Recall)" },
-  { id: "sms", name: "SMS-Versand" },
-  { id: "landingpages", name: "Landingpages & Public Web" },
-  { id: "browser", name: "Browser-Flows (Playwright)" },
+  { id: "functions", name: "Cloud Functions Gesundheit",
+    desc: "Login über Firebase Auth funktioniert · doesUserExists antwortet korrekt · ungültige Aufrufe werden sauber abgewiesen (keine Abstürze)" },
+  { id: "calendr", name: "CalendR (Termine)",
+    desc: "freie Slots werden gefunden (getFreeTimeSlots) · nächster freier Termin · öffentliche Termin-Abfrage · Reservierung anlegen und wieder löschen (nur Testdaten) · Kalender- & Besuchsgrund-Konfiguration vollständig" },
+  { id: "signr", name: "SignR (Dokumente)",
+    desc: "Dokumentbibliothek abrufbar (listLibraryDocuments) · Dokumenten-Konfiguration des Test-Tenants konsistent" },
+  { id: "clonr", name: "ClonR (Video-Clones)",
+    desc: "Clone-Konfiguration konsistent · Render-Webhooks erreichbar (Replicate, Wavespeed)" },
+  { id: "campaignr", name: "CampaignR (Recall)",
+    desc: "Recall-Übersicht liefert Daten (getRecallBucketsSummary) · Kampagnen-Konfiguration vorhanden" },
+  { id: "sms", name: "SMS-Versand",
+    desc: "verschickt EINE echte Test-SMS über sendSms (smsflatrate.net) an die angegebene Testnummer — ohne Nummer wird übersprungen" },
+  { id: "landingpages", name: "Landingpages & Public Web",
+    desc: "Praxis-Profilseite, Praxis-App-Login und Bewertungs-Widget sind öffentlich erreichbar (HTTP 200)" },
+  { id: "browser", name: "Browser-Flows (Playwright)",
+    desc: "echter Chrome-Browser: Login · Dashboard lädt · Navigation in CalendR/SignR/ClonR/CampaignR rendert · Superuser-Bereich für normale Nutzer gesperrt" },
 ];
 
 export function listPlatformRuns({ limit = 50 } = {}) {
