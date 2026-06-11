@@ -174,35 +174,68 @@ export function computeDayBriefing(appointments = [], { calendars = [] } = {}) {
 
 // --- pure: spoken German text ----------------------------------------------
 
+// "von 10 Uhr bis 11 Uhr 30 und von 14 Uhr bis 15 Uhr" — natürlich gesprochen.
+function spokenGaps(gaps) {
+  const g = gaps.slice(0, 3).map((x) => `von ${spokenTime(x.startMs)} bis ${spokenTime(x.endMs)}`);
+  if (g.length === 1) return g[0];
+  return `${g.slice(0, -1).join(", ")} und ${g[g.length - 1]}`;
+}
+
+// Gesprochenes Tagesbriefing in ECHTEN Sätzen. Vorher klang das nach
+// Stichpunkten ("Tagesplan: 1 Termin." / "Petsas: 1 Termin von 09:00 bis
+// 09:30. Hinweise: 1 Neupatient.") — fürs Vorlesen unbrauchbar.
 export function buildSpokenDayBriefing(briefing, { date, operatorName } = {}) {
   const label = dateLabel(date || todayBerlin());
   const hi = operatorName ? `${operatorName}, ` : "";
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   if (!briefing || briefing.total === 0) {
     const blocks = briefing?.absences?.length
-      ? ` Es sind nur ${briefing.absences.length} Sperrzeit(en) eingetragen.`
+      ? ` Es ${briefing.absences.length === 1 ? "ist nur eine Sperrzeit" : `sind nur ${briefing.absences.length} Sperrzeiten`} eingetragen.`
       : "";
-    return `${hi ? hi.charAt(0).toUpperCase() + hi.slice(1) : ""}für ${label} sind keine Termine gebucht.${blocks}`.trim();
+    return cap(`${hi}für ${label} sind keine Termine gebucht.${blocks}`).trim();
   }
 
   const parts = [];
-  parts.push(`${hi ? hi.charAt(0).toUpperCase() + hi.slice(1) : ""}Tagesplan für ${label}: ${briefing.total} ${briefing.total === 1 ? "Termin" : "Termine"}.`);
+  const cals = briefing.byCalendar || [];
 
-  for (const c of briefing.byCalendar) {
-    const who = c.calendarName || "Kalender";
-    let line = `${who}: ${c.count} ${c.count === 1 ? "Termin" : "Termine"} von ${hhmm(c.firstMs)} bis ${hhmm(c.lastMs)}.`;
-    if (c.gaps.length) {
-      const g = c.gaps.slice(0, 3).map((x) => `${hhmm(x.startMs)}–${hhmm(x.endMs)}`).join(", ");
-      line += ` Freie Lücke: ${g}.`;
+  if (cals.length === 1) {
+    // Ein Kalender: Eröffnung und Detail in EINEM Satz statt zwei fast
+    // identischen Zeilen hintereinander.
+    const c = cals[0];
+    const who = c.calendarName ? ` bei ${c.calendarName}` : "";
+    parts.push(cap(c.count === 1
+      ? `${hi}für ${label} steht nur ein Termin im Kalender: von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}${who}.`
+      : `${hi}für ${label} stehen ${c.count} Termine im Kalender${who}, zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}.`));
+    if (c.gaps.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(c.gaps)}.`);
+  } else {
+    parts.push(cap(`${hi}für ${label} stehen insgesamt ${briefing.total} Termine im Kalender.`));
+    for (const c of cals) {
+      const who = c.calendarName || "Der Kalender";
+      let line = c.count === 1
+        ? `${who} hat einen Termin von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}.`
+        : `${who} hat ${c.count} Termine zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}.`;
+      if (c.gaps.length) line += ` Frei ist dort noch ${spokenGaps(c.gaps)}.`;
+      parts.push(line);
     }
-    parts.push(line);
   }
 
-  const highlights = [];
-  if (briefing.newPatients) highlights.push(`${briefing.newPatients} ${briefing.newPatients === 1 ? "Neupatient" : "Neupatienten"}`);
-  if (briefing.unconfirmed) highlights.push(`${briefing.unconfirmed} unbestätigt`);
-  if (briefing.videoCalls) highlights.push(`${briefing.videoCalls} Video-Termin(e)`);
-  if (briefing.absences.length) highlights.push(`${briefing.absences.length} Sperrzeit(en)`);
-  if (highlights.length) parts.push(`Hinweise: ${highlights.join(", ")}.`);
+  const hl = [];
+  if (briefing.newPatients) hl.push(briefing.newPatients === 1 ? "ein Neupatient" : `${briefing.newPatients} Neupatienten`);
+  if (briefing.videoCalls) hl.push(briefing.videoCalls === 1 ? "ein Video-Termin" : `${briefing.videoCalls} Video-Termine`);
+  if (hl.length) {
+    const singular = hl.length === 1 && hl[0].startsWith("ein ");
+    parts.push(`Darunter ${singular ? "ist" : "sind"} ${hl.join(" und ")}.`);
+  }
+  if (briefing.unconfirmed) {
+    parts.push(briefing.unconfirmed === 1
+      ? "Ein Termin ist noch unbestätigt."
+      : `${briefing.unconfirmed} Termine sind noch unbestätigt.`);
+  }
+  if (briefing.absences.length) {
+    parts.push(briefing.absences.length === 1
+      ? "Außerdem ist eine Sperrzeit eingetragen."
+      : `Außerdem sind ${briefing.absences.length} Sperrzeiten eingetragen.`);
+  }
 
   // Terminnotizen + Dokumentenstatus — die Behandler-Pflichtinfos. Mehr als
   // ein paar gesprochene Hinweise verträgt ein Briefing nicht; der Rest steht
@@ -212,14 +245,14 @@ export function buildSpokenDayBriefing(briefing, { date, operatorName } = {}) {
   if (att.length) {
     const lines = att.slice(0, SPOKEN_ATTENTION_MAX).map((a) => {
       const bits = [];
-      if (a.docsStatus === "yellow") bits.push("Unterlagen sind noch nicht unterschrieben");
-      else if (a.docsStatus === "red") bits.push("Unterlagen wurden noch nicht verschickt");
-      if (a.comments) bits.push(`Notiz: ${a.comments.length > 100 ? `${a.comments.slice(0, 97)}...` : a.comments}`);
-      return `um ${spokenTime(a.startMs)} ${spokenPatient(a)} — ${bits.join("; ")}`;
+      if (a.docsStatus === "yellow") bits.push("die Unterlagen sind noch nicht unterschrieben");
+      else if (a.docsStatus === "red") bits.push("die Unterlagen wurden noch nicht verschickt");
+      if (a.comments) bits.push(`dazu steht in der Notiz: ${a.comments.length > 100 ? `${a.comments.slice(0, 97)}...` : a.comments}`);
+      return `Um ${spokenTime(a.startMs)} haben Sie ${spokenPatient(a)} — ${bits.join(", und ")}.`;
     });
     const rest = att.length - SPOKEN_ATTENTION_MAX;
-    const more = rest > 0 ? ` Plus ${rest === 1 ? "ein weiterer Hinweis" : `${rest} weitere Hinweise`} im Kalender.` : "";
-    parts.push(`Bitte beachten: ${lines.join(". ")}.${more}`);
+    const more = rest > 0 ? ` ${rest === 1 ? "Ein weiterer Hinweis steht" : `${rest} weitere Hinweise stehen`} im Kalender.` : "";
+    parts.push(`Bitte beachten: ${lines.join(" ")}${more}`);
   }
 
   return parts.join(" ");

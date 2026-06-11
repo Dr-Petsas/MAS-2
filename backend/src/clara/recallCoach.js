@@ -458,11 +458,23 @@ export async function snoozeInitiative(clientId) {
 }
 
 /** Satz fürs Tagesbriefing, wenn eine unbeantwortete Initiative offen ist. */
+const INITIATIVE_MENTION_COOLDOWN_MS = 30 * 60 * 1000;
+
 export async function initiativeSuffix(clientId) {
-  const snap = await configRef(clientId).get().catch(() => null);
+  const ref = configRef(clientId);
+  const snap = await ref.get().catch(() => null);
   if (!snap?.exists) return "";
   const cfg = snap.data();
   if (cfg.status !== "open" || !cfg.date || cfg.date < todayBerlin()) return "";
+  // Anti-Wiederholung: der Pitch hing an JEDEM day_briefing — wer im selben
+  // Gespräch zweimal nach Terminen fragte, bekam zweimal wortgleich die
+  // komplette Recall-Werbung. Einmal erwähnt = 30 Minuten Ruhe; die
+  // Initiative selbst bleibt offen und per "Recall freigeben" abrufbar.
+  const now = Date.now();
+  if (Number(cfg.lastMentionAt) && now - Number(cfg.lastMentionAt) < INITIATIVE_MENTION_COOLDOWN_MS) {
+    return "";
+  }
+  await ref.set({ lastMentionAt: now }, { merge: true }).catch(() => {});
   return ` Übrigens: ${cfg.summary} Soll ich die Anruflisten freigeben? Sage einfach: Recall freigeben.`;
 }
 
