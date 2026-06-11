@@ -21,6 +21,7 @@
       --turq: #2ee6c8;       /* neon türkis  – Clara */
       --amber: #ffb347;      /* neon gelborange – Nutzer spricht */
       --red: #ff4d6d;        /* neon rot – Denken / Tools / Auflegen */
+      --pink: #ff4ddb;       /* neon pink – Startzustand */
       --accent: var(--turq); /* wird je Zustand umgeschaltet */
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -61,8 +62,18 @@
       touch-action: manipulation;
     }
     .orb:active { transform: scale(.97); }
-    .orb img { width: 84px; height: auto; opacity: .92; pointer-events: none;
-               filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 55%, transparent)); transition: filter .45s ease; }
+
+    /* Drei Balken – Waveform-Symbol, Farbe folgt dem Zustand */
+    .wave { display: flex; align-items: center; gap: 10px; height: 68px; pointer-events: none; }
+    .wave span { width: 11px; border-radius: 7px; background: var(--accent);
+                 box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
+                 transition: background .45s ease, box-shadow .45s ease;
+                 animation: wob 1.6s ease-in-out infinite; }
+    .wave span:nth-child(1) { height: 32px; }
+    .wave span:nth-child(2) { height: 60px; animation-delay: .2s; }
+    .wave span:nth-child(3) { height: 32px; animation-delay: .4s; }
+    @keyframes wob { 0%, 100% { transform: scaleY(.72); } 50% { transform: scaleY(1.08); } }
+    body.st-ended .wave span { animation-play-state: paused; }
 
     /* Ripples – Farbe folgt dem Zustand */
     .ring { position: absolute; inset: -4px; border-radius: 50%; z-index: 1;
@@ -79,6 +90,10 @@
     }
 
     /* Zustände: Akzentfarbe + Animationen */
+    body.st-idle       { --accent: var(--pink); }
+    body.st-idle .orb { animation: breathe 3s ease-in-out infinite; }
+    body.st-idle .ring.r1 { animation: rip 1.8s ease-out infinite; }
+    body.st-idle .ring.r2 { animation: rip 1.8s ease-out .9s infinite; }
     body.st-ringing    { --accent: var(--turq); }
     body.st-ringing .ring.r1 { animation: rip 1.5s ease-out infinite; }
     body.st-ringing .ring.r2 { animation: rip 1.5s ease-out .75s infinite; }
@@ -130,7 +145,7 @@
     <div class="orb-wrap">
       <div class="ring r1"></div><div class="ring r2"></div>
       <button class="orb" id="orb" aria-label="Clara">
-        <img src="/m/logo-mark.png" alt="" />
+        <div class="wave"><span></span><span></span><span></span></div>
       </button>
     </div>
     <div>
@@ -173,7 +188,7 @@
     // ── Zustandsmaschine: ein Button, Farben erzählen den Rest ───────────────
     // phase: idle | ringing | connecting | live | ended
     // voice (nur live): listening | user | thinking | clara
-    const ALL_ST = ["st-ringing","st-connecting","st-listening","st-user","st-thinking","st-clara","st-ended"];
+    const ALL_ST = ["st-idle","st-ringing","st-connecting","st-listening","st-user","st-thinking","st-clara","st-ended"];
     let phase = incoming ? "ringing" : "idle";
     let voice = "listening";
 
@@ -189,7 +204,7 @@
     };
 
     function render() {
-      const st = phase === "live" ? voice : (phase === "idle" ? "listening" : phase);
+      const st = phase === "live" ? voice : phase;
       document.body.classList.remove(...ALL_ST);
       document.body.classList.add("st-" + st);
       const key = phase === "live" ? voice : phase;
