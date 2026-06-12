@@ -3,6 +3,7 @@ import { applyHumanReview } from "../brain/events.js";
 import { todayBerlin, relativeDayLabel } from "./daySchedule.js";
 import { ensureBerlinTz } from "./booking.js";
 import { pick } from "./variation.js";
+import { callLogQuip } from "./humor.js";
 
 // ============================================================================
 // Gesprochenes Anruf-Protokoll — "Waren heute Anrufe für mich da?"
@@ -95,6 +96,10 @@ export async function spokenCallLog(clientId, { date } = {}) {
   if (open.length) {
     parts.push(`${open.length === 1 ? "Ein Anliegen ist" : `${open.length} Anliegen sind`} noch offen.`);
   }
+
+  // Lockerer Schlusskommentar (Wunsch 12.06.: "kommentiere ruhig Telefonate").
+  // Nur wenn nichts mehr offen ist — bei offenen Anliegen bleibt es ernst.
+  if (!open.length) parts.push(callLogQuip());
 
   return parts.join(" ");
 }

@@ -20,6 +20,7 @@ import { planAbsence, approveAbsence, sweepAbsenceRebookings, absenceStatusSpoke
 import { runRetentionSweep, RETENTION_DAYS, getRetentionConfig, setRetentionDays } from "./brain/retention.js";
 import { lookupCaller, normalizePhone } from "./clara/callerLookup.js";
 import { spokenCallLog } from "./clara/callLog.js";
+import { spokenRatings } from "./clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking } from "./clara/agentBooking.js";
 import {
   createSession,
@@ -2168,6 +2169,23 @@ app.post("/tools/day-briefing", async (req, res) => {
     // Show the day on the monitor (best-effort; works only with an active session).
     try { await emitCommand(clientId, { type: "navigate", date: day.date, calendarId: calendarId || null }); } catch { /* no live session */ }
     return res.json({ ok: true, date: day.date, message, counts: { total: briefing.total, newPatients: briefing.newPatients, unconfirmed: briefing.unconfirmed } });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Clara: "Gibt es neue Bewertungen?" — liest Patienten-Bewertungen vor und
+// kommentiert sie (schleimig bei 4-5 Sternen, sarkastisch bei 1-2). Die
+// Pointen kommen deterministisch aus clara/humor.js, nicht vom LLM.
+app.post("/tools/read-ratings", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const sinceDays = Math.max(0, Math.min(365, Number(req.body?.sinceDays || 0)));
+    const message = await spokenRatings(clientId, { limit: 3, sinceDays });
+    return res.json({ ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

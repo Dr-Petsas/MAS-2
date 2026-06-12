@@ -2,6 +2,7 @@ import admin from "../firebase.js";
 import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { holidayName, isWeekend, daySpecialLabel } from "./holidays.js";
+import { redDocsQuip } from "./humor.js";
 
 // Clara's day-schedule read model: a spoken "what's on the calendar today" that
 // reads the ACTUAL booked appointments (not just free slots, not tickets).
@@ -379,6 +380,9 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     const rest = att.length - SPOKEN_ATTENTION_MAX;
     const more = rest > 0 ? ` ${rest === 1 ? "Ein weiterer Hinweis steht" : `${rest} weitere Hinweise stehen`} im Kalender.` : "";
     parts.push(`Bitte beachten: ${lines.join(" ")}${more}`);
+    // Rote Ampel = Unterlagen NIE verschickt — das darf nicht passieren.
+    // Clara darf sich darüber hörbar aufregen (EIN Spruch pro Vorlesung).
+    if (att.some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());
   }
 
   return parts.join(" ");
@@ -548,6 +552,9 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
   }
   if (groups.size > 1) parts.unshift(`Das sind ${real.length} Termine insgesamt.`);
   if (truncated) parts.push(`Das waren die ersten ${SPOKEN_LIST_MAX} — der Rest steht im Kalender.`);
+  // Mindestens ein roter Termin in der vorgelesenen Liste? Ein Aufreger-Satz
+  // ans Ende (nicht pro Termin — sonst kippt der Witz ins Genervte).
+  if (real.slice(0, SPOKEN_LIST_MAX).some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());
   return parts.join(" ");
 }
 

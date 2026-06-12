@@ -5,6 +5,7 @@ import { buildBriefing } from "../brain/briefing.js";
 import { buildRedList, spokenRedList } from "../brain/redList.js";
 import { buildMailBriefing } from "../mail/briefing.js";
 import { pick, chance } from "./variation.js";
+import { ratingsBriefingLine } from "./ratings.js";
 
 // ============================================================================
 // Morgen-Moment (Jawdropper ②, Nacht 11./12.06.2026).
@@ -146,12 +147,13 @@ function closingLine() {
 export async function spokenMorningBriefing(clientId, opts = {}) {
   const date = todayBerlin();
 
-  const [day, events, mail, gapRun, redList] = await Promise.all([
+  const [day, events, mail, gapRun, redList, ratingsLine] = await Promise.all([
     getDayAppointments(clientId, { date }).catch(() => null),
     queryRecent(clientId, Date.now() - OPEN_LOOKBACK_MS, 600).catch(() => []),
     buildMailBriefing(clientId, { sinceMinutes: 960, accountIds: opts.mailAccountIds }).catch(() => null),
     runGapFill(clientId, { date, horizonDays: 1 }).catch(() => null),
     buildRedList(clientId).catch(() => ({ critical: [], deadlines: [] })),
+    ratingsBriefingLine(clientId).catch(() => ""),
   ]);
 
   const parts = [greetingLine(opts.operatorName)];
@@ -177,6 +179,10 @@ export async function spokenMorningBriefing(clientId, opts = {}) {
 
   const mails = mailLine(mail?.counts);
   if (mails) parts.push(mails);
+
+  // Neue Bewertung seit gestern? Vorlesen UND kommentieren (Wunsch 12.06.:
+  // schleimig bei gut, sarkastisch bei schlecht).
+  if (ratingsLine) parts.push(ratingsLine.trim());
 
   parts.push(...gapLines(gapRun));
 
