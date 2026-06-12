@@ -3503,7 +3503,12 @@ app.post("/tools/find-contact", async (req, res) => {
         const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
         if (byOrd) {
           await setPatientCandidates(clientId, [byOrd], byOrd);
-          return res.json({ ok: true, message: contactSummary(byOrd) });
+          // Stefan-Meier-Loop 12.06.: Auftrag schon genannt ("Ruf ihn an,
+          // sag ihm ...")? Dann JETZT ausfuehren statt erneut zu suchen. Die
+          // "was darf es sein?"-Frage der contactSummary entfaellt hier — sie
+          // drueckte das Modell in eine unnoetige Bestaetigungsrunde.
+          const summaryOrd = contactSummary(byOrd).replace(/ — was darf es sein\?$/, ".");
+          return res.json({ ok: true, message: `${summaryOrd} NAECHSTER SCHRITT, wenn der Auftrag schon genannt wurde: delegate_call (Anruf ausrichten) oder send_sms — phone leer lassen, der Kontakt ist gemerkt. Antworte NICHT nur mit Text und suche NICHT erneut.` });
         }
       }
     }
@@ -3598,7 +3603,17 @@ app.post("/tools/find-contact", async (req, res) => {
       patient: { firstName: sel.firstName, lastName: sel.lastName, birthDate: sel.birthDate },
       hasPhone: !!sel.hasPhone,
     }).catch(() => {});
-    return res.json({ ok: true, message: contactSummary(sel) });
+    // Nachfrage-Pfad (ohne neuen Namen): Auswahl ist gefallen, Auftrag jetzt
+    // ausfuehren statt weiterzusuchen (Stefan-Meier-Loop 12.06.). Die "was
+    // darf es sein?"-Frage entfaellt — sie drueckte das Modell in eine
+    // unnoetige Bestaetigungsrunde statt zu delegieren.
+    const summaryTxt = !rawName
+      ? contactSummary(sel).replace(/ — was darf es sein\?$/, ".")
+      : contactSummary(sel);
+    const followUp = !rawName
+      ? " NAECHSTER SCHRITT, wenn der Auftrag schon genannt wurde: delegate_call (Anruf ausrichten) oder send_sms — phone leer lassen, der Kontakt ist gemerkt. Antworte NICHT nur mit Text und suche NICHT erneut."
+      : "";
+    return res.json({ ok: true, message: `${summaryTxt}${followUp}` });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -3800,7 +3815,13 @@ app.post("/tools/search-patient", async (req, res) => {
           hasPhone: !!byOrd.hasPhone,
         });
         const warn = byOrd.hasPhone ? "" : " Achtung: keine Telefonnummer hinterlegt.";
-        return res.json({ ok: true, message: `${patientLabel(byOrd)} gefunden.${warn}` });
+        // Anweisung ans Modell (Stefan-Meier-Loop 12.06.): Nach der Auswahl
+        // NICHT erneut suchen, sondern den urspruenglichen Auftrag ausfuehren
+        // (book_for_patient, delegate_call, ...). Der Patient ist gemerkt.
+        return res.json({
+          ok: true,
+          message: `${patientLabel(byOrd)} ist eindeutig gemerkt.${warn} Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden.`,
+        });
       }
     }
 
@@ -3858,10 +3879,16 @@ app.post("/tools/search-patient", async (req, res) => {
       const warn = sel.hasPhone ? "" : " Achtung: keine Telefonnummer hinterlegt.";
       // Keine Buchungsfrage anhaengen: das Tool wird auch fuer reine
       // Nachschlage-Fragen genutzt und drueckte Clara sonst bei jeder
-      // Patientensuche in den Termin-Modus (2026-06-10).
+      // Patientensuche in den Termin-Modus (2026-06-10). AUSNAHME: war dies
+      // eine Nachfrage zur Kandidatenliste (ohne neuen Namen), laeuft gerade
+      // ein Auftrag — dann das Modell zum Ausfuehren lotsen statt es weiter
+      // suchen zu lassen (Stefan-Meier-Loop 12.06.).
+      const followUp = !rawName
+        ? " Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden."
+        : "";
       return res.json({
         ok: true,
-        message: `${patientLabel(sel)} gefunden.${warn}`,
+        message: `${patientLabel(sel)} gefunden.${warn}${followUp}`,
       });
     }
 
