@@ -1,4 +1,5 @@
 import { SIGNAL_FLAGS } from "./events.js";
+import { assessCritical } from "./critical.js";
 
 // ============================================================================
 // Signal extractor: call transcript -> brain event (signals + attributed
@@ -240,6 +241,16 @@ export async function extractFromTranscript(transcript, opts = {}) {
   if (NEGATIVE_WORDS.some((p) => p.test(foldedFull))) sentiment = "negative";
   if (sentiment) signals.sentiment = sentiment;
 
+  // Eskalations-Radar: droht der Anrufer mit Anwalt/Kammer/Anzeige, oder geht
+  // es um Mahnung/Pfändung? Nur über die PATIENTEN-Turns bewertet, damit eine
+  // KI-Rückfrage ("möchten Sie rechtliche Schritte…?") nie selbst auslöst.
+  const crit = assessCritical({ text: userText });
+  if (crit.critical) {
+    signals.critical = true;
+    fragments.push(`⚠ ${crit.label}`);
+    if (crit.quote) evidence.push({ flag: "critical", quote: crit.quote });
+  }
+
   // Confidence: rule-based caps at 0.85 (deterministic, but still extraction).
   const flagCount = SIGNAL_FLAGS.filter((f) => signals[f]).length;
   let confidence = flagCount === 0 ? 0.3 : Math.min(0.85, 0.55 + 0.1 * flagCount);
@@ -254,7 +265,15 @@ export async function extractFromTranscript(transcript, opts = {}) {
     summary = `Laut Anruf: Patient ${fragments.join("; ")}.` + (lead ? ` („${lead}")` : "");
   }
 
-  let draft = { signals, summary, confidence, evidence };
+  let draft = {
+    signals,
+    summary,
+    confidence,
+    evidence,
+    // Fristen-Wächter: erkannte Frist + Radar-Kategorie für Event-Tags.
+    deadlineMs: crit.deadlineMs || null,
+    criticalCategory: crit.critical ? crit.category : null,
+  };
 
   if (typeof opts.refine === "function") {
     try {

@@ -166,6 +166,147 @@ export async function findContactsByPhone(clientId, phone) {
 }
 
 // ----------------------------------------------------------------------------
+// Dubletten-Analyse + Bereinigung (Cockpit, Nacht 12.06.2026).
+//
+// Die Sorge des Chefs: "Gehirn zu groß und voll, Agenten suchen ewig". Neben
+// dem Retention-Regler gehört dazu, dass dieselbe Person nicht mehrfach im
+// Buch steht. Trotz Upsert-Logik entstehen Kandidaten: ein tel_-Eintrag von
+// einem Anruf + ein Mail-Kontakt derselben Firma, oder zwei Schreibweisen
+// desselben Namens. Die Analyse findet Gruppen (gleiche Nummer ODER gleicher
+// Namens-Schlüssel), der Merge vereinigt sie auf EINEN Datensatz.
+// ----------------------------------------------------------------------------
+
+function nameKeyForDupes(name) {
+  const folded = String(name || "")
+    .toLowerCase()
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+  const toks = folded
+    .replace(/[^a-z\s-]/g, " ")
+    .split(/[\s-]+/)
+    .filter((t) => t.length > 1 && !["herr", "frau", "dr", "prof", "med", "dent", "gmbh", "kg", "ag"].includes(t));
+  return [...new Set(toks)].sort().join(" ");
+}
+
+function publicContact(d) {
+  const x = d.data();
+  return {
+    id: d.id,
+    name: x.name || "",
+    address: x.address || "",
+    phones: Array.isArray(x.phones) ? x.phones : [],
+    sources: Array.isArray(x.sources) ? x.sources : [],
+    count: x.count || 0,
+    lastSeenAt: x.lastSeenAt || 0,
+    category: x.category || "",
+  };
+}
+
+/**
+ * Findet Dubletten-GRUPPEN im Adressbuch: gleiche Telefonnummer in mehreren
+ * Datensätzen oder gleicher Namens-Schlüssel. Reine Analyse, ändert nichts.
+ */
+export async function analyzeContactDupes(clientId) {
+  const snap = await contacts(clientId).limit(2000).get();
+  const all = snap.docs.filter((d) => d.id !== BACKFILL_MARKER).map(publicContact);
+
+  const groups = [];
+  const grouped = new Set();
+
+  const addGroup = (reason, key, members) => {
+    const fresh = members.filter((m) => !grouped.has(m.id));
+    if (fresh.length < 2) return;
+    fresh.forEach((m) => grouped.add(m.id));
+    // Vorschlag: der E-Mail-Datensatz überlebt (stabile Id = sha1(Adresse)),
+    // sonst der mit den meisten Kontakten.
+    const withMail = fresh.filter((m) => m.address);
+    const keep = (withMail.length === 1 ? withMail[0] : null)
+      || [...fresh].sort((a, b) => (b.count - a.count) || (b.lastSeenAt - a.lastSeenAt))[0];
+    groups.push({
+      reason,
+      key,
+      mergeable: withMail.length <= 1, // 2 verschiedene Mail-Adressen: nur manuell
+      suggestedKeepId: keep.id,
+      contacts: fresh,
+    });
+  };
+
+  // 1) Gleiche Rufnummer in mehreren Datensätzen.
+  const byPhone = new Map();
+  for (const c of all) {
+    for (const p of c.phones) {
+      if (!byPhone.has(p)) byPhone.set(p, []);
+      byPhone.get(p).push(c);
+    }
+  }
+  for (const [phone, members] of byPhone) {
+    if (members.length > 1) addGroup("phone", phone, members);
+  }
+
+  // 2) Gleicher Namens-Schlüssel ("Müller Peter" == "Peter Mueller").
+  const byName = new Map();
+  for (const c of all) {
+    const key = nameKeyForDupes(c.name);
+    if (!key) continue;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(c);
+  }
+  for (const [key, members] of byName) {
+    if (members.length > 1) addGroup("name", key, members);
+  }
+
+  return { total: all.length, groups, duplicates: groups.reduce((n, g) => n + g.contacts.length - 1, 0) };
+}
+
+/**
+ * Vereinigt eine Dubletten-Gruppe auf EINEN Datensatz: Nummern/Quellen werden
+ * vereinigt, Zähler addiert, die übrigen Dokumente gelöscht. Hat genau ein
+ * Mitglied eine E-Mail-Adresse, MUSS dieses überleben (die Doc-Id ist der
+ * Hash der Adresse — künftige Mail-Upserts landen sonst wieder im Gelöschten).
+ */
+export async function mergeContacts(clientId, keepId, mergeIds = []) {
+  const ids = [...new Set(mergeIds.filter((x) => x && x !== keepId))];
+  if (!keepId || !ids.length) return { ok: false, reason: "nichts_zu_mergen" };
+
+  const keepRef = contacts(clientId).doc(keepId);
+  const keepDoc = await keepRef.get();
+  if (!keepDoc.exists) return { ok: false, reason: "keep_nicht_gefunden" };
+  const keep = keepDoc.data();
+
+  const patch = { relevant: true };
+  let addCount = 0;
+  const addPhones = [];
+  const addSources = [];
+  for (const id of ids) {
+    const ref = contacts(clientId).doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) continue;
+    const m = doc.data();
+    if (m.address && keep.address && m.address !== keep.address) {
+      return { ok: false, reason: "zwei_mail_adressen", detail: `${keep.address} vs. ${m.address}` };
+    }
+    if (m.address && !keep.address) {
+      return { ok: false, reason: "keep_muss_mail_kontakt_sein", detail: m.address };
+    }
+    if (m.name && !keep.name && !looksLikePhoneName(m.name)) patch.name = m.name;
+    if (m.category && !keep.category) patch.category = m.category;
+    if (m.lastSubject && !keep.lastSubject) patch.lastSubject = m.lastSubject;
+    if ((m.lastSeenAt || 0) > (keep.lastSeenAt || 0)) patch.lastSeenAt = m.lastSeenAt;
+    addCount += m.count || 0;
+    addPhones.push(...(Array.isArray(m.phones) ? m.phones : []));
+    addSources.push(...(Array.isArray(m.sources) ? m.sources : []));
+    await ref.delete();
+  }
+
+  if (addPhones.length) patch.phones = FieldValue.arrayUnion(...addPhones);
+  if (addSources.length) patch.sources = FieldValue.arrayUnion(...addSources);
+  if (addCount) patch.count = FieldValue.increment(addCount);
+  await keepRef.set(patch, { merge: true });
+
+  log.info("addressbook.merged", { clientId, keepId, merged: ids.length });
+  return { ok: true, keepId, merged: ids.length };
+}
+
+// ----------------------------------------------------------------------------
 // Backfill: Bestandsdaten ins Buch holen. Zwei Quellen:
 //   1. Brain-Events (60 Tage): Lisa-/Bianca-/Clara-Telefonate mit Rufnummer.
 //   2. Posteingang: praxisrelevante Absender um die Nummer aus der Signatur

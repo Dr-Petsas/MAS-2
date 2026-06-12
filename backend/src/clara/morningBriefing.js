@@ -1,7 +1,8 @@
 import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, todayBerlin } from "./daySchedule.js";
-import { runGapFill, spokenGapEuro } from "./gapFill.js";
+import { runGapFill } from "./gapFill.js";
 import { queryRecent } from "../brain/eventStore.js";
 import { buildBriefing } from "../brain/briefing.js";
+import { buildRedList, spokenRedList } from "../brain/redList.js";
 import { buildMailBriefing } from "../mail/briefing.js";
 import { pick, chance } from "./variation.js";
 
@@ -114,8 +115,8 @@ function gapLines(run) {
     `Im Kalender ${run.gaps.length === 1 ? "klafft noch eine Lücke" : `klaffen noch ${run.gaps.length} Lücken`}${withCands ? `, für ${withCands === 1 ? "eine" : withCands} hätte ich passende Recall-Kandidaten` : ""}.`,
     `Mir ${run.gaps.length === 1 ? "ist eine freie Lücke aufgefallen" : `sind ${run.gaps.length} freie Lücken aufgefallen`}${withCands ? ` — und ich hätte auch schon Kandidaten dafür` : ""}.`,
   ]));
-  const euro = spokenGapEuro(run);
-  if (euro) lines.push(euro);
+  // Kein Euro-Satz mehr: Umsatzzahlen sind raus aus allen gesprochenen
+  // Briefings (Chef, 12.06.2026) — das wird ein eigenes Lena/Sophie-Element.
   if (run.callLists?.length) {
     lines.push(pick([
       "Die Anruflisten liegen fertig im Monitor — ein Wort von dir und Lisa legt los.",
@@ -145,14 +146,25 @@ function closingLine() {
 export async function spokenMorningBriefing(clientId, opts = {}) {
   const date = todayBerlin();
 
-  const [day, events, mail, gapRun] = await Promise.all([
+  const [day, events, mail, gapRun, redList] = await Promise.all([
     getDayAppointments(clientId, { date }).catch(() => null),
     queryRecent(clientId, Date.now() - OPEN_LOOKBACK_MS, 600).catch(() => []),
     buildMailBriefing(clientId, { sinceMinutes: 960, accountIds: opts.mailAccountIds }).catch(() => null),
     runGapFill(clientId, { date, horizonDays: 1 }).catch(() => null),
+    buildRedList(clientId).catch(() => ({ critical: [], deadlines: [] })),
   ]);
 
   const parts = [greetingLine(opts.operatorName)];
+
+  // First thing to do: die rote Liste kommt VOR allem anderen — Anwalt,
+  // Kammer, Mahnung, Pfändung, verstreichende Fristen (O-Ton Chef).
+  const red = spokenRedList(redList, { max: 2, bare: true });
+  if (red) {
+    parts.push(pick([
+      `Zuerst das Unangenehme: ${red}.`,
+      `Bevor irgendwas anderes kommt — ${red}.`,
+    ]));
+  }
 
   if (day?.ok) {
     const dayBriefing = computeDayBriefing(day.appointments, { calendars: day.calendars });

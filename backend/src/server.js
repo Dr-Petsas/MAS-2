@@ -14,9 +14,10 @@ import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersio
 import { reflectOnce } from "./brain/reflect.js";
 import { runGapFill, gapFillOverview, approveCallList, buildSpokenGapBriefing } from "./clara/gapFill.js";
 import { spokenMorningBriefing } from "./clara/morningBriefing.js";
+import { spokenEveningBriefing } from "./clara/eveningBriefing.js";
 import { approveAndExecute, sweepRecallOutcomes, dailyInitiativeScan, snoozeInitiative, initiativeSuffix, recallStatusSpoken } from "./clara/recallCoach.js";
 import { planAbsence, approveAbsence, sweepAbsenceRebookings, absenceStatusSpoken } from "./clara/absencePlanner.js";
-import { runRetentionSweep, RETENTION_DAYS } from "./brain/retention.js";
+import { runRetentionSweep, RETENTION_DAYS, getRetentionConfig, setRetentionDays } from "./brain/retention.js";
 import { lookupCaller, normalizePhone } from "./clara/callerLookup.js";
 import { spokenCallLog } from "./clara/callLog.js";
 import { searchPatient, resolveBooking, commitBooking } from "./clara/agentBooking.js";
@@ -54,7 +55,9 @@ import { resolvePatientSubject } from "./brain/identity.js";
 import { createCase, getCase, listCases, listActiveCasesByPatientIds, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext, saveCaseDraft, attachEventId } from "./brain/caseStore.js";
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "./brain/caseBriefing.js";
 import { recordCommunication } from "./brain/record.js";
-import { upsertSharedContact, findContactsByPhone, backfillAddressBook } from "./brain/addressBook.js";
+import { buildRedList, spokenRedList } from "./brain/redList.js";
+import { getDsgvoConfig, setDsgvoConfig } from "./brain/aiDisclosure.js";
+import { upsertSharedContact, findContactsByPhone, backfillAddressBook, analyzeContactDupes, mergeContacts } from "./brain/addressBook.js";
 import { enqueueBrainWrite, outboxHealth, processBrainOutbox } from "./brain/outbox.js";
 import { listAccounts, createAccount, updateAccount, deleteAccount, getAccountPublic } from "./mail/accounts.js";
 import { testImap, syncAccount, syncAll, sendMail } from "./mail/mailbox.js";
@@ -572,6 +575,8 @@ app.post("/brain/ingest/transcript", async (req, res) => {
       payloadRef: req.body?.payloadRef || null,
       extractor: req.body?.extractor || "rules@v1",
       ts: req.body?.ts,
+      deadlineMs: extracted.deadlineMs || null,
+      tags: extracted.criticalCategory ? ["kritisch", extracted.criticalCategory] : [],
     });
     let caseLink = null;
     if (created && event.status === "open") {
@@ -601,6 +606,22 @@ app.get("/brain/patients", async (req, res) => {
     const result = await searchPatient(clientId, q);
     if (!result.ok) return res.json({ ok: false, error: result.error });
     res.json({ ok: true, clientId, patients: result.patients || [] });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Eskalations-Radar + Fristen-Wächter: rote Liste (offene kritische Vorgänge)
+// und Fristenliste (nach Fälligkeit, mit Warnstufe) fürs Cockpit und die
+// Briefings. Eine Query, kein Index-Zwang, niemals Umsatzzahlen.
+app.get("/brain/red-list", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await buildRedList(clientId);
+    res.json({ ok: true, clientId, ...out, spoken: spokenRedList(out) });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -1968,8 +1989,8 @@ async function resolveDayCalendarScope(clientId, body) {
 // appointments and speaks a per-Behandler overview incl. free gaps + highlights.
 // Optional doctorName scopes it; the monitor jumps to the day for context.
 // Morgen-Moment (Jawdropper ②): "Guten Morgen, Clara" -> EIN flüssiger
-// Auftakt aus Tagesplan, Über-Nacht-Eingängen, offenen Anliegen und dem
-// Lücken-Radar mit Euro-Zahl. Salient und variierend statt Bandansage.
+// Auftakt aus roter Liste (zuerst!), Tagesplan, Über-Nacht-Eingängen, offenen
+// Anliegen und dem Lücken-Radar (ohne Umsatzzahlen). Variierend statt Bandansage.
 app.post("/tools/morning-briefing", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -1985,6 +2006,27 @@ app.post("/tools/morning-briefing", async (req, res) => {
     });
     // Den Tag auf dem Monitor aufschlagen (best-effort).
     try { await emitCommand(clientId, { type: "navigate", date: todayBerlin() }); } catch { /* keine Session */ }
+    return res.json({ ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Abend-Moment ("Feierabend, Clara"): dringlichkeitsfokussierter Tagesabschluss
+// — rote Liste zuerst (Anwalt/Kammer/Mahnung/Pfändung/Fristen), dann stressende
+// Patienten, dann offene Freigaben. KEINE Statistik, KEINE Umsatzzahlen.
+app.post("/tools/evening-briefing", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const op = await getOperator(clientId);
+    const mailAccountIds = await operatorMailAccountIds(clientId);
+    const message = await spokenEveningBriefing(clientId, {
+      operatorName: op?.name || "",
+      mailAccountIds,
+    });
     return res.json({ ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -2532,9 +2574,71 @@ app.post("/tools/recall-snooze", async (req, res) => {
 app.post("/brain/retention/run", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
-    const days = Number(req.body?.days) || RETENTION_DAYS;
+    const days = Number(req.body?.days) || undefined; // ohne Angabe: Mandanten-Regler
     const out = await runRetentionSweep(clientId, { days });
     res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Speed-zu-Qualität-Regler (Cockpit): Aufbewahrungsdauer des Shared Memory
+// lesen/setzen. Kurz = schlankes, schnelles Gehirn; lang = mehr Kontext.
+// DSGVO: KI-Ansage pro Agent zuschaltbar (Default AUS). Bianca wirkt über den
+// Default der Dynamic Variable am ElevenLabs-Agenten, Lisa zur Laufzeit.
+app.get("/brain/dsgvo-config", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    res.json({ ok: true, clientId, ...(await getDsgvoConfig(clientId)) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post("/brain/dsgvo-config", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const out = await setDsgvoConfig(clientId, req.body || {}, { by: req.body?.by });
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Dubletten-Analyse + Bereinigung im geteilten Adressbuch (Cockpit).
+app.get("/brain/contact-dupes", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    res.json({ ok: true, clientId, ...(await analyzeContactDupes(clientId)) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post("/brain/contact-dupes/merge", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const out = await mergeContacts(clientId, String(req.body?.keepId || ""), req.body?.mergeIds || []);
+    res.status(out.ok ? 200 : 400).json({ clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get("/brain/retention-config", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    res.json({ ok: true, clientId, ...(await getRetentionConfig(clientId)) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post("/brain/retention-config", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const out = await setRetentionDays(clientId, req.body?.days, { by: req.body?.by });
+    res.json({ ok: true, clientId, ...(await getRetentionConfig(clientId)), saved: out.days });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

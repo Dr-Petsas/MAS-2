@@ -4,6 +4,7 @@ import { masCollection } from "../tenant.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { upsertSharedContact } from "../brain/addressBook.js";
+import { lisaDisclosurePrefix } from "../brain/aiDisclosure.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -262,6 +263,9 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
 
+  // DSGVO: KI-Ansage nur, wenn der Schalter im Cockpit AN ist (Default aus).
+  const disclosure = await lisaDisclosurePrefix(clientId).catch(() => "");
+
   // Same dynamic-variable contract as Lisa's agent prompt expects.
   const dynamicVariables = {
     task_id: taskRef.id,
@@ -269,7 +273,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     delegated_to: "Lisa",
     contact_name: name || to,
     phone_number: to,
-    task_prompt: prompt,
+    task_prompt: disclosure ? `${disclosure}${prompt}` : prompt,
     patient_name: name || "",
     doctor: by || "",
     scheduled_for: "",

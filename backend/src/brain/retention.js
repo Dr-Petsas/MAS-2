@@ -29,6 +29,50 @@ import { log } from "../log.js";
 export const RETENTION_DAYS = Math.max(7, Number(process.env.RETENTION_DAYS) || 90);
 const BATCH = 200; // Firestore-Batch-Limit ist 500 — wir bleiben bequem darunter
 
+// --------------------------------------------------------------------------
+// Speed-zu-Qualität-Regler (Cockpit): der Mandant bestimmt selbst, nach wie
+// vielen Tagen Einträge aus dem Shared Memory verschwinden. Kurz = schnelles,
+// schlankes Gehirn (Speed); lang = mehr Kontext für die Agenten (Qualität).
+// Gespeichert in mas_config/retention, geklemmt auf 7..365 Tage. Ohne
+// Einstellung gilt der Server-Standard (RETENTION_DAYS, 90).
+// --------------------------------------------------------------------------
+const RETENTION_MIN_DAYS = 7;
+const RETENTION_MAX_DAYS = 365;
+
+function clampDays(v, fallback = RETENTION_DAYS) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(RETENTION_MIN_DAYS, Math.min(RETENTION_MAX_DAYS, Math.round(n)));
+}
+
+export async function getRetentionConfig(clientId) {
+  try {
+    const snap = await masCollection(clientId, "mas_config").doc("retention").get();
+    const data = snap.exists ? snap.data() : null;
+    return {
+      days: clampDays(data?.days),
+      custom: !!(data && Number.isFinite(Number(data.days))),
+      defaultDays: RETENTION_DAYS,
+      minDays: RETENTION_MIN_DAYS,
+      maxDays: RETENTION_MAX_DAYS,
+      updatedAt: data?.updatedAt || null,
+      updatedBy: data?.updatedBy || null,
+    };
+  } catch {
+    return { days: RETENTION_DAYS, custom: false, defaultDays: RETENTION_DAYS, minDays: RETENTION_MIN_DAYS, maxDays: RETENTION_MAX_DAYS, updatedAt: null, updatedBy: null };
+  }
+}
+
+export async function setRetentionDays(clientId, days, { by = "" } = {}) {
+  const clamped = clampDays(days, RETENTION_DAYS);
+  await masCollection(clientId, "mas_config").doc("retention").set({
+    days: clamped,
+    updatedAt: Date.now(),
+    updatedBy: String(by || "").slice(0, 80) || null,
+  }, { merge: true });
+  return { days: clamped };
+}
+
 function cutoffMs(days) {
   return Date.now() - days * 86400000;
 }
@@ -69,7 +113,11 @@ function sweepLocalTranscripts(cutoff, stats) {
  * Der tägliche Aufräumlauf für EINEN Mandanten. Gibt die Löschzahlen je
  * Quelle zurück (für Log + manuellen Aufruf über den Service-Endpoint).
  */
-export async function runRetentionSweep(clientId, { days = RETENTION_DAYS } = {}) {
+export async function runRetentionSweep(clientId, { days } = {}) {
+  // Ohne expliziten Override gilt die Mandanten-Einstellung vom Regler.
+  if (!Number.isFinite(Number(days)) || Number(days) <= 0) {
+    days = (await getRetentionConfig(clientId)).days;
+  }
   const cutoff = cutoffMs(days);
   const cutoffDate = new Date(cutoff);
   const stats = { clientId, days, cutoffIso: cutoffDate.toISOString() };

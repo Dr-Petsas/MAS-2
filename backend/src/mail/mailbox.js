@@ -10,6 +10,7 @@ import { getLetterSettings } from "./letterSettings.js";
 import { recordCommunication } from "../brain/record.js";
 import { upsertSharedContact, extractPhoneFromText } from "../brain/addressBook.js";
 import { resolvePatientSubject } from "../brain/identity.js";
+import { assessCritical } from "../brain/critical.js";
 
 function escapeHtml(v) {
   return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -303,6 +304,15 @@ async function recordInboundMail(clientId, msgId, doc) {
   const preview = bodyText.slice(0, 500);
   const summary = `E-Mail von ${senderLabel} — Betreff „${doc.subject || "(kein Betreff)"}“: ${preview || "(kein Text)"}`;
 
+  // Eskalations-Radar: Anwalt/Kammer/Mahnung/Pfändung erkennen und die Frist
+  // gleich mit — kritische Post darf nie als Zeile 17 im Briefing untergehen.
+  const crit = assessCritical({ subject: doc.subject, text: doc.textBody || htmlText || doc.preview || "" });
+  const tags = [];
+  if (crit.critical) {
+    signals.critical = true;
+    tags.push("kritisch", crit.category);
+  }
+
   return recordCommunication(clientId, {
     id: `mail-in:${msgId}`,
     channel: "nadine_email",
@@ -311,7 +321,9 @@ async function recordInboundMail(clientId, msgId, doc) {
     counterparty: { kind: isPatient ? "patient" : "unknown", name: senderLabel, ref: senderAddr || null },
     subject,
     signals,
-    summary,
+    summary: crit.critical ? `[${crit.label}] ${summary}` : summary,
+    deadlineMs: crit.deadlineMs,
+    tags,
     extractor: "nadine@sync",
     payloadRef: { kind: "mail", id: msgId },
   }, { by: "Nadine" });

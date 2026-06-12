@@ -550,8 +550,9 @@ export function buildSpokenGapBriefing(run, { operatorName } = {}) {
   const total = run.gaps.length;
   const withCands = run.gaps.filter((g) => g.candidateCount > 0).length;
   parts.push(`${hi}ich habe ${total} ${total === 1 ? "Lücke" : "Lücken"} gefunden, davon ${withCands} mit passenden Recall-Kandidaten.`);
-  const euroLine = spokenGapEuro(run);
-  if (euroLine) parts.push(euroLine);
+  // Umsatzzahlen werden bewusst NICHT genannt (O-Ton Chef 12.06.2026:
+  // "umsatzzahlen komplett NICHT nennen" — das wird ein separates Element
+  // mit Lena und Sophie). gapRevenuePotential bleibt dafür als API erhalten.
   for (const g of run.gaps.slice(0, 4)) {
     parts.push(`${g.calendarName}: ${g.label} (${g.minutes} Minuten)${g.candidateCount ? ` — ${g.candidateCount} Kandidat${g.candidateCount === 1 ? "" : "en"}` : " — kein passender Kandidat"}.`);
   }

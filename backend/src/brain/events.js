@@ -104,6 +104,7 @@ export const SIGNAL_FLAGS = Object.freeze([
   "abortedEarly", // call ended abruptly / very short
   "unresolvedByAI", // the AI could not resolve the matter
   "needsHuman", // explicitly should reach a human / the doctor
+  "critical", // Eskalations-Radar: Anwalt/Kammer/Mahnung/Pfändung/Eskalation
 ]);
 const FLAG_SET = new Set(SIGNAL_FLAGS);
 
@@ -230,7 +231,8 @@ export function buildEvent(input = {}) {
       sig.complaintStated ||
       sig.documentRelated ||
       sig.painPersists ||
-      sig.repeatVisitStated;
+      sig.repeatVisitStated ||
+      sig.critical;
     status = actionable ? ITEM_STATUS.OPEN : ITEM_STATUS.NONE;
   }
   assertEnum(status, STATUS_SET, "status");
@@ -258,6 +260,10 @@ export function buildEvent(input = {}) {
       : null,
     extractor: s(input.extractor) || null, // e.g. "qwen8b@v1" — provenance
     tags: Array.isArray(input.tags) ? input.tags.map(s).filter(Boolean).slice(0, 20) : [],
+    // Fristen-Wächter: erkannte Frist (epoch ms, Tagesende) — null wenn keine.
+    deadlineMs: Number.isFinite(Number(input.deadlineMs)) && Number(input.deadlineMs) > 0
+      ? Number(input.deadlineMs)
+      : null,
   };
 
   return event;
