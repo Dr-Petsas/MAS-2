@@ -76,6 +76,7 @@ import { llmHealth, isLocalLlm } from "./mail/llm.js";
 import { extractText } from "./mail/extract.js";
 import { listRuns, getRun, startRun, cancelRun, runStatus, catalogInfo } from "./testtrain/runner.js";
 import { listPlatformRuns, getPlatformRun, startPlatformRun, cancelPlatformRun, platformRunStatus, PLATFORM_GROUPS } from "./testtrain/platformRunner.js";
+import { startDuoRun, cancelDuoRun, duoRunStatus, listDuoRuns, getDuoRun, streamDuoAudio, streamDuoTurnAudio } from "./testtrain/duo.js";
 import { authMiddleware, AUTH_ENFORCED, SERVICE_TOKEN } from "./auth.js";
 import admin from "./firebase.js";
 import { log } from "./log.js";
@@ -2504,6 +2505,72 @@ app.post("/testtrain/platform/cancel", async (req, res) => {
   const out = cancelPlatformRun();
   if (!out.ok) return res.status(409).json(out);
   res.json(out);
+});
+
+// --- Gespraechssimulation: Doktor-LLM ↔ Clara (echte Pipeline, LIVE-Daten) ---
+
+// Simulation starten. Body: { turns?: number, noAudio?: boolean, langs?: string[] }
+// langs = Fremdsprachen-Zuege des Doktors (z. B. ["en","fr","es"]) fuer die
+// Realtime-Verkaufsdemo - Clara folgt der Sprache ueber die Produktions-Pipeline.
+app.post("/testtrain/duo/start", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    const by = req.auth?.kind === "user" ? req.auth.userId || "Superuser" : "Service";
+    const out = startDuoRun(req.body || {}, { by });
+    if (!out.ok) return res.status(409).json(out);
+    res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Live-Status inkl. der bisher gesprochenen Zuege (UI pollt alle 2 s).
+app.get("/testtrain/duo/status", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  res.json({ ok: true, ...duoRunStatus() });
+});
+
+app.post("/testtrain/duo/cancel", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  const out = cancelDuoRun();
+  if (!out.ok) return res.status(409).json(out);
+  res.json(out);
+});
+
+// Historische Simulationen (neueste zuerst).
+app.get("/testtrain/duo/runs", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    res.json({ ok: true, runs: listDuoRuns({ limit: Number(req.query?.limit) || 20 }) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Ein Lauf im Detail (alle Zuege + Audio-Verfuegbarkeit).
+app.get("/testtrain/duo/runs/:runId", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  const run = getDuoRun(req.params.runId);
+  if (!run) return res.status(404).json({ error: "run_not_found" });
+  res.json({ ok: true, ...run });
+});
+
+// MP3 eines Laufs streamen (<audio src> im Superuser-Dashboard). Auth laeuft
+// hier ueber ?t=<Firebase-ID-Token> (auth.js), weil ein Audio-Element keine
+// Header setzen kann.
+app.get("/testtrain/duo/audio/:runId", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  if (!streamDuoAudio(req.params.runId, res)) {
+    res.status(404).json({ error: "audio_not_found" });
+  }
+});
+
+// Einzel-Zug-MP3 streamen (Live-Mithoeren waehrend einer laufenden Simulation).
+app.get("/testtrain/duo/audio/:runId/:file", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  if (!streamDuoTurnAudio(req.params.runId, req.params.file, res)) {
+    res.status(404).json({ error: "audio_not_found" });
+  }
 });
 
 // Echte Gespraeche (Clara/Bianca/Lisa) der letzten Tage als Review-Liste:

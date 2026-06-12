@@ -1,6 +1,7 @@
 import admin from "../firebase.js";
 import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
+import { holidayName, isWeekend, daySpecialLabel } from "./holidays.js";
 
 // Clara's day-schedule read model: a spoken "what's on the calendar today" that
 // reads the ACTUAL booked appointments (not just free slots, not tickets).
@@ -159,6 +160,22 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
   // Mirror the platform calendar: drop temporary holds (no patient & not an
   // absence block) and multi-day items, so counts match what the team sees.
   appts = appts.filter((a) => (a.patientId || a.isAbsence) && !a.isMultiDay);
+  // VIRTUELLE Termine genauso ausblenden wie der Plattform-Kalender
+  // (calendarCtrl.tsx): Recall-/Nachfolger-Platzhalter stehen mit Status
+  // "needsConfirmation" in der Collection, sind fuer das Team aber unsichtbar,
+  // solange die Location showVirtualAppointments nicht aktiviert hat.
+  // Ohne diesen Filter liest Clara Termine vor, die niemand im Kalender sieht
+  // (12.06.: virtueller 1-Jahres-Recall "Haftchenari" am Samstag, den der
+  // Recall-Automat vor einem Jahr als Vorschlag angelegt hatte).
+  let showVirtual = false;
+  try {
+    const locSnap = await admin.firestore().collection("clients").doc(clientId)
+      .collection("locations").doc(locationId).get();
+    showVirtual = locSnap.data()?.showVirtualAppointments === true;
+  } catch { /* Standard wie im Kalender: ausblenden */ }
+  if (!showVirtual) {
+    appts = appts.filter((a) => a.isAbsence || (a.status !== "needsConfirmation" && a.status !== "declined"));
+  }
   if (calendarId) appts = appts.filter((a) => a.calendarId === calendarId);
 
   // Unterschriften-Ampel: SignR ist die Wahrheit, nicht das gestempelte Feld.
@@ -270,13 +287,14 @@ function spokenGaps(gaps) {
 // Donnerstag, 11. Juni ...") nervt: er weiß, wer er ist und welcher Tag ist.
 // Daher "Sie haben heute ..." sobald der eigene Kalender gelesen wird.
 export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = "" } = {}) {
-  const rel = relativeDayLabel(date || todayBerlin());
+  const day = date || todayBerlin();
+  const rel = relativeDayLabel(day);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   if (!briefing || briefing.total === 0) {
     const blocks = briefing?.absences?.length
       ? ` Es ${briefing.absences.length === 1 ? "ist nur eine Sperrzeit" : `sind nur ${briefing.absences.length} Sperrzeiten`} eingetragen.`
       : "";
-    return cap(`${rel} sind keine Termine gebucht.${blocks}`).trim();
+    return cap(`${rel} sind keine Termine gebucht.${blocks}${closedDayReason(day)}`).trim();
   }
 
   const parts = [];
@@ -347,6 +365,16 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   return parts.join(" ");
 }
 
+// "Keine Termine" hat an Wochenenden einen GRUND — den sagen wir dazu, damit
+// Clara (und der Zuhörer) den leeren Tag richtig einordnet, statt ihn wie
+// einen toten Arbeitstag klingen zu lassen. Feiertage stehen bereits MIT
+// Namen im Datumslabel (relativeDayLabel) — nicht doppelt aussprechen.
+function closedDayReason(dateStr) {
+  if (holidayName(dateStr)) return "";
+  if (isWeekend(dateStr)) return " Da ist Wochenende.";
+  return "";
+}
+
 // Voice is linear: more than this and the listener has lost the thread anyway.
 const SPOKEN_LIST_MAX = 25;
 
@@ -358,23 +386,36 @@ const SPOKEN_LIST_MAX = 25;
 export function relativeDayLabel(dateStr) {
   const today = todayBerlin();
   const diff = Math.round((Date.parse(`${dateStr}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
-  if (diff === 0) return "heute";
-  if (diff === 1) return "morgen";
-  if (diff === 2) return "übermorgen";
+  // Wochenend-/Feiertags-Grounding: bei "heute"/"morgen"/"übermorgen" auf
+  // Samstag/Sonntag oder einem Feiertag IMMER dazusagen, was für ein Tag das
+  // ist ("morgen, Samstag, ..." / "morgen, Fronleichnam, ein Feiertag, ...").
+  // Sonst behandelt Clara ein Wochenende wie einen Arbeitstag (Testlauf
+  // 12.06.: "morgen" war Samstag und niemand hat es gemerkt).
+  const specialSuffix = (s) => {
+    const special = daySpecialLabel(dateStr);
+    return special ? `${s}, ${special},` : s;
+  };
+  if (diff === 0) return specialSuffix("heute");
+  if (diff === 1) return specialSuffix("morgen");
+  if (diff === 2) return specialSuffix("übermorgen");
   if (diff === -1) return "gestern";
   if (diff === -2) return "vorgestern";
   const d = new Date(`${dateStr}T12:00:00Z`);
   if (isNaN(d.getTime())) return `am ${dateStr}`;
   const wd = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, weekday: "long" }).format(d);
+  // Bei fernen Tagen steht der Wochentag ohnehin im Label — nur ein Feiertag
+  // muss zusätzlich erwähnt werden ("am Donnerstag, Fronleichnam, ...").
+  const holiday = holidayName(dateStr);
+  const withHoliday = (s) => (holiday ? `${s}, ${holiday},` : s);
   if (diff > 2) {
     // Mo=1..So=7; noon UTC keeps the calendar day identical in Berlin.
     const isoDow = (s) => { const n = new Date(`${s}T12:00:00Z`).getUTCDay(); return n === 0 ? 7 : n; };
     const weekDiff = Math.floor((diff + isoDow(today) - 1) / 7);
-    if (weekDiff === 0) return `am ${wd}`;
-    if (weekDiff === 1) return `nächste Woche ${wd}`;
+    if (weekDiff === 0) return withHoliday(`am ${wd}`);
+    if (weekDiff === 1) return withHoliday(`nächste Woche ${wd}`);
   }
   const dm = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, day: "numeric", month: "long" }).format(d);
-  return `am ${wd}, den ${dm}`;
+  return withHoliday(`am ${wd}, den ${dm}`);
 }
 
 // Gehört der Kalender dem fragenden Operator? Vergleicht tolerant:
@@ -443,7 +484,7 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
   const rel = relativeDayLabel(day);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   const real = appointments.filter((a) => !a.isAbsence).sort((x, y) => x.startMs - y.startMs);
-  if (!real.length) return cap(`${rel} sind keine Termine gebucht.`);
+  if (!real.length) return cap(`${rel} sind keine Termine gebucht.${closedDayReason(day)}`);
 
   const nameById = new Map((calendars || []).map((c) => [c.id, c.name]));
   const groups = new Map();

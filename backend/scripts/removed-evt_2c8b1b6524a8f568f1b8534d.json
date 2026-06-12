@@ -1,0 +1,42 @@
+{
+  "id": "evt_2c8b1b6524a8f568f1b8534d",
+  "schemaVersion": 1,
+  "clientId": "MEe4ZQHEzOPzLcexyhdT",
+  "ts": 1781230794037,
+  "channel": "bianca_call",
+  "direction": "in",
+  "type": "interaction",
+  "counterparty": {
+    "kind": "patient",
+    "name": "",
+    "ref": null
+  },
+  "subject": {
+    "patientId": null,
+    "name": "Manfred Krause",
+    "matchStatus": "unmatched",
+    "matchMethod": null,
+    "nameKey": "krause manfred"
+  },
+  "summary": "Laut Anruf: Patient äußert eine Beschwerde/Unzufriedenheit; ⚠ Anwaltsschreiben/Rechtliches. („Hier ist Manfred Krause. Ich habe jetzt die dritte Mahnung bekommen, das ist eine Frechheit. Wenn das nicht bis zum 2…\")",
+  "signals": {
+    "complaintStated": true,
+    "critical": true,
+    "sentiment": "negative"
+  },
+  "confidence": 0.75,
+  "status": "open",
+  "resolvedBy": null,
+  "resolvesEventId": null,
+  "payloadRef": null,
+  "extractor": "rules@v1",
+  "tags": [
+    "kritisch",
+    "anwalt"
+  ],
+  "deadlineMs": 1781992740000,
+  "createdAt": {
+    "_seconds": 1781230794,
+    "_nanoseconds": 42000000
+  }
+}

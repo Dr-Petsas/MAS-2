@@ -1,0 +1,38 @@
+{
+  "id": "case_68c97a102bce55e5249ea009",
+  "schemaVersion": 1,
+  "clientId": "MEe4ZQHEzOPzLcexyhdT",
+  "title": "Beschwerde – Manfred Krause",
+  "topic": "complaint",
+  "subject": {
+    "patientId": null,
+    "name": "Manfred Krause",
+    "matchStatus": "unmatched",
+    "matchMethod": null,
+    "nameKey": "krause manfred"
+  },
+  "status": "open",
+  "priority": "normal",
+  "assignee": null,
+  "createdBy": "Bianca",
+  "updatedAt": 1781230794124,
+  "lastContactAt": 1781230794037,
+  "contactCount": 1,
+  "eventIds": [
+    "evt_2c8b1b6524a8f568f1b8534d"
+  ],
+  "updates": [
+    {
+      "id": "4b0e0367-acbc-475b-8575-7de33156f485",
+      "ts": 1781230794124,
+      "by": "Bianca",
+      "kind": "contact",
+      "text": "Laut Anruf: Patient äußert eine Beschwerde/Unzufriedenheit; ⚠ Anwaltsschreiben/Rechtliches. („Hier ist Manfred Krause. Ich habe jetzt die dritte Mahnung bekommen, das ist eine Frechheit. Wenn das nicht bis zum 2…\")",
+      "eventId": "evt_2c8b1b6524a8f568f1b8534d"
+    }
+  ],
+  "createdAt": {
+    "_seconds": 1781230794,
+    "_nanoseconds": 129000000
+  }
+}

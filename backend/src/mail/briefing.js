@@ -52,10 +52,14 @@ export async function buildMailBriefing(clientId, { sinceMinutes = 720, accountI
     parts.push(s);
   }
 
+  // Formulierung OHNE "von Clara"/"mir": der Text wird mal von Nadine selbst
+  // gesprochen (Team-Stimmen-Demo), mal von Clara vorgelesen — "Aufträge von
+  // Clara liegen mir keine offen vor" klang aus Claras Mund nach dritter
+  // Person (12.06.).
   if (tasks.length === 0) {
-    parts.push("Aufträge von Clara liegen mir keine offen vor.");
+    parts.push("Offene Schreibaufträge gibt es gerade keine.");
   } else {
-    let t = `Von Clara ${plural(tasks.length, "liegt", "liegen")} ${tasks.length} ${plural(tasks.length, "Auftrag", "Aufträge")} vor`;
+    let t = `Es ${plural(tasks.length, "liegt", "liegen")} ${tasks.length} ${plural(tasks.length, "offener Schreibauftrag", "offene Schreibaufträge")} vor`;
     if (draftsReady > 0) t += `, für ${draftsReady} ${plural(draftsReady, "ist", "sind")} schon ein Entwurf bereit`;
     t += ".";
     parts.push(t);
