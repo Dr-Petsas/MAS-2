@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { loadBooking, ensureBerlinTz } from "./booking.js";
-import { todayBerlin, relativeDayLabel, isOwnCalendar } from "./daySchedule.js";
+import { todayBerlin, relativeDayLabel, isOwnCalendar, isVirtualStatus } from "./daySchedule.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
 import { sendMail } from "../mail/mailbox.js";
 import { listAccounts } from "../mail/accounts.js";
@@ -243,7 +243,12 @@ async function rawDayAppointments(clientId, locationId, date, calendarId) {
       a.calendarItemType !== "absence" &&
       a.isMultiDay !== true &&
       s(a.patient?.id) &&
-      (a.calendar?.id || a.resourceId) === calendarId
+      (a.calendar?.id || a.resourceId) === calendarId &&
+      // Virtuelle Platzhalter (unbestaetigte Recall-Vorschlaege) IMMER
+      // ausnehmen — unabhaengig von showVirtualAppointments: ein Patient
+      // ohne bestaetigten Termin darf NIE eine Absage-SMS oder einen
+      // Absage-Anruf bekommen.
+      !isVirtualStatus(a.status)
     );
 }
 

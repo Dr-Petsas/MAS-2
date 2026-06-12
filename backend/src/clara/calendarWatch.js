@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { loadBooking, ensureBerlinTz } from "./booking.js";
-import { todayBerlin } from "./daySchedule.js";
+import { todayBerlin, showVirtualAppointments, isVirtualStatus } from "./daySchedule.js";
 import { recordCommunication } from "../brain/record.js";
 
 // ============================================================================
@@ -97,11 +97,17 @@ async function fetchWindow(clientId, horizonDays) {
     .where("start", "<=", end)
     .get();
 
+  // Virtuelle Platzhalter (Recall-Vorschlaege, Status needsConfirmation/
+  // declined) sind im Plattform-Kalender unsichtbar — die Kalender-Wache darf
+  // sie weder als "neuer Termin" melden noch ihr Verschwinden als Absage.
+  const showVirtual = await showVirtualAppointments(clientId, booking.locationId);
+
   const items = {};
   for (const d of snap.docs) {
     const o = d.data();
     if (o.isMultiDay === true || o.calendarItemType === "absence") continue;
     if (!o.patient?.id) continue; // temporary holds — not patient facts
+    if (!showVirtual && isVirtualStatus(o.status)) continue;
     items[d.id] = toItem(o, d.id);
   }
   return { items, calendars: booking.calendars || [], windowEndMs: end.getTime() };

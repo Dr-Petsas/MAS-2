@@ -137,6 +137,30 @@ async function liveNewPatientByPatient(clientId, locationId, patientIds) {
  * @param {string} clientId
  * @param {{date?:string, calendarId?:string}} [opts] date = "YYYY-MM-DD" (default: today Berlin)
  */
+/**
+ * Virtuelle Termine (Recall-/Nachfolger-Platzhalter mit Status
+ * "needsConfirmation"/"declined") sind im Plattform-Kalender unsichtbar,
+ * solange die Location showVirtualAppointments nicht aktiviert hat.
+ * Diese EINE Funktion beantwortet fuer alle Clara-Lesepfade, ob die
+ * Platzhalter sichtbar sein sollen — daySchedule, calendarWatch und
+ * absencePlanner duerfen das nicht jeweils selbst erraten.
+ */
+export async function showVirtualAppointments(clientId, locationId) {
+  try {
+    const locSnap = await admin.firestore().collection("clients").doc(clientId)
+      .collection("locations").doc(locationId).get();
+    return locSnap.data()?.showVirtualAppointments === true;
+  } catch {
+    return false; // Standard wie im Kalender: ausblenden
+  }
+}
+
+/** true, wenn der Status den Termin als virtuellen Platzhalter markiert. */
+export function isVirtualStatus(status) {
+  const st = String(status || "");
+  return st === "needsConfirmation" || st === "declined";
+}
+
 export async function getDayAppointments(clientId, { date, calendarId } = {}) {
   const day = (date || "").trim() || todayBerlin();
   const booking = await loadBooking(clientId).catch(() => null);
@@ -167,14 +191,9 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
   // Ohne diesen Filter liest Clara Termine vor, die niemand im Kalender sieht
   // (12.06.: virtueller 1-Jahres-Recall "Haftchenari" am Samstag, den der
   // Recall-Automat vor einem Jahr als Vorschlag angelegt hatte).
-  let showVirtual = false;
-  try {
-    const locSnap = await admin.firestore().collection("clients").doc(clientId)
-      .collection("locations").doc(locationId).get();
-    showVirtual = locSnap.data()?.showVirtualAppointments === true;
-  } catch { /* Standard wie im Kalender: ausblenden */ }
+  const showVirtual = await showVirtualAppointments(clientId, locationId);
   if (!showVirtual) {
-    appts = appts.filter((a) => a.isAbsence || (a.status !== "needsConfirmation" && a.status !== "declined"));
+    appts = appts.filter((a) => a.isAbsence || !isVirtualStatus(a.status));
   }
   if (calendarId) appts = appts.filter((a) => a.calendarId === calendarId);
 
