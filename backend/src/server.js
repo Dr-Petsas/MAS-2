@@ -48,7 +48,7 @@ import { proxyGetFreeTimeSlots, proxyCreateAppointment, proxyUpdateOrCancel } fr
 import { lisaSendSms, lisaStartCall, finalizeLisaCalls, listLisaTasks, smsConfigured as lisaSmsConfigured, callConfigured as lisaCallConfigured } from "./lisa/outbound.js";
 import { ingestBiancaCalls, biancaConfigured } from "./bianca/ingest.js";
 import { buildCallerContext } from "./bianca/callerContext.js";
-import { appendEvent, queryRecent, queryByPatient, resolveItem, annotateEvent } from "./brain/eventStore.js";
+import { appendEvent, getEvent, queryRecent, queryByPatient, resolveItem, annotateEvent } from "./brain/eventStore.js";
 import { buildBriefing, buildSpokenBriefing } from "./brain/briefing.js";
 import { extractFromTranscript, extractPatientName } from "./brain/extractor.js";
 import { resolvePatientSubject } from "./brain/identity.js";
@@ -190,6 +190,14 @@ async function mailAccess(clientId, req) {
     acc.visibility === "private" ? (!!userId && acc.ownerUserId === userId) : true
   );
   return { isAdmin, userId, accounts, allowedIds: new Set(accounts.map((x) => x.id)) };
+}
+
+// Wer hat gehandelt? Für Audit-Spuren (Versand, Frist-Dokumentation): explizit
+// mitgegebener Name > eingeloggter Benutzer (Name/E-Mail) > Fallback ("Nadine").
+function actorName(req, fallback = "Nadine") {
+  const explicit = String(req.body?.by || "").trim();
+  if (explicit && explicit !== "Nadine") return explicit;
+  return req.auth?.name || req.auth?.email || explicit || fallback;
 }
 
 // Darf der Aufrufer die KONFIGURATION eines Kontos ändern/löschen?
@@ -751,7 +759,7 @@ app.post("/brain/cases/:id/send", async (req, res) => {
     const to = (req.body?.to || c.draft?.to || "").trim();
     const subject = (req.body?.subject ?? c.draft?.subject ?? "").trim();
     const body = req.body?.body ?? c.draft?.body ?? "";
-    const by = (req.body?.by || "Nadine").trim();
+    const by = actorName(req);
     if (!to) return res.status(400).json({ ok: false, reason: "no_recipient" });
     // Approval safety: never (re-)send a matter that is already settled. This
     // prevents a double patient mail if the button is hit twice or a stale tab
@@ -790,6 +798,17 @@ app.post("/brain/cases/:id/send", async (req, res) => {
     } catch {
       await enqueueBrainWrite(clientId, { kind: "record", eventInput, by, link: false });
     }
+    // Frist-Dokumentation: offene fristbehaftete/kritische Eingangs-Ereignisse
+    // dieses Vorgangs gelten mit der gesendeten Antwort als bedient — mit
+    // Zeitstempel und Absender im Audit-Event ("Frist ... eingehalten ...").
+    try {
+      for (const evId of (Array.isArray(c.eventIds) ? c.eventIds.slice(-15) : [])) {
+        const ev = await getEvent(clientId, evId).catch(() => null);
+        if (ev && ev.direction === "in" && ev.status === "open" && (ev.deadlineMs || ev.signals?.critical)) {
+          await resolveAnsweredEvent(clientId, ev.id, { by });
+        }
+      }
+    } catch { /* best-effort, blockiert den Versand nie */ }
     let status = c.status;
     if (!req.body?.keepOpen) {
       const r = await setStatus(clientId, req.params.id, "resolved", { by, note: "Per E-Mail beantwortet" });
@@ -984,9 +1003,14 @@ app.post("/mail/messages/:id/log-reply", async (req, res) => {
     // "other" — this is what makes the role-based briefing route correctly.
     const signals = deriveMailSignals({ category: msg.category, subject: msg.subject, text: msg.textBody || msg.preview });
 
+    // Frist-Dokumentation: das beantwortete Eingangs-Ereignis erledigen und die
+    // Einhaltung der Frist im Antwort-Event festhalten (wer, wann).
+    const by = actorName(req);
+    const comp = await resolveAnsweredEvent(clientId, `mail-in:${req.params.id}`, { by });
+
     const summary = [
       `E-Mail von ${senderLabel} — Betreff „${msg.subject || "(kein Betreff)"}“: ${inbound || "(kein Text)"}`,
-      `Nadine-Antwort: ${clip(replyText, 800) || "(leer)"}`,
+      `Antwort (${by}): ${clip(replyText, 800) || "(leer)"}${comp.suffix}`,
     ].join("\n\n");
 
     // Reliable append + case-threading: on failure the work is queued in the
@@ -1003,7 +1027,7 @@ app.post("/mail/messages/:id/log-reply", async (req, res) => {
       summary,
       extractor: "nadine@mail",
       payloadRef: { kind: "mail", id: req.params.id },
-    }, { by: "Nadine" });
+    }, { by });
 
     // Cross-link the mail to its case so the thread's e-mails are retrievable
     // (powers Nadine's letter/reply context). Best-effort, never blocks.
@@ -1078,7 +1102,8 @@ app.post("/mail/send", async (req, res) => {
     if (req.body?.logToBrain !== false) {
       // recordCommunication is failure-safe (queues a retry instead of throwing);
       // the guard is purely defensive so brain logging can never break a send.
-      brain = await logOutboundMail(clientId, { storedId: out.storedId, body: req.body || {} }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+      const by = actorName(req);
+      brain = await logOutboundMail(clientId, { storedId: out.storedId, body: req.body || {}, by }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
     }
     res.json({ ok: true, clientId, ...out, brain });
   } catch (e) {
@@ -1086,14 +1111,58 @@ app.post("/mail/send", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Frist-Dokumentation beim Antworten.
+// Geht eine selbst geschriebene Antwort auf ein Schreiben mit erkannter Frist
+// (oder ein kritisches Ereignis) raus, wird im Gedächtnis festgehalten, WANN
+// und durch WEN reagiert wurde — z. B. "Frist 20.06.2026 eingehalten —
+// beantwortet am 12.06.2026 durch Dr. Petsas". Das offene Eingangs-Ereignis
+// wird dabei als erledigt markiert (Audit-Event inklusive), sodass rote Liste
+// und Fristenliste sich selbst aufräumen und die Einhaltung belegbar bleibt.
+// ---------------------------------------------------------------------------
+const fmtDay = (ms) =>
+  new Date(ms).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" });
+
+// Fristen zählen als ganze Tage: eine Antwort am Fristtag selbst ist pünktlich.
+function deadlineKept(deadlineMs, sentTs) {
+  const end = new Date(deadlineMs);
+  end.setHours(23, 59, 59, 999);
+  return sentTs <= end.getTime();
+}
+
+function complianceNote(ev, { by = "Nadine", sentTs = Date.now() } = {}) {
+  if (!ev?.deadlineMs) return `Per E-Mail beantwortet am ${fmtDay(sentTs)} durch ${by}`;
+  return deadlineKept(ev.deadlineMs, sentTs)
+    ? `Frist ${fmtDay(ev.deadlineMs)} eingehalten — beantwortet am ${fmtDay(sentTs)} durch ${by}`
+    : `Beantwortet am ${fmtDay(sentTs)} durch ${by} — Frist ${fmtDay(ev.deadlineMs)} war bereits verstrichen`;
+}
+
+/**
+ * Dokumentiert die Antwort auf ein Eingangs-Ereignis und erledigt es, wenn es
+ * offen + fristbehaftet/kritisch war. Liefert einen Zusatz für die Zusammen-
+ * fassung des Ausgangs-Events (leer, wenn keine Frist bekannt). Best-effort.
+ */
+async function resolveAnsweredEvent(clientId, inboundEventId, { by = "Nadine", sentTs = Date.now() } = {}) {
+  const ev = await getEvent(clientId, inboundEventId).catch(() => null);
+  if (!ev) return { suffix: "", resolved: false };
+  const suffix = ev.deadlineMs ? ` — ${complianceNote(ev, { by, sentTs })}` : "";
+  let resolved = false;
+  if (ev.status === "open" && (ev.deadlineMs || ev.signals?.critical)) {
+    const r = await resolveItem(clientId, ev.id, { actor: by, note: complianceNote(ev, { by, sentTs }), ts: sentTs }).catch(() => null);
+    resolved = !!r?.ok;
+  }
+  return { suffix, resolved };
+}
+
 /**
  * Log an outbound mail into the shared brain. When it answers an inbound message
  * (replyToMessageId) we reuse that mail's sender identity + classification so the
  * exchange threads onto the RIGHT patient/topic; otherwise we resolve the primary
  * recipient by e-mail. Threads a case for replies and for patient recipients;
  * non-patient one-off sends are logged append-only (no junk ticket).
+ * `by` = wer wirklich gesendet hat (Mensch oder Nadine) — für die Audit-Spur.
  */
-async function logOutboundMail(clientId, { storedId, body }) {
+async function logOutboundMail(clientId, { storedId, body, by = "Nadine" }) {
   const clip = (s, n) => { const t = String(s || "").trim(); return t.length > n ? t.slice(0, n) + " …" : t; };
   const toList = Array.isArray(body.to) ? body.to : (body.to ? [body.to] : []);
   const toAddr = String(toList[0] || "").trim();
@@ -1105,6 +1174,7 @@ async function logOutboundMail(clientId, { storedId, body }) {
   let counterpartyRef = toAddr || null;
   let signals = deriveMailSignals({ subject: body.subject, text: body.text || body.html || "" });
 
+  let complianceSuffix = "";
   if (replyToMessageId) {
     const inbound = await getMessage(clientId, replyToMessageId).catch(() => null);
     if (inbound) {
@@ -1118,12 +1188,16 @@ async function logOutboundMail(clientId, { storedId, body }) {
       // Inbound classification gives the better topic than the reply subject alone.
       signals = deriveMailSignals({ category: inbound.category, subject: inbound.subject, text: inbound.textBody || inbound.preview || "" });
     }
+    // Frist-Dokumentation: das beantwortete Eingangs-Ereignis erledigen und die
+    // Einhaltung (oder Überschreitung) der Frist im Ausgangs-Event festhalten.
+    const comp = await resolveAnsweredEvent(clientId, `mail-in:${replyToMessageId}`, { by });
+    complianceSuffix = comp.suffix;
   } else if (toAddr) {
     const subj = await resolvePatientSubject(clientId, { email: toAddr }).catch(() => null);
     if (subj?.patientId) { subject = { patientId: subj.patientId, name: subj.name || toAddr, matchStatus: "matched", matchMethod: subj.matchMethod || "email" }; isPatient = true; counterpartyName = subj.name || toAddr; }
   }
 
-  const summary = `E-Mail gesendet an ${counterpartyName} — Betreff „${body.subject || "(kein Betreff)"}“: ${clip(body.text || body.html, 600) || "(kein Text)"}`;
+  const summary = `E-Mail gesendet${by && by !== "Nadine" ? ` durch ${by}` : ""} an ${counterpartyName} — Betreff „${body.subject || "(kein Betreff)"}“: ${clip(body.text || body.html, 600) || "(kein Text)"}${complianceSuffix}`;
   const link = !!replyToMessageId || isPatient; // thread replies + patient mail; log others append-only
   const result = await recordCommunication(clientId, {
     id: storedId ? `mail-out:${storedId}` : undefined,
@@ -1136,7 +1210,7 @@ async function logOutboundMail(clientId, { storedId, body }) {
     summary,
     extractor: "nadine@send",
     payloadRef: storedId ? { kind: "mail", id: storedId } : null,
-  }, { by: "Nadine", link });
+  }, { by, link });
 
   // Cross-link the sent mail to its case so the thread stays retrievable.
   if (result?.caseId && storedId) {
@@ -1416,8 +1490,9 @@ app.post("/mail/letter/log", async (req, res) => {
       if (subj?.patientId) { subject = { patientId: subj.patientId, name: subj.name || nameHint, matchStatus: "matched", matchMethod: subj.matchMethod || "name" }; isPatient = true; }
     }
 
+    const by = actorName(req);
     const summary = [
-      `Brief an ${nameHint || "(unbekannt)"} — Betreff „${b.subject || "(kein Betreff)"}“`,
+      `Brief an ${nameHint || "(unbekannt)"} — Betreff „${b.subject || "(kein Betreff)"}“${by !== "Nadine" ? ` (verfasst durch ${by})` : ""}`,
       clip(b.body, 1200) || "(kein Text)",
     ].join("\n\n");
 
@@ -1433,7 +1508,7 @@ app.post("/mail/letter/log", async (req, res) => {
     });
 
     let caseLink = null;
-    try { caseLink = await linkEventToCase(clientId, event, { by: "Nadine" }); } catch (err) { caseLink = { error: String(err?.message || err) }; }
+    try { caseLink = await linkEventToCase(clientId, event, { by }); } catch (err) { caseLink = { error: String(err?.message || err) }; }
 
     res.json({ ok: true, clientId, logged: true, eventId: event.id, caseId: caseLink?.caseId || null });
   } catch (e) {
@@ -1655,7 +1730,7 @@ app.post("/brain/cases/:id/letter", async (req, res) => {
     const to = (req.body?.to ?? c.draft?.to ?? "").trim();
     const subject = (req.body?.subject ?? c.draft?.subject ?? c.title ?? "").trim();
     const body = req.body?.body ?? c.draft?.body ?? "";
-    const by = (req.body?.by || "Nadine").trim();
+    const by = actorName(req);
 
     const { settings, letterhead, signatureImage, stampImage } = await renderArgs(clientId);
     const buffer = await buildLetterPdf({ settings, letterhead, signatureImage, stampImage, to, subject, body });
@@ -1667,6 +1742,43 @@ app.post("/brain/cases/:id/letter", async (req, res) => {
       by, kind: "note",
       text: `Brief als PDF erstellt: ${filename}${archived.stored ? " (archiviert)" : ""}.`,
     });
+
+    // Selbst geschriebene Briefe gehören ebenfalls ins geteilte Gedächtnis —
+    // sonst ist der Briefinhalt für Clara, Briefings und die Suche unsichtbar.
+    // Deterministische id: derselbe unveränderte Brief erneut gerendert erzeugt
+    // kein zweites Event; ein inhaltlich geänderter Brief schon. Hängt am
+    // Vorgang eine offene Frist, wird sie hier dokumentiert ("Brief erstellt am
+    // ... durch ... zur Frist ..."), aber NICHT automatisch erledigt — das PDF
+    // ist erstellt, der physische Versand bestätigt der Chef selbst.
+    try {
+      const letterHash = createHash("sha256").update(`${req.params.id}:${to}:${subject}:${body}`).digest("hex").slice(0, 20);
+      const clipBody = (() => { const t = String(body || "").trim(); return t.length > 600 ? t.slice(0, 600) + " …" : t; })();
+      let fristNote = "";
+      const evIds = Array.isArray(c.eventIds) ? c.eventIds.slice(-15) : [];
+      const evs = await Promise.all(evIds.map((id) => getEvent(clientId, id).catch(() => null)));
+      const withDeadline = evs
+        .filter((e) => e?.deadlineMs && e.status !== "resolved")
+        .sort((a, b) => a.deadlineMs - b.deadlineMs);
+      if (withDeadline.length) {
+        fristNote = ` — zur Frist ${fmtDay(withDeadline[0].deadlineMs)} (Brief erstellt am ${fmtDay(Date.now())} durch ${by})`;
+      }
+      const letterEvent = {
+        id: `letter-out:${letterHash}`,
+        channel: "nadine_letter",
+        direction: "out",
+        type: "interaction",
+        counterparty: { kind: c.subject?.patientId ? "patient" : "unknown", name: c.subject?.name || to || "Empfänger", ref: null },
+        subject: c.subject || { name: "" },
+        summary: `Brief an ${to || c.subject?.name || "Empfänger"} — Betreff „${subject || "(kein Betreff)"}“: ${clipBody || "(kein Text)"}${fristNote} (PDF: ${filename})`,
+        extractor: "nadine@letter",
+      };
+      try {
+        const { event } = await appendEvent(clientId, letterEvent);
+        await attachEventId(clientId, req.params.id, event.id, { by });
+      } catch {
+        await enqueueBrainWrite(clientId, { kind: "record", eventInput: letterEvent, by, link: false });
+      }
+    } catch { /* best-effort, blockiert die PDF-Erstellung nie */ }
     res.json({ ok: true, clientId, filename, base64: buffer.toString("base64"), url: archived.url, stored: archived.stored });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

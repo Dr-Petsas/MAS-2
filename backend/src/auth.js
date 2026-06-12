@@ -89,6 +89,10 @@ export function authMiddleware() {
           isAdmin: !!dec.isAdmin,
           role,
           superUser: role === "superuser",
+          // Anzeige-Identität für Audit-Spuren ("gesendet durch ...", Frist-
+          // Dokumentation): wer wirklich gehandelt hat, nicht pauschal "Nadine".
+          name: String(dec.name || "").trim(),
+          email: String(dec.email || "").trim(),
         };
         return next();
       } catch {
