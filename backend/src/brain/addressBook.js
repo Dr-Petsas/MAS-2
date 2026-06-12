@@ -99,7 +99,33 @@ export async function upsertSharedContact(clientId, c = {}) {
     const email = String(c.email || "").toLowerCase().trim();
     const phone = normalizeBookPhone(c.phone);
     if (!email && !phone) return null;
-    const id = docIdFor(email, phone);
+    let id = docIdFor(email, phone);
+
+    // Zuordnen statt duplizieren: Kennt ein bestehender Eintrag (z.B. der
+    // Mail-Kontakt mit Nummer aus der Signatur) diese Rufnummer bereits,
+    // wird DER angereichert — kein zweiter tel_-Datensatz für dieselbe Person.
+    if (!email && phone) {
+      const existing = await findContactsByPhone(clientId, phone);
+      if (existing[0]?.id) id = existing[0].id;
+    }
+
+    // Umgekehrt: Gab es die Person bisher nur als tel_-Eintrag (Anruferin ohne
+    // bekannte Adresse) und jetzt kommt die E-Mail dazu, wandern die Daten auf
+    // den E-Mail-Datensatz und der tel_-Eintrag verschwindet.
+    if (email && phone) {
+      const telId = docIdFor("", phone);
+      const telRef = contacts(clientId).doc(telId);
+      const telDoc = await telRef.get();
+      if (telDoc.exists && telId !== id) {
+        const t = telDoc.data() || {};
+        const carry = {};
+        if (t.name && !c.name) carry.name = t.name;
+        if (Array.isArray(t.sources) && t.sources.length) carry.sources = FieldValue.arrayUnion(...t.sources);
+        if (t.count) carry.count = FieldValue.increment(t.count);
+        await contacts(clientId).doc(id).set(carry, { merge: true });
+        await telRef.delete();
+      }
+    }
 
     const patch = {
       lastSeenAt: c.ts || Date.now(),
