@@ -53,6 +53,9 @@ function isPublic(req) {
   // Voice-Worker holt beim Verbinden den Anlass eines proaktiven Clara-Anrufs
   // ab (kurzer, PII-freier Sprechtext; einmalig konsumiert, 2h TTL).
   if (p === "/clara/pending-context") return true;
+  // Fernsteuerungs-Chat (Wochenend-Provisorium): von der statischen Handy-Seite
+  // aus erreichbar, jede Route prueft selbst REMOTE_CHAT_TOKEN (remoteChat.js).
+  if (p.startsWith("/remote/")) return true;
   // /clara/<clientId> (QR landing HTML) and /clara/<clientId>/connect (phone page).
   if (/^\/clara\/[^/]+(\/connect)?$/.test(p)) return true;
   return false;

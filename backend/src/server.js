@@ -79,6 +79,7 @@ import { listRuns, getRun, startRun, cancelRun, runStatus, catalogInfo } from ".
 import { listPlatformRuns, getPlatformRun, startPlatformRun, cancelPlatformRun, platformRunStatus, PLATFORM_GROUPS } from "./testtrain/platformRunner.js";
 import { startDuoRun, cancelDuoRun, duoRunStatus, listDuoRuns, getDuoRun, streamDuoAudio, streamDuoTurnAudio } from "./testtrain/duo.js";
 import { authMiddleware, AUTH_ENFORCED, SERVICE_TOKEN } from "./auth.js";
+import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages } from "./remoteChat.js";
 import admin from "./firebase.js";
 import { log } from "./log.js";
 import { exportTenant, eraseTenant, applyRetention } from "./dsgvo.js";
@@ -4629,6 +4630,66 @@ app.post("/admin/tenant/retention", async (req, res, next) => {
     res.json(out);
   } catch (e) {
     next(e);
+  }
+});
+
+// --- Fernsteuerungs-Chat (Wochenend-Provisorium) ---------------------------
+// Statische Seite (Firebase Hosting) <-> dieses Backend <-> lokaler Waechter,
+// der eine Agent-Session startet. Token-gated, sonst nutzlos. Siehe
+// src/remoteChat.js und tools/remote_chat_watch.ps1.
+
+function remoteGuard(req, res) {
+  if (remoteTokenOk(req)) return true;
+  res.status(401).json({ ok: false, error: "remote_token_invalid" });
+  return false;
+}
+
+app.post("/remote/message", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    const out = await addRemoteMessage(DEFAULT_CLIENT_ID, {
+      role: req.body?.role, text: req.body?.text,
+    });
+    res.status(out.ok ? 200 : 400).json(out);
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+app.get("/remote/state", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    const out = await remoteState(DEFAULT_CLIENT_ID, { limit: Number(req.query?.limit) || 80 });
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+app.post("/remote/board", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    res.json(await setRemoteBoard(DEFAULT_CLIENT_ID, req.body?.text));
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+app.get("/remote/pending", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    res.json({ ok: true, messages: await pendingRemoteMessages(DEFAULT_CLIENT_ID) });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+app.post("/remote/ack", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    res.json(await ackRemoteMessages(DEFAULT_CLIENT_ID, req.body?.ids, req.body?.status));
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
