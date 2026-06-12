@@ -1,5 +1,6 @@
 import { queryRecent } from "../brain/eventStore.js";
 import { applyHumanReview } from "../brain/events.js";
+import { findContactsByPhone } from "../brain/addressBook.js";
 
 // ============================================================================
 // Rückrufer-Kontext für Bianca (Telefon-Loop 2/2, Nacht 11./12.06.2026).
@@ -64,11 +65,28 @@ export async function buildCallerContext(clientId, phone) {
     .sort((a, b) => (b.ts || 0) - (a.ts || 0))
     .slice(0, MAX_ITEMS);
 
-  if (!hits.length) return { found: false, name: "", context: "" };
+  // Geteiltes Adressbuch: kennt die Nummer auch dann, wenn (noch) kein Event
+  // passt — z.B. ein Lieferant, der bisher nur per E-Mail Kontakt hatte und
+  // dessen Nummer aus der Signatur stammt.
+  const bookHit = (await findContactsByPhone(clientId, phone))[0] || null;
+
+  if (!hits.length) {
+    if (!bookHit?.name) return { found: false, name: "", context: "" };
+    const aboutLast = bookHit.lastSubject ? ` Zuletzt ging es um: „${bookHit.lastSubject}“.` : "";
+    return {
+      found: true,
+      name: bookHit.name,
+      context:
+        `Die Rufnummer steht im Adressbuch der Praxis: ${bookHit.name}` +
+        `${bookHit.category ? ` (${bookHit.category})` : ""}.${aboutLast} ` +
+        "Sprich die Person entsprechend an, statt nach dem Namen zu fragen.",
+    };
+  }
 
   const name =
     hits.map((e) => String(e?.counterparty?.name || e?.subject?.name || "").trim())
-        .find((n) => n && !/^\+?\d/.test(n)) || "";
+        .find((n) => n && !/^\+?\d/.test(n)) ||
+    String(bookHit?.name || "").trim() || "";
 
   const lines = hits.map((e) => {
     const when = fmtWhen(e.ts);

@@ -1,5 +1,6 @@
 import { listCases } from "../brain/caseStore.js";
 import { queryRecent } from "../brain/eventStore.js";
+import { findContactsByPhone } from "../brain/addressBook.js";
 
 // ============================================================================
 // Caller-ID lookup for the INBOUND phone AI (Bianca) and Clara.
@@ -111,12 +112,23 @@ export async function lookupCaller(clientId, { phone, name } = {}) {
     if (matches.length >= 8) break;
   }
 
+  // 3) Geteiltes Adressbuch: kennt die Nummer auch ohne offene Vorgänge
+  // (z.B. Lieferant, dessen Nummer aus der Mail-Signatur stammt).
+  const bookHit = (await findContactsByPhone(clientId, norm).catch(() => []))[0] || null;
+
   if (!matches.length) {
+    if (bookHit?.name) {
+      const aboutLast = bookHit.lastSubject ? ` Zuletzt ging es um: „${bookHit.lastSubject}“.` : "";
+      return {
+        found: true, phone: norm, matches: [],
+        message: `Die Nummer gehört laut Adressbuch zu ${bookHit.name}${bookHit.category ? ` (${bookHit.category})` : ""}.${aboutLast} Offene Vorgänge gibt es dazu keine.`,
+      };
+    }
     return { found: false, phone: norm, matches: [], message: "Zu dieser Nummer ist kein offener Vorgang bekannt — regulär begrüßen und nach dem Anliegen fragen." };
   }
 
   // Compose the spoken context block (best/known name first).
-  const knownName = matches.find((m) => m.patientName)?.patientName || s(name);
+  const knownName = matches.find((m) => m.patientName)?.patientName || s(name) || s(bookHit?.name);
   const lines = [];
   lines.push(knownName ? `Die Nummer gehört vermutlich zu ${knownName}.` : "Zu dieser Nummer gibt es offene Vorgänge, der Name ist nicht hinterlegt.");
   for (const m of matches.slice(0, 3)) {

@@ -54,6 +54,7 @@ import { resolvePatientSubject } from "./brain/identity.js";
 import { createCase, getCase, listCases, listActiveCasesByPatientIds, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext, saveCaseDraft, attachEventId } from "./brain/caseStore.js";
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "./brain/caseBriefing.js";
 import { recordCommunication } from "./brain/record.js";
+import { upsertSharedContact, findContactsByPhone, backfillAddressBook } from "./brain/addressBook.js";
 import { enqueueBrainWrite, outboxHealth, processBrainOutbox } from "./brain/outbox.js";
 import { listAccounts, createAccount, updateAccount, deleteAccount, getAccountPublic } from "./mail/accounts.js";
 import { testImap, syncAccount, syncAll, sendMail } from "./mail/mailbox.js";
@@ -1120,6 +1121,15 @@ async function logOutboundMail(clientId, { storedId, body }) {
   if (result?.caseId && storedId) {
     try { await linkMessageToCase(clientId, storedId, result.caseId); } catch { /* non-blocking */ }
   }
+
+  // Wem wir schreiben, den kennen wir: Empfänger ins geteilte Adressbuch.
+  if (toAddr && toAddr.includes("@")) {
+    await upsertSharedContact(clientId, {
+      name: counterpartyName !== toAddr ? counterpartyName : "",
+      email: toAddr, source: "nadine_mail_out", subject: body.subject || "",
+    });
+  }
+
   return result;
 }
 
@@ -1197,6 +1207,31 @@ app.get("/mail/address-book", async (req, res) => {
       else patientsError = pr.error || "Patientensuche fehlgeschlagen";
     }
     res.json({ ok: true, clientId, contacts, contactsCursor, patients, patientsError });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// "Wem gehört diese Nummer?" — direkter Adressbuch-Lookup für UI/Diagnose.
+app.get("/mail/contacts/by-phone", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const items = await findContactsByPhone(clientId, String(req.query?.phone || ""));
+    res.json({ ok: true, clientId, contacts: items });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Adressbuch-Backfill von Hand anstoßen (?force=1 ignoriert den Einmal-Marker).
+app.post("/admin/addressbook/backfill", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const force = req.query?.force === "1" || req.body?.force === true;
+    const out = await backfillAddressBook(clientId, { force });
+    res.json({ ok: true, clientId, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -3031,12 +3066,13 @@ async function findExternalContact(clientId, name, hintLower) {
   let email = "";
   let displayName = "";
 
-  // 1) Adressbuch (von Nadine gepflegt: praxisrelevante Absender)
+  // 1) Geteiltes Adressbuch (gefüttert von Nadine, Lisa, Bianca und Clara)
   const book = await listContacts(clientId, { q: name, limit: 5 }).catch(() => ({ items: [] }));
   const bookHit = (book.items || [])[0];
   if (bookHit) {
     displayName = bookHit.name || "";
     email = bookHit.address || "";
+    phone = (Array.isArray(bookHit.phones) && bookHit.phones[0]) || "";
     provenance.push(`steht im Adressbuch${bookHit.lastSubject ? ` (zuletzt: „${bookHit.lastSubject}“)` : ""}`);
   }
 
@@ -3082,11 +3118,27 @@ async function findExternalContact(clientId, name, hintLower) {
     const evPhone = normalizePhone(e.counterparty?.ref || "");
     if (!displayName) displayName = e.subject?.name || e.counterparty?.name || "";
     if (!phone && evPhone) phone = evPhone;
-    provenance.push(`${fmtDayDe(e.ts)}: ${e.channel === "lisa_call" ? "Lisa hat dort angerufen" : "hat hier angerufen"}${e.summary ? ` — ${String(e.summary).slice(0, 120)}` : ""}`);
+    const channelPhrase =
+      e.channel === "lisa_call" ? "Lisa hat dort angerufen"
+      : e.channel === "lisa_sms" ? "Lisa hat dorthin gesimst"
+      : e.channel === "bianca_call" ? "hat hier angerufen"
+      : e.channel === "nadine_email" ? "E-Mail-Kontakt"
+      : "Kontakt";
+    provenance.push(`${fmtDayDe(e.ts)}: ${channelPhrase}${e.summary ? ` — ${String(e.summary).slice(0, 120)}` : ""}`);
     if (provenance.length >= 4) break;
   }
 
   if (!provenance.length && !phone && !email) return null;
+
+  // Lernen: Der mühsam zusammengesuchte Kontakt (Nummer aus Signatur/Anruf-
+  // Event) wandert ins geteilte Adressbuch — beim nächsten Mal ist er ein
+  // Direkttreffer, für alle Agenten.
+  if (phone || email) {
+    await upsertSharedContact(clientId, {
+      name: displayName || name, email, phone, source: "find_contact",
+    });
+  }
+
   return { displayName: displayName || name, phone, email, provenance };
 }
 
@@ -4345,6 +4397,15 @@ app.listen(PORT, () => {
       );
     }, 30_000);
     log.info("bianca ingest enabled", { intervalMs: 30_000 });
+  }
+
+  // Adressbuch-Backfill: Bestands-Telefonate (Brain) und Nummern aus Mail-
+  // Signaturen einmalig ins geteilte Adressbuch holen. Marker-Dokument macht
+  // Folge-Starts zum No-op.
+  if (DEFAULT_CLIENT_ID) {
+    backfillAddressBook(DEFAULT_CLIENT_ID).catch((e) =>
+      log.warn("addressbook.backfill_error", { error: String(e?.message || e) })
+    );
   }
 
   if (lisaCallConfigured() && DEFAULT_CLIENT_ID) {

@@ -3,6 +3,7 @@ import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
+import { upsertSharedContact } from "../brain/addressBook.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -176,7 +177,9 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
       channel: CHANNELS.LISA_SMS,
       direction: DIRECTIONS.OUT,
       type: EVENT_TYPES.INTERACTION,
-      counterparty: { kind: "unknown", name: name || to },
+      // ref = Rufnummer: darüber findet der Rückrufer-Kontext (Bianca) das
+      // Event wieder, wenn die Person zurückruft.
+      counterparty: { kind: "unknown", name: name || to, ref: to },
       subject: { name },
       summary: `Lisa hat im Auftrag von ${by || "dem Team"} eine SMS an ${name || to} gesendet: "${body}"`,
       payloadRef: { kind: "lisa_task", id: taskRef.id },
@@ -186,6 +189,7 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
   } catch (e) {
     log.warn("lisa.sms.brain_write_failed", { clientId, error: String(e?.message || e) });
   }
+  await upsertSharedContact(clientId, { name, phone: to, source: "lisa_sms" });
 
   const spokenTo = name ? `${name}` : `die Nummer ${to.replace("+49", "0")}`;
   return { ok: true, taskId: taskRef.id, message: `Erledigt — die SMS an ${spokenTo} ist raus.` };
@@ -301,7 +305,8 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
       channel: CHANNELS.LISA_CALL,
       direction: DIRECTIONS.OUT,
       type: EVENT_TYPES.INTERACTION,
-      counterparty: { kind: "unknown", name: name || to },
+      // ref = Rufnummer: macht den Anruf für den Rückrufer-Kontext auffindbar.
+      counterparty: { kind: "unknown", name: name || to, ref: to },
       subject: { name },
       summary: `Lisa ruft im Auftrag von ${by || "dem Team"} ${name || to} an. Auftrag: "${prompt}"`,
       payloadRef: { kind: "lisa_task", id: taskRef.id },
@@ -311,6 +316,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   } catch (e) {
     log.warn("lisa.call.brain_write_failed", { clientId, error: String(e?.message || e) });
   }
+  await upsertSharedContact(clientId, { name, phone: to, source: "lisa_call" });
 
   const spokenTo = name ? `${name}` : `die Nummer ${to.replace("+49", "0")}`;
   return {
@@ -391,7 +397,7 @@ export async function finalizeLisaCalls(clientId) {
           channel: CHANNELS.LISA_CALL,
           direction: DIRECTIONS.OUT,
           type: EVENT_TYPES.OBSERVATION,
-          counterparty: { kind: "unknown", name: who },
+          counterparty: { kind: "unknown", name: who, ref: task.phone || null },
           subject: { name: task.contactName || "" },
           summary:
             `Lisas Anruf bei ${who} ist beendet: ${OUTCOME_SPOKEN[outcome] || outcome}.` +

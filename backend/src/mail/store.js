@@ -167,7 +167,8 @@ function keepContact(c, needle) {
   // never stored; legacy rows (no flag) are kept unless they look like bulk mail.
   if (c.relevant === false) return false;
   if (c.relevant !== true && BULK_SENDER_RE.test(c.address || "")) return false;
-  if (needle && !`${c.name || ""} ${c.address || ""} ${c.lastSubject || ""}`.toLowerCase().includes(needle)) return false;
+  const phones = Array.isArray(c.phones) ? c.phones.join(" ") : "";
+  if (needle && !`${c.name || ""} ${c.address || ""} ${c.lastSubject || ""} ${phones}`.toLowerCase().includes(needle)) return false;
   return true;
 }
 

@@ -1,6 +1,7 @@
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { normalizePhoneE164 } from "../lisa/outbound.js";
+import { upsertSharedContact } from "../brain/addressBook.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -135,6 +136,12 @@ export async function ingestBiancaCalls(clientId, { port } = {}) {
           startedAt: startedMs || null,
           createdAt: FieldValue.serverTimestamp(),
         });
+        // Anrufer ins geteilte Adressbuch — mit dem Namen, den der Extraktor
+        // aus dem Gespräch gezogen hat (falls vorhanden).
+        if (phone) {
+          const evName = String(data?.event?.subject?.name || data?.event?.counterparty?.name || "").trim();
+          await upsertSharedContact(clientId, { name: evName, phone, source: "bianca_call", ts: startedMs || undefined });
+        }
         ingested += 1;
         log.info("bianca.call.ingested", { clientId, convId, eventId: data?.event?.id || null });
       } catch (e) {

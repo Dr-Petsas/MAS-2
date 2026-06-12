@@ -8,6 +8,7 @@ import { getAccountWithSecrets, markSync } from "./accounts.js";
 import { classifyByKeywords, deriveMailSignals } from "./classify.js";
 import { getLetterSettings } from "./letterSettings.js";
 import { recordCommunication } from "../brain/record.js";
+import { upsertSharedContact, extractPhoneFromText } from "../brain/addressBook.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 
 function escapeHtml(v) {
@@ -50,7 +51,6 @@ function withSignature(text, html, { plain = "", htmlSig = "" } = {}) {
 
 const { FieldValue } = admin.firestore;
 const MSG_COL = "mas_mail_messages";
-const CONTACT_COL = "mas_contacts";
 const ATT_COL = "mas_mail_attachments";
 const MAX_INLINE = 180000; // keep docs well under Firestore's 1 MiB limit
 const MAX_INLINE_ATT = 700 * 1024; // base64 ≈ 933 KB — safely under the 1 MiB doc cap
@@ -59,10 +59,6 @@ const DRY_RUN = process.env.MAIL_DRY_RUN === "1";
 function msgs(clientId) {
   return masCollection(clientId, MSG_COL);
 }
-function contacts(clientId) {
-  return masCollection(clientId, CONTACT_COL);
-}
-
 function withTimeout(promise, ms, label, onTimeout) {
   let t;
   const timer = new Promise((_, reject) => {
@@ -124,20 +120,19 @@ function addrList(field) {
 // The address book. We only ever store senders of PRACTICE-RELEVANT mail here
 // (newsletters/spam are skipped by the caller), and enrich the entry with the
 // category and the last subject so Nadine has a useful directory, not a dump.
+// Writes through the SHARED address book (brain/addressBook) so phone numbers
+// from signatures land on the same record that Lisa/Bianca/Clara read.
 async function upsertContact(clientId, person, extra = {}) {
   if (!person?.address) return;
-  const id = createHash("sha1").update(person.address).digest("hex").slice(0, 24);
-  const patch = {
-    address: person.address,
-    lastSeenAt: extra.ts || Date.now(),
-    count: FieldValue.increment(1),
-    source: "email",
-    relevant: true,
-  };
-  if (person.name) patch.name = person.name;
-  if (extra.category) patch.category = extra.category;
-  if (extra.subject) patch.lastSubject = extra.subject;
-  await contacts(clientId).doc(id).set(patch, { merge: true }).catch(() => {});
+  await upsertSharedContact(clientId, {
+    name: person.name || "",
+    email: person.address,
+    phone: extra.phone || "",
+    source: "nadine_mail_in",
+    category: extra.category || "",
+    subject: extra.subject || "",
+    ts: extra.ts || Date.now(),
+  });
 }
 
 // --- attachments -----------------------------------------------------------
@@ -251,9 +246,12 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
 
   await ref.set(doc, { merge: true });
   const created = !existing.exists;
-  // Only practice-relevant inbound senders enter the address book.
+  // Only practice-relevant inbound senders enter the address book — including
+  // the phone number from the signature, so "Ruf Herrn Kasper an" works without
+  // re-digging through the inbox.
   if ((direction || "in") === "in" && classification.relevant !== false) {
-    await upsertContact(clientId, from, { category: classification.category, subject: doc.subject, ts: doc.date });
+    const sigPhone = extractPhoneFromText(`${text.value} ${html.value.replace(/<[^>]+>/g, " ")}`);
+    await upsertContact(clientId, from, { category: classification.category, subject: doc.subject, ts: doc.date, phone: sigPhone });
   }
   // Inbound, practice-relevant, NEW mail enters the shared brain at sync time so
   // Clara's timeline and the case/ticket system see patient mail IMMEDIATELY —
