@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Clara · Fähigkeiten</title>
+<meta name="theme-color" content="#0a1322" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg-1: #13203a;
+    --bg-2: #0a1322;
+    --bg-3: #060b16;
+    --ink: #e6edf6;
+    --ink-soft: #8fa3bd;
+    --ink-faint: #5f719a;
+    --turq: #2ee6c8;
+    --amber: #ffb347;
+    --red: #ff4d6d;
+    --pink: #ff4ddb;
+    --purple: #b84dff;
+    --green: #34d399;
+    --line: #22324f;
+    --card: #101b30;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+    margin: 0; color: var(--ink);
+    background: radial-gradient(130% 90% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 52%, var(--bg-3) 100%);
+    background-attachment: fixed;
+    min-height: 100vh; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--turq); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  /* ── Brand / Hero ─────────────────────────────────────────── */
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark {
+    width: 34px; height: 34px; border-radius: 10px; flex: none;
+    display: grid; place-items: center;
+    background: linear-gradient(140deg, color-mix(in srgb, var(--turq) 30%, transparent), color-mix(in srgb, var(--purple) 22%, transparent));
+    border: 1px solid color-mix(in srgb, var(--turq) 45%, transparent);
+    box-shadow: 0 0 22px color-mix(in srgb, var(--turq) 28%, transparent);
+  }
+  .brand .mark svg { width: 19px; height: 19px; }
+  .brand .word { font-size: 21px; font-weight: 700; letter-spacing: .3px; }
+  .brand .word b { color: var(--turq); }
+
+  .hero { margin-top: 30px; }
+  .hero h1 { font-size: clamp(30px, 6vw, 48px); line-height: 1.06; margin: 0 0 10px; font-weight: 800; letter-spacing: -.5px; }
+  .hero h1 .accent { background: linear-gradient(100deg, var(--turq), var(--green)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p { color: var(--ink-soft); font-size: 17px; max-width: 660px; margin: 0; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 12px; margin: 26px 0 4px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 13px 18px; min-width: 116px;
+  }
+  .stat .n { font-size: 24px; font-weight: 800; color: var(--turq); }
+  .stat .l { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+
+  /* ── Quick nav ────────────────────────────────────────────── */
+  .nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 30px 0 6px; }
+  .nav a {
+    text-decoration: none; color: var(--ink-soft); font-size: 13.5px; font-weight: 600;
+    border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px;
+    transition: all .2s ease;
+  }
+  .nav a:hover { color: var(--ink); border-color: color-mix(in srgb, var(--turq) 55%, transparent); background: color-mix(in srgb, var(--turq) 8%, transparent); }
+
+  /* ── Spotlight / Highlights ───────────────────────────────── */
+  .spot { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+  .hl {
+    position: relative; overflow: hidden; border-radius: 18px; padding: 22px 20px 20px;
+    background: linear-gradient(150deg, rgba(46,230,200,.10), rgba(184,77,255,.10) 60%, rgba(10,19,34,.6));
+    border: 1px solid rgba(46,230,200,.32); box-shadow: 0 0 30px rgba(46,230,200,.12);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .hl:hover { transform: translateY(-3px); border-color: rgba(46,230,200,.6); box-shadow: 0 16px 40px rgba(0,0,0,.4), 0 0 40px rgba(46,230,200,.22); }
+  .hl .star { font-size: 18px; color: var(--turq); }
+  .hl h3 { font-size: 17.5px; margin: 8px 0 8px; font-weight: 800; letter-spacing: -.2px; }
+  .hl p { margin: 0; color: #c2d0e6; font-size: 14px; }
+  .hl .why { margin-top: 12px; padding-top: 11px; border-top: 1px dashed rgba(143,163,189,.3); font-size: 12.5px; color: var(--turq); font-weight: 600; }
+
+  /* ── Sections ─────────────────────────────────────────────── */
+  section { margin-top: 46px; scroll-margin-top: 20px; }
+  .sec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .sec-head .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; box-shadow: 0 0 12px currentColor; }
+  .sec-head h2 { font-size: 22px; margin: 0; font-weight: 700; letter-spacing: -.2px; }
+  .sec-head .desc { color: var(--ink-soft); font-size: 14px; margin: 2px 0 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 18px 16px;
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    position: relative; overflow: hidden;
+  }
+  .card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--accent, var(--turq)); opacity: .5; }
+  .card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent, var(--turq)) 50%, transparent); box-shadow: 0 14px 34px rgba(0,0,0,.35), 0 0 26px color-mix(in srgb, var(--accent, var(--turq)) 14%, transparent); }
+  .card h3 { font-size: 16px; margin: 0 0 7px; font-weight: 700; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 13.5px; }
+  .tool { display: inline-block; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+          color: var(--accent, var(--turq)); background: color-mix(in srgb, var(--accent, var(--turq)) 12%, transparent);
+          border: 1px solid color-mix(in srgb, var(--accent, var(--turq)) 30%, transparent);
+          padding: 2px 8px; border-radius: 7px; margin-bottom: 10px; }
+  .say { margin-top: 11px; padding-top: 11px; border-top: 1px dashed var(--line); font-size: 13px; color: var(--ink); }
+  .say b { color: var(--ink-soft); font-weight: 600; font-size: 11.5px; letter-spacing: .4px; text-transform: uppercase; display: block; margin-bottom: 3px; }
+  .say i { font-style: normal; color: var(--ink); }
+  .say i::before { content: "„"; color: var(--turq); }
+  .say i::after { content: "“"; color: var(--turq); }
+
+  .badge { float: right; font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+           color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent);
+           border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); padding: 2px 8px; border-radius: 999px; }
+  .badge.draft { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+
+  /* ── Speech layer examples ────────────────────────────────── */
+  .examples { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .ex { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 15px 16px; }
+  .ex .from { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--ink-soft); }
+  .ex .arrow { color: var(--turq); margin: 6px 0; font-size: 13px; }
+  .ex .to { font-size: 15px; color: var(--ink); font-weight: 600; }
+  .ex .tag { font-size: 11px; color: var(--ink-soft); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+
+  /* ── Holidays ─────────────────────────────────────────────── */
+  .pills { display: flex; flex-wrap: wrap; gap: 9px; }
+  .pill { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 8px 15px; font-size: 13.5px; }
+  .pill .ico { color: var(--amber); margin-right: 6px; }
+
+  .note { margin-top: 16px; background: color-mix(in srgb, var(--turq) 7%, transparent);
+          border: 1px solid color-mix(in srgb, var(--turq) 22%, transparent); border-radius: 14px; padding: 15px 17px;
+          color: var(--ink-soft); font-size: 13.5px; }
+  .note b { color: var(--ink); }
+
+  footer { margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 12.5px; }
+  footer .ink-soft { color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 21s-6.5-4.3-6.5-9.4C5.5 8 7.6 6 10 6c1 0 1.7.4 2 .9.3-.5 1-.9 2-.9 2.4 0 4.5 2 4.5 5.6 0 5.1-6.5 9.4-6.5 9.4Z" stroke="#2ee6c8" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M9 11.5l2 2 4-4" stroke="#34d399" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span class="word">picka<b>doc</b></span>
+  </div>
+
+  <div class="hero">
+    <h1>Was <span class="accent">Clara</span> wirklich kann</h1>
+    <p>Die interne Sprach-Assistentin deiner Praxis — jede Fähigkeit hier ist im Code umgesetzt und geprüft. Keine Versprechen, nur das, was im Live-System läuft.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="n">30</div><div class="l">Sprach-Werkzeuge</div></div>
+    <div class="stat"><div class="n">11</div><div class="l">NRW-Feiertage erkannt</div></div>
+    <div class="stat"><div class="n">100%</div><div class="l">Sprech-Schicht getestet</div></div>
+    <div class="stat"><div class="n">∞</div><div class="l">Praxis-Gedächtnis</div></div>
+  </div>
+
+  <nav class="nav">
+    <a href="#highlights">★ Highlights</a>
+    <a href="#termine">Patienten &amp; Termine</a>
+    <a href="#kalender">Kalender &amp; Briefings</a>
+    <a href="#gedaechtnis">Praxis-Gedächtnis</a>
+    <a href="#kommunikation">Kommunikation</a>
+    <a href="#aufgaben">Aufgaben &amp; Coach</a>
+    <a href="#sprache">Sprach-Intelligenz</a>
+    <a href="#datum">Feiertage &amp; Wochenende</a>
+    <a href="#persona">Persönlichkeit &amp; Sprachen</a>
+    <a href="#schutz">Halluzinations-Schutz</a>
+  </nav>
+
+  <!-- ── Highlights / Jawdropper ─────────────────────────────── -->
+  <section id="highlights">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--turq)"></span>
+      <div><h2>Die Highlights</h2><p class="desc">Das, was eine normale Telefonassistenz nicht kann — und Praxen umhaut.</p></div>
+    </div>
+    <div class="spot">
+      <div class="hl">
+        <span class="star">★</span>
+        <h3>Jedes Telefonat im Gedächtnis</h3>
+        <p>Bianca nimmt die Praxisanrufe an und fasst jedes Gespräch automatisch ins Praxisgedächtnis — mit Zusammenfassung, erkannten Signalen, Patienten-Zuordnung und Verknüpfung zum richtigen Vorgang.</p>
+        <div class="why">Kein Anruf geht mehr verloren.</div>
+      </div>
+      <div class="hl">
+        <span class="star">★</span>
+        <h3>Rückrufer werden erkannt</h3>
+        <p>Ruft jemand zurück, weiß die Praxis sofort, worum es ging — „Schön, dass Sie zurückrufen, wir hatten Sie wegen Ihres Termins erreichen wollen" statt „Wie kann ich helfen?".</p>
+        <div class="why">Kontext aus den letzten 14 Tagen, automatisch.</div>
+      </div>
+      <div class="hl">
+        <span class="star">★</span>
+        <h3>Eskalations-Radar</h3>
+        <p>Anwalt, Kammer, Mahnung, Pfändung, ein eskalierender Patient — solche Vorgänge landen sofort auf der roten Liste und ganz oben im Morgen- und Abend-Moment.</p>
+        <div class="why">Das Wichtige wird nie übersehen.</div>
+      </div>
+      <div class="hl">
+        <span class="star">★</span>
+        <h3>Fristen-Wächter</h3>
+        <p>Fristen aus E-Mails und Telefonaten werden erkannt und nach Dringlichkeit sortiert: überfällig, heute fällig, bald fällig — mit klarer Warnstufe.</p>
+        <div class="why">Keine verpasste Frist mehr.</div>
+      </div>
+      <div class="hl">
+        <span class="star">★</span>
+        <h3>Ein Gedächtnis für das ganze Team</h3>
+        <p>Clara, Bianca, Lisa und Nadine teilen sich dasselbe Praxisgedächtnis und ein gemeinsames Adressbuch. Was am Telefon, per Mail oder im Gespräch passiert, wissen alle.</p>
+        <div class="why">Kontakte werden angereichert, nie verdoppelt.</div>
+      </div>
+      <div class="hl">
+        <span class="star">★</span>
+        <h3>Beleg &amp; Gedächtnis über Anrufe</h3>
+        <p>Buchungen und Abwesenheiten kommen als Screenshot-Beleg aufs Handy, und Clara knüpft auch im nächsten Gespräch an „den Patienten von vorhin" an.</p>
+        <div class="why">Nachvollziehbar und durchgängig.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Patienten & Termine ─────────────────────────────────── -->
+  <section id="termine" style="--accent: var(--turq)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--turq)"></span>
+      <div><h2>Patienten &amp; Termine</h2><p class="desc">Erst den richtigen Patienten finden, dann sicher buchen — mit Beleg aufs Handy.</p></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <span class="tool">search_patient</span>
+        <h3>Patient finden</h3>
+        <p>Sucht über den gesprochenen Namen. Bei mehreren Treffern liest Clara die Kandidaten vor und fragt nach — sie rät nie.</p>
+        <div class="say"><b>So sagst du es</b><i>Trag mal Frau Thrandorf für Montag früh ein.</i></div>
+      </div>
+      <div class="card">
+        <span class="badge">Beleg aufs Handy</span>
+        <span class="tool">book_for_patient</span>
+        <h3>Termin buchen</h3>
+        <p>Bucht für den gefundenen Patienten. Der Kalender springt live auf den Tag, danach kommt eine Beleg-Karte aufs gekoppelte Handy.</p>
+        <div class="say"><b>So sagst du es</b><i>Buch ihr morgen um zehn einen Kontrolltermin bei Doktor Petsas.</i></div>
+      </div>
+      <div class="card">
+        <span class="tool">cancelAppointment</span>
+        <h3>Termin absagen</h3>
+        <p>Findet den Termin selbst über Nachname und Datum und sagt ihn ab — fehlt etwas, fragt Clara gezielt nach.</p>
+        <div class="say"><b>So sagst du es</b><i>Sag den Termin von Herrn Meier am Dienstag ab.</i></div>
+      </div>
+      <div class="card">
+        <span class="tool">postponeAppointment</span>
+        <h3>Termin verschieben</h3>
+        <p>Schlägt zuerst freie Slots vor (höchstens zwei) und bucht erst um, wenn du einen bestätigst.</p>
+        <div class="say"><b>So sagst du es</b><i>Der Termin von Frau Wagner muss verschoben werden.</i></div>
+      </div>
+      <div class="card">
+        <span class="tool">findAppointment</span>
+        <h3>Termin nachschlagen</h3>
+        <p>Reine Auskunft: wann ist der nächste Termin eines bestimmten Patienten.</p>
+        <div class="say"><b>So sagst du es</b><i>Wann ist der nächste Termin von Frau Meier?</i></div>
+      </div>
+      <div class="card">
+        <span class="tool">getFreeTimeSlots</span>
+        <h3>Freie Zeiten prüfen</h3>
+        <p>Zeigt verfügbare Slots für einen Arzt und Tag — Grundlage für jede Buchung.</p>
+        <div class="say"><b>So sagst du es</b><i>Was ist am Mittwoch bei Doktor Patrikis noch frei?</i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Kalender & Briefings ────────────────────────────────── -->
+  <section id="kalender" style="--accent: var(--green)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--green)"></span>
+      <div><h2>Kalender &amp; Briefings</h2><p class="desc">Tagesüberblick, Patientenlisten und Tagesabschluss — mit Wochenend- und Feiertags-Erkennung.</p></div>
+    </div>
+    <div class="grid">
+      <div class="card" style="--accent: var(--green)">
+        <span class="tool">day_briefing</span>
+        <h3>Tagesüberblick &amp; Heads-up</h3>
+        <p>Wie voll ist der Tag, wo sind Lücken. Wochenenden und Feiertage werden erkannt und genannt — kein Arbeitstag wird vorgegaukelt.</p>
+        <div class="say"><b>So sagst du es</b><i>Heads-up für morgen — wie voll wird's?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--green)">
+        <span class="tool">list_day_appointments</span>
+        <h3>Patienten des Tages</h3>
+        <p>Liest die konkreten Termine mit Patientennamen vor. Virtuelle Termine bleiben außen vor.</p>
+        <div class="say"><b>So sagst du es</b><i>Wer kommt heute alles bei Doktor Nikolaou?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--green)">
+        <span class="tool">morning_briefing</span>
+        <h3>Morgen-Auftakt</h3>
+        <p>Der eine flüssige Tagesstart auf die Begrüßung hin — Termine, Post und Wichtiges in einem Rutsch.</p>
+        <div class="say"><b>So sagst du es</b><i>Guten Morgen, Clara!</i></div>
+      </div>
+      <div class="card" style="--accent: var(--green)">
+        <span class="tool">evening_briefing</span>
+        <h3>Tagesabschluss</h3>
+        <p>Was darf bis morgen nicht liegen bleiben — der Feierabend-Check.</p>
+        <div class="say"><b>So sagst du es</b><i>Feierabend, Clara — mach den Tagesabschluss.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--green)">
+        <span class="tool">read_briefing</span>
+        <h3>Großes Briefing</h3>
+        <p>Offene Vorgänge, Fristen und Post zusammengefasst — der Überblick über alles Offene.</p>
+        <div class="say"><b>So sagst du es</b><i>Was ist offen? Gib mir das Briefing.</i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Praxis-Gedächtnis ───────────────────────────────────── -->
+  <section id="gedaechtnis" style="--accent: var(--purple)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--purple)"></span>
+      <div><h2>Praxis-Gedächtnis &amp; Vorgänge</h2><p class="desc">Das geteilte Gedächtnis der Praxis — Vorgänge, Memos und Kontext über Anrufe hinweg.</p></div>
+    </div>
+    <div class="grid">
+      <div class="card" style="--accent: var(--purple)">
+        <span class="tool">find_case</span>
+        <h3>Vorgang öffnen</h3>
+        <p>Holt den Vorgang zu einem Patienten samt Verlauf — Grundlage fürs Delegieren, Notieren oder Schließen.</p>
+        <div class="say"><b>So sagst du es</b><i>Was ist der Stand bei Frau Thrandorf?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--purple)">
+        <span class="tool">assign_case</span>
+        <h3>Delegieren</h3>
+        <p>Gibt den Vorgang an Nadine (Brief/Mail), Lisa (Rückruf/SMS) oder Team — mit wörtlichem Auftrag.</p>
+        <div class="say"><b>So sagst du es</b><i>Pack das auf Nadine, sie soll wegen der Rechnung schreiben.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--purple)">
+        <span class="tool">update_case</span>
+        <h3>Notiz hinzufügen</h3>
+        <p>Schreibt eine Aktualisierung mit Zeitstempel und deinem Namen in den Vorgang.</p>
+        <div class="say"><b>So sagst du es</b><i>Trag ein: ich hab grad angerufen und es geklärt.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--purple)">
+        <span class="tool">close_case</span>
+        <h3>Vorgang schließen</h3>
+        <p>Markiert den Vorgang als gelöst — optional mit Abschlussnotiz.</p>
+        <div class="say"><b>So sagst du es</b><i>Hat sich erledigt, mach das Ticket zu.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--purple)">
+        <span class="badge">auffindbar</span>
+        <span class="tool">team_memo</span>
+        <h3>Team-Notiz</h3>
+        <p>„Merk dir fürs Team …" landet als auffindbarer Vorgang im Gedächtnis — fürs ganze Team sichtbar, später über den Namen abrufbar.</p>
+        <div class="say"><b>So sagst du es</b><i>Merk dir fürs Team, dass Frau Wagner sich über die Wartezeit beschwert hat.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--purple)">
+        <span class="badge">Cross-Call</span>
+        <span class="tool">Gedächtnis über Anrufe</span>
+        <h3>„Der Patient von vorhin"</h3>
+        <p>Clara knüpft an den zuletzt aktiven Patienten oder Vorgang an — auch im nächsten Gespräch — und nennt den Namen ausdrücklich zur Kontrolle.</p>
+        <div class="say"><b>So sagst du es</b><i>Der Patient von vorhin — buch ihm bitte morgen um zehn.</i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Kommunikation ───────────────────────────────────────── -->
+  <section id="kommunikation" style="--accent: var(--amber)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--amber)"></span>
+      <div><h2>Kommunikation</h2><p class="desc">Anrufen, schreiben, nachschlagen — und sehen, wer sich gemeldet hat.</p></div>
+    </div>
+    <div class="grid">
+      <div class="card" style="--accent: var(--amber)">
+        <span class="tool">send_sms</span>
+        <h3>SMS verschicken</h3>
+        <p>Lisa verschickt die SMS im Auftrag — wörtlich übernommener Inhalt, Nummer oder Kontakt.</p>
+        <div class="say"><b>So sagst du es</b><i>Schick Frau Meier eine SMS: die Unterlagen sind fertig.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--amber)">
+        <span class="tool">delegate_call</span>
+        <h3>Anruf beauftragen</h3>
+        <p>Lisa ruft im Auftrag an und richtet die Nachricht aus.</p>
+        <div class="say"><b>So sagst du es</b><i>Lass Herrn Kasper anrufen, die Montage ist Montag.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--amber)">
+        <span class="badge draft">Freigabe-Pflicht</span>
+        <span class="tool">compose_email</span>
+        <h3>E-Mail verfassen</h3>
+        <p>Nadine schreibt einen Entwurf und legt ihn zur Freigabe vor — gesendet wird <b>erst nach deiner Bestätigung</b>, nie automatisch.</p>
+        <div class="say"><b>So sagst du es</b><i>Schreib der Frau Müller, dass ihr Termin auf Montag rutscht.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--amber)">
+        <span class="badge">Push aufs Handy</span>
+        <span class="tool">contact_card</span>
+        <h3>Kontaktdaten</h3>
+        <p>Liest die Nummer einer Person vor und schickt die Kontaktkarte aufs Handy — nach eindeutiger Identifikation.</p>
+        <div class="say"><b>So sagst du es</b><i>Wie ist die Handynummer von Herrn Tzannis?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--amber)">
+        <span class="tool">find_contact</span>
+        <h3>Kontakt suchen</h3>
+        <p>Findet Patienten, Firmen oder Handwerker für SMS und Anruf, wenn keine Nummer genannt wurde.</p>
+        <div class="say"><b>So sagst du es</b><i>Simse mal das Labor wegen der Abdrücke.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--amber)">
+        <span class="tool">call_log</span>
+        <h3>Wer hat angerufen</h3>
+        <p>Listet die Anrufe — Clara antwortet nie aus dem Gedächtnis, sondern immer aus dem frischen Protokoll.</p>
+        <div class="say"><b>So sagst du es</b><i>Hat heute jemand angerufen?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--amber)">
+        <span class="tool">read_email</span>
+        <h3>E-Mail vorlesen</h3>
+        <p>Liest neue E-Mails vor und kann nach einem Thema oder Absender filtern.</p>
+        <div class="say"><b>So sagst du es</b><i>Was schreibt das Labor?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--amber)">
+        <span class="tool">ask_nadine</span>
+        <h3>Posteingang-Überblick</h3>
+        <p>Nadine, die Schreib-Assistentin, fasst die Post von heute zusammen: neue Mails, Ungelesenes, offene Entwürfe.</p>
+        <div class="say"><b>So sagst du es</b><i>Gab es heute neue Post?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--amber)">
+        <span class="tool">lookup_caller</span>
+        <h3>Nummer zuordnen</h3>
+        <p>Der umgekehrte Fall: Nummer bekannt, Person gesucht — Clara ordnet sie dem Adressbuch zu.</p>
+        <div class="say"><b>So sagst du es</b><i>Wer ist 0177 600 46 00?</i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Aufgaben & Coach ────────────────────────────────────── -->
+  <section id="aufgaben" style="--accent: var(--pink)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--pink)"></span>
+      <div><h2>Aufgaben, Recall &amp; Abwesenheit</h2><p class="desc">Notizen, Terminlücken schließen und Abwesenheiten planen — mit Beleg.</p></div>
+    </div>
+    <div class="grid">
+      <div class="card" style="--accent: var(--pink)">
+        <span class="tool">create_task</span>
+        <h3>Aufgabe notieren</h3>
+        <p>Hält einen Rückruf, eine Erinnerung oder To-do fest und bestätigt mit dem Titel.</p>
+        <div class="say"><b>So sagst du es</b><i>Erinnere mich, das Röntgenbild nachzufordern.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--pink)">
+        <span class="tool">gap_briefing</span>
+        <h3>Recall starten</h3>
+        <p>Zeigt Terminlücken und Patienten, die für einen Recall in Frage kommen — schlägt aber nie ungefragt eine Buchung vor.</p>
+        <div class="say"><b>So sagst du es</b><i>Starte den Recall.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--pink)">
+        <span class="tool">approve_recall</span>
+        <h3>Recall freigeben</h3>
+        <p>Erst auf ausdrückliche Freigabe hin kontaktiert Lisa die Patienten.</p>
+        <div class="say"><b>So sagst du es</b><i>Recall freigeben.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--pink)">
+        <span class="tool">recall_status</span>
+        <h3>Recall-Stand</h3>
+        <p>Wie läuft die Aktion, wen hat Lisa schon erreicht.</p>
+        <div class="say"><b>So sagst du es</b><i>Wie läuft der Recall?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--pink)">
+        <span class="tool">recall_snooze</span>
+        <h3>Recall abwürgen</h3>
+        <p>Ein „heute nicht" oder „kein Recall" reicht — Clara schaltet den Vorschlag stumm und spricht das Thema nicht wieder an.</p>
+        <div class="say"><b>So sagst du es</b><i>Heute nicht, lass das mit dem Recall.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--pink)">
+        <span class="badge">Beleg aufs Handy</span>
+        <span class="tool">plan_absence</span>
+        <h3>Abwesenheit planen</h3>
+        <p>Sagst du „Am Freitag bin ich nicht da", zeigt Clara den Plan: welche Termine betroffen sind. Noch wird nichts abgesagt.</p>
+        <div class="say"><b>So sagst du es</b><i>Nächsten Freitag bin ich nicht da.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--pink)">
+        <span class="badge draft">Freigabe-Pflicht</span>
+        <span class="tool">approve_absence</span>
+        <h3>Abwesenheit freigeben</h3>
+        <p>Erst auf Freigabe wird der Tag gesperrt, Termine storniert und jeder Patient bekommt <b>eine</b> Absage mit Buchungslink — plus Beleg aufs Handy.</p>
+        <div class="say"><b>So sagst du es</b><i>Ja, sag die Termine ab.</i></div>
+      </div>
+      <div class="card" style="--accent: var(--pink)">
+        <span class="tool">absence_status</span>
+        <h3>Stand der Absagen</h3>
+        <p>Zwischenstand nach einer Abwesenheit: wie viele Patienten informiert, wer hat schon neu gebucht, wer ist noch offen.</p>
+        <div class="say"><b>So sagst du es</b><i>Haben die Patienten vom Freitag neu gebucht?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--pink)">
+        <span class="tool">read_ratings</span>
+        <h3>Bewertungen</h3>
+        <p>Liest neue Patientenbewertungen samt Kommentar vor.</p>
+        <div class="say"><b>So sagst du es</b><i>Gibt es neue Bewertungen?</i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Sprach-Intelligenz ──────────────────────────────────── -->
+  <section id="sprache" style="--accent: var(--turq)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--turq)"></span>
+      <div><h2>Sprach-Intelligenz</h2><p class="desc">Bevor Clara spricht, wird jeder Satz natürlich gemacht. Diese Schicht ist im Release-Gate fest abgesichert.</p></div>
+    </div>
+    <div class="examples">
+      <div class="ex">
+        <div class="tag">Relatives Datum</div>
+        <div class="from">14.06.2026</div>
+        <div class="arrow">↓ wird gesprochen als</div>
+        <div class="to">heute</div>
+      </div>
+      <div class="ex">
+        <div class="tag">Relatives Datum</div>
+        <div class="from">morgen + 1 Woche</div>
+        <div class="arrow">↓</div>
+        <div class="to">nächste Woche Montag</div>
+      </div>
+      <div class="ex">
+        <div class="tag">Uhrzeit als Wort</div>
+        <div class="from">09:10 Uhr</div>
+        <div class="arrow">↓</div>
+        <div class="to">neun Uhr zehn</div>
+      </div>
+      <div class="ex">
+        <div class="tag">Menge als Wort</div>
+        <div class="from">12 Termine, 3 Anrufe</div>
+        <div class="arrow">↓</div>
+        <div class="to">zwölf Termine, drei Anrufe</div>
+      </div>
+      <div class="ex">
+        <div class="tag">Prozent</div>
+        <div class="from">50 %</div>
+        <div class="arrow">↓</div>
+        <div class="to">fünfzig Prozent</div>
+      </div>
+      <div class="ex">
+        <div class="tag">Abkürzung</div>
+        <div class="from">Dr. · z. B. · Str. · bzw.</div>
+        <div class="arrow">↓</div>
+        <div class="to">Doktor · zum Beispiel · Straße · beziehungsweise</div>
+      </div>
+      <div class="ex">
+        <div class="tag">Telefonnummer — bleibt</div>
+        <div class="from">0211 41 66 02 84</div>
+        <div class="arrow">↓ unangetastet</div>
+        <div class="to">0211 41 66 02 84</div>
+      </div>
+      <div class="ex">
+        <div class="tag">Sauber gesprochen</div>
+        <div class="from">**Wichtig:** … / „Als KI …"</div>
+        <div class="arrow">↓ entfernt</div>
+        <div class="to">natürlicher Satz, kein Markdown, kein KI-Hinweis</div>
+      </div>
+    </div>
+    <div class="note">
+      <b>Geprüft.</b> Diese Sprech-Schicht läuft als Teil des Release-Gates (<i>test_speakability</i>). Geht hier etwas kaputt, wird nicht deployt — die Funktionen bleiben dauerhaft erhalten.
+    </div>
+  </section>
+
+  <!-- ── Feiertage & Wochenende ──────────────────────────────── -->
+  <section id="datum" style="--accent: var(--amber)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--amber)"></span>
+      <div><h2>Feiertage &amp; Wochenende</h2><p class="desc">Clara behandelt einen Feiertag oder ein Wochenende nie wie einen normalen Arbeitstag. NRW-Kalender (Düsseldorf), jahresgenau berechnet.</p></div>
+    </div>
+    <div class="pills">
+      <span class="pill"><span class="ico">●</span>Neujahr</span>
+      <span class="pill"><span class="ico">●</span>Karfreitag</span>
+      <span class="pill"><span class="ico">●</span>Ostermontag</span>
+      <span class="pill"><span class="ico">●</span>Tag der Arbeit</span>
+      <span class="pill"><span class="ico">●</span>Christi Himmelfahrt</span>
+      <span class="pill"><span class="ico">●</span>Pfingstmontag</span>
+      <span class="pill"><span class="ico">●</span>Fronleichnam</span>
+      <span class="pill"><span class="ico">●</span>Tag der Deutschen Einheit</span>
+      <span class="pill"><span class="ico">●</span>Allerheiligen</span>
+      <span class="pill"><span class="ico">●</span>1. Weihnachtstag</span>
+      <span class="pill"><span class="ico">●</span>2. Weihnachtstag</span>
+    </div>
+    <div class="note">
+      <b>Beweglich &amp; korrekt:</b> Oster-abhängige Feiertage (Karfreitag, Oster-/Pfingstmontag, Christi Himmelfahrt, Fronleichnam) werden pro Jahr über den Oster-Algorithmus berechnet. <b>Wochenende:</b> Samstag und Sonntag werden erkannt und beim Sprechen genannt („Morgen ist Samstag").
+    </div>
+  </section>
+
+  <!-- ── Persönlichkeit & Sprachen ───────────────────────────── -->
+  <section id="persona" style="--accent: var(--purple)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--purple)"></span>
+      <div><h2>Persönlichkeit &amp; Sprachen</h2><p class="desc">Clara klingt wie eine Kollegin — mit Humor, aber ohne sich etwas auszudenken.</p></div>
+    </div>
+    <div class="grid">
+      <div class="card" style="--accent: var(--purple)">
+        <span class="badge">halluzinationsfrei</span>
+        <h3>Humor mit Haltung</h3>
+        <p>Trockene, augenzwinkernde Sprüche an den richtigen Stellen — bei nicht verschickten Unterlagen, guten und schlechten Bewertungen, der Anrufliste. Die Sprüche stammen aus festen Pools, nicht aus dem Modell — also nie erfunden.</p>
+        <div class="say"><b>Klingt dann z. B. so</b><i>Schon wieder rot. Passt hier eigentlich keiner auf?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--purple)">
+        <span class="badge">DE · GR</span>
+        <h3>Versteht Deutsch und Griechisch</h3>
+        <p>Griechische Namen (Petsas, Patrikis, Nikolaou, Tzannis …) und griechische Zurufe werden erkannt und richtig zugeordnet — passend für eine griechisch geführte Praxis.</p>
+        <div class="say"><b>So sagst du es</b><i>Kalimera, ti rantevou exoume símera?</i></div>
+      </div>
+      <div class="card" style="--accent: var(--purple)">
+        <h3>Eine Frage nach der anderen</h3>
+        <p>Kurze, gesprochene Sätze, nie Stichpunkte, nie zwei Fragen auf einmal. Themenwechsel haben sofort Vorrang, und Gesagtes wird nicht unaufgefordert wiederholt.</p>
+        <div class="say"><b>Spürbar in</b><i>jedem Gespräch — natürlicher Gesprächsfluss statt Protokoll.</i></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Halluzinations-Schutz ───────────────────────────────── -->
+  <section id="schutz" style="--accent: var(--red)">
+    <div class="sec-head">
+      <span class="dot" style="color: var(--red)"></span>
+      <div><h2>Halluzinations-Schutz</h2><p class="desc">Damit Clara nie etwas behauptet, das nicht passiert ist.</p></div>
+    </div>
+    <div class="grid">
+      <div class="card" style="--accent: var(--red)">
+        <h3>Keine Aktion ohne Bestätigung</h3>
+        <p>Clara sagt nie „erledigt", „gebucht" oder „verschickt", bevor das jeweilige Tool genau das in diesem Zug bestätigt hat.</p>
+      </div>
+      <div class="card" style="--accent: var(--red)">
+        <h3>Nur frische Tool-Daten</h3>
+        <p>Fragen zu Mails, Anrufen, Terminen oder Vorgängen beantwortet sie nur mit einem frischen Tool-Ergebnis — nie aus dem Gedächtnis geraten.</p>
+      </div>
+      <div class="card" style="--accent: var(--red)">
+        <h3>Ehrliche Belege</h3>
+        <p>„Beleg aufs Handy geschickt" sagt Clara nur, wenn der Push wirklich an ein Gerät ging. Sonst schweigt sie darüber.</p>
+      </div>
+      <div class="card" style="--accent: var(--red)">
+        <h3>Erst fragen statt raten</h3>
+        <p>Bei unklaren oder abgebrochenen Aussagen ruft Clara kein Tool auf, sondern stellt genau eine kurze Rückfrage.</p>
+      </div>
+      <div class="card" style="--accent: var(--red)">
+        <h3>Freigabe-Pflicht</h3>
+        <p>E-Mails und Massen-Absagen gehen erst nach menschlicher Freigabe raus — der Entwurf wartet, bis du bestätigst.</p>
+      </div>
+      <div class="card" style="--accent: var(--red)">
+        <h3>Erst-finden-Disziplin</h3>
+        <p>Nichts wird storniert, verschoben oder gebucht, bevor der richtige Patient bzw. Termin eindeutig feststeht.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="ink-soft">picka<b style="color:var(--turq)">doc</b> · Clara</span> — interne Sprach-Assistentin der Praxis.
+    Jede Fähigkeit auf dieser Seite ist im Live-Code umgesetzt; Sprech-Schicht und Feiertags-/Wochenend-Logik sind durch automatische Tests abgesichert.
+  </footer>
+
+</div>
+</body>
+</html>
