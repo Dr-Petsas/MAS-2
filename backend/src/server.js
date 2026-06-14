@@ -35,6 +35,7 @@ import {
   clearActiveCase,
   setOperator,
   getOperator,
+  getLastContext,
 } from "./clara/sessions.js";
 import {
   disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName,
@@ -2970,18 +2971,29 @@ app.post("/tools/team-memo", async (req, res) => {
     if (!text) return res.json({ ok: false, message: "Was soll ich mir für das Team merken?" });
     const op = await getOperator(clientId);
     const who = op?.name || "Operator";
-    await appendEvent(clientId, {
-      channel: "clara_voice",
-      direction: "internal",
-      type: "note",
-      counterparty: { kind: "other", name: who },
-      subject: { matchStatus: "n/a" },
-      summary: `Team-Memo von ${who}: ${text}`,
+
+    // 14.06.2026: Memo als auffindbaren VORGANG ins Praxisgedaechtnis statt als
+    // flaches Event. Frueher schrieb team_memo nur ein mas_event — das taucht
+    // aber weder in read_briefing (liest NUR Vorgaenge) noch via find_case auf,
+    // d.h. Clara fand ihre eigenen Memos nicht wieder. Als Vorgang ist es jetzt
+    // im Briefing, in den offenen Aufgaben UND (bei Patientenbezug) via find_case
+    // ueber den Namen abrufbar — gleiche Mechanik wie create_task.
+    const subjectName = String(req.body?.patientName || req.body?.name || req.body?.subject || "").trim();
+    let subject = { name: subjectName, matchStatus: subjectName ? "unmatched" : "n/a", matchMethod: null };
+    if (subjectName) {
+      const s = await resolvePatientSubject(clientId, subjectName).catch(() => null);
+      if (s?.patientId) subject = { patientId: s.patientId, name: s.name || subjectName, matchStatus: "matched", matchMethod: s.matchMethod || "name" };
+    }
+    const c = await createCase(clientId, {
+      subject,
+      topic: "other",
+      title: `Memo: ${text.slice(0, 84)}`,
+      createdBy: `${who} (Memo)`,
       status: "open",
-      extractor: "clara@memo",
-      tags: ["memo"],
+      updates: [{ by: who, kind: "note", text }],
     });
-    res.json({ ok: true, message: "Notiert — das Memo steht im Praxisgedächtnis und ist für das ganze Team sichtbar." });
+    const findHint = subjectName ? ` Du findest es unter ${subject.name}.` : "";
+    res.json({ ok: true, caseId: c.id, message: `Notiert — das Memo steht als Vorgang im Praxisgedächtnis und ist fürs ganze Team sichtbar.${findHint}` });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -3013,6 +3025,21 @@ app.post("/tools/find-case", async (req, res) => {
     const rawName = (req.body?.name || req.body?.query || "").trim();
     const topic = (req.body?.topic || "").trim().toLowerCase();
     if (!rawName) return res.json({ ok: false, message: "Zu welchem Patienten ist der Vorgang?" });
+
+    // Cross-Call-Gedaechtnis: "der Vorgang von vorhin / worueber sprachen wir
+    // zuletzt" — an den zuletzt geoeffneten Vorgang anknuepfen, statt ihn als
+    // Patientennamen zu suchen (was ins Leere liefe). Nur bei echter Anschluss-
+    // Phrase ohne verwertbaren Namen und frischem lastContext.
+    if (isContinuityReference(rawName) && !(cleanSpokenPersonName(rawName) || "").trim()) {
+      const lc = freshLastContext(await getLastContext(clientId));
+      if (lc?.case?.id) {
+        await setActiveCase(clientId, lc.case);
+        let context = "";
+        try { context = (await getCaseContext(clientId, lc.case.id))?.contextText || ""; } catch { /* Komfort */ }
+        return res.json({ ok: true, message: `Ich knuepfe an den vorigen Vorgang an: ${caseSpoken(lc.case)}`, context });
+      }
+    }
+
     const name = cleanSpokenPersonName(rawName) || rawName;
 
     // 1) Regulärer Weg: Patient in der DB finden, Vorgänge über die Patient-ID.
@@ -3789,6 +3816,23 @@ function patientLabel(p) {
   return y ? `${name} (Jahrgang ${y})` : name;
 }
 
+// Cross-Call-Gedaechtnis: ausdrueckliche Anschluss-Nachfrage an das ZULETZT
+// beendete Gespraech ("der Patient von vorhin", "machen wir mit eben weiter",
+// "der Vorgang von gerade"). Bewusst eng gehaltene Phrasen, damit kein echter
+// Name faelschlich als Kontinuitaet gilt; "letzte/r" ist absichtlich NICHT
+// dabei (kollidiert mit Datumsangaben wie "letzten Montag").
+const CONTINUITY_RE = /\b(vorhin|vorher|eben|grad eben|gerade eben|von gerade|zuletzt|von vorhin|von eben)\b/i;
+// Frischefenster: nur ein kuerzlich beendetes Gespraech darf reaktiviert werden.
+const CONTINUITY_MAX_AGE_MS = 45 * 60 * 1000;
+function isContinuityReference(text) {
+  return CONTINUITY_RE.test(String(text || ""));
+}
+function freshLastContext(lc) {
+  if (!lc || !lc.endedAt) return null;
+  if (Date.now() - Number(lc.endedAt) > CONTINUITY_MAX_AGE_MS) return null;
+  return lc;
+}
+
 app.post("/tools/search-patient", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -3823,6 +3867,34 @@ app.post("/tools/search-patient", async (req, res) => {
           ok: true,
           message: `${patientLabel(byOrd)} ist eindeutig gemerkt.${warn} Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden.`,
         });
+      }
+    }
+
+    // Cross-Call-Gedaechtnis: "den Patienten von vorhin" — bezieht sich auf das
+    // ZULETZT beendete Gespraech, nicht auf eine offene Kandidatenliste. Greift
+    // nur, wenn KEIN echter Name vorliegt (cleanSpokenPersonName leer), KEINE
+    // Auswahl mehr offen ist und der lastContext frisch ist. Wird der Patient
+    // reaktiviert, nennt die Antwort ausdruecklich den Namen, damit ein Hoerer
+    // einen Fehlgriff sofort korrigieren kann (Halluzinations-Schutz).
+    const continuitySrc = `${rawName} ${hint}`.trim();
+    const hasRealName = !!(rawName && (cleanSpokenPersonName(rawName) || "").trim());
+    if (!hasRealName && isContinuityReference(continuitySrc)) {
+      const remembered = await getPatientCandidates(clientId);
+      if (remembered.length <= 1) {
+        const lc = freshLastContext(await getLastContext(clientId));
+        const p = lc?.patient;
+        if (p && (p.firstName || p.lastName)) {
+          await setPatientCandidates(clientId, [p], p);
+          await emitCommand(clientId, {
+            type: "patient_selected",
+            patient: { firstName: p.firstName, lastName: p.lastName, birthDate: p.birthDate },
+            hasPhone: !!p.hasPhone,
+          });
+          return res.json({
+            ok: true,
+            message: `Ich knuepfe an ${patientLabel(p)} aus dem vorigen Gespraech an. Fuehre den Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT erneut suchen.`,
+          });
+        }
       }
     }
 

@@ -186,11 +186,41 @@ export async function endSession(clientId, sessionId) {
     { status: "ended", updatedAt: FieldValue.serverTimestamp() },
     { merge: true }
   );
-  // Clear the voice working memory so a new session starts clean (no stale
-  // active case / operator carrying over).
+  // Cross-Call-Gedaechtnis (14.06.2026): das Arbeitsgedaechtnis NICHT mehr
+  // wegwerfen, sondern als `lastContext` sichern (letzter Patient/Vorgang/
+  // Operator + Zeitstempel). Die AKTIVEN Felder werden weiterhin geleert, damit
+  // ein neues Gespraech sauber startet und KEIN Patient unbemerkt mitgeschleppt
+  // wird (Halluzinations-Schutz). `lastContext` ist nur auf ausdrueckliche,
+  // zeitlich begrenzte Anschluss-Nachfrage abrufbar ("der Patient von vorhin",
+  // siehe getLastContext + Kontinuitaets-Aufloesung in search_patient/find_case).
+  const snap = await voiceStateRef(clientId).get();
+  const prev = snap.exists ? snap.data() || {} : {};
+  const lastContext = {
+    patient: prev.selectedPatient || null,
+    case: prev.activeCase || null,
+    operator: prev.operator || null,
+    endedAt: Date.now(),
+  };
   await voiceStateRef(clientId).set(
-    { updatedAt: FieldValue.serverTimestamp(), activeCase: null, selectedPatient: null, patientCandidates: [], operator: null },
+    {
+      updatedAt: FieldValue.serverTimestamp(),
+      activeCase: null,
+      selectedPatient: null,
+      patientCandidates: [],
+      operator: null,
+      lastContext,
+    },
     { merge: true }
   );
   return { ok: true, sessionId: sid };
+}
+
+// Cross-Call-Gedaechtnis: was war im ZULETZT beendeten Gespraech aktiv?
+// Liefert { patient, case, operator, endedAt } oder null. Der Aufrufer MUSS
+// die Frische pruefen (endedAt), damit ein tagealter Kontext nicht faelschlich
+// reaktiviert wird.
+export async function getLastContext(clientId) {
+  const snap = await voiceStateRef(clientId).get();
+  if (!snap.exists) return null;
+  return snap.data()?.lastContext || null;
 }
