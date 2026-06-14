@@ -7,6 +7,7 @@ import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../li
 import { sendMail } from "../mail/mailbox.js";
 import { listAccounts } from "../mail/accounts.js";
 import { proxyUpdateOrCancel } from "./cfProxy.js";
+import { buildAbsenceProof, publishProof } from "./proofCard.js";
 import { createCase, addUpdate, setStatus, listCases } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
 import { appendEvent } from "../brain/eventStore.js";
@@ -399,8 +400,14 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
       }],
     });
     await casesCol(clientId).doc(caseId).update({ absencePlan: plan });
+    const proof = await publishProof(clientId, buildAbsenceProof({
+      date: day,
+      calendarName: calName,
+      windowLabel: winLabel,
+    })).catch(() => null);
     return {
       ok: true, caseId, date: day, calendarName: calName, blocked: true, total: 0,
+      proof: proof || undefined,
       message: `${absenceQuip()} Erledigt — ${own ? "deine Abwesenheit" : `die Abwesenheit für ${calName}`} ${dayRel(day)} ${winLabel} ist eingetragen. Es sind keine Termine betroffen, und in der Zeit kann auch nichts mehr gebucht werden.`,
     };
   }
@@ -531,6 +538,7 @@ export async function approveAbsence(clientId, { date, caseId, by, dryRun = fals
 
   let approved = 0;
   const totals = { cancelled: 0, sms: 0, email: 0, call: 0, none: 0 };
+  let lastProof = null;
 
   for (const c of targets) {
     const plan = c.absencePlan;
@@ -631,6 +639,15 @@ export async function approveAbsence(clientId, { date, caseId, by, dryRun = fals
         : `Freigegeben: Tag gesperrt${blockId ? "" : " (Sperrblock fehlgeschlagen!)"}, ${totals.cancelled} Storno(s), ${totals.sms} SMS, ${totals.email} E-Mail(s), ${totals.call} Anruf(e) durch Lisa.`,
     });
     approved++;
+    if (!dryRun && blockId) {
+      lastProof = await publishProof(clientId, buildAbsenceProof({
+        date: plan.date,
+        calendarName: plan.calendarName,
+        windowLabel: plan.windowLabel,
+        cancelledCount: patients.length,
+        phase: "approved",
+      })).catch(() => null);
+    }
   }
 
   if (!approved) return { ok: false, message: "Die Freigabe hat nicht geklappt — bitte im Monitor prüfen." };
@@ -641,7 +658,7 @@ export async function approveAbsence(clientId, { date, caseId, by, dryRun = fals
   if (totals.none) parts.push(`${totals.none} ohne Kontaktweg — bitte manuell absagen, Details im Monitor.`);
   parts.push("Ich beobachte den Kalender und sage Bescheid, wenn Patienten neu gebucht haben.");
   if (!dryRun) parts.push(absenceSendoff());
-  return { ok: true, approved, ...totals, message: parts.join(" ") };
+  return { ok: true, approved, ...totals, proof: lastProof || undefined, message: parts.join(" ") };
 }
 
 // ----------------------------------------------------------------------------

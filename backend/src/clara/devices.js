@@ -278,7 +278,7 @@ export async function sendCallToDevice(clientId, device, { reason = "", publicBa
 // eigener Topic (verdrängt keine Anrufe), längere TTL. Achtung: hier KANN
 // bewusst PII drinstehen (z.B. Patientenname + Telefonnummer auf Wunsch des
 // Behandlers) — der Inhalt geht nur an dessen eigene gekoppelte Geräte.
-export async function sendNoteToDevice(clientId, device, { title = "", body = "", url = "" } = {}) {
+export async function sendNoteToDevice(clientId, device, { title = "", body = "", url = "", image = "" } = {}) {
   if (!vapidReady) return { ok: false, reason: "push_not_configured" };
   const sub = device?.subscription;
   if (!sub?.endpoint) return { ok: false, reason: "no_subscription" };
@@ -287,6 +287,7 @@ export async function sendNoteToDevice(clientId, device, { title = "", body = ""
     title: s(title).slice(0, 60) || "Clara",
     reason: s(body).slice(0, 180),
     url: s(url),
+    image: s(image),
     ts: Date.now(),
   };
   try {
@@ -306,6 +307,41 @@ export async function sendNoteToDevice(clientId, device, { title = "", body = ""
     log.warn("note push failed", { clientId, deviceId: device.id, status, error: String(e?.message || e).slice(0, 200) });
     return { ok: false, reason: `push_failed_${status || "unknown"}` };
   }
+}
+
+/** Termin-/Abwesenheits-Bildbeleg an alle gekoppelten Handys (best effort, kein Anruf-Push). */
+export async function notifyProofToDevices(clientId, proof) {
+  const snap = await devicesCol(clientId).get();
+  if (snap.empty) return { ok: false, reason: "no_devices", sent: 0, failed: 0 };
+  const defaultTitle = proof?.kind === "absence" ? "Abwesenheit eingetragen" : "Termin eingetragen";
+  const title = s(proof?.title).slice(0, 60) || defaultTitle;
+  const body = proof?.kind === "absence"
+    ? [
+        proof?.dateLabel && `${proof.dateLabel}`,
+        proof?.windowLabel && `${proof.windowLabel}`,
+        proof?.calendarName && `bei ${proof.calendarName}`,
+      ].filter(Boolean).join(" · ").slice(0, 180)
+    : [
+        proof?.patient && `${proof.patient}`,
+        proof?.slotLabel && `${proof.slotLabel}`,
+        proof?.calendarName && `bei ${proof.calendarName}`,
+      ].filter(Boolean).join(" · ").slice(0, 180);
+  const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  const url = proof?.proofId
+    ? `${base}/m/call.html?c=${encodeURIComponent(clientId)}&proof=${encodeURIComponent(proof.proofId)}`
+    : `${base}/m/call.html?c=${encodeURIComponent(clientId)}`;
+  let sent = 0;
+  let failed = 0;
+  for (const doc of snap.docs) {
+    const r = await sendNoteToDevice(clientId, doc.data(), {
+      title,
+      body,
+      url,
+      image: s(proof?.imageUrl),
+    });
+    if (r.ok) sent++; else failed++;
+  }
+  return { ok: sent > 0, sent, failed };
 }
 
 /** Info-Push an ALLE Geräte eines Teammitglieds. */

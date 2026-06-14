@@ -47,6 +47,7 @@ import {
   vapidPublicKey, pushConfigured, consumePendingCallContext, notifyOperator,
 } from "./clara/devices.js";
 import { proxyGetFreeTimeSlots, proxyCreateAppointment, proxyUpdateOrCancel } from "./clara/cfProxy.js";
+import { loadProof, proofToSvg, buildAppointmentProof, publishProof } from "./clara/proofCard.js";
 import { lisaSendSms, lisaStartCall, finalizeLisaCalls, listLisaTasks, smsConfigured as lisaSmsConfigured, callConfigured as lisaCallConfigured } from "./lisa/outbound.js";
 import { ingestBiancaCalls, biancaConfigured } from "./bianca/ingest.js";
 import { buildCallerContext } from "./bianca/callerContext.js";
@@ -3135,6 +3136,71 @@ app.post("/tools/assign-case", async (req, res) => {
   }
 });
 
+// Voice: "Schreib der Frau Mueller eine E-Mail, dass ..." — ein E-Mail-ENTWURF in
+// EINEM Schritt, OHNE vorheriges find_case. Loest den Empfaenger auf, haengt an
+// einen offenen Vorgang des Patienten an (Shared Memory) oder legt einen neuen an,
+// delegiert an Nadine und laesst sie einen freigabereifen Entwurf vorbereiten.
+// Es wird NIE automatisch gesendet — der Mensch gibt in Nadine frei (approval-first).
+app.post("/tools/compose-email", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const instruction = String(req.body?.instruction || req.body?.text || req.body?.body || "").trim();
+    if (!instruction) return res.json({ ok: false, message: "Was soll in der E-Mail stehen?" });
+    const recipientName = String(req.body?.recipient || req.body?.name || req.body?.to || "").trim();
+    const op = await getOperator(clientId);
+    const by = op?.name || "Clara";
+
+    // Empfaenger bestimmen: ein ausdruecklich genannter Name gewinnt immer; sonst
+    // der gerade aktive Vorgang. So funktioniert das Tool ohne vorheriges find_case,
+    // schleppt aber auch keinen falschen Patienten mit (Halluzinations-Schutz).
+    let caseId = null;
+    let displayName = "";
+    if (recipientName) {
+      let subject = { name: recipientName, matchStatus: "unmatched", matchMethod: null };
+      const s = await resolvePatientSubject(clientId, recipientName).catch(() => null);
+      if (s?.patientId) {
+        subject = { patientId: s.patientId, name: s.name || recipientName, matchStatus: "matched", matchMethod: s.matchMethod || "name" };
+        const open = await listCases(clientId, { patientId: s.patientId, activeOnly: true, limit: 1 }).catch(() => []);
+        if (open?.length) caseId = open[0].id;
+      }
+      displayName = subject.name;
+      if (!caseId) {
+        const c = await createCase(clientId, {
+          subject,
+          topic: "other",
+          title: `E-Mail an ${displayName}`,
+          createdBy: by,
+          status: "open",
+          updates: [{ by, kind: "note", text: `E-Mail-Auftrag: ${instruction}` }],
+        });
+        caseId = c.id;
+      }
+    } else {
+      const active = await getActiveCase(clientId);
+      if (!active?.id) return res.json({ ok: false, message: "An wen soll die E-Mail gehen?" });
+      caseId = active.id;
+      displayName = active.subject?.name || "";
+    }
+
+    // Wie bei assign_case -> Nadine: delegieren + Entwurf vorbereiten (im
+    // Hintergrund, damit Clara sofort antwortet). Der Entwurf landet auf
+    // "waiting_approval"; gesendet wird ausschliesslich nach menschlicher Freigabe.
+    await assignCase(clientId, caseId, { assignee: "Nadine", instruction, by });
+    prepareCaseDraft(clientId, caseId, { by: "Nadine" }).catch(() => { /* best-effort */ });
+
+    return res.json({
+      ok: true,
+      caseId,
+      message: `Alles klar. Nadine schreibt eine E-Mail${displayName ? ` an ${displayName}` : ""} und legt sie dir zur Freigabe vor — gesendet wird erst nach deiner Bestätigung.`,
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
 app.post("/tools/update-case", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -4291,11 +4357,27 @@ app.post("/tools/book-for-patient", async (req, res) => {
       }, { by: "Clara" });
     }
 
+    // Beleg-Screenshot aufs Handy (14.06.2026): gleiche Mechanik wie bei der
+    // Abwesenheit. publishProof speichert die Beleg-Karte, baut die SVG-URL und
+    // pusht sie an gekoppelte Geraete. Best-effort — eine Buchung gilt auch ohne
+    // Handy als erledigt. Clara erwaehnt den Beleg NUR, wenn der Push wirklich
+    // an mindestens ein Geraet ging (kein falsches Versprechen).
+    let proofNote = "";
+    try {
+      const proof = await publishProof(clientId, buildAppointmentProof({
+        slotIso: r.slotIso,
+        patientFirstName: selected.firstName,
+        patientLastName: selected.lastName,
+        visitMotiveName: r.visitMotiveName,
+      }, { calendarName: c.doctorName || r.calendarName }));
+      if (proof?.pushed?.sent > 0) proofNote = " Den Beleg habe ich dir aufs Handy geschickt.";
+    } catch { /* Beleg ist Komfort, nie ein Blocker fuer die Buchung */ }
+
     const pre = c.alreadyBooked ? "Der Termin war bereits gebucht" : "Termin gebucht";
     return res.json({
       ok: true,
       booked: true,
-      message: `${pre} für ${who} am ${prettySlot(r.slotIso)}${r.calendarName ? ` bei ${r.calendarName}` : ""}.${memoryHint}`,
+      message: `${pre} für ${who} am ${prettySlot(r.slotIso)}${r.calendarName ? ` bei ${r.calendarName}` : ""}.${memoryHint}${proofNote}`,
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -4633,6 +4715,20 @@ app.get("/clara/:clientId", async (req, res) => {
 });
 
 // The connect page itself (static HTML reads :clientId from the URL via JS).
+// Termin-Bildbeleg (SVG) fuer Push und Chat-Vorschau auf dem Handy.
+app.get("/clara/proof/:clientId/:proofId.svg", async (req, res) => {
+  try {
+    const clientId = (req.params.clientId || "").trim();
+    const proofId = String(req.params.proofId || "").replace(/\.svg$/i, "");
+    const proof = await loadProof(clientId, proofId);
+    if (!proof) return res.status(404).type("text/plain").send("Beleg nicht gefunden");
+    res.set("Cache-Control", "public, max-age=86400");
+    res.type("image/svg+xml").send(proofToSvg(proof));
+  } catch (e) {
+    res.status(500).type("text/plain").send(String(e?.message || e));
+  }
+});
+
 app.get("/clara/:clientId/connect", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "clara", "connect.html"));
 });

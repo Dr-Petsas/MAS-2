@@ -1,5 +1,7 @@
 import { emitCommand } from "./sessions.js";
 import { loadBooking } from "./booking.js";
+import { buildAppointmentProof, storeProof } from "./proofCard.js";
+import { notifyProofToDevices } from "./devices.js";
 
 // Transparent proxy for the Pickadoc booking Cloud Functions.
 //
@@ -92,18 +94,34 @@ export async function proxyCreateAppointment(clientId, body) {
 
 async function emitCreated(clientId, body) {
   const startIso = body?.appointmentStartDate || "";
+  const calName = await calendarName(clientId, body?.calendarId);
+  const proof = buildAppointmentProof(body, { calendarName: calName });
+  let proofId = "";
+  let proofImageUrl = "";
+  try {
+    proofId = await storeProof(clientId, proof);
+    const base = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+    if (base && proofId) proofImageUrl = `${base}/clara/proof/${encodeURIComponent(clientId)}/${encodeURIComponent(proofId)}.svg`;
+  } catch {
+    /* proof storage is best-effort */
+  }
   await emitCommand(clientId, {
     type: "appointment_created",
     date: startIso ? String(startIso).slice(0, 10) : null,
     slotIso: startIso || null,
     calendarId: body?.calendarId || null,
-    calendarName: await calendarName(clientId, body?.calendarId),
+    calendarName: calName,
     patient: {
       firstName: body?.patientFirstName || "",
       lastName: body?.patientLastName || "",
     },
     visitMotiveName: body?.visitMotiveName || null,
+    proofId: proofId || null,
+    proof,
   });
+  if (proofId) {
+    notifyProofToDevices(clientId, { ...proof, proofId, imageUrl: proofImageUrl }).catch(() => {});
+  }
 }
 
 // updateOrCancelAppointment passes through untouched (no live command yet).
