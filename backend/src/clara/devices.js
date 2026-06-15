@@ -26,7 +26,7 @@ import { log } from "../log.js";
 
 const FieldValue = admin.firestore.FieldValue;
 
-export const PAIRING_TOKEN_TTL_MS = 10 * 60 * 1000; // QR is valid for 10 minutes
+export const PAIRING_TOKEN_TTL_MS = 30 * 60 * 1000; // QR/Code 30 Min gueltig (getippter Code braucht Luft)
 const SECRET_PEPPER = "mas2.clara.device.v1";
 
 // ── VAPID setup ─────────────────────────────────────────────────────────────
@@ -98,10 +98,46 @@ export function validateSubscription(sub) {
 
 // ── Pairing tokens (the "new QR") ───────────────────────────────────────────
 
+// Kurzer, EINTIPPBARER Kopplungscode (zusaetzlich zum QR-Token). Auf iOS ist die
+// QR-/Link-Kopplung fragil: Apple gibt der installierten PWA einen vom Safari
+// getrennten Speicher UND cached das Manifest aggressiv — der per Link/QR
+// uebergebene Token kann daher in der App verloren gehen ("kein Verbindungscode
+// gefunden"). Der getippte Code laeuft komplett ohne Link/Speicher/Manifest:
+// der Code steht auf dem Bildschirm, der Nutzer tippt ihn in die App. Alphabet
+// ohne verwechselbare Zeichen (kein 0/O/1/I).
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function genCode(n = 6) {
+  const b = randomBytes(n);
+  let out = "";
+  for (let i = 0; i < n; i++) out += CODE_ALPHABET[b[i] % CODE_ALPHABET.length];
+  return out;
+}
+
+// Root-Lookup Code -> {clientId, token}. Bewusst KEINE mas_-Collection und KEIN
+// collectionGroup: ein einzelner Dokument-Get per Code-ID, ganz ohne Index. So
+// loest das Handy den Mandanten allein aus dem getippten Code auf.
+function codesCol() {
+  return admin.firestore().collection("clara_pairing_codes");
+}
+
+// Freien, noch nicht (gueltig) vergebenen Kurzcode finden.
+async function reserveCode() {
+  const now = Date.now();
+  for (let i = 0; i < 6; i++) {
+    const code = genCode(6);
+    const snap = await codesCol().doc(code).get();
+    if (!snap.exists) return code;
+    const d = snap.data() || {};
+    if (now > (d.expiresAtMs || 0)) return code; // abgelaufen -> wiederverwendbar
+  }
+  return genCode(8); // extrem unwahrscheinlich: laenger -> praktisch kollisionsfrei
+}
+
 /**
  * Mint a short-lived, single-use pairing token bound to a team member. The
  * settings UI turns the returned URL into a QR code; whoever scans it within
- * the TTL becomes that operator's phone.
+ * the TTL becomes that operator's phone. Additionally carries a short, typeable
+ * ``code`` for the iOS-safe manual pairing path.
  */
 export async function createPairingToken(clientId, operator, { createdBy = "" } = {}) {
   if (!s(clientId)) throw new Error("client_id_required");
@@ -110,21 +146,48 @@ export async function createPairingToken(clientId, operator, { createdBy = "" } 
   if (!opId || !opName) throw new Error("operator_required");
   // URL-safe, unguessable, short enough for a friendly QR.
   const token = randomBytes(18).toString("base64url");
+  const code = await reserveCode();
   const now = Date.now();
+  const expiresAtMs = now + PAIRING_TOKEN_TTL_MS;
   const doc = {
     token,
+    code,
     operatorId: opId,
     operatorName: opName,
     role: s(operator?.role) || "frontdesk",
     doctorName: s(operator?.doctorName) || null,
     createdBy: s(createdBy) || null,
     createdAtMs: now,
-    expiresAtMs: now + PAIRING_TOKEN_TTL_MS,
+    expiresAtMs,
     usedAtMs: null,
     createdAt: FieldValue.serverTimestamp(),
   };
   await tokensCol(clientId).doc(token).set(doc);
+  // Root-Lookup fuer den getippten Code (iOS-sicher, ohne Index/collectionGroup).
+  await codesCol().doc(code).set({ clientId, token, expiresAtMs, createdAtMs: now });
   return doc;
+}
+
+/**
+ * Redeem by the short typed CODE — resolves the tenant itself (collectionGroup),
+ * so the phone needs nothing but the code + its push subscription. Bulletproof
+ * on iOS: no link, no manifest, no cross-context storage involved.
+ */
+export async function redeemPairingCode(codeRaw, { subscription, userAgent = "", label = "" } = {}) {
+  const code = s(codeRaw).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (code.length < 4) return { ok: false, reason: "code_missing" };
+  const now = Date.now();
+  const snap = await codesCol().doc(code).get();
+  if (!snap.exists) return { ok: false, reason: "token_unknown" };
+  const m = snap.data() || {};
+  if (now > (m.expiresAtMs || 0)) return { ok: false, reason: "token_expired" };
+  if (!m.clientId || !m.token) return { ok: false, reason: "token_unknown" };
+  const r = await redeemPairingToken(m.clientId, m.token, { subscription, userAgent, label });
+  if (r.ok) {
+    await codesCol().doc(code).delete().catch(() => {}); // verbraucht -> aufraeumen
+    return { ...r, clientId: m.clientId };
+  }
+  return r;
 }
 
 /**

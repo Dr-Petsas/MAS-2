@@ -493,20 +493,11 @@ function joinSpoken(items) {
  * resolved upstream). ``operatorDoctorName`` switches to "Sie haben" when the
  * asking operator IS the doctor whose calendar is read.
  */
-export function buildSpokenDayList(appointments = [], { date, calendars = [], operatorDoctorName = "" } = {}) {
+export function buildSpokenDayList(appointments = [], { date, calendars = [], operatorDoctorName = "", remaining = false } = {}) {
   const day = date || todayBerlin();
   const rel = relativeDayLabel(day);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   const real = appointments.filter((a) => !a.isAbsence).sort((x, y) => x.startMs - y.startMs);
-  if (!real.length) return cap(`${rel} sind keine Termine gebucht.${closedDayReason(day)}`);
-
-  const nameById = new Map((calendars || []).map((c) => [c.id, c.name]));
-  const groups = new Map();
-  for (const a of real) {
-    const key = a.calendarId || "_";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(a);
-  }
 
   const entry = (a) => {
     const motive = spokenMotive(a.visitMotive);
@@ -522,17 +513,40 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
     return e;
   };
 
+  // "Wie viele Termine habe ich NOCH?" — nur die noch kommenden, als EIN Satz
+  // mit Anzahl voran. Der Aufrufer hat die Liste bereits auf die Zukunft
+  // gefiltert (Chef-Feedback 15.06.2026: vergangene Termine NICHT mitzaehlen).
+  if (remaining) {
+    if (!real.length) return cap(`${rel} haben Sie keine weiteren Termine mehr.`);
+    const shown = real.slice(0, SPOKEN_LIST_MAX);
+    const head = `${cap(rel)} haben Sie noch ${real.length === 1 ? "einen Termin" : `${real.length} Termine`}`;
+    let msg = `${head}: ${joinSpoken(shown.map(entry))}.`;
+    if (real.length > SPOKEN_LIST_MAX) msg += ` Das sind die nächsten ${SPOKEN_LIST_MAX}, der Rest steht im Kalender.`;
+    if (shown.some((a) => a.docsStatus === "red")) msg += ` ${redDocsQuip()}`;
+    return msg;
+  }
+
+  if (!real.length) return cap(`${rel} sind keine Termine gebucht.${closedDayReason(day)}`);
+
+  const nameById = new Map((calendars || []).map((c) => [c.id, c.name]));
+  const groups = new Map();
+  for (const a of real) {
+    const key = a.calendarId || "_";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  }
+
   const isOwn = (calName) => isOwnCalendar(calName, operatorDoctorName);
 
   const truncated = real.length > SPOKEN_LIST_MAX;
-  let remaining = SPOKEN_LIST_MAX;
+  let budget = SPOKEN_LIST_MAX;
   const parts = [];
   let first = true;
   for (const [calId, list] of groups) {
-    if (remaining <= 0) break;
+    if (budget <= 0) break;
     const who = list[0].calendarName || nameById.get(calId) || "das Team";
-    const entries = list.slice(0, remaining).map(entry);
-    remaining -= entries.length;
+    const entries = list.slice(0, budget).map(entry);
+    budget -= entries.length;
     // Zeitangabe nach vorn ("Heute haben Sie um 9 Uhr Frau Sablon ...");
     // "haben"/"hat" governs the accusative, which spokenPatient produces.
     const lead = isOwn(who)

@@ -43,7 +43,7 @@ import {
 } from "./clara/patientDisambig.js";
 import { identifyByPin, listOperators, saveOperators, normalizeRole, OPERATOR_ROLES, roleLabel } from "./clara/operators.js";
 import {
-  createPairingToken, redeemPairingToken, listDevices, removeDevice,
+  createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice,
   identifyByDevice, refreshSubscription, callDevice, callOperator,
   vapidPublicKey, pushConfigured, consumePendingCallContext, notifyOperator,
 } from "./clara/devices.js";
@@ -57,6 +57,7 @@ import { buildBriefing, buildSpokenBriefing } from "./brain/briefing.js";
 import { extractFromTranscript, extractPatientName } from "./brain/extractor.js";
 import { resolvePatientSubject } from "./brain/identity.js";
 import { createCase, getCase, listCases, listActiveCasesByPatientIds, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext, saveCaseDraft, attachEventId } from "./brain/caseStore.js";
+import { TOPIC_LABELS } from "./brain/cases.js";
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "./brain/caseBriefing.js";
 import { recordCommunication } from "./brain/record.js";
 import { buildRedList, spokenRedList } from "./brain/redList.js";
@@ -132,6 +133,41 @@ app.use((req, res, next) => {
   res.set("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Client-Id,X-Service-Token,X-User-Id,X-User-Admin,ngrok-skip-browser-warning");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
+});
+
+// iOS-Kopplung: token-spezifisches Manifest. Apple gibt einer zum
+// Home-Bildschirm hinzugefuegten Web-App einen EIGENEN Speicher, getrennt von
+// Safari — der vor dem Hinzufuegen in Safari zwischengespeicherte QR-Token ist
+// darin unsichtbar. Folge: die App startet an ihrer start_url (call.html),
+// findet keinen Code und landet auf "kein Verbindungscode gefunden".
+// Loesung: Wenn die Kopplungsseite das Manifest mit ?c=&t= anfordert, backen
+// wir den Code in die start_url -> die installierte App startet direkt auf
+// pair.html MIT dem Code, ganz ohne Safari-Speicher. Muss VOR express.static
+// stehen, sonst gewinnt die statische Datei. no-store, damit iOS den Token
+// nicht aus dem Cache zieht.
+app.get("/m/manifest.webmanifest", (req, res) => {
+  const c = String(req.query.c || "").trim();
+  const t = String(req.query.t || "").trim();
+  const manifest = {
+    name: "Clara – Praxis-Assistentin",
+    short_name: "Clara",
+    description: "Clara ruft dich an: Briefings und Rückfragen deiner Praxis-KI direkt aufs Handy.",
+    display: "standalone",
+    background_color: "#0a1322",
+    theme_color: "#0a1322",
+    scope: "/m/",
+    start_url: (c && t)
+      ? `/m/pair.html?c=${encodeURIComponent(c)}&t=${encodeURIComponent(t)}`
+      : "/m/call.html",
+    icons: [
+      { src: "/m/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/m/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/m/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+  };
+  res.set("Content-Type", "application/manifest+json");
+  res.set("Cache-Control", "no-store");
+  res.json(manifest);
 });
 
 app.use(express.static(path.join(__dirname, "..", "public")));
@@ -2210,26 +2246,371 @@ app.post("/tools/day-appointments", async (req, res) => {
     const day = await getDayAppointments(clientId, { date, calendarId });
     if (!day.ok) return res.json({ ok: false, message: day.reason === "no_location" ? "Es ist keine Praxis-Buchungskonfiguration hinterlegt." : `Terminliste nicht verfügbar (${day.reason}).` });
 
+    // "Wie viele Termine habe ich NOCH?" -> nur die noch kommenden zaehlen,
+    // vergangene/erledigte raus (Chef-Feedback 15.06.2026). Nur sinnvoll fuer
+    // HEUTE; bei anderen Tagen ignorieren wir das Flag.
+    const wantRemaining = req.body?.remaining === true || String(req.body?.remaining || "").toLowerCase() === "true";
+    const remaining = wantRemaining && day.date === todayBerlin();
+    let appts = day.appointments;
+    if (remaining) {
+      const nowMs = Date.now();
+      appts = appts.filter((a) => !a.isAbsence && (a.endMs || a.startMs) >= nowMs);
+    }
+
     // "Sie haben morgen ..." only when the asking operator IS that doctor.
     const op = await getOperator(clientId);
     const operatorDoctorName = operatorDoctorNameOf(op);
-    const list = buildSpokenDayList(day.appointments, { date: day.date, calendars: day.calendars, operatorDoctorName });
+    const list = buildSpokenDayList(appts, { date: day.date, calendars: day.calendars, operatorDoctorName, remaining });
 
     // Shared brain: surface open cases (e.g. the e-mail Nadine threaded) for
     // the patients on this schedule. Best-effort — the list must never fail
     // because the memory lookup hiccuped.
     let memory = "";
     try {
-      const pids = day.appointments.filter((a) => !a.isAbsence && a.patientId).map((a) => a.patientId);
+      const pids = appts.filter((a) => !a.isAbsence && a.patientId).map((a) => a.patientId);
       const caseMap = await listActiveCasesByPatientIds(clientId, pids);
-      memory = buildSpokenMemoryHints(day.appointments, caseMap);
+      memory = buildSpokenMemoryHints(appts, caseMap);
     } catch (err) {
       log.warn("day-appointments memory hints failed", { clientId, err: String(err?.message || err) });
     }
 
     const message = [list, memory].filter(Boolean).join(" ");
     try { await emitCommand(clientId, { type: "navigate", date: day.date, calendarId: calendarId || null }); } catch { /* no live session */ }
-    return res.json({ ok: true, date: day.date, message, count: day.appointments.filter((a) => !a.isAbsence).length });
+    return res.json({ ok: true, date: day.date, message, count: appts.filter((a) => !a.isAbsence).length });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// ============================================================================
+// Jawdropper (15.06.2026, Chef-Wunsch):
+//   1) Patienten-Zeitstrahl auf Zuruf  -> /tools/patient-timeline
+//   2) Sprach-Notiz wird zum Vorgang    -> /tools/remember-note
+//   3) Verzugs-Retter (Lagebild als Push) -> /tools/running-late
+// Alle drei docken an die bestehende Infrastruktur an (Shared Memory: events +
+// cases, Patientensuche, Push via notifyOperator) — nichts Neues erfunden.
+// ============================================================================
+
+// Gesprochene Zeitspanne ("heute"/"gestern"/"vor 3 Tagen") fuer den Zeitstrahl.
+function agoLabel(ms) {
+  if (!ms) return "";
+  const dayOf = (t) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t));
+  const diff = Math.round((Date.parse(`${dayOf(Date.now())}T12:00:00Z`) - Date.parse(`${dayOf(ms)}T12:00:00Z`)) / 86400000);
+  if (diff <= 0) return "heute";
+  if (diff === 1) return "gestern";
+  if (diff === 2) return "vorgestern";
+  if (diff <= 14) return `vor ${diff} Tagen`;
+  if (diff <= 60) return `vor ${Math.round(diff / 7)} Wochen`;
+  return `vor ${Math.round(diff / 30)} Monaten`;
+}
+
+// Stunde/Minute in Berliner Zeit robust extrahieren. WICHTIG: de-DE mit NUR
+// `hour` liefert "11 Uhr" -> Number(...) = NaN. Daher en-GB + formatToParts.
+function berlinHM(ms) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(ms));
+  const h = Number(parts.find((p) => p.type === "hour")?.value || "0");
+  const m = Number(parts.find((p) => p.type === "minute")?.value || "0");
+  return { h, m };
+}
+
+// Uhrzeit gesprochen ("14 Uhr 30") in Berliner Zeit.
+function spokenClockBerlin(ms) {
+  const { h, m } = berlinHM(ms);
+  return m ? `${h} Uhr ${m}` : `${h} Uhr`;
+}
+
+// Uhrzeit als HH:MM (fuer den Push-Text aufs Handy — Ziffern lesen sich dort
+// besser als ausgesprochene Zeiten).
+function clockHHMM(ms) {
+  const { h, m } = berlinHM(ms);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// Den kompletten Spur-Verlauf eines Patienten aus dem Shared Memory sprechen:
+// offene Vorgaenge zuerst (das Wichtigste), dann die juengsten Ereignisse
+// (Anruf/E-Mail/Termin) in Zeitreihenfolge. Best-effort — jede Quelle darf
+// leer sein.
+async function buildSpokenPatientTimeline(clientId, p) {
+  const pid = String(p?.id || "").trim();
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const who = `${p?.firstName || ""} ${p?.lastName || ""}`.trim() || "der Patient";
+
+  const [events, activeCases] = await Promise.all([
+    pid ? queryByPatient(clientId, pid, 40).catch(() => []) : [],
+    pid ? listCases(clientId, { patientId: pid, activeOnly: true, limit: 10 }).catch(() => []) : [],
+  ]);
+
+  if (!events.length && !activeCases.length) {
+    return `Zu ${who} habe ich im Praxisgedächtnis noch keine Einträge.`;
+  }
+
+  const parts = [`Zu ${who} im Praxisgedächtnis:`];
+  const norm = (t) => String(t || "").replace(/\b[\w.+-]+@[\w.-]+\.\w+\b/g, who).replace(/\s+/g, " ").trim();
+  const seen = []; // bereits gesprochene Fakten — gegen Echo im Verlauf
+
+  // 1) Offene Vorgaenge — was noch nicht erledigt ist (das Wichtigste zuerst).
+  for (const c of activeCases.slice(0, 3)) {
+    const updates = Array.isArray(c.updates) ? c.updates : [];
+    const lastContact = [...updates].reverse().find((u) => u.kind === "contact") || updates[updates.length - 1];
+    const lastMs = c.lastContactAt?.toMillis?.() ?? (typeof c.lastContactAt === "number" ? c.lastContactAt : 0);
+    let line = `Offener Vorgang, Thema ${TOPIC_LABELS[c.topic] || c.topic || "Allgemein"}`;
+    const when = agoLabel(lastMs || lastContact?.ts);
+    if (when) line += ` (letzter Kontakt ${when})`;
+    if (c.assignee) line += `, liegt bei ${c.assignee}`;
+    const snippet = norm(lastContact?.text);
+    if (snippet) {
+      line += `: ${snippet.length > 160 ? `${snippet.slice(0, 157)}...` : snippet}`;
+      seen.push(snippet.toLowerCase());
+    }
+    parts.push(`${line}.`);
+  }
+
+  // 2) Juengste Ereignisse als Verlauf — aber NICHT doppeln, was die offenen
+  // Vorgaenge oben schon gesagt haben (Echo vermeiden). Neueste zuerst.
+  let told = 0;
+  for (const e of events) {
+    if (told >= 4) break;
+    const sum = norm(e.summary);
+    if (!sum) continue;
+    const low = sum.toLowerCase();
+    if (seen.some((s) => s.includes(low) || low.includes(s))) continue;
+    const when = agoLabel(e.ts);
+    parts.push(`${when ? `${cap(when)}: ` : ""}${sum}`);
+    seen.push(low);
+    told++;
+  }
+
+  if (parts.length === 1) parts.push("nichts Offenes, und keine nennenswerten Einträge.");
+  return parts.join(" ");
+}
+
+// 1) PATIENTEN-ZEITSTRAHL: "Was war mit Herrn Meier?" -> komplette Spur aus dem
+// Shared Memory. Patientenbestimmung wie find_contact (neuer Name -> Suche,
+// sonst gemerkte Kandidaten; bei Mehrdeutigkeit Rueckfrage).
+app.post("/tools/patient-timeline", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const rawName = String(req.body?.name || "").trim();
+    const hint = String(req.body?.hint || "").trim();
+
+    // Ordinal-Nachfrage ("der erste", "der von gestern") gegen die zuletzt
+    // vorgelesene Kandidatenliste aufloesen — gleiche Logik wie find_contact.
+    const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
+    if (ordinalSource) {
+      const remembered = await getPatientCandidates(clientId);
+      const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
+      if (byOrd) {
+        await setPatientCandidates(clientId, [byOrd], byOrd);
+        const message = await buildSpokenPatientTimeline(clientId, byOrd);
+        return res.json({ ok: true, message });
+      }
+    }
+
+    let candidates = [];
+    if (rawName) {
+      const name = cleanSpokenPersonName(rawName) || rawName;
+      const found = await searchPatientSpoken(clientId, name);
+      if (!found.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` });
+      candidates = found.patients || [];
+      if (candidates.length > 1) {
+        const exact = narrowByExactName(name.toLowerCase(), candidates);
+        if (exact.length) candidates = exact;
+      }
+      if (!candidates.length) {
+        await setPatientCandidates(clientId, [], null);
+        return res.json({ ok: false, message: `Zu ${name} finde ich keinen Patienten im Praxisgedächtnis.` });
+      }
+    } else {
+      candidates = await getPatientCandidates(clientId);
+      if (!candidates.length) return res.json({ ok: false, message: "Zu wem soll ich nachsehen? Bitte den Namen nennen." });
+    }
+
+    if (candidates.length > 1) {
+      await setPatientCandidates(clientId, candidates, null);
+      return res.json({ ok: true, message: disambiguationQuestion(candidates) });
+    }
+
+    const sel = candidates[0];
+    await setPatientCandidates(clientId, candidates, sel);
+    await emitCommand(clientId, {
+      type: "patient_selected",
+      patient: { firstName: sel.firstName, lastName: sel.lastName, birthDate: sel.birthDate },
+      hasPhone: !!sel.hasPhone,
+    }).catch(() => {});
+    const message = await buildSpokenPatientTimeline(clientId, sel);
+    return res.json({ ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 2) SPRACH-NOTIZ WIRD ZUM VORGANG: "Merk dir: Herr Fountas braucht eine neue
+// Schiene." -> Notiz als Event ins Shared Memory + als (Vorgangs-)Case am
+// Patienten, damit sie beim NAECHSTEN Termin von allein wieder hochkommt
+// (buildSpokenMemoryHints liest aktive Cases der Tagespatienten vor).
+app.post("/tools/remember-note", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const rawName = String(req.body?.name || "").trim();
+    const note = String(req.body?.note || req.body?.text || "").trim();
+    if (!note) return res.json({ ok: false, message: "Was genau soll ich mir merken?" });
+
+    // Bei Mehrdeutigkeit muss das Modell die Notiz erneut mitschicken — sonst
+    // ginge sie nach der Auswahl ("der erste") verloren.
+    const reaskDirective = "Bei Rueckfrage erneut remember_note aufrufen: name = die gewaehlte Person (z.B. 'der erste'), note = DIESELBE Notiz wie eben.";
+
+    // Patient bestimmen. Reihenfolge: Ordinal-Auswahl gegen gemerkte Kandidaten
+    // ("der erste") -> kein Name + genau ein gemerkter -> Namenssuche.
+    let sel = null;
+    {
+      const ordinalSource = rawName.toLowerCase();
+      if (ordinalSource) {
+        const remembered = await getPatientCandidates(clientId);
+        const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
+        if (byOrd) {
+          sel = byOrd;
+          await setPatientCandidates(clientId, [byOrd], byOrd);
+        }
+      }
+    }
+    if (!sel && !rawName) {
+      const remembered = await getPatientCandidates(clientId);
+      if (remembered.length === 1) sel = remembered[0];
+      else if (remembered.length > 1) {
+        await setPatientCandidates(clientId, remembered, null);
+        return res.json({ ok: true, message: `Für wen soll ich die Notiz merken? ${disambiguationQuestion(remembered)}`, directive: reaskDirective });
+      }
+    }
+    if (!sel && rawName) {
+      const name = cleanSpokenPersonName(rawName) || rawName;
+      const found = await searchPatientSpoken(clientId, name);
+      if (!found.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` });
+      let cands = found.patients || [];
+      if (cands.length > 1) {
+        const exact = narrowByExactName(name.toLowerCase(), cands);
+        if (exact.length) cands = exact;
+      }
+      if (!cands.length) {
+        return res.json({ ok: false, message: `Ich finde keinen Patienten namens ${name}, dem ich die Notiz anhängen kann.` });
+      }
+      if (cands.length > 1) {
+        await setPatientCandidates(clientId, cands, null);
+        return res.json({ ok: true, message: `Für wen soll ich die Notiz merken? ${disambiguationQuestion(cands)}`, directive: reaskDirective });
+      }
+      sel = cands[0];
+      await setPatientCandidates(clientId, cands, sel);
+    }
+    if (!sel) return res.json({ ok: false, message: "Für welchen Patienten soll ich mir das merken? Bitte den Namen nennen." });
+
+    const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "den Patienten";
+    const subject = {
+      patientId: sel.id || null,
+      name: who,
+      matchStatus: sel.id ? "matched" : "unmatched",
+      matchMethod: sel.id ? "name" : null,
+    };
+    // Als NOTE-Event ablegen (taucht im Zeitstrahl auf) und als Vorgang
+    // verknuepfen (taucht beim naechsten Termin im Tages-Memory wieder auf).
+    const { event } = await appendEvent(clientId, {
+      channel: "clara_voice",
+      type: "note",
+      direction: "internal",
+      counterparty: { kind: "system", name: "Clara", ref: null },
+      subject,
+      status: "none",
+      summary: `Notiz von Ihnen: ${note}`,
+      extractor: "clara@voice-note",
+    });
+    let caseId = null;
+    try {
+      const link = await linkEventToCase(clientId, event, { by: "Clara" });
+      caseId = link?.caseId || null;
+    } catch { /* Vorgang best-effort — die Notiz selbst ist schon gespeichert */ }
+
+    return res.json({
+      ok: true,
+      message: `Notiz zu ${who} gespeichert: ${note}. Ich bringe sie beim nächsten Termin von allein wieder hoch.`,
+      caseId,
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 3) VERZUGS-RETTER: "Ich bin 20 Minuten im Verzug." -> Lagebild der noch
+// kommenden Termine, wie weit sie sich verschieben, plus Vorschlag — und das
+// Ganze als PUSH aufs Handy (Chef-Wunsch: "als push nachricht!").
+app.post("/tools/running-late", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const lateRaw = Number(req.body?.minutesLate ?? req.body?.minutes ?? 0);
+    const minutesLate = Number.isFinite(lateRaw) ? Math.max(0, Math.min(240, Math.round(lateRaw))) : 0;
+
+    const date = todayBerlin();
+    const calScope = await resolveDayCalendarScope(clientId, req.body);
+    const day = await getDayAppointments(clientId, { date, calendarId: calScope.calendarId });
+    if (!day.ok) return res.json({ ok: false, message: "Ich kann den heutigen Tagesplan gerade nicht laden." });
+
+    const nowMs = Date.now();
+    const upcoming = (day.appointments || [])
+      .filter((a) => !a.isAbsence && (a.startMs || 0) >= nowMs)
+      .sort((a, b) => a.startMs - b.startMs);
+
+    if (!upcoming.length) {
+      const msg = "Für heute steht nichts mehr an — der Verzug holt dich also nicht mehr ein.";
+      return res.json({ ok: true, message: msg, pushed: false, affected: 0 });
+    }
+
+    const spokenPat = (a) => {
+      const last = a.patientLastName || a.patientName || "";
+      if (!last) return "ein Patient ohne Namen";
+      if (a.patientGender === "f") return `Frau ${last}`;
+      if (a.patientGender === "m") return `Herr ${last}`;
+      return last;
+    };
+    const next = upcoming[0];
+    const shiftedNext = spokenClockBerlin(next.startMs + minutesLate * 60000);
+    const lateBit = minutesLate ? `Du bist ${minutesLate} Minuten im Verzug. ` : "";
+    const headline = `${lateBit}Als Nächstes um ${spokenClockBerlin(next.startMs)} ${spokenPat(next)}` +
+      (minutesLate ? `, das verschiebt sich auf etwa ${shiftedNext}` : "") + ".";
+    const more = upcoming.length - 1;
+    const moreBit = more > 0 ? ` Danach sind noch ${more} ${more === 1 ? "Termin" : "Termine"} betroffen.` : "";
+    const proposal = ` Soll ich ${spokenPat(next)} eine SMS schicken, dass es ${minutesLate ? `etwa ${minutesLate} Minuten ` : ""}später wird?`;
+    const message = `${headline}${moreBit}${proposal}`;
+
+    // Lagebild als Push aufs gekoppelte Handy.
+    let pushed = false;
+    try {
+      const op = await getOperator(clientId);
+      if (op?.id) {
+        const title = minutesLate ? `${minutesLate} Min im Verzug` : "Verzug im Tagesplan";
+        const bodyLines = upcoming.slice(0, 4).map((a) =>
+          `${clockHHMM(a.startMs)} ${spokenPat(a)}` +
+          (minutesLate ? ` → ~${clockHHMM(a.startMs + minutesLate * 60000)}` : "")
+        );
+        const body = `${more + 1} Termine offen. ${bodyLines.join(" · ")}`;
+        const url = `${PUBLIC_BASE_URL.replace(/\/+$/, "")}/m/call.html`;
+        const r = await notifyOperator(clientId, op.id, { title, body: body.slice(0, 300), url });
+        pushed = !!(r && r.sent > 0);
+      }
+    } catch { /* Push best-effort — gesprochenes Lagebild bleibt */ }
+    try { await emitCommand(clientId, { type: "navigate", date: day.date, calendarId: calScope.calendarId || null }); } catch { /* keine Live-Session */ }
+
+    return res.json({
+      ok: true,
+      message: pushed ? `${message} (Das Lagebild liegt auch auf deinem Handy.)` : message,
+      pushed,
+      affected: upcoming.length,
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -4773,7 +5154,7 @@ app.post("/clara/devices/pairing-token", async (req, res) => {
     const url = `${PUBLIC_BASE_URL}/m/pair.html?c=${encodeURIComponent(clientId)}&t=${encodeURIComponent(t.token)}`;
     let qrDataUrl = "";
     try { qrDataUrl = await QRCode.toDataURL(url, { width: 280, margin: 1 }); } catch { qrDataUrl = ""; }
-    res.json({ ok: true, token: t.token, url, qrDataUrl, expiresAtMs: t.expiresAtMs, operator: { id: op.id, name: op.name, role: op.role } });
+    res.json({ ok: true, token: t.token, code: t.code, url, qrDataUrl, expiresAtMs: t.expiresAtMs, operator: { id: op.id, name: op.name, role: op.role } });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -4794,6 +5175,32 @@ app.post("/clara/devices/register", async (req, res) => {
     });
     if (!r.ok) return res.status(400).json({ ok: false, error: r.reason });
     log.info("device paired", { requestId: req.requestId, clientId, deviceId: r.deviceId, operatorId: r.operator?.id });
+    res.json(r);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Public (code-gated): iOS-sicherer Weg — die App schickt nur den getippten
+// Code + ihre Push-Subscription. Den Mandanten loest der Code selbst auf
+// (collectionGroup), also braucht das Handy weder clientId noch Link/Manifest.
+app.post("/clara/devices/register-code", async (req, res) => {
+  try {
+    const code = (req.body?.code || "").trim();
+    if (!code) return res.status(400).json({ ok: false, error: "code_required" });
+    const r = await redeemPairingCode(code, {
+      subscription: req.body?.subscription,
+      userAgent: req.header("User-Agent") || "",
+      label: req.body?.label || "",
+    });
+    if (!r.ok) {
+      const gone = ["token_unknown", "token_used", "token_expired", "code_missing"].includes(r.reason);
+      return res.status(gone ? 410 : 400).json({ ok: false, error: r.reason });
+    }
+    if (!(await assertAppEnabled(r.clientId, "clara"))) {
+      return res.status(403).json({ ok: false, error: "clara_not_entitled" });
+    }
+    log.info("device paired (code)", { requestId: req.requestId, clientId: r.clientId, deviceId: r.deviceId, operatorId: r.operator?.id });
     res.json(r);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

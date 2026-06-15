@@ -61,6 +61,15 @@
       <p class="note">Ohne diesen Schritt kann das iPhone keine Anrufe von Clara empfangen (Apple erlaubt Mitteilungen nur für installierte Apps).</p>
     </div>
 
+    <!-- Code-Eingabe: iOS-sicher, ganz ohne Link/Manifest/Speicher -->
+    <div id="viewCode" class="hidden">
+      <div class="step"><div class="n">1</div><p>Tippe den <b>6-stelligen Code</b> aus den Praxis-Einstellungen ein.</p></div>
+      <input id="codeInput" type="text" inputmode="latin" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="one-time-code" maxlength="8" placeholder="z. B. K7P2QW"
+        style="width:100%;padding:16px;border-radius:14px;border:1px solid #293a5c;background:#0e1830;color:#e6edf6;font-size:24px;letter-spacing:4px;text-align:center;text-transform:uppercase;margin-top:6px;" />
+      <button class="primary" id="btnCode">Koppeln</button>
+      <p class="note">Beim Tippen fragt dein Handy einmalig nach der Erlaubnis für Mitteilungen – bitte <b>„Erlauben“</b> wählen.</p>
+    </div>
+
     <!-- Pairing: one tap -->
     <div id="viewPair" class="hidden">
       <div class="step"><div class="n">📞</div><p>Clara kann dich künftig <b>direkt auf diesem Handy anrufen</b> – z.&nbsp;B. fürs Morgen-Briefing oder wenn etwas Wichtiges anliegt.</p></div>
@@ -114,8 +123,19 @@
     const pairClientId = urlClientId || (pending && pending.c) || "";
     const pairToken = urlToken || (pending && pending.t) || "";
 
-    const els = Object.fromEntries(["title","subtitle","viewInstall","viewPair","viewHome","viewDead",
-      "btnPair","btnTalk","btnUnpair","homeText","err","diag"].map(id => [id, document.getElementById(id)]));
+    // iOS-Kopplung: den Code ins Manifest legen, BEVOR der Nutzer "Zum
+    // Home-Bildschirm" tippt. Apple liest die start_url des Manifests beim
+    // Hinzufuegen — so startet die installierte App direkt hier MIT dem Code,
+    // statt an der parameterlosen start_url (call.html) zu landen und den Code
+    // im getrennten App-Speicher nicht zu finden. (Greift nur beim frischen
+    // Scan in Safari; ein bereits eingebackener Code braucht das nicht.)
+    if (urlClientId && urlToken) {
+      const mlink = document.querySelector('link[rel="manifest"]');
+      if (mlink) mlink.href = `/m/manifest.webmanifest?c=${encodeURIComponent(urlClientId)}&t=${encodeURIComponent(urlToken)}`;
+    }
+
+    const els = Object.fromEntries(["title","subtitle","viewInstall","viewPair","viewHome","viewDead","viewCode",
+      "btnPair","btnTalk","btnUnpair","btnCode","codeInput","homeText","err","diag"].map(id => [id, document.getElementById(id)]));
 
     function loadDevice() {
       try { return JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { return null; }
@@ -128,7 +148,7 @@
     const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
     function show(view) {
-      for (const v of ["viewInstall","viewPair","viewHome","viewDead"]) els[v].classList.add("hidden");
+      for (const v of ["viewInstall","viewPair","viewHome","viewDead","viewCode"]) els[v].classList.add("hidden");
       if (view) els[view].classList.remove("hidden");
     }
     function setErr(msg) { els.err.textContent = msg || ""; }
@@ -140,27 +160,66 @@
       return Uint8Array.from([...raw].map((ch) => ch.charCodeAt(0)));
     }
 
+    // Push-Erlaubnis + Subscription besorgen (gemeinsam fuer QR- und Code-Weg).
+    async function getPushSubscription() {
+      const reg = await navigator.serviceWorker.register("/m/sw.js");
+      await navigator.serviceWorker.ready;
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") throw new Error("Mitteilungen wurden nicht erlaubt. Bitte in den Einstellungen erlauben und erneut versuchen.");
+      const vk = await fetch("/clara/devices/vapid-key").then(r => r.json());
+      if (!vk.ok) throw new Error("Push ist auf dem Server nicht konfiguriert.");
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(vk.key) });
+      }
+      return sub;
+    }
+
+    // iOS-sicherer Weg: getippter Code -> Server loest Mandant selbst auf.
+    async function pairWithCode() {
+      setErr("");
+      const code = (els.codeInput.value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (code.length < 4) { setErr("Bitte den Code aus den Einstellungen eingeben."); return; }
+      els.btnCode.disabled = true;
+      els.btnCode.textContent = "Wird verbunden …";
+      try {
+        const sub = await getPushSubscription();
+        const resp = await fetch("/clara/devices/register-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, subscription: sub.toJSON() }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          if (["token_unknown","token_used","token_expired","code_missing"].includes(data.error)) {
+            setErr("Code ungültig oder abgelaufen. Bitte einen neuen Code erzeugen lassen.");
+          } else {
+            setErr(data.error || "Kopplung fehlgeschlagen.");
+          }
+          els.btnCode.disabled = false; els.btnCode.textContent = "Koppeln";
+          return;
+        }
+        clearPending();
+        saveDevice({
+          clientId: data.clientId,
+          deviceId: data.deviceId,
+          deviceKey: data.deviceKey,
+          operatorName: data.operator?.name || "",
+          role: data.operator?.role || "",
+        });
+        renderHome(true);
+      } catch (e) {
+        setErr(String(e.message || e));
+        els.btnCode.disabled = false; els.btnCode.textContent = "Koppeln";
+      }
+    }
+
     async function pairNow() {
       setErr("");
       els.btnPair.disabled = true;
       els.btnPair.textContent = "Wird eingerichtet …";
       try {
-        const reg = await navigator.serviceWorker.register("/m/sw.js");
-        await navigator.serviceWorker.ready;
-
-        const perm = await Notification.requestPermission();
-        if (perm !== "granted") throw new Error("Mitteilungen wurden nicht erlaubt. Bitte in den Einstellungen erlauben und erneut versuchen.");
-
-        const vk = await fetch("/clara/devices/vapid-key").then(r => r.json());
-        if (!vk.ok) throw new Error("Push ist auf dem Server nicht konfiguriert.");
-
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: b64ToUint8(vk.key),
-          });
-        }
+        const sub = await getPushSubscription();
 
         const resp = await fetch("/clara/devices/register", {
           method: "POST",
@@ -227,7 +286,19 @@
 
     function renderEntry() {
       if (!pairToken || !pairClientId) {
-        els.subtitle.textContent = "Kein Verbindungscode gefunden. Bitte den QR-Code aus den Praxis-Einstellungen scannen.";
+        // Kein Token im Link (auf iOS der Normalfall: getrennter App-Speicher
+        // + Manifest-Cache schlucken den per QR/Link uebergebenen Token). Statt
+        // Sackgasse bieten wir die CODE-EINGABE an — die funktioniert ohne
+        // Link/Manifest/Speicher. In der installierten App (standalone) sofort;
+        // im iOS-Safari-Tab erst "Zum Home-Bildschirm", dann in der App den Code.
+        if (pushSupported) {
+          els.title.textContent = "Handy verbinden";
+          els.subtitle.textContent = "Gib den 6-stelligen Code aus den Praxis-Einstellungen ein.";
+          show("viewCode");
+          return;
+        }
+        if (isIOS && !isStandalone) { show("viewInstall"); return; }
+        els.subtitle.textContent = "Dieser Browser unterstützt keine Push-Mitteilungen. Bitte Chrome (Android) oder Safari (iPhone) verwenden.";
         show(null);
         return;
       }
@@ -242,6 +313,7 @@
     }
 
     els.btnPair.addEventListener("click", pairNow);
+    els.btnCode.addEventListener("click", pairWithCode);
 
     els.btnUnpair.addEventListener("click", () => {
       clearDevice();
@@ -249,11 +321,18 @@
     });
 
     // ── Boot ─────────────────────────────────────────────────────────────────
-    // Ein frischer QR-Token hat IMMER Vorrang: Wer scannt, will (neu) koppeln.
-    // Sonst würde eine alte lokale Kopplung (z.B. nach "Entfernen" in den
-    // Einstellungen, das nur serverseitig löscht) sofort zur Anrufseite
-    // weiterleiten und der neue Token verfiele ungenutzt.
-    if (pairToken && pairClientId) renderEntry();
+    // Ein frischer QR-Token in SAFARI (nicht standalone) hat IMMER Vorrang: wer
+    // scannt, will (neu) koppeln — sonst würde eine alte lokale Kopplung sofort
+    // zur Anrufseite weiterleiten und der neue Token verfiele ungenutzt.
+    // ACHTUNG iOS: Bei der Kopplung steckt der Token in der App-start_url und
+    // ist daher bei JEDEM Start der installierten App vorhanden. Wäre er hier
+    // immer "Vorrang", landete man nach erfolgreicher Kopplung bei jedem Start
+    // wieder auf "Jetzt aktivieren" (Token längst verbraucht). Deshalb: ist
+    // dieses Gerät bereits gekoppelt, geht es zu Clara; der eingebackene Token
+    // wird nur genutzt, solange noch KEIN Gerät gekoppelt ist.
+    const hasToken = !!(pairToken && pairClientId);
+    const freshSafariScan = hasToken && !isStandalone;
+    if (freshSafariScan) renderEntry();
     else if (loadDevice()) renderHome(false);
     else renderEntry();
   </script>
