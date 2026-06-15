@@ -48,6 +48,7 @@ import {
   vapidPublicKey, pushConfigured, consumePendingCallContext, notifyOperator,
 } from "./clara/devices.js";
 import { proxyGetFreeTimeSlots, proxyCreateAppointment, proxyUpdateOrCancel } from "./clara/cfProxy.js";
+import { runClaraHealth, statusPageHtml } from "./clara/health.js";
 import { loadProof, proofToSvg, buildAppointmentProof, publishProof } from "./clara/proofCard.js";
 import { lisaSendSms, lisaStartCall, finalizeLisaCalls, listLisaTasks, smsConfigured as lisaSmsConfigured, callConfigured as lisaCallConfigured } from "./lisa/outbound.js";
 import { ingestBiancaCalls, biancaConfigured } from "./bianca/ingest.js";
@@ -5286,6 +5287,24 @@ app.post("/clara/call-operator", async (req, res) => {
   }
 });
 
+// Live-Stack-Health als JSON (nebenwirkungsfrei, keine PII). Speist die
+// Status-Seite. MUSS vor "/clara/:clientId" stehen, sonst faengt der Catch-all
+// "health" als clientId ab.
+app.get("/clara/health", async (req, res) => {
+  try {
+    const h = await runClaraHealth();
+    res.status(h.overall === "green" ? 200 : 503).json(h);
+  } catch (e) {
+    res.status(500).json({ overall: "red", error: String(e?.message || e), checks: [] });
+  }
+});
+
+// System-Status-Seite (GRUEN/ROT pro Komponente, Auto-Refresh). Read-only,
+// loest keine Aktionen aus -> sicher gegen Live.
+app.get("/clara/:clientId/status", (req, res) => {
+  res.type("html").send(statusPageHtml((req.params.clientId || DEFAULT_CLIENT_ID).trim()));
+});
+
 // Per-tenant QR landing page: shows a QR that opens the connect page on a phone.
 app.get("/clara/:clientId", async (req, res) => {
   const clientId = (req.params.clientId || DEFAULT_CLIENT_ID).trim();
@@ -5321,6 +5340,12 @@ app.get("/clara/:clientId", async (req, res) => {
   a.btn{display:inline-block;margin-top:20px;background:#6366f1;color:#fff;text-decoration:none;
         padding:12px 22px;border-radius:10px;font-weight:600}
   code{color:#cbd5e1;font-size:12px}
+  .status{margin-top:18px;display:inline-flex;align-items:center;gap:8px;padding:7px 14px;
+          border-radius:999px;font-size:13px;font-weight:600;text-decoration:none}
+  .status .d{width:10px;height:10px;border-radius:50%;background:currentColor}
+  .status.green{background:rgba(34,197,94,.15);color:#86efac}
+  .status.red{background:rgba(239,68,68,.15);color:#fca5a5}
+  .status.load{background:rgba(148,163,184,.15);color:#cbd5e1}
 </style></head><body>
 <div class="card">
   <h1>Mit Clara sprechen</h1>
@@ -5328,7 +5353,18 @@ app.get("/clara/:clientId", async (req, res) => {
   ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" width="320" height="320">` : `<p>QR nicht verfügbar</p>`}
   <div><a class="btn" href="${connectUrl}">Jetzt verbinden</a></div>
   <p style="margin-top:18px"><code>Praxis: ${clientId}</code></p>
-</div></body></html>`);
+  <div><a id="st" class="status load" href="/clara/${encodeURIComponent(clientId)}/status"><span class="d"></span><span id="stt">System-Status...</span></a></div>
+</div>
+<script>
+(function(){
+  function set(cls,txt){var a=document.getElementById('st');if(!a)return;a.className='status '+cls;document.getElementById('stt').textContent=txt;}
+  fetch('/clara/health',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.overall==='green'){set('green','System: alles gruen');}
+    else{var bad=((d&&d.checks)||[]).filter(function(c){return !c.ok;}).map(function(c){return c.name;}).join(', ');set('red','System-Problem: '+(bad||'siehe Status'));}
+  }).catch(function(){set('red','Status nicht abrufbar');});
+})();
+</script>
+</body></html>`);
 });
 
 // The connect page itself (static HTML reads :clientId from the URL via JS).

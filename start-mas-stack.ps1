@@ -72,4 +72,35 @@ if (Test-PortListening 8091) {
     Write-StackLog "Clara Worker: gestartet (Modell-Load dauert ~30-60s, Log: clara_$Stamp.log)"
 }
 
+# --- 5) Selbsttest: nach dem Start pruefen, dass Clara WIRKLICH antwortet ----
+# Der Worker braucht ~30-60s fuer STT-Modell-Load + LiveKit-Registrierung.
+# Wir warten darauf (max. 90s) und lassen dann clara-smoke.ps1 laufen, das pro
+# Komponente GRUEN/ROT meldet - inkl. Tool-Calling (der 1011c18-Fehler waere
+# hier sofort als ROT sichtbar gewesen). So muss nie wieder von Hand gesucht
+# werden, was kaputt ist.
+Write-StackLog "Selbsttest: warte auf Worker-Registrierung (max. 90s)..."
+$workerReady = $false
+for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 3
+    if (Test-PortListening 8091) {
+        $wlog = Get-ChildItem 'F:\MAS-2\logs\clara_*.err.log','F:\Clara-Voice\_worker*.err.log' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($wlog -and (Select-String -Path $wlog.FullName -Pattern 'registered worker' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+            $workerReady = $true; break
+        }
+    }
+}
+$workerMsg = 'NICHT bestaetigt (Smoke laeuft trotzdem)'
+if ($workerReady) { $workerMsg = 'registriert' }
+Write-StackLog ("Selbsttest: Worker " + $workerMsg)
+
+$smokeLog = Join-Path $LogDir ("smoke_" + $Stamp + ".log")
+& 'powershell' -NoProfile -ExecutionPolicy Bypass -File 'F:\MAS-2\clara-smoke.ps1' *>&1 | Tee-Object -FilePath $smokeLog | Out-Null
+$smokeCode = $LASTEXITCODE
+if ($smokeCode -eq 0) {
+    Write-StackLog "Selbsttest: GRUEN - Clara ist startklar."
+} else {
+    Write-StackLog ("Selbsttest: ROT - Details in " + $smokeLog + " (oder clara-smoke.ps1 erneut laufen lassen).")
+}
+
 Write-StackLog "=== MAS-Stack Start fertig ==="

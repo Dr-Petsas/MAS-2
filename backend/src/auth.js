@@ -56,8 +56,11 @@ function isPublic(req) {
   // Fernsteuerungs-Chat (Wochenend-Provisorium): von der statischen Handy-Seite
   // aus erreichbar, jede Route prueft selbst REMOTE_CHAT_TOKEN (remoteChat.js).
   if (p.startsWith("/remote/")) return true;
-  // /clara/<clientId> (QR landing HTML) and /clara/<clientId>/connect (phone page).
-  if (/^\/clara\/[^/]+(\/connect)?$/.test(p)) return true;
+  // /clara/<clientId> (QR landing HTML), /clara/<clientId>/connect (phone page)
+  // und /clara/<clientId>/status (System-Status-Seite, nur Read-only-Health).
+  if (/^\/clara\/[^/]+(\/connect|\/status)?$/.test(p)) return true;
+  // /clara/health (globaler Stack-Health als JSON, keine PII, nebenwirkungsfrei).
+  if (p === "/clara/health") return true;
   // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
   if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
   return false;
