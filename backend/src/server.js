@@ -9,6 +9,7 @@ import { assertAppEnabled } from "./entitlements.js";
 import { createClaraSession } from "./clara/session.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar } from "./clara/booking.js";
 import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin } from "./clara/daySchedule.js";
+import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
 import { reflectOnce } from "./brain/reflect.js";
@@ -2159,19 +2160,19 @@ app.post("/tools/day-briefing", async (req, res) => {
     const date = (req.body?.date || "").trim() || todayBerlin();
     const calScope = await resolveDayCalendarScope(clientId, req.body);
     const calendarId = calScope.calendarId;
-    const day = await getDayAppointments(clientId, { date, calendarId });
-    if (!day.ok) return res.json({ ok: false, message: day.reason === "no_location" ? "Es ist keine Praxis-Buchungskonfiguration hinterlegt." : `Tagesplan nicht verfügbar (${day.reason}).` });
-
-    const briefing = computeDayBriefing(day.appointments, { calendars: day.calendars });
     const op = await getOperator(clientId);
     const opDoctor = operatorDoctorNameOf(op);
-    let message = buildSpokenDayBriefing(briefing, { date: day.date, operatorDoctorName: opDoctor });
+    // Lagebild statt Einzelvorlesen: Kopfzeile (Termine + E-Mails + Anrufe) +
+    // Top-Auffälligkeiten, Details auf Nachfrage (Chef-Wunsch 15.06.2026).
+    const overview = await buildSpokenDayOverview(clientId, { date, calendarId, operatorDoctorName: opDoctor });
+    if (!overview.ok) return res.json({ ok: false, message: overview.message });
+    let message = overview.message;
     // Offene Recall-Initiative? Clara bringt sich aktiv ein ("morgen ist wenig
     // los — soll ich die Anruflisten freigeben?").
     try { message += await initiativeSuffix(clientId); } catch { /* optional */ }
     // Show the day on the monitor (best-effort; works only with an active session).
-    try { await emitCommand(clientId, { type: "navigate", date: day.date, calendarId: calendarId || null }); } catch { /* no live session */ }
-    return res.json({ ok: true, date: day.date, message, counts: { total: briefing.total, newPatients: briefing.newPatients, unconfirmed: briefing.unconfirmed } });
+    try { await emitCommand(clientId, { type: "navigate", date: overview.date, calendarId: calendarId || null }); } catch { /* no live session */ }
+    return res.json({ ok: true, date: overview.date, message, counts: overview.counts });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -3190,11 +3191,124 @@ app.post("/tools/compose-email", async (req, res) => {
     // "waiting_approval"; gesendet wird ausschliesslich nach menschlicher Freigabe.
     await assignCase(clientId, caseId, { assignee: "Nadine", instruction, by });
     prepareCaseDraft(clientId, caseId, { by: "Nadine" }).catch(() => { /* best-effort */ });
+    // Diesen Vorgang aktiv setzen, damit eine direkt folgende Freigabe
+    // ("Sende die E-Mail" -> approve_and_send / send-prepared-email) GENAU
+    // diesen Entwurf trifft (Live-Test 15.06.2026: ohne das fand der Versand
+    // den frischen Entwurf nicht).
+    await setActiveCase(clientId, { id: caseId, subject: { name: displayName } }).catch(() => {});
 
     return res.json({
       ok: true,
       caseId,
-      message: `Alles klar. Nadine schreibt eine E-Mail${displayName ? ` an ${displayName}` : ""} und legt sie dir zur Freigabe vor — gesendet wird erst nach deiner Bestätigung.`,
+      message: `Alles klar. Nadine schreibt eine E-Mail${displayName ? ` an ${displayName}` : ""} und legt sie dir zur Freigabe vor — gesendet wird erst nach deiner Bestätigung. Soll ich sie senden?`,
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// E-Mail-Entwurf FREIGEBEN UND SENDEN (Gegenstueck zu compose_email).
+// compose_email legt nur einen freigabe-pflichtigen Entwurf an; dieses Tool
+// versendet ihn WORTWOERTLICH ueber den vorhandenen SMTP-Pfad (sendMail) — erst
+// nach ausdruecklicher Freigabe des Chefs ("Sende die E-Mail", "Gib frei").
+// Wichtig (Halluzinations-Schutz, Vorfall 15.06.2026): Es wird NUR der Status
+// zurueckgegeben, der wirklich eintritt. Wenn kein Empfaenger aufloesbar ist,
+// wird NICHT gesendet, sondern ehrlich nachgefragt. Zustellung ("eingetroffen")
+// wird NIE behauptet — nur "gesendet" bei sent:true.
+const _SEND_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function _normName(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\b(dr|doktor|herr|frau|prof)\.?\b/g, "")
+    .replace(/[^a-z0-9äöüß ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+app.post("/tools/send-prepared-email", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const active = await getActiveCase(clientId);
+    if (!active?.id) {
+      return res.json({ ok: false, sent: false, message: "Ich weiss gerade nicht, welche E-Mail gemeint ist. Sag mir kurz den Empfaenger, dann verfasse ich sie und sende nach deiner Freigabe." });
+    }
+    let c = await getCase(clientId, active.id);
+    if (!c) return res.json({ ok: false, sent: false, message: "Den Vorgang finde ich nicht mehr. Bitte sag mir den Empfaenger neu." });
+
+    // Entwurf evtl. noch nicht fertig (compose_email erstellt ihn im Hintergrund).
+    // Wenn ein Auftrag vorliegt, aber noch kein Entwurf, jetzt SYNCHRON erzeugen,
+    // damit die Freigabe nicht ins Leere laeuft.
+    if (!c.draft?.subject && !c.draft?.body && (c.handoff?.instruction || c.assignee)) {
+      await prepareCaseDraft(clientId, active.id, { by: "Nadine" }).catch(() => {});
+      c = await getCase(clientId, active.id) || c;
+    }
+    const draftSubject = String(c.draft?.subject || "").trim();
+    const draftBody = String(c.draft?.body || "").trim();
+    if (!draftSubject && !draftBody) {
+      return res.json({ ok: false, sent: false, message: "Es liegt noch kein fertiger Entwurf zum Senden vor. Soll ich die E-Mail erst verfassen?" });
+    }
+    // Doppel-Versand verhindern (z. B. zweimal "senden" gesagt).
+    if ((c.status === "resolved" || c.status === "closed") && req.body?.force !== true) {
+      return res.json({ ok: false, sent: false, message: "Diese E-Mail wurde fuer diesen Vorgang bereits gesendet." });
+    }
+
+    // Empfaenger aufloesen — strikte Reihenfolge, nie raten:
+    const op = await getOperator(clientId);
+    const accounts = (await listAccounts(clientId)).filter((a) => a.active !== false);
+    const acc = accounts[0] || null;
+    const accEmail = String(acc?.email || "").trim();
+    const name = String(c.subject?.name || "").trim();
+
+    let to = "";
+    let how = "";
+    const explicit = String(req.body?.to || "").trim();
+    if (_SEND_EMAIL_RE.test(explicit)) { to = explicit; how = "explizit"; }
+    else if (_SEND_EMAIL_RE.test(String(c.draft?.to || "").trim())) { to = String(c.draft.to).trim(); how = "entwurf"; }
+    else if (c.subject?.patientId) {
+      const s = await resolvePatientSubject(clientId, { name }).catch(() => null);
+      const cand = s?.candidates?.[0] || null;
+      const pmail = String(cand?.email || cand?.mail || cand?.emailAddress || "").trim();
+      if (_SEND_EMAIL_RE.test(pmail)) { to = pmail; how = "patient"; }
+    }
+    // Selbst/Chef: Empfaengername == Operator -> eigene Praxisadresse.
+    if (!to && accEmail) {
+      const opName = _normName(op?.name);
+      const rcpt = _normName(name);
+      const selfish = !name || (opName && rcpt && (rcpt === opName || rcpt.includes(opName) || opName.includes(rcpt)));
+      if (selfish) { to = accEmail; how = "selbst"; }
+    }
+    if (!to) {
+      return res.json({ ok: false, sent: false, needRecipient: true, message: `Ich habe fuer ${name || "diesen Empfaenger"} keine E-Mail-Adresse hinterlegt. Sag mir die Adresse, dann sende ich.` });
+    }
+    if (!acc) {
+      return res.json({ ok: false, sent: false, message: "Es ist kein E-Mail-Konto eingerichtet — ich kann nichts senden." });
+    }
+
+    const subject = draftSubject || "Ihre Nachricht aus der Praxis";
+    const body = draftBody;
+    const by = op?.name || actorName(req, "Clara");
+    const sent = await sendMail(clientId, acc.id, { to: [to], subject, text: body });
+    if (!sent.ok) {
+      return res.json({ ok: true, sent: false, reason: sent.reason || "send_failed", message: `Das Senden hat nicht geklappt (${sent.reason || "unbekannt"}). Es wurde nichts verschickt — der Entwurf liegt weiter zur Freigabe bereit.` });
+    }
+
+    await addUpdate(clientId, active.id, {
+      by,
+      kind: "note",
+      text: `Per Sprache freigegeben & gesendet von ${by} an ${to}${subject ? ` (Betreff: ${subject})` : ""}${sent.dryRun ? " [Testmodus]" : ""}.`,
+    }).catch(() => {});
+    if (!req.body?.keepOpen) {
+      await setStatus(clientId, active.id, "resolved", { by, note: "Per E-Mail beantwortet (Clara)" }).catch(() => {});
+    }
+    return res.json({
+      ok: true,
+      sent: true,
+      to,
+      resolvedBy: how,
+      dryRun: !!sent.dryRun,
+      message: `Erledigt. Ich habe die E-Mail an ${to} gesendet${sent.dryRun ? " (Testmodus)" : ""}.`,
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -3343,6 +3457,48 @@ async function candidatesWithCase(clientId, candidates, hintLower, offsets) {
     if (match) out.push(p);
   }
   return out;
+}
+
+// Kontaktkarte aufs gekoppelte Handy des Behandlers pushen (Patient ODER
+// externer Kontakt). Nutzt denselben Tap-to-Call-Push wie contact_card
+// (/m/contact.html — antippen = anrufen). Liefert die Push-Bestaetigung zurueck,
+// damit Clara WAHRHEITSGEMAESS sagen kann, ob die Karte wirklich angekommen ist
+// (nie behaupten, wenn kein Geraet gekoppelt ist). Best-effort: wirft nie.
+async function pushContactCard(clientId, p, { note = "" } = {}) {
+  try {
+    const name = `${p?.firstName || ""} ${p?.lastName || ""}`.trim() || String(p?.name || "").trim();
+    const mobile = String(p?.mobilePhoneNumber || p?.mobile || "").trim();
+    const phone = String(p?.phoneNumber || p?.phone || "").trim();
+    const email = String(p?.email || "").trim();
+    if (!name && !mobile && !phone && !email) return { ok: false, sent: 0, failed: 0 };
+    const op = await getOperator(clientId);
+    if (!op?.id) return { ok: false, sent: 0, failed: 0 };
+    const qp = new URLSearchParams({ n: name });
+    if (mobile) qp.set("m", mobile);
+    if (phone) qp.set("p", phone);
+    if (email) qp.set("e", email);
+    if (note) qp.set("note", note.slice(0, 80));
+    const url = `${PUBLIC_BASE_URL.replace(/\/+$/, "")}/m/contact.html?${qp.toString()}`;
+    const bodyBits = [mobile && `📱 ${mobile}`, !mobile && phone && `📞 ${phone}`, email].filter(Boolean);
+    const r = await notifyOperator(clientId, op.id, { title: `Kontakt: ${name}`, body: bodyBits.join(" · "), url });
+    return { ok: !!r.ok, sent: r.sent || (r.ok ? 1 : 0), failed: r.failed || 0 };
+  } catch {
+    return { ok: false, sent: 0, failed: 0 };
+  }
+}
+
+// Bestaetigungs-Satz nach Push einer Kontaktkarte: ehrlich, je nachdem ob ein
+// Handy erreicht wurde. IMMER mit der Rueckfrage "richtige Person?" plus dem
+// Hinweis, dass der Chef danach SMS/E-Mail/Anruf mit Inhalt nennen kann.
+function contactPushConfirm(p, pushed) {
+  const name = `${p.firstName || ""} ${p.lastName || ""}`.trim() || String(p.name || "").trim();
+  const reached = pushed && pushed.sent > 0;
+  const phone = String(p.mobilePhoneNumber || p.phone || "").trim();
+  const email = String(p.email || "").trim();
+  const head = reached
+    ? `Ich habe dir die Kontaktdaten von ${name} gerade aufs Handy geschickt.`
+    : `Gemeint ist ${name}${phone ? `, Telefon ${phone}` : ""}${email ? `${phone ? "," : ","} E-Mail ${email}` : ""}. (Aufs Handy konnte ich nichts schicken — kein Geraet gekoppelt.)`;
+  return `${head} Ist das die richtige Person? Wenn ja, sag mir was ich tun soll — SMS, E-Mail oder Anruf, und den Inhalt. Wenn nein, suchen wir weiter.`;
 }
 
 function contactSummary(p) {
@@ -3597,12 +3753,17 @@ app.post("/tools/find-contact", async (req, res) => {
         const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
         if (byOrd) {
           await setPatientCandidates(clientId, [byOrd], byOrd);
-          // Stefan-Meier-Loop 12.06.: Auftrag schon genannt ("Ruf ihn an,
-          // sag ihm ...")? Dann JETZT ausfuehren statt erneut zu suchen. Die
-          // "was darf es sein?"-Frage der contactSummary entfaellt hier — sie
-          // drueckte das Modell in eine unnoetige Bestaetigungsrunde.
-          const summaryOrd = contactSummary(byOrd).replace(/ — was darf es sein\?$/, ".");
-          return res.json({ ok: true, message: `${summaryOrd} NAECHSTER SCHRITT, wenn der Auftrag schon genannt wurde: delegate_call (Anruf ausrichten) oder send_sms — phone leer lassen, der Kontakt ist gemerkt. Antworte NICHT nur mit Text und suche NICHT erneut.` });
+          // 15.06.2026 (Chef-Wunsch): Nach der Auswahl ("der dritte") die
+          // KONTAKTKARTE aufs Handy pushen und zur Bestaetigung zurueckfragen
+          // ("richtige Person?"). Erst nach "ja" + Auftrag wird gesendet/angerufen
+          // (send_sms/compose_email/delegate_call), bei "nein" weiter gesucht.
+          const pushed = await pushContactCard(clientId, byOrd);
+          return res.json({
+            ok: true,
+            message: `${contactPushConfirm(byOrd, pushed)}`,
+            pushed: pushed?.sent > 0,
+            directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Auf 'nein' weiter suchen.",
+          });
         }
       }
     }
@@ -3636,10 +3797,16 @@ app.post("/tools/find-contact", async (req, res) => {
           });
           const who = ext.displayName;
           const trail = ext.provenance.slice(0, 2).join("; ");
-          const reach = ext.phone
-            ? "Ich habe eine Telefonnummer — soll Lisa anrufen oder eine SMS schicken, oder soll Nadine antworten?"
-            : (ext.email ? "Eine Telefonnummer habe ich nicht gefunden, aber die E-Mail-Adresse — soll Nadine schreiben?" : "Ich habe leider weder Telefonnummer noch E-Mail gefunden.");
-          return res.json({ ok: true, message: `${who} ist kein Patient, aber ich kenne den Kontakt${trail ? `: ${trail}` : ""}. ${reach}` });
+          if (ext.phone || ext.email) {
+            const pushed = await pushContactCard(clientId, { name: who, phone: ext.phone, email: ext.email }, { note: trail ? trail.slice(0, 80) : "", role: "Externer Kontakt" });
+            return res.json({
+              ok: true,
+              message: `${who} ist kein Patient, aber ich kenne den Kontakt${trail ? `: ${trail}` : ""}. ${contactPushConfirm({ name: who, mobilePhoneNumber: ext.phone, email: ext.email }, pushed)}`,
+              pushed: pushed?.sent > 0,
+              directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt). Auf 'nein' weiter suchen.",
+            });
+          }
+          return res.json({ ok: true, message: `${who} ist kein Patient, aber ich kenne den Kontakt${trail ? `: ${trail}` : ""}. Ich habe leider weder Telefonnummer noch E-Mail gefunden.` });
         }
         await setPatientCandidates(clientId, [], null);
         return res.json({ ok: false, message: `Ich finde weder einen Patienten noch einen bekannten Kontakt namens ${name} — auch nicht in E-Mails oder Anrufen.` });
@@ -3671,10 +3838,13 @@ app.post("/tools/find-contact", async (req, res) => {
               mobilePhoneNumber: ext.phone, email: ext.email, hasPhone: !!ext.phone, external: true,
             });
             const trail = ext.provenance.slice(0, 2).join("; ");
-            const reach = ext.phone
-              ? "Ich habe eine Telefonnummer — soll Lisa anrufen oder eine SMS schicken?"
-              : "Eine Telefonnummer habe ich nicht gefunden, aber die E-Mail-Adresse — soll Nadine schreiben?";
-            return res.json({ ok: true, message: `Das passt auf keinen Patienten, aber auf einen bekannten Kontakt: ${ext.displayName}${trail ? ` — ${trail}` : ""}. ${reach}` });
+            const pushed = await pushContactCard(clientId, { name: ext.displayName, phone: ext.phone, email: ext.email }, { note: trail ? trail.slice(0, 80) : "", role: "Externer Kontakt" });
+            return res.json({
+              ok: true,
+              message: `Das passt auf keinen Patienten, aber auf einen bekannten Kontakt: ${ext.displayName}${trail ? ` — ${trail}` : ""}. ${contactPushConfirm({ name: ext.displayName, mobilePhoneNumber: ext.phone, email: ext.email }, pushed)}`,
+              pushed: pushed?.sent > 0,
+              directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call. Auf 'nein' weiter suchen.",
+            });
           }
         }
         await setPatientCandidates(clientId, candidates, null);
@@ -3697,17 +3867,55 @@ app.post("/tools/find-contact", async (req, res) => {
       patient: { firstName: sel.firstName, lastName: sel.lastName, birthDate: sel.birthDate },
       hasPhone: !!sel.hasPhone,
     }).catch(() => {});
-    // Nachfrage-Pfad (ohne neuen Namen): Auswahl ist gefallen, Auftrag jetzt
-    // ausfuehren statt weiterzusuchen (Stefan-Meier-Loop 12.06.). Die "was
-    // darf es sein?"-Frage entfaellt — sie drueckte das Modell in eine
-    // unnoetige Bestaetigungsrunde statt zu delegieren.
-    const summaryTxt = !rawName
-      ? contactSummary(sel).replace(/ — was darf es sein\?$/, ".")
-      : contactSummary(sel);
-    const followUp = !rawName
-      ? " NAECHSTER SCHRITT, wenn der Auftrag schon genannt wurde: delegate_call (Anruf ausrichten) oder send_sms — phone leer lassen, der Kontakt ist gemerkt. Antworte NICHT nur mit Text und suche NICHT erneut."
-      : "";
-    return res.json({ ok: true, message: `${summaryTxt}${followUp}` });
+    // 15.06.2026 (Chef-Wunsch): Steht GENAU EIN Kontakt fest, die Kontaktkarte
+    // aufs Handy pushen und zur Bestaetigung zurueckfragen ("richtige Person?").
+    // Erst nach "ja" + Auftrag wird gesendet/angerufen; bei "nein" weiter gesucht.
+    // Ohne erreichbare Kontaktdaten bleibt es bei der ehrlichen Sprach-Auskunft.
+    const reachable = !!(String(sel.mobilePhoneNumber || "").trim() || String(sel.email || "").trim());
+    if (reachable) {
+      const pushed = await pushContactCard(clientId, sel);
+      return res.json({
+        ok: true,
+        message: `${contactPushConfirm(sel, pushed)}`,
+        pushed: pushed?.sent > 0,
+        directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Auf 'nein' weiter suchen.",
+      });
+    }
+    return res.json({ ok: true, message: contactSummary(sel) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// KONTAKTKARTE aufs Handy schicken: pusht den zuletzt gemerkten Kontakt
+// (find_contact/search_patient) als Karte. Fuer "Schick mir die Kontaktdaten
+// von X aufs Handy" ruft das Modell zuerst find_contact (das pusht bereits
+// automatisch); dieses Tool ist fuer "schick die Karte (nochmal)" auf den
+// bereits gemerkten Kontakt. Ehrlich: ohne gekoppeltes Handy wird die Karte
+// nicht behauptet, sondern die Daten vorgelesen.
+app.post("/tools/push-contact", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const sel = await getSelectedPatient(clientId);
+    const name = `${sel?.firstName || ""} ${sel?.lastName || ""}`.trim() || String(sel?.name || "").trim();
+    const phone = String(sel?.mobilePhoneNumber || sel?.phone || "").trim();
+    const email = String(sel?.email || "").trim();
+    if (!sel || (!name && !phone && !email)) {
+      return res.json({ ok: false, message: "Wen meinst du? Bitte nenne mir zuerst den Namen, dann suche ich den Kontakt." });
+    }
+    if (!phone && !email) {
+      return res.json({ ok: true, message: `Zu ${name} ist weder Telefonnummer noch E-Mail hinterlegt — es gibt nichts zu schicken.` });
+    }
+    const pushed = await pushContactCard(clientId, sel);
+    if (pushed?.sent > 0) {
+      return res.json({ ok: true, pushed: true, message: `Erledigt — ich habe dir die Kontaktdaten von ${name} aufs Handy geschickt.` });
+    }
+    // Kein Geraet erreicht: ehrlich die Daten nennen statt einen Push zu behaupten.
+    const parts = [phone && `Telefon ${phone}`, email && `E-Mail ${email}`].filter(Boolean).join(", ");
+    return res.json({ ok: true, pushed: false, message: `Aufs Handy konnte ich nichts schicken — kein Geraet gekoppelt. Die Daten von ${name}: ${parts}.` });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -4428,7 +4636,9 @@ app.post("/clara/session", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const profileId = (req.body?.profileId || CLARA_PROFILE_ID).trim();
-    const session = await createClaraSession({ clientId, profileId });
+    const pipelineRaw = String(req.body?.pipeline || "").trim().toLowerCase();
+    const pipeline = pipelineRaw === "text" ? "text" : "";
+    const session = await createClaraSession({ clientId, profileId, pipeline });
     // Optional identification — two PIN-less-friendly paths:
     //   a) paired phone: deviceId + deviceKey (from the QR pairing) resolve the
     //      operator without any typing — that's the "Clara ruft an" flow;

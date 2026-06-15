@@ -2,65 +2,119 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Clara</title>
   <style>
-    :root { color-scheme: dark; }
-    body { font-family: system-ui, "Segoe UI", Roboto, sans-serif; background:#0f172a; color:#e2e8f0;
-           margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
-    .card { background:#1e293b; border-radius:20px; padding:28px; width:min(440px,92vw);
-            box-shadow:0 20px 60px rgba(0,0,0,.4); }
-    h1 { margin:0 0 2px; font-size:22px; }
-    .sub { color:#94a3b8; font-size:13px; margin:0 0 18px; }
-    .orb { width:120px;height:120px;border-radius:50%;margin:8px auto 18px;
-           background:radial-gradient(circle at 30% 30%, #818cf8, #4f46e5);
+    :root { color-scheme: dark; --bg:#0f172a; --panel:#1e293b; --line:#334155; --text:#e2e8f0; --muted:#94a3b8; --accent:#6366f1; --good:#34d399; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--text);
+           margin:0; min-height:100dvh; display:flex; flex-direction:column; padding:14px 16px calc(env(safe-area-inset-bottom) + 16px); }
+    .topline { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+    h1 { margin:0; font-size:20px; }
+    .sub { color:var(--muted); font-size:12px; margin:2px 0 0; }
+    .mode-bar { display:flex; gap:4px; padding:3px; border-radius:999px; background:#0b1220; border:1px solid var(--line); }
+    .mode-bar button { border:0; background:transparent; color:var(--muted); font-size:11px; font-weight:600; padding:5px 10px; border-radius:999px; cursor:pointer; }
+    .mode-bar button.active { background:rgba(99,102,241,.25); color:#c7d2fe; }
+    .audio-pane { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .orb { width:120px;height:120px;border-radius:50%; background:radial-gradient(circle at 30% 30%, #818cf8, #4f46e5);
            box-shadow:0 0 0 0 rgba(99,102,241,.6); transition:transform .15s; }
     .orb.live { animation:pulse 1.4s infinite; }
     @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(99,102,241,.5)} 70%{box-shadow:0 0 0 26px rgba(99,102,241,0)} 100%{box-shadow:0 0 0 0 rgba(99,102,241,0)} }
-    button { width:100%; padding:14px; border:0; border-radius:12px; font-size:16px; font-weight:600;
-             cursor:pointer; }
-    .connect { background:#6366f1; color:#fff; }
+    .me,.status { text-align:center; color:#a5b4fc; font-size:13px; margin:10px 0; min-height:16px; }
+    .status { color:var(--muted); font-weight:600; }
+    button.main { width:100%; max-width:420px; padding:14px; border:0; border-radius:12px; font-size:16px; font-weight:600; cursor:pointer; }
+    .connect { background:var(--accent); color:#fff; }
     .hangup { background:#ef4444; color:#fff; }
-    .enable { background:#f59e0b; color:#0f172a; margin-top:10px; display:none; }
+    .enable { background:#f59e0b; color:#0f172a; margin-top:10px; display:none; width:100%; max-width:420px; padding:12px; border:0; border-radius:12px; font-weight:700; }
     .enable.show { display:block; }
-    .pin { width:100%; box-sizing:border-box; padding:12px 14px; margin:0 0 12px; border-radius:12px;
-           border:1px solid #334155; background:#0b1220; color:#e2e8f0; font-size:18px; letter-spacing:4px;
-           text-align:center; }
+    .pin { width:100%; max-width:420px; box-sizing:border-box; padding:12px 14px; margin:0 0 12px; border-radius:12px;
+           border:1px solid var(--line); background:#0b1220; color:var(--text); font-size:18px; letter-spacing:4px; text-align:center; }
     .pin::placeholder { letter-spacing:normal; color:#64748b; }
-    .me { text-align:center; color:#a5b4fc; font-size:13px; margin:0 0 12px; min-height:16px; }
-    .status { text-align:center; margin:14px 0 4px; font-weight:600; }
-    .log { margin-top:16px; max-height:160px; overflow:auto; font-size:12px; color:#94a3b8;
-           background:#0b1220; border-radius:10px; padding:10px; }
-    .log div { padding:1px 0; }
-    code { color:#cbd5e1; }
+    .chat-pane { flex:1; display:flex; flex-direction:column; min-height:0; }
+    .chat-scroll { flex:1; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:8px 0 12px; }
+    .clara-bubble { max-width:88%; padding:11px 14px; border-radius:16px; font-size:15px; line-height:1.45; white-space:pre-wrap; }
+    .clara-bubble-user { align-self:flex-end; background:rgba(245,158,11,.15); border:1px solid rgba(245,158,11,.35); border-bottom-right-radius:4px; }
+    .clara-bubble-assistant { align-self:flex-start; background:rgba(99,102,241,.18); border:1px solid rgba(99,102,241,.35); border-bottom-left-radius:4px; }
+    .clara-bubble.partial { opacity:.65; font-style:italic; }
+    .chat-compose { display:flex; gap:8px; align-items:flex-end; padding-top:8px; border-top:1px solid var(--line); }
+    .chat-compose textarea { flex:1; min-height:42px; max-height:120px; resize:none; border-radius:14px; border:1px solid var(--line);
+      background:#0b1220; color:var(--text); padding:10px 12px; font:inherit; }
+    .chat-compose button { border:0; border-radius:12px; background:var(--accent); color:#fff; font-weight:700; padding:10px 14px; cursor:pointer; }
+    .clara-proof-card { align-self:stretch; background:#0b1220; border:1px solid rgba(52,211,153,.35); border-radius:14px; padding:12px 14px; font-size:14px; }
+    .clara-proof-head { color:var(--good); font-weight:700; margin-bottom:8px; }
+    .clara-proof-line { display:flex; justify-content:space-between; gap:10px; margin:4px 0; }
+    .clara-proof-line span { color:var(--muted); }
+    .clara-proof-img { width:100%; margin-top:10px; border-radius:10px; background:#fff; }
+    .proof-strip { width:100%; max-width:420px; margin-top:8px; }
+    .chat-mid { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:10px; padding:12px 0; }
+    .chat-connect-btn { border:0; border-radius:999px; padding:12px 28px; font-size:15px; font-weight:700;
+      cursor:pointer; color:#0f172a; background:var(--good); }
+    .chat-state-label { font-size:13px; color:var(--muted); text-align:center; min-height:18px; }
+    .hidden { display:none !important; }
+    body.clara-mode-audio [data-clara-chat-pane] { display:none !important; }
+    body.clara-mode-chat [data-clara-audio-pane] { display:none !important; }
+    body.clara-mode-audio .audio-pane {
+      flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+      width:100%; max-width:440px; margin:0 auto;
+    }
+    body.clara-mode-chat .chat-pane { flex:1; min-height:0; }
+    audio { display:none; }
   </style>
 </head>
-<body>
-  <div class="card">
-    <h1>Clara</h1>
-    <p class="sub">Sprich mit deiner Praxis-Assistentin · <code id="who"></code></p>
-    <div class="orb" id="orb"></div>
-    <div class="me" id="me"></div>
-    <input class="pin" id="pin" type="tel" inputmode="numeric" autocomplete="off"
-           maxlength="8" placeholder="PIN (wer spricht?)" />
-    <div class="status" id="status">bereit</div>
-    <button class="connect" id="btn">Verbinden &amp; sprechen</button>
-    <button class="enable" id="enableBtn">🔊 Ton aktivieren (tippen)</button>
-    <!-- playsinline: iOS darf Audio nicht in einen Vollbild-Player zwingen.
-         Über Bluetooth/Auto wird Audio sonst evtl. gar nicht abgespielt. -->
-    <audio id="agentAudio" autoplay playsinline></audio>
-    <div class="log" id="log"></div>
+<body data-clara-root>
+  <div class="topline">
+    <div>
+      <h1>Clara</h1>
+      <p class="sub">Praxis <code id="who"></code></p>
+    </div>
+    <div class="mode-bar" data-clara-mode-bar>
+      <button type="button" class="active" data-clara-mode-audio>🎙 Audio</button>
+      <button type="button" data-clara-mode-chat>💬 Chat</button>
+    </div>
   </div>
 
+  <div class="audio-pane" data-clara-audio-pane>
+    <div class="orb" id="orb"></div>
+    <div class="me" id="me"></div>
+    <input class="pin" id="pin" type="tel" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="PIN (wer spricht?)" />
+    <div class="status" id="status">bereit</div>
+    <div class="proof-strip hidden" data-clara-proof-strip></div>
+    <button class="main connect" id="btn">Verbinden &amp; sprechen</button>
+    <button class="enable" id="enableBtn">🔊 Ton aktivieren (tippen)</button>
+  </div>
+
+  <section class="chat-pane hidden" data-clara-chat-pane>
+    <div class="chat-scroll" data-clara-chat-scroll></div>
+    <div class="chat-mid" data-clara-chat-mid>
+      <button type="button" class="chat-connect-btn" data-clara-chat-connect>Verbinden</button>
+      <div class="chat-state-label" data-clara-chat-state></div>
+    </div>
+    <div class="chat-compose">
+      <textarea rows="1" placeholder="Nachricht an Clara …" data-clara-chat-input></textarea>
+      <button type="button" data-clara-chat-send>Senden</button>
+    </div>
+  </section>
+
+  <audio id="agentAudio" autoplay playsinline></audio>
+
+  <script>
+    (function () {
+      var ua = navigator.userAgent || "";
+      if (/iphone|ipad|ipod|android/i.test(ua)) {
+        var parts = location.pathname.split("/").filter(Boolean);
+        var cid = decodeURIComponent(parts[1] || "");
+        if (cid) location.replace("/m/call.html?c=" + encodeURIComponent(cid));
+      }
+    })();
+  </script>
+
   <script type="module">
-    import {
-      Room, RoomEvent, Track,
-    } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
+    import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
+    import { mountClaraChat } from "/m/clara-chat.js";
 
     const els = {
       btn: document.getElementById("btn"),
       status: document.getElementById("status"),
-      log: document.getElementById("log"),
       orb: document.getElementById("orb"),
       who: document.getElementById("who"),
       audio: document.getElementById("agentAudio"),
@@ -69,15 +123,10 @@
       me: document.getElementById("me"),
     };
 
-    // /clara/:clientId/connect  ->  pull clientId out of the path.
-    // NOTE: must be declared BEFORE first use — referencing the const earlier
-    // threw a ReferenceError that killed the whole page script.
     const parts = location.pathname.split("/").filter(Boolean);
     const clientId = decodeURIComponent(parts[1] || "");
     els.who.textContent = clientId;
 
-    // Remember the PIN per device so the car case is type-once. It's an internal
-    // team convenience code, scoped to this practice page.
     const PIN_KEY = `clara.pin.${clientId}`;
     try { els.pin.value = localStorage.getItem(PIN_KEY) || ""; } catch {}
     const ROLE_LABEL = { doctor: "Arzt/Ärztin", frontdesk: "Rezeption", admin: "Praxisleitung" };
@@ -86,13 +135,57 @@
     let connected = false;
     let connecting = false;
     let audioAttached = false;
+    let chatPipeline = false;
 
-    function log(msg) {
-      const d = document.createElement("div");
-      d.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
-      els.log.prepend(d);
+    const chatUi = mountClaraChat(document.body, {
+      async onSend(text) {
+        if (!room?.localParticipant) {
+          setStatus("Bitte zuerst verbinden.");
+          chatUi.setConnectVisible(true);
+          chatUi.setChatVisual("idle");
+          return;
+        }
+        chatUi.setStatusLine("");
+        chatUi.setChatVisual("thinking");
+        const data = new TextEncoder().encode(JSON.stringify({ type: "chat", text }));
+        await room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true });
+      },
+      onConnect() {
+        if (connecting || connected) return;
+        chatUi.setStatusLine("");
+        connect({ textOnly: true });
+      },
+      onModeChange(mode) {
+        syncMicForMode(mode);
+        if (connected && room?.localParticipant) {
+          const wantText = mode === "chat";
+          if (wantText !== chatPipeline) {
+            chatPipeline = wantText;
+            publishCmd({ type: "set_pipeline", mode: wantText ? "text" : "audio" }).catch(() => {});
+          }
+        }
+      },
+    });
+
+    function setStatus(s) {
+      els.status.textContent = s;
+      if (chatUi.getMode() === "chat") chatUi.setStatusLine(s);
     }
-    function setStatus(s) { els.status.textContent = s; }
+
+    function syncChatVisual() {
+      if (chatUi.getMode() !== "chat") return;
+      if (!connected && !connecting) {
+        chatUi.setConnectVisible(true);
+        chatUi.setChatVisual("idle");
+        return;
+      }
+      chatUi.setConnectVisible(false);
+      if (connecting) chatUi.setChatVisual("connecting");
+      else if (connected) {
+        chatUi.setStatusLine("");
+        chatUi.setChatVisual("listening");
+      }
+    }
 
     async function publishCmd(payload) {
       if (!room?.localParticipant) return false;
@@ -103,9 +196,6 @@
 
     function showEnable(on) { els.enableBtn.classList.toggle("show", !!on); }
 
-    // Best-effort: make the agent audio actually play. Browsers (esp. iOS) and
-    // car head units block autoplay until a gesture; when blocked we surface a
-    // tap-to-enable button instead of failing silently.
     async function tryPlayAudio() {
       try {
         els.audio.muted = false;
@@ -122,42 +212,47 @@
       }
     }
 
-    // Bluetooth/Auto: connecting or dropping a BT device changes the audio route
-    // (A2DP <-> HFP) mid-call. The <audio> element can stall on that switch — so
-    // we nudge playback back to life whenever the device list changes.
     function attachRouteRecovery() {
       if (!navigator.mediaDevices || attachRouteRecovery._wired) return;
       attachRouteRecovery._wired = true;
       navigator.mediaDevices.addEventListener("devicechange", () => {
         if (!connected) return;
-        log("Audio-Route gewechselt – stelle Wiedergabe sicher");
         setTimeout(tryPlayAudio, 300);
       });
     }
 
-    async function connect() {
-      // Guard against double-connect: each connect mints a NEW room, and two
-      // rooms = two Clara workers talking at once (= every answer heard twice).
+    async function syncMicForMode(mode) {
+      if (!room?.localParticipant || !connected) return;
+      try {
+        await room.localParticipant.setMicrophoneEnabled(mode === "audio");
+      } catch {}
+    }
+
+    async function connect({ textOnly = false } = {}) {
       if (connecting || connected) return;
+      const forChat = textOnly || chatUi.getMode() === "chat";
+      chatPipeline = forChat;
       connecting = true;
       els.btn.disabled = true;
-      setStatus("hole Token…");
+      setStatus(forChat ? "Chat-Verbindung …" : "hole Token…");
       const pin = (els.pin.value || "").trim();
       try { if (pin) localStorage.setItem(PIN_KEY, pin); } catch {}
+      const body = { clientId, pin };
+      if (forChat) body.pipeline = "text";
       const resp = await fetch("/clara/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId, pin }),
+        body: JSON.stringify(body),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         setStatus("Fehler: " + (err.error || resp.status));
         connecting = false;
         els.btn.disabled = false;
+        syncChatVisual();
         return;
       }
       const cfg = await resp.json();
-      log(`session room=${cfg.room} profile=${cfg.profileId}`);
       if (cfg.operator?.name) {
         els.me.textContent = `Angemeldet als ${cfg.operator.name}` +
           (cfg.operator.role ? ` · ${ROLE_LABEL[cfg.operator.role] || cfg.operator.role}` : "");
@@ -167,9 +262,6 @@
         els.me.textContent = "";
       }
 
-      // Echo cancellation / noise suppression / AGC matter a lot in a car: the
-      // cabin mic picks up Clara's own voice over the speakers, which otherwise
-      // loops back and confuses the agent.
       room = new Room({
         adaptiveStream: true,
         dynacast: true,
@@ -177,56 +269,56 @@
       });
 
       room.on(RoomEvent.TrackSubscribed, (track) => {
-        // Attach the agent's voice exactly once. Guards against double playback
-        // if more than one audio track ever shows up in the room.
-        if (track.kind === Track.Kind.Audio && !audioAttached) {
-          track.attach(els.audio);
-          audioAttached = true;
-          log("Agent-Audio verbunden");
-          tryPlayAudio();
-        }
+        if (chatPipeline || track.kind !== Track.Kind.Audio || audioAttached) return;
+        track.attach(els.audio);
+        audioAttached = true;
+        tryPlayAudio();
       });
-      // Canonical LiveKit autoplay handling: if the browser/car blocks playback,
-      // canPlaybackAudio flips false -> we show the tap-to-enable button.
       room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
         if (room && room.canPlaybackAudio === false) showEnable(true);
         else showEnable(false);
       });
-      room.on(RoomEvent.ConnectionStateChanged, (s) => log(`conn: ${s}`));
+      room.on(RoomEvent.ConnectionStateChanged, () => {});
       room.on(RoomEvent.Disconnected, () => { connected = false; audioAttached = false; showEnable(false); teardownUI(); });
+      room.on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+        if (topic && topic !== "pickadoc.evt") return;
+        try {
+          chatUi.handleEvent(JSON.parse(new TextDecoder().decode(payload)));
+        } catch {}
+      });
 
-      setStatus("verbinde…");
+      setStatus(forChat ? "verbinde Chat …" : "verbinde…");
       await room.connect(cfg.url, cfg.token, { autoSubscribe: true });
-      await room.localParticipant.setMicrophoneEnabled(true);
+      await room.localParticipant.setMicrophoneEnabled(!forChat);
       connected = true;
       connecting = false;
       els.btn.disabled = false;
-      els.orb.classList.add("live");
-      setStatus("verbunden – sprich einfach");
-      els.btn.textContent = "Auflegen";
-      els.btn.className = "hangup";
-      log("Mikrofon aktiv");
-      attachRouteRecovery();
-      // Try to start playback within the connect gesture chain (covers most
-      // phone + car cases); falls back to the tap button if the route blocks it.
-      await tryPlayAudio();
-      // Load Clara's persona + booking config + tools in the worker. This is the
-      // worker's intended profile-load path; the profile is staged on the worker
-      // side at .run/sessions/profile_<id>/. Sent exactly ONCE (the old 5x retry
-      // loop was unnecessary and noisy).
-      try {
-        await publishCmd({ type: "set_profile", profile_id: cfg.profileId });
-        log("Profil geladen: " + cfg.profileId);
-      } catch (e) {
-        log("set_profile fehlgeschlagen: " + e);
+      if (!forChat) {
+        els.orb.classList.add("live");
+        els.btn.textContent = "Auflegen";
+        els.btn.className = "main hangup";
       }
+      setStatus(forChat ? "verbunden – tippe deine Nachricht" : "verbunden – sprich oder chatte");
+      syncChatVisual();
+      if (!forChat) {
+        attachRouteRecovery();
+        await tryPlayAudio();
+      }
+      try {
+        if (forChat) {
+          await publishCmd({ type: "set_pipeline", mode: "text" });
+        }
+        await publishCmd({ type: "set_profile", profile_id: cfg.profileId, ...(forChat ? { pipeline: "text" } : {}) });
+      } catch {}
     }
 
     function teardownUI() {
       els.orb.classList.remove("live");
+      chatPipeline = false;
       setStatus("getrennt");
       els.btn.textContent = "Verbinden & sprechen";
-      els.btn.className = "connect";
+      els.btn.className = "main connect";
+      syncChatVisual();
     }
 
     async function hangup() {
@@ -236,21 +328,16 @@
       teardownUI();
     }
 
-    // Tap-to-enable: a real user gesture that reliably unlocks audio on the car
-    // head unit / iOS when autoplay was blocked.
     els.enableBtn.addEventListener("click", () => { tryPlayAudio(); });
-
+    chatUi.setConnectVisible(true);
     els.btn.addEventListener("click", () => {
-      if (connected) {
-        hangup();
-      } else {
-        connect().catch((e) => {
-          setStatus("Fehler");
-          log(String(e));
-          connecting = false;
-          els.btn.disabled = false;
-        });
-      }
+      if (connected) hangup();
+      else connect().catch((e) => {
+        setStatus("Fehler");
+        connecting = false;
+        els.btn.disabled = false;
+        syncChatVisual();
+      });
     });
   </script>
 </body>

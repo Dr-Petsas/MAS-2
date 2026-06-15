@@ -105,32 +105,6 @@ async function liveDocsStatusByPatient(clientId, locationId, patientIds) {
   return out;
 }
 
-// Neupatienten-Status LIVE aus dem Patientendokument, mit exakt der Regel des
-// Plattform-Kalenders (models/patient.ts): importierte Patienten (importId +
-// importSource) und Patienten mit mehr als einem Termin sind KEINE Neupatienten
-// — egal was auf dem Termin gestempelt wurde. Das gestempelte
-// ``appointment.patient.newPatient`` veraltet (Folgebuchung korrigiert nur den
-// Patienten, nicht alte Termine) -> Clara meldete Neupatienten, wo der
-// Kalender keinen grünen Rahmen zeigt.
-async function liveNewPatientByPatient(clientId, locationId, patientIds) {
-  const db = admin.firestore();
-  const out = new Map();
-  await Promise.all([...new Set(patientIds)].map(async (pid) => {
-    try {
-      const snap = await db.collection("clients").doc(clientId)
-        .collection("locations").doc(locationId)
-        .collection("patients").doc(pid)
-        .get();
-      if (!snap.exists) return;
-      const p = snap.data() || {};
-      const imported = !!(String(p.importId || "").trim() && String(p.importSource || "").trim());
-      const multi = Array.isArray(p.appointments) && p.appointments.length > 1;
-      out.set(pid, p.newPatient === true && !imported && !multi);
-    } catch { /* Lookup-Fehler: gestempelter Terminwert bleibt als Fallback */ }
-  }));
-  return out;
-}
-
 // --- I/O: read one day's appointments --------------------------------------
 
 /**
@@ -207,15 +181,13 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
     }
   } catch { /* best-effort — Terminliste darf daran nie scheitern */ }
 
-  // Neupatienten-Status: Patientendokument ist die Wahrheit (grüner Rahmen im
-  // Kalender), nicht das auf den Termin gestempelte Feld.
-  try {
-    const liveNew = await liveNewPatientByPatient(clientId, locationId,
-      appts.filter((a) => !a.isAbsence && a.patientId).map((a) => a.patientId));
-    for (const a of appts) {
-      if (a.patientId && liveNew.has(a.patientId)) a.newPatient = liveNew.get(a.patientId);
-    }
-  } catch { /* best-effort */ }
+  // Neupatienten-Status: EXAKT das, was den grünen Rahmen im Kalender setzt —
+  // das auf den Termin gestempelte ``appointment.patient.newPatient``
+  // (calendarCtrl.tsx: Klasse kt-new-patient bei appointment.patient.newPatient).
+  // Es wird bereits in normalizeAppointment als a.newPatient uebernommen, daher
+  // hier KEINE eigene Live-Regel mehr: eine frueher abweichende Heuristik
+  // (importierte/Mehrfach-Patienten ausschliessen) liess Claras Zahl von den
+  // gruenen Rahmen abweichen (Chef-Feedback 15.06.2026).
 
   return { ok: true, date: day, locationId, calendars: booking.calendars || [], appointments: appts };
 }
@@ -306,7 +278,7 @@ function spokenGaps(gaps) {
 // mit eigenem Namen + vollem Datum anzusprechen ("Dr. Michael Petsas,
 // Donnerstag, 11. Juni ...") nervt: er weiß, wer er ist und welcher Tag ist.
 // Daher "Sie haben heute ..." sobald der eigene Kalender gelesen wird.
-export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = "" } = {}) {
+export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = "", overview = false } = {}) {
   const day = date || todayBerlin();
   const rel = relativeDayLabel(day);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -333,6 +305,14 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       ? cap(`${rel} haben Sie ${span}.`)
       : cap(`${rel} hat ${c.calendarName || "die Praxis"} ${span}.`));
     if (c.gaps.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(c.gaps)}.`);
+  } else if (overview) {
+    // Zoom-out (Lagebild): bei vielen Kalendern NICHT jede Spalte einzeln
+    // vorlesen, sondern Gesamtzahl + Tagesspanne — "34 Termine, von 8 bis 17
+    // Uhr". Die Aufschluesselung pro Kalender kommt auf Nachfrage.
+    const span = (briefing.firstMs && briefing.lastMs)
+      ? `, zwischen ${spokenTime(briefing.firstMs)} und ${spokenTime(briefing.lastMs)}`
+      : "";
+    parts.push(cap(`${rel} stehen insgesamt ${briefing.total} Termine im Kalender${span}.`));
   } else {
     parts.push(cap(`${rel} stehen insgesamt ${briefing.total} Termine im Kalender.`));
     for (const c of cals) {
@@ -369,7 +349,18 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   // im Kalender und kommt über die Terminliste.
   const SPOKEN_ATTENTION_MAX = 6;
   const att = briefing.attention || [];
-  if (att.length) {
+  if (att.length && overview) {
+    // Zoom-out: NICHT jeden Termin einzeln vorlesen (das nervt und liess den
+    // Loop-Guard faelschlich anschlagen — "ich drehe mich im Kreis"). Stattdessen
+    // zaehlen + Detail auf Zuruf.
+    const prep = briefing.docsRed + briefing.docsYellow;
+    const notes = att.length - prep > 0 ? att.length - prep : 0;
+    const bits = [];
+    if (prep) bits.push(`bei ${prep} ${prep === 1 ? "Termin fehlen noch Unterlagen" : "Terminen fehlen noch Unterlagen"}${briefing.docsRed ? ` (${briefing.docsRed} davon noch nicht verschickt)` : ""}`);
+    if (notes) bits.push(`${notes} ${notes === 1 ? "Termin hat eine Notiz" : "Termine haben Notizen"}`);
+    if (bits.length) parts.push(`Vorzubereiten: ${bits.join(", ")}. Sag Bescheid, dann gehe ich die Termine einzeln durch.`);
+    if (att.some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());
+  } else if (att.length) {
     const lines = att.slice(0, SPOKEN_ATTENTION_MAX).map((a) => {
       const bits = [];
       if (a.docsStatus === "yellow") bits.push("die Unterlagen sind noch nicht unterschrieben");

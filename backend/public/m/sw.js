@@ -25,6 +25,7 @@ self.addEventListener("push", (event) => {
       body: p.reason || "",
       icon: "/m/icon-192.png",
       badge: "/m/icon-96.png",
+      image: p.image || undefined,
       tag: "clara-note",
       renotify: true,
       timestamp: p.ts || Date.now(),

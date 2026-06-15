@@ -58,6 +58,8 @@ function isPublic(req) {
   if (p.startsWith("/remote/")) return true;
   // /clara/<clientId> (QR landing HTML) and /clara/<clientId>/connect (phone page).
   if (/^\/clara\/[^/]+(\/connect)?$/.test(p)) return true;
+  // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
+  if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
   return false;
 }
 

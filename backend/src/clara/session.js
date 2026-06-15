@@ -20,16 +20,18 @@ function shortId() {
 // Mint a LiveKit join token for a Clara browser session. The room is named per
 // tenant; profileId is carried in metadata AND sent again via set_profile from
 // the browser (the worker prefers the data-channel command).
-export async function createClaraSession({ clientId, profileId }) {
+export async function createClaraSession({ clientId, profileId, pipeline }) {
   if (!clientId) throw new Error("clientId required");
   const short = shortId();
   const room = `clara_${clientId}_${short}`;
   const identity = `clara-web-${short}`;
+  const pipe = String(pipeline || "").trim().toLowerCase();
   const metadata = JSON.stringify({
     role: "clara-web",
     profile_id: profileId,
     client_id: clientId,
     source: "mas-2-clara",
+    ...(pipe ? { pipeline: pipe } : {}),
   });
 
   const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
