@@ -8,7 +8,7 @@ import { completeTask } from "./tools/createTask.js";
 import { assertAppEnabled } from "./entitlements.js";
 import { createClaraSession } from "./clara/session.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot } from "./clara/booking.js";
-import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin } from "./clara/daySchedule.js";
+import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot } from "./clara/daySchedule.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
@@ -23,7 +23,7 @@ import { runRetentionSweep, RETENTION_DAYS, getRetentionConfig, setRetentionDays
 import { lookupCaller, normalizePhone } from "./clara/callerLookup.js";
 import { spokenCallLog } from "./clara/callLog.js";
 import { spokenRatings } from "./clara/ratings.js";
-import { searchPatient, resolveBooking, commitBooking } from "./clara/agentBooking.js";
+import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "./clara/agentBooking.js";
 import {
   createSession,
   emitCommand,
@@ -2443,6 +2443,97 @@ app.post("/tools/patient-timeline", async (req, res) => {
       hasPhone: !!sel.hasPhone,
     }).catch(() => {});
     const message = await buildSpokenPatientTimeline(clientId, sel);
+    return res.json({ ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1b) NAECHSTER TERMIN EINES PATIENTEN: "Wann hat Frau Thrandorf ihren
+// naechsten Termin / hat sie ueberhaupt einen?" -> echter Kalender, NICHT das
+// Gedaechtnis. Patientenbestimmung exakt wie patient-timeline (Ordinal gegen
+// gemerkte Kandidaten, sonst Namenssuche, bei Mehrdeutigkeit Rueckfrage).
+// Anders als das eingebaute findAppointment braucht das KEIN Geburtsdatum.
+app.post("/tools/patient-appointments", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const rawName = String(req.body?.name || "").trim();
+    const hint = String(req.body?.hint || "").trim();
+
+    const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
+    if (ordinalSource) {
+      const remembered = await getPatientCandidates(clientId);
+      const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
+      if (byOrd) {
+        await setPatientCandidates(clientId, [byOrd], byOrd);
+        const who = `${byOrd.firstName || ""} ${byOrd.lastName || ""}`.trim() || "der Patient";
+        const result = await getPatientAppointments(clientId, { patientId: byOrd.id, firstName: byOrd.firstName, lastName: byOrd.lastName });
+        return res.json({ ok: true, message: buildSpokenPatientAppointments(result, { who }) });
+      }
+    }
+
+    let candidates = [];
+    if (rawName) {
+      const name = cleanSpokenPersonName(rawName) || rawName;
+      const found = await searchPatientSpoken(clientId, name);
+      if (!found.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` });
+      candidates = found.patients || [];
+      if (candidates.length > 1) {
+        const exact = narrowByExactName(name.toLowerCase(), candidates);
+        if (exact.length) candidates = exact;
+      }
+      if (!candidates.length) {
+        await setPatientCandidates(clientId, [], null);
+        return res.json({ ok: false, message: `Zu ${name} finde ich keinen Patienten im Praxisgedächtnis.` });
+      }
+    } else {
+      candidates = await getPatientCandidates(clientId);
+      if (!candidates.length) return res.json({ ok: false, message: "Zu welchem Patienten soll ich nach dem Termin sehen? Bitte den Namen nennen." });
+    }
+
+    if (candidates.length > 1) {
+      await setPatientCandidates(clientId, candidates, null);
+      return res.json({ ok: true, message: disambiguationQuestion(candidates) });
+    }
+
+    const sel = candidates[0];
+    await setPatientCandidates(clientId, candidates, sel);
+    const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
+    const result = await getPatientAppointments(clientId, { patientId: sel.id, firstName: sel.firstName, lastName: sel.lastName });
+    return res.json({ ok: true, message: buildSpokenPatientAppointments(result, { who }) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1c) NAECHSTER FREIER TERMIN: "Wann ist der naechste freie Termin (bei Dr. X)?"
+// Liest die echten freien Slots ueber getFreeTimeSlots (kennt Sprechzeiten +
+// Belegung) und nennt den fruehesten. Ohne Behandlungsart waehlen wir einen
+// Kontrolltermin als Default (die CF braucht die Dauer fuer die Slot-Laenge).
+app.post("/tools/next-free-slot", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const doctorName = String(req.body?.doctorName || "").trim();
+    let visitMotiveName = String(req.body?.visitMotiveName || "").trim();
+    if (!visitMotiveName) {
+      const booking = await loadBooking(clientId).catch(() => null);
+      visitMotiveName = booking ? (defaultControlMotive(booking)?.name || "") : "";
+    }
+    const result = await findSlots(clientId, { doctorName, visitMotiveName, startDate: todayBerlin() });
+    if (!result.ok) {
+      return res.json({ ok: false, message: `Freie Termine kann ich gerade nicht abrufen: ${result.error}` });
+    }
+    const slot = (result.slots || [])[0];
+    const message = buildSpokenNextFreeSlot(slot, {
+      calendarName: result.calendarName || doctorName,
+      visitMotiveName: result.visitMotiveName || visitMotiveName,
+    });
     return res.json({ ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

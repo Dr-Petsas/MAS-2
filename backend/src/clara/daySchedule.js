@@ -563,6 +563,117 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
   return parts.join(" ");
 }
 
+// --- Patienten-spezifische Termine (16.06.2026) -----------------------------
+// "Wann hat Frau Thrandorf ihren naechsten Termin / hat sie ueberhaupt einen?"
+// Clara konnte das bisher nicht beantworten: das eingebaute findAppointment
+// verlangt ein GEBURTSDATUM (am Telefon nennt das niemand), also rief Clara es
+// nie auf und riet stattdessen aus dem offenen Vorgang/Gedaechtnis (Vorfall
+// 16.06.: erst "16. Juni 14:30", dann "23. Juni 12:00" — beides erfunden).
+// Diese Funktion liest die ECHTEN Kalendertermine eines Patienten direkt aus
+// der Plattform-Collection (per patientId, Fallback ueber den Namen) und
+// blendet virtuelle Platzhalter genauso aus wie der Kalender (Eiserne Regel 4).
+
+function dayOfMs(ms) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+}
+
+/**
+ * Alle (vergangenen + kommenden) ECHTEN Termine eines Patienten, chronologisch.
+ * @param {string} clientId
+ * @param {{patientId?:string, firstName?:string, lastName?:string}} who
+ */
+export async function getPatientAppointments(clientId, { patientId, firstName, lastName } = {}) {
+  const booking = await loadBooking(clientId).catch(() => null);
+  const locationId = booking?.locationId;
+  if (!locationId) return { ok: false, reason: "no_location" };
+
+  const col = admin.firestore()
+    .collection("clients").doc(clientId)
+    .collection("locations").doc(locationId)
+    .collection("appointments");
+
+  const pid = String(patientId || "").trim();
+  const ln = String(lastName || "").trim();
+  const fn = String(firstName || "").trim();
+
+  let docs = [];
+  // Primaer ueber die patientId (eindeutig, ein einzelner Gleichheits-Filter
+  // braucht KEINEN zusammengesetzten Index). Fallback ueber den Nachnamen,
+  // falls der Termin keine patientId traegt oder die ID nicht matcht.
+  if (pid) {
+    try { docs = (await col.where("patient.id", "==", pid).get()).docs; } catch { docs = []; }
+  }
+  if (!docs.length && ln) {
+    try {
+      const snap = await col.where("patient.lastName", "==", ln).get();
+      docs = snap.docs.filter((d) => {
+        const f = String(d.data()?.patient?.firstName || "").trim().toLowerCase();
+        return !fn || f === fn.toLowerCase();
+      });
+    } catch { /* ignore */ }
+  }
+
+  let appts = docs.map((d) => normalizeAppointment(d.id, d.data())).filter(Boolean);
+  // Echte Termine: Patient gesetzt, keine Sperrzeiten/Mehrtages-Items.
+  appts = appts.filter((a) => a.patientId && !a.isAbsence && !a.isMultiDay);
+  const showVirtual = await showVirtualAppointments(clientId, locationId);
+  if (!showVirtual) appts = appts.filter((a) => !isVirtualStatus(a.status));
+  appts.sort((a, b) => a.startMs - b.startMs);
+
+  const now = Date.now();
+  const upcoming = appts.filter((a) => a.startMs >= now);
+  const past = appts.filter((a) => a.startMs < now);
+  return {
+    ok: true,
+    next: upcoming[0] || null,
+    upcoming,
+    last: past.length ? past[past.length - 1] : null,
+    count: appts.length,
+  };
+}
+
+/**
+ * Gesprochene Antwort auf "Wann ist der naechste Termin von Patient X?".
+ * Nennt den naechsten echten Termin (Datum, Uhrzeit, Behandlungsart, Arzt) und
+ * — falls vorhanden — kurz den letzten Besuch. Pure: speist sich aus dem
+ * Ergebnis von getPatientAppointments.
+ */
+export function buildSpokenPatientAppointments(result, { who = "der Patient" } = {}) {
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  if (!result?.ok) return `Die Termine von ${who} kann ich gerade nicht abrufen.`;
+  const { next, last } = result;
+  const parts = [];
+  if (next) {
+    const rel = relativeDayLabel(dayOfMs(next.startMs));
+    const motive = spokenMotive(next.visitMotive);
+    const at = next.calendarName ? ` bei ${next.calendarName}` : "";
+    parts.push(`${cap(who)} hat als Nächstes einen Termin ${rel} um ${spokenTime(next.startMs)}${motive ? ` ${motive}` : ""}${at}.`);
+  } else {
+    parts.push(`${cap(who)} hat aktuell keinen kommenden Termin im Kalender.`);
+  }
+  if (last) {
+    const relL = relativeDayLabel(dayOfMs(last.startMs));
+    const motiveL = spokenMotive(last.visitMotive);
+    parts.push(`Der letzte Termin war ${relL}${motiveL ? ` ${motiveL}` : ""}.`);
+  }
+  return parts.join(" ");
+}
+
+// "Der nächste freie Termin ... ist am <Tag> um <Uhrzeit> Uhr." Pure.
+export function buildSpokenNextFreeSlot(slotIso, { calendarName = "", visitMotiveName = "" } = {}) {
+  const m = String(slotIso || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+  if (!m) {
+    return `${calendarName ? `Bei ${calendarName}` : "In den nächsten Tagen"} finde ich aktuell keinen freien Termin.`;
+  }
+  const rel = relativeDayLabel(m[1]);
+  const hh = Number(m[2]);
+  const mm = Number(m[3]);
+  const time = mm === 0 ? `${hh} Uhr` : `${hh} Uhr ${mm}`;
+  const at = calendarName ? ` bei ${calendarName}` : "";
+  const fuer = visitMotiveName ? ` für ${visitMotiveName}` : "";
+  return `Der nächste freie Termin${at}${fuer} ist ${rel} um ${time}.`;
+}
+
 // More hints than this and the schedule reading turns into a monologue.
 const MEMORY_HINT_MAX = 5;
 

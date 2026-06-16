@@ -86,7 +86,7 @@ function resolveVisitMotive(booking, visitMotiveName) {
 // Per-tenant default = a "Kontrolltermin". We never hardcode an id: we pick the
 // configured visit motive whose name signals a control appointment, else the
 // explicit booking.defaultVisitMotiveId, else the first motive.
-function defaultControlMotive(booking) {
+export function defaultControlMotive(booking) {
   const vms = Array.isArray(booking.visitMotives) ? booking.visitMotives : [];
   const byFlag = norm(booking.defaultVisitMotiveId);
   if (byFlag) {
