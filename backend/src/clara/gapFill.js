@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
-import { loadBooking } from "./booking.js";
+import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { getDayAppointments, todayBerlin } from "./daySchedule.js";
 import { createCase, listCases, addUpdate, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
@@ -35,7 +35,14 @@ import { pick as pickPhrase } from "./variation.js";
 
 const TZ = "Europe/Berlin";
 const MIN_GAP_MINUTES = 25; // a gap must fit a short treatment incl. buffer
-const MAX_CANDIDATES_PER_LIST = 5;
+// Wieviele Kandidaten pro Lücke vorgeschlagen werden (Chef-Frage "warum nur 5?":
+// jetzt konfigurierbar, Default 8). Zu viele Namen am Telefon überfordern; 8
+// gibt der Praxis spürbar mehr Auswahl als die alte feste 5.
+const MAX_CANDIDATES_PER_LIST = Number(process.env.MAS_GAP_MAX_CANDIDATES || 8);
+// Vorlaufzeit, ab der eine Lücke noch sinnvoll per Recall zu füllen ist. Liegt
+// eine Lücke näher (z. B. heute), ist klassischer Recall meist zu kurzfristig —
+// Clara weist darauf hin und bietet stattdessen das gezielte Einbestellen an.
+const RECALL_MIN_LEAD_HOURS = Number(process.env.MAS_RECALL_MIN_LEAD_HOURS || 16);
 const THROTTLE_DAYS = 14; // no patient is proposed twice within this window
 const RECALL_LOOKBACK_DAYS = 365;
 
@@ -141,6 +148,22 @@ function hhmm(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Vorlaufzeit einer Lücke ab jetzt in Stunden (Berlin). Infinity bei Fehlern. */
+export function gapLeadHours(date, startMin) {
+  try {
+    const ms = new Date(ensureBerlinTz(`${date}T${hhmm(startMin)}:00`)).getTime();
+    if (!ms) return Infinity;
+    return (ms - Date.now()) / 3600000;
+  } catch {
+    return Infinity;
+  }
+}
+
+/** True, wenn die Lücke zu kurzfristig für klassischen Recall ist. */
+export function isShortNoticeGap(gap) {
+  return gapLeadHours(gap?.date, gap?.startMin) < RECALL_MIN_LEAD_HOURS;
 }
 
 /**
@@ -556,7 +579,48 @@ export function buildSpokenGapBriefing(run, { operatorName } = {}) {
   for (const g of run.gaps.slice(0, 4)) {
     parts.push(`${g.calendarName}: ${g.label} (${g.minutes} Minuten)${g.candidateCount ? ` — ${g.candidateCount} Kandidat${g.candidateCount === 1 ? "" : "en"}` : " — kein passender Kandidat"}.`);
   }
+
+  // Kurzfristigkeits-Einschätzung (Wunsch Chef 16.06.2026): liegen die Lücken
+  // mit Kandidaten praktisch alle sehr nah (z. B. heute), ist klassischer Recall
+  // meist zu knapp — dann gezieltes Einbestellen anbieten statt Massen-Recall.
+  const candGaps = run.gaps.filter((g) => g.candidateCount > 0);
+  const allCandShort = candGaps.length > 0 && candGaps.every((g) => isShortNoticeGap(g));
+  const anyShort = run.gaps.some((g) => isShortNoticeGap(g));
+  if (allCandShort || (!candGaps.length && anyShort)) {
+    parts.push("Die Lücken liegen allerdings sehr kurzfristig — für einen klassischen Recall ist das oft zu knapp.");
+    parts.push("Wenn du jemand Bestimmten einbestellen möchtest, nenne mir einfach den Namen, dann lasse ich ihn von Lisa anrufen.");
+  }
+
   const lists = run.callLists?.length || 0;
-  if (lists) parts.push(`${lists} Anrufliste${lists === 1 ? " wartet" : "n warten"} auf deine Freigabe im Monitor.`);
+  if (lists) {
+    parts.push(`${lists} Anrufliste${lists === 1 ? " wartet" : "n warten"} auf deine Freigabe im Monitor.`);
+    parts.push("Wenn du wissen möchtest, wen ich vorschlage, sag: wer sind die Kandidaten.");
+  }
   return parts.join(" ");
+}
+
+/**
+ * Gesprochene Aufzählung der konkreten Kandidaten der offenen Anruflisten —
+ * beantwortet die Chef-Nachfrage "welche Patienten sind das denn?" (vorher
+ * konnte Clara nur die Anzahl nennen). Liest pro Lücke Name + Fälligkeit vor.
+ */
+export async function buildSpokenGapCandidates(clientId, { date } = {}) {
+  const ov = await gapFillOverview(clientId).catch(() => ({ pending: [], approved: [] }));
+  const day = date ? s(date) : null;
+  const lists = [...(ov.pending || []), ...(ov.approved || [])].filter((l) => !day || l.date === day);
+  if (!lists.length) {
+    return "Aktuell warten keine Anruflisten mit Kandidaten. Sage Recall starten, dann suche ich passende Patienten.";
+  }
+  const parts = [];
+  for (const l of lists.slice(0, 6)) {
+    const cands = (l.candidates || []).slice(0, MAX_CANDIDATES_PER_LIST);
+    if (!cands.length) continue;
+    const names = cands.map((c) => {
+      const od = Number(c.overdueDays) > 0 ? `, seit ${c.overdueDays} Tagen fällig` : "";
+      return `${s(c.name) || "Unbekannt"}${od}`;
+    }).join("; ");
+    parts.push(`Für ${l.slot?.label || "die Lücke"}${l.calendarName ? ` bei ${l.calendarName}` : ""}: ${names}.`);
+  }
+  if (!parts.length) return "Zu den offenen Lücken sind aktuell keine konkreten Kandidaten hinterlegt.";
+  return `Das sind die vorgeschlagenen Patienten. ${parts.join(" ")} Sag Recall freigeben, wenn Lisa sie kontaktieren soll — oder nenne mir jemanden, den ich gezielt einbestellen lassen soll.`;
 }

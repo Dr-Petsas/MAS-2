@@ -13,7 +13,8 @@ import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
 import { reflectOnce } from "./brain/reflect.js";
-import { runGapFill, gapFillOverview, approveCallList, buildSpokenGapBriefing } from "./clara/gapFill.js";
+import { runGapFill, gapFillOverview, approveCallList, buildSpokenGapBriefing, buildSpokenGapCandidates } from "./clara/gapFill.js";
+import { composeInviteInstruction, inviteReadback } from "./clara/gapInvite.js";
 import { spokenMorningBriefing } from "./clara/morningBriefing.js";
 import { spokenEveningBriefing } from "./clara/eveningBriefing.js";
 import { approveAndExecute, sweepRecallOutcomes, dailyInitiativeScan, snoozeInitiative, initiativeSuffix, recallStatusSpoken } from "./clara/recallCoach.js";
@@ -3146,6 +3147,76 @@ app.post("/tools/recall-snooze", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     res.json(await snoozeInitiative(clientId));
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Voice: "Wer sind die Kandidaten?" / "Welche Patienten schlägst du vor?" —
+// liest die KONKRETEN Namen der offenen Anruflisten vor. Vorher konnte Clara nur
+// die Anzahl nennen; das beantwortet die Chef-Nachfrage "welche 5 denn?".
+app.post("/tools/recall-candidates", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const message = await buildSpokenGapCandidates(clientId, { date: req.body?.date });
+    res.json({ ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Voice: gezieltes Einbestellen — Lisa ruft EINEN vom Chef genannten Patienten
+// an und bietet eine konkrete Lücke an. Zwei Schritte: OHNE confirm liest Clara
+// die vorbereitete Anweisung zur Bestätigung vor; MIT confirm löst sie den Anruf
+// aus. Es wird NICHTS gebucht. Der Patient muss zuvor per search_patient
+// feststehen (resolveDelegationTarget liest die gemerkte Nummer).
+app.post("/tools/gapfill-call-patient", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const op = await getOperator(clientId);
+    const target = await resolveDelegationTarget(clientId, req.body);
+    if (!target.phone) {
+      return res.json({ ok: false, message: "Ich habe noch keinen Patienten. Sage zuerst: Suche den Patienten — und den Namen. Danach lasse ich Lisa anrufen." });
+    }
+    const date = String(req.body?.date || "").trim();
+    const time = String(req.body?.time || req.body?.uhrzeit || "").trim();
+    const message = String(req.body?.message || req.body?.saywhat || req.body?.instruction || "").trim();
+    const reason = String(req.body?.reason || "").trim();
+    const calendarName = String(req.body?.calendarName || req.body?.doctorName || "").trim();
+    if (!time && !date) {
+      return res.json({ ok: false, message: `Für wann soll Lisa ${target.name || "dem Patienten"} den Termin anbieten? Sag mir Tag und Uhrzeit.` });
+    }
+    if (!message) {
+      return res.json({ ok: false, message: `Was genau soll Lisa ${target.name || "dem Patienten"} am Telefon sagen? Zum Beispiel der Grund für den Anruf.` });
+    }
+    let practiceName = "";
+    try { practiceName = (await loadBooking(clientId))?.practiceName || ""; } catch { /* optional */ }
+    const instruction = composeInviteInstruction({
+      patientName: target.name, practiceName, date, time, calendarName, reason, message,
+    });
+
+    const confirm = req.body?.confirm === true || req.body?.confirm === "true";
+    if (!confirm) {
+      return res.json({ ok: true, needsConfirm: true, message: inviteReadback({ patientName: target.name, date, time, calendarName, message }) });
+    }
+    // Testsuite-Schutz: kompletter Pfad, aber NIEMAND wird angerufen.
+    if (req.body?.dryRun) {
+      return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${target.name || target.phone} angerufen und den Termin angeboten.` });
+    }
+    const out = await lisaStartCall(clientId, {
+      phone: target.phone,
+      instruction,
+      contactName: target.name,
+      callLanguage: req.body?.callLanguage,
+      by: op?.name || "Team",
+    });
+    res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
