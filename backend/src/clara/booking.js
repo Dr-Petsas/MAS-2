@@ -1,4 +1,5 @@
 import { masCollection } from "../tenant.js";
+import { normTime } from "./gapInvite.js";
 
 // Clara's calendar actions. MAS-2 is the source of truth: it talks to the same
 // Pickadoc Cloud Functions the phone agent uses (unauthenticated POST JSON) and
@@ -136,6 +137,57 @@ export async function findSlots(clientId, args = {}) {
     };
   }
   return { ok: false, error: data?.message || `getFreeTimeSlots failed (${status})` };
+}
+
+// ----------------------------------------------------------------------------
+// Einbestell-Vorab-Pruefung (16.06.2026): bevor Clara Lisa einen Termin
+// ANBIETEN laesst, muss feststehen, dass es den Slot im echten Kalender
+// ueberhaupt gibt. Quelle ist getFreeTimeSlots (kennt Sprechzeiten + Belegung).
+// STRENG: die genannte Uhrzeit muss frei sein. Eine Behandlungsart ist Pflicht
+// (die CF braucht sie fuer die Slot-Dauer; ohne sie liefert sie nichts).
+//
+// @returns {Promise<{verified:boolean, reason?:string, error?:string,
+//   available:boolean, calendarName?:string, visitMotiveName?:string,
+//   requestedDate?:string, requestedTime?:string, daySlots:string[],
+//   suggestions:{date:string,time:string}[]}>}
+export async function checkInviteSlot(clientId, { doctorName, visitMotiveName, date, time } = {}) {
+  const reqDate = norm(date);
+  const reqTime = norm(time) ? normTime(time) : "";
+  if (!norm(visitMotiveName)) {
+    return { verified: false, reason: "no_motive", available: false, daySlots: [], suggestions: [] };
+  }
+  let res;
+  try {
+    res = await findSlots(clientId, { doctorName, visitMotiveName, startDate: reqDate });
+  } catch (e) {
+    return { verified: false, reason: "error", error: String(e?.message || e), available: false, daySlots: [], suggestions: [] };
+  }
+  if (!res?.ok) {
+    return { verified: false, reason: "error", error: res?.error || "unbekannt", available: false, daySlots: [], suggestions: [] };
+  }
+  const parsed = (Array.isArray(res.slots) ? res.slots : [])
+    .map((iso) => {
+      const m = String(iso).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+      return m ? { date: m[1], time: m[2] } : null;
+    })
+    .filter(Boolean);
+  const daySlots = parsed.filter((p) => !reqDate || p.date === reqDate).map((p) => p.time);
+  const available = reqTime ? daySlots.includes(reqTime) : daySlots.length > 0;
+  // Vorschlaege: zuerst andere freie Zeiten am Wunschtag, sonst die naechsten
+  // verfuegbaren Slots ueberhaupt (parsed ist chronologisch ab startDate).
+  const sameDay = reqDate ? parsed.filter((p) => p.date === reqDate) : [];
+  const pool = sameDay.length ? sameDay : parsed;
+  const suggestions = pool.slice(0, 3).map((p) => ({ date: p.date, time: p.time }));
+  return {
+    verified: true,
+    available,
+    calendarName: res.calendarName || norm(doctorName) || null,
+    visitMotiveName: res.visitMotiveName || norm(visitMotiveName),
+    requestedDate: reqDate || (parsed[0]?.date ?? null),
+    requestedTime: reqTime,
+    daySlots,
+    suggestions,
+  };
 }
 
 // createAppointment — writes a real appointment via the Cloud Function.

@@ -7,14 +7,14 @@ import QRCode from "qrcode";
 import { completeTask } from "./tools/createTask.js";
 import { assertAppEnabled } from "./entitlements.js";
 import { createClaraSession } from "./clara/session.js";
-import { findSlots, bookAppointment, loadBooking, resolveCalendar } from "./clara/booking.js";
+import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot } from "./clara/booking.js";
 import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin } from "./clara/daySchedule.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
 import { reflectOnce } from "./brain/reflect.js";
 import { runGapFill, gapFillOverview, approveCallList, buildSpokenGapBriefing, buildSpokenGapCandidates } from "./clara/gapFill.js";
-import { composeInviteInstruction, inviteReadback } from "./clara/gapInvite.js";
+import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "./clara/gapInvite.js";
 import { spokenMorningBriefing } from "./clara/morningBriefing.js";
 import { spokenEveningBriefing } from "./clara/eveningBriefing.js";
 import { approveAndExecute, sweepRecallOutcomes, dailyInitiativeScan, snoozeInitiative, initiativeSuffix, recallStatusSpoken } from "./clara/recallCoach.js";
@@ -3173,6 +3173,29 @@ app.post("/tools/recall-candidates", async (req, res) => {
 // die vorbereitete Anweisung zur Bestätigung vor; MIT confirm löst sie den Anruf
 // aus. Es wird NICHTS gebucht. Der Patient muss zuvor per search_patient
 // feststehen (resolveDelegationTarget liest die gemerkte Nummer).
+// Sprechbarer Vorschlag aus einem freien Slot, z. B. "Dienstag, 23. Juni um 10:30 Uhr".
+function spokenSuggestion(s) {
+  if (!s) return "";
+  return `${dateDe(s.date)}${s.time ? ` um ${s.time} Uhr` : ""}`;
+}
+
+// Baut die Ablehnungs-Ansage, die Clara dem Chef vorliest, wenn der gewuenschte
+// Einbestell-Termin im Kalender nicht frei ist (inkl. echter Alternativen +
+// Override-Frage).
+function buildInviteRejection(check, { date, time, calendarName }) {
+  const cal = String(calendarName || "").trim() ? ` bei ${String(calendarName).trim()}` : "";
+  let head;
+  if (!check.daySlots || !check.daySlots.length) {
+    head = `Im Kalender${cal} ist ${date ? `am ${dateDe(date)}` : "an dem Tag"} nichts mehr frei — da ist entweder schon zu oder ausgebucht.`;
+  } else {
+    const whenReq = `${date ? `am ${dateDe(date)}` : ""}${time ? ` um ${normTime(time)} Uhr` : ""}`.trim();
+    head = `${whenReq ? whenReq.charAt(0).toUpperCase() + whenReq.slice(1) : "Zu der Zeit"}${cal} ist nichts frei.`;
+  }
+  const sugg = Array.isArray(check.suggestions) ? check.suggestions : [];
+  const offer = sugg.length ? ` Frei wäre ${sugg.slice(0, 2).map(spokenSuggestion).join(" oder ")}.` : "";
+  return `${head}${offer} Soll ich einen davon anbieten lassen — oder den Termin trotzdem zur Wunschzeit anbieten? Sag dann: trotzdem anbieten.`;
+}
+
 app.post("/tools/gapfill-call-patient", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -3189,12 +3212,33 @@ app.post("/tools/gapfill-call-patient", async (req, res) => {
     const message = String(req.body?.message || req.body?.saywhat || req.body?.instruction || "").trim();
     const reason = String(req.body?.reason || "").trim();
     const calendarName = String(req.body?.calendarName || req.body?.doctorName || "").trim();
+    const visitMotiveName = String(req.body?.visitMotiveName || req.body?.behandlung || "").trim();
+    const override = req.body?.override === true || req.body?.override === "true";
     if (!time && !date) {
       return res.json({ ok: false, message: `Für wann soll Lisa ${target.name || "dem Patienten"} den Termin anbieten? Sag mir Tag und Uhrzeit.` });
     }
     if (!message) {
       return res.json({ ok: false, message: `Was genau soll Lisa ${target.name || "dem Patienten"} am Telefon sagen? Zum Beispiel der Grund für den Anruf.` });
     }
+
+    // Vorab-Verifikation gegen den ECHTEN Kalender (Sprechzeiten + Belegung):
+    // Clara darf KEINEN Termin anbieten lassen, den es gar nicht gibt (Vorfall
+    // 16.06.2026: Lisa bot "heute 16:30" an, obwohl die Praxis zu war). STRENG:
+    // die genannte Uhrzeit muss frei sein. override=true (Chef sagt ausdruecklich
+    // "trotzdem anbieten") ueberspringt die Pruefung bewusst.
+    if (!override) {
+      const check = await checkInviteSlot(clientId, { doctorName: calendarName, visitMotiveName, date, time });
+      if (!check.verified) {
+        if (check.reason === "no_motive") {
+          return res.json({ ok: false, needsMotive: true, message: `Für welche Behandlung soll der Termin sein — zum Beispiel eine Kontrolle oder eine professionelle Zahnreinigung? Das brauche ich, um die Verfügbarkeit im Kalender zu prüfen.` });
+        }
+        return res.json({ ok: false, needsOverride: true, message: `Ich konnte die Verfügbarkeit${calendarName ? ` bei ${calendarName}` : ""} gerade nicht prüfen. Soll ich es trotzdem anbieten lassen? Sag dann: trotzdem anbieten.` });
+      }
+      if (!check.available) {
+        return res.json({ ok: false, needsOverride: true, suggestions: check.suggestions, message: buildInviteRejection(check, { date, time, calendarName }) });
+      }
+    }
+
     let practiceName = "";
     try { practiceName = (await loadBooking(clientId))?.practiceName || ""; } catch { /* optional */ }
     const instruction = composeInviteInstruction({
@@ -3203,7 +3247,8 @@ app.post("/tools/gapfill-call-patient", async (req, res) => {
 
     const confirm = req.body?.confirm === true || req.body?.confirm === "true";
     if (!confirm) {
-      return res.json({ ok: true, needsConfirm: true, message: inviteReadback({ patientName: target.name, date, time, calendarName, message }) });
+      const readback = inviteReadback({ patientName: target.name, date, time, calendarName, message });
+      return res.json({ ok: true, needsConfirm: true, message: override ? `Achtung, Ausnahmetermin außerhalb der regulären Verfügbarkeit. ${readback}` : readback });
     }
     // Testsuite-Schutz: kompletter Pfad, aber NIEMAND wird angerufen.
     if (req.body?.dryRun) {

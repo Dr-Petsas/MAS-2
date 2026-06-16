@@ -17,7 +17,7 @@ function s(v) {
 }
 
 /** ISO-Datum (YYYY-MM-DD) -> "Montag, 16. Juni"; gibt Eingabe bei Müll zurück. */
-function dateDe(isoDate) {
+export function dateDe(isoDate) {
   const d = new Date(`${s(isoDate)}T12:00:00Z`);
   if (isNaN(d.getTime())) return s(isoDate);
   return new Intl.DateTimeFormat("de-DE", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" }).format(d);
