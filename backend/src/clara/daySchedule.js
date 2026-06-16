@@ -65,6 +65,8 @@ function normalizeAppointment(id, o) {
     isMultiDay: o.isMultiDay === true,
     isVideoCall: o.isVideoCall === true,
     status: o.status || "",
+    // PatientStatus-Enum der Plattform: 2 = "treated" (Behandlung erfolgt).
+    patientStatus: typeof o.patientStatus === "number" ? o.patientStatus : null,
   };
 }
 
@@ -627,9 +629,49 @@ export async function getPatientAppointments(clientId, { patientId, firstName, l
     ok: true,
     next: upcoming[0] || null,
     upcoming,
+    past,
     last: past.length ? past[past.length - 1] : null,
     count: appts.length,
   };
+}
+
+const TREATED_STATUS = 2; // PatientStatus.treated
+
+/**
+ * Gesprochene Behandlungs-Historie: "Was wurde bei Herrn Meier zuletzt
+ * gemacht?". Nennt die letzten (bis zu drei) vergangenen Termine mit Datum,
+ * Behandlungsart und ggf. Notiz. Bevorzugt tatsaechlich erfolgte ("treated")
+ * Termine, faellt aber auf alle vergangenen zurueck, weil nicht jede Praxis
+ * den Behandlungs-Status pflegt. Pure: speist sich aus getPatientAppointments.
+ */
+export function buildSpokenTreatmentHistory(result, { who = "der Patient" } = {}) {
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  if (!result?.ok) return `Die Behandlungen von ${who} kann ich gerade nicht abrufen.`;
+  const past = Array.isArray(result.past) ? result.past : [];
+  if (!past.length) return `Zu ${who} finde ich keine vergangenen Termine.`;
+  // Bevorzugt erledigte Behandlungen; sonst alle vergangenen Termine.
+  const treated = past.filter((a) => a.patientStatus === TREATED_STATUS);
+  const pool = treated.length ? treated : past;
+  // Neueste zuerst, maximal drei (Sprache ist linear).
+  const recent = pool.slice(-3).reverse();
+  const thisYear = todayBerlin().slice(0, 4);
+  const entry = (a) => {
+    const day = dayOfMs(a.startMs);
+    const year = day.slice(0, 4);
+    let rel = relativeDayLabel(day);
+    // Jahr nur nennen, wenn die Behandlung NICHT im laufenden Jahr war - sonst
+    // bliebe bei alten Behandlungen unklar, welches Jahr gemeint ist.
+    if (year !== thisYear && !/^(gestern|vorgestern)$/.test(rel)) rel = `${rel} ${year}`;
+    const motive = spokenMotive(a.visitMotive) || (a.visitMotive ? `für ${a.visitMotive}` : "");
+    const note = a.comments ? `, Notiz: ${a.comments.length > 120 ? `${a.comments.slice(0, 117)}...` : a.comments}` : "";
+    return `${rel}${motive ? ` ${motive}` : ""}${note}`;
+  };
+  if (recent.length === 1) {
+    return `Bei ${who} war zuletzt ein Termin ${entry(recent[0])}.`;
+  }
+  const head = `Bei ${cap(who)} waren die letzten Termine: ${entry(recent[0])}`;
+  const rest = recent.slice(1).map((a) => `davor ${entry(a)}`);
+  return `${head}; ${rest.join("; ")}.`;
 }
 
 /**

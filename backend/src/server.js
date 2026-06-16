@@ -8,7 +8,8 @@ import { completeTask } from "./tools/createTask.js";
 import { assertAppEnabled } from "./entitlements.js";
 import { createClaraSession } from "./clara/session.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot } from "./clara/booking.js";
-import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot } from "./clara/daySchedule.js";
+import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory } from "./clara/daySchedule.js";
+import { getPatientAnamnese, buildSpokenAnamnese } from "./clara/anamnese.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
@@ -2540,6 +2541,100 @@ app.post("/tools/next-free-slot", async (req, res) => {
   }
 });
 
+// Gemeinsame Patientenbestimmung fuer Sprach-Lesetools (Termine, Behandlungen,
+// Anamnese): Ordinal gegen gemerkte Kandidaten, sonst Namenssuche, bei
+// Mehrdeutigkeit Rueckfrage. Liefert entweder {done:true, payload} fuer eine
+// fertige (Frage-)Antwort oder {done:false, sel} mit dem eindeutigen Patienten.
+// Bricht NIE auf ein Geburtsdatum zu (am Telefon selten bekannt).
+async function resolveSpokenPatientForRead(clientId, { rawName, hint, askWho }) {
+  const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
+  if (ordinalSource) {
+    const remembered = await getPatientCandidates(clientId);
+    const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
+    if (byOrd) {
+      await setPatientCandidates(clientId, [byOrd], byOrd);
+      return { done: false, sel: byOrd };
+    }
+  }
+
+  let candidates = [];
+  if (rawName) {
+    const name = cleanSpokenPersonName(rawName) || rawName;
+    const found = await searchPatientSpoken(clientId, name);
+    if (!found.ok) return { done: true, payload: { ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` } };
+    candidates = found.patients || [];
+    if (candidates.length > 1) {
+      const exact = narrowByExactName(name.toLowerCase(), candidates);
+      if (exact.length) candidates = exact;
+    }
+    if (!candidates.length) {
+      await setPatientCandidates(clientId, [], null);
+      return { done: true, payload: { ok: false, message: `Zu ${name} finde ich keinen Patienten im Praxisgedächtnis.` } };
+    }
+  } else {
+    candidates = await getPatientCandidates(clientId);
+    if (!candidates.length) return { done: true, payload: { ok: false, message: askWho } };
+  }
+
+  if (candidates.length > 1) {
+    await setPatientCandidates(clientId, candidates, null);
+    return { done: true, payload: { ok: true, message: disambiguationQuestion(candidates) } };
+  }
+
+  const sel = candidates[0];
+  await setPatientCandidates(clientId, candidates, sel);
+  return { done: false, sel };
+}
+
+// 1d) BEHANDLUNGS-HISTORIE: "Was wurde bei Herrn Meier zuletzt gemacht?" ->
+// echte vergangene Termine aus dem Kalender (Datum + Behandlungsart + Notiz),
+// bevorzugt erledigte ("treated"). NICHT aus dem Gedaechtnis raten.
+app.post("/tools/patient-treatments", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const r = await resolveSpokenPatientForRead(clientId, {
+      rawName: String(req.body?.name || "").trim(),
+      hint: String(req.body?.hint || "").trim(),
+      askWho: "Zu welchem Patienten soll ich die letzten Behandlungen nachsehen? Bitte den Namen nennen.",
+    });
+    if (r.done) return res.json(r.payload);
+    const sel = r.sel;
+    const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
+    const result = await getPatientAppointments(clientId, { patientId: sel.id, firstName: sel.firstName, lastName: sel.lastName });
+    return res.json({ ok: true, message: buildSpokenTreatmentHistory(result, { who }) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1e) ANAMNESE-AUFFAELLIGKEITEN (SignR): "Gibt es bei Frau Thrandorf etwas
+// Auffaelliges in der Anamnese?" -> liest den Anamnesebogen (Allergien,
+// Medikamente, Vorerkrankungen). Unterschriebene PDF-Anamnesen sind nicht
+// maschinell lesbar; das wird ehrlich gemeldet, statt zu raten.
+app.post("/tools/anamnesis-flags", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const r = await resolveSpokenPatientForRead(clientId, {
+      rawName: String(req.body?.name || "").trim(),
+      hint: String(req.body?.hint || "").trim(),
+      askWho: "Zu welchem Patienten soll ich die Anamnese prüfen? Bitte den Namen nennen.",
+    });
+    if (r.done) return res.json(r.payload);
+    const sel = r.sel;
+    const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
+    const result = await getPatientAnamnese(clientId, { patientId: sel.id });
+    return res.json({ ok: true, message: buildSpokenAnamnese(result, { who }) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
 // 2) SPRACH-NOTIZ WIRD ZUM VORGANG: "Merk dir: Herr Fountas braucht eine neue
 // Schiene." -> Notiz als Event ins Shared Memory + als (Vorgangs-)Case am
 // Patienten, damit sie beim NAECHSTEN Termin von allein wieder hochkommt
@@ -3790,6 +3885,85 @@ app.post("/tools/compose-email", async (req, res) => {
       ok: true,
       caseId,
       message: `Alles klar. Nadine schreibt eine E-Mail${displayName ? ` an ${displayName}` : ""} und legt sie dir zur Freigabe vor — gesendet wird erst nach deiner Bestätigung. Soll ich sie senden?`,
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// FREI-DIKTAT ZU BRIEF (16.06.2026): "Diktier-Modus: ..." -> Clara nimmt ein
+// laengeres Diktat entgegen und laesst Nadine daraus einen Brief-/Schreiben-
+// Entwurf zur FREIGABE ausarbeiten. Reine Wiederverwendung des bewaehrten
+// E-Mail-Entwurfspfads (assignCase -> prepareCaseDraft -> waiting_approval,
+// taucht im Nadine-Dashboard auf). Nichts wird gesendet; der Mensch gibt frei.
+app.post("/tools/dictate-letter", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const dictation = String(req.body?.text || req.body?.dictation || req.body?.body || "").trim();
+    if (!dictation) return res.json({ ok: false, message: "Was soll im Brief stehen? Diktier mir den Inhalt." });
+    const recipientName = String(req.body?.recipient || req.body?.name || req.body?.to || "").trim();
+    const op = await getOperator(clientId);
+    const by = op?.name || "Clara";
+
+    // Nadine soll das Diktat zu einem formellen Brief ausarbeiten (nicht als
+    // Stichwort-Auftrag missverstehen) — darum als Diktat kennzeichnen.
+    const instruction = `Diktat des Praxisteams wortgetreu zu einem formellen Brief (Sie-Form, professionell) ausarbeiten. Diktat: „${dictation}“`;
+
+    // Empfaenger: ausdruecklich genannter Name gewinnt, sonst aktiver Vorgang.
+    let caseId = null;
+    let displayName = "";
+    if (recipientName) {
+      let subject = { name: recipientName, matchStatus: "unmatched", matchMethod: null };
+      const s = await resolvePatientSubject(clientId, recipientName).catch(() => null);
+      if (s?.patientId) {
+        subject = { patientId: s.patientId, name: s.name || recipientName, matchStatus: "matched", matchMethod: s.matchMethod || "name" };
+        const open = await listCases(clientId, { patientId: s.patientId, activeOnly: true, limit: 1 }).catch(() => []);
+        if (open?.length) caseId = open[0].id;
+      }
+      displayName = subject.name;
+      if (!caseId) {
+        const c = await createCase(clientId, {
+          subject,
+          topic: "other",
+          title: `Brief an ${displayName}`,
+          createdBy: by,
+          status: "open",
+          updates: [{ by, kind: "note", text: `Diktat-Brief-Auftrag: ${dictation}` }],
+        });
+        caseId = c.id;
+      }
+    } else {
+      const active = await getActiveCase(clientId);
+      if (active?.id) {
+        caseId = active.id;
+        displayName = active.subject?.name || "";
+      } else {
+        // Kein Empfaenger und kein aktiver Vorgang: trotzdem einen Entwurf
+        // anlegen, damit das Diktat nicht verloren geht (Empfaenger ergaenzt
+        // der Mensch im Dashboard).
+        const c = await createCase(clientId, {
+          subject: { name: "", matchStatus: "unmatched", matchMethod: null },
+          topic: "other",
+          title: "Diktierter Brief (Empfänger offen)",
+          createdBy: by,
+          status: "open",
+          updates: [{ by, kind: "note", text: `Diktat-Brief-Auftrag: ${dictation}` }],
+        });
+        caseId = c.id;
+      }
+    }
+
+    await assignCase(clientId, caseId, { assignee: "Nadine", instruction, by });
+    prepareCaseDraft(clientId, caseId, { by: "Nadine" }).catch(() => { /* best-effort */ });
+    await setActiveCase(clientId, { id: caseId, subject: { name: displayName } }).catch(() => {});
+
+    return res.json({
+      ok: true,
+      caseId,
+      message: `Alles klar, ich habe dein Diktat aufgenommen. Nadine arbeitet daraus einen Briefentwurf${displayName ? ` an ${displayName}` : ""} aus und legt ihn dir zur Freigabe vor.`,
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
