@@ -10,6 +10,7 @@ import { createClaraSession } from "./clara/session.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot } from "./clara/booking.js";
 import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory } from "./clara/daySchedule.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "./clara/anamnese.js";
+import { polishForChannel } from "./clara/dictation.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
@@ -3891,11 +3892,61 @@ app.post("/tools/compose-email", async (req, res) => {
   }
 });
 
-// FREI-DIKTAT ZU BRIEF (16.06.2026): "Diktier-Modus: ..." -> Clara nimmt ein
-// laengeres Diktat entgegen und laesst Nadine daraus einen Brief-/Schreiben-
-// Entwurf zur FREIGABE ausarbeiten. Reine Wiederverwendung des bewaehrten
-// E-Mail-Entwurfspfads (assignCase -> prepareCaseDraft -> waiting_approval,
-// taucht im Nadine-Dashboard auf). Nichts wird gesendet; der Mensch gibt frei.
+// FREI-DIKTAT ZU BRIEF/E-MAIL (16.06.2026): Diktat -> Nadine arbeitet einen
+// Entwurf zur FREIGABE aus. Bewaehrter Pfad (assignCase -> prepareCaseDraft ->
+// waiting_approval, taucht im Nadine-Dashboard auf). Nichts wird gesendet.
+// Empfaenger: ausdruecklich genannter Name gewinnt, sonst der aktive Vorgang;
+// fehlt beides, wird trotzdem ein Entwurf angelegt (Empfaenger ergaenzt der
+// Mensch im Dashboard), damit das Diktat nicht verloren geht.
+async function assignNadineDraftFromDictation(clientId, { channelLabel, recipientName, dictation, by }) {
+  const instruction = channelLabel === "Brief"
+    ? `Diktat des Praxisteams wortgetreu zu einem formellen Brief (Sie-Form, professionell) ausarbeiten. Diktat: „${dictation}“`
+    : `Diktat des Praxisteams zu einer professionellen E-Mail (Sie-Form) ausarbeiten. Diktat: „${dictation}“`;
+  let caseId = null;
+  let displayName = "";
+  if (recipientName) {
+    let subject = { name: recipientName, matchStatus: "unmatched", matchMethod: null };
+    const s = await resolvePatientSubject(clientId, recipientName).catch(() => null);
+    if (s?.patientId) {
+      subject = { patientId: s.patientId, name: s.name || recipientName, matchStatus: "matched", matchMethod: s.matchMethod || "name" };
+      const open = await listCases(clientId, { patientId: s.patientId, activeOnly: true, limit: 1 }).catch(() => []);
+      if (open?.length) caseId = open[0].id;
+    }
+    displayName = subject.name;
+    if (!caseId) {
+      const c = await createCase(clientId, {
+        subject,
+        topic: "other",
+        title: `${channelLabel} an ${displayName}`,
+        createdBy: by,
+        status: "open",
+        updates: [{ by, kind: "note", text: `Diktat-${channelLabel}-Auftrag: ${dictation}` }],
+      });
+      caseId = c.id;
+    }
+  } else {
+    const active = await getActiveCase(clientId);
+    if (active?.id) {
+      caseId = active.id;
+      displayName = active.subject?.name || "";
+    } else {
+      const c = await createCase(clientId, {
+        subject: { name: "", matchStatus: "unmatched", matchMethod: null },
+        topic: "other",
+        title: `Diktierter ${channelLabel} (Empfänger offen)`,
+        createdBy: by,
+        status: "open",
+        updates: [{ by, kind: "note", text: `Diktat-${channelLabel}-Auftrag: ${dictation}` }],
+      });
+      caseId = c.id;
+    }
+  }
+  await assignCase(clientId, caseId, { assignee: "Nadine", instruction, by });
+  prepareCaseDraft(clientId, caseId, { by: "Nadine" }).catch(() => { /* best-effort */ });
+  await setActiveCase(clientId, { id: caseId, subject: { name: displayName } }).catch(() => {});
+  return { caseId, displayName };
+}
+
 app.post("/tools/dictate-letter", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -3906,65 +3957,88 @@ app.post("/tools/dictate-letter", async (req, res) => {
     if (!dictation) return res.json({ ok: false, message: "Was soll im Brief stehen? Diktier mir den Inhalt." });
     const recipientName = String(req.body?.recipient || req.body?.name || req.body?.to || "").trim();
     const op = await getOperator(clientId);
-    const by = op?.name || "Clara";
-
-    // Nadine soll das Diktat zu einem formellen Brief ausarbeiten (nicht als
-    // Stichwort-Auftrag missverstehen) — darum als Diktat kennzeichnen.
-    const instruction = `Diktat des Praxisteams wortgetreu zu einem formellen Brief (Sie-Form, professionell) ausarbeiten. Diktat: „${dictation}“`;
-
-    // Empfaenger: ausdruecklich genannter Name gewinnt, sonst aktiver Vorgang.
-    let caseId = null;
-    let displayName = "";
-    if (recipientName) {
-      let subject = { name: recipientName, matchStatus: "unmatched", matchMethod: null };
-      const s = await resolvePatientSubject(clientId, recipientName).catch(() => null);
-      if (s?.patientId) {
-        subject = { patientId: s.patientId, name: s.name || recipientName, matchStatus: "matched", matchMethod: s.matchMethod || "name" };
-        const open = await listCases(clientId, { patientId: s.patientId, activeOnly: true, limit: 1 }).catch(() => []);
-        if (open?.length) caseId = open[0].id;
-      }
-      displayName = subject.name;
-      if (!caseId) {
-        const c = await createCase(clientId, {
-          subject,
-          topic: "other",
-          title: `Brief an ${displayName}`,
-          createdBy: by,
-          status: "open",
-          updates: [{ by, kind: "note", text: `Diktat-Brief-Auftrag: ${dictation}` }],
-        });
-        caseId = c.id;
-      }
-    } else {
-      const active = await getActiveCase(clientId);
-      if (active?.id) {
-        caseId = active.id;
-        displayName = active.subject?.name || "";
-      } else {
-        // Kein Empfaenger und kein aktiver Vorgang: trotzdem einen Entwurf
-        // anlegen, damit das Diktat nicht verloren geht (Empfaenger ergaenzt
-        // der Mensch im Dashboard).
-        const c = await createCase(clientId, {
-          subject: { name: "", matchStatus: "unmatched", matchMethod: null },
-          topic: "other",
-          title: "Diktierter Brief (Empfänger offen)",
-          createdBy: by,
-          status: "open",
-          updates: [{ by, kind: "note", text: `Diktat-Brief-Auftrag: ${dictation}` }],
-        });
-        caseId = c.id;
-      }
-    }
-
-    await assignCase(clientId, caseId, { assignee: "Nadine", instruction, by });
-    prepareCaseDraft(clientId, caseId, { by: "Nadine" }).catch(() => { /* best-effort */ });
-    await setActiveCase(clientId, { id: caseId, subject: { name: displayName } }).catch(() => {});
-
+    const { caseId, displayName } = await assignNadineDraftFromDictation(clientId, { channelLabel: "Brief", recipientName, dictation, by: op?.name || "Clara" });
     return res.json({
       ok: true,
       caseId,
       message: `Alles klar, ich habe dein Diktat aufgenommen. Nadine arbeitet daraus einen Briefentwurf${displayName ? ` an ${displayName}` : ""} aus und legt ihn dir zur Freigabe vor.`,
     });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// EINHEITLICHER DIKTIER-MODUS ueber alle Kanaele (16.06.2026):
+// channel = brief | email | sms | call.
+//  - brief/email: Nadine-Entwurf zur Freigabe (nichts wird versendet).
+//  - sms/call: Diktat wird kanalgerecht ausformuliert, zum WOERTLICHEN
+//    Vorlesen zurueckgegeben; gesendet/angerufen wird ERST mit confirm=true
+//    nach ausdruecklicher Freigabe des Chefs (gleiches Muster wie
+//    gapfill_call_patient -> kein versehentliches Senden).
+app.post("/tools/dictate", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const channel = String(req.body?.channel || "").trim().toLowerCase();
+    const dictation = String(req.body?.text || req.body?.dictation || req.body?.message || req.body?.body || "").trim();
+    const recipientName = String(req.body?.recipient || req.body?.recipientName || req.body?.name || req.body?.to || "").trim();
+    const confirm = req.body?.confirm === true || req.body?.confirm === "true";
+    const op = await getOperator(clientId);
+    const by = op?.name || "Clara";
+
+    const CHANNELS = { brief: "brief", email: "email", "e-mail": "email", mail: "email", sms: "sms", call: "call", anruf: "call", telefon: "call" };
+    const ch = CHANNELS[channel];
+    if (!ch) return res.json({ ok: false, message: "Für welchen Kanal soll ich das Diktat verwenden? Brief, E-Mail, SMS oder Anruf?" });
+    if (!dictation) return res.json({ ok: false, message: "Was soll im Text stehen? Diktier mir den Inhalt." });
+
+    // Brief / E-Mail -> Nadine-Entwurf zur Freigabe.
+    if (ch === "brief") {
+      const { caseId, displayName } = await assignNadineDraftFromDictation(clientId, { channelLabel: "Brief", recipientName, dictation, by });
+      return res.json({ ok: true, caseId, message: `Alles klar. Nadine macht aus deinem Diktat einen Briefentwurf${displayName ? ` an ${displayName}` : ""} und legt ihn dir zur Freigabe vor.` });
+    }
+    if (ch === "email") {
+      const { caseId, displayName } = await assignNadineDraftFromDictation(clientId, { channelLabel: "E-Mail", recipientName, dictation, by });
+      return res.json({ ok: true, caseId, message: `Alles klar. Nadine macht aus deinem Diktat einen E-Mail-Entwurf${displayName ? ` an ${displayName}` : ""} und legt ihn dir zur Freigabe vor.` });
+    }
+
+    // SMS / Anruf -> Ziel aufloesen, ausformulieren, vorlesen, erst auf 'ja' senden.
+    const isCall = ch === "call";
+    const target = await resolveDelegationTarget(clientId, req.body);
+    if (!target.phone) {
+      return res.json({ ok: false, message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen." });
+    }
+    const who = target.name || target.phone;
+
+    if (!confirm) {
+      const polished = await polishForChannel(isCall ? "call" : "sms", dictation, { recipientName: target.name });
+      const text = polished.text || dictation;
+      if (isCall) {
+        return res.json({
+          ok: true, prepared: true, channel: "call", callText: text,
+          message: `Lisa würde ${who} anrufen und sinngemäß sagen: „${text}“. Soll Lisa jetzt so anrufen?`,
+          directive: "Lies den Text WOERTLICH vor und frage, ob Lisa so anrufen soll. NUR auf ausdrueckliches 'Ja' rufst du dictate ERNEUT auf mit confirm=true, channel='call' und text=<dem soeben vorgelesenen Text>. Auf 'nein' NICHT anrufen.",
+        });
+      }
+      return res.json({
+        ok: true, prepared: true, channel: "sms", smsText: text,
+        message: `Ich würde folgende SMS an ${who} senden: „${text}“. Soll ich sie so senden?`,
+        directive: "Lies den SMS-Text WOERTLICH vor und frage, ob du ihn so senden sollst. NUR auf ausdrueckliches 'Ja' rufst du dictate ERNEUT auf mit confirm=true, channel='sms' und text=<dem soeben vorgelesenen Text>. Auf 'nein' NICHT senden.",
+      });
+    }
+
+    // confirm=true: jetzt wirklich senden/anrufen (text ist der bereits
+    // ausformulierte, vorgelesene Text).
+    if (req.body?.dryRun) {
+      return res.json({ ok: true, dryRun: true, message: `Testlauf: ${isCall ? `Lisa hätte ${who} angerufen` : `Die SMS an ${who} wäre verschickt worden`}.` });
+    }
+    if (isCall) {
+      const out = await lisaStartCall(clientId, { phone: target.phone, instruction: dictation, contactName: target.name, callLanguage: req.body?.callLanguage, by });
+      return res.json(out);
+    }
+    const out = await lisaSendSms(clientId, { phone: target.phone, message: dictation, recipientName: target.name, by });
+    return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
