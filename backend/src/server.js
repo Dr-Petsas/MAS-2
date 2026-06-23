@@ -33,7 +33,8 @@ import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } fr
 import { listFachrichtungen, defaultProfileFor as qmDefaultProfileFor } from "./qm/catalog.js";
 import { saveProfile as qmSaveProfile, getProfile as qmGetProfile, computeRequirements as qmComputeRequirements, activateBook as qmActivateBook, deactivateBook as qmDeactivateBook, setBookResponsible as qmSetBookResponsible, getBook as qmGetBook, listBooks as qmListBooks } from "./qm/books.js";
 import { listDocuments as qmListDocuments, exportRows as qmExportRows } from "./qm/documents.js";
-import { createJob as qmCreateJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, listJobsForStaff as qmListJobsForStaff } from "./qm/jobs.js";
+import { createJob as qmCreateJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, listJobsForStaff as qmListJobsForStaff, redistributeOpenJobs as qmRedistribute } from "./qm/jobs.js";
+import { PRODUCT_PRESETS as qmHygienePresets, TASK_TEMPLATES as qmHygieneTasks, defaultProductSelection as qmHygieneDefaults, buildHygienePlans as qmBuildHygienePlans, setupHygienePlan as qmSetupHygiene } from "./qm/hygiene.js";
 import { createSchedule as qmCreateSchedule, listSchedules as qmListSchedules, updateSchedule as qmUpdateSchedule, deleteSchedule as qmDeleteSchedule, materializeDueJobs as qmMaterializeDueJobs } from "./qm/schedules.js";
 import { upsertStaff as qmUpsertStaff, getStaff as qmGetStaff, listStaff as qmListStaff, addAbsence as qmAddAbsence, removeAbsence as qmRemoveAbsence, suggestAssignee as qmSuggestAssignee } from "./qm/staff.js";
 import { pushJob as qmPushJob, runEscalationSweep as qmRunEscalationSweep } from "./qm/notify.js";
@@ -492,6 +493,19 @@ app.get("/clara/qm/books/:bookKey/export", qmRoute(async (clientId, req, res) =>
   res.json({ ok: true, clientId, bookKey: req.params.bookKey, rows });
 }));
 
+// --- Hygieneplan-Assistent (Produkt-Vorgaben + 1-Klick-Setup) ---
+app.get("/clara/qm/hygiene/presets", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, presets: qmHygienePresets, defaultProducts: qmHygieneDefaults(), tasks: qmHygieneTasks });
+}));
+app.post("/clara/qm/hygiene/preview", qmRoute(async (clientId, req, res) => {
+  const products = (req.body || {}).products || qmHygieneDefaults();
+  res.json({ ok: true, clientId, plans: qmBuildHygienePlans(products) });
+}));
+app.post("/clara/qm/hygiene/setup", qmRoute(async (clientId, req, res) => {
+  const r = await qmSetupHygiene(clientId, req.body || {});
+  res.status(r.ok ? 201 : 400).json({ clientId, ...r });
+}));
+
 // --- Jobs (Julias Kalender) ---
 app.get("/clara/qm/calendar", qmRoute(async (clientId, req, res) => {
   const fromMs = Number(req.query?.from || 0);
@@ -560,11 +574,31 @@ app.get("/clara/qm/staff", qmRoute(async (clientId, req, res) => {
 }));
 app.post("/clara/qm/staff", qmRoute(async (clientId, req, res) => {
   const r = await qmUpsertStaff(clientId, req.body || {});
-  res.json({ clientId, ...r });
+  // Wird eine Mitarbeiterin deaktiviert, verteilt Julia ihre offenen Jobs neu.
+  let redistribution = null;
+  if (r.ok && (req.body || {}).active === false && r.staff?.id) {
+    redistribution = await qmRedistribute(clientId, r.staff.id, { reason: "Mitarbeiter deaktiviert" }).catch(() => null);
+  }
+  res.json({ clientId, ...r, redistribution });
+}));
+// Offene Jobs einer Mitarbeiterin manuell neu verteilen (Vertretung→Rolle→Leitung).
+app.post("/clara/qm/staff/:id/redistribute", qmRoute(async (clientId, req, res) => {
+  const r = await qmRedistribute(clientId, req.params.id, req.body || {});
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
 }));
 app.post("/clara/qm/staff/:id/absence", qmRoute(async (clientId, req, res) => {
   const r = await qmAddAbsence(clientId, req.params.id, req.body || {});
-  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
+  // Deckt die Abwesenheit (auch künftig) Jobs ab, lenkt Julia sie auf die
+  // Vertretung um — bis zum Ende der Abwesenheit fällige, offene Jobs.
+  let redistribution = null;
+  if (r.ok && r.absence) {
+    const endIso = `${r.absence.to || r.absence.from}T23:59:59`;
+    const toMs = new Date(endIso).getTime();
+    if (toMs && toMs >= Date.now()) {
+      redistribution = await qmRedistribute(clientId, req.params.id, { onlyDueBeforeMs: toMs, reason: `Abwesenheit (${r.absence.type})` }).catch(() => null);
+    }
+  }
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r, redistribution });
 }));
 app.post("/clara/qm/staff/:id/absence/:absenceId/delete", qmRoute(async (clientId, req, res) => {
   res.json({ clientId, ...(await qmRemoveAbsence(clientId, req.params.id, req.params.absenceId)) });

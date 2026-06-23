@@ -121,6 +121,19 @@ export async function bumpBookVersion(clientId, bookKey) {
   return { ok: true, key: s(bookKey), version: next };
 }
 
+/**
+ * Generierte Plan-Inhalte am Buch ablegen (z. B. die 9 Hygienepläne mit
+ * Mittel/Dosierung/Einwirkzeit). Auf einen Blick lesbar, ohne Query.
+ */
+export async function setBookPlans(clientId, bookKey, plans = [], { products = null } = {}) {
+  const ref = col(clientId).doc(s(bookKey));
+  if (!(await ref.get()).exists) return { ok: false, reason: "not_found" };
+  const patch = { generatedPlans: Array.isArray(plans) ? plans : [], generatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
+  if (products && typeof products === "object") patch.products = products;
+  await ref.set(patch, { merge: true });
+  return { ok: true, key: s(bookKey), planCount: patch.generatedPlans.length };
+}
+
 /** Doku-Zähler erhöhen (von documents.appendDocument aufgerufen). */
 export async function incrementDocumentCount(clientId, bookKey) {
   await col(clientId).doc(s(bookKey)).set(

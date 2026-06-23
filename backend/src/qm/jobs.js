@@ -5,6 +5,7 @@ import { getArtifact } from "./catalog.js";
 import { appendDocument } from "./documents.js";
 import { getBook } from "./books.js";
 import { nextDueFrom, isRecurring, cycleLabel } from "./recurrence.js";
+import { suggestAssignee, getStaff, isAbsentAt, resolveEscalationTarget } from "./staff.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { log } from "../log.js";
@@ -86,7 +87,17 @@ export async function createJob(clientId, input = {}) {
   const now = new Date();
   const scheduledFor = s(input.scheduledFor) || now.toISOString();
   const dueAt = s(input.dueAt) || scheduledFor;
-  const assignedTo = s(input.assignedTo);
+
+  // Auto-Zuweisung: ist nur eine Rolle genannt, sucht Julia die passende,
+  // verfügbare (nicht abwesende) Helferin — so wird jeder Schedule-/Wizard-Job
+  // automatisch verteilt. Manuell ohne Rolle angelegte Jobs bleiben "planned".
+  let assignedTo = s(input.assignedTo);
+  let assignedToName = s(input.assignedToName);
+  const wantRole = s(input.assignedRole);
+  if (!assignedTo && wantRole && input.autoAssign !== false) {
+    const sug = await suggestAssignee(clientId, { role: wantRole, category: artifact.category, atMs: new Date(dueAt).getTime() || Date.now() }).catch(() => null);
+    if (sug && sug.ok) { assignedTo = sug.staffId; assignedToName = sug.staffName; }
+  }
   const status = assignedTo ? JOB_STATUS.ASSIGNED : JOB_STATUS.PLANNED;
 
   const job = {
@@ -103,9 +114,9 @@ export async function createJob(clientId, input = {}) {
     dueAtMs: new Date(dueAt).getTime() || now.getTime(),
     leadDays: Math.max(0, Number(input.leadDays) || 0),
 
-    assignedRole: s(input.assignedRole) || null,
+    assignedRole: wantRole || null,
     assignedTo: assignedTo || null,
-    assignedToName: s(input.assignedToName) || null,
+    assignedToName: assignedToName || null,
 
     status,
     ackAt: null,
@@ -167,6 +178,63 @@ export async function assignJob(clientId, jobId, { staffId, staffName = "", role
   const out = await patchJob(clientId, jobId, patch, "assigned", by, reason);
   if (out.ok) await logAudit(clientId, `Job zugewiesen an ${s(staffName) || s(staffId)}: ${job.title}`);
   return out;
+}
+
+/**
+ * Neuverteilung: offene, zugewiesene Jobs einer Helferin umlenken — z. B. wenn
+ * sie krank/abwesend wird oder aus dem Dienstplan fliegt. Kette pro Job:
+ *   1) hinterlegte Vertretung (deputyStaffId), falls aktiv & nicht abwesend
+ *   2) sonst eine andere passende Helferin der QM-Rolle (suggestAssignee)
+ *   3) sonst Eskalation an die Praxisleitung (resolveEscalationTarget)
+ * @param {object} opts onlyDueBeforeMs: nur Jobs bis zu diesem Fälligkeitspunkt
+ *   (z. B. Ende der Abwesenheit). atMs: Bezugszeitpunkt für "verfügbar?".
+ * @returns {{ok:true, reassigned:number, escalated:number, skipped:number, total:number}}
+ */
+export async function redistributeOpenJobs(clientId, staffId, { onlyDueBeforeMs = 0, atMs = Date.now(), reason = "Neuverteilung" } = {}) {
+  const sid = s(staffId);
+  if (!sid) return { ok: false, reason: "staff_required" };
+  let jobs = await listJobsForStaff(clientId, sid, { openOnly: true });
+  if (Number(onlyDueBeforeMs) > 0) jobs = jobs.filter((j) => (j.dueAtMs || 0) <= Number(onlyDueBeforeMs));
+
+  const leaving = await getStaff(clientId, sid);
+  let reassigned = 0, escalated = 0, skipped = 0;
+
+  for (const job of jobs) {
+    // 1) Vertretung
+    let target = null;
+    const deputyId = leaving?.deputyStaffId;
+    if (deputyId && deputyId !== sid) {
+      const deputy = await getStaff(clientId, deputyId);
+      if (deputy && deputy.active !== false && !isAbsentAt(deputy, atMs)) {
+        target = { staffId: deputy.id, staffName: deputy.name, reason: "Vertretung" };
+      }
+    }
+    // 2) andere passende Helferin der Rolle/Kategorie
+    if (!target) {
+      const sug = await suggestAssignee(clientId, { role: job.assignedRole || "", category: job.category || "", atMs, excludeStaffId: sid }).catch(() => null);
+      if (sug && sug.ok) target = { staffId: sug.staffId, staffName: sug.staffName, reason: sug.reason };
+    }
+    if (target) {
+      const out = await assignJob(clientId, job.id, { staffId: target.staffId, staffName: target.staffName, role: job.assignedRole || "", by: "julia", reason: `${reason}: ${target.reason}` });
+      if (out.ok) { reassigned++; continue; }
+    }
+    // 3) Eskalation an die Leitung
+    const esc = await resolveEscalationTarget(clientId, job, { atMs }).catch(() => null);
+    if (esc) {
+      // Status muss eskalierbar sein; sonst zuerst auf overdue heben.
+      if (!canTransition(job.status, JOB_STATUS.ESCALATED)) {
+        await markOverdue(clientId, job.id, { by: "julia" }).catch(() => {});
+      }
+      const out = await escalateJob(clientId, job.id, { to: esc.staffId, toName: esc.staffName, level: esc.level, by: "julia" });
+      if (out.ok) { escalated++; continue; }
+    }
+    skipped++;
+  }
+
+  if (reassigned || escalated) {
+    await logAudit(clientId, `Neuverteilung für ${leaving?.name || sid}: ${reassigned} umverteilt, ${escalated} eskaliert (${reason}).`);
+  }
+  return { ok: true, reassigned, escalated, skipped, total: jobs.length };
 }
 
 /** Mitarbeiter quittiert (gesehen/angenommen). assigned/overdue -> seen. */
