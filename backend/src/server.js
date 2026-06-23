@@ -2704,6 +2704,16 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
       patientId = r.sel?.id || "";
       lastName = r.sel?.lastName || lastName;
     }
+    // Kein Termin, kein Patient, kein Name? -> auf den im Gespraech zuletzt
+    // eindeutig gewaehlten Patienten zurueckfallen (gleiche Quelle wie bei
+    // Anrufen: search_patient legt ihn in voice_state.selectedPatient ab). So
+    // kann der Arzt erst "Patient Mueller" sagen und danach nur "dokumentiere ...".
+    if (!appointmentId && !patientId && !lastName) {
+      try {
+        const sel = await getSelectedPatient(clientId);
+        if (sel && sel.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+      } catch { /* kein aktiver Patient im Kontext */ }
+    }
     const out = await saveTreatmentDictation(clientId, {
       text: String(req.body?.text || "").trim(),
       appointmentId,
