@@ -11,7 +11,10 @@ import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSl
 import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory } from "./clara/daySchedule.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "./clara/anamnese.js";
 import { polishForChannel } from "./clara/dictation.js";
+import { intakeToAbsichten } from "./clara/billingIntake.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
+import { buildNextPatientsBriefing } from "./clara/nextPatientsBriefing.js";
+import { saveTreatmentDictation } from "./clara/treatmentDoc.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
 import { reflectOnce } from "./brain/reflect.js";
@@ -430,6 +433,24 @@ app.post("/clara/session-start", async (req, res) => {
     res.json({ ok: true, clientId, sessionId });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Sophie-Abrechnung: Kurzschrift/Diktat → strukturierte Behandlungsabsichten
+// { konzept, attrs } via lokalem LLM. Reine Verständnis-Schicht — KEINE Ziffern;
+// die berechnet die deterministische Sophie-Engine im Frontend. Additiv, ohne
+// Vertrag zu bestehenden Routen. Fällt bei LLM-Ausfall sauber auf ok:false.
+app.post("/clara/billing-intake", async (req, res) => {
+  try {
+    const text = String(req.body?.text || "").trim();
+    if (!text) return res.json({ ok: false, reason: "empty", absichten: [], unbekannt: [] });
+    const zahn = String(req.body?.zahn || "").trim();
+    const katalog = req.body?.katalog || {};
+    const beispiele = Array.isArray(req.body?.beispiele) ? req.body.beispiele : [];
+    const out = await intakeToAbsichten({ text, zahn, katalog, beispiele });
+    res.json(out);
+  } catch (e) {
+    res.json({ ok: false, reason: "error", detail: String(e?.message || e), absichten: [], unbekannt: [] });
   }
 });
 
@@ -2631,6 +2652,66 @@ app.post("/tools/anamnesis-flags", async (req, res) => {
     const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
     const result = await getPatientAnamnese(clientId, { patientId: sel.id });
     return res.json({ ok: true, message: buildSpokenAnamnese(result, { who }) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1f) NÄCHSTE-2-PATIENTEN-BRIEFING: "Wer kommt als Nächstes?" / "Briefing für
+// die nächsten zwei Patienten." -> pro anstehendem Patienten Terminart, geplante
+// Notiz und — am wichtigsten — was beim letzten Termin war. Reine Lesefunktion
+// aus dem Plattform-Kalender (read-only).
+app.post("/tools/next-patients-briefing", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const calScope = await resolveDayCalendarScope(clientId, req.body);
+    const count = Math.max(1, Math.min(5, Number(req.body?.count) || 2));
+    const out = await buildNextPatientsBriefing(clientId, {
+      date: (req.body?.date || "").trim() || todayBerlin(),
+      calendarId: calScope.calendarId,
+      count,
+    });
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1g) DOKUMENTATIONSDIKTAT (Clara → Lena): "Dokumentiere für Herrn Meier: ..."
+// -> legt den diktierten Text als Segment unter dem Termin ab (dictations/*),
+// genau dort, wo Lena-Seite und Termintab live mitlesen. KEIN Versand, keine
+// Abrechnung. Termin wird über appointmentId oder Patient aufgelöst.
+app.post("/tools/save-treatment-dictation", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    let appointmentId = String(req.body?.appointmentId || "").trim();
+    let patientId = String(req.body?.patientId || "").trim();
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    // Wenn nur ein Name kam, Patient sauflösen (gleiche Logik wie die Lese-Tools).
+    if (!appointmentId && !patientId && lastName) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: lastName,
+        hint: String(req.body?.hint || "").trim(),
+        askWho: "Für welchen Patienten soll ich das dokumentieren? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || "";
+      lastName = r.sel?.lastName || lastName;
+    }
+    const out = await saveTreatmentDictation(clientId, {
+      text: String(req.body?.text || "").trim(),
+      appointmentId,
+      patientId,
+      lastName,
+      lang: String(req.body?.lang || "de-DE").trim() || "de-DE",
+    });
+    return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
