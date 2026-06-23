@@ -40,6 +40,7 @@ export const CHANNELS = Object.freeze({
   NADINE_EMAIL: "nadine_email", // inbound/outbound e-mail (AI)
   NADINE_LETTER: "nadine_letter", // scanned letter / fax (AI, OCR)
   CLARA_VOICE: "clara_voice", // in-practice voice copilot
+  LENA_DOC: "lena_doc", // Behandlungsdokumentation (Diktat/schriftlich) via Lena
   FRONTDESK: "frontdesk", // a human team member logged something
   SYSTEM: "system", // observed platform automation (docs, reminders, …)
 });

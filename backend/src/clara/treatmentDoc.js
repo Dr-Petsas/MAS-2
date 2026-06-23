@@ -1,6 +1,8 @@
 import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
 import { getDayAppointments, getPatientAppointments, todayBerlin } from "./daySchedule.js";
+import { appendEvent } from "../brain/eventStore.js";
+import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 
 /**
  * Dokumentationsdiktat (Clara → Lena)
@@ -79,6 +81,43 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
             lang,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
+
+        // Zusätzlich ins geteilte Gedächtnis schreiben — Lena dokumentiert sichtbar
+        // für alle (wie Lisa, Bianca, Nadine). So liest die Behandlungsdoku auch in
+        // der Cockpit-/Patienten-Timeline mit. Best-effort, der Diktat-Eintrag oben
+        // ist die führende Quelle.
+        try {
+            let subjId = String(patientId || "").trim();
+            let subjName = String(lastName || "").trim();
+            if (!subjId) {
+                const apptSnap = await admin.firestore()
+                    .collection("clients").doc(clientId)
+                    .collection("locations").doc(locationId)
+                    .collection("appointments").doc(apptId).get();
+                const ap = apptSnap.exists ? (apptSnap.data() || {}) : {};
+                subjId = String(ap?.patient?.id || "").trim();
+                if (!subjName) subjName = `${ap?.patient?.firstName || ""} ${ap?.patient?.lastName || ""}`.trim();
+            }
+            const kurz = body.length > 420 ? body.slice(0, 417) + "..." : body;
+            await appendEvent(clientId, {
+                id: `lena-doc:${apptId}:${doc.id}`,
+                channel: CHANNELS.LENA_DOC,
+                type: EVENT_TYPES.NOTE,
+                direction: DIRECTIONS.INTERNAL,
+                counterparty: { kind: "system", name: "Lena", ref: null },
+                subject: subjId
+                    ? { patientId: subjId, name: subjName, matchStatus: "matched", matchMethod: "name" }
+                    : { name: subjName, matchStatus: "unmatched" },
+                status: "none",
+                summary: `Behandlungsdokumentation (Lena): ${kurz}`,
+                payloadRef: { kind: "dictation", id: doc.id },
+                extractor: "lena@treatment-dictation",
+                tags: ["lena", "dokumentation", "behandlung"],
+            });
+        } catch (memErr) {
+            console.warn("saveTreatmentDictation: brain-event failed:", memErr?.message || memErr);
+        }
+
         return { ok: true, appointmentId: apptId, dictationId: doc.id, message: "Habe ich zur Behandlungsdokumentation gespeichert." };
     } catch (e) {
         return { ok: false, message: `Das Diktat konnte ich nicht speichern: ${String(e?.message || e)}` };
