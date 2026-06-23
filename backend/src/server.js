@@ -29,6 +29,15 @@ import { lookupCaller, normalizePhone } from "./clara/callerLookup.js";
 import { spokenCallLog } from "./clara/callLog.js";
 import { spokenRatings } from "./clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "./clara/agentBooking.js";
+// QM (Julia): Anforderungs-Engine, Bücher/Doku, Jobs/Schedules, Personal, Push, Clara-Lesemodell.
+import { listFachrichtungen, defaultProfileFor as qmDefaultProfileFor } from "./qm/catalog.js";
+import { saveProfile as qmSaveProfile, getProfile as qmGetProfile, computeRequirements as qmComputeRequirements, activateBook as qmActivateBook, deactivateBook as qmDeactivateBook, setBookResponsible as qmSetBookResponsible, getBook as qmGetBook, listBooks as qmListBooks } from "./qm/books.js";
+import { listDocuments as qmListDocuments, exportRows as qmExportRows } from "./qm/documents.js";
+import { createJob as qmCreateJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, listJobsForStaff as qmListJobsForStaff } from "./qm/jobs.js";
+import { createSchedule as qmCreateSchedule, listSchedules as qmListSchedules, updateSchedule as qmUpdateSchedule, deleteSchedule as qmDeleteSchedule, materializeDueJobs as qmMaterializeDueJobs } from "./qm/schedules.js";
+import { upsertStaff as qmUpsertStaff, getStaff as qmGetStaff, listStaff as qmListStaff, addAbsence as qmAddAbsence, removeAbsence as qmRemoveAbsence, suggestAssignee as qmSuggestAssignee } from "./qm/staff.js";
+import { pushJob as qmPushJob, runEscalationSweep as qmRunEscalationSweep } from "./qm/notify.js";
+import { resolveBookKeyFromText as qmResolveBookKey, buildSpokenNextDue as qmSpokenNextDue, buildSpokenHistory as qmSpokenHistory, getNextDue as qmGetNextDue, getCalendar as qmGetCalendar, buildSpokenCalendar as qmSpokenCalendar, buildSpokenOverdue as qmSpokenOverdue } from "./qm/calendarRead.js";
 import {
   createSession,
   emitCommand,
@@ -418,6 +427,188 @@ app.post("/tools/tasks/:id/done", async (req, res) => {
     res.status(400).json({ error: String(e?.message || e) });
   }
 });
+
+// ===========================================================================
+// QM (Julia) — Anforderungs-Engine, Bücher/Doku, Jobs/Kalender, Personal, Push
+// und Claras read-only Auskunft. Alle Daten unter clients/{clientId}/mas_qm_*.
+// ===========================================================================
+
+// Kleiner Wrapper: Tenant + Clara-Entitlement, dann handler(clientId, req, res).
+function qmRoute(handler) {
+  return async (req, res) => {
+    try {
+      const clientId = resolveClientId(req);
+      if (!clientId) return res.status(400).json({ error: "client_id_required" });
+      if (!(await assertAppEnabled(clientId, "clara"))) {
+        return res.status(403).json({ error: "clara_not_entitled", clientId });
+      }
+      await handler(clientId, req, res);
+    } catch (e) {
+      res.status(400).json({ error: String(e?.message || e) });
+    }
+  };
+}
+
+// --- Profil & Anforderungs-Engine ---
+app.get("/clara/qm/fachrichtungen", qmRoute(async (clientId, req, res) => {
+  const key = String(req.query?.key || "").trim();
+  res.json({ ok: true, clientId, fachrichtungen: listFachrichtungen(), defaultProfile: key ? qmDefaultProfileFor(key) : null });
+}));
+app.get("/clara/qm/profile", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, profile: await qmGetProfile(clientId) });
+}));
+app.post("/clara/qm/profile", qmRoute(async (clientId, req, res) => {
+  const r = await qmSaveProfile(clientId, req.body || {});
+  res.json({ ok: true, clientId, ...r });
+}));
+app.get("/clara/qm/requirements", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, ...(await qmComputeRequirements(clientId)) });
+}));
+
+// --- Bücher & Nachweise ---
+app.get("/clara/qm/books", qmRoute(async (clientId, req, res) => {
+  const activeOnly = String(req.query?.activeOnly || "") === "1";
+  res.json({ ok: true, clientId, books: await qmListBooks(clientId, { activeOnly }) });
+}));
+app.post("/clara/qm/books/activate", qmRoute(async (clientId, req, res) => {
+  const b = req.body || {};
+  const r = await qmActivateBook(clientId, b.bookKey, b);
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/books/deactivate", qmRoute(async (clientId, req, res) => {
+  const r = await qmDeactivateBook(clientId, (req.body || {}).bookKey);
+  res.status(r.ok ? 200 : 404).json({ clientId, ...r });
+}));
+app.post("/clara/qm/books/:bookKey/responsible", qmRoute(async (clientId, req, res) => {
+  const r = await qmSetBookResponsible(clientId, req.params.bookKey, req.body || {});
+  res.status(r.ok ? 200 : 404).json({ clientId, ...r });
+}));
+app.get("/clara/qm/books/:bookKey/documents", qmRoute(async (clientId, req, res) => {
+  const deviceRef = String(req.query?.device || "").trim();
+  res.json({ ok: true, clientId, documents: await qmListDocuments(clientId, req.params.bookKey, { deviceRef }) });
+}));
+app.get("/clara/qm/books/:bookKey/export", qmRoute(async (clientId, req, res) => {
+  const rows = await qmExportRows(clientId, req.params.bookKey, { from: Number(req.query?.from || 0), to: Number(req.query?.to || Date.now()) });
+  res.json({ ok: true, clientId, bookKey: req.params.bookKey, rows });
+}));
+
+// --- Jobs (Julias Kalender) ---
+app.get("/clara/qm/calendar", qmRoute(async (clientId, req, res) => {
+  const fromMs = Number(req.query?.from || 0);
+  const toMs = Number(req.query?.to || Number.MAX_SAFE_INTEGER);
+  res.json({ ok: true, clientId, jobs: await qmGetCalendar(clientId, { fromMs, toMs, bookKey: String(req.query?.book || ""), deviceRef: String(req.query?.device || "") }) });
+}));
+app.post("/clara/qm/jobs", qmRoute(async (clientId, req, res) => {
+  const body = { ...(req.body || {}) };
+  // Wenn nur eine Rolle/Kategorie genannt ist, schlägt Julia eine Helferin vor.
+  if (!body.assignedTo && (body.assignedRole || body.category)) {
+    const sug = await qmSuggestAssignee(clientId, { role: body.assignedRole || "", category: body.category || "" });
+    if (sug.ok) { body.assignedTo = sug.staffId; body.assignedToName = sug.staffName; }
+  }
+  const r = await qmCreateJob(clientId, body);
+  res.status(r.ok ? 201 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/jobs/:id/assign", qmRoute(async (clientId, req, res) => {
+  const r = await qmAssignJob(clientId, req.params.id, req.body || {});
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/jobs/:id/ack", qmRoute(async (clientId, req, res) => {
+  const r = await qmAckJob(clientId, req.params.id, req.body || {});
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/jobs/:id/start", qmRoute(async (clientId, req, res) => {
+  const r = await qmStartJob(clientId, req.params.id, req.body || {});
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/jobs/:id/complete", qmRoute(async (clientId, req, res) => {
+  const r = await qmCompleteJob(clientId, req.params.id, req.body || {});
+  // missing_required_fields ist eine fachliche Ablehnung (422), kein 400.
+  const code = r.ok ? 200 : (r.reason === "missing_required_fields" ? 422 : 400);
+  res.status(code).json({ clientId, ...r });
+}));
+app.post("/clara/qm/jobs/:id/push", qmRoute(async (clientId, req, res) => {
+  const r = await qmPushJob(clientId, req.params.id, { publicBaseUrl: PUBLIC_BASE_URL, force: (req.body || {}).force === true });
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
+}));
+
+// --- Mitarbeiter-Portal (mobil): "Meine Aufgaben" ---
+app.get("/clara/qm/my-jobs", qmRoute(async (clientId, req, res) => {
+  const staffId = String(req.query?.staffId || "").trim();
+  if (!staffId) return res.status(400).json({ error: "staffId_required" });
+  res.json({ ok: true, clientId, jobs: await qmListJobsForStaff(clientId, staffId, { openOnly: String(req.query?.all || "") !== "1" }) });
+}));
+
+// --- Schedules (Wiederholungen) ---
+app.get("/clara/qm/schedules", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, schedules: await qmListSchedules(clientId, { bookKey: String(req.query?.book || ""), activeOnly: String(req.query?.activeOnly || "") === "1" }) });
+}));
+app.post("/clara/qm/schedules", qmRoute(async (clientId, req, res) => {
+  const r = await qmCreateSchedule(clientId, req.body || {});
+  res.status(r.ok ? 201 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/schedules/:id", qmRoute(async (clientId, req, res) => {
+  const r = await qmUpdateSchedule(clientId, req.params.id, req.body || {});
+  res.status(r.ok ? 200 : 404).json({ clientId, ...r });
+}));
+app.post("/clara/qm/schedules/:id/delete", qmRoute(async (clientId, req, res) => {
+  res.json({ clientId, ...(await qmDeleteSchedule(clientId, req.params.id)) });
+}));
+
+// --- Personal & Rollen ---
+app.get("/clara/qm/staff", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, staff: await qmListStaff(clientId, { activeOnly: String(req.query?.activeOnly || "") === "1" }) });
+}));
+app.post("/clara/qm/staff", qmRoute(async (clientId, req, res) => {
+  const r = await qmUpsertStaff(clientId, req.body || {});
+  res.json({ clientId, ...r });
+}));
+app.post("/clara/qm/staff/:id/absence", qmRoute(async (clientId, req, res) => {
+  const r = await qmAddAbsence(clientId, req.params.id, req.body || {});
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/staff/:id/absence/:absenceId/delete", qmRoute(async (clientId, req, res) => {
+  res.json({ clientId, ...(await qmRemoveAbsence(clientId, req.params.id, req.params.absenceId)) });
+}));
+
+// --- Clara liest den QM-Kalender (read-only Auskunft) ---
+app.get("/clara/qm/next-due", qmRoute(async (clientId, req, res) => {
+  const bookKey = String(req.query?.book || "").trim() || qmResolveBookKey(String(req.query?.q || ""));
+  const deviceRef = String(req.query?.device || "").trim();
+  if (!bookKey) return res.status(400).json({ error: "book_unresolved" });
+  res.json({ ok: true, clientId, bookKey, nextDue: await qmGetNextDue(clientId, { bookKey, deviceRef }), spoken: await qmSpokenNextDue(clientId, { bookKey, deviceRef }) });
+}));
+app.get("/clara/qm/history", qmRoute(async (clientId, req, res) => {
+  const bookKey = String(req.query?.book || "").trim() || qmResolveBookKey(String(req.query?.q || ""));
+  const deviceRef = String(req.query?.device || "").trim();
+  if (!bookKey) return res.status(400).json({ error: "book_unresolved" });
+  res.json({ ok: true, clientId, bookKey, spoken: await qmSpokenHistory(clientId, { bookKey, deviceRef, limit: Number(req.query?.limit || 1) }) });
+}));
+// Eine Frage, eine Antwort: Claras komplette QM-Kalender-Auskunft per Freitext.
+// Deckt ALLE Jobs ab — überfällige, komplette Liste, Zeitfenster (Woche/Monat)
+// und gezielte Buch-Fragen (nächste Fälligkeit / wer hat zuletzt erledigt).
+app.get("/clara/qm/ask", qmRoute(async (clientId, req, res) => {
+  const q = String(req.query?.q || "").trim();
+  const deviceRef = String(req.query?.device || "").trim();
+  const bookKey = q ? qmResolveBookKey(q) : null;
+
+  // Überfällig/offen explizit gefragt -> Rückstandsliste.
+  if (/(überfällig|ueberfaellig|rückstand|rueckstand|offen|versäum|versaeum)/i.test(q)) {
+    return res.json({ ok: true, clientId, intent: "overdue", spoken: await qmSpokenOverdue(clientId) });
+  }
+  // Zeitfenster bestimmen, falls kein einzelnes Buch gemeint ist.
+  const days = /monat/i.test(q) ? 30 : /(woche|7 tage)/i.test(q) ? 7 : 30;
+
+  // Kein erkennbares Buch ODER ausdrücklich "alle/kalender/aufgaben" -> komplette Liste.
+  if (!bookKey || /(alle|komplett|gesamt|kalender|aufgaben|was steht|überblick|ueberblick|qm)/i.test(q)) {
+    return res.json({ ok: true, clientId, intent: "calendar", spoken: await qmSpokenCalendar(clientId, { days }) });
+  }
+
+  const wantsHistory = /(wer|zuletzt|letzte|erledigt|gemacht|war)/i.test(q);
+  const spoken = wantsHistory
+    ? await qmSpokenHistory(clientId, { bookKey, deviceRef })
+    : await qmSpokenNextDue(clientId, { bookKey, deviceRef });
+  res.json({ ok: true, clientId, bookKey, intent: wantsHistory ? "history" : "next_due", spoken });
+}));
 
 // --- Live session channel ------------------------------------------------
 // The PC (platform Clara page / CalendR) starts a session; the "live_session"
@@ -6228,5 +6419,20 @@ app.listen(PORT, () => {
       }
     }, 5 * 60_000);
     log.info("recall initiative scheduler enabled");
+  }
+
+  // QM (Julia): wiederkehrende Erinnerungen zu fälligen Jobs materialisieren und
+  // offene/überfällige Jobs erneut anstupsen bzw. eskalieren. Billig im Leerlauf
+  // (zwei Firestore-Reads pro Takt). Push-Versand respektiert die Ruhezeiten.
+  if (DEFAULT_CLIENT_ID) {
+    setInterval(async () => {
+      try {
+        await qmMaterializeDueJobs(DEFAULT_CLIENT_ID, {});
+        await qmRunEscalationSweep(DEFAULT_CLIENT_ID, { publicBaseUrl: PUBLIC_BASE_URL });
+      } catch (e) {
+        log.warn("qm.scheduler_error", { error: String(e?.message || e) });
+      }
+    }, 5 * 60_000);
+    log.info("qm scheduler enabled", { intervalMs: 5 * 60_000 });
   }
 });
