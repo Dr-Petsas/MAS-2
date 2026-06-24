@@ -14,7 +14,7 @@ import { polishForChannel } from "./clara/dictation.js";
 import { intakeToAbsichten } from "./clara/billingIntake.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { buildNextPatientsBriefing } from "./clara/nextPatientsBriefing.js";
-import { saveTreatmentDictation } from "./clara/treatmentDoc.js";
+import { saveTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs } from "./clara/treatmentDoc.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
 import { reflectOnce } from "./brain/reflect.js";
@@ -39,6 +39,7 @@ import { createSchedule as qmCreateSchedule, listSchedules as qmListSchedules, u
 import { upsertStaff as qmUpsertStaff, getStaff as qmGetStaff, listStaff as qmListStaff, addAbsence as qmAddAbsence, removeAbsence as qmRemoveAbsence, suggestAssignee as qmSuggestAssignee } from "./qm/staff.js";
 import { pushJob as qmPushJob, runEscalationSweep as qmRunEscalationSweep } from "./qm/notify.js";
 import { resolveBookKeyFromText as qmResolveBookKey, buildSpokenNextDue as qmSpokenNextDue, buildSpokenHistory as qmSpokenHistory, getNextDue as qmGetNextDue, getCalendar as qmGetCalendar, buildSpokenCalendar as qmSpokenCalendar, buildSpokenOverdue as qmSpokenOverdue } from "./qm/calendarRead.js";
+import { askWorkforce as wfAsk, setBetriebsferien as wfSetBetriebsferien, spokenBetriebsferien as wfSpokenBetriebsferien, parseDateFromText as wfParseDate } from "./clara/workforce.js";
 import {
   createSession,
   emitCommand,
@@ -642,6 +643,48 @@ app.get("/clara/qm/ask", qmRoute(async (clientId, req, res) => {
     ? await qmSpokenHistory(clientId, { bookKey, deviceRef })
     : await qmSpokenNextDue(clientId, { bookKey, deviceRef });
   res.json({ ok: true, clientId, bookKey, intent: wantsHistory ? "history" : "next_due", spoken });
+}));
+
+// --- Clara liest Maries Dienstplan (Team/Urlaub/Anwesenheit, read-only) ---
+// Eine Frage, eine Antwort: Resturlaub, Anwesenheit (heute/Tag/Vormittag/
+// Nachmittag), Besetzung ("genug Helferinnen?"), Arbeitszeiten, Krank-/Urlaubs-
+// Auskunft. Deterministisch aus Maries Firestore — niemand wird geraten.
+app.get("/clara/team/ask", qmRoute(async (clientId, req, res) => {
+  const q = String(req.query?.q || "").trim();
+  const r = await wfAsk(clientId, q);
+  res.json({ ok: true, clientId, ...r });
+}));
+
+// --- Aktion: Betriebsferien eintragen + alle per Push informieren ---
+// Zweistufig wie alle Clara-Aktionen: ohne confirm=true nur Vorschau (was
+// passieren WÜRDE), erst mit confirm=true wird geschrieben + gepusht. So kann
+// Clara den Zeitraum vorlesen und auf das ausdrückliche "Ja" warten.
+app.post("/clara/team/betriebsferien", qmRoute(async (clientId, req, res) => {
+  const body = { ...(req.query || {}), ...(req.body || {}) };
+  const q = String(body.q || "").trim();
+  // Daten aus Feldern ODER aus dem Freitext (z.B. "von 23.12. bis 6.1.").
+  let from = String(body.from || "").trim();
+  let to = String(body.to || "").trim();
+  if (!from || !to) {
+    const m = q.match(/(?:von\s+)?(\d{1,2}\.\s*\d{1,2}\.(?:\s*\d{2,4})?)\s*(?:bis|-|–)\s*(\d{1,2}\.\s*\d{1,2}\.(?:\s*\d{2,4})?)/i);
+    if (m) { from = from || wfParseDate(m[1]) || ""; to = to || wfParseDate(m[2]) || ""; }
+  } else {
+    // erlaubte Eingabe als dd.mm.(yyyy) ODER yyyy-mm-dd
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) from = wfParseDate(from) || from;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(to)) to = wfParseDate(to) || to;
+  }
+  const note = String(body.note || "").trim();
+  const confirm = body.confirm === true || body.confirm === "true";
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.json({ ok: true, clientId, intent: "betriebsferien_preview", spoken: "Für die Betriebsferien brauche ich ein klares Von- und Bis-Datum, zum Beispiel: vom 23. Dezember bis zum 6. Januar." });
+  }
+  if (!confirm) {
+    const de = (x) => { const m = x.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : x; };
+    return res.json({ ok: true, clientId, intent: "betriebsferien_preview", confirmRequired: true, from, to, spoken: `Soll ich Betriebsferien von ${de(from)} bis ${de(to)} eintragen, alle Mitarbeiter per Push informieren und die Tage vom Urlaub abziehen? Sag Ja, dann mache ich das.` });
+  }
+  const result = await wfSetBetriebsferien(clientId, { fromYmd: from, toYmd: to, note, by: "Clara", notify: true });
+  res.status(result.ok ? 200 : 400).json({ ok: result.ok, clientId, intent: "betriebsferien", ...result, spoken: wfSpokenBetriebsferien(result) });
 }));
 
 // --- Live session channel ------------------------------------------------
@@ -2851,7 +2894,20 @@ app.post("/tools/patient-treatments", async (req, res) => {
     const sel = r.sel;
     const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
     const result = await getPatientAppointments(clientId, { patientId: sel.id, firstName: sel.firstName, lastName: sel.lastName });
-    return res.json({ ok: true, message: buildSpokenTreatmentHistory(result, { who }) });
+    // Bestehender Plan + tatsächlich DOKUMENTIERTE Behandlung (dictations/sophiePlan)
+    // gehen vor der reinen Kalender-Historie (Terminart): der Chef will beim
+    // Briefing auf Nachfrage die echten Details (Vorgabe 24.06.2026).
+    let message;
+    try {
+      const docData = await readPatientTreatmentDocs(clientId, { patientId: sel.id, firstName: sel.firstName, lastName: sel.lastName });
+      const spokenDocs = buildSpokenPatientDocs(docData, { who });
+      if (spokenDocs) {
+        // Plan/Doku vorhanden -> diese Details nennen, knapp um die Kalender-Historie ergänzt.
+        message = spokenDocs;
+      }
+    } catch { /* Doku optional -> Kalender-Historie als Fallback */ }
+    if (!message) message = buildSpokenTreatmentHistory(result, { who });
+    return res.json({ ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -2946,6 +3002,54 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
       lastName,
       lang: String(req.body?.lang || "de-DE").trim() || "de-DE",
     });
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1h) BEHANDLUNGSPLAN-VERMERK (Clara → Sophie/Termin): "Erstelle für Frau
+// Thrandorf einen Behandlungsplan für den Termin (am 25.)". -> vermerkt
+// "Plan erstellt" in der Behandlungsdokumentation des Termins (dictations/*),
+// exakt wie der Sophie-Plan-Button im Frontend. Termin wird ueber Patient +
+// optionales Datum aufgeloest. KEIN Versand, keine Abrechnung.
+app.post("/tools/plan-dokumentieren", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    let appointmentId = String(req.body?.appointmentId || "").trim();
+    let patientId = String(req.body?.patientId || "").trim();
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    const date = String(req.body?.date || "").trim();
+    const grund = String(req.body?.grund || req.body?.titel || "").trim();
+    if (!appointmentId && !patientId && lastName) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: lastName,
+        hint: String(req.body?.hint || "").trim(),
+        askWho: "Für welchen Patienten soll ich den Plan vermerken? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || "";
+      lastName = r.sel?.lastName || lastName;
+    }
+    if (!appointmentId && !patientId && !lastName) {
+      try {
+        const sel = await getSelectedPatient(clientId);
+        if (sel && sel.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+      } catch { /* kein aktiver Patient im Kontext */ }
+    }
+    const text = grund ? `Plan erstellt – ${grund}` : "Plan erstellt";
+    const out = await saveTreatmentDictation(clientId, {
+      text,
+      appointmentId,
+      patientId,
+      lastName,
+      date,
+      lang: "de-DE",
+    });
+    if (out?.ok) out.message = "Erledigt — ich habe ‚Plan erstellt' in der Behandlungsdokumentation des Termins vermerkt.";
     return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
