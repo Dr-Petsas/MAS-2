@@ -153,24 +153,35 @@ export function buildSpokenPatientDocs(data, { who = "der Patient" } = {}) {
     if (!data?.ok) return null;
     const plans = Array.isArray(data.plans) ? data.plans : [];
     const docs = Array.isArray(data.docs) ? data.docs : [];
+    const planDocs = docs.filter((d) => d.isPlan);   // "Plan erstellt – …"-Vermerke
+    const realDocs = docs.filter((d) => !d.isPlan);  // echte Behandlungs-Diktate
     const parts = [];
 
+    // 1) Behandlungsplan: bevorzugt der strukturierte Sophie-Plan; ist keiner
+    //    hinterlegt, fällt Clara auf den "Plan erstellt – …"-Vermerk zurück
+    //    (Clara-Schnellnotiz). So kann sie auf Nachfrage IMMER sagen, dass und
+    //    was geplant ist — auch wenn (noch) kein Sophie-Plan gespeichert wurde.
     if (plans.length) {
         // jüngster Plan (höchstes savedAt, sonst spätestes Termin-Datum)
         const p = [...plans].sort((a, b) => (b.savedAtMs || b.dateMs) - (a.savedAtMs || a.dateMs))[0];
         const titel = p.title ? ` (${p.title})` : "";
         parts.push(`Es gibt einen Behandlungsplan für den ${_germanDate(p.dateMs)}${titel}.`);
+    } else if (planDocs.length) {
+        const d = planDocs[planDocs.length - 1]; // jüngster Plan-Vermerk
+        const detail = d.text.replace(/^plan erstellt\s*[–-]?\s*/i, "").trim();
+        parts.push(detail
+            ? `Es gibt einen Behandlungsplan vom ${_germanDate(d.dateMs)}: ${detail}.`
+            : `Es gibt einen Behandlungsplan vom ${_germanDate(d.dateMs)}.`);
     }
 
-    const realDocs = docs.filter((d) => !d.isPlan);
     if (realDocs.length) {
         const d = realDocs[realDocs.length - 1]; // jüngstes dokumentiertes Diktat
         const txt = d.text.length > 220 ? `${d.text.slice(0, 217)}...` : d.text;
         parts.push(`Zuletzt dokumentiert am ${_germanDate(d.dateMs)}: ${txt}`);
-    } else if (!plans.length) {
-        return null; // weder Plan noch echte Doku -> Aufrufer nutzt Kalender-Historie
     }
-    return parts.join(" ");
+
+    // Nur wenn weder Plan(-Vermerk) noch echte Doku da ist -> Kalender-Historie.
+    return parts.length ? parts.join(" ") : null;
 }
 
 /**
