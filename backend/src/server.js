@@ -15,6 +15,7 @@ import { intakeToAbsichten } from "./clara/billingIntake.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { buildNextPatientsBriefing } from "./clara/nextPatientsBriefing.js";
 import { saveTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs } from "./clara/treatmentDoc.js";
+import { sophieBill } from "./clara/sophieBilling.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
 import { reflectOnce } from "./brain/reflect.js";
@@ -3050,6 +3051,35 @@ app.post("/tools/plan-dokumentieren", async (req, res) => {
       lang: "de-DE",
     });
     if (out?.ok) out.message = "Erledigt — ich habe ‚Plan erstellt' in der Behandlungsdokumentation des Termins vermerkt.";
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1i) ABRECHNUNGSVORSCHLAG (Clara → Sophie): "Rechne den Termin ab",
+// "Was kostet ein Implantat Regio 36 mit Knochenaufbau?". Ruft die Sophie-
+// Engine (Cloud Function masSophieBilling) auf und gibt ENTWEDER die naechste
+// Gegenfrage ODER die Endsummen (GOZ 2,3 / GOZ 3,5 / BEMA / BEMA+) zurueck.
+// Reiner Rechen-/Vorschlags-Endpunkt; Persistenz nur, wenn ein Termin benannt
+// ist. KEIN Versand, keine verbindliche Abrechnung.
+app.post("/tools/bill-treatment", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await sophieBill(clientId, {
+      text: String(req.body?.text || "").trim(),
+      streckeId: String(req.body?.streckeId || "").trim(),
+      streckeIds: Array.isArray(req.body?.streckeIds) ? req.body.streckeIds : undefined,
+      slots: req.body?.slots && typeof req.body.slots === "object" ? req.body.slots : undefined,
+      faktor: typeof req.body?.faktor === "number" ? req.body.faktor : undefined,
+      bemaPunktwert: typeof req.body?.bemaPunktwert === "number" ? req.body.bemaPunktwert : undefined,
+      appointmentId: String(req.body?.appointmentId || "").trim(),
+      patientId: String(req.body?.patientId || "").trim(),
+      lastName: String(req.body?.lastName || req.body?.name || "").trim(),
+    });
     return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
