@@ -22,7 +22,7 @@ const TYPE_DROPDOWN = 15;
 const NOTABLE = [
   { cat: "Allergie", re: /allerg|penicillin|unvertr|unverträg|latex|jod|kontrastmittel/i },
   { cat: "Medikamente", re: /medikament|arznei|blutverd|marcumar|tablette|einnahme|gerinnungshemm|ass|aspirin/i },
-  { cat: "Vorerkrankung", re: /erkrank|diabetes|herz|kreislauf|blutdruck|asthma|epilep|hepatitis|hiv|aids|infekt|bluter|schilddr|krebs|tumor|rheuma|niere|leber|osteoporose/i },
+  { cat: "Vorerkrankung", re: /erkrank|diabetes|herz|kreislauf|blutdruck|hochdruck|hypertonie|asthma|epilep|hepatitis|hiv|aids|infekt|bluter|schilddr|krebs|tumor|rheuma|niere|leber|osteoporose/i },
   { cat: "Schwangerschaft", re: /schwanger|stillen/i },
   { cat: "Blutung/Gerinnung", re: /blutung|gerinnung/i },
   { cat: "Raucher", re: /raucher|rauchen|nikotin/i },
@@ -46,6 +46,16 @@ function catFor(text) {
 function clip(s, n) {
   const t = String(s || "").replace(/\s+/g, " ").trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+}
+
+// Bejahte Ja/Nein-Frage OHNE Folge-Freitext: statt eines nichtssagenden "ja"
+// das THEMA aus der Frage ziehen ("Leiden Sie unter Bluthochdruck?" ->
+// "Bluthochdruck"). Bewusst simple Heuristik fuer deutsche Anamnesefragen.
+function topicFromQuestion(q) {
+  let s = String(q || "").replace(/\s+/g, " ").trim().replace(/[?!.]+$/, "");
+  s = s.replace(/^(leiden sie (allgemein )?(unter|an)|haben sie( einen| eine| ein)?|besteht (eine|ein)|sind sie auf( eine| einen| ein)?|sind sie|nehmen sie (regelmäßig|regelmaessig)?|waren sie( schon einmal)?|reagieren sie( allergisch)?( auf( bestimmte)?)?)\s+/i, "");
+  s = s.replace(/\s+(angewiesen|ein|eingenommen)$/i, "");
+  return clip(s, 48);
 }
 
 // Geht den formRows-Baum rekursiv durch und sammelt auffaellige Befunde.
@@ -96,7 +106,7 @@ function collectItem(item, out) {
           }
         }
       }
-      out.push({ category: qCat, text: details.length ? details.join(", ") : "ja" });
+      out.push({ category: qCat, text: details.length ? details.join(", ") : (topicFromQuestion(question) || "ja") });
     }
   }
 

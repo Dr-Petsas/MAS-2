@@ -18,9 +18,9 @@ function cfg() {
  * @param {{ temperature?: number, maxTokens?: number, timeoutMs?: number }} opts
  * @returns {Promise<{ok:boolean, text:string, reason?:string, model:string}>}
  */
-export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeoutMs = 45000, model: modelOverride } = {}) {
+export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeoutMs = 45000, model: modelOverride, baseUrl: baseOverride } = {}) {
   const c = cfg();
-  const base = c.base;
+  const base = (baseOverride || c.base).replace(/\/+$/, "");
   const apiKey = c.apiKey;
   const model = modelOverride || c.model;
   const ctrl = new AbortController();
@@ -69,6 +69,9 @@ export function isLocalLlm(base = cfg().base) {
   if (/^10\./.test(host)) return true;
   if (/^192\.168\./.test(host)) return true;
   if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) return true;
+  // Tailscale-Overlay (CGNAT 100.64.0.0/10): pickadoc1-GPU-Server ist per
+  // privatem WireGuard-Netz erreichbar — kein oeffentliches Internet.
+  if (/^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./.test(host)) return true;
   if (host.endsWith(".local") || host.endsWith(".lan") || host.endsWith(".internal")) return true;
   return false;
 }

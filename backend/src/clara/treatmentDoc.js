@@ -19,7 +19,9 @@ import { masCollection } from "../tenant.js";
  *
  * Termin-Auflösung:
  *   - explizite appointmentId gewinnt,
- *   - sonst über patientId: heutiger Termin des Patienten, sonst nächster/letzter.
+ *   - explizites Datum: Termin des Patienten an dem Tag,
+ *   - sonst der zuletzt BEGONNENE Termin des Patienten (Doku folgt der
+ *     Behandlung) — erst wenn es keinen gibt, der nächste kommende.
  *
  * Schreibt NUR in die Termin-Doku (kein Versand, keine Abrechnung). Die
  * strukturierte Karteikarte (treatment/main) baut nach jedem Diktat/Streichen
@@ -35,7 +37,9 @@ async function resolveLocationId(clientId) {
 /** Termin für ein Diktat finden, wenn keine appointmentId mitkam. */
 async function resolveAppointmentForPatient(clientId, { patientId, lastName, date } = {}) {
     // 0) Ist ein konkretes Datum genannt (z.B. "Plan für Frau Thrandorf am 25."),
-    //    den Termin des Patienten an genau diesem Tag bevorzugen.
+    //    den Termin des Patienten an genau diesem Tag bevorzugen. Bei mehreren
+    //    Terminen am Tag: den zuletzt BEGONNENEN (Doku folgt der Behandlung),
+    //    sonst den ersten.
     const wunschDatum = String(date || "").trim();
     if (wunschDatum) {
         try {
@@ -44,24 +48,25 @@ async function resolveAppointmentForPatient(clientId, { patientId, lastName, dat
                 const amTag = (day.appointments || [])
                     .filter((a) => !a.isAbsence && a.patientId && (a.patientId === patientId))
                     .sort((a, b) => a.startMs - b.startMs);
-                if (amTag.length) return amTag[0].id;
+                if (amTag.length) {
+                    const begonnen = amTag.filter((a) => a.startMs <= Date.now());
+                    return (begonnen.length ? begonnen[begonnen.length - 1] : amTag[0]).id;
+                }
             }
-        } catch { /* fällt unten auf heute/Historie zurück */ }
+        } catch { /* fällt unten auf Historie zurück */ }
     }
-    // 1) Heutiger Termin des Patienten (häufigster Fall bei Behandlung am Stuhl).
-    try {
-        const day = await getDayAppointments(clientId, { date: todayBerlin() });
-        if (day?.ok) {
-            const heute = (day.appointments || [])
-                .filter((a) => !a.isAbsence && a.patientId && (a.patientId === patientId))
-                .sort((a, b) => a.startMs - b.startMs);
-            if (heute.length) return heute[0].id;
-        }
-    } catch { /* weiter mit Historie */ }
-    // 2) Sonst nächster, sonst letzter Termin des Patienten.
+    // 1) OHNE Datum: der zuletzt BEHANDELTE Termin (04.07.2026). Doku und
+    //    Abrechnung entstehen NACH der Behandlung — Ziel ist deshalb der
+    //    juengste bereits begonnene Termin (laeuft gerade oder ist vorbei),
+    //    egal ob heute oder frueher. Vorher galt stur "heutiger Termin,
+    //    fruehester zuerst" — damit landete die Doku bei Doppel-Terminen am
+    //    Morgen-Termin und ohne Termin heute auf einem ZUKUENFTIGEN.
     try {
         const hist = await getPatientAppointments(clientId, { patientId, lastName });
-        if (hist?.ok) return hist.next?.id || hist.last?.id || null;
+        if (hist?.ok) {
+            if (hist.last?.id) return hist.last.id; // juengster begonnener (past ist aufsteigend sortiert)
+            return hist.next?.id || null; // noch nie behandelt: kommender Termin (z.B. Plan vorab)
+        }
     } catch { /* nichts gefunden */ }
     return null;
 }
@@ -296,16 +301,19 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
             .collection("appointments").doc(apptId);
 
         // Termin einmal lesen: Besuchsgrund (fuer den Doku-Check) + Patient
-        // (fuer das Shared-Memory-Subject, falls nicht mitgegeben).
+        // (fuer das Shared-Memory-Subject, falls nicht mitgegeben) + Startzeit
+        // (damit die Bestaetigung das Ziel-Datum NENNT, wenn es nicht heute ist).
         let motiveName = "";
         let patientName = "";
         let apptPatientId = "";
+        let apptStartMs = 0;
         try {
             const apptSnap = await apptRef.get();
             const ap = apptSnap.exists ? (apptSnap.data() || {}) : {};
             motiveName = String(ap?.visitMotive?.name || "").trim();
             apptPatientId = String(ap?.patient?.id || "").trim();
             patientName = `${ap?.patient?.firstName || ""} ${ap?.patient?.lastName || ""}`.trim();
+            apptStartMs = _tsToMs(ap?.start);
         } catch { /* Metadaten sind Komfort */ }
 
         const doc = await apptRef.collection("dictations").add({
@@ -353,7 +361,19 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
             console.warn("saveTreatmentDictation: brain-event failed:", memErr?.message || memErr);
         }
 
-        return { ok: true, appointmentId: apptId, dictationId: doc.id, motiveName, patientName, combinedText, locationId, message: "Habe ich zur Behandlungsdokumentation gespeichert." };
+        // Ziel-Termin transparent machen: Ist das Ziel NICHT der heutige Tag,
+        // sagt Clara das Datum dazu — der Chef merkt sofort, wenn die Doku auf
+        // einem anderen Termin landet, statt es erst im Termintab zu entdecken.
+        let message = "Habe ich zur Behandlungsdokumentation gespeichert.";
+        if (apptStartMs) {
+            const zielTag = new Intl.DateTimeFormat("en-CA", { timeZone: _BERLIN, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(apptStartMs));
+            if (zielTag !== todayBerlin()) {
+                const wochentag = new Intl.DateTimeFormat("de-DE", { timeZone: _BERLIN, weekday: "long" }).format(new Date(apptStartMs));
+                message = `Habe ich zur Behandlungsdokumentation gespeichert — zum Termin vom ${wochentag}, ${_germanDate(apptStartMs)}.`;
+            }
+        }
+
+        return { ok: true, appointmentId: apptId, dictationId: doc.id, motiveName, patientName, combinedText, locationId, apptStartMs, message };
     } catch (e) {
         return { ok: false, message: `Das Diktat konnte ich nicht speichern: ${String(e?.message || e)}` };
     }

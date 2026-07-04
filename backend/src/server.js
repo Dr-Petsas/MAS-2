@@ -17,6 +17,8 @@ import { buildNextPatientsBriefing } from "./clara/nextPatientsBriefing.js";
 import { saveTreatmentDictation, strikeTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs, resolveAppointmentInfo, readAppointmentSegments, combineActiveSegments } from "./clara/treatmentDoc.js";
 import { strukturiereKarteikarte } from "./clara/dokuNote.js";
 import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechnung, sophieMitSlotfill } from "./clara/dokuAbrechnung.js";
+import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken, dokuAbendlauf } from "./clara/dokuWaechter.js";
+import { freiFormulieren } from "./clara/freiSprech.js";
 import { specialtyKeyForClient } from "./clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "./clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "./clara/dokuCheck.js";
@@ -2325,7 +2327,9 @@ app.post("/tools/briefing", async (req, res) => {
     const op = await getOperator(clientId);
     const cases = await listCases(clientId, { activeOnly: true, limit: 200 });
     const briefing = buildCaseBriefing(cases, { role: op?.role, operatorName: op?.name });
-    const message = buildSpokenCaseBriefing(briefing, { operatorName: op?.name });
+    let message = buildSpokenCaseBriefing(briefing, { operatorName: op?.name });
+    // FreiSprech: Vorgangs-Briefing menschlicher formulieren (Fakten-Guard).
+    try { message = (await freiFormulieren(message, { kontext: "Briefing zu offenen Vorgaengen" })).text; } catch { /* deterministisch weiter */ }
     return res.json({ ok: true, message, operator: op ? { name: op.name, role: op.role } : null });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -2459,11 +2463,14 @@ app.post("/tools/morning-briefing", async (req, res) => {
     }
     const op = await getOperator(clientId);
     const mailAccountIds = await operatorMailAccountIds(clientId);
-    const message = await spokenMorningBriefing(clientId, {
+    let message = await spokenMorningBriefing(clientId, {
       operatorName: op?.name || "",
       operatorDoctorName: operatorDoctorNameOf(op),
       mailAccountIds,
     });
+    // FreiSprech: menschlich-variantenreich statt Bandansage; der Fakten-Guard
+    // sichert Namen/Zahlen/Uhrzeiten, sonst bleibt der deterministische Text.
+    try { message = (await freiFormulieren(message, { kontext: "Morgen-Briefing zum Tagesstart" })).text; } catch { /* deterministisch weiter */ }
     // Den Tag auf dem Monitor aufschlagen (best-effort).
     try { await emitCommand(clientId, { type: "navigate", date: todayBerlin() }); } catch { /* keine Session */ }
     return res.json({ ok: true, message });
@@ -2483,10 +2490,12 @@ app.post("/tools/evening-briefing", async (req, res) => {
     }
     const op = await getOperator(clientId);
     const mailAccountIds = await operatorMailAccountIds(clientId);
-    const message = await spokenEveningBriefing(clientId, {
+    let message = await spokenEveningBriefing(clientId, {
       operatorName: op?.name || "",
       mailAccountIds,
     });
+    // FreiSprech: siehe Morgen-Briefing — Varianz mit Fakten-Guard.
+    try { message = (await freiFormulieren(message, { kontext: "Feierabend-Briefing (Tagesabschluss)" })).text; } catch { /* deterministisch weiter */ }
     return res.json({ ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -2509,8 +2518,12 @@ app.post("/tools/day-briefing", async (req, res) => {
     const overview = await buildSpokenDayOverview(clientId, { date, calendarId, operatorDoctorName: opDoctor });
     if (!overview.ok) return res.json({ ok: false, message: overview.message });
     let message = overview.message;
+    // FreiSprech: menschlich-variantenreiche Umformulierung, Fakten-Guard
+    // sichert Zahlen/Namen — bei Zweifel bleibt der deterministische Text.
+    try { message = (await freiFormulieren(message, { kontext: "Tages-Lagebild fuer den Chef" })).text; } catch { /* deterministisch weiter */ }
     // Offene Recall-Initiative? Clara bringt sich aktiv ein ("morgen ist wenig
-    // los — soll ich die Anruflisten freigeben?").
+    // los — soll ich die Anruflisten freigeben?"). NACH FreiSprech anhaengen,
+    // damit der Freigabe-Wortlaut kanonisch bleibt.
     try { message += await initiativeSuffix(clientId); } catch { /* optional */ }
     // Show the day on the monitor (best-effort; works only with an active session).
     try { await emitCommand(clientId, { type: "navigate", date: overview.date, calendarId: calendarId || null }); } catch { /* no live session */ }
@@ -2970,6 +2983,11 @@ app.post("/tools/next-patients-briefing", async (req, res) => {
       patientName: (req.body?.patientName || req.body?.name || "").trim() || undefined,
       time: (req.body?.time || "").trim() || undefined,
     });
+    // FreiSprech: Patienten-Heads-up natuerlich umformulieren (Guard sichert
+    // Namen, Uhrzeiten, Anamnese-Zahlen; sonst deterministischer Text).
+    if (out?.ok && out.message) {
+      try { out.message = (await freiFormulieren(out.message, { kontext: "Heads-up zu den naechsten Patienten" })).text; } catch { /* deterministisch weiter */ }
+    }
     return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -3100,7 +3118,16 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
             lastName,
           }).catch((e) => { log.warn("doku.abrechnung_sonde_failed", { clientId, err: String(e?.message || e) }); return null; })
         : Promise.resolve(null);
-      const [check, sonde] = await Promise.all([dokuCheckLauf, sondeLauf]);
+      // Doku-Wächter: fehlt bei DEMSELBEN Patienten noch die Doku eines
+      // juengeren Termins, sagt Clara das gleich mit ("Übrigens: ...").
+      const lueckenLauf = (out.dictationId && (patientId || apptInfo?.patientId))
+        ? findePatientenLuecken(clientId, {
+            patientId: patientId || apptInfo?.patientId,
+            lastName,
+            excludeApptId: out.appointmentId,
+          }).catch(() => [])
+        : Promise.resolve([]);
+      const [check, sonde, luecken] = await Promise.all([dokuCheckLauf, sondeLauf, lueckenLauf]);
 
       if (check) {
         const nachsatz = baueRueckfragenSatz(check);
@@ -3115,6 +3142,11 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
       if (sonde) {
         if (sonde.zeile) out.message = `${out.message} ${sonde.zeile}`.trim();
         out.abrechnung = { status: sonde.status, frage: sonde.frage, label: sonde.label };
+      }
+      if (luecken?.length) {
+        const satz = sprichPatientenLuecken(luecken, out.patientName || lastName);
+        if (satz) out.message = `${out.message} ${satz}`.trim();
+        out.dokuLuecken = luecken.map((l) => ({ date: l.date, motive: l.motive }));
       }
 
       // Karteikarte im Hintergrund neu strukturieren (treatment/main) — Claras
@@ -3214,6 +3246,30 @@ app.post("/tools/doku-offen", async (req, res) => {
       motiveName: info.motiveName || "",
       abrechnung: sonde ? { status: sonde.status, frage: sonde.frage, label: sonde.label } : null,
       message: teile.join(" "),
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1g6) DOKU-LÜCKEN PRAXISWEIT ("Welche Dokumentationen fehlen noch?"):
+// scannt die letzten Tage nach vergangenen Patiententerminen OHNE
+// Behandlungsdoku (weder aktives Diktat noch Karteikarte). Dieselbe Liste
+// arbeitet der Abendlauf per aktivem Anruf ab. Reine Auskunft.
+app.post("/tools/doku-luecken", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const tage = Number(req.body?.days) > 0 ? Math.min(Number(req.body.days), 30) : 7;
+    const { ok, luecken } = await findePraxisLuecken(clientId, { tageZurueck: tage });
+    if (!ok) return res.json({ ok: false, message: "Ich finde den Standort der Praxis nicht." });
+    return res.json({
+      ok: true,
+      count: luecken.length,
+      luecken: luecken.map((l) => ({ appointmentId: l.appointmentId, date: l.date, patientName: l.patientName, motive: l.motive })),
+      message: sprichPraxisLuecken(luecken),
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -7002,5 +7058,27 @@ app.listen(PORT, () => {
       }
     }, 5 * 60_000);
     log.info("qm scheduler enabled", { intervalMs: 5 * 60_000 });
+  }
+
+  // Doku-Wächter (04.07.2026): Abendlauf ab 18 Uhr — fehlen Behandlungsdokus,
+  // ruft Clara den Chef aktiv auf dem Handy an ("3 Dokus fehlen noch, fangen
+  // wir mit Herrn X an ...") und arbeitet die Liste im Gespräch einzeln ab.
+  // Anti-Nerv: der Lauf selbst dedupliziert auf einen Anruf pro Tag.
+  if (DEFAULT_CLIENT_ID) {
+    let lastDokuRun = "";
+    setInterval(async () => {
+      try {
+        const hh = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
+        const today = todayBerlin();
+        if (hh >= 18 && hh < 21 && lastDokuRun !== today) {
+          lastDokuRun = today;
+          const out = await dokuAbendlauf(DEFAULT_CLIENT_ID, { publicBaseUrl: PUBLIC_BASE_URL });
+          log.info("doku.abendlauf", out);
+        }
+      } catch (e) {
+        log.warn("doku.abendlauf_error", { error: String(e?.message || e) });
+      }
+    }, 5 * 60_000);
+    log.info("doku waechter scheduler enabled");
   }
 });
