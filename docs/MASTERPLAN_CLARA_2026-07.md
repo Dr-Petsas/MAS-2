@@ -211,8 +211,16 @@ Vorteil: Clara antwortet privat ins Ohr, Haende bleiben steril.
 
 ## Phase 5 - Proaktiv ohne zu nerven (Woche 3-6, baut auf Phase 1)
 
-- [ ] **ASAP-Queue serverseitig:** EINE Dringlichkeits-Schicht aus Post,
-      Anrufen, Vorgaengen, Doku-Waechter, Recall.
+- [x] **ASAP-Queue serverseitig:** EINE Dringlichkeits-Schicht aus Post,
+      Anrufen, Vorgaengen, Doku-Waechter, Recall. ERLEDIGT 04.07.:
+      `src/clara/asapQueue.js` (buildAsapQueue + spokenAsapQueue) aggregiert
+      rote Liste/Fristen (P0), Beschwerden + Ungeloestes inkl. needsIdentity
+      mit dringlichem Signal (P1), Rueckrufe/Kollegen + wartende Freigaben
+      (Mail-Entwuerfe, Recall-Listen) + Doku-Luecken (P2), Restzaehler (P3).
+      Jede Quelle best-effort, Dedupe ueber eventId, keine Euro-Zahlen.
+      Endpoint POST `/tools/asap-queue`; Clara-Tool `asap_briefing`
+      (Gruppe "tag", Keywords brennt/dringend/eilt/liegen bleiben).
+      Test: `scripts/test-asap-queue.mjs` (isolierter Mandant, 13 Checks).
 - [ ] **Unterbrechungs-Politik** (Konfig pro Mandant + Rolle):
       P0 sofort (Risiko/Notfall), P1 naechste Kalender-Luecke (der Kalender
       ist der Taktgeber!), P2 naechstes Briefing, P3 nur UI.
@@ -302,3 +310,7 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 - 04.07.2026: W-LENA gebaut und getestet (siehe Status im Abschnitt W-LENA).
 - 04.07.2026: W1.1 Tool-Subsetting aktiv (118/128 im Voll-Gate, vorher 117;
   Prompt bei Tagesfragen ~26k -> ~9k Tokens). Notaus CLARA_TOOL_SUBSETTING=0.
+- 04.07.2026: Phase 5 ASAP-Queue serverseitig fertig (asapQueue.js,
+  /tools/asap-queue, Clara-Tool asap_briefing). Suite jetzt 130 Faelle:
+  120/130, beide asap-Faelle gruen, Fail-Familie identisch zur 128er-Basis
+  (abs-03, memo-04, balla, storno, 4 Dialoge). Worker neu gestartet.
