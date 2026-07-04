@@ -938,11 +938,13 @@ router.post("/tools/save-treatment-dictation", async (req, res) => {
       // Klinik-Text + Abrechnungs-Hinweisen. Best-effort: gespeichert ist
       // gespeichert — LLM-/CF-Probleme kosten nur die Rueckfragen.
       const dokuCheckLauf = out.dictationId
-        ? pruefeDoku(clientId, specialtyKeyForClient(clientId), {
-            motiveName: out.motiveName || "",
-            text: out.combinedText || teil.dokuText,
-            neuText: teil.dokuText,
-          }).catch((e) => { log.warn("doku.check_failed", { clientId, err: String(e?.message || e) }); return null; })
+        ? specialtyKeyForClient(clientId)
+            .then((sk) => pruefeDoku(clientId, sk, {
+              motiveName: out.motiveName || "",
+              text: out.combinedText || teil.dokuText,
+              neuText: teil.dokuText,
+            }))
+            .catch((e) => { log.warn("doku.check_failed", { clientId, err: String(e?.message || e) }); return null; })
         : Promise.resolve(null);
       const sondeLauf = out.appointmentId
         ? pruefeAbrechnung(clientId, {
@@ -1069,7 +1071,7 @@ router.post("/tools/doku-offen", async (req, res) => {
     if (!combined) {
       teile.push(`Zu ${wer} ist noch nichts dokumentiert.`);
     } else {
-      check = await pruefeDoku(clientId, specialtyKeyForClient(clientId), {
+      check = await pruefeDoku(clientId, await specialtyKeyForClient(clientId), {
         motiveName: info.motiveName || "",
         text: combined,
         lernen: false,
@@ -1240,7 +1242,7 @@ router.post("/tools/doku-anforderungen", async (req, res) => {
       if (!probe.ok) return res.json(probe);
       besuchsgrund = probe.motiveName || "";
     }
-    const eff = await effektiveAnforderungen(clientId, specialtyKeyForClient(clientId), besuchsgrund);
+    const eff = await effektiveAnforderungen(clientId, await specialtyKeyForClient(clientId), besuchsgrund);
     if (!eff.dokuPflichtig) {
       return res.json({ ok: true, besuchsgrund, dokuPflichtig: false, message: `Für ${besuchsgrund || "diesen Termin"} ist keine Behandlungsdokumentation nötig — interner Termin.` });
     }
@@ -1273,7 +1275,7 @@ router.post("/tools/doku-regel", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
-    const out = await applyAnpassung(clientId, specialtyKeyForClient(clientId), {
+    const out = await applyAnpassung(clientId, await specialtyKeyForClient(clientId), {
       aktion: String(req.body?.aktion || "").trim(),
       besuchsgrund: String(req.body?.besuchsgrund || "").trim(),
       feld: String(req.body?.feld || "").trim(),

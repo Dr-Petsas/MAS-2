@@ -52,6 +52,8 @@
 // zahnmedizinisch. Dieses Modul kennt nur Dokumentation.
 
 import { ARCHETYP_REGELN, BASIS_FACH_KATALOGE } from "./dokuBasisKataloge.js";
+import { db } from "../firebase.js";
+import { masCollection } from "../tenant.js";
 
 /** Universelles Doku-Geruest — jede vollstaendige Behandlungsdoku deckt das ab. */
 export const DOKU_GERUEST = [
@@ -595,10 +597,84 @@ export const FACH_KATALOGE = {
   ...BASIS_FACH_KATALOGE,
 };
 
-/** Fachrichtung des Clients. V1: Demo-Client ist Zahnmedizin; spaeter aus der
- *  Client-Provisionierung (Speciality.specialtyKey / masterCatalogs). */
-export function specialtyKeyForClient(_clientId) {
+// ============================================================================
+// Fachrichtung des Clients — DATENGETRIEBEN (Masterplan Phase 7, 04.07.2026).
+// Aufloesung (erster Treffer gewinnt), Ergebnis 10 Minuten im Prozess-Cache:
+//   1. MAS-Override:   mas_config/doku.specialtyKey  (expliziter Knopf pro
+//      Mandant, z. B. fuer Mischpraxen oder Migrationsfaelle).
+//   2. Plattform-Daten: clients/{id}/locations/{loc}/specialities —
+//      specialtyKey aus dem Onboarding-Katalog (z. B. "hausarzt",
+//      "kardiologie"). Kleinste cardinality zuerst (= Haupt-Fachrichtung);
+//      genommen wird der erste Key, fuer den ein Fachkatalog existiert.
+//      Zahn-Heuristik fuer Altbestaende ohne specialtyKey (Namens-Marker).
+//   3. Fallback "zahnmedizin" (bisheriges Verhalten, Demo-Client MedDent).
+// Bewusst NIE werfend: Doku-Pruefung muss auch bei Firestore-Schluckauf
+// weiterlaufen (dann eben mit dem letzten bekannten/Default-Katalog).
+// ============================================================================
+
+const _DENTAL_NAME_MARKERS = [
+  "zahn", "kfo", "kieferortho", "parodont", "prophylaxe", "dental",
+  "implantolog", "endodont", "prothetik", "oralchirurgie", "mkg",
+];
+
+function _dentalByName(name) {
+  const n = String(name || "").toLowerCase()
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, "");
+  return _DENTAL_NAME_MARKERS.some((m) => n.includes(m));
+}
+
+const _SPECIALTY_CACHE = new Map(); // clientId -> { key, ts }
+const _SPECIALTY_TTL_MS = 10 * 60 * 1000;
+
+async function _resolveSpecialtyKey(clientId) {
+  // 1) Expliziter MAS-Override.
+  try {
+    const cfg = await masCollection(clientId, "mas_config").doc("doku").get();
+    const k = String(cfg.exists ? cfg.data()?.specialtyKey || "" : "").trim().toLowerCase();
+    if (k && FACH_KATALOGE[k]) return k;
+  } catch { /* weiter mit Plattform-Daten */ }
+
+  // 2) Plattform-Provisionierung: Specialities des Buchungs-Standorts.
+  try {
+    const booking = await masCollection(clientId, "mas_config").doc("booking").get();
+    const locationId = booking.exists ? String(booking.data()?.locationId || "").trim() : "";
+    if (locationId) {
+      const snap = await db.collection("clients").doc(clientId)
+        .collection("locations").doc(locationId)
+        .collection("specialities").get();
+      const specs = snap.docs
+        .map((d) => d.data() || {})
+        .sort((a, b) => (a.cardinality ?? 999) - (b.cardinality ?? 999));
+      for (const s of specs) {
+        const k = String(s.specialtyKey || "").trim().toLowerCase();
+        if (k && FACH_KATALOGE[k]) return k;
+      }
+      // Altbestand ohne specialtyKey: Zahn-Heuristik ueber die Namen.
+      if (specs.some((s) => _dentalByName(s.name))) return "zahnmedizin";
+    }
+  } catch { /* Fallback unten */ }
+
+  // 3) Bisheriges Verhalten.
   return "zahnmedizin";
+}
+
+/** Fachrichtung des Clients (async, gecacht). Liefert immer einen Key, fuer
+ *  den ein Katalog existiert — nie werfend. */
+export async function specialtyKeyForClient(clientId) {
+  const id = String(clientId || "").trim();
+  if (!id) return "zahnmedizin";
+  const hit = _SPECIALTY_CACHE.get(id);
+  if (hit && Date.now() - hit.ts < _SPECIALTY_TTL_MS) return hit.key;
+  const key = await _resolveSpecialtyKey(id);
+  _SPECIALTY_CACHE.set(id, { key, ts: Date.now() });
+  return key;
+}
+
+/** Cache-Invalidierung (z. B. nach Aenderung von mas_config/doku). */
+export function invalidateSpecialtyCache(clientId) {
+  if (clientId) _SPECIALTY_CACHE.delete(String(clientId).trim());
+  else _SPECIALTY_CACHE.clear();
 }
 
 function normName(s) {

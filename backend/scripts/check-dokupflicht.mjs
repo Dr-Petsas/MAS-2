@@ -13,7 +13,7 @@ const locationId = booking?.locationId;
 const vmSnap = await db.collection("clients").doc(clientId)
   .collection("locations").doc(locationId).collection("visitMotives").get();
 
-const specialty = specialtyKeyForClient(clientId);
+const specialty = await specialtyKeyForClient(clientId);
 const byRule = new Map();
 let total = 0;
 for (const d of vmSnap.docs) {
