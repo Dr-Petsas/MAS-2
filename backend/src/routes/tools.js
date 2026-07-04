@@ -23,6 +23,7 @@ import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates } from "..
 import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../clara/gapInvite.js";
 import { spokenMorningBriefing } from "../clara/morningBriefing.js";
 import { spokenEveningBriefing } from "../clara/eveningBriefing.js";
+import { buildAsapQueue, spokenAsapQueue } from "../clara/asapQueue.js";
 import { approveAndExecute, snoozeInitiative, initiativeSuffix, recallStatusSpoken } from "../clara/recallCoach.js";
 import { planAbsence, approveAbsence, absenceStatusSpoken } from "../clara/absencePlanner.js";
 import { lookupCaller, normalizePhone } from "../clara/callerLookup.js";
@@ -397,6 +398,28 @@ router.post("/tools/morning-briefing", async (req, res) => {
     // Den Tag auf dem Monitor aufschlagen (best-effort).
     try { await emitCommand(clientId, { type: "navigate", date: todayBerlin() }); } catch { /* keine Session */ }
     return res.json({ ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// ASAP-Queue (Masterplan Phase 5): "Was brennt?" — EINE serverseitige
+// Dringlichkeits-Schicht aus roter Liste, Fristen, offenen Anliegen, Post-/
+// Recall-Freigaben und Doku-Wächter. Antwortet IMMER aus den Quellsystemen,
+// nie aus dem LLM-Gedächtnis. KEINE Umsatzzahlen im Sprechtext.
+router.post("/tools/asap-queue", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const mailAccountIds = await operatorMailAccountIds(clientId);
+    const queue = await buildAsapQueue(clientId, { mailAccountIds });
+    let message = spokenAsapQueue(queue);
+    // FreiSprech: Varianz mit Fakten-Guard, deterministischer Text als Netz.
+    try { message = (await freiFormulieren(message, { kontext: "Dringlichkeits-Auskunft (Was brennt?)" })).text; } catch { /* deterministisch weiter */ }
+    return res.json({ ok: true, message, counts: queue.counts, items: queue.items });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
