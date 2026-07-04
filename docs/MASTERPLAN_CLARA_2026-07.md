@@ -224,13 +224,28 @@ Vorteil: Clara antwortet privat ins Ohr, Haende bleiben steril.
 
 ## Phase 7 - Plattform-Haertung "jede Praxis" (laeuft quer, ab Woche 1)
 
-- [ ] `specialtyKeyForClient()` (dokuPflicht.js:600) an echte Client-Daten
-      koppeln statt Hardcode "zahnmedizin".
+- [x] `specialtyKeyForClient()` an echte Client-Daten koppeln statt Hardcode
+      "zahnmedizin". ERLEDIGT 04.07.: async + 10-Min-Cache; Aufloesung
+      1. `mas_config/doku.specialtyKey` (expliziter Override pro Mandant),
+      2. `clients/{id}/locations/{loc}/specialities` (Onboarding-Daten,
+      kleinste cardinality = Haupt-Fachrichtung, erster Key mit Katalog),
+      3. Zahn-Namens-Heuristik fuer Altbestand, 4. Fallback zahnmedizin.
+      Nie werfend. Alle 4 Aufrufer in routes/tools.js auf await umgestellt.
+      MedDent verifiziert (15 Specialities ohne specialtyKey -> Heuristik
+      greift -> zahnmedizin). MAS-Suite: gleiche 3 Vorbestands-Fails wie
+      Baseline (day-schedule, mail-briefing, memo-trennung LLM-flaky),
+      nichts Neues rot. Clara-Schnell-Gate gruen, Backend neu gestartet.
 - [ ] Profil-Split: `clara_base` + Mandanten-Overlay (Muster:
       campaign_overlay.py). Prompt-Beispiele aus visit_motives generieren.
-- [ ] **Zweiter synthetischer Test-Mandant** (Hausarzt oder Augenarzt) in der
+- [~] **Zweiter synthetischer Test-Mandant** (Hausarzt oder Augenarzt) in der
       Testsuite. Jedes Feature muss auf BEIDEN Mandanten gruen sein,
       sonst kein Merge. Das ist der Durchsetzungs-Mechanismus.
+      TEIL 1 ERLEDIGT 04.07.: `scripts/test-specialty-resolver.mjs` laeuft
+      in der npm-Suite gegen synthetischen Hausarzt-Mandanten
+      (zzz-mas2-specialty): Override/Provisionierung/cardinality/Cache/
+      Heuristik + getrennte Fachkataloge (Check-up trifft nur im
+      Hausarzt-Katalog). OFFEN: weitere Features (Doku-Check, Briefings)
+      systematisch auf dem Zweit-Mandanten fahren.
 - [ ] Flotten-Monitoring: Health-Telemetrie + Alarm pro Mandant
       (Lehre aus dem 16.06.-Vorfall).
 
