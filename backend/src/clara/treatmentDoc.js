@@ -137,7 +137,10 @@ export async function readPatientTreatmentDocs(clientId, { patientId, lastName, 
             const dsnap = await apptCol.doc(apptId).collection("dictations").get();
             // Gestrichene Segmente (struck, § 630f) bleiben in der Kartei sichtbar,
             // werden aber NICHT mehr vorgelesen/als aktuelle Doku gewertet.
-            const segs = dsnap.docs.map((d) => d.data()).filter((s) => s && !s.struck && String(s.text || "").trim());
+            // Sophie-Abrechnungsvermerke (source "sophie") enthalten Euro-Summen —
+            // die gehoeren NICHT in gesprochene Briefings (Vorgabe 12.06.2026).
+            const segs = dsnap.docs.map((d) => d.data())
+                .filter((s) => s && !s.struck && String(s.source || "") !== "sophie" && String(s.text || "").trim());
             segs.sort((x, y) => _tsToMs(x.createdAt) - _tsToMs(y.createdAt));
             for (const s of segs) {
                 const text = String(s.text).trim();
@@ -219,8 +222,10 @@ export async function resolveAppointmentInfo(clientId, { appointmentId, patientI
         return {
             ok: true,
             appointmentId: apptId,
+            locationId,
             motiveName: String(ap?.visitMotive?.name || "").trim(),
             patientName: `${ap?.patient?.firstName || ""} ${ap?.patient?.lastName || ""}`.trim(),
+            patientId: String(ap?.patient?.id || "").trim(),
         };
     } catch (e) {
         return { ok: false, message: `Den Termin konnte ich nicht lesen: ${String(e?.message || e)}` };
@@ -245,10 +250,17 @@ export async function readAppointmentSegments(clientId, locationId, appointmentI
     return segs;
 }
 
-/** Aktive (nicht gestrichene) Segment-Texte zu EINEM Pruef-/Struktur-Text vereinen. */
+/**
+ * Aktive KLINISCHE Segment-Texte zu EINEM Pruef-/Struktur-Text vereinen.
+ * Ausgeschlossen: gestrichene Segmente (struck, § 630f), Sophie-Abrechnungs-
+ * vermerke (source "sophie" — Euro-Summen gehoeren nicht in Karteikarte oder
+ * Doku-Check) und "Plan erstellt"-Marker (kein klinischer Inhalt).
+ */
 export function combineActiveSegments(segs) {
     return (segs || [])
         .filter((s) => !s.struck)
+        .filter((s) => String(s.source || "") !== "sophie")
+        .filter((s) => !/^plan erstellt/i.test(String(s.text || "").trim()))
         .map((s) => String(s.text || "").trim())
         .filter(Boolean)
         .join("\n");

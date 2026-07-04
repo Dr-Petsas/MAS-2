@@ -46,13 +46,14 @@ function spokenSummen(r) {
   return teile.join(" ");
 }
 
-async function callCf(body) {
+async function callCf(body, timeoutMs = 35000) {
   // Timeout-Pflicht (04.07.2026): Die Cloud Function hat selbst 30 s Limit.
   // Ohne AbortController hing dieser fetch bei Netz-/CF-Problemen unendlich —
   // Clara wartete ewig auf die Abrechnung ("System haengt"). 35 s = CF-Limit
   // plus Puffer, danach kommt eine ehrliche Fehlermeldung statt Stille.
+  // Stille Sonden (Doku-Memo-Check) duerfen ein kuerzeres Limit setzen.
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 35000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const resp = await fetch(`${REAL_CF_BASE}/masSophieBilling`, {
       method: "POST",
@@ -105,9 +106,14 @@ async function rememberSophie(clientId, r, { patientId, lastName } = {}) {
  *
  * @param {string} clientId
  * @param {object} args { text, streckeId, streckeIds, slots, faktor, bemaPunktwert, appointmentId, patientId, lastName }
+ * @param {object} opts { quiet, timeoutMs } — quiet = stille Sonde (Doku-Memo-
+ *   Check): KEINE Persistenz am Termin, KEIN Gedaechtnis-Eintrag; nur Status
+ *   und ggf. Gegenfrage zurueckgeben.
  * @returns {Promise<object>} { ok, status, message, ... }  (message = sprechbar)
  */
-export async function sophieBill(clientId, args = {}) {
+export async function sophieBill(clientId, args = {}, opts = {}) {
+  const quiet = opts.quiet === true;
+  const timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : 35000;
   const text = String(args.text || "").trim();
   const streckeId = String(args.streckeId || "").trim();
   const streckeIds = Array.isArray(args.streckeIds) ? args.streckeIds.filter((s) => typeof s === "string") : undefined;
@@ -124,7 +130,7 @@ export async function sophieBill(clientId, args = {}) {
     /* Persistenz ist optional */
   }
 
-  const appointmentId = String(args.appointmentId || "").trim();
+  const appointmentId = quiet ? "" : String(args.appointmentId || "").trim();
   const body = {
     text: text || undefined,
     streckeId: streckeId || undefined,
@@ -140,7 +146,7 @@ export async function sophieBill(clientId, args = {}) {
 
   let out;
   try {
-    out = await callCf(body);
+    out = await callCf(body, timeoutMs);
   } catch (e) {
     return { ok: false, message: `Die Abrechnung konnte ich gerade nicht berechnen (${String(e?.message || e)}).` };
   }
@@ -157,6 +163,10 @@ export async function sophieBill(clientId, args = {}) {
       status: "needs_input",
       slot: data.frage?.slot || "",
       streckeId: data.streckeId || "",
+      // Komplette Frage-Definition (slot, typ, optionen) fuer die MAS-seitige
+      // Slot-Extraktion: Freitext-Antworten ("zweiflaechig", "Infiltration")
+      // versteht die CF-Engine selbst NICHT — das loest dokuAbrechnung.js.
+      frageDetail: data.frage || null,
       message: frage,
     };
   }
@@ -171,7 +181,9 @@ export async function sophieBill(clientId, args = {}) {
 
   if (data.status === "complete") {
     const message = spokenSummen(data);
-    rememberSophie(clientId, data, { patientId: args.patientId, lastName: args.lastName }).catch(() => {});
+    // Stille Sonden schreiben NICHT ins geteilte Gedaechtnis — erst der
+    // ausdrueckliche "rechne ab"-Lauf hinterlaesst den Vorschlag dort.
+    if (!quiet) rememberSophie(clientId, data, { patientId: args.patientId, lastName: args.lastName }).catch(() => {});
     return {
       ok: true,
       status: "complete",

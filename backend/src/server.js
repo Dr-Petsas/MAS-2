@@ -14,12 +14,12 @@ import { polishForChannel } from "./clara/dictation.js";
 import { intakeToAbsichten } from "./clara/billingIntake.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { buildNextPatientsBriefing } from "./clara/nextPatientsBriefing.js";
-import { saveTreatmentDictation, strikeTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs, resolveAppointmentInfo } from "./clara/treatmentDoc.js";
+import { saveTreatmentDictation, strikeTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs, resolveAppointmentInfo, readAppointmentSegments, combineActiveSegments } from "./clara/treatmentDoc.js";
 import { strukturiereKarteikarte } from "./clara/dokuNote.js";
+import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechnung, sophieMitSlotfill } from "./clara/dokuAbrechnung.js";
 import { specialtyKeyForClient } from "./clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "./clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "./clara/dokuCheck.js";
-import { sophieBill } from "./clara/sophieBilling.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
 import { reflectOnce } from "./brain/reflect.js";
@@ -2978,8 +2978,13 @@ app.post("/tools/next-patients-briefing", async (req, res) => {
 
 // 1g) DOKUMENTATIONSDIKTAT (Clara → Lena): "Dokumentiere für Herrn Meier: ..."
 // -> legt den diktierten Text als Segment unter dem Termin ab (dictations/*),
-// genau dort, wo Lena-Seite und Termintab live mitlesen. KEIN Versand, keine
-// Abrechnung. Termin wird über appointmentId oder Patient aufgelöst.
+// genau dort, wo Lena-Seite und Termintab live mitlesen. KEIN Versand.
+// GEMISCHTE MEMOS (04.07.2026): Aerzte diktieren Doku und Abrechnung in einem
+// Atemzug. Der Endpunkt trennt das (trenneMemo): Klinisches -> Kartei,
+// Abrechnungsanweisungen -> Abrechnungs-Arbeitsstand des Termins. BEIDE
+// Spuren stellen ihre Rueckfragen in derselben Bestaetigung, und beide werden
+// pro Memo aus dem Gesamtstand NEU berechnet — offene Fragen koennen nicht
+// vergessen werden, sie kommen wieder, bis sie beantwortet sind.
 app.post("/tools/save-treatment-dictation", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -3014,28 +3019,90 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
         if (sel && sel.id) { patientId = sel.id; lastName = sel.lastName || ""; }
       } catch { /* kein aktiver Patient im Kontext */ }
     }
-    const out = await saveTreatmentDictation(clientId, {
-      text: String(req.body?.text || "").trim(),
-      appointmentId,
-      patientId,
-      lastName,
-      date,
-      lang: String(req.body?.lang || "de-DE").trim() || "de-DE",
-    });
 
-    // Doku-Check (04.07.2026): gegen die EFFEKTIVEN Doku-Anforderungen
-    // (Basis-Katalog +/− Lern-Profil) pruefen — und zwar den KUMULIERTEN Text
-    // aller aktiven Segmente des Termins (combinedText), nicht nur das neue.
-    // Wer Claras Rueckfrage beantwortet, kriegt sonst die schon beantworteten
-    // Fragen aus dem ersten Diktat erneut. Best-effort: gespeichert ist
-    // gespeichert — ein LLM-Problem kostet nur die Rueckfragen, nie das Diktat.
-    if (out?.ok && out.dictationId) {
+    const memoText = String(req.body?.text || "").trim();
+
+    // Termin VOR dem Speichern aufloesen: die Memo-Trennung braucht die offene
+    // Abrechnungsfrage dieses Termins (kurze Antworten wie "Faktor 3,5" muessen
+    // der Abrechnung zugeordnet werden, nicht der Kartei).
+    let apptInfo = null;
+    try {
+      apptInfo = await resolveAppointmentInfo(clientId, { appointmentId, patientId, lastName, date });
+    } catch { /* Aufloesung unten erneut ueber saveTreatmentDictation */ }
+    const apptId = apptInfo?.ok ? apptInfo.appointmentId : "";
+    const memoStand = apptId ? await getAbrechnungsMemo(clientId, apptId) : { lastFrage: "", hinweise: "" };
+
+    // Memo trennen: Klinisches vs. pure Abrechnungsanweisungen.
+    let teil = { dokuText: memoText, abrechnungText: "", methode: "aus" };
+    try {
+      teil = await trenneMemo(memoText, { offeneAbrechnungsFrage: memoStand.lastFrage || "" });
+    } catch { /* im Zweifel alles Doku */ }
+
+    // Abrechnungsanweisungen zum Termin merken (kumuliert, bis abgerechnet wird).
+    if (apptId && teil.abrechnungText) {
       try {
-        const check = await pruefeDoku(clientId, specialtyKeyForClient(clientId), {
-          motiveName: out.motiveName || "",
-          text: out.combinedText || String(req.body?.text || "").trim(),
-          neuText: String(req.body?.text || "").trim(),
-        });
+        await appendAbrechnungsHinweis(clientId, apptId, { text: teil.abrechnungText, patientId, lastName });
+      } catch (e) {
+        log.warn("doku.abrechnung_memo_failed", { clientId, err: String(e?.message || e) });
+      }
+    }
+
+    // Klinischen Teil als Diktat-Segment speichern (wie bisher). Ist das Memo
+    // eine REINE Abrechnungsanweisung, wird nichts in die Kartei geschrieben.
+    let out;
+    if (teil.dokuText) {
+      out = await saveTreatmentDictation(clientId, {
+        text: teil.dokuText,
+        appointmentId: apptId || appointmentId,
+        patientId,
+        lastName,
+        date,
+        lang: String(req.body?.lang || "de-DE").trim() || "de-DE",
+      });
+    } else if (apptId) {
+      let combined = "";
+      try {
+        const segs = await readAppointmentSegments(clientId, apptInfo.locationId, apptId);
+        combined = combineActiveSegments(segs);
+      } catch { /* Sonde laeuft dann nur auf den Hinweisen */ }
+      out = {
+        ok: true,
+        appointmentId: apptId,
+        motiveName: apptInfo.motiveName || "",
+        patientName: apptInfo.patientName || "",
+        combinedText: combined,
+        message: "Verstanden — das nehme ich für die Abrechnung auf.",
+      };
+    } else {
+      out = { ok: false, message: "Zu welchem Termin gehört das? Ich konnte keinen passenden Termin finden." };
+    }
+
+    if (out?.ok) {
+      out.memoTrennung = { methode: teil.methode, abrechnungErkannt: !!teil.abrechnungText };
+
+      // BEIDE Pruefspuren parallel: Doku-Check auf dem KUMULIERTEN Klinik-Text
+      // (nur wenn ein Segment gespeichert wurde) + stille Sophie-Sonde auf
+      // Klinik-Text + Abrechnungs-Hinweisen. Best-effort: gespeichert ist
+      // gespeichert — LLM-/CF-Probleme kosten nur die Rueckfragen.
+      const dokuCheckLauf = out.dictationId
+        ? pruefeDoku(clientId, specialtyKeyForClient(clientId), {
+            motiveName: out.motiveName || "",
+            text: out.combinedText || teil.dokuText,
+            neuText: teil.dokuText,
+          }).catch((e) => { log.warn("doku.check_failed", { clientId, err: String(e?.message || e) }); return null; })
+        : Promise.resolve(null);
+      const sondeLauf = out.appointmentId
+        ? pruefeAbrechnung(clientId, {
+            appointmentId: out.appointmentId,
+            klinischText: out.combinedText || teil.dokuText || "",
+            explizit: !!teil.abrechnungText,
+            patientId,
+            lastName,
+          }).catch((e) => { log.warn("doku.abrechnung_sonde_failed", { clientId, err: String(e?.message || e) }); return null; })
+        : Promise.resolve(null);
+      const [check, sonde] = await Promise.all([dokuCheckLauf, sondeLauf]);
+
+      if (check) {
         const nachsatz = baueRueckfragenSatz(check);
         if (nachsatz) out.message = `${out.message} ${nachsatz}`.trim();
         out.dokuCheck = {
@@ -3044,24 +3111,110 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
           fragen: check.fragen,
           lernVorschlag: check.lernVorschlag,
         };
-      } catch (e) {
-        log.warn("doku.check_failed", { clientId, err: String(e?.message || e) });
       }
+      if (sonde) {
+        if (sonde.zeile) out.message = `${out.message} ${sonde.zeile}`.trim();
+        out.abrechnung = { status: sonde.status, frage: sonde.frage, label: sonde.label };
+      }
+
       // Karteikarte im Hintergrund neu strukturieren (treatment/main) — Claras
-      // Antwort wartet NICHT darauf. Fehler kosten nur die Auto-Kartei.
-      setImmediate(() => {
-        strukturiereKarteikarte(clientId, {
-          locationId: out.locationId,
-          appointmentId: out.appointmentId,
-          combinedText: out.combinedText || String(req.body?.text || "").trim(),
-          motiveName: out.motiveName || "",
-          segmentsCount: (out.combinedText || "").split("\n").filter(Boolean).length,
-        }).then((r) => {
-          if (!r.ok) log.warn("doku.autonote_failed", { clientId, reason: r.reason });
-        }).catch((e) => log.warn("doku.autonote_failed", { clientId, err: String(e?.message || e) }));
-      });
+      // Antwort wartet NICHT darauf. Nur noetig, wenn ein Segment dazukam.
+      if (out.dictationId) {
+        setImmediate(() => {
+          strukturiereKarteikarte(clientId, {
+            locationId: out.locationId,
+            appointmentId: out.appointmentId,
+            combinedText: out.combinedText || teil.dokuText,
+            motiveName: out.motiveName || "",
+            segmentsCount: (out.combinedText || "").split("\n").filter(Boolean).length,
+          }).then((r) => {
+            if (!r.ok) log.warn("doku.autonote_failed", { clientId, reason: r.reason });
+          }).catch((e) => log.warn("doku.autonote_failed", { clientId, err: String(e?.message || e) }));
+        });
+      }
     }
     return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1g5) OFFENE FRAGEN ("Was fehlt noch bei Herrn Meier?"): berechnet BEIDE
+// Spuren aus dem Gesamtstand neu — Doku-Luecken (Pflichtfelder gegen alle
+// aktiven Segmente) und Abrechnungs-Stand (Sophie-Sonde). Reine Auskunft:
+// es wird nichts gespeichert und nichts gelernt.
+app.post("/tools/doku-offen", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    let patientId = String(req.body?.patientId || "").trim();
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    if (!patientId && lastName) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: lastName,
+        hint: String(req.body?.hint || "").trim(),
+        askWho: "Für welchen Patienten soll ich den Doku-Stand prüfen? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || "";
+      lastName = r.sel?.lastName || lastName;
+    }
+    if (!patientId && !lastName) {
+      try {
+        const sel = await getSelectedPatient(clientId);
+        if (sel && sel.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+      } catch { /* kein aktiver Patient */ }
+    }
+    const info = await resolveAppointmentInfo(clientId, {
+      appointmentId: String(req.body?.appointmentId || "").trim(),
+      patientId, lastName, date: String(req.body?.date || "").trim(),
+    });
+    if (!info.ok) return res.json(info);
+
+    let combined = "";
+    try {
+      const segs = await readAppointmentSegments(clientId, info.locationId, info.appointmentId);
+      combined = combineActiveSegments(segs);
+    } catch { /* keine Segmente lesbar */ }
+
+    const wer = info.patientName || lastName || "diesem Termin";
+    const teile = [];
+
+    if (!combined) {
+      teile.push(`Zu ${wer} ist noch nichts dokumentiert.`);
+    } else {
+      const check = await pruefeDoku(clientId, specialtyKeyForClient(clientId), {
+        motiveName: info.motiveName || "",
+        text: combined,
+        lernen: false,
+      }).catch(() => null);
+      if (check && check.fragen?.length) {
+        teile.push(`Zur Doku fehlt noch: ${check.fragen.map((f) => f.frage.replace(/\s+/g, " ").trim()).join(" ")}`);
+      } else if (check) {
+        teile.push("Die Doku wirkt vollständig.");
+      } else {
+        teile.push("Den Doku-Check konnte ich gerade nicht laufen lassen.");
+      }
+    }
+
+    const sonde = await pruefeAbrechnung(clientId, {
+      appointmentId: info.appointmentId,
+      klinischText: combined,
+      explizit: true,
+      patientId,
+      lastName,
+    }).catch(() => null);
+    if (sonde?.zeile) teile.push(sonde.zeile);
+
+    return res.json({
+      ok: true,
+      appointmentId: info.appointmentId,
+      motiveName: info.motiveName || "",
+      abrechnung: sonde ? { status: sonde.status, frage: sonde.frage, label: sonde.label } : null,
+      message: teile.join(" "),
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -3260,24 +3413,72 @@ app.post("/tools/plan-dokumentieren", async (req, res) => {
 // "Was kostet ein Implantat Regio 36 mit Knochenaufbau?". Ruft die Sophie-
 // Engine (Cloud Function masSophieBilling) auf und gibt ENTWEDER die naechste
 // Gegenfrage ODER die Endsummen (GOZ 2,3 / GOZ 3,5 / BEMA / BEMA+) zurueck.
-// Reiner Rechen-/Vorschlags-Endpunkt; Persistenz nur, wenn ein Termin benannt
-// ist. KEIN Versand, keine verbindliche Abrechnung.
+// OHNE text (04.07.2026): "Rechne den Termin von Frau Meier ab" zieht die
+// Grundlage automatisch aus der Termin-Doku (aktive Segmente) plus den beim
+// Diktieren gemerkten Abrechnungs-Hinweisen (mas_abrechnung_memo) — der Chef
+// muss nichts wiederholen. Persistenz nur, wenn ein Termin aufgeloest ist.
+// KEIN Versand, keine verbindliche Abrechnung.
 app.post("/tools/bill-treatment", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
-    const out = await sophieBill(clientId, {
-      text: String(req.body?.text || "").trim(),
-      streckeId: String(req.body?.streckeId || "").trim(),
-      streckeIds: Array.isArray(req.body?.streckeIds) ? req.body.streckeIds : undefined,
+    let text = String(req.body?.text || "").trim();
+    let appointmentId = String(req.body?.appointmentId || "").trim();
+    let patientId = String(req.body?.patientId || "").trim();
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    const streckeId = String(req.body?.streckeId || "").trim();
+    const streckeIds = Array.isArray(req.body?.streckeIds) ? req.body.streckeIds : undefined;
+
+    // Ohne Behandlungsbeschreibung: Doku + gemerkte Hinweise des Termins nutzen.
+    if (!text && !streckeId && !(streckeIds && streckeIds.length)) {
+      if (!appointmentId && !patientId && lastName) {
+        const r = await resolveSpokenPatientForRead(clientId, {
+          rawName: lastName,
+          hint: String(req.body?.hint || "").trim(),
+          askWho: "Für welchen Patienten soll ich abrechnen? Bitte den Namen nennen.",
+        });
+        if (r.done) return res.json(r.payload);
+        patientId = r.sel?.id || "";
+        lastName = r.sel?.lastName || lastName;
+      }
+      if (!appointmentId && !patientId && !lastName) {
+        try {
+          const sel = await getSelectedPatient(clientId);
+          if (sel && sel.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+        } catch { /* kein aktiver Patient */ }
+      }
+      const info = await resolveAppointmentInfo(clientId, {
+        appointmentId, patientId, lastName, date: String(req.body?.date || "").trim(),
+      });
+      if (info.ok) {
+        appointmentId = info.appointmentId;
+        try {
+          const segs = await readAppointmentSegments(clientId, info.locationId, info.appointmentId);
+          const klinisch = combineActiveSegments(segs);
+          const memo = await getAbrechnungsMemo(clientId, info.appointmentId);
+          text = [klinisch.slice(-1200), memo.hinweise].filter(Boolean).join(" ").trim();
+        } catch { /* unten ehrliche Rueckfrage */ }
+      }
+      if (!text) {
+        return res.json({ ok: false, message: "Zu diesem Termin ist noch nichts dokumentiert — beschreib mir kurz die Behandlung, die ich abrechnen soll." });
+      }
+    }
+
+    // Slot-Fuellung (04.07.2026): Sophies Gegenfragen werden erst aus dem Text
+    // selbst beantwortet (deterministisch + lokales LLM); nur was der Text
+    // wirklich nicht hergibt, geht als Frage an den Chef.
+    const out = await sophieMitSlotfill(clientId, {
+      text,
+      streckeId,
+      streckeIds,
       slots: req.body?.slots && typeof req.body.slots === "object" ? req.body.slots : undefined,
       faktor: typeof req.body?.faktor === "number" ? req.body.faktor : undefined,
       bemaPunktwert: typeof req.body?.bemaPunktwert === "number" ? req.body.bemaPunktwert : undefined,
-      appointmentId: String(req.body?.appointmentId || "").trim(),
-      patientId: String(req.body?.patientId || "").trim(),
-      lastName: String(req.body?.lastName || req.body?.name || "").trim(),
+      appointmentId,
+      patientId,
+      lastName,
     });
     return res.json(out);
   } catch (e) {

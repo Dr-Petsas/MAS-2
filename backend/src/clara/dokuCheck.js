@@ -89,12 +89,14 @@ export async function pruefFelder(clientId, specialtyKey, motiveName, text) {
  *           Beobachtungen werden nur fuer Begriffe gezaehlt, die im NEUEN Text
  *           vorkommen — sonst zaehlte jede Folge-Antwort die Begriffe aus den
  *           alten Segmenten erneut und der Lern-Vorschlag kaeme zu frueh.
+ * lernen  = false bei reinen STATUS-Abfragen ("Was ist noch offen?"): dann
+ *           zaehlt der Check keine Beobachtungen — Lesen darf nichts lernen.
  *
  * @returns {Promise<{ok:boolean, dokuPflichtig:boolean, regelId:string,
  *   fragen:Array<{key:string, frage:string}>, zusatz:string[],
  *   lernVorschlag:null|{feldKey:string, anzahl:number}, reason?:string}>}
  */
-export async function pruefeDoku(clientId, specialtyKey, { motiveName, text, neuText, timeoutMs = 12000 } = {}) {
+export async function pruefeDoku(clientId, specialtyKey, { motiveName, text, neuText, lernen = true, timeoutMs = 12000 } = {}) {
   const diktat = String(text || "").trim();
   const leer = { ok: true, dokuPflichtig: false, regelId: "", fragen: [], zusatz: [], lernVorschlag: null };
   if (!diktat) return leer;
@@ -181,7 +183,7 @@ export async function pruefeDoku(clientId, specialtyKey, { motiveName, text, neu
 
   // Beobachtungen fuers Lernen zaehlen (best-effort, blockiert nie).
   let lernVorschlag = null;
-  if (zusatz.length) {
+  if (zusatz.length && lernen) {
     try {
       const { vorschlag } = await notiereBeobachtungen(clientId, specialtyKey, eff.regelId, zusatz);
       lernVorschlag = vorschlag;
