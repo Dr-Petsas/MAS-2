@@ -184,9 +184,50 @@ export function buildSpokenPatientDocs(data, { who = "der Patient" } = {}) {
     return parts.length ? parts.join(" ") : null;
 }
 
+// Behandlungsdoku im Shared Memory: exakt 45 Tage sichtbar, dann geloescht
+// (Vorgabe 04.07.2026) — unabhaengig vom allgemeinen Retention-Regler.
+// Durchgesetzt in brain/retention.js ueber das Feld expiresAtMs.
+export const DOKU_MEMORY_TAGE = 45;
+
+/**
+ * Termin + Besuchsgrund eines Patienten aufloesen OHNE etwas zu speichern
+ * (fuer die Doku-Pflicht-Auskunft: "Was ist bei diesem Termin zu dokumentieren?").
+ * Gleiche Aufloesung wie beim Diktat: explizite ID > Datum > heute > Historie.
+ */
+export async function resolveAppointmentInfo(clientId, { appointmentId, patientId, lastName, date } = {}) {
+    const locationId = await resolveLocationId(clientId);
+    if (!locationId) return { ok: false, message: "Ich finde den Standort der Praxis nicht." };
+    let apptId = String(appointmentId || "").trim();
+    if (!apptId) {
+        apptId = await resolveAppointmentForPatient(clientId, {
+            patientId: String(patientId || "").trim(),
+            lastName: String(lastName || "").trim(),
+            date: String(date || "").trim(),
+        });
+    }
+    if (!apptId) return { ok: false, message: "Ich konnte keinen passenden Termin finden — für welchen Patienten und welchen Tag?" };
+    try {
+        const snap = await admin.firestore()
+            .collection("clients").doc(clientId)
+            .collection("locations").doc(locationId)
+            .collection("appointments").doc(apptId).get();
+        const ap = snap.exists ? (snap.data() || {}) : {};
+        return {
+            ok: true,
+            appointmentId: apptId,
+            motiveName: String(ap?.visitMotive?.name || "").trim(),
+            patientName: `${ap?.patient?.firstName || ""} ${ap?.patient?.lastName || ""}`.trim(),
+        };
+    } catch (e) {
+        return { ok: false, message: `Den Termin konnte ich nicht lesen: ${String(e?.message || e)}` };
+    }
+}
+
 /**
  * Speichert ein Dokumentationsdiktat als Segment unter dem Termin.
- * @returns {Promise<{ok:boolean, message:string, appointmentId?:string, dictationId?:string}>}
+ * Liefert zusaetzlich Besuchsgrund + Patient des Termins zurueck, damit der
+ * Doku-Check (Rueckfragen-Engine) direkt darauf pruefen kann.
+ * @returns {Promise<{ok:boolean, message:string, appointmentId?:string, dictationId?:string, motiveName?:string, patientName?:string}>}
  */
 export async function saveTreatmentDictation(clientId, { text, appointmentId, patientId, lastName, lang = "de-DE", date } = {}) {
     const body = String(text || "").trim();
@@ -204,12 +245,25 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
     }
 
     try {
-        const ref = admin.firestore()
+        const apptRef = admin.firestore()
             .collection("clients").doc(clientId)
             .collection("locations").doc(locationId)
-            .collection("appointments").doc(apptId)
-            .collection("dictations");
-        const doc = await ref.add({
+            .collection("appointments").doc(apptId);
+
+        // Termin einmal lesen: Besuchsgrund (fuer den Doku-Check) + Patient
+        // (fuer das Shared-Memory-Subject, falls nicht mitgegeben).
+        let motiveName = "";
+        let patientName = "";
+        let apptPatientId = "";
+        try {
+            const apptSnap = await apptRef.get();
+            const ap = apptSnap.exists ? (apptSnap.data() || {}) : {};
+            motiveName = String(ap?.visitMotive?.name || "").trim();
+            apptPatientId = String(ap?.patient?.id || "").trim();
+            patientName = `${ap?.patient?.firstName || ""} ${ap?.patient?.lastName || ""}`.trim();
+        } catch { /* Metadaten sind Komfort */ }
+
+        const doc = await apptRef.collection("dictations").add({
             text: body,
             source: "clara",
             lang,
@@ -219,19 +273,10 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
         // Zusätzlich ins geteilte Gedächtnis schreiben — Lena dokumentiert sichtbar
         // für alle (wie Lisa, Bianca, Nadine). So liest die Behandlungsdoku auch in
         // der Cockpit-/Patienten-Timeline mit. Best-effort, der Diktat-Eintrag oben
-        // ist die führende Quelle.
+        // ist die führende Quelle. Verfaellt nach exakt 45 Tagen (expiresAtMs).
         try {
-            let subjId = String(patientId || "").trim();
-            let subjName = String(lastName || "").trim();
-            if (!subjId) {
-                const apptSnap = await admin.firestore()
-                    .collection("clients").doc(clientId)
-                    .collection("locations").doc(locationId)
-                    .collection("appointments").doc(apptId).get();
-                const ap = apptSnap.exists ? (apptSnap.data() || {}) : {};
-                subjId = String(ap?.patient?.id || "").trim();
-                if (!subjName) subjName = `${ap?.patient?.firstName || ""} ${ap?.patient?.lastName || ""}`.trim();
-            }
+            const subjId = String(patientId || "").trim() || apptPatientId;
+            const subjName = String(lastName || "").trim() || patientName;
             const kurz = body.length > 420 ? body.slice(0, 417) + "..." : body;
             await appendEvent(clientId, {
                 id: `lena-doc:${apptId}:${doc.id}`,
@@ -247,12 +292,13 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
                 payloadRef: { kind: "dictation", id: doc.id },
                 extractor: "lena@treatment-dictation",
                 tags: ["lena", "dokumentation", "behandlung"],
+                expiresAtMs: Date.now() + DOKU_MEMORY_TAGE * 86400000,
             });
         } catch (memErr) {
             console.warn("saveTreatmentDictation: brain-event failed:", memErr?.message || memErr);
         }
 
-        return { ok: true, appointmentId: apptId, dictationId: doc.id, message: "Habe ich zur Behandlungsdokumentation gespeichert." };
+        return { ok: true, appointmentId: apptId, dictationId: doc.id, motiveName, patientName, message: "Habe ich zur Behandlungsdokumentation gespeichert." };
     } catch (e) {
         return { ok: false, message: `Das Diktat konnte ich nicht speichern: ${String(e?.message || e)}` };
     }

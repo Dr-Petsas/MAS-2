@@ -265,6 +265,14 @@ export function buildEvent(input = {}) {
     deadlineMs: Number.isFinite(Number(input.deadlineMs)) && Number(input.deadlineMs) > 0
       ? Number(input.deadlineMs)
       : null,
+    // Eigene Verfallsfrist (epoch ms) ABWEICHEND vom allgemeinen Retention-
+    // Regler. Eingefuehrt 04.07.2026 fuer Behandlungsdoku im Shared Memory:
+    // exakt 45 Tage sichtbar, dann geloescht — unabhaengig davon, wie der
+    // Mandant den allgemeinen Regler (7..365 Tage) stellt. null = normale
+    // Retention gilt.
+    expiresAtMs: Number.isFinite(Number(input.expiresAtMs)) && Number(input.expiresAtMs) > 0
+      ? Number(input.expiresAtMs)
+      : null,
   };
 
   return event;

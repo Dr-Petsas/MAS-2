@@ -47,18 +47,29 @@ function spokenSummen(r) {
 }
 
 async function callCf(body) {
-  const resp = await fetch(`${REAL_CF_BASE}/masSophieBilling`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  let data = null;
+  // Timeout-Pflicht (04.07.2026): Die Cloud Function hat selbst 30 s Limit.
+  // Ohne AbortController hing dieser fetch bei Netz-/CF-Problemen unendlich —
+  // Clara wartete ewig auf die Abrechnung ("System haengt"). 35 s = CF-Limit
+  // plus Puffer, danach kommt eine ehrliche Fehlermeldung statt Stille.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 35000);
   try {
-    data = await resp.json();
-  } catch {
-    data = null;
+    const resp = await fetch(`${REAL_CF_BASE}/masSophieBilling`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+      signal: ctrl.signal,
+    });
+    let data = null;
+    try {
+      data = await resp.json();
+    } catch {
+      data = null;
+    }
+    return { status: resp.status, data };
+  } finally {
+    clearTimeout(timer);
   }
-  return { status: resp.status, data };
 }
 
 /** Best-effort: Abrechnungsvorschlag ins geteilte Gedaechtnis (Cockpit-Timeline). */

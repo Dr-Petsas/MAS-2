@@ -14,7 +14,10 @@ import { polishForChannel } from "./clara/dictation.js";
 import { intakeToAbsichten } from "./clara/billingIntake.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { buildNextPatientsBriefing } from "./clara/nextPatientsBriefing.js";
-import { saveTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs } from "./clara/treatmentDoc.js";
+import { saveTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs, resolveAppointmentInfo } from "./clara/treatmentDoc.js";
+import { specialtyKeyForClient } from "./clara/dokuPflicht.js";
+import { effektiveAnforderungen, applyAnpassung } from "./clara/dokuLernen.js";
+import { pruefeDoku, baueRueckfragenSatz } from "./clara/dokuCheck.js";
 import { sophieBill } from "./clara/sophieBilling.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "./brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "./brain/livingPrompt.js";
@@ -34,7 +37,7 @@ import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } fr
 import { listFachrichtungen, defaultProfileFor as qmDefaultProfileFor } from "./qm/catalog.js";
 import { saveProfile as qmSaveProfile, getProfile as qmGetProfile, computeRequirements as qmComputeRequirements, activateBook as qmActivateBook, deactivateBook as qmDeactivateBook, setBookResponsible as qmSetBookResponsible, getBook as qmGetBook, listBooks as qmListBooks } from "./qm/books.js";
 import { listDocuments as qmListDocuments, exportRows as qmExportRows } from "./qm/documents.js";
-import { createJob as qmCreateJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, listJobsForStaff as qmListJobsForStaff, redistributeOpenJobs as qmRedistribute } from "./qm/jobs.js";
+import { createJob as qmCreateJob, updateJob as qmUpdateJob, deleteJob as qmDeleteJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, listJobsForStaff as qmListJobsForStaff, redistributeOpenJobs as qmRedistribute } from "./qm/jobs.js";
 import { PRODUCT_PRESETS as qmHygienePresets, TASK_TEMPLATES as qmHygieneTasks, defaultProductSelection as qmHygieneDefaults, buildHygienePlans as qmBuildHygienePlans, setupHygienePlan as qmSetupHygiene } from "./qm/hygiene.js";
 import { createSchedule as qmCreateSchedule, listSchedules as qmListSchedules, updateSchedule as qmUpdateSchedule, deleteSchedule as qmDeleteSchedule, materializeDueJobs as qmMaterializeDueJobs } from "./qm/schedules.js";
 import { upsertStaff as qmUpsertStaff, getStaff as qmGetStaff, listStaff as qmListStaff, addAbsence as qmAddAbsence, removeAbsence as qmRemoveAbsence, suggestAssignee as qmSuggestAssignee } from "./qm/staff.js";
@@ -523,6 +526,14 @@ app.post("/clara/qm/jobs", qmRoute(async (clientId, req, res) => {
   }
   const r = await qmCreateJob(clientId, body);
   res.status(r.ok ? 201 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/jobs/:id", qmRoute(async (clientId, req, res) => {
+  const r = await qmUpdateJob(clientId, req.params.id, req.body || {});
+  res.status(r.ok ? 200 : 400).json({ clientId, ...r });
+}));
+app.post("/clara/qm/jobs/:id/delete", qmRoute(async (clientId, req, res) => {
+  const r = await qmDeleteJob(clientId, req.params.id, req.body || {});
+  res.status(r.ok ? 200 : 404).json({ clientId, ...r });
 }));
 app.post("/clara/qm/jobs/:id/assign", qmRoute(async (clientId, req, res) => {
   const r = await qmAssignJob(clientId, req.params.id, req.body || {});
@@ -2955,6 +2966,8 @@ app.post("/tools/next-patients-briefing", async (req, res) => {
       date: (req.body?.date || "").trim() || todayBerlin(),
       calendarId: calScope.calendarId,
       count,
+      patientName: (req.body?.patientName || req.body?.name || "").trim() || undefined,
+      time: (req.body?.time || "").trim() || undefined,
     });
     return res.json(out);
   } catch (e) {
@@ -2975,6 +2988,10 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
     let appointmentId = String(req.body?.appointmentId || "").trim();
     let patientId = String(req.body?.patientId || "").trim();
     let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    // Datum, auf das dokumentiert werden soll (z.B. "dokumentiere für den Termin
+    // am 25."). Ohne Datum faellt saveTreatmentDictation auf heute/naechsten Termin
+    // zurueck — genau das fuehrte dazu, dass Doku faelschlich auf HEUTE landete.
+    const date = String(req.body?.date || "").trim();
     // Wenn nur ein Name kam, Patient sauflösen (gleiche Logik wie die Lese-Tools).
     if (!appointmentId && !patientId && lastName) {
       const r = await resolveSpokenPatientForRead(clientId, {
@@ -3001,7 +3018,116 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
       appointmentId,
       patientId,
       lastName,
+      date,
       lang: String(req.body?.lang || "de-DE").trim() || "de-DE",
+    });
+
+    // Doku-Check (04.07.2026): Diktat gegen die EFFEKTIVEN Doku-Anforderungen
+    // (Basis-Katalog +/− Lern-Profil) pruefen. Fehlende Pflichtangaben kommen
+    // als kurze Rueckfragen in die Bestaetigung, die Clara vorliest. Best-
+    // effort: gespeichert ist gespeichert — ein LLM-Problem kostet nur die
+    // Rueckfragen, nie das Diktat.
+    if (out?.ok && out.dictationId) {
+      try {
+        const check = await pruefeDoku(clientId, specialtyKeyForClient(clientId), {
+          motiveName: out.motiveName || "",
+          text: String(req.body?.text || "").trim(),
+        });
+        const nachsatz = baueRueckfragenSatz(check);
+        if (nachsatz) out.message = `${out.message} ${nachsatz}`.trim();
+        out.dokuCheck = {
+          dokuPflichtig: check.dokuPflichtig,
+          regelId: check.regelId,
+          fragen: check.fragen,
+          lernVorschlag: check.lernVorschlag,
+        };
+      } catch (e) {
+        log.warn("doku.check_failed", { clientId, err: String(e?.message || e) });
+      }
+    }
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1g2) DOKU-PFLICHT-AUSKUNFT: "Was ist bei diesem Termin dokumentationspflichtig?"
+// -> loest den Termin (Patient/Datum/Besuchsgrund) auf und liest die PFLICHT-
+// Felder der effektiven Anforderungen (Basis-Katalog +/− Lern-Profil) vor.
+app.post("/tools/doku-anforderungen", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    let besuchsgrund = String(req.body?.besuchsgrund || "").trim();
+    // Ohne expliziten Besuchsgrund: Termin des Patienten aufloesen (wie beim Diktat).
+    if (!besuchsgrund) {
+      let patientId = String(req.body?.patientId || "").trim();
+      let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+      if (!patientId && lastName) {
+        const r = await resolveSpokenPatientForRead(clientId, {
+          rawName: lastName,
+          hint: String(req.body?.hint || "").trim(),
+          askWho: "Für welchen Patienten soll ich die Doku-Pflichten nennen? Bitte den Namen nennen.",
+        });
+        if (r.done) return res.json(r.payload);
+        patientId = r.sel?.id || "";
+        lastName = r.sel?.lastName || lastName;
+      }
+      if (!patientId && !lastName) {
+        try {
+          const sel = await getSelectedPatient(clientId);
+          if (sel && sel.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+        } catch { /* kein aktiver Patient */ }
+      }
+      const probe = await resolveAppointmentInfo(clientId, {
+        appointmentId: String(req.body?.appointmentId || "").trim(),
+        patientId, lastName, date: String(req.body?.date || "").trim(),
+      });
+      if (!probe.ok) return res.json(probe);
+      besuchsgrund = probe.motiveName || "";
+    }
+    const eff = await effektiveAnforderungen(clientId, specialtyKeyForClient(clientId), besuchsgrund);
+    if (!eff.dokuPflichtig) {
+      return res.json({ ok: true, besuchsgrund, dokuPflichtig: false, message: `Für ${besuchsgrund || "diesen Termin"} ist keine Behandlungsdokumentation nötig — interner Termin.` });
+    }
+    const pflicht = eff.felder.filter((f) => f.pflicht).map((f) => f.frage.replace(/\?$/, ""));
+    const basis = eff.umfang === "voll"
+      ? "dazu wie immer Befund, Diagnose, Massnahme, Komplikationen und Procedere"
+      : "dazu kurz Befund und Massnahme";
+    const kern = pflicht.length
+      ? `Dokumentationspflichtig sind hier: ${pflicht.join("; ")} — ${basis}.`
+      : `Hier reicht die Standard-Doku: ${basis}.`;
+    const aufkl = eff.regel?.eingriff ? " Es ist ein Eingriff — die Aufklärung muss vorliegen; die prüfe ich über die signierten Dokumente." : "";
+    return res.json({
+      ok: true, besuchsgrund, dokuPflichtig: true, regelId: eff.regelId,
+      pflichtFelder: eff.felder.filter((f) => f.pflicht).map((f) => ({ key: f.key, frage: f.frage, gelernt: !!f.gelernt })),
+      message: `${kern}${aufkl}`,
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1g3) DOKU-REGEL-KORREKTUR per Stimme: "Frag bei Zahnreinigung nicht mehr nach
+// Röntgenbildern" / "Frag bei Füllungen künftig auch nach der Zahnfarbe".
+// -> Lern-Profil der Praxis (mas_doku_lernprofil), wirkt SOFORT (Cache-
+// Invalidierung im selben Prozess) und bleibt für die Zukunft gespeichert.
+app.post("/tools/doku-regel", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await applyAnpassung(clientId, specialtyKeyForClient(clientId), {
+      aktion: String(req.body?.aktion || "").trim(),
+      besuchsgrund: String(req.body?.besuchsgrund || "").trim(),
+      feld: String(req.body?.feld || "").trim(),
+      frage: String(req.body?.frage || "").trim(),
+      pflicht: req.body?.pflicht !== false,
+      original: String(req.body?.original || req.body?.text || "").trim(),
+      by: "chef",
     });
     return res.json(out);
   } catch (e) {

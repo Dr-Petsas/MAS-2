@@ -93,6 +93,42 @@ async function deleteByQuery(buildQuery, label, stats) {
   return total;
 }
 
+/**
+ * Praxisgedächtnis-Sweep mit Rücksicht auf EIGENE Verfallsfristen (04.07.2026):
+ * Einträge mit ``expiresAtMs`` (z. B. Behandlungsdoku = exakt 45 Tage) werden
+ * vom allgemeinen Regler NICHT vorzeitig gelöscht — sie fallen erst, wenn ihre
+ * eigene Frist abgelaufen ist. Paginiert über ts (startAfter), damit
+ * übersprungene (geschützte) Dokumente die Schleife nicht blockieren.
+ */
+async function sweepEvents(clientId, cutoff, stats) {
+  const nowMs = Date.now();
+  let total = 0;
+  let lastTs = null;
+  for (let round = 0; round < 200; round++) {
+    let q = masCollection(clientId, "mas_events")
+      .where("ts", "<", cutoff)
+      .orderBy("ts", "asc")
+      .limit(BATCH);
+    if (lastTs != null) q = q.startAfter(lastTs);
+    const snap = await q.get();
+    if (snap.empty) break;
+    const batch = admin.firestore().batch();
+    let dels = 0;
+    snap.forEach((d) => {
+      const ownExpiry = Number(d.get("expiresAtMs"));
+      if (Number.isFinite(ownExpiry) && ownExpiry > nowMs) return; // eigene Frist läuft noch
+      batch.delete(d.ref);
+      dels++;
+    });
+    if (dels) await batch.commit();
+    total += dels;
+    lastTs = snap.docs[snap.docs.length - 1].get("ts");
+    if (snap.size < BATCH) break;
+  }
+  stats.events = total;
+  return total;
+}
+
 /** Lokale Call-Transkripte (JSON + WAV) älter als der Cutoff löschen. */
 function sweepLocalTranscripts(cutoff, stats) {
   const dir = (process.env.RETENTION_TRANSCRIPTS_DIR || "").trim();
@@ -122,11 +158,18 @@ export async function runRetentionSweep(clientId, { days } = {}) {
   const cutoffDate = new Date(cutoff);
   const stats = { clientId, days, cutoffIso: cutoffDate.toISOString() };
 
-  // 1) Praxisgedächtnis-Events (ts = epoch ms).
+  // 1) Praxisgedächtnis-Events (ts = epoch ms) — Einträge mit eigener
+  //    Verfallsfrist (expiresAtMs, z. B. Behandlungsdoku 45 Tage) ausgenommen.
+  await sweepEvents(clientId, cutoff, stats)
+    .catch((e) => log.warn("retention.events_failed", { clientId, err: String(e?.message || e) }));
+
+  // 1b) Einträge, deren EIGENE Frist abgelaufen ist (z. B. Behandlungsdoku
+  //     nach 45 Tagen) — unabhängig vom allgemeinen Regler. Range-Filter
+  //     matcht nie null, trifft also nur Einträge MIT eigener Frist.
   await deleteByQuery(
-    () => masCollection(clientId, "mas_events").where("ts", "<", cutoff),
-    "events", stats
-  ).catch((e) => log.warn("retention.events_failed", { clientId, err: String(e?.message || e) }));
+    () => masCollection(clientId, "mas_events").where("expiresAtMs", "<", Date.now()),
+    "eventsExpired", stats
+  ).catch((e) => log.warn("retention.events_expired_failed", { clientId, err: String(e?.message || e) }));
 
   // 2) Tickets/Vorgänge — letzte Aktivität älter als der Cutoff.
   await deleteByQuery(
