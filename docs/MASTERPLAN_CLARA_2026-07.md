@@ -125,8 +125,17 @@ Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
       Notaus (CLARA_TOOL_SUBSETTING=0) entwaffnen. Befund dokumentiert
       in docs/clara_tool_groups.md Hinweis 5. Die Schicht ist ab jetzt
       die bewusste zweite Verteidigungslinie nach dem Subsetting.
-- [ ] **W1.5 Modell-Evaluation** erst NACH Subsetting (Prompt ~16,7k -> ~8k),
+- [x] **W1.5 Modell-Evaluation** erst NACH Subsetting (Prompt ~16,7k -> ~8k),
       Entscheidung anhand 118-Faelle-Suite, nicht nach Gefuehl.
+      **ERLEDIGT 04.07. (Entscheid: qwen3:4b-instruct BLEIBT).**
+      128er-Suite, beide Modelle nach Subsetting bei 32k Kontext auf der
+      RTX 3060 (12 GB): 4b-instruct 119/128, TTFT p50 2,25 s / Dialog-Zug-2
+      0,83 s, 7,5 GB VRAM, 1 Halluzinations-Wache. qwen3:8b 111/128,
+      TTFT p50 3,11 s / Zug-2 4,12 s (!), 9,8 GB VRAM, 4 Halluzinations-
+      Wachen; verwechselt systematisch delegate_call/find_contact, faellt
+      bei Griechisch- und Storno-Rueckfrage-Faellen ab. Groesser ist auf
+      dieser Karte in ALLEN Dimensionen schlechter. Neu bewerten erst bei
+      Hardware-Wechsel (mehr VRAM) oder RunPod-Pfad. Log: .run/w15_qwen8b.log.
 - NICHT anfassen: `response_guard.py`, `daySchedule`-Filter, `holidays.js`.
 
 ## Phase 2 - Dens-Office-Anbindung (paralleler Track, extern getaktet)
