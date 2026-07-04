@@ -10,6 +10,8 @@ import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersio
 import { reflectOnce } from "../brain/reflect.js";
 import { runGapFill, gapFillOverview, approveCallList } from "../clara/gapFill.js";
 import { dailyInitiativeScan } from "../clara/recallCoach.js";
+import { listLisaTasks } from "../lisa/outbound.js";
+import { listCalendar as qmListCalendar } from "../qm/jobs.js";
 import { runRetentionSweep, getRetentionConfig, setRetentionDays } from "../brain/retention.js";
 import { searchPatient } from "../clara/agentBooking.js";
 import { getOperator } from "../clara/sessions.js";
@@ -940,6 +942,196 @@ router.post("/brain/retention-config", async (req, res) => {
     const clientId = resolveClientId(req);
     const out = await setRetentionDays(clientId, req.body?.days, { by: req.body?.by });
     res.json({ ok: true, clientId, ...(await getRetentionConfig(clientId)), saved: out.days });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// --- Leitstelle: Bucket-Zähler + Tages-Jobs aller Mitarbeiter (KI + Mensch) --
+// EIN Lese-Modell für die neue Clara-Startseite: oben Buckets (wie viel kam
+// heute/diese Woche pro Kanal rein), rechts die Jobs-Spalte (wer arbeitet heute
+// woran, mit Status + Artefakt-Link). Aggregiert NUR bestehende Quellen
+// (Ereignis-Pool, Vorgänge, Lisa-Aufträge, QM-Jobs) — keine zweite Datenbank.
+// Rein additiv; jede Teilquelle fällt einzeln weich aus (leere Liste statt 500).
+
+function berlinDayBounds(dateStr) {
+  // "YYYY-MM-DD" -> [Mitternacht, Mitternacht+24h) in Europe/Berlin als UTC-ms.
+  // Offset (CET/CEST) wird über die Berliner Wanduhr am UTC-Mittag bestimmt.
+  const noonUtc = new Date(`${dateStr}T12:00:00Z`).getTime();
+  const berlinHour = Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date(noonUtc))
+  );
+  const offsetH = berlinHour - 12;
+  const startMs = new Date(`${dateStr}T00:00:00Z`).getTime() - offsetH * 3_600_000;
+  return { startMs, endMs: startMs + 24 * 3_600_000 - 1 };
+}
+
+function countBuckets(events) {
+  const byChannel = {};
+  let unmatched = 0;
+  let open = 0;
+  for (const e of events) {
+    byChannel[e.channel] = (byChannel[e.channel] || 0) + 1;
+    if (e.type === "interaction" && (e.subject?.matchStatus === "unmatched" || e.subject?.matchStatus === "ambiguous")) unmatched += 1;
+    if (e.status === "open") open += 1;
+  }
+  return { total: events.length, byChannel, unmatched, open };
+}
+
+const QM_OPEN_STATES = new Set(["planned", "assigned", "seen", "in_progress", "overdue", "escalated"]);
+
+router.get("/brain/leitstelle", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const date = String(req.query?.date || "").trim() || todayBerlin();
+    const { startMs, endMs } = berlinDayBounds(date);
+    const nowMs = Date.now();
+    const notes = [];
+
+    // 1) Buckets: heute exakt, Woche als zweites Fenster (Deckel 2000 Events).
+    let todayEvents = [];
+    let weekEvents = [];
+    try {
+      todayEvents = await queryRecent(clientId, startMs, 2000);
+      todayEvents = todayEvents.filter((e) => (e.ts || 0) <= endMs);
+      weekEvents = await queryRecent(clientId, endMs - 7 * 24 * 3_600_000, 2000);
+      weekEvents = weekEvents.filter((e) => (e.ts || 0) <= endMs);
+    } catch (e) {
+      notes.push(`events:${String(e?.message || e)}`);
+    }
+    const buckets = { today: countBuckets(todayEvents), week: countBuckets(weekEvents) };
+
+    // 2) Jobs-Spalte. Feste KI-Plätze (Nadine, Lisa, Team) + echte Mitarbeiter
+    //    aus den QM-Zuweisungen. Erledigtes von heute zählt in den Fortschritt.
+    const workers = [];
+
+    // Lisa: delegierte Anrufe/SMS von heute (mas_lisa_tasks).
+    let lisaJobs = [];
+    try {
+      const tasks = await listLisaTasks(clientId, 80);
+      lisaJobs = tasks
+        .filter((t) => (t.ts || 0) >= startMs && (t.ts || 0) <= endMs)
+        .map((t) => {
+          const status =
+            t.status === "failed" ? "problem"
+            : (t.status === "done" || t.status === "sent") ? "done"
+            : t.status === "calling" ? "in_progress"
+            : "open";
+          return {
+            id: t.id,
+            title: `${t.kind === "sms" ? "SMS" : "Anruf"}: ${t.contactName || t.phone || "—"}`,
+            detail: (t.resultSummary || t.text || t.prompt || "").slice(0, 220),
+            status,
+            ts: t.ts || 0,
+            outcome: t.outcome || null,
+            link: { kind: "lisa_task", id: t.id },
+            transcript: (t.transcriptText || "").slice(0, 4000) || null,
+          };
+        })
+        .sort((a, b) => b.ts - a.ts);
+    } catch (e) {
+      notes.push(`lisa:${String(e?.message || e)}`);
+    }
+
+    // Nadine + Team: aktive Vorgänge mit Zuweisung; erledigt = heute geschlossen.
+    let nadineJobs = [];
+    let teamJobs = [];
+    try {
+      const cases = await listCases(clientId, { activeOnly: false, limit: 150 });
+      const toMillis = (v) => (v?.toMillis?.() ?? Number(v) ?? 0) || 0;
+      const caseJob = (c) => {
+        const active = ["open", "in_progress", "waiting", "waiting_approval"].includes(c.status);
+        const doneToday = !active && toMillis(c.updatedAt) >= startMs && toMillis(c.updatedAt) <= endMs;
+        if (!active && !doneToday) return null;
+        const status =
+          c.status === "waiting_approval" ? "approval"
+          : c.status === "in_progress" ? "in_progress"
+          : c.status === "waiting" ? "waiting"
+          : active ? "open" : "done";
+        const draftHint = c.draft ? ` · Entwurf liegt bereit (${c.draft.channel === "letter" ? "Brief" : "E-Mail"})` : "";
+        return {
+          id: c.id,
+          title: c.title || "Vorgang",
+          detail: `${c.subject?.name ? `${c.subject.name} · ` : ""}${c.handoff?.instruction || ""}${draftHint}`.slice(0, 220),
+          status,
+          ts: c.lastContactAt || toMillis(c.updatedAt),
+          link: { kind: "case", id: c.id },
+        };
+      };
+      for (const c of cases) {
+        const who = String(c.assignee || "").toLowerCase();
+        if (who !== "nadine" && who !== "team") continue;
+        const job = caseJob(c);
+        if (!job) continue;
+        if (who === "nadine") nadineJobs.push(job); else teamJobs.push(job);
+      }
+    } catch (e) {
+      notes.push(`cases:${String(e?.message || e)}`);
+    }
+
+    // QM: Julias Tageskalender — offene Jobs bis heute (Überfälliges bleibt
+    // sichtbar) + heute Erledigtes, gruppiert nach zugewiesener Helferin.
+    const qmByStaff = new Map();
+    let qmUnassigned = [];
+    try {
+      const qmJobs = await qmListCalendar(clientId, { fromMs: 0, toMs: endMs });
+      for (const j of qmJobs) {
+        const isOpen = QM_OPEN_STATES.has(j.status);
+        const completedMs = j.completedAt ? new Date(j.completedAt).getTime() : 0;
+        const doneToday = j.status === "done" && completedMs >= startMs && completedMs <= endMs;
+        if (!isOpen && !doneToday) continue;
+        const overdue = isOpen && (j.dueAtMs || 0) < nowMs && (j.status === "overdue" || (j.dueAtMs || 0) < startMs);
+        const job = {
+          id: j.id,
+          title: j.title || j.bookKey || "QM-Aufgabe",
+          detail: [j.deviceRef, j.cycle ? `Zyklus ${j.cycle}` : "", j.status === "escalated" && j.escalation?.escalatedToName ? `eskaliert an ${j.escalation.escalatedToName}` : ""].filter(Boolean).join(" · ").slice(0, 220),
+          status:
+            j.status === "done" ? "done"
+            : j.status === "escalated" ? "escalated"
+            : overdue || j.status === "overdue" ? "overdue"
+            : j.status === "in_progress" ? "in_progress"
+            : j.status === "seen" ? "seen"
+            : "open",
+          ts: j.dueAtMs || 0,
+          dueMs: j.dueAtMs || 0,
+          link: { kind: "qm_job", id: j.id },
+          doneBy: j.completedByName || null,
+        };
+        if (j.assignedTo) {
+          const key = j.assignedTo;
+          if (!qmByStaff.has(key)) qmByStaff.set(key, { name: j.assignedToName || "Mitarbeiter/in", jobs: [] });
+          qmByStaff.get(key).jobs.push(job);
+        } else {
+          qmUnassigned.push(job);
+        }
+      }
+    } catch (e) {
+      notes.push(`qm:${String(e?.message || e)}`);
+    }
+
+    const pack = (key, name, kind, role, jobs) => ({
+      key, name, kind, role,
+      total: jobs.length,
+      done: jobs.filter((j) => j.status === "done").length,
+      attention: jobs.filter((j) => j.status === "overdue" || j.status === "escalated" || j.status === "problem" || j.status === "approval").length,
+      jobs: jobs.slice(0, 25),
+    });
+
+    workers.push(pack("nadine", "Nadine", "ai", "Post & E-Mail", nadineJobs));
+    workers.push(pack("lisa", "Lisa", "ai", "Telefon ausgehend", lisaJobs));
+    if (teamJobs.length) workers.push(pack("team", "Team", "human", "Persönlich übernommen", teamJobs));
+    for (const [staffId, entry] of [...qmByStaff.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name))) {
+      workers.push(pack(`staff:${staffId}`, entry.name, "human", "QM · Julia", entry.jobs.sort((a, b) => (a.dueMs || 0) - (b.dueMs || 0))));
+    }
+    if (qmUnassigned.length) {
+      workers.push(pack("julia", "Julia", "ai", "QM · noch zu verteilen", qmUnassigned.sort((a, b) => (a.dueMs || 0) - (b.dueMs || 0))));
+    }
+
+    res.json({ ok: true, clientId, date, startMs, endMs, buckets, workers, notes });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
