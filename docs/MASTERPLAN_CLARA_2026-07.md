@@ -166,10 +166,23 @@ unterdruecken den Raum (by design) -> **perfekt fuer Arzt-Kanal, ungeeignet
 fuer Raumaufnahme**. Bluetooth-HFP ~16 kHz mono reicht fuer STT des Traegers.
 Vorteil: Clara antwortet privat ins Ohr, Haende bleiben steril.
 
-- [ ] **Stufe A (nur Shokz, keine Raummikros):** Wake-Word ("Clara") +
-      Kommandos + Diktat + Briefings ueber Headset. Engine lokal:
-      openWakeWord ODER Picovoice Porcupine (Custom-Keyword). Parallel
-      Push-to-talk in der Pairing-App (HFP-Dauerbetrieb zieht Akku - messen).
+- [~] **Stufe A (nur Shokz, keine Raummikros):** Wake-Word ("Clara") +
+      Kommandos + Diktat + Briefings ueber Headset.
+      SOFTWARE ERLEDIGT 04.07. - STT-BASIERT statt eigener Engine:
+      Die bestehende VAD/Whisper-Pipeline laeuft weiter, aber im Standby
+      dispatcht NUR, was mit dem Wake-Wort beginnt (erste 3 Tokens;
+      "Klara"-STT-Variante inklusive, "Lara/Karla" bewusst NICHT).
+      `services/worker_wake.py` (pure Zustandsmaschine standby/active,
+      38 Unit-Checks in `testsuite/test_wake_word.py`, im Schnell-Gate),
+      Gate im Mic-Dispatch VOR Transkript-Speicherung (Hygiene: verworfene
+      Umgebungssaetze werden nie gespeichert/geloggt), Spekulativ-LLM +
+      Partial-Barge-in im Standby nur mit Wake-Praefix, Quittungen
+      ("Ja, bitte?"/"Okay."), `wake_state`-Event + Anzeige im Telefon-
+      Frontend. Aktivierung PRO PROFIL: `"wake_word": {"enabled": true}`
+      (default AUS - Bianca/Bestand byte-identisch; Voll-Gate SAFE 120/128).
+      openWakeWord/Porcupine bleiben Option fuer Always-on-Hardware spaeter.
+      OFFEN (braucht Chef vor Ort): Shokz pairen, Live-Probe im Zimmer,
+      Push-to-talk-Fallback in der Pairing-App, Akku-Messung HFP.
 - [ ] Bohrer-/Absauggeraeusch-Samples in die Testsuite (STT-Robustheit).
 - [ ] Latenz-Budget messen: Wake->Zuhoeren <0,5 s, Antwortbeginn <2 s.
 - [ ] **Stufe B (nur fuer Ambient, Phase 4):** EIN Zimmer bekommt ein
