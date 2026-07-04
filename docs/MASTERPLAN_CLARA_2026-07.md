@@ -105,9 +105,17 @@ Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
 
 ## Phase 2 - Dens-Office-Anbindung (paralleler Track, extern getaktet)
 
+**ZURUECKGESTELLT (Entscheid Chef, 04.07.2026):** Der PVS-Adapter wird
+GROESSER geschnitten als nur Voice/Clara - er muss das KOMPLETTE System
+bedienen (Plattform-Kalender, Lena-Doku, Sophie-Abrechnung, Briefings,
+nicht nur Claras Sprach-Tools). Phase 2 wird neu geplant, wenn der
+System-Schnitt steht; bis dahin laufen die anderen Phasen weiter.
+
 - [ ] Neutrale Adapter-Schnittstelle `pvs/adapter.js` (getPatient,
       getAppointments, getChartEntries, writeDocument, writeChartEntry,
       writeBillingPositions). Dens = erster Adapter, nie die Schnittstelle.
+      Schnittstelle wird SYSTEM-weit konsumiert (MAS-2-Kern), nicht aus
+      dem Voice-Stack heraus.
 - [ ] Kickoff-Fragen an DENS: lesbare/schreibbare Objekte? Events/Webhooks?
       Auth? Sandbox-Mandant? (Oeffentlich belegt: VDDS-MMI + DENSimport-PDF.)
 - [ ] Meilensteine: M0 Sandbox + ID-Mapping (`mas_pvs_map`) -> M1 Patienten/
