@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import { todayBerlin } from "./clara/daySchedule.js";
 import { dokuAbendlauf } from "./clara/dokuWaechter.js";
+import { runProaktivSweep } from "./clara/interruptPolicy.js";
 import { sweepRecallOutcomes, dailyInitiativeScan } from "./clara/recallCoach.js";
 import { sweepAbsenceRebookings } from "./clara/absencePlanner.js";
 import { runRetentionSweep } from "./brain/retention.js";
@@ -341,5 +342,22 @@ app.listen(PORT, () => {
       }
     }, 5 * 60_000);
     log.info("doku waechter scheduler enabled");
+  }
+
+  // Proaktiv-Engine (Masterplan Phase 5, 04.07.2026): alle 5 Minuten pruefen,
+  // ob NEUE P0/P1-Punkte in der ASAP-Queue liegen. P0 -> ein aktiver Anruf pro
+  // Tag, P1 -> Push in der naechsten Kalenderluecke (Budget 3/Tag). Der erste
+  // Lauf markiert den Bestand nur als bekannt (Baseline) und meldet nichts.
+  // Not-Aus: MAS_PROAKTIV=0 oder mas_config/proaktiv { enabled: false }.
+  if (DEFAULT_CLIENT_ID && process.env.MAS_PROAKTIV !== "0") {
+    setInterval(async () => {
+      try {
+        const out = await runProaktivSweep(DEFAULT_CLIENT_ID, { publicBaseUrl: PUBLIC_BASE_URL });
+        if (out?.announced || out?.baselined) log.info("proaktiv.sweep_result", out);
+      } catch (e) {
+        log.warn("proaktiv.sweep_error", { error: String(e?.message || e) });
+      }
+    }, 5 * 60_000);
+    log.info("proaktiv scheduler enabled", { intervalMs: 5 * 60_000 });
   }
 });

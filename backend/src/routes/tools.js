@@ -24,6 +24,7 @@ import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../c
 import { spokenMorningBriefing } from "../clara/morningBriefing.js";
 import { spokenEveningBriefing } from "../clara/eveningBriefing.js";
 import { buildAsapQueue, spokenAsapQueue } from "../clara/asapQueue.js";
+import { snoozeProaktiv } from "../clara/interruptPolicy.js";
 import { approveAndExecute, snoozeInitiative, initiativeSuffix, recallStatusSpoken } from "../clara/recallCoach.js";
 import { planAbsence, approveAbsence, absenceStatusSpoken } from "../clara/absencePlanner.js";
 import { lookupCaller, normalizePhone } from "../clara/callerLookup.js";
@@ -420,6 +421,25 @@ router.post("/tools/asap-queue", async (req, res) => {
     // FreiSprech: Varianz mit Fakten-Guard, deterministischer Text als Netz.
     try { message = (await freiFormulieren(message, { kontext: "Dringlichkeits-Auskunft (Was brennt?)" })).text; } catch { /* deterministisch weiter */ }
     return res.json({ ok: true, message, counts: queue.counts, items: queue.items });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Proaktiv-Snooze ("Clara, Ruhe jetzt"): pausiert Spontan-Meldungen der
+// Proaktiv-Engine. Lern-Regel: zweimal am selben Tag gesnoozt => Rest des
+// Tages nur noch P0. Kritisches (P0) kommt IMMER durch.
+router.post("/tools/proaktiv-snooze", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const minutes = Number(req.body?.minutes) || 60;
+    const op = await getOperator(clientId).catch(() => null);
+    const out = await snoozeProaktiv(clientId, { minutes, by: op?.name || "" });
+    return res.json({ ok: true, message: out.message, minutes: out.minutes, restOfDay: out.restOfDay });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
