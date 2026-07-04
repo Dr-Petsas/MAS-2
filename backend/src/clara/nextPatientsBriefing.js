@@ -1,6 +1,6 @@
 import { getDayAppointments, getPatientAppointments, todayBerlin } from "./daySchedule.js";
 import { getPatientAnamnese, bogenStand } from "./anamnese.js";
-import { pick, clinicalHints } from "./speech.js";
+import { vary, clinicalHints } from "./speech.js";
 import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -42,9 +42,10 @@ function kurz(s, max = 160) {
 // Anamnese-Warnung in EINEM Satz: nur die klinisch relevanten Kategorien
 // (Allergie, Medikamente, Vorerkrankung, Schwangerschaft ...) als Stichpunkte,
 // plus — wenn ableitbar — ein klinischer Rueckschluss fuer den Behandler
-// (z. B. Bluthochdruck -> adrenalinfreie Betaeubung erwaegen). Der Lead-in
-// variiert (Seed = Patient), damit es nicht bei jedem Patienten gleich klingt.
-function kompakteAnamnese(ana, { seed = "" } = {}) {
+// (z. B. Bluthochdruck -> adrenalinfreie Betaeubung erwaegen). Die Lead-ins
+// kommen aus >=10er-Pools (speech.js/vary, Anti-Wiederholung) — Fakten setzen
+// wir ein, die Variation kann nichts erfinden. Kein Humor bei Warnungen.
+function kompakteAnamnese(ana) {
     if (!ana?.ok) return "";
     if (ana.findings?.length) {
         const byCat = new Map();
@@ -58,19 +59,37 @@ function kompakteAnamnese(ana, { seed = "" } = {}) {
             parts.push(texts.length ? `${cat}: ${[...new Set(texts)].join(", ")}` : cat);
         }
         if (parts.length) {
-            const lead = pick([
+            const lead = vary("headsup.analead", [
                 "Achtung, wichtig aus der Anamnese",
                 "Aus der Anamnese unbedingt beachten",
                 "Wichtig vorab aus der Anamnese",
                 "Aufgepasst, die Anamnese zeigt",
-            ], seed);
+                "Der Anamnesebogen meldet",
+                "Vor der Behandlung kurz wichtig",
+                "Aus dem Bogen bitte mitnehmen",
+                "Die Kartei hat hier eine Markierung",
+                "Bitte auf dem Schirm haben",
+                "Ein Blick in die Anamnese lohnt sich",
+                "Dazu gehört diese Vorgeschichte",
+            ]);
             let msg = `${lead} — ${parts.join("; ")}`;
             // Aus dem signierten PDF rekonstruiert: Stand ehrlich dazusagen,
             // ein alter Bogen kann ueberholt sein.
             if (ana.ausPdf && ana.bogenMs) msg += ` (unterschriebener Bogen vom ${bogenStand(ana.bogenMs)})`;
             const hints = clinicalHints(ana.findings);
             if (hints.length) {
-                const hlead = pick(["Mein Hinweis", "Denk dran", "Praktisch heißt das"], seed);
+                const hlead = vary("headsup.hintlead", [
+                    "Mein Hinweis",
+                    "Denk dran",
+                    "Praktisch heißt das",
+                    "Für die Behandlung bedeutet das",
+                    "Daraus folgt",
+                    "Kleiner Merker von mir",
+                    "Konkret heißt das",
+                    "Mein Tipp dazu",
+                    "Zur Sicherheit",
+                    "Was das für heute heißt",
+                ]);
                 msg += `. ${hlead}: ${hints.join("; ")}`;
             }
             return msg;
@@ -79,6 +98,20 @@ function kompakteAnamnese(ana, { seed = "" } = {}) {
     if (ana.signedOnly) return "Die Anamnese liegt unterschrieben nur als PDF vor und kann nicht automatisch gelesen werden";
     return "";
 }
+
+// Lead-ins fuer den "letzter Besuch"-Teil (vor einem Doppelpunkt nutzbar).
+const LETZTES_MAL_LEADS = [
+    "Beim letzten Mal",
+    "Zuletzt",
+    "Beim letzten Besuch",
+    "Das letzte Mal",
+    "Beim vorigen Termin",
+    "Der letzte Eintrag",
+    "In der Kartei steht zuletzt",
+    "Zur Vorgeschichte",
+    "Der letzte Besuch",
+    "Vorher war",
+];
 
 function lastContactText(c) {
     const updates = Array.isArray(c?.updates) ? c.updates : [];
@@ -248,7 +281,7 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
                 // statt nur visitMotive + comments.
                 const lastMotive = hist.last.visitMotive || "ein Termin";
                 const lastNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 120)}` : "";
-                s += `. ${pick(["Beim letzten Mal", "Zuletzt", "Beim letzten Besuch"], a.patientId)}: ${lastMotive}${lastNote}`;
+                s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${lastMotive}${lastNote}`;
                 letzterBesuch = { motive: lastMotive, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
             } else {
                 s += ". Kein früherer Termin bekannt";
@@ -263,7 +296,7 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
         let anaHints = [];
         try {
             const ana = await getPatientAnamnese(clientId, { patientId: a.patientId });
-            const anaTxt = kompakteAnamnese(ana, { seed: a.patientId });
+            const anaTxt = kompakteAnamnese(ana);
             if (anaTxt) s += `. ${anaTxt}`;
             if (ana?.ok && ana.findings?.length) {
                 anaFindings = ana.findings;
@@ -300,7 +333,18 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
     }
 
     const kopf = single
-        ? pick(["Heads up", "Kurz zum Patienten", "Zum nächsten Patienten", "Aufgepasst"], anstehend[0]?.patientId || "")
+        ? vary("headsup.kopf", [
+            "Heads up",
+            "Kurz zum Patienten",
+            "Zum nächsten Patienten",
+            "Aufgepasst",
+            "Kurzes Briefing",
+            "Einmal kurz vorab",
+            "Bevor es losgeht",
+            "Zur Vorbereitung",
+            "Kleiner Überblick",
+            "Das Wichtigste vorweg",
+        ])
         : (anstehend.length === 1 ? "Der nächste Patient" : `Die nächsten ${anstehend.length} Patienten`);
     return { ok: true, message: `${kopf}: ${teile.join(" ")}`, count: anstehend.length, cards };
 }
@@ -345,7 +389,7 @@ async function renderChartPatient(clientId, patientName) {
             if (hist.last) {
                 const lMot = hist.last.visitMotive || "ein Termin";
                 const lNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 120)}` : "";
-                s += `. ${pick(["Beim letzten Mal", "Zuletzt", "Beim letzten Besuch"], subj.patientId)}: ${lMot}${lNote}`;
+                s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${lMot}${lNote}`;
                 letzterBesuch = { motive: lMot, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
             }
             if (!hist.next && !hist.last) s += ". Kein Termin in der Historie";
@@ -359,7 +403,7 @@ async function renderChartPatient(clientId, patientName) {
     let anaHints = [];
     try {
         const ana = await getPatientAnamnese(clientId, { patientId: subj.patientId });
-        const anaTxt = kompakteAnamnese(ana, { seed: subj.patientId });
+        const anaTxt = kompakteAnamnese(ana);
         if (anaTxt) s += `. ${anaTxt}`;
         if (ana?.ok && ana.findings?.length) {
             anaFindings = ana.findings;

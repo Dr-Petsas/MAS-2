@@ -1,18 +1,22 @@
 import "dotenv/config";
 import admin from "../src/firebase.js";
-import { getPatientAnamnese, buildSpokenAnamnese } from "../src/clara/anamnese.js";
+import { getPatientAnamnese } from "../src/clara/anamnese.js";
 
-// Demo-Seed (04.07.2026): Andrea Sablons Anamnesebogen (Status "sent", noch
-// NICHT unterschrieben -> formRows lesbar) bekommt realistische auffaellige
-// Antworten, damit die neue Anamnese-Flags-Box im Termin-Popup und Claras
-// Anamnese-Vorlesen etwas zu zeigen haben:
-//   - Allergien: Ja -> "Penicillin"
-//   - Medikamente: Ja -> "Marcumar"
-//   - Bluthochdruck: Ja
-// Idempotent: setzt dieselben Werte bei jedem Lauf.
+// Gegenstueck zu seed-anamnese-sablon.mjs (05.07.2026): Die am 04.07. per
+// Skript in Andrea Sablons ECHTEN (unsignierten) Anamnesebogen geschriebenen
+// Demo-Antworten werden wieder entfernt — die Patientin hat den Bogen nie
+// selbst ausgefuellt, erfundene Medizindaten duerfen nicht stehen bleiben.
+// Chirurgisch: NUR die drei geseedeten Fragen werden zurueckgesetzt
+// (alle Antworten abgewaehlt, Folge-Freitexte geleert). Idempotent.
 
 const CLIENT = "MEe4ZQHEzOPzLcexyhdT";
 const LASTNAME = "Sablon";
+const FRAGEN = [
+  "Leiden Sie unter Allergien",
+  "Nehmen Sie regelmäßig Medikamente",
+  "Bluthochdruck",
+];
+
 const db = admin.firestore();
 
 const loc = (await db.collection("clients").doc(CLIENT).collection("locations").limit(1).get()).docs[0];
@@ -33,29 +37,22 @@ function deLabel(item) {
   return String(l?.value || "").trim();
 }
 
-// Radio-Frage bejahen: "Ja"-Antwort ankreuzen, "Nein" abwaehlen, optionalen
-// Folge-Freitext ("Welche?") setzen.
-function answerYes(question, detailText = "") {
+// Radio-Frage komplett zuruecksetzen: KEINE Antwort angekreuzt, Freitexte leer.
+function resetQuestion(question) {
   let hit = 0;
   const walk = (rws) => {
     for (const r of rws || []) {
       for (const c of r?.columns || []) {
         if (c?.type === 8 && deLabel(c).toLowerCase().includes(question.toLowerCase())) {
           for (const a of c.answers || []) {
-            const lab = deLabel(a).toLowerCase();
-            if (lab.startsWith("ja")) {
-              a.checked = true;
-              if (detailText) {
-                for (const fr of a.formRows || []) {
-                  for (const fc of fr?.columns || []) {
-                    if (fc?.type === 5) fc.value = detailText;
-                  }
-                }
+            a.checked = false;
+            for (const fr of a.formRows || []) {
+              for (const fc of fr?.columns || []) {
+                if (fc?.type === 5) fc.value = "";
               }
-            } else if (lab.startsWith("nein")) {
-              a.checked = false;
             }
           }
+          if (typeof c.value === "string") c.value = "";
           hit++;
         }
         if (Array.isArray(c?.formRows)) walk(c.formRows);
@@ -67,16 +64,20 @@ function answerYes(question, detailText = "") {
   return hit;
 }
 
-const h1 = answerYes("Leiden Sie unter Allergien", "Penicillin");
-const h2 = answerYes("Nehmen Sie regelmäßig Medikamente", "Marcumar");
-const h3 = answerYes("Bluthochdruck");
-console.log(`gesetzt: Allergien=${h1}, Medikamente=${h2}, Bluthochdruck=${h3}`);
+for (const frage of FRAGEN) {
+  const n = resetQuestion(frage);
+  console.log(`zurueckgesetzt: "${frage}" -> ${n} Treffer`);
+}
 
 await anaDoc.ref.update({ formRows: rows });
-console.log("Bogen aktualisiert:", anaDoc.id, "| Status bleibt:", data.status);
+console.log("Bogen bereinigt:", anaDoc.id, "| Status bleibt:", data.status);
 
-// Gegenprobe ueber die MAS-Logik (muss dieselben Flags melden wie die Box).
+// Gegenprobe: MAS-Logik darf KEINE Befunde mehr melden.
 const check = await getPatientAnamnese(CLIENT, { patientId: pat.id });
-console.log("MAS-Flags:", JSON.stringify(check.findings));
-console.log("Clara wuerde sagen:", buildSpokenAnamnese(check, { who: "Frau Sablon" }));
+console.log("MAS-Flags danach:", JSON.stringify(check.findings));
+if (check.findings.length) {
+  console.error("FEHLER: Es sind noch Befunde uebrig!");
+  process.exit(1);
+}
+console.log("OK: keine Anamnese-Befunde mehr fuer Sablon.");
 process.exit(0);

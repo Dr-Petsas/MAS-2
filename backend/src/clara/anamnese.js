@@ -1,5 +1,6 @@
 import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
+import { vary } from "./speech.js";
 
 // Anamnese-Auffaelligkeiten (16.06.2026): Clara liest den Anamnesebogen eines
 // Patienten und meldet auffaellige Eintraege (Allergien, Medikamente,
@@ -260,20 +261,70 @@ function hatAntworten(formRows) {
  * Gesprochener Anamnese-Report. Meldet auffaellige Eintraege, sagt ehrlich
  * Bescheid, wenn die Anamnese nur als PDF vorliegt, und schlaegt vor, einen
  * Befund als Notiz festzuhalten.
+ *
+ * Formulierungs-Variation (05.07.2026, Chef-Wunsch "nicht so steif"):
+ * Pro Situation ein Pool aus >= 10 Formulierungen (Ansaetze siehe
+ * speech.js/vary — kollegial, warm, leichter Humor, Bild, Entwarnung zuerst,
+ * Prioritaet zuerst, Frage, knapp, erzaehlerisch, zupackend). Die FAKTEN
+ * ({who}, Befundliste, Bogen-Datum) setzt der Code ein — die Variation kann
+ * nichts erfinden. Humor NIE ueber Befunde, nur bei Entwarnung/Neutralem.
  */
 export function buildSpokenAnamnese(result, { who = "der Patient" } = {}) {
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-  if (!result?.ok) return `Die Anamnese von ${who} kann ich gerade nicht abrufen.`;
-  if (!result.hasAnamnese) return `Zu ${who} finde ich keine Anamnese im System.`;
-  if (result.signedOnly && !result.findings.length) {
-    return `Die Anamnese von ${who} ist unterschrieben und liegt nur als PDF vor — den Inhalt kann ich nicht automatisch vorlesen.`;
+
+  if (!result?.ok) {
+    return vary("anamnese.fehler", [
+      `Die Anamnese von ${who} kann ich gerade nicht abrufen.`,
+      `Ich komme im Moment nicht an die Anamnese von ${who} heran — bitte gleich noch einmal fragen.`,
+      `Da klemmt es gerade beim Zugriff auf den Bogen von ${who}. Einen Moment, dann versuche ich es wieder.`,
+      `Die Kartei gibt mir die Anamnese von ${who} gerade nicht her. Ich würde es gleich noch einmal probieren.`,
+      `Technisches Sorry: Der Anamnesebogen von ${who} lädt gerade nicht.`,
+    ]);
   }
+
+  if (!result.hasAnamnese) {
+    return vary("anamnese.keine", [
+      `Zu ${who} finde ich keine Anamnese im System.`,
+      `Für ${who} liegt noch gar kein Anamnesebogen vor — da müssten wir erst einen verschicken.`,
+      `Da ist nichts: ${who} hat bei uns noch keinen Anamnesebogen ausgefüllt.`,
+      `Ich habe in der Kartei nachgesehen — ein Anamnesebogen von ${who} ist nicht dabei.`,
+      `Fehlanzeige bei der Anamnese: Von ${who} gibt es im System keinen Bogen.`,
+      `Der Ordner ist leer — für ${who} wurde noch keine Anamnese erfasst.`,
+    ]);
+  }
+
+  if (result.signedOnly && !result.findings.length) {
+    return vary("anamnese.nurpdf", [
+      `Die Anamnese von ${who} ist unterschrieben und liegt nur als PDF vor — den Inhalt kann ich nicht automatisch vorlesen.`,
+      `Ehrliche Antwort: Der Bogen von ${who} ist unterschrieben und steckt als PDF im Archiv — da komme ich mit dem Lesen nicht rein.`,
+      `Bei ${who} gibt es nur den unterschriebenen PDF-Bogen, und der lässt sich maschinell nicht auswerten. Am besten kurz selbst hineinschauen.`,
+      `Die Anamnese von ${who} liegt als unterschriebenes PDF vor. Vorlesen kann ich daraus leider nichts — behaupten will ich erst recht nichts.`,
+      `Da muss ich passen: ${who} hat nur einen unterschriebenen PDF-Bogen, den ich nicht automatisch lesen kann.`,
+    ]);
+  }
+
   // Aus dem signierten PDF gelesen: Stand des Bogens ehrlich dazusagen.
   const stand = result.ausPdf && result.bogenMs ? bogenStand(result.bogenMs) : "";
+  const standSatz = stand ? ` Der unterschriebene Bogen ist vom ${stand}.` : "";
+
   if (!result.findings.length) {
-    return `Die Anamnese von ${who} habe ich geprüft${stand ? ` — der unterschriebene Bogen ist vom ${stand}` : ""} — keine auffälligen Einträge bei Allergien, Medikamenten oder Vorerkrankungen.`;
+    // Entwarnung — hier darf es auch mal schmunzeln (nie ueber den Patienten).
+    return vary("anamnese.unauffaellig", [
+      `Die Anamnese von ${who} habe ich geprüft — keine auffälligen Einträge bei Allergien, Medikamenten oder Vorerkrankungen.${standSatz}`,
+      `Gute Nachricht: Im Bogen von ${who} ist alles unauffällig — keine Allergien, keine Dauermedikamente, keine Vorerkrankungen vermerkt.${standSatz}`,
+      `Ich habe den Bogen von ${who} durchgesehen — nichts, was für die Behandlung wichtig wäre. Alles glatt.${standSatz}`,
+      `Kurz und schmerzlos: Bei ${who} ist in der Anamnese nichts Auffälliges angekreuzt.${standSatz}`,
+      `Die Anamnese von ${who} ist die langweiligste Sorte — und das ist hier ein Kompliment: keine Auffälligkeiten.${standSatz}`,
+      `Alles ruhig bei ${who}: Der Bogen zeigt weder Allergien noch Medikamente noch Vorerkrankungen.${standSatz}`,
+      `Von der Anamnese her grünes Licht für ${who} — keine besonderen Einträge.${standSatz}`,
+      `Ich habe extra zweimal hingesehen: Im Bogen von ${who} ist nichts Auffälliges dabei.${standSatz}`,
+      `Da kann ich Entwarnung geben — die Anamnese von ${who} ist ohne Befund.${standSatz}`,
+      `Nichts zu melden bei ${who}: Allergien, Medikamente, Vorerkrankungen — überall Nein angekreuzt.${standSatz}`,
+      `${cap(who)} macht es uns leicht: Die Anamnese ist komplett unauffällig.${standSatz}`,
+    ]);
   }
-  // Befunde je Kategorie buendeln.
+
+  // Befunde je Kategorie buendeln (Fakten — bleiben in JEDER Variante gleich).
   const byCat = new Map();
   for (const f of result.findings) {
     if (!byCat.has(f.category)) byCat.set(f.category, []);
@@ -284,8 +335,39 @@ export function buildSpokenAnamnese(result, { who = "der Patient" } = {}) {
   for (const [cat, texts] of byCat) {
     parts.push(texts.length ? `${cat}: ${[...new Set(texts)].join(", ")}` : cat);
   }
-  const lead = `In der Anamnese von ${who}${stand ? ` — unterschriebener Bogen vom ${stand} —` : ""} gibt es auffällige Einträge: ${parts.join("; ")}.`;
-  return `${cap(lead)} Soll ich das als Notiz festhalten?`;
+  const befunde = parts.join("; ");
+  const standEinschub = stand ? ` — unterschriebener Bogen vom ${stand} —` : "";
+
+  // Befunde vorhanden: sachlich in der Sache, variantenreich im Ton.
+  // KEIN Humor ueber die Befunde selbst.
+  const meldung = vary("anamnese.befunde", [
+    `In der Anamnese von ${who}${standEinschub} gibt es auffällige Einträge: ${befunde}.`,
+    `Kurz zur Anamnese von ${who}${standEinschub}: Da steht etwas, das du wissen solltest — ${befunde}.`,
+    `Wichtig für die Behandlung von ${who}${standEinschub}: ${befunde}.`,
+    `Ich habe den Bogen von ${who} durchgesehen${standEinschub} — dabei sind mir diese Punkte aufgefallen: ${befunde}.`,
+    `Bei ${who} bitte auf dem Schirm haben${standEinschub}: ${befunde}.`,
+    `Der Bogen von ${who} hat ein paar markierte Stellen${standEinschub}: ${befunde}.`,
+    `Bevor ${who} im Stuhl sitzt${standEinschub}, kurz das Wichtigste aus der Anamnese: ${befunde}.`,
+    `Aufgepasst bei ${who}${standEinschub} — die Anamnese meldet: ${befunde}.`,
+    `${cap(who)} bringt aus der Anamnese etwas mit${standEinschub}: ${befunde}.`,
+    `Denk bei ${who} bitte an Folgendes aus dem Bogen${standEinschub}: ${befunde}.`,
+    `Die Anamnese von ${who} ist nicht ganz leer${standEinschub} — vermerkt sind: ${befunde}.`,
+  ]);
+
+  const frage = vary("anamnese.notizfrage", [
+    "Soll ich das als Notiz festhalten?",
+    "Soll ich dir das an den Termin schreiben?",
+    "Möchtest du, dass ich das als Notiz hinterlege?",
+    "Sag Bescheid, wenn ich das als Notiz speichern soll.",
+    "Wenn du willst, halte ich das direkt als Notiz fest.",
+    "Soll ich das für den Termin notieren?",
+    "Auf Wunsch schreibe ich das gleich in die Kartei-Notiz.",
+    "Soll das als Vermerk an den Termin?",
+    "Ich kann das als Notiz anheften — einfach Ja sagen.",
+    "Festhalten als Notiz? Ein Wort genügt.",
+  ]);
+
+  return `${cap(meldung)} ${frage}`;
 }
 
 /** "16.05.2025" fuer die Sprach-/Anzeige-Angabe "Bogen vom ...". */

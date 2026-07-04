@@ -394,6 +394,11 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Pflicht-Dokumente je Termin" beim Neubau bewusst nicht uebernommen (war Teil
   der verworrenen Seite). Wenn gewuenscht: als eigene Karte im neuen Layout
   oder bei Julia/Vorbereitung wieder andocken.
+- 05.07.2026: iPad als feste "Zimmer-Konsole" fuer Aufnahmen (einmal per
+  MAS-Geraete-Pairing koppeln, dann dauerhaft Raum-Ansicht mit Start/Pause/
+  Stopp je laufendem Termin). Grundlage existiert: treatment/recorder-Dokument
+  + RecordingControls; fehlt nur eine schlanke iPad-Oberflaeche. QR je Termin
+  (Handy-Diktat) bleibt daneben bestehen.
 - (frei)
 
 ## Aenderungslog
@@ -415,3 +420,17 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Klarstellung Modelle: Worker-Routing lokal qwen3:4b-instruct; Qwen 3.6
   MoE (pickadoc1, vLLM) bisher NUR FreiSprech — W1.5-Nachtrag: 128er-Suite
   laeuft als Messung gegen das 3.6, Chat-Spur wird darauf umgestellt.
+- 05.07.2026: W-LENA Aufnahme-Steuerung fertig: zentrales
+  treatment/recorder-Dokument (Status/Kommando/Heartbeat), gemeinsame
+  RecordingControls (Start/Pause/Beenden, Timer, Fernsteuerung, QR) auf
+  Lena-Seite + Behandlungstab; "Aufnahme starten"-Button auf der
+  Popup-Hauptseite springt in den Behandlungstab und startet sofort.
+  TS-Projektpruefung gruen.
+- 05.07.2026: Sprech-Variation gegen "Schema F": vary() in speech.js
+  (Anti-Wiederholung, 10 dokumentierte Stil-Ansaetze); Anamnese-Ansage,
+  Naechste-Patienten-Briefing und daySchedule-Sprechtexte (Historie,
+  Patiententermine, freier Slot) auf Varianten-Pools (je ~5-11) umgestellt.
+  Clara-Gate gruen.
+- 05.07.2026: Sablon-Seed bereinigt: Demo-Anamnese-Antworten aus dem echten
+  Bogen entfernt (unseed-Skript), seed-anamnese-sablon.mjs geloescht —
+  keine erfundenen Befunde mehr in Patientendaten.

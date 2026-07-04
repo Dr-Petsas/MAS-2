@@ -32,6 +32,60 @@ export function pick(variants, seed) {
   return arr[idx];
 }
 
+// ============================================================================
+// vary() — Formulierungs-Variation gegen den "Schema F"-Klang (05.07.2026).
+//
+// Chef-Anforderung: deterministische Ansagen klingen steif, JEDES Mal gleich.
+// Die Sprech-Baukaesten (Anamnese, Patienten-Termine, freie Slots, Heads-up)
+// halten deshalb pro Situation einen Pool aus >= 10 Formulierungen vor, die
+// ZEHN verschiedene ANSAETZE mischen:
+//
+//   1. Kollegial-direkt   ("Kurz zur Anamnese von X: ...")
+//   2. Warm-persoenlich   ("Ich habe fuer dich in den Bogen geschaut ...")
+//   3. Leichter Humor     (NUR bei guten/neutralen Nachrichten — nie ueber
+//                          Befunde, Diagnosen oder Patienten)
+//   4. Bild/Metapher      ("Der Bogen hat ein paar Stellen markiert ...")
+//   5. Entwarnung zuerst  ("Gute Nachricht: alles unauffaellig ...")
+//   6. Prioritaet zuerst  ("Wichtig fuer die Behandlung: ...")
+//   7. Frage-Anschluss    (endet mit natuerlicher Rueckfrage)
+//   8. Kurz und knapp     (Telegrammstil, aber ganze Saetze)
+//   9. Erzaehlerisch      ("Ich habe den Bogen durchgesehen — dabei ...")
+//  10. Zupackend/Coach    ("Denk bei der Behandlung an ...")
+//
+// vary() zieht ZUFAELLIG aus dem Pool und merkt sich pro Schluessel die
+// letzten Griffe — dieselbe Formulierung kommt also nicht zweimal
+// hintereinander (Anti-Wiederholung, prozessweit). Fakten stehen NIE im
+// Pool-Text, sondern werden vom Aufrufer eingesetzt — die Variation kann
+// deshalb nichts erfinden. Humor-Leitplanke wie in humor.js: die Sprueche
+// entstehen hier im Code, nicht im LLM — halluzinationsfrei und testbar.
+// ============================================================================
+
+const _lastVaryPicks = new Map();
+
+/**
+ * Zieht eine Formulierung aus dem Pool und vermeidet die zuletzt benutzten
+ * (pro Schluessel). Leere Liste -> "", ein Element -> dieses.
+ * @param {string} key   Situations-Schluessel (z. B. "anamnese.befunde")
+ * @param {string[]} variants
+ * @returns {string}
+ */
+export function vary(key, variants) {
+  const arr = Array.isArray(variants) ? variants.filter((v) => v != null && v !== "") : [];
+  if (!arr.length) return "";
+  if (arr.length === 1) return arr[0];
+  const memory = _lastVaryPicks.get(key) || [];
+  const avoid = new Set(memory);
+  let idx = Math.floor(Math.random() * arr.length);
+  for (let i = 0; i < 8 && avoid.has(idx) && avoid.size < arr.length; i++) {
+    idx = Math.floor(Math.random() * arr.length);
+  }
+  memory.push(idx);
+  // Bis zu 3 letzte Griffe sperren (nie mehr als Poolgroesse - 1).
+  while (memory.length > Math.min(3, arr.length - 1)) memory.shift();
+  _lastVaryPicks.set(key, memory);
+  return arr[idx];
+}
+
 // Klinische Entscheidungs-Hinweise fuer den Zahnarzt, deterministisch aus den
 // Anamnese-Befunden abgeleitet. Bewusst als "erwaegen/pruefen" formuliert —
 // Clara erinnert, ordnet nichts an und erfindet nichts.

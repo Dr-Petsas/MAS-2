@@ -3,7 +3,7 @@ import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { holidayName, isWeekend, daySpecialLabel } from "./holidays.js";
 import { redDocsQuip } from "./humor.js";
-import { pick } from "./speech.js";
+import { pick, vary } from "./speech.js";
 
 // Clara's day-schedule read model: a spoken "what's on the calendar today" that
 // reads the ACTUAL booked appointments (not just free slots, not tickets).
@@ -715,9 +715,26 @@ const TREATED_STATUS = 2; // PatientStatus.treated
  */
 export function buildSpokenTreatmentHistory(result, { who = "der Patient" } = {}) {
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-  if (!result?.ok) return `Die Behandlungen von ${who} kann ich gerade nicht abrufen.`;
+  if (!result?.ok) {
+    return vary("historie.fehler", [
+      `Die Behandlungen von ${who} kann ich gerade nicht abrufen.`,
+      `Ich komme im Moment nicht an die Behandlungs-Historie von ${who} heran.`,
+      `Die Kartei von ${who} lädt gerade nicht — bitte gleich noch einmal fragen.`,
+      `Da klemmt der Zugriff auf die Historie von ${who}. Ich probiere es gleich wieder.`,
+      `Technische Pause: Die Behandlungen von ${who} kann ich gerade nicht nachschlagen.`,
+    ]);
+  }
   const past = Array.isArray(result.past) ? result.past : [];
-  if (!past.length) return `Zu ${who} finde ich keine vergangenen Termine.`;
+  if (!past.length) {
+    return vary("historie.leer", [
+      `Zu ${who} finde ich keine vergangenen Termine.`,
+      `Bei ${who} steht noch nichts in der Termin-Historie — vermutlich der erste Besuch.`,
+      `Die Historie von ${who} ist leer, da war noch kein Termin.`,
+      `Für ${who} gibt es im Kalender keine früheren Termine.`,
+      `Da ist noch nichts gewesen: ${who} hatte bei uns bisher keinen Termin.`,
+      `Unbeschriebenes Blatt — von ${who} finde ich keine vergangenen Termine.`,
+    ]);
+  }
   // Bevorzugt erledigte Behandlungen; sonst alle vergangenen Termine.
   const treated = past.filter((a) => a.patientStatus === TREATED_STATUS);
   const pool = treated.length ? treated : past;
@@ -736,9 +753,31 @@ export function buildSpokenTreatmentHistory(result, { who = "der Patient" } = {}
     return `${rel}${motive ? ` ${motive}` : ""}${note}`;
   };
   if (recent.length === 1) {
-    return `Bei ${who} war zuletzt ein Termin ${entry(recent[0])}.`;
+    const eins = entry(recent[0]);
+    return vary("historie.einer", [
+      `Bei ${who} war zuletzt ein Termin ${eins}.`,
+      `Der letzte Besuch von ${who} war ${eins}.`,
+      `${cap(who)} war zuletzt ${eins} da.`,
+      `In der Kartei steht bei ${who} zuletzt: ein Termin ${eins}.`,
+      `Zuletzt hatten wir ${who} ${eins} hier.`,
+      `Ein Eintrag in der Historie: ${who} war ${eins} da.`,
+      `Der bisher einzige Besuch von ${who} war ${eins}.`,
+      `${cap(who)} steht mit einem Termin ${eins} in der Historie.`,
+    ]);
   }
-  const head = `Bei ${cap(who)} waren die letzten Termine: ${entry(recent[0])}`;
+  const lead = vary("historie.mehrere", [
+    `Bei ${cap(who)} waren die letzten Termine`,
+    `So sah es zuletzt bei ${who} aus`,
+    `Die letzten Besuche von ${who}`,
+    `Aus der Kartei von ${who}, die jüngsten Termine`,
+    `Kurzer Blick zurück bei ${who}`,
+    `Die Historie von ${who} zeigt zuletzt`,
+    `Zuletzt war bei ${who} Folgendes`,
+    `Das waren die letzten Termine von ${who}`,
+    `Rückblick für ${who}`,
+    `In der Behandlungs-Historie von ${who} steht zuletzt`,
+  ]);
+  const head = `${lead}: ${entry(recent[0])}`;
   const rest = recent.slice(1).map((a) => `davor ${entry(a)}`);
   return `${head}; ${rest.join("; ")}.`;
 }
@@ -751,21 +790,63 @@ export function buildSpokenTreatmentHistory(result, { who = "der Patient" } = {}
  */
 export function buildSpokenPatientAppointments(result, { who = "der Patient" } = {}) {
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-  if (!result?.ok) return `Die Termine von ${who} kann ich gerade nicht abrufen.`;
+  if (!result?.ok) {
+    return vary("pattermine.fehler", [
+      `Die Termine von ${who} kann ich gerade nicht abrufen.`,
+      `Ich komme gerade nicht an die Termine von ${who} heran — gleich noch einmal fragen, bitte.`,
+      `Der Kalender gibt mir die Termine von ${who} im Moment nicht her.`,
+      `Kurzes Störgeräusch beim Kalenderzugriff — die Termine von ${who} kann ich gerade nicht lesen.`,
+      `Da klemmt es gerade: Die Termine von ${who} lassen sich nicht abrufen.`,
+    ]);
+  }
   const { next, last } = result;
   const parts = [];
   if (next) {
     const rel = relativeDayLabel(dayOfMs(next.startMs));
+    const zeit = spokenTime(next.startMs);
     const motive = spokenMotive(next.visitMotive);
+    const motiv = motive ? ` ${motive}` : "";
     const at = next.calendarName ? ` bei ${next.calendarName}` : "";
-    parts.push(`${cap(who)} hat als Nächstes einen Termin ${rel} um ${spokenTime(next.startMs)}${motive ? ` ${motive}` : ""}${at}.`);
+    parts.push(vary("pattermine.naechster", [
+      `${cap(who)} hat als Nächstes einen Termin ${rel} um ${zeit}${motiv}${at}.`,
+      `Der nächste Termin von ${who} ist ${rel} um ${zeit}${motiv}${at}.`,
+      `${cap(who)} kommt ${rel} um ${zeit}${motiv}${at}.`,
+      `${cap(who)} steht ${rel} um ${zeit} im Kalender${motiv}${at}.`,
+      `Im Kalender steht für ${who} als Nächstes: ${rel} um ${zeit}${motiv}${at}.`,
+      `${cap(who)} ist ${rel} um ${zeit} wieder da${motiv}${at}.`,
+      `Als Nächstes sehen wir ${who} ${rel} um ${zeit}${motiv}${at}.`,
+      `Notiert ist für ${who} ein Termin ${rel} um ${zeit}${motiv}${at}.`,
+      `${cap(who)} hat den nächsten Besuch ${rel} um ${zeit}${motiv}${at}.`,
+      `Der Kalender sagt: ${who} kommt ${rel} um ${zeit}${motiv}${at}.`,
+    ]));
   } else {
-    parts.push(`${cap(who)} hat aktuell keinen kommenden Termin im Kalender.`);
+    parts.push(vary("pattermine.keiner", [
+      `${cap(who)} hat aktuell keinen kommenden Termin im Kalender.`,
+      `Für ${who} steht derzeit nichts im Kalender — kein kommender Termin.`,
+      `Da ist nichts geplant: ${who} hat momentan keinen nächsten Termin.`,
+      `${cap(who)} steht aktuell mit keinem Termin im Kalender.`,
+      `Kein Eintrag: Für ${who} ist gerade kein Termin gebucht.`,
+      `${cap(who)} hat im Moment keinen Termin vor sich — falls gewünscht, kann ich einen Vorschlag machen.`,
+      `Momentan Fehlanzeige — ${who} hat keinen anstehenden Termin.`,
+      `Der Kalender ist an der Stelle leer: kein kommender Termin für ${who}.`,
+      `${cap(who)} ist derzeit ohne Folgetermin.`,
+      `Nichts Zukünftiges im Kalender für ${who}.`,
+    ]));
   }
   if (last) {
     const relL = relativeDayLabel(dayOfMs(last.startMs));
     const motiveL = spokenMotive(last.visitMotive);
-    parts.push(`Der letzte Termin war ${relL}${motiveL ? ` ${motiveL}` : ""}.`);
+    const motivL = motiveL ? ` ${motiveL}` : "";
+    parts.push(vary("pattermine.letzter", [
+      `Der letzte Termin war ${relL}${motivL}.`,
+      `Zuletzt war ${who} ${relL}${motivL} da.`,
+      `Der letzte Besuch war ${relL}${motivL}.`,
+      `Davor: ein Termin ${relL}${motivL}.`,
+      `Zuletzt stand ${relL} ein Termin${motivL} an.`,
+      `Das letzte Mal war ${relL}${motivL}.`,
+      `In der Historie steht zuletzt ${relL} ein Termin${motivL}.`,
+      `Der jüngste Eintrag: ${relL}${motivL}.`,
+    ]));
   }
   return parts.join(" ");
 }
@@ -774,7 +855,15 @@ export function buildSpokenPatientAppointments(result, { who = "der Patient" } =
 export function buildSpokenNextFreeSlot(slotIso, { calendarName = "", visitMotiveName = "" } = {}) {
   const m = String(slotIso || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
   if (!m) {
-    return `${calendarName ? `Bei ${calendarName}` : "In den nächsten Tagen"} finde ich aktuell keinen freien Termin.`;
+    const wo = calendarName ? `bei ${calendarName}` : "in den nächsten Tagen";
+    return vary("slot.keiner", [
+      `${wo.charAt(0).toUpperCase()}${wo.slice(1)} finde ich aktuell keinen freien Termin.`,
+      `Da ist ${wo} gerade alles belegt — ich finde keinen freien Termin.`,
+      `Leider Fehlanzeige: ${wo} ist aktuell nichts frei.`,
+      `Der Kalender ist ${wo} gut gefüllt, ich sehe keinen freien Termin.`,
+      `Ich habe geschaut — ${wo} ist momentan kein Termin frei.`,
+      `Volles Haus: ${wo} finde ich derzeit keine Lücke.`,
+    ]);
   }
   const rel = relativeDayLabel(m[1]);
   const hh = Number(m[2]);
@@ -782,7 +871,18 @@ export function buildSpokenNextFreeSlot(slotIso, { calendarName = "", visitMotiv
   const time = mm === 0 ? `${hh} Uhr` : `${hh} Uhr ${mm}`;
   const at = calendarName ? ` bei ${calendarName}` : "";
   const fuer = visitMotiveName ? ` für ${visitMotiveName}` : "";
-  return `Der nächste freie Termin${at}${fuer} ist ${rel} um ${time}.`;
+  return vary("slot.gefunden", [
+    `Der nächste freie Termin${at}${fuer} ist ${rel} um ${time}.`,
+    `Frei wäre als Nächstes${fuer}: ${rel} um ${time}${at}.`,
+    `Die nächste Lücke${at}${fuer} ist ${rel} um ${time}.`,
+    `Ich hätte ${rel} um ${time}${at} etwas frei${fuer}.`,
+    `${rel.charAt(0).toUpperCase()}${rel.slice(1)} um ${time}${at} wäre der nächste freie Termin${fuer}.`,
+    `Als frühesten Termin${fuer} kann ich ${rel} um ${time}${at} anbieten.`,
+    `Es passt am ehesten ${rel} um ${time}${at}${fuer ? `, und zwar${fuer}` : ""}.`,
+    `Der Kalender bietet${fuer} als Nächstes ${rel} um ${time}${at} an.`,
+    `Erster freier Platz${at}${fuer}: ${rel} um ${time}.`,
+    `Machbar wäre ${rel} um ${time}${at}${fuer}.`,
+  ]);
 }
 
 // More hints than this and the schedule reading turns into a monologue.
