@@ -231,6 +231,7 @@ export async function resolveAppointmentInfo(clientId, { appointmentId, patientI
             motiveName: String(ap?.visitMotive?.name || "").trim(),
             patientName: `${ap?.patient?.firstName || ""} ${ap?.patient?.lastName || ""}`.trim(),
             patientId: String(ap?.patient?.id || "").trim(),
+            apptStartMs: _tsToMs(ap?.start),
         };
     } catch (e) {
         return { ok: false, message: `Den Termin konnte ich nicht lesen: ${String(e?.message || e)}` };

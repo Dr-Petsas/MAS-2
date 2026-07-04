@@ -7,6 +7,7 @@ import {
 import { queryRecent } from "../brain/eventStore.js";
 import { buildBriefing } from "../brain/briefing.js";
 import { buildRedList, spokenRedList } from "../brain/redList.js";
+import { karteTag } from "./karten.js";
 
 // ============================================================================
 // Tages-Lagebild ("Was läuft heute?" / "Tagesprotokoll").
@@ -67,6 +68,9 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
 
   let hadComms = false;
   let hadHighlights = false;
+  let mails = 0;
+  let calls = 0;
+  const highlights = [];
 
   // 2.+3. nur für HEUTE: was ist über Telefon/E-Mail reingekommen + was fällt auf.
   if (isToday) {
@@ -74,8 +78,8 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
     const events = await queryRecent(clientId, since, 1000).catch(() => []);
     const todays = (events || []).filter((e) => e.ts && berlinDay(e.ts) === today);
 
-    const calls = todays.filter((e) => /call/.test(e.channel || "") && (e.direction || "in") === "in").length;
-    const mails = todays.filter((e) => /(mail|email)/.test(e.channel || "") && (e.direction || "in") === "in").length;
+    calls = todays.filter((e) => /call/.test(e.channel || "") && (e.direction || "in") === "in").length;
+    mails = todays.filter((e) => /(mail|email)/.test(e.channel || "") && (e.direction || "in") === "in").length;
 
     const commsBits = [];
     if (mails) commsBits.push(mails === 1 ? "eine E-Mail" : `${mails} E-Mails`);
@@ -88,7 +92,6 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
 
     // Top-Auffälligkeiten: rote Liste (Anwalt/Kammer/Mahnung/Fristen) ZUERST,
     // dann die jüngste Beschwerde. Maximal drei Punkte — den Rest auf Nachfrage.
-    const highlights = [];
     try {
       const redList = await buildRedList(clientId).catch(() => ({ critical: [], deadlines: [] }));
       const red = spokenRedList(redList, { max: 2, bare: true });
@@ -111,10 +114,34 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
   if (hadHighlights) drill.push("die Auffälligkeiten");
   parts.push(`Soll ich irgendwo ins Detail gehen — ${drill.join(", ")}?`);
 
+  // Übersichts-Karte für die Handy-App: dieselben Fakten strukturiert
+  // (Termine, Spanne, Lücken, Neupatienten, Ampeln, Kommunikation).
+  const gaps = (briefing.byCalendar || []).flatMap((c) => c.gaps || [])
+    .sort((a, b) => a.startMs - b.startMs);
+  const dateLabel = isToday ? "Heute" : new Date(`${dayData.date}T12:00:00`).toLocaleDateString("de-DE", {
+    weekday: "long", day: "2-digit", month: "2-digit", timeZone: TZ,
+  });
+  const card = karteTag({
+    dateLabel,
+    total: briefing.total,
+    firstMs: briefing.firstMs,
+    lastMs: briefing.lastMs,
+    newPatients: briefing.newPatients,
+    unconfirmed: briefing.unconfirmed,
+    docsRed: briefing.docsRed,
+    docsYellow: briefing.docsYellow,
+    gaps,
+    attention: briefing.attention,
+    mails,
+    calls,
+    highlights,
+  });
+
   return {
     ok: true,
     date: dayData.date,
     message: parts.filter(Boolean).join(" "),
     counts: { total: briefing.total, newPatients: briefing.newPatients, unconfirmed: briefing.unconfirmed },
+    card,
   };
 }

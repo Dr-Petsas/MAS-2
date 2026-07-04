@@ -4,6 +4,7 @@ import { pick, clinicalHints } from "./speech.js";
 import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { resolvePatientSubject } from "../brain/identity.js";
+import { kartePatient } from "./karten.js";
 
 /**
  * "Nächste 2 Patienten"-Briefing
@@ -214,6 +215,9 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
     ).catch(() => new Map());
 
     const teile = [];
+    // Uebersichts-Karten fuer die Handy-App (Hero-Design): dieselben Fakten
+    // wie der Sprachtext, nur strukturiert — eine Karte je Patient.
+    const cards = [];
     for (let i = 0; i < anstehend.length; i++) {
         const a = anstehend[i];
         const who = a.patientName || a.patientLastName || "der nächste Patient";
@@ -231,6 +235,7 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
         if (a.newPatient) s += ", Neupatient";
         if (a.comments) s += `. Geplant: ${kurz(a.comments)}`;
 
+        let letzterBesuch = null;
         // Vorgeschichte — vor allem der LETZTE Termin (laut Chef das Wichtigste).
         try {
             const hist = await getPatientAppointments(clientId, { patientId: a.patientId, lastName: a.patientLastName });
@@ -241,6 +246,7 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
                 const lastMotive = hist.last.visitMotive || "ein Termin";
                 const lastNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 120)}` : "";
                 s += `. ${pick(["Beim letzten Mal", "Zuletzt", "Beim letzten Besuch"], a.patientId)}: ${lastMotive}${lastNote}`;
+                letzterBesuch = { motive: lastMotive, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
             } else {
                 s += ". Kein früherer Termin bekannt";
             }
@@ -250,10 +256,16 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
 
         // Anamnese-Warnung (Wunsch 26.06.: Allergien/Medikamente/Vorerkrankungen
         // beim naechsten Patienten vorlesen, bevor er im Stuhl sitzt).
+        let anaFindings = [];
+        let anaHints = [];
         try {
             const ana = await getPatientAnamnese(clientId, { patientId: a.patientId });
             const anaTxt = kompakteAnamnese(ana, { seed: a.patientId });
             if (anaTxt) s += `. ${anaTxt}`;
+            if (ana?.ok && ana.findings?.length) {
+                anaFindings = ana.findings;
+                anaHints = clinicalHints(ana.findings);
+            }
         } catch {
             /* Anamnese ist best-effort und darf das Briefing nie blockieren */
         }
@@ -268,12 +280,26 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
         else if (a.docsStatus === "yellow") s += ". Unterlagen sind verschickt, aber noch nicht unterschrieben";
 
         teile.push(`${s}.`);
+        cards.push(kartePatient({
+            name: who,
+            startMs: a.startMs,
+            motive: a.visitMotive || "Termin",
+            neupatient: !!a.newPatient,
+            comments: a.comments ? kurz(a.comments, 90) : "",
+            anamneseFindings: anaFindings,
+            klinikHinweise: anaHints,
+            letzterBesuch,
+            fallText: fall,
+            docsStatus: a.docsStatus || "",
+            tag: single ? "Heads-up" : (i === 0 ? "Nächster Patient" : "Danach"),
+            calendarName: single ? (a.calendarName || "") : "",
+        }));
     }
 
     const kopf = single
         ? pick(["Heads up", "Kurz zum Patienten", "Zum nächsten Patienten", "Aufgepasst"], anstehend[0]?.patientId || "")
         : (anstehend.length === 1 ? "Der nächste Patient" : `Die nächsten ${anstehend.length} Patienten`);
-    return { ok: true, message: `${kopf}: ${teile.join(" ")}`, count: anstehend.length };
+    return { ok: true, message: `${kopf}: ${teile.join(" ")}`, count: anstehend.length, cards };
 }
 
 // Heads-up zu einem Patienten OHNE Termin am gefragten Tag — direkt aus der
@@ -299,6 +325,9 @@ async function renderChartPatient(clientId, patientName) {
     const who = subj.name || patientName;
     const lastName = (subj.candidates && subj.candidates[0] && subj.candidates[0].lastName) || "";
     let s = `Heads up zu ${who}`;
+    let letzterBesuch = null;
+    let naechsterMs = 0;
+    let naechsterMotive = "";
 
     // Termin-Historie (kein Termin am gefragten Tag, aber evtl. frueher/spaeter).
     try {
@@ -307,11 +336,14 @@ async function renderChartPatient(clientId, patientName) {
             if (hist.next) {
                 const nMot = hist.next.visitMotive || "ein Termin";
                 s += `. Nächster Termin: ${nMot}${hist.next.startMs ? ` am ${new Date(hist.next.startMs).toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" })}` : ""}`;
+                naechsterMs = hist.next.startMs || 0;
+                naechsterMotive = nMot;
             }
             if (hist.last) {
                 const lMot = hist.last.visitMotive || "ein Termin";
                 const lNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 120)}` : "";
                 s += `. ${pick(["Beim letzten Mal", "Zuletzt", "Beim letzten Besuch"], subj.patientId)}: ${lMot}${lNote}`;
+                letzterBesuch = { motive: lMot, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
             }
             if (!hist.next && !hist.last) s += ". Kein Termin in der Historie";
         }
@@ -320,22 +352,39 @@ async function renderChartPatient(clientId, patientName) {
     }
 
     // Anamnese-Warnung (Allergien/Medikamente/Vorerkrankungen).
+    let anaFindings = [];
+    let anaHints = [];
     try {
         const ana = await getPatientAnamnese(clientId, { patientId: subj.patientId });
         const anaTxt = kompakteAnamnese(ana, { seed: subj.patientId });
         if (anaTxt) s += `. ${anaTxt}`;
+        if (ana?.ok && ana.findings?.length) {
+            anaFindings = ana.findings;
+            anaHints = clinicalHints(ana.findings);
+        }
     } catch {
         /* Anamnese best-effort */
     }
 
     // Offener Vorgang (Mail/Anruf/Rechnung) aus dem Praxisgedaechtnis.
+    let fall = "";
     try {
         const casesByPatient = await listActiveCasesByPatientIds(clientId, [subj.patientId]).catch(() => new Map());
-        const fall = fallHinweis(casesByPatient.get(subj.patientId) || [], who);
+        fall = fallHinweis(casesByPatient.get(subj.patientId) || [], who);
         if (fall) s += `. ${fall}`;
     } catch {
         /* Vorgaenge best-effort */
     }
 
-    return { ok: true, message: `${s}.`, count: 1 };
+    const card = kartePatient({
+        name: who,
+        startMs: naechsterMs,
+        motive: naechsterMotive ? `Nächster Termin: ${naechsterMotive}` : "Aus der Kartei",
+        anamneseFindings: anaFindings,
+        klinikHinweise: anaHints,
+        letzterBesuch,
+        fallText: fall,
+        tag: "Heads-up",
+    });
+    return { ok: true, message: `${s}.`, count: 1, cards: [card] };
 }

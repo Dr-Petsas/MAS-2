@@ -8,51 +8,135 @@
   <link rel="apple-touch-icon" href="/m/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="theme-color" content="#0a1322" />
+  <meta name="theme-color" content="#060b16" />
   <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       Clara Handy-App im pickadoc.ai-Hero-Design (04.07.2026).
+       Das Handy IST das Telefon aus dem Website-Hero: Sprachseite (Orb,
+       Zustandsfarben, Agenten-Chips) und per Klick/Swipe geflippte
+       Kartenseite ("Nächster Patient" / "Das Wichtigste" / Doku-Memos).
+       Farbwelt exakt wie index.html der Website:
+         hört zu = Lila #b84dff · denkt nach = Gelb #f5c518 · spricht = Grün #34d399
+       ══════════════════════════════════════════════════════════════════════ */
     :root {
       color-scheme: dark;
-      /* Pickadoc CI – dunkles Schema mit dezenten Neon-Akzenten */
       --bg-1: #13203a;
       --bg-2: #0a1322;
       --bg-3: #060b16;
       --ink: #e6edf6;
       --ink-soft: #8fa3bd;
-      --turq: #2ee6c8;       /* neon türkis  – Clara */
-      --amber: #ffb347;      /* neon gelborange – Nutzer spricht */
-      --red: #ff4d6d;        /* neon rot – Denken / Tools / Auflegen */
-      --pink: #ff4ddb;       /* neon pink – Startzustand */
-      --purple: #b84dff;     /* neon lila – Denken (Chat + Audio) */
-      --green: #34d399;      /* neon grün – Bereit / Zuhören */
-      --accent: var(--turq); /* wird je Zustand umgeschaltet */
+      --turq: #2ee6c8;        /* neon türkis — Akzente, Nutzer spricht */
+      --amber: #f5c518;       /* denkt nach (Website-Hero) */
+      --red: #ff4d6d;         /* Auflegen/Fehler */
+      --pink: #ff4ddb;        /* Startzustand */
+      --purple: #b84dff;      /* hört zu (Website-Hero) */
+      --green: #34d399;       /* spricht (Website-Hero) */
+      --accent: var(--purple);
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
     body {
       font-family: system-ui, "Segoe UI", Roboto, sans-serif; margin: 0; color: var(--ink);
       background: radial-gradient(130% 95% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
       min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
-      padding: calc(env(safe-area-inset-top) + 18px) 22px calc(env(safe-area-inset-bottom) + 26px);
+      padding: calc(env(safe-area-inset-top) + 14px) 18px calc(env(safe-area-inset-bottom) + 18px);
       user-select: none; -webkit-user-select: none;
+      transition: background .55s ease;
+      overflow: hidden;
     }
+    /* Zustands-Hintergründe wie clara-phone__screen auf der Website. */
+    body.st-idle       { --accent: var(--pink);   background: radial-gradient(120% 90% at 50% 0%, #2a1030 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-ringing    { --accent: var(--turq);   background: radial-gradient(120% 90% at 50% 0%, #0f2a28 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-connecting { --accent: var(--amber);  background: radial-gradient(120% 90% at 50% 0%, #2a2410 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-listening  { --accent: var(--purple); background: radial-gradient(120% 90% at 50% 0%, #1a1230 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-user       { --accent: var(--turq);   background: radial-gradient(120% 90% at 50% 0%, #0f2a28 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-thinking   { --accent: var(--amber);  background: radial-gradient(120% 90% at 50% 0%, #2a2410 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-clara      { --accent: var(--green);  background: radial-gradient(120% 90% at 50% 0%, #0f2a24 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-ended      { --accent: var(--ink-soft); }
+    /* Glow-Aura oben, wie ::before im Website-Screen. */
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background: radial-gradient(circle at 50% 26%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 58%);
+      transition: background .55s ease;
+    }
+    body > * { position: relative; z-index: 1; }
 
     /* ── Header: Pickadoc-Logo + Einstellungen ─────────────────────────── */
-    .brand { display: flex; align-items: center; justify-content: center; gap: 9px; position: relative; }
+    .brand { display: flex; align-items: center; justify-content: center; gap: 9px; position: relative; flex: none; }
     .brand img { height: 22px; width: auto; display: block; opacity: .95; }
     .brand .word { font-size: 19px; font-weight: 700; letter-spacing: .3px; color: var(--ink); }
     .brand .word b { color: var(--turq); font-weight: 700; }
     .gear { position: absolute; right: -6px; top: -2px; color: var(--ink-soft); text-decoration: none;
             font-size: 17px; padding: 8px; opacity: .65; }
 
-    .top { text-align: center; margin-top: 26px; }
-    .calling { color: var(--ink-soft); font-size: 15px; letter-spacing: .4px; min-height: 20px; }
-    .name { font-size: 34px; font-weight: 700; margin: 6px 0 2px; }
-    .reason { color: var(--turq); font-size: 16px; margin-top: 4px; min-height: 22px; opacity: .85; }
+    /* ── Audio / Chat Umschalter (dezent oben, wie cp-mode im Hero) ─────── */
+    .mode-bar {
+      display: flex; justify-content: center; margin: 8px auto 0; gap: 4px;
+      padding: 3px; border-radius: 999px; background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.08); width: fit-content; flex: none;
+    }
+    .mode-bar button {
+      border: 0; background: transparent; color: var(--ink-soft); font-size: 12px;
+      font-weight: 700; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+    }
+    .mode-bar button.active { background: rgba(46,230,200,.18); color: var(--turq); }
 
-    /* ── Zentraler Button – der einzige Kontrollpunkt ──────────────────── */
-    .mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; }
-    .orb-wrap { position: relative; width: 196px; height: 196px; }
+    /* Strikt entweder Audio ODER Chat – kein gleichzeitiges Layout */
+    body.clara-mode-audio [data-clara-chat-pane] { display: none !important; }
+    body.clara-mode-chat [data-clara-audio-pane],
+    body.clara-mode-chat [data-clara-bottom-bar],
+    body.clara-mode-chat [data-clara-flip-labels] { display: none !important; }
+
+    /* ══ FLIP: Sprachseite <-> Kartenseite (wie cc-flip im Website-Hero) ══ */
+    [data-clara-audio-pane] { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .flip { flex: 1; min-height: 0; perspective: 1400px; }
+    .flip-inner {
+      position: relative; width: 100%; height: 100%;
+      transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+      transition: transform .75s cubic-bezier(.35,.1,.25,1);
+      will-change: transform;
+    }
+    .flip.is-flipped .flip-inner { transform: rotateY(180deg); }
+    .flip-face {
+      position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0;
+      backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    }
+    .flip-face--voice { transform: rotateY(0deg) translateZ(1px); }
+    .flip-face--cards { transform: rotateY(180deg) translateZ(1px); }
+    /* Sichtbarkeits-Härtung (Safari-Backface): abgewandte Seite ausblenden. */
+    .flip:not(.is-flipped) .flip-face--cards { opacity: 0; pointer-events: none; transition: opacity .3s .1s; }
+    .flip.is-flipped .flip-face--cards { opacity: 1; pointer-events: auto; transition: opacity .3s .35s; }
+    .flip.is-flipped .flip-face--voice { opacity: 0; pointer-events: none; transition: opacity .3s .1s; }
+    .flip:not(.is-flipped) .flip-face--voice { opacity: 1; pointer-events: auto; transition: opacity .3s .35s; }
+    @media (prefers-reduced-motion: reduce) {
+      .flip-inner { transition: none; }
+      .flip-face { transition: none !important; }
+    }
+
+    /* Flip-Beschriftung unten (wie cc-flip-labels: TEXT · SPRACHE) */
+    .flip-labels {
+      display: flex; justify-content: center; gap: 16px; margin-top: 10px; flex: none;
+      font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+    }
+    .flip-labels span { color: rgba(255,255,255,.35); transition: color .35s; cursor: pointer; padding: 4px 6px; }
+    .flip-labels span.on { color: var(--turq); }
+    .flip-labels .badge {
+      display: inline-grid; place-items: center; min-width: 15px; height: 15px; margin-left: 4px;
+      padding: 0 4px; border-radius: 999px; background: var(--pink); color: #fff;
+      font-size: 9px; font-weight: 900; vertical-align: 1px;
+    }
+    .flip-labels .badge:empty { display: none; }
+
+    /* ── Sprachseite (cp-* aus dem Hero) ────────────────────────────────── */
+    .top { text-align: center; margin-top: 14px; flex: none; }
+    .calling { color: var(--ink-soft); font-size: 14px; letter-spacing: .4px; min-height: 19px; }
+    .name { font-size: 30px; font-weight: 700; margin: 5px 0 0; letter-spacing: -.02em; }
+    .reason { color: var(--turq); font-size: 15px; margin-top: 4px; min-height: 21px; opacity: .85; }
+
+    .mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; min-height: 0; }
+    .orb-wrap { position: relative; width: 176px; height: 176px; }
     .orb {
-      position: relative; z-index: 2; width: 196px; height: 196px; border-radius: 50%;
+      position: relative; z-index: 2; width: 176px; height: 176px; border-radius: 50%;
       border: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
       background:
         radial-gradient(100% 100% at 30% 25%, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 60%),
@@ -65,19 +149,17 @@
     }
     .orb:active { transform: scale(.97); }
 
-    /* Drei Balken – Waveform-Symbol, Farbe folgt dem Zustand */
-    .wave { display: flex; align-items: center; gap: 10px; height: 68px; pointer-events: none; }
-    .wave span { width: 11px; border-radius: 7px; background: var(--accent);
+    .wave { display: flex; align-items: center; gap: 9px; height: 60px; pointer-events: none; }
+    .wave span { width: 10px; border-radius: 7px; background: var(--accent);
                  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
                  transition: background .45s ease, box-shadow .45s ease;
                  animation: wob 1.6s ease-in-out infinite; }
-    .wave span:nth-child(1) { height: 32px; }
-    .wave span:nth-child(2) { height: 60px; animation-delay: .2s; }
-    .wave span:nth-child(3) { height: 32px; animation-delay: .4s; }
+    .wave span:nth-child(1) { height: 28px; }
+    .wave span:nth-child(2) { height: 54px; animation-delay: .2s; }
+    .wave span:nth-child(3) { height: 28px; animation-delay: .4s; }
     @keyframes wob { 0%, 100% { transform: scaleY(.72); } 50% { transform: scaleY(1.08); } }
     body.st-ended .wave span { animation-play-state: paused; }
 
-    /* Ripples – Farbe folgt dem Zustand */
     .ring { position: absolute; inset: -4px; border-radius: 50%; z-index: 1;
             border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); opacity: 0; pointer-events: none; }
     @keyframes rip { 0% { transform: scale(.96); opacity: .75; } 100% { transform: scale(1.5); opacity: 0; } }
@@ -90,37 +172,42 @@
       0%, 100% { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
       50%      { border-color: color-mix(in srgb, var(--accent) 90%, transparent); }
     }
-
-    /* Zustände: Akzentfarbe + Animationen */
-    body.st-idle       { --accent: var(--pink); }
     body.st-idle .orb { animation: breathe 3s ease-in-out infinite; }
     body.st-idle .ring.r1 { animation: rip 1.8s ease-out infinite; }
     body.st-idle .ring.r2 { animation: rip 1.8s ease-out .9s infinite; }
-    body.st-ringing    { --accent: var(--turq); }
     body.st-ringing .ring.r1 { animation: rip 1.5s ease-out infinite; }
     body.st-ringing .ring.r2 { animation: rip 1.5s ease-out .75s infinite; }
-    body.st-connecting { --accent: var(--amber); }
     body.st-connecting .orb { animation: breathe 1.1s ease-in-out infinite; }
-    body.st-listening  { --accent: var(--turq); }
     body.st-listening .orb { animation: breathe 3.2s ease-in-out infinite; }
-    body.st-user       { --accent: var(--amber); }
+    body.st-listening .ring.r1 { animation: ripSoft 1.8s ease-out infinite; }
     body.st-user .ring.r1 { animation: ripSoft 1s ease-out infinite; }
     body.st-user .orb { animation: breathe 1.4s ease-in-out infinite; }
-    body.st-thinking   { --accent: var(--red); }
     body.st-thinking .orb { animation: thinkPulse 1s ease-in-out infinite; }
     body.st-thinking .ring.r1 { animation: ripSoft 1.6s ease-out infinite; }
-    body.st-clara      { --accent: var(--turq); }
     body.st-clara .orb { animation: breathe 1.3s ease-in-out infinite; }
     body.st-clara .ring.r1 { animation: rip 1.6s ease-out infinite; }
     body.st-clara .ring.r2 { animation: rip 1.6s ease-out .8s infinite; }
-    body.st-ended      { --accent: var(--ink-soft); }
 
-    /* Zustand-Label unter dem Button */
-    .state-label { font-size: 15px; font-weight: 600; letter-spacing: .3px; min-height: 22px;
+    .state-label { font-size: 15px; font-weight: 700; letter-spacing: .3px; min-height: 22px;
                    color: var(--accent); transition: color .45s ease; text-align: center; }
     .hint { color: var(--ink-soft); font-size: 13px; min-height: 18px; text-align: center; }
 
-    .bottom { display: flex; flex-direction: column; align-items: center; gap: 12px; min-height: 64px; }
+    /* Agenten-Chips wie cp-agents im Hero: leuchten beim Denken/Antworten. */
+    .agents { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 0 8px; }
+    .agents span {
+      padding: 4px 9px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .02em;
+      color: rgba(255,255,255,.82); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+      opacity: .45; transform: translateY(4px);
+      transition: opacity .35s ease, transform .35s ease, color .35s ease, background .35s ease, border-color .35s ease, box-shadow .35s ease;
+    }
+    body.st-thinking .agents span, body.st-clara .agents span { opacity: .85; transform: none; }
+    .agents span.is-asking { opacity: 1 !important; transform: translateY(0) scale(1.06); color: var(--amber);
+      background: rgba(245,197,24,.16); border-color: rgba(245,197,24,.6); animation: chipRipple 1.4s ease-out infinite; }
+    .agents span.is-answered { opacity: 1 !important; transform: translateY(0) scale(1.06); color: var(--green);
+      background: rgba(52,211,153,.18); border-color: rgba(52,211,153,.65); box-shadow: 0 0 14px rgba(52,211,153,.32); }
+    @keyframes chipRipple { 0% { box-shadow: 0 0 0 0 rgba(245,197,24,.55); } 70% { box-shadow: 0 0 0 9px rgba(245,197,24,0); } 100% { box-shadow: 0 0 0 0 rgba(245,197,24,0); } }
+
+    .bottom { display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 56px; flex: none; }
     .decline-link { background: none; border: 0; color: var(--red); opacity: .8; font-size: 15px;
                     font-weight: 600; cursor: pointer; padding: 10px 18px; }
     .enable { display: none; margin: 0 auto; background: var(--amber); color: #131a26; border: 0; border-radius: 12px;
@@ -129,36 +216,58 @@
     .status { text-align: center; color: var(--ink-soft); font-size: 13px; min-height: 18px; }
     .hidden { display: none !important; }
 
-    /* Strikt entweder Audio ODER Chat – kein gleichzeitiges Layout */
-    body.clara-mode-audio [data-clara-chat-pane] { display: none !important; }
-    body.clara-mode-chat [data-clara-audio-pane],
-    body.clara-mode-chat [data-clara-bottom-bar] { display: none !important; }
+    /* ══ KARTENSEITE (cc-screen--text aus dem Hero) ══════════════════════ */
+    .cards-face-head { text-align: center; margin: 12px 0 10px; flex: none; }
+    .cards-face-head b { display: block; color: #fff; font-size: 20px; font-weight: 900; letter-spacing: -.01em; }
+    .cards-face-head small { display: block; color: var(--turq); font-size: 10.5px; font-weight: 800; letter-spacing: .06em; margin-top: 2px; }
+    .cards-face-state { display: inline-flex; align-items: center; gap: 6px; margin-top: 7px;
+      font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+    .cards-face-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+      box-shadow: 0 0 8px var(--accent); transition: background .45s ease; }
+    .cards-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+      padding: 2px 2px 14px; -webkit-overflow-scrolling: touch; }
+    .cards-empty { color: var(--ink-soft); font-size: 13.5px; text-align: center; line-height: 1.55; padding: 26px 18px; }
+    .cards-empty b { color: var(--ink); }
 
-    /* Audio-Wrapper übernimmt die frühere Vollbild-Flex-Struktur */
-    [data-clara-audio-pane] {
-      flex: 1; display: flex; flex-direction: column; min-height: 0;
+    /* ── Die Karte: exakt das cc-next / cc-key Motiv des Website-Heros ──── */
+    .card {
+      background: radial-gradient(130% 80% at 50% 0%, #181430 0%, #0b1020 52%, #060a14 100%);
+      border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 13px 13px 12px;
+      box-shadow: 0 14px 34px rgba(0,0,0,.45);
     }
+    .card-next { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 14px; padding: 11px 12px; }
+    .card-tag { font-size: 9.5px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: #cfa3ff; }
+    .card-name { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 4px; }
+    .card-name b { color: #fff; font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
+    .card-time { font-size: 12.5px; font-weight: 800; color: var(--turq); white-space: nowrap; }
+    .card-why { margin-top: 3px; font-size: 11.5px; color: rgba(255,255,255,.62); }
+    .card-key { margin-top: 10px; }
+    .card-key-h { font-size: 9.5px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+      color: rgba(255,255,255,.45); margin: 0 2px 7px; }
+    .card-key ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+    .card-key li { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #e7edf6;
+      padding: 6px 8px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.06);
+      line-height: 1.35; }
+    .card-key li i { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; flex: none; }
+    .card-key li i svg { width: 12px; height: 12px; display: block; }
+    .card-key li.is-alert i { background: rgba(255,111,97,.18); color: #ff9b90; }
+    .card-key li.is-warn  i { background: rgba(245,197,24,.16); color: var(--amber); }
+    .card-key li.is-info  i { background: rgba(46,230,200,.14); color: var(--turq); }
+    .card-key li.is-ok    i { background: rgba(52,211,153,.16); color: var(--green); }
+    .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; padding: 0 2px; }
+    .card-foot .fnote { font-size: 10.5px; font-weight: 800; color: var(--ink-soft); }
+    .card-foot .fwhen { font-size: 10px; color: rgba(255,255,255,.35); }
+    .card.is-new { animation: cardIn .5s cubic-bezier(.2,.9,.3,1.2); }
+    @keyframes cardIn { 0% { opacity: 0; transform: translateY(14px) scale(.97); } 100% { opacity: 1; transform: none; } }
 
-    /* ── Audio / Chat Umschalter (dezent oben) ───────────────────────────── */
-    .mode-bar {
-      display: flex; justify-content: center; margin: 4px auto 0; gap: 4px;
-      padding: 3px; border-radius: 999px; background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.08); width: fit-content;
-    }
-    .mode-bar button {
-      border: 0; background: transparent; color: var(--ink-soft); font-size: 12px;
-      font-weight: 600; padding: 6px 14px; border-radius: 999px; cursor: pointer;
-    }
-    .mode-bar button.active { background: rgba(46,230,200,.18); color: var(--turq); }
-
-    /* ── Chat-Vollbild ───────────────────────────────────────────────────── */
-    .chat-pane {
-      flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 8px;
-    }
+    /* ── Chat-Vollbild (gleiche Karten inline im Verlauf) ────────────────── */
+    .chat-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 8px; }
     .chat-scroll {
       flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px;
-      padding: 8px 2px 12px;
+      padding: 8px 2px 12px; -webkit-overflow-scrolling: touch;
     }
+    .chat-scroll .card { align-self: stretch; }
     .clara-bubble {
       max-width: 88%; padding: 11px 14px; border-radius: 16px; font-size: 15px;
       line-height: 1.45; white-space: pre-wrap; word-break: break-word;
@@ -174,7 +283,7 @@
     .clara-bubble.partial { opacity: .65; font-style: italic; }
     .chat-compose {
       display: flex; gap: 8px; align-items: flex-end; padding-top: 8px;
-      border-top: 1px solid rgba(255,255,255,.08);
+      border-top: 1px solid rgba(255,255,255,.08); flex: none;
     }
     .chat-compose textarea {
       flex: 1; min-height: 42px; max-height: 120px; resize: none; border-radius: 14px;
@@ -207,9 +316,7 @@
       touch-action: manipulation;
     }
     .chat-connect-btn:active { transform: scale(.97); }
-    .chat-orb-wrap {
-      position: relative; width: 132px; height: 132px;
-    }
+    .chat-orb-wrap { position: relative; width: 132px; height: 132px; }
     .chat-orb {
       position: relative; z-index: 2; width: 132px; height: 132px; border-radius: 50%;
       border: 2px solid color-mix(in srgb, var(--chat-accent, var(--green)) 65%, transparent);
@@ -271,26 +378,59 @@
   </div>
 
   <div data-clara-audio-pane>
-  <div class="top">
-    <div class="calling" id="calling">ruft an …</div>
-    <div class="name">Clara</div>
-    <div class="reason" id="reason"></div>
-  </div>
+    <div class="flip" data-clara-flip>
+      <div class="flip-inner">
 
-  <div class="mid">
-    <div class="orb-wrap">
-      <div class="ring r1"></div><div class="ring r2"></div>
-      <button class="orb" id="orb" aria-label="Clara">
-        <div class="wave"><span></span><span></span><span></span></div>
-      </button>
-    </div>
-    <div>
-      <div class="state-label" id="stateLabel"></div>
-      <div class="hint" id="hint"></div>
-    </div>
-  </div>
+        <!-- Vorderseite: die Sprach-Leitstelle (Orb + Zustandsfarben) -->
+        <div class="flip-face flip-face--voice" data-clara-face-voice>
+          <div class="top">
+            <div class="calling" id="calling">ruft an …</div>
+            <div class="name">Clara</div>
+            <div class="reason" id="reason"></div>
+          </div>
 
-    <div class="proof-strip hidden" data-clara-proof-strip></div>
+          <div class="mid">
+            <div class="orb-wrap">
+              <div class="ring r1"></div><div class="ring r2"></div>
+              <button class="orb" id="orb" aria-label="Clara">
+                <div class="wave"><span></span><span></span><span></span></div>
+              </button>
+            </div>
+            <div>
+              <div class="state-label" id="stateLabel"></div>
+              <div class="hint" id="hint"></div>
+            </div>
+            <div class="agents" id="agents" aria-hidden="true">
+              <span>Bianca</span><span>Lisa</span><span>Nadine</span><span>Marie</span><span>Sophie</span><span>Julia</span><span>Lena</span>
+            </div>
+          </div>
+
+          <div class="proof-strip hidden" data-clara-proof-strip></div>
+        </div>
+
+        <!-- Rückseite: Übersichtskarten (Heads-up, Doku-Memos, Tagesplan) -->
+        <div class="flip-face flip-face--cards" data-clara-face-cards>
+          <div class="cards-face-head">
+            <b>Clara</b>
+            <small>VOLLINFORMIERT IN 10 SEKUNDEN</small>
+            <div class="cards-face-state"><i></i><span id="cardsStateLabel">Bereit</span></div>
+          </div>
+          <div class="cards-scroll" data-clara-cards>
+            <div class="cards-empty" data-clara-cards-empty>
+              Noch keine Karten.<br/>
+              Frag mich z.&nbsp;B. <b>„Heads up zum nächsten Patienten"</b> oder diktiere eine
+              Behandlung — die Notizen erscheinen hier auf der Rückseite.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="flip-labels" data-clara-flip-labels aria-hidden="true">
+      <span class="on" data-clara-lbl-voice>🎙 Sprache</span>
+      <span data-clara-lbl-cards>🗂 Karten<b class="badge" data-clara-card-badge></b></span>
+    </div>
 
     <div class="bottom" data-clara-bottom-bar>
       <button class="enable" id="enableBtn">&#128266; Ton aktivieren (tippen)</button>
@@ -337,7 +477,8 @@
 
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
-    import { mountClaraChat } from "/m/clara-chat.js";
+    // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
+    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-1";
 
     const qs = new URLSearchParams(location.search);
     const STORE_KEY = "clara.device.v1";
@@ -394,6 +535,11 @@
           }
         }
       },
+      // Übersichtskarte vom Worker: auf den Karten-Stapel der Flip-Rückseite
+      // legen; im Audio-Modus automatisch hinflippen (Diktat-Notizen live).
+      onCard(card) {
+        addCardToDeck(card);
+      },
     });
 
     const proofFromUrl = (qs.get("proof") || "").trim();
@@ -410,6 +556,14 @@
       enableBtn: document.getElementById("enableBtn"),
       chatEnableBtn: document.querySelector("[data-clara-chat-enable]"),
       audio: document.getElementById("agentAudio"),
+      flip: document.querySelector("[data-clara-flip]"),
+      cardsScroll: document.querySelector("[data-clara-cards]"),
+      cardsEmpty: document.querySelector("[data-clara-cards-empty]"),
+      cardBadge: document.querySelector("[data-clara-card-badge]"),
+      lblVoice: document.querySelector("[data-clara-lbl-voice]"),
+      lblCards: document.querySelector("[data-clara-lbl-cards]"),
+      cardsStateLabel: document.getElementById("cardsStateLabel"),
+      agents: document.getElementById("agents"),
     };
 
     function setStatus(s) {
@@ -420,6 +574,112 @@
     function showEnable(on) {
       els.enableBtn.classList.toggle("show", !!on);
       els.chatEnableBtn?.classList.toggle("show", !!on);
+    }
+
+    // ── Flip: Sprache <-> Karten (Klick auf Label/Fläche oder Swipe) ─────────
+    let flipped = false;
+    let unseenCards = 0;
+
+    function setFlipped(on) {
+      flipped = !!on;
+      els.flip?.classList.toggle("is-flipped", flipped);
+      els.lblVoice?.classList.toggle("on", !flipped);
+      els.lblCards?.classList.toggle("on", flipped);
+      if (flipped) {
+        unseenCards = 0;
+        updateBadge();
+      }
+    }
+    function updateBadge() {
+      if (els.cardBadge) els.cardBadge.textContent = unseenCards > 0 ? String(unseenCards) : "";
+    }
+
+    els.lblVoice?.addEventListener("click", () => setFlipped(false));
+    els.lblCards?.addEventListener("click", () => setFlipped(true));
+
+    // Klick auf freie Fläche flippt (Orb, Buttons, Links und die Karten
+    // selbst bleiben bedienbar — die Karte anzutippen blättert NICHT um).
+    els.flip?.addEventListener("click", (e) => {
+      if (e.target.closest("button, a, textarea, .card")) return;
+      setFlipped(!flipped);
+    });
+
+    // Swipe (horizontal) flippt — vertikales Scrollen der Karten bleibt frei.
+    let touchX = 0, touchY = 0, touchAt = 0;
+    els.flip?.addEventListener("touchstart", (e) => {
+      const t = e.touches[0];
+      touchX = t.clientX; touchY = t.clientY; touchAt = Date.now();
+    }, { passive: true });
+    els.flip?.addEventListener("touchend", (e) => {
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchX;
+      const dy = t.clientY - touchY;
+      if (Date.now() - touchAt < 600 && Math.abs(dx) > 60 && Math.abs(dy) < 50) {
+        setFlipped(!flipped);
+      }
+    }, { passive: true });
+
+    // ── Karten-Stapel (Rückseite): neueste oben, Sitzung übersteht Reload ──
+    const CARDS_KEY = "clara.cards.v1";
+    let deck = [];
+    try { deck = JSON.parse(sessionStorage.getItem(CARDS_KEY) || "[]"); } catch {}
+    if (!Array.isArray(deck)) deck = [];
+
+    function renderDeck() {
+      if (!els.cardsScroll) return;
+      els.cardsScroll.querySelectorAll(".card").forEach((n) => n.remove());
+      if (els.cardsEmpty) els.cardsEmpty.classList.toggle("hidden", deck.length > 0);
+      for (const entry of deck) {
+        const el = renderOverviewCard(entry.card, { when: entry.when });
+        els.cardsScroll.appendChild(el);
+      }
+    }
+
+    function addCardToDeck(card) {
+      const when = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+      // Gleiche Karte (Art + Titel) ersetzen statt stapeln — beim Diktieren
+      // wächst EINE Doku-Karte mit, statt fünf fast gleiche zu zeigen.
+      deck = deck.filter((e) => !(e.card?.kind === card.kind && e.card?.title === card.title));
+      deck.unshift({ card, when });
+      deck = deck.slice(0, 12);
+      try { sessionStorage.setItem(CARDS_KEY, JSON.stringify(deck)); } catch {}
+      renderDeck();
+      const first = els.cardsScroll?.querySelector(".card");
+      if (first) {
+        first.classList.add("is-new");
+        els.cardsScroll.scrollTop = 0;
+      }
+      if (chatUi.getMode() === "audio") {
+        // Diktat-Wunsch 04.07.: Während man mit Clara spricht, erscheinen die
+        // Notiz-Punkte sofort sichtbar — die App flippt von selbst zur Karte.
+        setFlipped(true);
+      } else {
+        unseenCards += 1;
+        updateBadge();
+      }
+    }
+
+    renderDeck();
+
+    // ── Agenten-Chips: leuchten beim Denken, grün bei Antwort (Hero-Motiv) ──
+    const agentEls = Array.from(els.agents?.querySelectorAll("span") || []);
+    let agentPtr = 0;
+    let agentCurrent = -1;
+    function agentsThinking() {
+      if (!agentEls.length) return;
+      agentEls.forEach((el) => el.classList.remove("is-asking", "is-answered"));
+      agentCurrent = agentPtr % agentEls.length;
+      agentPtr += 1;
+      agentEls[agentCurrent].classList.add("is-asking");
+    }
+    function agentsAnswered() {
+      if (agentCurrent < 0 || !agentEls[agentCurrent]) return;
+      agentEls[agentCurrent].classList.remove("is-asking");
+      agentEls[agentCurrent].classList.add("is-answered");
+    }
+    function agentsClear() {
+      agentEls.forEach((el) => el.classList.remove("is-asking", "is-answered"));
+      agentCurrent = -1;
     }
 
     // ── Zustandsmaschine: ein Button, Farben erzählen den Rest ───────────────
@@ -458,6 +718,7 @@
       }
     }
 
+    let lastAgentState = "";
     function render() {
       const st = phase === "live" ? voice : phase;
       document.body.classList.remove(...ALL_ST);
@@ -467,6 +728,15 @@
       els.stateLabel.textContent = label;
       els.hint.textContent = hint;
       els.btnDecline.classList.toggle("hidden", phase !== "ringing");
+      if (els.cardsStateLabel) els.cardsStateLabel.textContent = label || "Bereit";
+      // Agenten-Chips folgen dem echten Zustand (Hero: fragt … / beantwortet)
+      // — nur bei ZUSTANDSWECHSEL, sonst springt der Zeiger pro Re-Render.
+      if (st !== lastAgentState) {
+        lastAgentState = st;
+        if (st === "thinking") agentsThinking();
+        else if (st === "clara") agentsAnswered();
+        else if (st === "ended") agentsClear();
+      }
       syncChatVisual();
     }
 

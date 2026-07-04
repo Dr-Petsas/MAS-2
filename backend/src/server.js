@@ -19,6 +19,7 @@ import { strukturiereKarteikarte } from "./clara/dokuNote.js";
 import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechnung, sophieMitSlotfill } from "./clara/dokuAbrechnung.js";
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken, dokuAbendlauf } from "./clara/dokuWaechter.js";
 import { freiFormulieren } from "./clara/freiSprech.js";
+import { karteDoku, karteLuecken, karteSophie } from "./clara/karten.js";
 import { specialtyKeyForClient } from "./clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "./clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "./clara/dokuCheck.js";
@@ -2527,7 +2528,9 @@ app.post("/tools/day-briefing", async (req, res) => {
     try { message += await initiativeSuffix(clientId); } catch { /* optional */ }
     // Show the day on the monitor (best-effort; works only with an active session).
     try { await emitCommand(clientId, { type: "navigate", date: overview.date, calendarId: calendarId || null }); } catch { /* no live session */ }
-    return res.json({ ok: true, date: overview.date, message, counts: overview.counts });
+    // card = Übersichts-Karte fürs Handy (Hero-Design) — deterministische
+    // Fakten, unabhängig von der FreiSprech-Formulierung.
+    return res.json({ ok: true, date: overview.date, message, counts: overview.counts, card: overview.card || null });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -3149,6 +3152,21 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
         out.dokuLuecken = luecken.map((l) => ({ date: l.date, motive: l.motive }));
       }
 
+      // Doku-Memo-Karte fürs Handy: Notiz-Punkte + offene Fragen auf der
+      // "geflippten Rückseite" während des Diktierens (Wunsch 04.07.2026).
+      try {
+        out.card = karteDoku({
+          patientName: out.patientName || lastName,
+          motiveName: out.motiveName || "",
+          apptStartMs: out.apptStartMs || 0,
+          combinedText: out.combinedText || teil.dokuText || "",
+          fragen: check?.fragen || [],
+          abrechnung: sonde ? { status: sonde.status, frage: sonde.frage, label: sonde.label } : null,
+          luecken: luecken || [],
+          lernVorschlag: check?.lernVorschlag || null,
+        });
+      } catch { /* Karte ist Komfort */ }
+
       // Karteikarte im Hintergrund neu strukturieren (treatment/main) — Claras
       // Antwort wartet NICHT darauf. Nur noetig, wenn ein Segment dazukam.
       if (out.dictationId) {
@@ -3213,11 +3231,12 @@ app.post("/tools/doku-offen", async (req, res) => {
 
     const wer = info.patientName || lastName || "diesem Termin";
     const teile = [];
+    let check = null;
 
     if (!combined) {
       teile.push(`Zu ${wer} ist noch nichts dokumentiert.`);
     } else {
-      const check = await pruefeDoku(clientId, specialtyKeyForClient(clientId), {
+      check = await pruefeDoku(clientId, specialtyKeyForClient(clientId), {
         motiveName: info.motiveName || "",
         text: combined,
         lernen: false,
@@ -3240,12 +3259,26 @@ app.post("/tools/doku-offen", async (req, res) => {
     }).catch(() => null);
     if (sonde?.zeile) teile.push(sonde.zeile);
 
+    // Doku-Status-Karte fürs Handy (gleiches Motiv wie beim Diktat).
+    let card = null;
+    try {
+      card = karteDoku({
+        patientName: info.patientName || lastName,
+        motiveName: info.motiveName || "",
+        apptStartMs: info.apptStartMs || 0,
+        combinedText: combined,
+        fragen: check?.fragen || [],
+        abrechnung: sonde ? { status: sonde.status, frage: sonde.frage, label: sonde.label } : null,
+      });
+    } catch { /* Karte ist Komfort */ }
+
     return res.json({
       ok: true,
       appointmentId: info.appointmentId,
       motiveName: info.motiveName || "",
       abrechnung: sonde ? { status: sonde.status, frage: sonde.frage, label: sonde.label } : null,
       message: teile.join(" "),
+      card,
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -3270,6 +3303,7 @@ app.post("/tools/doku-luecken", async (req, res) => {
       count: luecken.length,
       luecken: luecken.map((l) => ({ appointmentId: l.appointmentId, date: l.date, patientName: l.patientName, motive: l.motive })),
       message: sprichPraxisLuecken(luecken),
+      card: karteLuecken(luecken),
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -3536,6 +3570,9 @@ app.post("/tools/bill-treatment", async (req, res) => {
       patientId,
       lastName,
     });
+    // Abrechnungs-Karte fürs Handy: Endsummen bzw. Sophies Gegenfrage. Nur hier
+    // beim EXPLIZITEN Abrechnen — Briefings bleiben frei von Euro-Zahlen.
+    try { out.card = karteSophie(out); } catch { /* Karte ist Komfort */ }
     return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
