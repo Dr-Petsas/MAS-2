@@ -136,6 +136,43 @@ Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
       bei Griechisch- und Storno-Rueckfrage-Faellen ab. Groesser ist auf
       dieser Karte in ALLEN Dimensionen schlechter. Neu bewerten erst bei
       Hardware-Wechsel (mehr VRAM) oder RunPod-Pfad. Log: .run/w15_qwen8b.log.
+- [~] **W1.5-NACHTRAG (04.07. abends, CHEF-ENTSCHEID): Qwen 3.6 MoE ist
+      DAS Zielmodell.** O-Ton: "Vergiss das 4b oder 8b — wir haben extra
+      dafuer den Server aufgestellt." pickadoc1 (RTX 5090) serviert
+      `qwen3.6:35b-a3b` per vLLM ueber Tailscale (100.77.30.98:8000);
+      MAS-2-FreiSprech laeuft schon darauf, Tool-Calling per Probe
+      verifiziert. Der 4b/8b-Vergleich von heute Vormittag war die
+      3060-Zwischenloesung und ist damit Geschichte.
+      DURCHGEFUEHRT (04.07. abends):
+      1. Erstlauf 131er-Suite gegen 3.6: nur 114/131 — Ursache waren ZWEI
+         Alt-Bugs, keine Modellschwaeche: (a) vLLM lehnt System-Nachrichten
+         nach Position 0 mit HTTP 400 ab (Ollama tolerierte das) — alle
+         spaeten Nudges (Sprachspiegel, Auswahl, Leer-Retry) wurden zu
+         30-ms-Leerantworten; Fix: spaete Steuer-Nachrichten reisen auf
+         Nicht-Ollama-Backends als gerahmte User-Nachricht
+         (`_late_system_as_user`, Override LIVEAVATAR_LLM_LATE_SYSTEM_AS_USER).
+         (b) Das spanische Stopword "es" kippte deutsche Saetze ("Gab es
+         etwas von ...?") in den Spanisch-Spiegel; aus dem es-Hint-Set
+         entfernt.
+      2. Danach 120/131 (Vollprompt) bzw. 122/131 (Compact) — 4b-Referenz
+         am selben Tag: 119/128. Fehlbild des grossen Modells ist ANDERS:
+         es "denkt mit" und laesst Tools weg (Sonntag-Logik verweigerte
+         day_briefing/approve_recall, Rueckfragen statt compose_email).
+      3. Gegenmittel: Kanon-Beispiele + Wochenend-Klarstellung im
+         Clara-System-Prompt (tools/apply_profile_w15_qwen36.py) und zwei
+         deterministische Kein-Tool-Waechter im Provider (day-overview-guard
+         synthetisiert day_briefing bei klarer Tagesfrage, approve-guard
+         synthetisiert approve_recall/approve_absence nach Vorschau +
+         ausdruecklicher Freigabe). Alle vormals roten Faelle einzeln gruen;
+         dlg-namensvetter-Kanon um die legitime getFreeTimeSlots-Route
+         erweitert (3.6 prueft erst Verfuegbarkeit, bucht dann korrekt).
+      4. Worker-.env auf 3.6 umgestellt (COMPACT=1, Rollback-Zeilen als
+         Kommentar direkt darunter); Chat-Spur (W-HUMAN) laeuft ebenfalls
+         auf dem 3.6. Finaler Bestaetigungslauf laeuft
+         (.run/w15_qwen36_final.log) -> bei Gruen: Gate, Worker-Neustart,
+         Tag. Latenz 3.6 remote: TTFT p50 1.9 s / p90 2.6 s (4b lokal auf
+         der belasteten 3060: 2.25 s / 4.2 s — der Umstieg ist auch
+         schneller).
 - NICHT anfassen: `response_guard.py`, `daySchedule`-Filter, `holidays.js`.
 
 ## Phase 2 - Dens-Office-Anbindung (paralleler Track, extern getaktet)
@@ -221,12 +258,23 @@ Vorteil: Clara antwortet privat ins Ohr, Haende bleiben steril.
       Endpoint POST `/tools/asap-queue`; Clara-Tool `asap_briefing`
       (Gruppe "tag", Keywords brennt/dringend/eilt/liegen bleiben).
       Test: `scripts/test-asap-queue.mjs` (isolierter Mandant, 13 Checks).
-- [ ] **Unterbrechungs-Politik** (Konfig pro Mandant + Rolle):
+- [x] **Unterbrechungs-Politik** (Konfig pro Mandant + Rolle):
       P0 sofort (Risiko/Notfall), P1 naechste Kalender-Luecke (der Kalender
       ist der Taktgeber!), P2 naechstes Briefing, P3 nur UI.
       Tagesbudget fuer Spontan-Ansagen (Start: max. 3), Stumm waehrend
       laufender Behandlung ausser zum aktuellen Patienten, Snooze lernt
       (recall_snooze-Muster verallgemeinern).
+      ERLEDIGT 04.07.: `src/clara/interruptPolicy.js` (decideDelivery pur +
+      runProaktivSweep), Scheduler in server.js (alle 5 Min, Not-Aus
+      MAS_PROAKTIV=0 bzw. mas_config/proaktiv.enabled=false).
+      Schutzregeln: BASELINE beim ersten Lauf (Altbestand wird markiert,
+      NICHT gemeldet), max. 1 P0-Anruf/Tag (weitere P0 als Push), max.
+      1 P1-Push pro Sweep, Tagesbudget 3, Ruhezeiten 20-7 (P0 ausgenommen),
+      announced-Dedupe (nie doppelt), stumm bei laufender Behandlung ausser
+      zum Patienten im Stuhl. Snooze: `/tools/proaktiv-snooze` + Clara-Tool
+      `proaktiv_snooze` (2x am Tag = Rest des Tages nur P0).
+      Tests: `scripts/test-interrupt-policy.mjs` (20 Checks, gruen);
+      Katalogfall snooze-01 gruen gegen echtes LLM.
 - [ ] **Entity-Linking:** Anruf -> Patient -> Vorgang (Abnahmefall:
       Kollegenanruf "Dr. Koenig wegen Patient Mayer"). Rolling Summary pro
       Vorgang ueber Bianca -> Case -> Lisa.
@@ -279,6 +327,48 @@ Vorteil: Clara antwortet privat ins Ohr, Haende bleiben steril.
 - [ ] Flotten-Monitoring: Health-Telemetrie + Alarm pro Mandant
       (Lehre aus dem 16.06.-Vorfall).
 
+## Phase W-HUMAN - Lebendige Gespraeche (beschlossen 04.07. nachmittags, Chef)
+
+**Auftrag:** "Jedes Gespraech ist extrem steif — ich will lebendige
+Gespraeche. Oberste Prioritaet bleibt: harte Fakten, nichts halluziniert.
+Nur Ausdrucksweise und abschweifende Smalltalk-Themen freier. Empathie,
+Sarkasmus, Ironie — in Massen." Leitprinzip wie FreiSprech:
+**Persoenlichkeit aus sicheren Schichten, Fakten nur aus Tools.**
+
+Bestandsaufnahme (was es schon gab): Humorschicht Abwesenheiten
+(`absencePlanner` ABSENCE_QUIPS), `humor.js` (rote Ampel, Bewertungen,
+Anrufliste), FreiSprech (Briefings, Fakten-Guard), Bianca-Smalltalk —
+aber Clara (assistant_mode: internal) hatte NICHTS davon: jeder Satz ging
+mit Tool-Pflicht ans LLM, daher das steife "nicht verstanden".
+
+- [x] **Interne Smalltalk-Schicht** `services/worker_human.py` (HumanMixin,
+      vor dem LLM-Turn, nur interner Modus): Dank, Befinden, Identitaet,
+      Uhrzeit/Datum (echte Uhr), Wetter, Witz, Kompliment, Saison-Gruss,
+      Frust->Empathie (+Hilfsangebot), Faehigkeiten, Wiederholen (letzte
+      Antwort). Deterministische Pools, nie zweimal dieselbe Zeile
+      (Muster absencePlanner). Not-Aus: CLARA_HUMAN_LAYER=0.
+- [x] **Sicherheits-Reihenfolge:** Ops gewinnt IMMER — matcht der Satz eine
+      Tool-Gruppe (W1.1-Muster) oder eine Personen-Anrede (Herr/Frau/Dr. X),
+      laeuft er unveraendert ans LLM+Tools. Ja/Nein/Okay wird NIE geschluckt
+      (gehoert laufenden Rueckfragen). Unit-Test erzwingt: KEIN Fall des
+      131er-Katalogs landet in der Schicht (`testsuite/test_human_layer.py`).
+- [~] **Chat-Spur** fuer erkennbar persoenliche Saetze ("Was haeltst du
+      von...", "Mir ist langweilig"): Mini-LLM-Call mit eigenem kleinen
+      Persona-Prompt (warm, Augenzwinkern, Selbstironie), OHNE Tools und
+      OHNE Praxisdaten im Kontext (kann nichts Echtes verraten). Nach-Guard
+      verwirft Ziffern + Erledigt-/Gebucht-Behauptungen -> ehrliche
+      Ausweich-Zeile. OFFEN: auf Qwen 3.6 (pickadoc1) schalten — das 4b
+      plaudert hoelzern (Test 16:41: bot ungefragt "Beratungstermin" an).
+- [ ] Voll-Suite + Release-Gate gruen, Worker-Neustart, Tag.
+- [ ] **Bewertung Intent-Schicht (Auftrag Chef):** Zwei-Stufen-Architektur
+      "flexibel verstehen, strikt handeln" ist RICHTIG, aber das
+      Verstehens-Problem ist ein EIGENES Paket (Eingabe-Robustheit), nicht
+      der Hebel fuer "steif": W1.1-Subsetting ist bereits die halbe
+      Intent-Schicht (deterministisches Keyword-Routing). Der volle
+      Resolver (R0 Regex -> R1 Keywords -> R2 Mini-LLM-JSON + Fast-Path +
+      Clarify statt Leer-Turn) steht als Folgepaket W-INTENT auf der
+      Warteliste — erst W-HUMAN abschliessen und messen.
+
 ## Reihenfolge
 
 1. Phase 0 (sofort) -> parallel Dens-Kickoff-Fragen raus + Hardware bestellen
@@ -297,6 +387,9 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 - 04.07.2026: Firestore-Export als Datensicherung einrichten (gcloud fehlt
   auf der Maschine; Code-Sicherung besteht, Daten-Backup noch offen).
+- 04.07.2026: W-INTENT — volle Zwei-Stufen-Intent-Schicht (Resolver R0-R2,
+  Fast-Path, Clarify-Pfad, Transcript-Repair, Guards fragen statt strippen).
+  Skizze liegt im Chat vom 04.07.; bauen erst nach W-HUMAN-Abschluss.
 - 04.07.2026: Alte Lena-Dashboard-Funktion "Naechste 7 Tage - fehlende
   Pflicht-Dokumente je Termin" beim Neubau bewusst nicht uebernommen (war Teil
   der verworrenen Seite). Wenn gewuenscht: als eigene Karte im neuen Layout
@@ -314,3 +407,11 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   /tools/asap-queue, Clara-Tool asap_briefing). Suite jetzt 130 Faelle:
   120/130, beide asap-Faelle gruen, Fail-Familie identisch zur 128er-Basis
   (abs-03, memo-04, balla, storno, 4 Dialoge). Worker neu gestartet.
+- 04.07.2026 (abends): Phase 5 Unterbrechungs-Politik fertig
+  (interruptPolicy.js, Scheduler, /tools/proaktiv-snooze, Tool
+  proaktiv_snooze, Baseline-Schutz, 20 Checks gruen). Suite 131 Faelle.
+- 04.07.2026 (abends): W-HUMAN begonnen (worker_human.py: Smalltalk-Pools +
+  Chat-Spur; Unit-Tests gruen, Katalog-Sicherheitscheck bestanden).
+  Klarstellung Modelle: Worker-Routing lokal qwen3:4b-instruct; Qwen 3.6
+  MoE (pickadoc1, vLLM) bisher NUR FreiSprech — W1.5-Nachtrag: 128er-Suite
+  laeuft als Messung gegen das 3.6, Chat-Spur wird darauf umgestellt.
