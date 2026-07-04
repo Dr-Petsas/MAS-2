@@ -112,8 +112,19 @@ Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
       py_compile + pyflakes sauber, Voll-Suite 119/128 mit EXAKT denselben
       9 Fail-IDs wie vor dem Split. `_normalize_profile` bleibt per
       Re-Export Testsuite-Vertrag. Tag: stabil-2026-07-04-w13.
-- [ ] **W1.4 Kompensationen loeschen:** Intent-Umleitungen in
+- [x] **W1.4 Kompensationen loeschen:** Intent-Umleitungen in
       `_sanitize_tool_calls()` nach aktivem Subsetting (Doc-Hinweis 5).
+      **ERLEDIGT 04.07. (Ergebnis: BEHALTEN, kein Code geloescht).**
+      Messung ueber drei gruene 128er-Laeufe: Guards feuern weiterhin
+      (Route-Guards je ~1x/Lauf, Argument-Wachen 5-8x/Lauf). Grund: die
+      Verwechslungen passieren INNERHALB einer Subsetting-Gruppe
+      (read/day_briefing beide "tag", compose/approve beide "komm",
+      plan/approve_absence beide "abwesenheit", search_patient=Core),
+      und Freigabe-Zuege ("Ja, mach das so") matchen keine Gruppe =>
+      volle Liste. Loeschen wuerde gruene Faelle rot machen und den
+      Notaus (CLARA_TOOL_SUBSETTING=0) entwaffnen. Befund dokumentiert
+      in docs/clara_tool_groups.md Hinweis 5. Die Schicht ist ab jetzt
+      die bewusste zweite Verteidigungslinie nach dem Subsetting.
 - [ ] **W1.5 Modell-Evaluation** erst NACH Subsetting (Prompt ~16,7k -> ~8k),
       Entscheidung anhand 118-Faelle-Suite, nicht nach Gefuehl.
 - NICHT anfassen: `response_guard.py`, `daySchedule`-Filter, `holidays.js`.
