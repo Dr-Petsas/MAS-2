@@ -69,9 +69,18 @@ Offen: Abnahme durch Chef im Alltag.
 Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
 `server.js` ~7.100, `openai_compat_llm.py` ~2.700, `profile.json` ~1.500.
 
-- [ ] **W1.1 Tool-Subsetting aktivieren** nach `docs/clara_tool_groups.md`
+- [x] **W1.1 Tool-Subsetting aktivieren** nach `docs/clara_tool_groups.md`
       (Core + Gruppe = 10-15 Tools pro Turn statt 57). Stabile Gruppen-Sets
       (Prefix-Cache!), 20-Tool-Cap in `_sanitize_custom_tools()` fixen.
+      **ERLEDIGT 04.07.:** `services/tool_subsetting.py` (deterministisches
+      Keyword-Routing, Satz + letzte 3 Nutzer-Zuege sticky, kein Treffer =>
+      volle Liste), EINE Einhaenge-Stelle in `generate_stream()` (gilt fuer
+      Worker, Spekulativ-Lauf UND Testsuite), `group`-Felder an allen 51
+      custom_tools, Cap 20->200 + group/speak_result erhalten. Offline-
+      Routing-Test `test_tool_subsetting.py` im Release-Gate. Messung:
+      Tagesfrage ~26k -> ~9k Prompt-Tokens (9/60 Tools, Schnitt 16.7).
+      Voll-Gate: 118/128 (Baseline davor: 117/128). Notaus:
+      `CLARA_TOOL_SUBSETTING=0`.
 - [ ] **W1.2 server.js in Express-Router splitten** (tools/brain/clara/qm/
       testtrain/devices) - rein mechanisch, Routen identisch.
 - [ ] **W1.3 Worker zerlegen:** Session-Kern (<2.000 Zeilen) + Persona-Module;
@@ -199,3 +208,5 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 - 04.07.2026: Plan erstellt (Phasen 0-7 + W-LENA), beschlossen mit Chef.
 - 04.07.2026: Phase 0 abgeschlossen (Commits, Tags, Voll-Gate, Bundles).
 - 04.07.2026: W-LENA gebaut und getestet (siehe Status im Abschnitt W-LENA).
+- 04.07.2026: W1.1 Tool-Subsetting aktiv (118/128 im Voll-Gate, vorher 117;
+  Prompt bei Tagesfragen ~26k -> ~9k Tokens). Notaus CLARA_TOOL_SUBSETTING=0.
