@@ -2942,10 +2942,30 @@ app.post("/tools/patient-treatments", async (req, res) => {
   }
 });
 
+// 1e-vor) ANAMNESE-FLAGS fuer das Termin-Popup (Frontend): gleiche Auswertung
+// wie Claras Tool, aber strukturiert als JSON. Deckt seit 04.07.2026 auch
+// SIGNIERTE Boegen ab — der Server liest die Textebene des PDFs
+// (anamnesePdf.js) und cached das Ergebnis. Der Browser kann das nicht
+// selbst (Storage-Zugriff + PDF-Parsing gehoeren auf den Server).
+app.post("/anamnese/flags", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const patientId = String(req.body?.patientId || "").trim();
+    if (!patientId) return res.status(400).json({ error: "patientId fehlt" });
+    const result = await getPatientAnamnese(clientId, { patientId });
+    return res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
 // 1e) ANAMNESE-AUFFAELLIGKEITEN (SignR): "Gibt es bei Frau Thrandorf etwas
 // Auffaelliges in der Anamnese?" -> liest den Anamnesebogen (Allergien,
-// Medikamente, Vorerkrankungen). Unterschriebene PDF-Anamnesen sind nicht
-// maschinell lesbar; das wird ehrlich gemeldet, statt zu raten.
+// Medikamente, Vorerkrankungen). Seit 04.07.2026 werden auch unterschriebene
+// Boegen ausgewertet (PDF-Textebene); nur echte Scans bleiben "nicht lesbar".
 app.post("/tools/anamnesis-flags", async (req, res) => {
   try {
     const clientId = resolveClientId(req);

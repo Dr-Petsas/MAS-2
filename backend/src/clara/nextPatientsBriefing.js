@@ -1,5 +1,5 @@
 import { getDayAppointments, getPatientAppointments, todayBerlin } from "./daySchedule.js";
-import { getPatientAnamnese } from "./anamnese.js";
+import { getPatientAnamnese, bogenStand } from "./anamnese.js";
 import { pick, clinicalHints } from "./speech.js";
 import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
@@ -65,6 +65,9 @@ function kompakteAnamnese(ana, { seed = "" } = {}) {
                 "Aufgepasst, die Anamnese zeigt",
             ], seed);
             let msg = `${lead} — ${parts.join("; ")}`;
+            // Aus dem signierten PDF rekonstruiert: Stand ehrlich dazusagen,
+            // ein alter Bogen kann ueberholt sein.
+            if (ana.ausPdf && ana.bogenMs) msg += ` (unterschriebener Bogen vom ${bogenStand(ana.bogenMs)})`;
             const hints = clinicalHints(ana.findings);
             if (hints.length) {
                 const hlead = pick(["Mein Hinweis", "Denk dran", "Praktisch heißt das"], seed);

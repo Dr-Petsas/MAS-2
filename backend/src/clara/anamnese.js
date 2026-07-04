@@ -6,10 +6,17 @@ import { loadBooking } from "./booking.js";
 // Vorerkrankungen, Schwangerschaft ...). Quelle sind die SignR-Patientendokumente
 //   clients/{clientId}/locations/{locationId}/patients/{pid}/pdocuments
 // Die strukturierten Antworten liegen im Baum ``formRows`` -> ``columns`` ->
-// FormItem. WICHTIG: Die Plattform loescht ``formRows`` beim Unterschreiben und
-// behaelt nur das PDF (pdfService.saveDocumentAndCreatePDF). Eine unterschriebene
-// Anamnese ist daher NICHT maschinell lesbar - das sagen wir ehrlich, statt zu
-// raten. Reine Heuristik ueber die deutschen Fragetexte; nie Diagnosen erfinden.
+// FormItem. Die Plattform loescht ``formRows`` beim Unterschreiben und behaelt
+// nur das PDF (pdfService.saveDocumentAndCreatePDF).
+//
+// UPDATE 04.07.2026: Unterschriebene Boegen sind DOCH lesbar — pdfmake schreibt
+// eine echte Textebene ins PDF. anamnesePdf.js extrahiert Frage/Antwort daraus
+// (Kaestchen = Fontello-Glyphen) und cached das Ergebnis pro Dokument.
+// Vorrang hat weiter der unsignierte Bogen (aktueller Stand); nur wenn es
+// KEINEN gibt, faellt die Auswertung auf den NEUESTEN signierten PDF-Bogen
+// zurueck (ausPdf=true, bogenMs = Datum des Bogens). signedOnly bleibt nur
+// noch fuer PDFs stehen, die wirklich nicht lesbar sind (Scan/Fremdformat).
+// Reine Heuristik ueber die deutschen Fragetexte; nie Diagnosen erfinden.
 
 // FormItemEnum (Plattform): 3=checkbox, 5=inputText, 8=radio, 15=dropdown.
 const TYPE_TEXT = 5;
@@ -34,16 +41,16 @@ function deLabel(item) {
   return String(de?.value || "").trim();
 }
 
-function isAffirmative(s) {
+export function isAffirmative(s) {
   return /^\s*(ja|yes|positiv|vorhanden)\b/i.test(String(s || ""));
 }
 
-function catFor(text) {
+export function catFor(text) {
   for (const n of NOTABLE) if (n.re.test(text)) return n.cat;
   return null;
 }
 
-function clip(s, n) {
+export function clip(s, n) {
   const t = String(s || "").replace(/\s+/g, " ").trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 }
@@ -51,7 +58,7 @@ function clip(s, n) {
 // Bejahte Ja/Nein-Frage OHNE Folge-Freitext: statt eines nichtssagenden "ja"
 // das THEMA aus der Frage ziehen ("Leiden Sie unter Bluthochdruck?" ->
 // "Bluthochdruck"). Bewusst simple Heuristik fuer deutsche Anamnesefragen.
-function topicFromQuestion(q) {
+export function topicFromQuestion(q) {
   let s = String(q || "").replace(/\s+/g, " ").trim().replace(/[?!.]+$/, "");
   s = s.replace(/^(leiden sie (allgemein )?(unter|an)|haben sie( einen| eine| ein)?|besteht (eine|ein)|sind sie auf( eine| einen| ein)?|sind sie|nehmen sie (regelmäßig|regelmaessig)?|waren sie( schon einmal)?|reagieren sie( allergisch)?( auf( bestimmte)?)?)\s+/i, "");
   s = s.replace(/\s+(angewiesen|ein|eingenommen)$/i, "");
@@ -131,7 +138,7 @@ function collectItem(item, out) {
   }
 }
 
-function isNegative(s) {
+export function isNegative(s) {
   return /^\s*(nein|keine?|nicht|no)\b/i.test(String(s || ""));
 }
 
@@ -165,16 +172,38 @@ export async function getPatientAnamnese(clientId, { patientId } = {}) {
   if (!ana.length) return { ok: true, hasAnamnese: false, signedOnly: false, findings: [] };
 
   let hadFormRows = false;
-  let signedSeen = false;
+  const signierte = [];
   let findings = [];
   for (const d of ana) {
     const rows = Array.isArray(d.formRows) ? d.formRows : [];
-    if (rows.length) {
+    // Ein VERSCHICKTER, aber noch unausgefuellter Bogen (kein einziges Kreuz,
+    // kein Freitext) zaehlt nicht als "aktueller Stand" — sonst maskiert er
+    // den unterschriebenen Alt-Bogen und Clara meldet faelschlich "nichts
+    // Auffaelliges", obwohl im PDF z. B. Medikamente stehen.
+    if (rows.length && hatAntworten(rows)) {
       hadFormRows = true;
       findings = findings.concat(walkFindings(rows));
     } else if (d.status === "signed" || d.pdfCreatedAt) {
-      signedSeen = true;
+      signierte.push(d);
     }
+  }
+
+  // Kein unsignierter Bogen? Dann den NEUESTEN signierten PDF-Bogen auswerten
+  // (Textebene, anamnesePdf.js). Best-effort: schlaegt das fehl, bleibt die
+  // ehrliche signedOnly-Antwort.
+  let ausPdf = false;
+  let bogenMs = 0;
+  if (!hadFormRows && signierte.length) {
+    signierte.sort((a, b) => _pdocMs(b) - _pdocMs(a));
+    try {
+      const { findingsAusSigniertemPdf } = await import("./anamnesePdf.js");
+      const r = await findingsAusSigniertemPdf(clientId, locationId, pid, signierte[0]);
+      if (r?.ok) {
+        findings = findings.concat(r.findings);
+        ausPdf = true;
+        bogenMs = r.bogenMs || _pdocMs(signierte[0]);
+      }
+    } catch { /* PDF-Weg ist Zusatz — nie das Briefing blockieren */ }
   }
 
   // Dedupe (Kategorie + Text), Reihenfolge erhalten.
@@ -190,9 +219,41 @@ export async function getPatientAnamnese(clientId, { patientId } = {}) {
   return {
     ok: true,
     hasAnamnese: true,
-    signedOnly: !hadFormRows && signedSeen,
+    signedOnly: !hadFormRows && signierte.length > 0 && !ausPdf,
+    ausPdf,
+    bogenMs,
     findings: deduped,
   };
+}
+
+function _pdocMs(d) {
+  const v = d?.pdfCreatedAt || d?.createdAt;
+  if (!v) return 0;
+  if (typeof v?.toMillis === "function") return v.toMillis();
+  if (typeof v?.seconds === "number") return v.seconds * 1000;
+  const n = new Date(v).getTime();
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Hat der Bogen ueberhaupt eine Patientenantwort (Kreuz oder Freitext)?
+function hatAntworten(formRows) {
+  let gefunden = false;
+  const walk = (rows) => {
+    if (!Array.isArray(rows) || gefunden) return;
+    for (const row of rows) {
+      for (const item of (Array.isArray(row?.columns) ? row.columns : [])) {
+        if (!item || typeof item !== "object") continue;
+        if (String(item.value || "").trim()) { gefunden = true; return; }
+        const answers = Array.isArray(item.answers) ? item.answers : [];
+        if (answers.some((a) => a && a.checked === true)) { gefunden = true; return; }
+        if (Array.isArray(item.formRows)) walk(item.formRows);
+        for (const a of answers) if (a && Array.isArray(a.formRows)) walk(a.formRows);
+      }
+      if (gefunden) return;
+    }
+  };
+  walk(formRows);
+  return gefunden;
 }
 
 /**
@@ -207,8 +268,10 @@ export function buildSpokenAnamnese(result, { who = "der Patient" } = {}) {
   if (result.signedOnly && !result.findings.length) {
     return `Die Anamnese von ${who} ist unterschrieben und liegt nur als PDF vor — den Inhalt kann ich nicht automatisch vorlesen.`;
   }
+  // Aus dem signierten PDF gelesen: Stand des Bogens ehrlich dazusagen.
+  const stand = result.ausPdf && result.bogenMs ? bogenStand(result.bogenMs) : "";
   if (!result.findings.length) {
-    return `Die Anamnese von ${who} habe ich geprüft — keine auffälligen Einträge bei Allergien, Medikamenten oder Vorerkrankungen.`;
+    return `Die Anamnese von ${who} habe ich geprüft${stand ? ` — der unterschriebene Bogen ist vom ${stand}` : ""} — keine auffälligen Einträge bei Allergien, Medikamenten oder Vorerkrankungen.`;
   }
   // Befunde je Kategorie buendeln.
   const byCat = new Map();
@@ -221,6 +284,13 @@ export function buildSpokenAnamnese(result, { who = "der Patient" } = {}) {
   for (const [cat, texts] of byCat) {
     parts.push(texts.length ? `${cat}: ${[...new Set(texts)].join(", ")}` : cat);
   }
-  const lead = `In der Anamnese von ${who} gibt es auffällige Einträge — ${parts.join("; ")}.`;
+  const lead = `In der Anamnese von ${who}${stand ? ` — unterschriebener Bogen vom ${stand} —` : ""} gibt es auffällige Einträge: ${parts.join("; ")}.`;
   return `${cap(lead)} Soll ich das als Notiz festhalten?`;
+}
+
+/** "16.05.2025" fuer die Sprach-/Anzeige-Angabe "Bogen vom ...". */
+export function bogenStand(ms) {
+  try {
+    return new Date(ms).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" });
+  } catch { return ""; }
 }
