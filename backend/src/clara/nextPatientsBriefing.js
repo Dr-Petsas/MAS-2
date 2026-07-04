@@ -1,4 +1,9 @@
 import { getDayAppointments, getPatientAppointments, todayBerlin } from "./daySchedule.js";
+import { getPatientAnamnese } from "./anamnese.js";
+import { pick, clinicalHints } from "./speech.js";
+import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
+import { TOPIC_LABELS } from "../brain/cases.js";
+import { resolvePatientSubject } from "../brain/identity.js";
 
 /**
  * "Nächste 2 Patienten"-Briefing
@@ -33,31 +38,195 @@ function kurz(s, max = 160) {
     return t.length > max ? `${t.slice(0, max - 3)}...` : t;
 }
 
+// Anamnese-Warnung in EINEM Satz: nur die klinisch relevanten Kategorien
+// (Allergie, Medikamente, Vorerkrankung, Schwangerschaft ...) als Stichpunkte,
+// plus — wenn ableitbar — ein klinischer Rueckschluss fuer den Behandler
+// (z. B. Bluthochdruck -> adrenalinfreie Betaeubung erwaegen). Der Lead-in
+// variiert (Seed = Patient), damit es nicht bei jedem Patienten gleich klingt.
+function kompakteAnamnese(ana, { seed = "" } = {}) {
+    if (!ana?.ok) return "";
+    if (ana.findings?.length) {
+        const byCat = new Map();
+        for (const f of ana.findings) {
+            if (!byCat.has(f.category)) byCat.set(f.category, []);
+            const t = f.text && f.text !== "ja" ? f.text : "";
+            if (t) byCat.get(f.category).push(t);
+        }
+        const parts = [];
+        for (const [cat, texts] of byCat) {
+            parts.push(texts.length ? `${cat}: ${[...new Set(texts)].join(", ")}` : cat);
+        }
+        if (parts.length) {
+            const lead = pick([
+                "Achtung, wichtig aus der Anamnese",
+                "Aus der Anamnese unbedingt beachten",
+                "Wichtig vorab aus der Anamnese",
+                "Aufgepasst, die Anamnese zeigt",
+            ], seed);
+            let msg = `${lead} — ${parts.join("; ")}`;
+            const hints = clinicalHints(ana.findings);
+            if (hints.length) {
+                const hlead = pick(["Mein Hinweis", "Denk dran", "Praktisch heißt das"], seed);
+                msg += `. ${hlead}: ${hints.join("; ")}`;
+            }
+            return msg;
+        }
+    }
+    if (ana.signedOnly) return "Die Anamnese liegt unterschrieben nur als PDF vor und kann nicht automatisch gelesen werden";
+    return "";
+}
+
+function lastContactText(c) {
+    const updates = Array.isArray(c?.updates) ? c.updates : [];
+    const last = [...updates].reverse().find((u) => u.kind === "contact") || updates[updates.length - 1];
+    return String(last?.text || "");
+}
+
+// Prozedurale Auto-Vorgaenge (Claras calendarWatch legt zu JEDEM Termin einen
+// "Neuer Termin"-/"Dokumenten-Ampel"-Vorgang an) sind System-Buchhaltung und
+// gehoeren NICHT ins Patienten-Heads-up. Nur inhaltliche Anliegen (Rechnung,
+// Beschwerde, Rueckruf ...) sind hier gemeint. Erkennung ueber den Vorgangstext.
+function istProzedural(c) {
+    if (!c) return true;
+    if (c.topic === "appointment") return true;
+    if (/^\s*(Neuer Termin|Termin verschoben|Termin abgesagt|Dokumenten-Ampel)/i.test(lastContactText(c))) return true;
+    return false;
+}
+
+// Offener Vorgang aus dem Praxisgedaechtnis (Nadine-Mail, Anruf, Factoring ...).
+// Inhaltliche Themen (Beschwerde/Rechnung/Rueckruf) gehen vor; E-Mail-Adressen
+// werden gegen den Namen getauscht (lesen sich gesprochen schlecht).
+function fallHinweis(cases, who) {
+    const PRIO = { complaint: 4, billing: 4, callback: 3, document: 2, other: 1 };
+    const c = (cases || [])
+        .filter((x) => !istProzedural(x))
+        .sort((a, b) => (PRIO[b.topic] || 0) - (PRIO[a.topic] || 0))[0];
+    if (!c) return "";
+    let snippet = lastContactText(c)
+        .replace(/\b[\w.+-]+@[\w.-]+\.\w+\b/g, who)
+        .replace(/\s+/g, " ")
+        .trim();
+    if (snippet.length > 220) snippet = `${snippet.slice(0, 217)}...`;
+    const thema = c.topic ? ` zum Thema ${TOPIC_LABELS[c.topic] || c.topic}` : "";
+    return snippet ? `Offener Vorgang${thema}: ${snippet}` : `Es gibt einen offenen Vorgang${thema}`;
+}
+
 /**
  * Baut den gesprochenen Text für die nächsten N Patienten (Default 2).
  * @returns {Promise<{ok:boolean, message:string, count?:number}>}
  */
-export async function buildNextPatientsBriefing(clientId, { date, calendarId, count = 2, nowMs = Date.now() } = {}) {
-    const day = await getDayAppointments(clientId, { date: date || todayBerlin(), calendarId });
+// Normalisiert einen Namen/Teilstring fuer den Vergleich (klein, ohne Anrede).
+function normName(s) {
+    return String(s || "")
+        .toLowerCase()
+        .replace(/\b(herr|frau|hr|fr|patient|patientin)\b\.?/g, " ")
+        .replace(/[^a-zäöüß0-9 ]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+// "10", "10 uhr", "10:00", "1000" -> "10:00"
+function normTime(s) {
+    const m = String(s || "").match(/(\d{1,2})(?:[:.\s]?(\d{2}))?/);
+    if (!m) return "";
+    const h = String(Math.min(23, parseInt(m[1], 10))).padStart(2, "0");
+    const min = (m[2] || "00").padStart(2, "0");
+    return `${h}:${min}`;
+}
+
+export async function buildNextPatientsBriefing(clientId, { date, calendarId, count = 2, nowMs = Date.now(), patientName, time } = {}) {
+    const theDate = date || todayBerlin();
+    const day = await getDayAppointments(clientId, { date: theDate, calendarId });
     if (!day?.ok) return { ok: false, message: "Den Kalender kann ich gerade nicht lesen." };
 
-    const anstehend = (day.appointments || [])
-        .filter((a) => !a.isAbsence && a.patientId && a.startMs >= nowMs)
-        .sort((a, b) => a.startMs - b.startMs)
+    const toEchte = (d) => (d.appointments || [])
+        .filter((a) => !a.isAbsence && a.patientId)
+        .sort((a, b) => a.startMs - b.startMs);
+    let echte = toEchte(day);
+
+    // Gezielte Abfrage nach Patientenname oder Uhrzeit ("Heads up fuer Lindenthal",
+    // "der Patient um 10 Uhr"). Dann durchsuchen wir den GANZEN Tag (nicht nur
+    // ab jetzt) und liefern genau diesen einen Patienten. Bei keinem Treffer eine
+    // klare Fehlmeldung — NIEMALS erfundene Termine.
+    const nameQ = normName(patientName);
+    const timeQ = normTime(time);
+    if (nameQ || timeQ) {
+        const matchIn = (list) => {
+            let t = list;
+            if (nameQ) {
+                const toks = nameQ.split(" ").filter(Boolean);
+                t = t.filter((a) => {
+                    const hay = normName(`${a.patientName || ""} ${a.patientLastName || ""}`);
+                    return toks.every((tok) => hay.includes(tok));
+                });
+            }
+            if (timeQ) t = t.filter((a) => hhmm(a.startMs) === timeQ);
+            return t;
+        };
+        let treffer = matchIn(echte);
+
+        // War auf EINEN Kalender (Operator-Kalender) gescoped und nichts gefunden?
+        // Dann praxisweit nachsehen, bevor wir "nicht gefunden" sagen: Der Patient
+        // "um 11" kann bei einem ANDEREN Behandler sitzen (Vorfall 30.06.2026 —
+        // Demo: Petsas fragt nach 11 Uhr, der einzige 11-Uhr-Patient lag bei
+        // Dr. Patrikis, Clara meldete faelschlich "kein Termin um 11"). Nur
+        // erweitern, nie verengen; die Sichtbarkeits-Filter (virtuell/Sperrzeit)
+        // gelten in getDayAppointments unveraendert weiter.
+        if (!treffer.length && calendarId) {
+            const all = await getDayAppointments(clientId, { date: theDate }).catch(() => null);
+            if (all?.ok) {
+                echte = toEchte(all);
+                treffer = matchIn(echte);
+            }
+        }
+
+        if (!treffer.length) {
+            // Kein Termin am Tag. Bei Namens-Anfrage NICHT abbrechen, sondern in
+            // der KARTEI nachschlagen: Clara soll zu JEDEM Patienten ein Heads-up
+            // geben koennen (Wunsch 27.06.) — Historie, Anamnese, offene Vorgaenge,
+            // naechster geplanter Termin. Nur bei reiner Uhrzeit-Anfrage ohne Namen
+            // bleibt es bei der klaren Fehlmeldung (Uhrzeit ohne Termin -> nichts).
+            if (nameQ) return await renderChartPatient(clientId, String(patientName).trim());
+            return { ok: true, message: `Ich finde an dem Tag keinen Termin um ${timeQ} Uhr. Bitte die Uhrzeit prüfen.`, count: 0 };
+        }
+        if (treffer.length > 1) {
+            const namen = treffer.slice(0, 4).map((a) => `${a.patientName || a.patientLastName} um ${hhmm(a.startMs)}`).join("; ");
+            return { ok: true, message: `Es gibt mehrere passende Termine: ${namen}. Welchen meinst du?`, count: treffer.length };
+        }
+        return await renderPatients(clientId, treffer.slice(0, 1), { single: true });
+    }
+
+    const anstehend = echte
+        .filter((a) => a.startMs >= nowMs)
         .slice(0, Math.max(1, count));
 
     if (!anstehend.length) {
         return { ok: true, message: "Für heute stehen keine weiteren Patienten mehr an.", count: 0 };
     }
+    return await renderPatients(clientId, anstehend, { single: false });
+}
+
+async function renderPatients(clientId, anstehend, { single } = {}) {
+
+    // Offene Vorgaenge der anstehenden Patienten in wenigen Reads (best-effort).
+    const casesByPatient = await listActiveCasesByPatientIds(
+        clientId,
+        anstehend.map((a) => a.patientId),
+    ).catch(() => new Map());
 
     const teile = [];
     for (let i = 0; i < anstehend.length; i++) {
         const a = anstehend[i];
         const who = a.patientName || a.patientLastName || "der nächste Patient";
-        const fuehrung = i === 0 ? "Als Nächstes" : "Danach";
+        const fuehrung = single ? "Termin" : (i === 0 ? "Als Nächstes" : "Danach");
         const zeit = hhmm(a.startMs);
 
-        let s = `${fuehrung}${zeit ? ` um ${zeit}` : ""}: ${who}`;
+        // Im Einzel-Heads-up den Behandler nennen, damit in einer Mehrbehandler-
+        // Praxis klar ist, an welchem Stuhl der Patient sitzt (z.B. wenn der
+        // gefragte Patient bei einem anderen Arzt als dem Operator liegt).
+        const beiArzt = single && a.calendarName ? ` bei ${a.calendarName}` : "";
+        let s = single
+            ? `${who}${zeit ? `, ${zeit} Uhr` : ""}${beiArzt}`
+            : `${fuehrung}${zeit ? ` um ${zeit}` : ""}: ${who}`;
         s += a.visitMotive ? ` — ${a.visitMotive}` : " — Termin";
         if (a.newPatient) s += ", Neupatient";
         if (a.comments) s += `. Geplant: ${kurz(a.comments)}`;
@@ -71,16 +240,102 @@ export async function buildNextPatientsBriefing(clientId, { date, calendarId, co
                 // statt nur visitMotive + comments.
                 const lastMotive = hist.last.visitMotive || "ein Termin";
                 const lastNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 120)}` : "";
-                s += `. Beim letzten Mal: ${lastMotive}${lastNote}`;
+                s += `. ${pick(["Beim letzten Mal", "Zuletzt", "Beim letzten Besuch"], a.patientId)}: ${lastMotive}${lastNote}`;
             } else {
                 s += ". Kein früherer Termin bekannt";
             }
         } catch {
             /* Historie ist best-effort und darf das Briefing nie blockieren */
         }
+
+        // Anamnese-Warnung (Wunsch 26.06.: Allergien/Medikamente/Vorerkrankungen
+        // beim naechsten Patienten vorlesen, bevor er im Stuhl sitzt).
+        try {
+            const ana = await getPatientAnamnese(clientId, { patientId: a.patientId });
+            const anaTxt = kompakteAnamnese(ana, { seed: a.patientId });
+            if (anaTxt) s += `. ${anaTxt}`;
+        } catch {
+            /* Anamnese ist best-effort und darf das Briefing nie blockieren */
+        }
+
+        // Offener Vorgang (Mail/Anruf/Factoring) — der "Jaw-Dropper" im Briefing.
+        const fall = fallHinweis(casesByPatient.get(a.patientId) || [], who);
+        if (fall) s += `. ${fall}`;
+
+        // Unterlagen-Ampel: gelb = verschickt, rot = noch gar nicht — z.B. eine
+        // OP-Aufklaerung, die vor dem Eingriff noch unterschrieben werden muss.
+        if (a.docsStatus === "red") s += ". Achtung, Unterlagen sind noch nicht unterschrieben";
+        else if (a.docsStatus === "yellow") s += ". Unterlagen sind verschickt, aber noch nicht unterschrieben";
+
         teile.push(`${s}.`);
     }
 
-    const kopf = anstehend.length === 1 ? "Der nächste Patient" : `Die nächsten ${anstehend.length} Patienten`;
+    const kopf = single
+        ? pick(["Heads up", "Kurz zum Patienten", "Zum nächsten Patienten", "Aufgepasst"], anstehend[0]?.patientId || "")
+        : (anstehend.length === 1 ? "Der nächste Patient" : `Die nächsten ${anstehend.length} Patienten`);
     return { ok: true, message: `${kopf}: ${teile.join(" ")}`, count: anstehend.length };
+}
+
+// Heads-up zu einem Patienten OHNE Termin am gefragten Tag — direkt aus der
+// Kartei (Wunsch 27.06.: "fuer jeden Patienten in der Kartei ein Heads-up").
+// Identitaet ueber dieselbe sichere Route wie find_contact (resolvePatientSubject:
+// kein Raten — eindeutig, mehrdeutig oder nicht gefunden). Inhalt: letzter +
+// naechster Termin, Anamnese-Warnung, offene Vorgaenge. Reine Lesefunktion.
+async function renderChartPatient(clientId, patientName) {
+    const subj = await resolvePatientSubject(clientId, patientName).catch(() => null);
+
+    if (!subj || subj.matchStatus === "unmatched" || (!subj.patientId && subj.matchStatus !== "ambiguous")) {
+        return { ok: true, message: `Ich finde keinen Patienten „${patientName}" in der Kartei. Bitte den Namen prüfen.`, count: 0 };
+    }
+    if (subj.matchStatus === "ambiguous") {
+        const namen = (subj.candidates || [])
+            .slice(0, 4)
+            .map((p) => `${p.firstName || ""} ${p.lastName || ""}`.trim())
+            .filter(Boolean)
+            .join("; ");
+        return { ok: true, message: `Zu „${patientName}" gibt es mehrere Patienten${namen ? `: ${namen}` : ""}. Wen genau meinst du?`, count: (subj.candidates || []).length };
+    }
+
+    const who = subj.name || patientName;
+    const lastName = (subj.candidates && subj.candidates[0] && subj.candidates[0].lastName) || "";
+    let s = `Heads up zu ${who}`;
+
+    // Termin-Historie (kein Termin am gefragten Tag, aber evtl. frueher/spaeter).
+    try {
+        const hist = await getPatientAppointments(clientId, { patientId: subj.patientId, lastName });
+        if (hist?.ok) {
+            if (hist.next) {
+                const nMot = hist.next.visitMotive || "ein Termin";
+                s += `. Nächster Termin: ${nMot}${hist.next.startMs ? ` am ${new Date(hist.next.startMs).toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" })}` : ""}`;
+            }
+            if (hist.last) {
+                const lMot = hist.last.visitMotive || "ein Termin";
+                const lNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 120)}` : "";
+                s += `. ${pick(["Beim letzten Mal", "Zuletzt", "Beim letzten Besuch"], subj.patientId)}: ${lMot}${lNote}`;
+            }
+            if (!hist.next && !hist.last) s += ". Kein Termin in der Historie";
+        }
+    } catch {
+        /* Historie best-effort, blockiert das Heads-up nie */
+    }
+
+    // Anamnese-Warnung (Allergien/Medikamente/Vorerkrankungen).
+    try {
+        const ana = await getPatientAnamnese(clientId, { patientId: subj.patientId });
+        const anaTxt = kompakteAnamnese(ana, { seed: subj.patientId });
+        if (anaTxt) s += `. ${anaTxt}`;
+    } catch {
+        /* Anamnese best-effort */
+    }
+
+    // Offener Vorgang (Mail/Anruf/Rechnung) aus dem Praxisgedaechtnis.
+    try {
+        const casesByPatient = await listActiveCasesByPatientIds(clientId, [subj.patientId]).catch(() => new Map());
+        const fall = fallHinweis(casesByPatient.get(subj.patientId) || [], who);
+        if (fall) s += `. ${fall}`;
+    } catch {
+        /* Vorgaenge best-effort */
+    }
+
+    return { ok: true, message: `${s}.`, count: 1 };
 }

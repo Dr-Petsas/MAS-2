@@ -38,6 +38,14 @@ $tokLine = Get-Content (Join-Path $root 'backend\.env') -ErrorAction SilentlyCon
 if (-not $tokLine) { Log 'REMOTE_CHAT_TOKEN fehlt in backend\.env - Abbruch'; exit 1 }
 $token = ($tokLine -split '=', 2)[1].Trim()
 
+# Modell fuer den unbeaufsichtigten Agenten aus backend\.env (REMOTE_AGENT_MODEL).
+# Der gespeicherte Standard des cursor-agent zeigte auf ein zurueckgezogenes
+# Anthropic-Modell ("Model not available ... removed"), wodurch JEDER Lauf sofort
+# scheiterte (Vorfall 23.06.2026). Darum hier immer explizit setzen.
+$mdlLine = Get-Content (Join-Path $root 'backend\.env') -ErrorAction SilentlyContinue |
+    Where-Object { $_ -match '^\s*REMOTE_AGENT_MODEL\s*=' } | Select-Object -First 1
+$model = if ($mdlLine) { ($mdlLine -split '=', 2)[1].Trim() } else { 'claude-4.6-sonnet-medium' }
+
 # Laeuft schon ein Agent? Frische Sperre (<50 min) respektieren, alte aufraeumen.
 if (Test-Path $lockFile) {
     $age = (Get-Date) - (Get-Item $lockFile).LastWriteTime
@@ -83,10 +91,13 @@ New-Item -ItemType File -Path $lockFile -Force | Out-Null
 $agent = "$env:LOCALAPPDATA\cursor-agent\agent.cmd"
 $prompt = "Lies die Datei F:\MAS-2\tools\remote_chat_prompt.md und fuehre den Auftrag darin vollstaendig aus. Die aktuellen Auftraege stehen in $jobFile."
 
+Log "Starte Agent mit Modell: $model"
+
 try {
     $proc = Start-Process -FilePath $agent -ArgumentList @(
         '-p', '--force', '--trust',
         '--output-format', 'text',
+        '--model', $model,
         "`"$prompt`""
     ) -WorkingDirectory $root -NoNewWindow -PassThru `
         -RedirectStandardOutput (Join-Path $watchDir "agent_$stamp.out.log") `

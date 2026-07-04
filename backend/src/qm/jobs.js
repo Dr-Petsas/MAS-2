@@ -149,6 +149,57 @@ export async function getJob(clientId, jobId) {
   return snap.exists ? snap.data() : null;
 }
 
+export async function updateJob(clientId, jobId, input = {}) {
+  const job = await getJob(clientId, jobId);
+  if (!job) return { ok: false, reason: "not_found" };
+  if (job.status === JOB_STATUS.DONE) return { ok: false, reason: "already_done" };
+
+  const patch = {};
+  const dueAt = s(input.dueAt);
+  if (dueAt) {
+    const dueAtMs = new Date(dueAt).getTime();
+    if (!Number.isFinite(dueAtMs)) return { ok: false, reason: "invalid_due_at" };
+    patch.dueAt = dueAt;
+    patch.scheduledFor = s(input.scheduledFor) || dueAt;
+    patch.dueAtMs = dueAtMs;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "assignedTo")) {
+    const assignedTo = s(input.assignedTo);
+    patch.assignedTo = assignedTo || null;
+    patch.assignedToName = assignedTo ? s(input.assignedToName) || null : null;
+    if ([JOB_STATUS.PLANNED, JOB_STATUS.ASSIGNED, JOB_STATUS.SEEN].includes(job.status)) {
+      patch.status = assignedTo ? JOB_STATUS.ASSIGNED : JOB_STATUS.PLANNED;
+      if (job.status !== patch.status) patch.ackAt = null;
+    }
+  }
+  if (dueAt && [JOB_STATUS.PLANNED, JOB_STATUS.ASSIGNED, JOB_STATUS.OVERDUE].includes(patch.status || job.status)) {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const assignedTo = Object.prototype.hasOwnProperty.call(patch, "assignedTo") ? patch.assignedTo : job.assignedTo;
+    patch.status = patch.dueAtMs < startOfToday.getTime()
+      ? JOB_STATUS.OVERDUE
+      : (assignedTo ? JOB_STATUS.ASSIGNED : JOB_STATUS.PLANNED);
+  }
+
+  if (Object.keys(patch).length === 0) return { ok: true, job };
+  const out = await patchJob(clientId, jobId, patch, "updated", input.by || "julia", input.note || "Kalender-Update");
+  if (out.ok) await logAudit(clientId, `Job aktualisiert: ${job.title}`);
+  return out;
+}
+
+export async function deleteJob(clientId, jobId, { by = "julia", reason = "" } = {}) {
+  const ref = col(clientId).doc(s(jobId));
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "not_found" };
+  const job = snap.data();
+  await ref.delete();
+  await logAudit(clientId, `Job gelöscht: ${job.title}${s(reason) ? ` (${s(reason)})` : ""}`, {
+    metadata: { jobId: job.id, bookKey: job.bookKey, deletedBy: s(by) || "julia" },
+  });
+  return { ok: true, jobId: job.id };
+}
+
 async function patchJob(clientId, jobId, patch, historyAction, by, note) {
   const ref = col(clientId).doc(s(jobId));
   const snap = await ref.get();

@@ -3,6 +3,7 @@ import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { holidayName, isWeekend, daySpecialLabel } from "./holidays.js";
 import { redDocsQuip } from "./humor.js";
+import { pick } from "./speech.js";
 
 // Clara's day-schedule read model: a spoken "what's on the calendar today" that
 // reads the ACTUAL booked appointments (not just free slots, not tickets).
@@ -45,6 +46,20 @@ function tsToMs(v) {
 
 // --- normalisation ---------------------------------------------------------
 
+// Praxis-Kuerzel wie "KCH", "PRO", "IMP", "PA" vor dem Besuchsgrund nerven beim
+// Vorlesen (Wunsch 27.06.). Entfernt einen vorangestellten Grossbuchstaben-Code
+// (2-6 Buchstaben) samt Trenner (Leerzeichen/Bindestrich/Doppelpunkt), SOFERN
+// danach eine echte Wort-Beschreibung folgt. Steht der Besuchsgrund nur aus dem
+// Code ("PZR") oder beginnt er normal ("Kontrolle"), bleibt er unveraendert.
+// Reiner Sprech-Filter fuer das normalisierte (gesprochene) Feld — die
+// Kalenderdaten in Firestore und die Matching-Logik (Rohobjekt o.visitMotive)
+// bleiben unberuehrt.
+function stripMotiveCode(name) {
+  const t = String(name || "").trim();
+  const m = t.match(/^[A-ZÄÖÜ]{2,6}(?:\s*[-:.]\s*|\s+)([A-Za-zÄÖÜäöüß].*)$/);
+  return m ? m[1].trim() : t;
+}
+
 function normalizeAppointment(id, o) {
   if (!o) return null;
   return {
@@ -53,7 +68,7 @@ function normalizeAppointment(id, o) {
     endMs: tsToMs(o.end),
     calendarId: o.calendar?.id || o.resourceId || "",
     calendarName: o.calendar?.name || "",
-    visitMotive: o.visitMotive?.name || "",
+    visitMotive: stripMotiveCode(o.visitMotive?.name || ""),
     patientId: o.patient?.id || "",
     patientName: `${o.patient?.firstName || ""} ${o.patient?.lastName || ""}`.trim(),
     patientLastName: (o.patient?.lastName || "").trim(),
@@ -196,6 +211,33 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
 
 // --- pure: build the structured briefing ------------------------------------
 
+// Absenzen (Urlaub/OP-Block/Mittag) als "besetzt"-Intervalle eines Kalenders.
+// Kalenderlose Absenzen (z.B. praxisweiter Feiertag) gelten fuer jeden Kalender.
+function absenceIntervalsFor(calId, absences) {
+  return absences
+    .filter((a) => !a.calendarId || a.calendarId === calId)
+    .map((a) => ({ startMs: a.startMs, endMs: a.endMs || a.startMs }))
+    .filter((x) => x.endMs > x.startMs)
+    .sort((x, y) => x.startMs - y.startMs);
+}
+
+// Freie Teil-Intervalle in [start,end] nach Abzug der besetzten Intervalle.
+// So zaehlt eine Abwesenheit MITTEN in einer Terminluecke nicht mehr als frei
+// (Bug 26.06.2026: Clara meldete Absenzen als freie Termine).
+function freeSubGaps(start, end, busy) {
+  const out = [];
+  let cur = start;
+  for (const b of busy) {
+    if (b.endMs <= cur || b.startMs >= end) continue;
+    const bs = Math.max(b.startMs, start);
+    if (bs > cur) out.push({ startMs: cur, endMs: bs });
+    cur = Math.max(cur, Math.min(b.endMs, end));
+    if (cur >= end) break;
+  }
+  if (cur < end) out.push({ startMs: cur, endMs: end });
+  return out;
+}
+
 /**
  * Compute the day's structured overview: per-calendar counts + first/last +
  * free gaps, plus practice-wide highlights (new patients, unconfirmed, video,
@@ -216,12 +258,17 @@ export function computeDayBriefing(appointments = [], { calendars = [] } = {}) {
   const byCalendar = [];
   for (const [calId, list] of groups) {
     list.sort((x, y) => x.startMs - y.startMs);
+    const absInts = absenceIntervalsFor(calId, absences);
     const gaps = [];
     for (let i = 0; i < list.length - 1; i++) {
       const endMs = list[i].endMs || list[i].startMs;
       const nextStart = list[i + 1].startMs;
-      const minutes = Math.round((nextStart - endMs) / 60000);
-      if (minutes >= GAP_MIN_MINUTES) gaps.push({ startMs: endMs, endMs: nextStart, minutes });
+      if (nextStart - endMs < GAP_MIN_MINUTES * 60000) continue;
+      // Absenzen aus der Luecke schneiden -> nur echte freie Reste zaehlen.
+      for (const piece of freeSubGaps(endMs, nextStart, absInts)) {
+        const minutes = Math.round((piece.endMs - piece.startMs) / 60000);
+        if (minutes >= GAP_MIN_MINUTES) gaps.push({ startMs: piece.startMs, endMs: piece.endMs, minutes });
+      }
     }
     byCalendar.push({
       calendarId: calId,
@@ -284,6 +331,14 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   const day = date || todayBerlin();
   const rel = relativeDayLabel(day);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  // now-Bewusstsein (Vorfall 04.07.2026): abends darf das Tagesbriefing nicht
+  // mehr "Heute haben Sie 5 Termine ... frei ist noch von 9:30" sagen, wenn
+  // laengst alles vorbei ist. Ist der eigene Kalender-Tag durch, sprechen wir
+  // im Rueckblick und lassen vergangene Freislots/Vorbereitungs-Hinweise weg.
+  const nowMs = Date.now();
+  const isToday = day === todayBerlin();
+  const dayOver = Boolean(isToday && briefing?.lastMs && nowMs > briefing.lastMs);
+  const futureGaps = (gaps) => (isToday ? (gaps || []).filter((x) => (x.endMs || x.startMs || 0) > nowMs) : (gaps || []));
   if (!briefing || briefing.total === 0) {
     const blocks = briefing?.absences?.length
       ? ` Es ${briefing.absences.length === 1 ? "ist nur eine Sperrzeit" : `sind nur ${briefing.absences.length} Sperrzeiten`} eingetragen.`
@@ -302,11 +357,13 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       ? `nur einen Termin, von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}`
       : `${c.count} Termine, zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}`;
     // Zeitangabe IMMER nach vorn: "Heute haben Sie ...", "Nächste Woche
-    // Donnerstag haben Sie ...", "Am 15. Juni haben Sie ..."
+    // Donnerstag haben Sie ...", "Am 15. Juni haben Sie ..." — abends im
+    // Rueckblick ("Heute hatten Sie ...").
     parts.push(isOwnCalendar(c.calendarName, operatorDoctorName)
-      ? cap(`${rel} haben Sie ${span}.`)
-      : cap(`${rel} hat ${c.calendarName || "die Praxis"} ${span}.`));
-    if (c.gaps.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(c.gaps)}.`);
+      ? cap(`${rel} ${dayOver ? "hatten" : "haben"} Sie ${span}.`)
+      : cap(`${rel} ${dayOver ? "hatte" : "hat"} ${c.calendarName || "die Praxis"} ${span}.`));
+    const g1 = dayOver ? [] : futureGaps(c.gaps);
+    if (g1.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(g1)}.`);
   } else if (overview) {
     // Zoom-out (Lagebild): bei vielen Kalendern NICHT jede Spalte einzeln
     // vorlesen, sondern Gesamtzahl + Tagesspanne — "34 Termine, von 8 bis 17
@@ -314,18 +371,30 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     const span = (briefing.firstMs && briefing.lastMs)
       ? `, zwischen ${spokenTime(briefing.firstMs)} und ${spokenTime(briefing.lastMs)}`
       : "";
-    parts.push(cap(`${rel} stehen insgesamt ${briefing.total} Termine im Kalender${span}.`));
+    parts.push(cap(`${rel} ${dayOver ? "standen" : "stehen"} insgesamt ${briefing.total} Termine im Kalender${span}.`));
   } else {
-    parts.push(cap(`${rel} stehen insgesamt ${briefing.total} Termine im Kalender.`));
+    parts.push(cap(`${rel} ${dayOver ? "standen" : "stehen"} insgesamt ${briefing.total} Termine im Kalender.`));
     for (const c of cals) {
       const own = isOwnCalendar(c.calendarName, operatorDoctorName);
-      const who = own ? "Sie haben" : `${c.calendarName || "Der Kalender"} hat`;
+      const who = own ? (dayOver ? "Sie hatten" : "Sie haben") : `${c.calendarName || "Der Kalender"} ${dayOver ? "hatte" : "hat"}`;
       let line = c.count === 1
         ? `${who} einen Termin von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}.`
         : `${who} ${c.count} Termine zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}.`;
-      if (c.gaps.length) line += ` Frei ist dort noch ${spokenGaps(c.gaps)}.`;
+      const gc = dayOver ? [] : futureGaps(c.gaps);
+      if (gc.length) line += ` Frei ist dort noch ${spokenGaps(gc)}.`;
       parts.push(line);
     }
+  }
+
+  // Tag ist durch: kurzer Rueckblick, KEINE vorausschauenden Hinweise mehr
+  // (Freislots, Vorzubereiten, Unbestaetigtes ergeben abends keinen Sinn).
+  if (dayOver) {
+    const recap = pick([
+      "Das war Ihr Tag.",
+      "Der Tag ist damit durch.",
+      "Für heute war das alles.",
+    ], day);
+    return `${parts.join(" ")} ${recap}`.trim();
   }
 
   const hl = [];
