@@ -183,8 +183,17 @@ Vorteil: Clara antwortet privat ins Ohr, Haende bleiben steril.
       openWakeWord/Porcupine bleiben Option fuer Always-on-Hardware spaeter.
       OFFEN (braucht Chef vor Ort): Shokz pairen, Live-Probe im Zimmer,
       Push-to-talk-Fallback in der Pairing-App, Akku-Messung HFP.
-- [ ] Bohrer-/Absauggeraeusch-Samples in die Testsuite (STT-Robustheit).
+- [~] Bohrer-/Absauggeraeusch-Samples in die Testsuite (STT-Robustheit).
+      MESSRAHMEN ERLEDIGT 04.07.: `testsuite/noise_robustness.py` mischt
+      Laerm in die Test-Audio-Bibliothek (SNR-Stufen 15/5/0 dB) und misst
+      WER-Degradation + Hotword-Verlust. Erster Befund (synthetischer
+      Turbinen-/Sauger-Laerm, 16 Clips): Parakeet bleibt p50-stabil bis
+      0 dB; griechische Namen kippen unter Bohrerlaerm zuerst (8/8 ->
+      5/8 Hotword-Treffer bei 0 dB). OFFEN: ECHTE Zimmer-Aufnahmen
+      (Handy reicht) nach testsuite/noise/ legen - Harness nimmt sie
+      dann automatisch statt der Synthese.
 - [ ] Latenz-Budget messen: Wake->Zuhoeren <0,5 s, Antwortbeginn <2 s.
+      (Braucht Chef vor Ort: Headset/Mikro am Zimmer-PC, echter Sprechweg.)
 - [ ] **Stufe B (nur fuer Ambient, Phase 4):** EIN Zimmer bekommt ein
       Far-Field-Array (Konferenz-Klasse, USB) mit sichtbarer Aktiv-LED.
       Kein Dauerbetrieb, Aktivierung nur pro Behandlung.
