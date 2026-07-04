@@ -3,6 +3,7 @@ import { loadBooking } from "./booking.js";
 import { getDayAppointments, getPatientAppointments, todayBerlin } from "./daySchedule.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
+import { masCollection } from "../tenant.js";
 
 /**
  * Dokumentationsdiktat (Clara → Lena)
@@ -20,9 +21,10 @@ import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
  *   - explizite appointmentId gewinnt,
  *   - sonst über patientId: heutiger Termin des Patienten, sonst nächster/letzter.
  *
- * Schreibt NUR in die Termin-Doku (kein Versand, keine Abrechnung). Strukturieren
- * in eine Karteikarte macht weiterhin die bestehende Cloud Function
- * (structureTreatmentNote) — hier landen die Roh-Segmente.
+ * Schreibt NUR in die Termin-Doku (kein Versand, keine Abrechnung). Die
+ * strukturierte Karteikarte (treatment/main) baut nach jedem Diktat/Streichen
+ * dokuNote.js im Hintergrund (lokales LLM); der Strukturieren-Button der
+ * Plattform (Cloud Function structureTreatmentNote) funktioniert unveraendert.
  */
 
 async function resolveLocationId(clientId) {
@@ -133,7 +135,9 @@ export async function readPatientTreatmentDocs(clientId, { patientId, lastName, 
         } catch { /* Plan optional */ }
         try {
             const dsnap = await apptCol.doc(apptId).collection("dictations").get();
-            const segs = dsnap.docs.map((d) => d.data()).filter((s) => s && String(s.text || "").trim());
+            // Gestrichene Segmente (struck, § 630f) bleiben in der Kartei sichtbar,
+            // werden aber NICHT mehr vorgelesen/als aktuelle Doku gewertet.
+            const segs = dsnap.docs.map((d) => d.data()).filter((s) => s && !s.struck && String(s.text || "").trim());
             segs.sort((x, y) => _tsToMs(x.createdAt) - _tsToMs(y.createdAt));
             for (const s of segs) {
                 const text = String(s.text).trim();
@@ -224,10 +228,39 @@ export async function resolveAppointmentInfo(clientId, { appointmentId, patientI
 }
 
 /**
+ * Alle Diktat-Segmente eines Termins lesen (aelteste zuerst). Gestrichene
+ * Segmente (struck, § 630f BGB) werden mitgeliefert und vom Aufrufer je nach
+ * Zweck gefiltert — fuer Doku-Check/Karteikarte zaehlen nur AKTIVE Segmente.
+ */
+export async function readAppointmentSegments(clientId, locationId, appointmentId) {
+    const snap = await admin.firestore()
+        .collection("clients").doc(clientId)
+        .collection("locations").doc(locationId)
+        .collection("appointments").doc(appointmentId)
+        .collection("dictations").get();
+    const segs = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() || {}) }))
+        .filter((s) => String(s.text || "").trim());
+    segs.sort((a, b) => _tsToMs(a.createdAt) - _tsToMs(b.createdAt));
+    return segs;
+}
+
+/** Aktive (nicht gestrichene) Segment-Texte zu EINEM Pruef-/Struktur-Text vereinen. */
+export function combineActiveSegments(segs) {
+    return (segs || [])
+        .filter((s) => !s.struck)
+        .map((s) => String(s.text || "").trim())
+        .filter(Boolean)
+        .join("\n");
+}
+
+/**
  * Speichert ein Dokumentationsdiktat als Segment unter dem Termin.
- * Liefert zusaetzlich Besuchsgrund + Patient des Termins zurueck, damit der
- * Doku-Check (Rueckfragen-Engine) direkt darauf pruefen kann.
- * @returns {Promise<{ok:boolean, message:string, appointmentId?:string, dictationId?:string, motiveName?:string, patientName?:string}>}
+ * Liefert zusaetzlich Besuchsgrund + Patient des Termins sowie den KUMULIERTEN
+ * Text aller aktiven Segmente (combinedText) zurueck — der Doku-Check prueft
+ * den GANZEN Termin, nicht nur das neue Segment. Sonst wuerde Clara nach der
+ * Antwort auf eine Rueckfrage wieder nach Dingen aus dem ersten Diktat fragen.
+ * @returns {Promise<{ok:boolean, message:string, appointmentId?:string, dictationId?:string, motiveName?:string, patientName?:string, combinedText?:string, locationId?:string}>}
  */
 export async function saveTreatmentDictation(clientId, { text, appointmentId, patientId, lastName, lang = "de-DE", date } = {}) {
     const body = String(text || "").trim();
@@ -270,6 +303,16 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
+        // Kumulierter Text aller aktiven Segmente (inkl. dem eben gespeicherten)
+        // fuer den Doku-Check. Best-effort: schlaegt das Lesen fehl, prueft der
+        // Check eben nur das neue Segment.
+        let combinedText = body;
+        try {
+            const segs = await readAppointmentSegments(clientId, locationId, apptId);
+            const combined = combineActiveSegments(segs);
+            if (combined) combinedText = combined;
+        } catch { /* Kombinieren ist Komfort */ }
+
         // Zusätzlich ins geteilte Gedächtnis schreiben — Lena dokumentiert sichtbar
         // für alle (wie Lisa, Bianca, Nadine). So liest die Behandlungsdoku auch in
         // der Cockpit-/Patienten-Timeline mit. Best-effort, der Diktat-Eintrag oben
@@ -298,8 +341,101 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
             console.warn("saveTreatmentDictation: brain-event failed:", memErr?.message || memErr);
         }
 
-        return { ok: true, appointmentId: apptId, dictationId: doc.id, motiveName, patientName, message: "Habe ich zur Behandlungsdokumentation gespeichert." };
+        return { ok: true, appointmentId: apptId, dictationId: doc.id, motiveName, patientName, combinedText, locationId, message: "Habe ich zur Behandlungsdokumentation gespeichert." };
     } catch (e) {
         return { ok: false, message: `Das Diktat konnte ich nicht speichern: ${String(e?.message || e)}` };
     }
+}
+
+// --- STREICHEN statt Loeschen (04.07.2026) ----------------------------------
+// § 630f Abs. 1 BGB: Eintragungen in der Patientenakte duerfen nur so
+// berichtigt werden, dass der urspruengliche Inhalt erkennbar bleibt — wie in
+// der Papier-Kartei: durchstreichen, nicht radieren. "Loesch das letzte
+// Diktat" setzt deshalb struck=true (Frontend rendert durchgestrichen),
+// loescht NICHTS. Nur die Shared-Memory-Kopie (Arbeitsgedaechtnis, 45 Tage)
+// wird entfernt, damit Briefings den gestrichenen Text nicht mehr vorlesen.
+
+/**
+ * Streicht ein Diktat-Segment eines Termins. Ziel-Auswahl:
+ *   - dictationId: exakt dieses Segment,
+ *   - textHint:    juengstes aktives Segment, dessen Text den Hinweis enthaelt,
+ *   - sonst:       das juengste aktive Segment des Termins ("das letzte Diktat").
+ * @returns {Promise<{ok:boolean, message:string, appointmentId?:string, dictationId?:string, struckText?:string, motiveName?:string, locationId?:string, combinedText?:string}>}
+ */
+export async function strikeTreatmentDictation(clientId, { appointmentId, patientId, lastName, date, dictationId, textHint, reason } = {}) {
+    const locationId = await resolveLocationId(clientId);
+    if (!locationId) return { ok: false, message: "Ich finde den Standort der Praxis nicht." };
+
+    let apptId = String(appointmentId || "").trim();
+    if (!apptId) {
+        apptId = await resolveAppointmentForPatient(clientId, { patientId: String(patientId || "").trim(), lastName: String(lastName || "").trim(), date: String(date || "").trim() });
+    }
+    if (!apptId) return { ok: false, message: "Zu welchem Termin gehoert das Diktat? Ich konnte keinen passenden Termin finden." };
+
+    let segs;
+    try {
+        segs = await readAppointmentSegments(clientId, locationId, apptId);
+    } catch (e) {
+        return { ok: false, message: `Die Dokumentation konnte ich nicht lesen: ${String(e?.message || e)}` };
+    }
+    const aktiv = segs.filter((s) => !s.struck);
+    if (!aktiv.length) return { ok: false, message: "An diesem Termin ist keine aktive Dokumentation, die ich streichen koennte." };
+
+    let ziel = null;
+    const wunschId = String(dictationId || "").trim();
+    const hint = String(textHint || "").trim().toLowerCase();
+    if (wunschId) {
+        ziel = aktiv.find((s) => s.id === wunschId) || null;
+        if (!ziel) return { ok: false, message: "Dieses Diktat finde ich nicht (oder es ist schon gestrichen)." };
+    } else if (hint) {
+        // juengstes zuerst durchsuchen — "das mit dem Roentgen" meint das letzte
+        for (let i = aktiv.length - 1; i >= 0; i--) {
+            if (String(aktiv[i].text || "").toLowerCase().includes(hint)) { ziel = aktiv[i]; break; }
+        }
+        if (!ziel) return { ok: false, message: `Ich finde keinen Doku-Eintrag mit "${textHint}" an diesem Termin.` };
+    } else {
+        ziel = aktiv[aktiv.length - 1];
+    }
+
+    try {
+        await admin.firestore()
+            .collection("clients").doc(clientId)
+            .collection("locations").doc(locationId)
+            .collection("appointments").doc(apptId)
+            .collection("dictations").doc(ziel.id)
+            .set({
+                struck: true,
+                struckAt: admin.firestore.FieldValue.serverTimestamp(),
+                struckBy: "clara",
+                struckReason: String(reason || "").slice(0, 200) || "per Diktat gestrichen",
+            }, { merge: true });
+    } catch (e) {
+        return { ok: false, message: `Streichen hat nicht geklappt: ${String(e?.message || e)}` };
+    }
+
+    // Shared-Memory-Kopie entfernen (Arbeitsgedaechtnis soll den gestrichenen
+    // Text nicht mehr hergeben; die Kartei behaelt ihn durchgestrichen).
+    try {
+        await masCollection(clientId, "mas_events").doc(`lena-doc:${apptId}:${ziel.id}`).delete();
+    } catch { /* best-effort */ }
+
+    // Metadaten + kumulierten Rest-Text fuer Karteikarten-Refresh liefern.
+    let motiveName = "";
+    try {
+        const info = await resolveAppointmentInfo(clientId, { appointmentId: apptId });
+        motiveName = info.motiveName || "";
+    } catch { /* Komfort */ }
+    const rest = combineActiveSegments(segs.filter((s) => s.id !== ziel.id));
+    const kurz = String(ziel.text || "").slice(0, 80);
+
+    return {
+        ok: true,
+        appointmentId: apptId,
+        dictationId: ziel.id,
+        struckText: ziel.text || "",
+        motiveName,
+        locationId,
+        combinedText: rest,
+        message: `Gestrichen: "${kurz}${(ziel.text || "").length > 80 ? "..." : ""}" — bleibt durchgestrichen in der Kartei sichtbar, wie es das Patientenrechtegesetz verlangt.`,
+    };
 }

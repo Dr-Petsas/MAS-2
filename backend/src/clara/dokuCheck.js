@@ -81,11 +81,20 @@ export async function pruefFelder(clientId, specialtyKey, motiveName, text) {
 /**
  * Diktat gegen die effektiven Anforderungen pruefen.
  *
+ * text    = KUMULIERTER Text aller aktiven Segmente des Termins. Der Check muss
+ *           den ganzen Termin sehen: Wer auf die Rueckfrage "Welche Anaesthesie?"
+ *           mit "Infiltration" antwortet, darf danach nicht wieder nach Zahn und
+ *           Material aus dem ersten Diktat gefragt werden.
+ * neuText = nur das eben gesprochene Segment (optional). Dient dem LERNEN:
+ *           Beobachtungen werden nur fuer Begriffe gezaehlt, die im NEUEN Text
+ *           vorkommen — sonst zaehlte jede Folge-Antwort die Begriffe aus den
+ *           alten Segmenten erneut und der Lern-Vorschlag kaeme zu frueh.
+ *
  * @returns {Promise<{ok:boolean, dokuPflichtig:boolean, regelId:string,
  *   fragen:Array<{key:string, frage:string}>, zusatz:string[],
  *   lernVorschlag:null|{feldKey:string, anzahl:number}, reason?:string}>}
  */
-export async function pruefeDoku(clientId, specialtyKey, { motiveName, text, timeoutMs = 12000 } = {}) {
+export async function pruefeDoku(clientId, specialtyKey, { motiveName, text, neuText, timeoutMs = 12000 } = {}) {
   const diktat = String(text || "").trim();
   const leer = { ok: true, dokuPflichtig: false, regelId: "", fragen: [], zusatz: [], lernVorschlag: null };
   if (!diktat) return leer;
@@ -136,12 +145,14 @@ export async function pruefeDoku(clientId, specialtyKey, { motiveName, text, tim
       role: "user",
       content: [
         `FELDER:\n${felder.map(zeile).join("\n")}`,
-        `DIKTAT: "${diktat.slice(0, 900)}"`,
+        // Kumulierter Termin-Text kann laenger sein als ein Einzeldiktat; bei
+        // Ueberlaenge das ENDE behalten (dort stehen die juengsten Antworten).
+        `DIKTAT: "${diktat.length > 1800 ? diktat.slice(-1800) : diktat}"`,
       ].join("\n\n"),
     },
   ];
 
-  const res = await chat(messages, { temperature: 0, maxTokens: 400, timeoutMs });
+  const res = await chat(messages, { temperature: 0, maxTokens: 600, timeoutMs });
   if (!res.ok) return { ...leer, dokuPflichtig: true, regelId: eff.regelId, ok: false, reason: res.reason };
 
   const parsed = extractJson(res.text);
@@ -158,8 +169,15 @@ export async function pruefeDoku(clientId, specialtyKey, { motiveName, text, tim
   const fragen = pflicht.filter((f) => !beantwortet(f.key)).slice(0, MAX_FRAGEN)
     .map((f) => ({ key: f.key, frage: f.frage }));
 
-  const zusatz = (Array.isArray(parsed.zusatz) ? parsed.zusatz : [])
+  let zusatz = (Array.isArray(parsed.zusatz) ? parsed.zusatz : [])
     .map((z) => String(z).trim().toLowerCase()).filter((z) => z && z.length <= 40).slice(0, 3);
+
+  // Nur NEU gesprochene Begriffe zaehlen (siehe Doku oben): grobes Enthalten-
+  // Kriterium reicht — der Begriff stammt woertlich aus dem Diktat.
+  const neu = String(neuText || "").trim().toLowerCase();
+  if (neu && neu !== diktat.toLowerCase()) {
+    zusatz = zusatz.filter((z) => neu.includes(z) || z.split(/\s+/).some((w) => w.length >= 4 && neu.includes(w)));
+  }
 
   // Beobachtungen fuers Lernen zaehlen (best-effort, blockiert nie).
   let lernVorschlag = null;

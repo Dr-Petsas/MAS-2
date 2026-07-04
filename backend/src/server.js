@@ -14,7 +14,8 @@ import { polishForChannel } from "./clara/dictation.js";
 import { intakeToAbsichten } from "./clara/billingIntake.js";
 import { buildSpokenDayOverview } from "./clara/dayOverview.js";
 import { buildNextPatientsBriefing } from "./clara/nextPatientsBriefing.js";
-import { saveTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs, resolveAppointmentInfo } from "./clara/treatmentDoc.js";
+import { saveTreatmentDictation, strikeTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs, resolveAppointmentInfo } from "./clara/treatmentDoc.js";
+import { strukturiereKarteikarte } from "./clara/dokuNote.js";
 import { specialtyKeyForClient } from "./clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "./clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "./clara/dokuCheck.js";
@@ -3022,16 +3023,18 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
       lang: String(req.body?.lang || "de-DE").trim() || "de-DE",
     });
 
-    // Doku-Check (04.07.2026): Diktat gegen die EFFEKTIVEN Doku-Anforderungen
-    // (Basis-Katalog +/− Lern-Profil) pruefen. Fehlende Pflichtangaben kommen
-    // als kurze Rueckfragen in die Bestaetigung, die Clara vorliest. Best-
-    // effort: gespeichert ist gespeichert — ein LLM-Problem kostet nur die
-    // Rueckfragen, nie das Diktat.
+    // Doku-Check (04.07.2026): gegen die EFFEKTIVEN Doku-Anforderungen
+    // (Basis-Katalog +/− Lern-Profil) pruefen — und zwar den KUMULIERTEN Text
+    // aller aktiven Segmente des Termins (combinedText), nicht nur das neue.
+    // Wer Claras Rueckfrage beantwortet, kriegt sonst die schon beantworteten
+    // Fragen aus dem ersten Diktat erneut. Best-effort: gespeichert ist
+    // gespeichert — ein LLM-Problem kostet nur die Rueckfragen, nie das Diktat.
     if (out?.ok && out.dictationId) {
       try {
         const check = await pruefeDoku(clientId, specialtyKeyForClient(clientId), {
           motiveName: out.motiveName || "",
-          text: String(req.body?.text || "").trim(),
+          text: out.combinedText || String(req.body?.text || "").trim(),
+          neuText: String(req.body?.text || "").trim(),
         });
         const nachsatz = baueRueckfragenSatz(check);
         if (nachsatz) out.message = `${out.message} ${nachsatz}`.trim();
@@ -3044,6 +3047,76 @@ app.post("/tools/save-treatment-dictation", async (req, res) => {
       } catch (e) {
         log.warn("doku.check_failed", { clientId, err: String(e?.message || e) });
       }
+      // Karteikarte im Hintergrund neu strukturieren (treatment/main) — Claras
+      // Antwort wartet NICHT darauf. Fehler kosten nur die Auto-Kartei.
+      setImmediate(() => {
+        strukturiereKarteikarte(clientId, {
+          locationId: out.locationId,
+          appointmentId: out.appointmentId,
+          combinedText: out.combinedText || String(req.body?.text || "").trim(),
+          motiveName: out.motiveName || "",
+          segmentsCount: (out.combinedText || "").split("\n").filter(Boolean).length,
+        }).then((r) => {
+          if (!r.ok) log.warn("doku.autonote_failed", { clientId, reason: r.reason });
+        }).catch((e) => log.warn("doku.autonote_failed", { clientId, err: String(e?.message || e) }));
+      });
+    }
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 1g4) DOKU STREICHEN per Stimme: "Streich das letzte Diktat bei Herrn Meier" /
+// "Das mit dem Roentgen war falsch, nimm das raus". § 630f BGB: Der Eintrag
+// wird NICHT geloescht, sondern als gestrichen markiert (Frontend rendert
+// durchgestrichen, der Urspruung bleibt erkennbar). Die Shared-Memory-Kopie
+// wird entfernt, die Karteikarte im Hintergrund neu gebaut.
+app.post("/tools/strike-treatment-dictation", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    let appointmentId = String(req.body?.appointmentId || "").trim();
+    let patientId = String(req.body?.patientId || "").trim();
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    const date = String(req.body?.date || "").trim();
+    if (!appointmentId && !patientId && lastName) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: lastName,
+        hint: String(req.body?.hint || "").trim(),
+        askWho: "Bei welchem Patienten soll ich die Doku streichen? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || "";
+      lastName = r.sel?.lastName || lastName;
+    }
+    if (!appointmentId && !patientId && !lastName) {
+      try {
+        const sel = await getSelectedPatient(clientId);
+        if (sel && sel.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+      } catch { /* kein aktiver Patient im Kontext */ }
+    }
+    const out = await strikeTreatmentDictation(clientId, {
+      appointmentId, patientId, lastName, date,
+      dictationId: String(req.body?.dictationId || "").trim(),
+      textHint: String(req.body?.textHint || "").trim(),
+      reason: String(req.body?.reason || "").trim(),
+    });
+    if (out?.ok) {
+      // Karteikarte ohne den gestrichenen Eintrag neu bauen (Hintergrund).
+      setImmediate(() => {
+        strukturiereKarteikarte(clientId, {
+          locationId: out.locationId,
+          appointmentId: out.appointmentId,
+          combinedText: out.combinedText || "",
+          motiveName: out.motiveName || "",
+          segmentsCount: (out.combinedText || "").split("\n").filter(Boolean).length,
+        }).then((r) => {
+          if (!r.ok) log.warn("doku.autonote_failed", { clientId, reason: r.reason });
+        }).catch((e) => log.warn("doku.autonote_failed", { clientId, err: String(e?.message || e) }));
+      });
     }
     return res.json(out);
   } catch (e) {
