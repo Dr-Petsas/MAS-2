@@ -1,0 +1,293 @@
+// Sammel-Router: /health, /anamnese, /lisa, /cf, /admin, /remote.
+// Mechanischer W1.2-Split aus server.js (04.07.2026): Pfade und Handler
+// byte-identisch uebernommen, nur app. -> router. Kein Verhalten geaendert.
+import express from "express";
+import { assertAppEnabled } from "../entitlements.js";
+import { getPatientAnamnese } from "../clara/anamnese.js";
+import { proxyGetFreeTimeSlots, proxyCreateAppointment, proxyUpdateOrCancel } from "../clara/cfProxy.js";
+import { listLisaTasks, smsConfigured as lisaSmsConfigured, callConfigured as lisaCallConfigured } from "../lisa/outbound.js";
+import { backfillAddressBook } from "../brain/addressBook.js";
+import { llmHealth } from "../mail/llm.js";
+import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
+import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages } from "../remoteChat.js";
+import admin from "../firebase.js";
+import { log } from "../log.js";
+import { exportTenant, eraseTenant, applyRetention } from "../dsgvo.js";
+import { DEFAULT_CLIENT_ID, resolveClientId, resolveUser } from "./_shared.js";
+
+const router = express.Router();
+
+
+router.get("/health", (req, res) => {
+  // Liveness only. Don't leak the configured tenant in production.
+  res.json(AUTH_ENFORCED ? { ok: true } : { ok: true, defaultClientId: DEFAULT_CLIENT_ID });
+});
+
+
+// Readiness: verifies the process can actually serve — Firestore reachable +
+// required config present. Returns 503 when not ready so an orchestrator can
+// hold traffic. Reports only booleans, never secret values.
+router.get("/health/ready", async (req, res) => {
+  const checks = {
+    firestore: false,
+    mailCryptoKey: !!(process.env.MAIL_CRYPTO_KEY || "").trim(),
+    storageBucket: false,
+    authEnforced: AUTH_ENFORCED,
+    serviceToken: !!SERVICE_TOKEN,
+  };
+  try {
+    // Cheap connectivity probe: get a non-existent doc (no read cost on data).
+    await admin.firestore().collection("_health").doc("_probe").get();
+    checks.firestore = true;
+  } catch (e) {
+    log.error("readiness firestore probe failed", { requestId: req.requestId, err: e });
+  }
+  try {
+    checks.storageBucket = !!admin.storage().bucket()?.name;
+  } catch {
+    checks.storageBucket = false;
+  }
+  // Local LLM (Nadine's brain): report reachability + on-prem locality. Not a
+  // hard readiness gate — if the model is down Nadine degrades to deterministic
+  // templates — but operators must see it, and that it never points to a cloud.
+  const llm = await llmHealth();
+  checks.llmReachable = llm.reachable;
+  checks.llmLocal = llm.local;
+  checks.llm = { base: llm.base, model: llm.model, local: llm.local, reachable: llm.reachable, reason: llm.reason };
+  // Brain dead-letter visibility: any communication whose event/case write
+  // failed and exhausted its retries lands here. Not a hard gate, but operators
+  // MUST see it — a non-zero count means a logged communication needs attention.
+  try {
+    const deadSnap = await admin.firestore().collectionGroup("mas_brain_outbox").where("status", "==", "dead").limit(100).get();
+    checks.brainOutboxDead = deadSnap.size;
+  } catch {
+    checks.brainOutboxDead = null; // index not ready / probe failed — non-fatal
+  }
+  const ready = checks.firestore; // Firestore is the hard dependency.
+  res.status(ready ? 200 : 503).json({ ok: ready, checks });
+});
+
+
+// Adressbuch-Backfill von Hand anstoßen (?force=1 ignoriert den Einmal-Marker).
+router.post("/admin/addressbook/backfill", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const force = req.query?.force === "1" || req.body?.force === true;
+    const out = await backfillAddressBook(clientId, { force });
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// 1e-vor) ANAMNESE-FLAGS fuer das Termin-Popup (Frontend): gleiche Auswertung
+// wie Claras Tool, aber strukturiert als JSON. Deckt seit 04.07.2026 auch
+// SIGNIERTE Boegen ab — der Server liest die Textebene des PDFs
+// (anamnesePdf.js) und cached das Ergebnis. Der Browser kann das nicht
+// selbst (Storage-Zugriff + PDF-Parsing gehoeren auf den Server).
+router.post("/anamnese/flags", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const patientId = String(req.body?.patientId || "").trim();
+    if (!patientId) return res.status(400).json({ error: "patientId fehlt" });
+    const result = await getPatientAnamnese(clientId, { patientId });
+    return res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Monitor: recent Lisa delegations (SMS + calls) with status/outcome.
+router.get("/lisa/tasks", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const tasks = await listLisaTasks(clientId, Math.min(Number(req.query.limit) || 25, 100));
+    res.json({ ok: true, clientId, smsConfigured: lisaSmsConfigured(), callConfigured: lisaCallConfigured(), tasks });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// --- Cloud Function proxy (the worker's built-in tools post here) ---------
+// booking.cf_base_url in Clara's profile points at /cf, so the proven v5.2
+// deterministic booking flow runs unchanged and we emit live commands here.
+// We return the real Cloud Function response verbatim so the worker is unaware.
+function sendCf(res, out) {
+  return res.status(out.status || 200).json(out.data == null ? {} : out.data);
+}
+
+
+router.post("/cf/getFreeTimeSlots", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    sendCf(res, await proxyGetFreeTimeSlots(clientId, req.body || {}));
+  } catch (e) {
+    res.status(500).json({ status: "error", message: String(e?.message || e) });
+  }
+});
+
+
+router.post("/cf/createAppointment", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    sendCf(res, await proxyCreateAppointment(clientId, req.body || {}));
+  } catch (e) {
+    res.status(500).json({ status: "error", message: String(e?.message || e) });
+  }
+});
+
+
+router.post("/cf/updateOrCancelAppointment", async (req, res) => {
+  try {
+    sendCf(res, await proxyUpdateOrCancel(req.body || {}));
+  } catch (e) {
+    res.status(500).json({ status: "error", message: String(e?.message || e) });
+  }
+});
+
+
+// ── DSGVO / GDPR data lifecycle (admin only, own tenant only) ──────────────
+// Authorization: must be an admin (or service/superuser context). clientId is
+// always the caller's own tenant from resolveClientId — a normal user token
+// cannot target another practice. Erasure additionally requires an explicit
+// confirmation matching the clientId to guard against accidents.
+
+function requireAdmin(req, res) {
+  const { isAdmin } = resolveUser(req);
+  if (!isAdmin) {
+    res.status(403).json({ ok: false, error: "admin_required" });
+    return false;
+  }
+  return true;
+}
+
+
+// Art. 20 — export all MAS-owned data for the tenant as a single JSON document.
+router.get("/admin/tenant/export", async (req, res, next) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const clientId = resolveClientId(req);
+    if (!clientId) return res.status(400).json({ ok: false, error: "client_id_required" });
+    const includeSecrets = req.query.includeSecrets === "1";
+    const out = await exportTenant(clientId, { includeSecrets });
+    log.warn("dsgvo export", { requestId: req.requestId, clientId, includeSecrets });
+    res.set("Content-Disposition", `attachment; filename="mas-export-${clientId}.json"`);
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
+
+
+// Art. 17 — erase all MAS-owned data for the tenant. Destructive; dry run by
+// default unless { confirm: <clientId> } is provided in the body.
+router.post("/admin/tenant/erase", async (req, res, next) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const clientId = resolveClientId(req);
+    if (!clientId) return res.status(400).json({ ok: false, error: "client_id_required" });
+    const confirm = (req.body?.confirm || "").trim();
+    const dryRun = confirm !== clientId; // only a matching confirm performs the wipe
+    const out = await eraseTenant(clientId, { dryRun });
+    log[dryRun ? "info" : "warn"]("dsgvo erase", {
+      requestId: req.requestId, clientId, dryRun, totalDocs: out.totalDocs, totalFiles: out.totalFiles,
+    });
+    res.json({ ...out, confirmRequired: dryRun ? clientId : undefined });
+  } catch (e) {
+    next(e);
+  }
+});
+
+
+// Retention purge of transient data (trashed mail, ended sessions). Dry run by
+// default; pass { apply: true } to actually delete.
+router.post("/admin/tenant/retention", async (req, res, next) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+    const clientId = resolveClientId(req);
+    if (!clientId) return res.status(400).json({ ok: false, error: "client_id_required" });
+    const dryRun = req.body?.apply !== true;
+    const trashDays = Number(req.body?.trashDays) > 0 ? Number(req.body.trashDays) : 30;
+    const sessionDays = Number(req.body?.sessionDays) > 0 ? Number(req.body.sessionDays) : 90;
+    const out = await applyRetention(clientId, { trashDays, sessionDays, dryRun });
+    log.info("dsgvo retention", { requestId: req.requestId, clientId, dryRun, ...out });
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
+
+
+// --- Fernsteuerungs-Chat (Wochenend-Provisorium) ---------------------------
+// Statische Seite (Firebase Hosting) <-> dieses Backend <-> lokaler Waechter,
+// der eine Agent-Session startet. Token-gated, sonst nutzlos. Siehe
+// src/remoteChat.js und tools/remote_chat_watch.ps1.
+
+function remoteGuard(req, res) {
+  if (remoteTokenOk(req)) return true;
+  res.status(401).json({ ok: false, error: "remote_token_invalid" });
+  return false;
+}
+
+
+router.post("/remote/message", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    const out = await addRemoteMessage(DEFAULT_CLIENT_ID, {
+      role: req.body?.role, text: req.body?.text,
+    });
+    res.status(out.ok ? 200 : 400).json(out);
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+router.get("/remote/state", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    const out = await remoteState(DEFAULT_CLIENT_ID, { limit: Number(req.query?.limit) || 80 });
+    res.json({ ok: true, ...out });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+router.post("/remote/board", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    res.json(await setRemoteBoard(DEFAULT_CLIENT_ID, req.body?.text));
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+router.get("/remote/pending", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    res.json({ ok: true, messages: await pendingRemoteMessages(DEFAULT_CLIENT_ID) });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+router.post("/remote/ack", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    res.json(await ackRemoteMessages(DEFAULT_CLIENT_ID, req.body?.ids, req.body?.status));
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+export default router;

@@ -81,8 +81,18 @@ Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
       Tagesfrage ~26k -> ~9k Prompt-Tokens (9/60 Tools, Schnitt 16.7).
       Voll-Gate: 118/128 (Baseline davor: 117/128). Notaus:
       `CLARA_TOOL_SUBSETTING=0`.
-- [ ] **W1.2 server.js in Express-Router splitten** (tools/brain/clara/qm/
+- [x] **W1.2 server.js in Express-Router splitten** (tools/brain/clara/qm/
       testtrain/devices) - rein mechanisch, Routen identisch.
+      **ERLEDIGT 04.07.:** server.js 7.223 -> 346 Zeilen (Middleware, Mounts,
+      Scheduler). 8 Router unter `src/routes/` (misc/tools/qm/brain/mail/
+      testtrain/devices/clara) + `_shared.js` (Tenant-/Mail-Scope-Helfer).
+      Jede Route behaelt ihren vollen Original-Pfad, gemountet ohne Prefix
+      => Matching identisch; clara zuletzt (Catch-all /clara/:clientId).
+      Beweise: Routen-Inventar 236/236 identisch (`scripts/route-inventory.mjs`),
+      alle Routen-Bloecke byte-identisch (nur app.->router.), Schatten-Vergleich
+      alt/neu ueber 37 read-only Endpunkte gruen, npm test unveraendert
+      (37/41 vorher = 37/41 nachher; die 4 roten sind LLM-Formulierungs-
+      Flakes, vor dem Split genauso rot).
 - [ ] **W1.3 Worker zerlegen:** Session-Kern (<2.000 Zeilen) + Persona-Module;
       Booking-State-Machine ins Bianca-Modul, nicht in Claras Pfad.
 - [ ] **W1.4 Kompensationen loeschen:** Intent-Umleitungen in

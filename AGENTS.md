@@ -22,6 +22,12 @@ verloren gehen**.
 3. **Vertrags-Treue:** Die Endpunkte unter `/brain/*`, `/clara/*`, `/testtrain/*`
    sind von Clara-Voice, dem Frontend und ElevenLabs-Webhooks fest verdrahtet.
    Bestehende Routen/Antwortformate nicht umbenennen oder umbauen — nur erweitern.
+   Seit W1.2 (04.07.2026) liegen die Routen in `src/routes/*` (misc/tools/qm/
+   brain/mail/testtrain/devices/clara + `_shared.js`); `server.js` ist nur noch
+   Middleware + Mounts + Scheduler. Jede Route traegt ihren VOLLEN Pfad,
+   gemountet ohne Prefix — `clara.js` MUSS als letzter Router gemountet bleiben
+   (Catch-all `GET /clara/:clientId`). Routen-Inventar zum Gegenpruefen:
+   `node scripts/route-inventory.mjs`.
 4. **Kalender-Paritaet:** `src/clara/daySchedule.js` blendet virtuelle Termine
    (Status `needsConfirmation`/`declined`) genauso aus wie der Plattform-Kalender
    (`showVirtualAppointments`). Diesen Filter nie entfernen — sonst liest Clara
