@@ -92,7 +92,9 @@ Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
       alle Routen-Bloecke byte-identisch (nur app.->router.), Schatten-Vergleich
       alt/neu ueber 37 read-only Endpunkte gruen, npm test unveraendert
       (37/41 vorher = 37/41 nachher; die 4 roten sind LLM-Formulierungs-
-      Flakes, vor dem Split genauso rot).
+      Flakes, vor dem Split genauso rot). Nach Live-Tausch: Health ready,
+      Sophie-E2E gruen, Clara-Voll-Suite 119/128 (= beste Baseline).
+      Tag: stabil-2026-07-04-w12.
 - [ ] **W1.3 Worker zerlegen:** Session-Kern (<2.000 Zeilen) + Persona-Module;
       Booking-State-Machine ins Bianca-Modul, nicht in Claras Pfad.
 - [ ] **W1.4 Kompensationen loeschen:** Intent-Umleitungen in
