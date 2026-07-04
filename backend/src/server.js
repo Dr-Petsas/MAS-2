@@ -748,6 +748,88 @@ app.post("/clara/session-end", async (req, res) => {
   }
 });
 
+// --- Sophie-Zuleitung von der Lena-Seite (Masterplan W-LENA, 04.07.2026) ----
+// Abrechnungsrelevante Hinweise zu EINEM Termin eintippen/diktieren — landet
+// im selben Abrechnungs-Arbeitsstand (mas_abrechnung_memo), den auch Claras
+// Diktat-Trennung fuellt: IMMER mit Bezug auf Patient/Datum/Termin. Nach dem
+// Merken laeuft die stille Sophie-Sonde (klinische Doku + alle Hinweise) und
+// meldet die naechste Gegenfrage bzw. "alles beisammen" zurueck.
+// Additiv — bestehende Routen und Formate unveraendert.
+
+/** Nachname aus "Vorname Nachname" ziehen (fuer den Arbeitsstand-Vermerk). */
+function lastNameOf(patientName) {
+  const teile = String(patientName || "").trim().split(/\s+/);
+  return teile.length ? teile[teile.length - 1] : "";
+}
+
+app.get("/clara/sophie-hinweis", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const appointmentId = String(req.query?.appointmentId || "").trim();
+    if (!appointmentId) return res.status(400).json({ ok: false, message: "appointmentId fehlt." });
+    const memo = await getAbrechnungsMemo(clientId, appointmentId);
+    res.json({ ok: true, clientId, appointmentId, ...memo });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post("/clara/sophie-hinweis", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const text = String(req.body?.text || "").trim();
+    const appointmentId = String(req.body?.appointmentId || "").trim();
+    if (!appointmentId) return res.status(400).json({ ok: false, message: "appointmentId fehlt." });
+    if (!text) return res.status(400).json({ ok: false, message: "Kein Hinweis-Text." });
+
+    const info = await resolveAppointmentInfo(clientId, { appointmentId });
+    if (!info?.ok) return res.status(404).json({ ok: false, message: info?.message || "Termin nicht gefunden." });
+    const patientId = info.patientId || String(req.body?.patientId || "").trim();
+    const lastName = lastNameOf(info.patientName) || String(req.body?.lastName || "").trim();
+
+    await appendAbrechnungsHinweis(clientId, info.appointmentId, { text, patientId, lastName });
+
+    // Klinischen Gesamttext des Termins dazu lesen, damit die Sonde beides
+    // sieht (Doku + Hinweise) — genau wie beim Clara-Diktat. Best-effort.
+    let combined = "";
+    try {
+      const segs = await readAppointmentSegments(clientId, info.locationId, info.appointmentId);
+      combined = combineActiveSegments(segs);
+    } catch { /* Sonde laeuft dann nur auf den Hinweisen */ }
+
+    const sonde = await pruefeAbrechnung(clientId, {
+      appointmentId: info.appointmentId,
+      klinischText: combined,
+      explizit: true,
+      patientId,
+      lastName,
+    }).catch(() => null);
+
+    const memo = await getAbrechnungsMemo(clientId, info.appointmentId);
+    res.json({
+      ok: true,
+      clientId,
+      appointmentId: info.appointmentId,
+      patientId,
+      patientName: info.patientName || "",
+      motiveName: info.motiveName || "",
+      apptStartMs: info.apptStartMs || 0,
+      hinweise: memo.hinweise,
+      sophie: sonde
+        ? { status: sonde.status, frage: sonde.frage, label: sonde.label, zeile: sonde.zeile }
+        : null,
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
 // --- Shared brain: event pool + briefing ---------------------------------
 // The append-only timeline every AI (Bianca, Lisa, Nadine, Clara) and the
 // platform write to, and that the briefing / Q&A / revenue coach read from.

@@ -23,12 +23,15 @@ Jedes Repo verweist in seiner AGENTS.md auf diesen Plan.
 
 ---
 
-## Phase 0 - Sichern (04.07.2026)
+## Phase 0 - Sichern (04.07.2026) - ERLEDIGT 04.07.
 
-- [ ] Clara-Voice: Schnell-Gate, Commit der offenen Aenderungen, Voll-Gate, Tag `stabil-2026-07-04`
-- [ ] MAS-2: Plan-Dokument committen, Tag `stabil-2026-07-04`
-- [ ] pickadoc: Sicherungs-Commit der offenen Session-Reste (getrennt), Commit demo-aufklaerungen, Tag `stabil-2026-07-04`
-- [ ] Git-Bundles aller drei Repos nach `C:\repo-backups\2026-07-04\` (zweites Laufwerk)
+- [x] Clara-Voice: Schnell-Gate gruen, Commit, Voll-Gate gruen (117/128, Suite-
+      Soll erfuellt), Tag `stabil-2026-07-04`
+- [x] MAS-2: Plan-Dokument committet, Tag `stabil-2026-07-04`
+- [x] pickadoc: Commit demo-aufklaerungen (~213 PDFs, 25 Fachrichtungen) +
+      AGENTS.md, Tag `stabil-2026-07-04` (fremde Session-Reste unangetastet)
+- [x] Git-Bundles aller drei Repos nach `C:\repo-backups\2026-07-04\`
+      (Clara-Voice 7,9 MB, MAS-2 1,4 MB, pickadoc 918 MB)
 - [ ] Firestore-Export: gcloud fehlt auf der Maschine -> Warteliste
 
 Rollback-Anker ab heute: `git checkout stabil-2026-07-04`.
@@ -51,6 +54,15 @@ Die bisherige Lena-Seite ist unbrauchbar (Befund Chef 04.07.). Neubau:
 - DoD: Chef kann einen Tag waehlen, jeden Patienten anklicken, Doku sehen
   und Abrechnungs-Hinweise an Sophie schicken (mit Patient/Datum/Termin);
   Ampel fuer fehlende Doku; keine toten Platzhalter mehr.
+
+**Status 04.07.: GEBAUT.** `lenaWorkspace.tsx` neu (Monats-Kalenderpicker +
+Tagesliste mit Doku-Ampel links, Doku rechts, "An Sophie" darunter mit Tipp-
+UND Diktat-Eingabe). MAS-2: `GET/POST /clara/sophie-hinweis` schreibt in den
+bestehenden Sophie-Arbeitsstand (`mas_abrechnung_memo`, gleiche Stelle wie
+Claras Diktat-Trennung) und laesst die stille Sophie-Sonde antworten
+(Gegenfrage/komplett). E2E-Test `scripts/test-sophie-hinweis.mjs` gruen,
+Frontend-Build gruen. Deep-Link `?ki=lena&appointmentId=` bleibt gueltig.
+Offen: Abnahme durch Chef im Alltag.
 
 ## Phase 1 - Vermessen & Entschlacken (Woche 1-3)
 
@@ -176,8 +188,14 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 - 04.07.2026: Firestore-Export als Datensicherung einrichten (gcloud fehlt
   auf der Maschine; Code-Sicherung besteht, Daten-Backup noch offen).
+- 04.07.2026: Alte Lena-Dashboard-Funktion "Naechste 7 Tage - fehlende
+  Pflicht-Dokumente je Termin" beim Neubau bewusst nicht uebernommen (war Teil
+  der verworrenen Seite). Wenn gewuenscht: als eigene Karte im neuen Layout
+  oder bei Julia/Vorbereitung wieder andocken.
 - (frei)
 
 ## Aenderungslog
 
 - 04.07.2026: Plan erstellt (Phasen 0-7 + W-LENA), beschlossen mit Chef.
+- 04.07.2026: Phase 0 abgeschlossen (Commits, Tags, Voll-Gate, Bundles).
+- 04.07.2026: W-LENA gebaut und getestet (siehe Status im Abschnitt W-LENA).
