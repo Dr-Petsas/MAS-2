@@ -95,8 +95,23 @@ Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
       Flakes, vor dem Split genauso rot). Nach Live-Tausch: Health ready,
       Sophie-E2E gruen, Clara-Voll-Suite 119/128 (= beste Baseline).
       Tag: stabil-2026-07-04-w12.
-- [ ] **W1.3 Worker zerlegen:** Session-Kern (<2.000 Zeilen) + Persona-Module;
+- [x] **W1.3 Worker zerlegen:** Session-Kern (<2.000 Zeilen) + Persona-Module;
       Booking-State-Machine ins Bianca-Modul, nicht in Claras Pfad.
+      **ERLEDIGT 04.07.:** `pickadoc_session_worker.py` 10.295 -> ~2.150 Zeilen
+      (Session-Kern: Felder, Kommando-Dispatch, Greeting, Watchdogs,
+      Transcript-Recorder, Entrypoint). 10 neue Module unter `services/`:
+      Leafs `worker_config` (Env/Audio/VAD-Konstanten), `worker_speech`
+      (Datum/Zahlen gesprochen), `worker_profiles` (Profil+Provider-Builder),
+      `bianca_booking` (Booking-State-Helfer, 47 Funktionen), `worker_mic_utils`
+      (Echo/Halluzination) + Mixins `bianca_flow` (BiancaFlowMixin, 40
+      Dialog-Methoden), `worker_llm_turn` (LLM-Turn/Tool-Schleife),
+      `worker_speech_out` (TTS/PCM/Barge-in/Lipsync), `worker_mic`
+      (consume_mic/Spekulativ), `worker_coach`. V3Session erbt von den
+      5 Mixins; alle 123 Methoden + 63 Felder unveraendert. Beweise:
+      alle 327 def-/Konstanten-Bloecke byte-identisch zu HEAD (AST-Check),
+      py_compile + pyflakes sauber, Voll-Suite 119/128 mit EXAKT denselben
+      9 Fail-IDs wie vor dem Split. `_normalize_profile` bleibt per
+      Re-Export Testsuite-Vertrag. Tag: stabil-2026-07-04-w13.
 - [ ] **W1.4 Kompensationen loeschen:** Intent-Umleitungen in
       `_sanitize_tool_calls()` nach aktivem Subsetting (Doc-Hinweis 5).
 - [ ] **W1.5 Modell-Evaluation** erst NACH Subsetting (Prompt ~16,7k -> ~8k),
