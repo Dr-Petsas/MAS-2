@@ -1,5 +1,10 @@
 # Arbeitsregeln MAS-2 (verbindlich fuer alle Sessions)
 
+**MASTERPLAN (ab 04.07.2026):** Der verbindliche Umsetzungsplan liegt in
+`docs/MASTERPLAN_CLARA_2026-07.md`. KEIN Abschweifen: neue Ideen kommen auf
+die Warteliste dort, nicht sofort in den Code. Arbeitspakete werden FERTIG
+gebaut (Definition of Done), bevor das naechste beginnt.
+
 Dies ist das **produktive MAS-Backend** (Express auf Port 3100, geteiltes
 Gedaechtnis, Clara-Tools, Nadine-Mail, Firestore). Clara, Bianca, Lisa und das
 Frontend haengen live an diesem Prozess — **erreichte Funktionen duerfen nicht
