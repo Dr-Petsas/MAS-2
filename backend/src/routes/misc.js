@@ -5,7 +5,7 @@ import express from "express";
 import { assertAppEnabled } from "../entitlements.js";
 import { getPatientAnamnese } from "../clara/anamnese.js";
 import { proxyGetFreeTimeSlots, proxyCreateAppointment, proxyUpdateOrCancel } from "../clara/cfProxy.js";
-import { listLisaTasks, smsConfigured as lisaSmsConfigured, callConfigured as lisaCallConfigured } from "../lisa/outbound.js";
+import { listLisaTasks, getLisaTaskDetail, getLisaTaskAudio, smsConfigured as lisaSmsConfigured, callConfigured as lisaCallConfigured } from "../lisa/outbound.js";
 import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
@@ -109,6 +109,37 @@ router.get("/lisa/tasks", async (req, res) => {
     const clientId = resolveClientId(req);
     const tasks = await listLisaTasks(clientId, Math.min(Number(req.query.limit) || 25, 100));
     res.json({ ok: true, clientId, smsConfigured: lisaSmsConfigured(), callConfigured: lisaCallConfigured(), tasks });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Gesprächs-Popup (Lisa-Arbeitsplatz): EIN Anruf mit Zeitmarken-Transkript
+// und Metadaten. Das Transkript wird nach dem ersten Abruf am Task gecacht.
+router.get("/lisa/tasks/:id/detail", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const out = await getLisaTaskDetail(clientId, req.params.id);
+    if (!out.ok) return res.status(out.reason === "not_found" ? 404 : 400).json(out);
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Audio-Mitschnitt eines Lisa-Anrufs (Proxy zu ElevenLabs — der API-Key bleibt
+// auf dem Server). Wird vom <audio>-Element geladen, das keine Header setzen
+// kann: das Firebase-Token kommt deshalb als ?t=… mit (siehe auth.js).
+router.get("/lisa/tasks/:id/audio", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const out = await getLisaTaskAudio(clientId, req.params.id);
+    if (!out.ok) return res.status(out.reason === "not_found" ? 404 : 400).json(out);
+    res.set("Content-Type", out.contentType);
+    res.set("Cache-Control", "private, max-age=3600");
+    res.send(out.buffer);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

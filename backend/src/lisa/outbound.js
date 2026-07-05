@@ -242,7 +242,10 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   }
   const to = normalizePhoneE164(phone);
   if (!to) return { ok: false, message: "Die Telefonnummer habe ich nicht verstanden. Bitte noch einmal nennen." };
-  const prompt = clip(instruction, 800);
+  // 1600: motivspezifische Recall-Instruktionen (W-OUTREACH, outreachTemplates
+  // CALL_INSTRUCTION_LIMIT=1550) brauchen Platz für Anlass + Hintergrund +
+  // Sicherheitsregeln. ElevenLabs-Dynamic-Vars vertragen das problemlos.
+  const prompt = clip(instruction, 1600);
   if (!prompt) return { ok: false, message: "Was soll Lisa am Telefon ausrichten?" };
 
   // Guard: never two parallel Lisa calls to the same number.
@@ -428,4 +431,99 @@ export async function finalizeLisaCalls(clientId) {
 export async function listLisaTasks(clientId, limit = 25) {
   const snap = await tasksCol(clientId).orderBy("ts", "desc").limit(limit).get();
   return snap.docs.map((d) => d.data());
+}
+
+// ----------------------------------------------------------------------------
+// Gesprächs-Popup im Lisa-Arbeitsplatz (05.07.2026): EIN Anruf mit
+// strukturiertem Transkript (Zeitmarken) + Audio — gleiche Erfahrung wie
+// Biancas Anrufe-Seite. Das Transkript wird nach dem ersten Abruf am Task
+// gecacht, damit wiederholtes Öffnen ElevenLabs nicht erneut trifft.
+// ----------------------------------------------------------------------------
+
+function normalizeTranscriptItems(raw) {
+  return (Array.isArray(raw) ? raw : [])
+    .map((m) => ({
+      role: ["agent", "assistant"].includes(String(m.role || "").toLowerCase()) ? "agent" : "user",
+      message: String(m.message || m.text || "").trim(),
+      timeInCallSecs: Number.isFinite(Number(m.time_in_call_secs)) ? Number(m.time_in_call_secs) : -1,
+    }))
+    .filter((m) => m.message);
+}
+
+/**
+ * Detail for ONE Lisa call: structured transcript with per-turn time offsets,
+ * duration and audio availability. Falls back to the flat transcriptText
+ * ("role: text" per line, no time marks) for tasks recorded before this
+ * feature or when the provider is unreachable.
+ */
+export async function getLisaTaskDetail(clientId, taskId) {
+  const doc = await tasksCol(clientId).doc(String(taskId)).get();
+  if (!doc.exists) return { ok: false, reason: "not_found" };
+  const task = doc.data();
+
+  let transcript = Array.isArray(task.transcriptItems) && task.transcriptItems.length ? task.transcriptItems : null;
+  let durationSecs = Number(task.durationSecs || 0) || null;
+  // Alt-Tasks haben das Flag nicht: optimistisch, solange eine Conversation existiert.
+  let hasAudio = task.hasAudio === undefined ? true : task.hasAudio !== false;
+
+  if (!transcript && task.conversationId && callConfigured()) {
+    try {
+      const conv = await elevenGetConversation(task.conversationId);
+      const convStatus = String(conv?.status || "").toLowerCase();
+      transcript = normalizeTranscriptItems(conv?.transcript);
+      durationSecs = Number(conv?.metadata?.call_duration_secs || 0) || durationSecs;
+      hasAudio = conv?.has_audio !== false;
+      // Nur BEENDETE Gespräche cachen — laufende wachsen noch.
+      if (["done", "failed"].includes(convStatus) && transcript.length) {
+        await doc.ref
+          .update({ transcriptItems: transcript, durationSecs: durationSecs || null, hasAudio })
+          .catch(() => {});
+      }
+    } catch (e) {
+      log.warn("lisa.task_detail.provider_failed", { clientId, taskId, error: String(e?.message || e) });
+    }
+  }
+
+  if ((!transcript || !transcript.length) && task.transcriptText) {
+    transcript = String(task.transcriptText)
+      .split("\n")
+      .map((line) => {
+        const m = /^([A-Za-z_]+):\s*(.+)$/.exec(line.trim());
+        if (!m) return null;
+        return {
+          role: ["agent", "assistant"].includes(m[1].toLowerCase()) ? "agent" : "user",
+          message: m[2].trim(),
+          timeInCallSecs: -1,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  return {
+    ok: true,
+    task,
+    transcript: transcript || [],
+    durationSecs: durationSecs || null,
+    hasAudio: !!(task.kind === "call" && task.conversationId && hasAudio),
+  };
+}
+
+/**
+ * Audio bytes of a Lisa call, proxied from ElevenLabs so the API key never
+ * reaches the browser. Loaded by the <audio> element in the popup.
+ */
+export async function getLisaTaskAudio(clientId, taskId) {
+  const doc = await tasksCol(clientId).doc(String(taskId)).get();
+  if (!doc.exists) return { ok: false, reason: "not_found" };
+  const task = doc.data();
+  if (!task.conversationId) return { ok: false, reason: "no_conversation" };
+  if (!callConfigured()) return { ok: false, reason: "not_configured" };
+
+  const r = await fetch(
+    `https://api.elevenlabs.io/v1/convai/conversations/${encodeURIComponent(task.conversationId)}/audio`,
+    { headers: { "xi-api-key": env("ELEVENLABS_API_KEY") } }
+  );
+  if (!r.ok) return { ok: false, reason: `elevenlabs_http_${r.status}` };
+  const buffer = Buffer.from(await r.arrayBuffer());
+  return { ok: true, buffer, contentType: r.headers.get("content-type") || "audio/mpeg" };
 }
