@@ -24,6 +24,7 @@ import { createCase, getCase, listCases, addUpdate, setStatus, linkEventToCase, 
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "../brain/caseBriefing.js";
 import { buildRedList, spokenRedList } from "../brain/redList.js";
 import { searchBrain, buildKarteikarte, answerBrain } from "../brain/search.js";
+import { buildEntityProfile, buildProfilePreviewFast } from "../brain/entityProfile.js";
 import { getDsgvoConfig, setDsgvoConfig } from "../brain/aiDisclosure.js";
 import { analyzeContactDupes, mergeContacts } from "../brain/addressBook.js";
 import { enqueueBrainWrite } from "../brain/outbox.js";
@@ -347,6 +348,57 @@ router.get("/brain/answer", async (req, res) => {
     });
     res.set("Cache-Control", "no-store");
     if (!out.ok) return res.status(out.reason === "empty_query" ? 400 : 502).json({ ok: false, ...out });
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Entity-Profil (W-SUCHE-3): Google-Business-artige Vollansicht fuer Patienten
+// (?patientId= / ?name=) oder Kontakte (?contactId=). Termine, Anamnese,
+// Kommunikation, Dokumente, Abrechnung, Recall, Bewertungen.
+router.get("/brain/profile-preview", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const patientId = (req.query?.patientId || "").trim();
+    if (!patientId) return res.status(400).json({ error: "patientId_required" });
+    const preview = await buildProfilePreviewFast(clientId, {
+      patientId,
+      firstName: (req.query?.firstName || "").trim(),
+      lastName: (req.query?.lastName || "").trim(),
+      birthDate: (req.query?.birthDate || "").trim() || null,
+    });
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, clientId, preview });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+router.get("/brain/profile", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const patientId = (req.query?.patientId || "").trim();
+    const contactId = (req.query?.contactId || "").trim();
+    const name = (req.query?.name || "").trim();
+    if (!patientId && !contactId && !name) {
+      return res.status(400).json({ error: "patientId_contactId_or_name_required" });
+    }
+    const out = await buildEntityProfile(clientId, {
+      patientId,
+      contactId,
+      name,
+      sinceDays: req.query?.sinceDays,
+    });
+    if (!out.ok) return res.status(out.reason === "not_found" ? 404 : 400).json(out);
+    res.set("Cache-Control", "no-store");
     res.json({ ok: true, clientId, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

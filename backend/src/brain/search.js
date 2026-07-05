@@ -5,12 +5,14 @@ import { TOPIC_LABELS, isActiveStatus } from "./cases.js";
 import { searchPatient } from "../clara/agentBooking.js";
 import { getDayAppointments, todayBerlin, isOwnCalendar } from "../clara/daySchedule.js";
 import { chat, llmInfo } from "../mail/llm.js";
+import { searchContacts } from "./entityProfile.js";
 
 // ============================================================================
 // Gedaechtnis-Suche (W-SUCHE, 05.07.2026) — Google-artige UNIVERSAL-Suche.
 //
 // DREI Trefferarten (Erweiterung 05.07. nach Chef-Befund "Sablon = 0 Treffer"):
-//   patient — Treffer in der Patienten-DB der Plattform -> Karteikarte
+//   patient — Treffer in der Patienten-DB der Plattform -> Patienten-Profil
+//   contact — Treffer im Adressbuch (Labor, Lieferant …) -> Kontakt-Profil
 //   case    — Vorgang (Thread pro Person+Thema)
 //   event   — einzelnes Ereignis (Anruf/Mail/Brief/Doku), auch OHNE Vorgang
 //
@@ -293,28 +295,12 @@ export async function searchBrain(clientId, opts = {}) {
   // ---- 3) Patienten (Karteikarte) -------------------------------------------
   // Treffer aus der Plattform-Patienten-DB. Angereichert mit Gedaechtnis-
   // Zaehlern (best effort, nur fuer die ersten 5).
+  // Patienten sofort listen — GBP-Karte holt die schnelle Vorschau separat
+  // (/brain/profile-preview), damit die Suche nicht auf 5× Gedaechtnis-Scans wartet.
   if (patientsRes?.ok && Array.isArray(patientsRes.patients) && patientsRes.patients.length) {
-    const top = patientsRes.patients.slice(0, 5);
-    const enrich = await Promise.all(top.map(async (p) => {
-      try {
-        const [evs, pcases] = await Promise.all([
-          queryByPatient(clientId, p.id, 100),
-          listCases(clientId, { patientId: p.id, limit: 50 }),
-        ]);
-        return { eventCount: evs.length, caseCount: pcases.length, activeCaseCount: pcases.filter((c) => isActiveStatus(c.status)).length };
-      } catch {
-        return { eventCount: 0, caseCount: 0, activeCaseCount: 0 };
-      }
-    }));
-    top.forEach((p, i) => {
+    for (const p of patientsRes.patients.slice(0, 5)) {
       const name = `${p.firstName || ""} ${p.lastName || ""}`.trim() || "Patient";
-      const info = enrich[i] || { eventCount: 0, caseCount: 0, activeCaseCount: 0 };
-      const geb = fmtIsoDay(p.birthDate);
-      const bits = [
-        info.eventCount ? `${info.eventCount} Einträge im Gedächtnis` : "noch keine Gedächtnis-Einträge",
-        info.activeCaseCount ? (info.activeCaseCount === 1 ? "1 offener Vorgang" : `${info.activeCaseCount} offene Vorgänge`) : "",
-        geb ? `geb. ${geb}` : "",
-      ].filter(Boolean);
+      const geb = fmtIsoDay(p.birthDate) || null;
       hits.push({
         kind: "patient",
         id: p.id,
@@ -324,15 +310,40 @@ export async function searchBrain(clientId, opts = {}) {
         lastName: p.lastName || "",
         birthDate: geb || null,
         hasPhone: !!p.hasPhone,
-        eventCount: info.eventCount,
-        caseCount: info.caseCount,
-        activeCaseCount: info.activeCaseCount,
-        isActive: info.activeCaseCount > 0,
+        eventCount: 0,
+        caseCount: 0,
+        activeCaseCount: 0,
+        isActive: false,
         lastContactAt: 0,
-        score: 100, // Karteikarten immer oben — die DB hat den Namen bestaetigt.
-        snippet: `Karteikarte · ${bits.join(" · ")}`,
+        score: 100,
+        snippet: geb ? `Geboren ${geb}` : "Patienten-Profil — Termine, Anamnese, Kommunikation, Dokumente",
       });
-    });
+    }
+  }
+
+  // ---- 4) Kontakte (Adressbuch, ohne Gesundheitsdaten) ----------------------
+  if (tokens.length) {
+    const contacts = await searchContacts(clientId, q, 5);
+    for (const c of contacts) {
+      hits.push({
+        kind: "contact",
+        id: c.id,
+        contactId: c.id,
+        title: c.name,
+        address: c.address || "",
+        phones: c.phones || [],
+        category: c.category || "",
+        lastContactAt: c.lastSeenAt || 0,
+        interactionCount: c.count || 0,
+        isActive: false,
+        score: 90,
+        snippet: [
+          c.address ? c.address : "",
+          c.phones?.length ? c.phones[0] : "",
+          c.category || "Kontakt",
+        ].filter(Boolean).join(" · ") || "Kontakt — Kommunikation und Vorgänge ohne Gesundheitsdaten",
+      });
+    }
   }
 
   // Facetten ueber die volle Treffermenge (vor den Filtern).
@@ -343,8 +354,8 @@ export async function searchBrain(clientId, opts = {}) {
   const fKind = (opts.kind || "").trim().toLowerCase();
   if (fKind) filtered = filtered.filter((r) => r.kind === fKind);
   const fStatus = (opts.status || "").trim().toLowerCase();
-  if (fStatus === "open") filtered = filtered.filter((r) => r.kind !== "patient" && r.isActive);
-  else if (fStatus === "done") filtered = filtered.filter((r) => r.kind !== "patient" && !r.isActive);
+  if (fStatus === "open") filtered = filtered.filter((r) => !["patient", "contact"].includes(r.kind) && r.isActive);
+  else if (fStatus === "done") filtered = filtered.filter((r) => !["patient", "contact"].includes(r.kind) && !r.isActive);
   else if (fStatus) filtered = filtered.filter((r) => r.kind === "case" && r.status === fStatus);
   const fTopic = (opts.topic || "").trim();
   if (fTopic) filtered = filtered.filter((r) => r.kind === "case" && r.topic === fTopic);
@@ -359,14 +370,14 @@ export async function searchBrain(clientId, opts = {}) {
   if (fAssignee) filtered = filtered.filter((r) => r.kind === "case" && String(r.assignee || "").toLowerCase() === fAssignee);
 
   // Sortierung (Chef-Vorgabe 05.07.): CHRONOLOGISCH, neueste zuerst — nur die
-  // Patienten-Karteikarten stehen immer oben (die DB hat den Namen bestaetigt).
-  // Der Score bleibt Tiebreaker bei gleichem Zeitstempel.
+  // Personen-Profile (Patient/Kontakt) stehen immer oben.
   const when = (r) => r.lastContactAt || r.ts || r.updatedAtMs || 0;
+  const profileRank = (r) => (r.kind === "patient" ? 2 : r.kind === "contact" ? 1 : 0);
   filtered.sort((a, b) => {
-    const ap = a.kind === "patient" ? 1 : 0;
-    const bp = b.kind === "patient" ? 1 : 0;
-    if (ap !== bp) return bp - ap;
-    if (ap && bp) return b.score - a.score;
+    const ar = profileRank(a);
+    const br = profileRank(b);
+    if (ar !== br) return br - ar;
+    if (ar > 0) return b.score - a.score;
     return (when(b) - when(a)) || (b.score - a.score);
   });
 
@@ -382,11 +393,12 @@ export async function searchBrain(clientId, opts = {}) {
 function buildFacets(hits) {
   const kinds = [
     { key: "patient", label: "Patienten", count: hits.filter((r) => r.kind === "patient").length },
+    { key: "contact", label: "Kontakte", count: hits.filter((r) => r.kind === "contact").length },
     { key: "case", label: "Vorgänge", count: hits.filter((r) => r.kind === "case").length },
     { key: "event", label: "Ereignisse", count: hits.filter((r) => r.kind === "event").length },
   ].filter((f) => f.count > 0);
 
-  const nonPatient = hits.filter((r) => r.kind !== "patient");
+  const nonPatient = hits.filter((r) => r.kind !== "patient" && r.kind !== "contact");
   const status = [
     { key: "open", label: "Offen", count: nonPatient.filter((r) => r.isActive).length },
     { key: "done", label: "Erledigt", count: nonPatient.filter((r) => !r.isActive).length },

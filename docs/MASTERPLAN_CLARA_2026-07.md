@@ -170,6 +170,27 @@ verzeichnis (Wording raus), KI-Modus wie bei Google.
 - Commits: MAS-2 e21b06a, Frontend adf96a6b. Live getestet: Flyeralarm-
   Frage beantwortet mit Quelle [1] in ~8 s; Sky nur noch als geschlossen.
 
+### W-SUCHE-3 - Entity Profile (Patient/Kontakt, FERTIG 05.07.)
+
+Google-Business-artige Vollprofile in der MAS-Suche:
+
+- **Backend:** `src/brain/entityProfile.js` — `buildEntityProfile`,
+  `buildProfilePreview`, `searchContacts`. Routen: `GET /brain/profile`
+  (?patientId= / ?name= / ?contactId=). Suchtreffer: Patient mit
+  `profilePreview` (Termine, Anamnese-Flags, Rating, Recall, Komm-Zaehler),
+  neue Trefferart **contact** (Adressbuch ohne PHI).
+- **Patienten-Profil:** Stammdaten, letzter/nächster Termin, Anamnese-
+  Auffälligkeiten (`getPatientAnamnese`), Behandlungsdoku, alle SignR-
+  Dokumente, Abrechnung (sophieAbrechnung/sophiePlan + offene Billing-
+  Vorgänge), Kommunikation gruppiert (Anrufe/Mails/Briefe ↓↑), Recall-
+  Buckets, Sterne-Rating, Vorgänge.
+- **Kontakt-Profil:** Kommunikation + nicht-medizinische Vorgänge — keine
+  Termine/Anamnese/Doku/Abrechnung.
+- **Frontend:** `masCockpit.tsx` — Profil-Vorschau in SERP, Profilseite mit
+  Reitern (Übersicht/Termine/Anamnese/Kommunikation/Dokumente/Abrechnung/
+  Vorgänge). `brainService.getEntityProfile` + Typen `EntityProfile`,
+  `ProfilePreview`.
+
 ## Phase 1 - Vermessen & Entschlacken (Woche 1-3)
 
 Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
