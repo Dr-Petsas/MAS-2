@@ -434,3 +434,17 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 - 05.07.2026: Sablon-Seed bereinigt: Demo-Anamnese-Antworten aus dem echten
   Bogen entfernt (unseed-Skript), seed-anamnese-sablon.mjs geloescht —
   keine erfundenen Befunde mehr in Patientendaten.
+- 05.07.2026: Sophie Implantat-PLANUNG umgebaut (billingTestPage):
+  (1) Roentgen-Konflikte (OPG+Zahnfilm) werden ueber die neue rechtfertigende
+  Indikation je Aufnahme (Dropdown, roentgenIndikation.ts, vorbelegt) geloest —
+  der Konfliktloeser streicht NIE mehr ein Bild (auch nicht sitzungs-
+  uebergreifend); (2) Planungs-Screen komplett OHNE Preise, 2 Spalten:
+  links Plan (klickbare Leistungen, +-Symbol an jedem Block/Schritt,
+  Implantatsystem-/Material-Auswahl ohne Preise, Indikations-Dropdowns),
+  rechts ALLE verbindbaren Leistungen zur angeklickten Ziffer (Trivialname +
+  Ziffer), IGeL-Ideen, Katalog-Suche; Slider zeigt "naechste Stufe" als Chips;
+  (3) Implantat-Strecke erweitert: 9003/9005 (Schablonen + Labor-Auslage),
+  9020, 9060, 9130, 9160, 9170, IGeL (praeop. PZR 1040, Lachgas A9030);
+  neue amtliche Regeln (9050-9010, 9100-9130, 9110-9120/9130, 9003-9005);
+  (4) Abrechnungs-Schritt ohne Schieberegler — Faktor 2,3/3,5/frei bleibt,
+  Positionen nachtragen per Suche, entfernen per Haekchen. TS-Check gruen.
