@@ -115,7 +115,7 @@ const instr = composeRecallCallInstruction({
   source: "campaign",
 });
 check("Anruf: Länge <= Limit", instr.length <= CALL_INSTRUCTION_LIMIT, `${instr.length}`);
-check("Anruf: Sicherheitsregeln enthalten", instr.includes("keine Diagnosen") && instr.includes("keine Preise") && instr.includes("Nein akzeptierst du freundlich"));
+check("Anruf: Sicherheitsregeln enthalten", instr.includes("keine Diagnosen") && instr.includes("keine Preise") && instr.includes("akzeptierst du freundlich"));
 check("Anruf: Opt-out-Regel enthalten", instr.includes("keine Anrufe mehr"));
 check("Anruf: Terminangebot enthalten", instr.includes("10:30") && instr.includes("Dr. Petsas"));
 check("Anruf: motivspezifischer Anlass", /Zahnreinigung|PZR/i.test(instr));

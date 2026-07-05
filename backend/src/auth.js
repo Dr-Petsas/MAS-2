@@ -56,6 +56,10 @@ function isPublic(req) {
   // Fernsteuerungs-Chat (Wochenend-Provisorium): von der statischen Handy-Seite
   // aus erreichbar, jede Route prueft selbst REMOTE_CHAT_TOKEN (remoteChat.js).
   if (p.startsWith("/remote/")) return true;
+  // Lisas Kalender-Werkzeuge: Aufrufer ist ElevenLabs (Webhook-Tools mitten im
+  // Patientengespraech). Jede Route prueft selbst den Secret-Header
+  // X-Lisa-Tool-Secret (timing-safe, routes/lisaTools.js).
+  if (p.startsWith("/lisa/tools/")) return true;
   // /clara/<clientId> (QR landing HTML), /clara/<clientId>/connect (phone page)
   // und /clara/<clientId>/status (System-Status-Seite, nur Read-only-Health).
   if (/^\/clara\/[^/]+(\/connect|\/status)?$/.test(p)) return true;

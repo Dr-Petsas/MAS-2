@@ -504,6 +504,57 @@ pickadoc-live-base `97e0d4f6`. Nebenfund behoben: `backend/src/data/qm/*.json`
 (QM-Katalog) war durch `data/`-Ignore NIE in Git — wiederhergestellt und
 `.gitignore`-Ausnahme fuer `backend/src/data/` gesetzt.
 
+## Phase W-OUTREACH-2 - Lisa bucht LIVE im Gespraech (Auftrag Chef 05.07.)
+
+**Auftrag (woertlich):** "Der Patient muss einen Alternativtermin angeboten
+bekommen — jeder, der auf den freien Spot angerufen wird, darf einen
+Alternativtermin buchen. ES WERDEN KEINE TERMINWUENSCHE VERNEINT. Kein
+Rueckruf, keine Mehrarbeit: der Patient muss sofort buchbare Alternativen
+bekommen. Lisa braucht Zugriff auf den Terminkalender."
+
+**Architektur:** Lisa (ElevenLabs-Agent) bekommt zwei Webhook-Tools, die auf
+MAS-2 zeigen (`/lisa/tools/offer-slots`, `/lisa/tools/book-slot`; eigener
+Secret-Header, timing-safe). `task_id`/`client_id` kommen als Dynamic
+Variables aus `lisaStartCall` — nie vom LLM. Autoritaet ist der Lisa-Task
+(`bookingContext`: Patient, Besuchsgrund, Kalender, Slot); OHNE Kontext
+buchen die Tools nichts. Slots kommen aus `getFreeTimeSlots` (dieselbe CF wie
+das Buchungs-Widget), Buchung ueber `masBookAppointment` (prueft Verfuegbarkeit
+serverseitig -> Doppelbuchung unmoeglich). Ist der Slot im Wettlauf gerade
+vergeben, liefert book_slot IM SELBEN ZUG neue Alternativen — Lisa bietet sie
+sofort an. Tunnel-URL wechselt: Boot-Sync (`syncLisaAgentTools`) haelt die
+Tool-URLs am Agenten aktuell.
+
+- [x] `src/lisa/callBooking.js`: Wunsch-Parser ("Donnerstag nachmittags",
+      "naechste Woche vormittags", "um 15 Uhr", "14.07."), Slot-Auswahl
+      (nie leere Haende: passt nichts zum Wunsch -> naechste freie Termine,
+      ehrlich markiert), Sprech-Formate, Live-Buchung mit Halluzinations-
+      Wache (erfundene Zeiten werden gegen den echten Kalender geprueft).
+- [x] `src/routes/lisaTools.js` + auth.js public + server.js-Mount (vor
+      clara-Catch-all) + Boot-Sync; `scripts/setup-lisa-agent-tools.mjs`
+      legt die Tools idempotent an (LISA_TOOL_SECRET in .env erzeugt,
+      Tools bei ElevenLabs angelegt + am Agenten verdrahtet).
+- [x] Instruktionen: `composeRecallCallInstruction`/`composeInviteInstruction`
+      mit liveBooking-Variante ("buche SOFORT mit book_slot", "kein
+      Terminwunsch wird abgelehnt", erst nach Werkzeug-Bestaetigung fest
+      zusagen); Fallback ohne Werkzeuge verspricht nichts Festes mehr
+      ("Praxis ruft mit Vorschlaegen zurueck" statt Reservierungs-Zusage).
+      Limits: CALL_INSTRUCTION_LIMIT 1550->2100, Lisa-Clip 1600->2200.
+- [x] Sweep-Nachlauf (Luecke im alten Ablauf): Ergebnisse werden auch NACH
+      resolved weiter ausgewertet (vorher verpuffte eine Zusage, wenn ein
+      frueherer Anruf schon gebucht hatte). Tool-Buchungen (bookedSlotIso am
+      Task) schlagen die Transkript-Deutung. NEU outcome wants_other_time
+      (Terminwunsch != Absage) mit dringlicher Note + needsHuman-Event.
+      SMS-Fallback nur noch, solange der Slot nicht vergeben ist.
+- [x] Tests: `scripts/test-lisa-live-booking.mjs` (38 pure Checks) +
+      `scripts/smoke-lisa-tools.mjs` (Endpunkte live: Secret-Gate,
+      No-Context-Gate, echte Slots, Halluzinations-Wache) + test-outreach
+      angepasst; node --check alle Dateien.
+
+**Bewusst so gelassen:** SMS-Pfad unveraendert (Patient ruft Praxis an);
+Kandidaten-Limit 8 parallel bleibt — durch Live-Buchung ist der Wettlauf
+jetzt fair (wer zuerst zusagt, bucht; alle anderen bekommen sofort
+Alternativen). Kein Terminwunsch wird verneint.
+
 ## Reihenfolge
 
 1. Phase 0 (sofort) -> parallel Dens-Kickoff-Fragen raus + Hardware bestellen

@@ -100,6 +100,8 @@ async function cfPost(url, body) {
 }
 
 // getFreeTimeSlots — read-only. Returns { slots: [iso], calendarName, date }.
+// Kennt der Aufrufer Kalender/Besuchsgrund bereits per ID (z. B. Lisas
+// Live-Buchung aus dem Anruf-Kontext), gewinnen die IDs vor der Namens-Suche.
 export async function findSlots(clientId, args = {}) {
   const booking = await loadBooking(clientId);
   const body = {
@@ -107,12 +109,18 @@ export async function findSlots(clientId, args = {}) {
     locationId: norm(booking.locationId),
     source: norm(booking.source) || "mas-2-clara",
   };
-  const cal = resolveCalendar(booking, args.doctorName);
+  const explicitCalId = norm(args.calendarId);
+  const cal = explicitCalId
+    ? ((booking.calendars || []).find((c) => c.id === explicitCalId) || { id: explicitCalId, name: null })
+    : resolveCalendar(booking, args.doctorName);
   if (cal) body.calendarId = cal.id;
   else if (norm(booking.defaultCalendarId)) body.calendarId = norm(booking.defaultCalendarId);
   else if (norm(args.doctorName)) body.doctorName = norm(args.doctorName);
 
-  const vm = resolveVisitMotive(booking, args.visitMotiveName);
+  const explicitVmId = norm(args.visitMotiveId);
+  const vm = explicitVmId
+    ? ((booking.visitMotives || []).find((v) => v.id === explicitVmId) || { id: explicitVmId, name: null })
+    : resolveVisitMotive(booking, args.visitMotiveName);
   if (vm) body.visitMotiveId = vm.id;
   if (norm(args.visitMotiveName)) body.visitMotiveName = norm(args.visitMotiveName);
   if (norm(args.startDate)) body.startDate = norm(args.startDate);

@@ -4,6 +4,7 @@ import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { commitBooking } from "./agentBooking.js";
 import { runGapFill, approveCallList } from "./gapFill.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
+import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { listCases, addUpdate, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
 import { resolveOutreach, composeRecallCallInstruction, composeRecallSms } from "./outreachTemplates.js";
@@ -102,7 +103,7 @@ function buildSmsOffer({ cand, booking, date, timeLabel, specialtyKey }) {
   });
 }
 
-function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey }) {
+function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey, liveBooking }) {
   return composeRecallCallInstruction({
     practiceName: booking?.practiceName,
     patientName: cand?.name,
@@ -114,6 +115,7 @@ function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, sp
     source: cand?.source || (cand?.campaignId ? "campaign" : "recall"),
     outreach: resolveCandidateOutreach(cand || {}, specialtyKey),
     campaignPrompt: cand?.phonePrompt,
+    liveBooking: !!liveBooking,
   });
 }
 
@@ -133,6 +135,11 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
   const booking = await loadBooking(clientId).catch(() => null);
   const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
   const timeLabel = minutesToHHMM(list.slot?.startMin);
+  const slotIso = ensureBerlinTz(`${list.date}T${timeLabel}:00`);
+  // W-OUTREACH-2: Sind Lisas Kalender-Werkzeuge verdrahtet, bucht sie LIVE im
+  // Gespräch (kein Terminwunsch wird verneint). Ohne Werkzeuge gilt weiter der
+  // vorsichtige Weg (nichts fest zusagen, Praxis meldet sich).
+  const liveBooking = liveBookingConfigured();
   const candidates = Array.isArray(list.candidates) ? [...list.candidates] : [];
   let calls = 0;
   let smses = 0;
@@ -162,10 +169,23 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
         phone: cand.phone,
         instruction: buildCallInstruction({
           cand, booking, date: list.date, timeLabel,
-          calendarName: list.calendarName, specialtyKey,
+          calendarName: list.calendarName, specialtyKey, liveBooking,
         }),
         contactName: cand.name,
         by: by || "Recall-Coach",
+        // Kalender-Kontext für Lisas Live-Buchung: NUR damit dürfen die
+        // Webhook-Tools für genau diesen Anruf Termine anbieten und buchen.
+        bookingContext: liveBooking ? {
+          kind: "gapfill",
+          caseId: c.id,
+          patientId: cand.patientId,
+          patientName: cand.name,
+          visitMotiveId: cand.visitMotiveId,
+          visitMotiveName: cand.visitMotiveName || null,
+          calendarId: list.calendarId,
+          calendarName: list.calendarName || null,
+          slotIso,
+        } : null,
       });
       candidates[i] = { ...cand, contact: { via: "call", taskId: out.taskId || null, ok: out.ok !== false, at: Date.now() } };
       if (out.ok !== false) calls++;
@@ -243,6 +263,11 @@ export async function approveAndExecute(clientId, { date, caseId, by } = {}) {
 
 const ACCEPT_RE = /\b(ja,? (sehr )?gerne|passt (mir )?(gut|sehr gut|super|prima)|das passt|einverstanden|in ordnung|nehme ich|machen wir( so)?|sehr gut,? danke|perfekt)\b/i;
 const DECLINE_RE = /(passt (mir )?(leider )?nicht|kein interesse|keine zeit|m[öo]chte (das )?nicht|nicht n[öo]tig|lieber nicht|absagen|kein bedarf|brauche keinen)/i;
+// W-OUTREACH-2: "möchte einen ANDEREN Termin" ist KEINE Absage — der Patient
+// will ja kommen. Normalfall: Lisa bucht die Alternative live im Gespräch
+// (book_slot). Landet der Fall trotzdem hier (Werkzeuge nicht verfügbar),
+// bekommt er eine EIGENE, dringliche Nachverfolgung statt "kein Interesse".
+const WANTS_OTHER_RE = /(ander(er|en|e)?r?\s+(termin|tag|uhrzeit|zeit)|lieber\s+(am|um|n[äa]chste)|verschieben|zu\s+der\s+zeit\s+(kann|schaffe)\s+ich\s+nicht|da\s+kann\s+ich\s+(leider\s+)?nicht|w[äa]re\s+.{0,20}(besser|lieber))/i;
 // Beschwerde-/Opt-out-Wächter (W-OUTREACH): Diese Formulierungen bedeuten
 // "hier ist etwas schiefgelaufen" — Reputation geht vor Terminfüllung.
 const COMPLAINT_RE = /(nicht mehr anrufen|keine anrufe mehr|nie wieder anrufen|in ruhe lassen|h[öo]ren sie auf|bel[äa]stig|unversch[äa]mt|frechheit|beschwerde|beschwer(e|t)|anwalt|abmahnung|datenschutz|werbeanruf|dsgvo)/i;
@@ -282,25 +307,38 @@ async function bookAcceptedCandidate(clientId, c, list, cand) {
   await addUpdate(clientId, c.id, {
     by: "Recall-Coach",
     kind: "note",
-    text: `ACHTUNG: ${cand.name} hat zugesagt, aber die automatische Buchung schlug fehl (${r.error || "needs_phone"}). Bitte manuell eintragen: ${list.date} ${minutesToHHMM(list.slot?.startMin)} Uhr.`,
+    text: `ACHTUNG: ${cand.name} hat zugesagt, aber die automatische Buchung schlug fehl (${r.error || "needs_phone"}). Bitte SOFORT zurückrufen und den Termin ${list.date} ${minutesToHHMM(list.slot?.startMin)} Uhr eintragen ODER direkt buchbare Alternativen anbieten — der Patient wartet auf seine Bestätigung.`,
   });
   return "accepted_booking_failed";
 }
 
 /**
  * Periodischer Sweep über laufende Recall-Listen: ordnet beendete Lisa-Calls
- * den Kandidaten zu, bucht Zusagen direkt, protokolliert Absagen und schickt
+ * den Kandidaten zu, übernimmt Live-Buchungen aus dem Gespräch (book_slot),
+ * bucht Zusagen ohne Live-Buchung direkt, protokolliert Absagen und schickt
  * bei Nichterreichen die SMS als Fallback (sofern Consent vorliegt).
+ *
+ * WICHTIG (W-OUTREACH-2): Auch RESOLVED-Fälle werden nachgezogen, solange
+ * noch Anrufe ohne Ergebnis dranhängen. Vorher galt: erste Buchung ->
+ * RESOLVED -> die restlichen (noch laufenden) Gespräche wurden NIE mehr
+ * ausgewertet — eine mündliche Zusage konnte sang- und klanglos verpuffen.
  */
 export async function sweepRecallOutcomes(clientId) {
-  const cases = await listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 }).catch(() => []);
-  const running = cases.filter((c) => c.id.startsWith("gapfill_") && c.callList?.approvedBy && c.status === CASE_STATUS.IN_PROGRESS);
+  const cases = await listCases(clientId, { assignee: "Lisa", limit: 100 }).catch(() => []);
+  const hasOpenCalls = (c) => (c.callList?.candidates || []).some(
+    (x) => x.contact?.taskId && x.contact.via === "call" && !x.contact.outcome
+  );
+  const running = cases.filter((c) =>
+    c.id.startsWith("gapfill_") && c.callList?.approvedBy &&
+    (c.status === CASE_STATUS.IN_PROGRESS || hasOpenCalls(c))
+  );
   let processed = 0;
 
   for (const c of running) {
     const list = c.callList;
     const candidates = [...(list.candidates || [])];
     const booking = await loadBooking(clientId).catch(() => null);
+    const gapSlotKey = ensureBerlinTz(`${list.date}T${minutesToHHMM(list.slot?.startMin)}:00`).slice(0, 16);
     let changed = false;
 
     for (let i = 0; i < candidates.length; i++) {
@@ -311,6 +349,24 @@ export async function sweepRecallOutcomes(clientId) {
       const taskSnap = await tasksCol(clientId).doc(contact.taskId).get().catch(() => null);
       const task = taskSnap?.exists ? taskSnap.data() : null;
       if (!task || task.status === "calling") continue; // läuft noch
+
+      // Live-Buchung aus dem Gespräch (book_slot) ist die verlässlichste
+      // Quelle — sie schlägt jede Transkript-Deutung. Beschwerden werden
+      // trotzdem gemeldet (Reputation), der Termin bleibt aber gebucht.
+      if (task.bookedSlotIso) {
+        const saidLive = patientSaid(task.transcriptText);
+        if (COMPLAINT_RE.test(saidLive)) {
+          await addUpdate(clientId, c.id, {
+            by: "Recall-Coach",
+            kind: "note",
+            text: `ACHTUNG: ${cand.name} hat im Gespräch gebucht, aber es gab auch Beschwerde-/Opt-out-Signale — bitte Transkript prüfen (Lisa-Task ${contact.taskId}).`,
+          });
+        }
+        candidates[i] = { ...cand, contact: { ...contact, outcome: "booked", bookedSlotIso: task.bookedSlotIso } };
+        changed = true;
+        processed++;
+        continue;
+      }
 
       let outcome = task.outcome || (task.status === "failed" ? "failed" : "reached");
       if (outcome === "reached") {
@@ -337,6 +393,29 @@ export async function sweepRecallOutcomes(clientId) {
             tags: ["recall", "complaint", "optout"],
           }).catch(() => {});
         }
+        else if (WANTS_OTHER_RE.test(said) && !ACCEPT_RE.test(said)) {
+          // Terminwunsch, den Lisa im Gespräch nicht buchen konnte (Werkzeuge
+          // nicht verfügbar/fehlgeschlagen). Vorgabe Chef: KEIN "kein
+          // Interesse", sondern dringliche Nachverfolgung mit Vorschlägen.
+          outcome = "wants_other_time";
+          await addUpdate(clientId, c.id, {
+            by: "Recall-Coach",
+            kind: "note",
+            text: `WICHTIG: ${cand.name} MÖCHTE einen Termin, nur zu einer anderen Zeit — im Gespräch konnte nicht direkt gebucht werden. Bitte HEUTE mit konkreten Terminvorschlägen zurückrufen (Transkript: Lisa-Task ${contact.taskId}).`,
+          });
+          await appendEvent(clientId, {
+            channel: "lisa_call",
+            direction: "outbound",
+            type: "note",
+            counterparty: { kind: "patient", name: cand.name, ref: cand.phone || null },
+            subject: { name: cand.name },
+            summary: `Recall-Anruf bei ${cand.name}: möchte einen Termin zu ANDERER Zeit — bitte kurzfristig mit konkreten Vorschlägen zurückrufen.`,
+            signals: { needsHuman: true },
+            payloadRef: { kind: "lisa_task", id: contact.taskId },
+            extractor: "recall@wants-other-time",
+            tags: ["recall", "wants_other_time"],
+          }).catch(() => {});
+        }
         else if (DECLINE_RE.test(said)) outcome = "declined";
         else if (ACCEPT_RE.test(said)) outcome = await bookAcceptedCandidate(clientId, c, list, cand);
         else {
@@ -349,17 +428,26 @@ export async function sweepRecallOutcomes(clientId) {
         }
       } else if ((outcome === "voicemail" || outcome === "no_answer") && cand.consent?.sms === true && smsConfigured() && !contact.fallbackSmsTaskId) {
         // Nicht erreicht, aber SMS erlaubt -> Terminangebot als SMS hinterher.
-        const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
-        const out = await lisaSendSms(clientId, {
-          phone: cand.phone,
-          message: buildSmsOffer({ cand, booking, date: list.date, timeLabel: minutesToHHMM(list.slot?.startMin), specialtyKey }),
-          recipientName: cand.name,
-          by: "Recall-Coach",
-        });
-        candidates[i] = { ...cand, contact: { ...contact, outcome, fallbackSmsTaskId: out.taskId || null } };
-        changed = true;
-        processed++;
-        continue;
+        // NUR solange der Slot noch offen ist: Ist die Lücke inzwischen gefüllt
+        // (Buchung im Gespräch oder per Sweep), wäre die SMS ein Angebot auf
+        // einen vergebenen Termin — dann nur das Ergebnis protokollieren.
+        const gapSlotBooked = c.status === CASE_STATUS.RESOLVED || candidates.some(
+          (x) => x.contact?.outcome === "booked" &&
+            (!x.contact.bookedSlotIso || String(x.contact.bookedSlotIso).slice(0, 16) === gapSlotKey)
+        );
+        if (!gapSlotBooked) {
+          const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
+          const out = await lisaSendSms(clientId, {
+            phone: cand.phone,
+            message: buildSmsOffer({ cand, booking, date: list.date, timeLabel: minutesToHHMM(list.slot?.startMin), specialtyKey }),
+            recipientName: cand.name,
+            by: "Recall-Coach",
+          });
+          candidates[i] = { ...cand, contact: { ...contact, outcome, fallbackSmsTaskId: out.taskId || null } };
+          changed = true;
+          processed++;
+          continue;
+        }
       }
 
       if (outcome === "declined") {
@@ -375,14 +463,31 @@ export async function sweepRecallOutcomes(clientId) {
         "callList.candidates": candidates,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-      // Liste abschließen, sobald ein Termin gebucht ist (Lücke gefüllt) oder
-      // alle Kontaktversuche ein Ergebnis haben.
-      const booked = candidates.some((x) => x.contact?.outcome === "booked");
+      // Liste abschließen, sobald die LÜCKE gebucht ist (Live-Buchungen auf
+      // Alternativtermine zählen als Erfolg, füllen aber nicht diesen Slot)
+      // oder alle Kontaktversuche ein Ergebnis haben.
+      const gapBooked = candidates.some(
+        (x) => x.contact?.outcome === "booked" &&
+          (!x.contact.bookedSlotIso || String(x.contact.bookedSlotIso).slice(0, 16) === gapSlotKey)
+      );
+      const altBooked = candidates.filter(
+        (x) => x.contact?.outcome === "booked" &&
+          x.contact.bookedSlotIso && String(x.contact.bookedSlotIso).slice(0, 16) !== gapSlotKey
+      ).length;
       const allDone = candidates.every((x) => !x.contact?.taskId || x.contact?.outcome || x.contact?.via !== "call");
-      if (booked) {
-        await setStatus(clientId, c.id, CASE_STATUS.RESOLVED, { by: "Recall-Coach", note: "Lücke gefüllt — Termin gebucht." });
-      } else if (allDone) {
-        await addUpdate(clientId, c.id, { by: "Recall-Coach", kind: "note", text: "Alle Kontaktversuche abgeschlossen — kein Termin zustande gekommen. Liste bleibt zur Nachverfolgung offen." });
+      if (gapBooked && c.status !== CASE_STATUS.RESOLVED) {
+        await setStatus(clientId, c.id, CASE_STATUS.RESOLVED, {
+          by: "Recall-Coach",
+          note: `Lücke gefüllt — Termin gebucht.${altBooked ? ` Zusätzlich ${altBooked} Alternativtermin${altBooked === 1 ? "" : "e"} gebucht.` : ""}`,
+        });
+      } else if (allDone && c.status !== CASE_STATUS.RESOLVED) {
+        await addUpdate(clientId, c.id, {
+          by: "Recall-Coach",
+          kind: "note",
+          text: altBooked
+            ? `Alle Kontaktversuche abgeschlossen — die Lücke selbst blieb offen, aber ${altBooked} Alternativtermin${altBooked === 1 ? " wurde" : "e wurden"} gebucht.`
+            : "Alle Kontaktversuche abgeschlossen — kein Termin zustande gekommen. Liste bleibt zur Nachverfolgung offen.",
+        });
       }
     }
   }
@@ -535,7 +640,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
     return "Es laufen gerade keine Recall-Aktionen. Sage: Recall starten — dann schaue ich nach Lücken und Kandidaten.";
   }
 
-  let booked = 0, declined = 0, noAnswer = 0, pending = 0, smsSent = 0, unclear = 0, complaints = 0;
+  let booked = 0, declined = 0, noAnswer = 0, pending = 0, smsSent = 0, unclear = 0, complaints = 0, wantsOther = 0;
   for (const c of lists) {
     for (const cand of c.callList.candidates || []) {
       const ct = cand.contact;
@@ -547,6 +652,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
         case "voicemail":
         case "no_answer": noAnswer++; break;
         case "complaint": complaints++; break;
+        case "wants_other_time": wantsOther++; break;
         case "unclear":
         case "accepted_booking_failed": unclear++; break;
         default: pending++; break;
@@ -557,6 +663,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
   const parts = [`Recall-Stand für ${lists.length} Liste${lists.length === 1 ? "" : "n"}:`];
   if (complaints) parts.push(`WICHTIG: ${complaints} Beschwerde${complaints === 1 ? "" : "n"} beziehungsweise Opt-out — bitte sofort im Monitor prüfen.`);
   if (booked) parts.push(`${booked} Termin${booked === 1 ? "" : "e"} fest gebucht.`);
+  if (wantsOther) parts.push(`${wantsOther} Patient${wantsOther === 1 ? " wünscht" : "en wünschen"} eine andere Zeit — bitte heute mit Vorschlägen zurückrufen.`);
   if (smsSent) parts.push(`${smsSent} SMS mit Terminangebot verschickt.`);
   if (declined) parts.push(`${declined} Absage${declined === 1 ? "" : "n"}.`);
   if (noAnswer) parts.push(`${noAnswer} nicht erreicht.`);

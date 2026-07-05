@@ -12,6 +12,7 @@ import { runRetentionSweep } from "./brain/retention.js";
 import { materializeDueJobs as qmMaterializeDueJobs } from "./qm/schedules.js";
 import { runEscalationSweep as qmRunEscalationSweep } from "./qm/notify.js";
 import { finalizeLisaCalls, callConfigured as lisaCallConfigured } from "./lisa/outbound.js";
+import { syncLisaAgentTools } from "./lisa/agentTools.js";
 import { ingestBiancaCalls, biancaConfigured } from "./bianca/ingest.js";
 import { backfillAddressBook } from "./brain/addressBook.js";
 import { startMailScheduler } from "./mail/scheduler.js";
@@ -27,6 +28,7 @@ import brainRouter from "./routes/brain.js";
 import mailRouter from "./routes/mail.js";
 import testtrainRouter from "./routes/testtrain.js";
 import devicesRouter from "./routes/devices.js";
+import lisaToolsRouter from "./routes/lisaTools.js";
 import claraRouter from "./routes/clara.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL } from "./routes/_shared.js";
 
@@ -134,6 +136,7 @@ app.use(brainRouter);
 app.use(mailRouter);
 app.use(testtrainRouter);
 app.use(devicesRouter);
+app.use(lisaToolsRouter);
 app.use(claraRouter);
 
 
@@ -203,10 +206,25 @@ async function publishRuntimeConfig() {
   }
 }
 
+// W-OUTREACH-2: Lisas Kalender-Webhook-Tools (offer_slots/book_slot) am
+// ElevenLabs-Agenten mit der AKTUELLEN öffentlichen URL verdrahten. Die
+// Tunnel-URL wechselt bei Neustarts — ohne diesen Abgleich zeigen die Tools
+// ins Leere und Lisa kann im Gespräch nicht mehr buchen. Best-effort: ein
+// Fehler hier darf den Boot nie stoppen.
+async function syncLisaTools() {
+  try {
+    const r = await syncLisaAgentTools({ baseUrl: PUBLIC_BASE_URL });
+    if (!r.ok) log.info("lisa agent tools not synced", { reason: r.reason });
+  } catch (e) {
+    log.warn("lisa agent tools sync failed", { err: String(e?.message || e) });
+  }
+}
+
 app.listen(PORT, () => {
   assertLocalLlm();
   log.info("backend listening", { port: PORT, authEnforced: AUTH_ENFORCED });
   publishRuntimeConfig();
+  syncLisaTools();
   startMailScheduler();
   // Lisa call finalizer: fetch transcripts of finished outbound calls and
   // write the outcome to the shared brain. Cheap no-op when nothing is calling.

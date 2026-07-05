@@ -32,9 +32,10 @@ const CATALOG_PATH = path.join(__dirname, "outreach-catalog.json");
 
 const TZ = "Europe/Berlin";
 
-// Obergrenzen: lisaStartCall kappt die Instruktion bei 1600, lisaSendSms bei
+// Obergrenzen: lisaStartCall kappt die Instruktion bei 2200, lisaSendSms bei
 // 480 — wir bleiben mit Reserve darunter, damit NIE mitten im Satz gekappt wird.
-export const CALL_INSTRUCTION_LIMIT = 1550;
+// (2100 seit W-OUTREACH-2: Live-Buchungs-Regeln brauchen Platz.)
+export const CALL_INSTRUCTION_LIMIT = 2100;
 export const SMS_LIMIT = 440;
 
 function s(v) {
@@ -265,9 +266,19 @@ function overduePhrase(overdueDays, source) {
 // Die Regeln sind der nicht verhandelbare Kern jeder Instruktion.
 const CALL_RULES =
   "Regeln: Stelle keine Diagnosen, nenne keine Preise und gib keine Heilversprechen. " +
-  "Kein Druck: mache EIN Terminangebot und biete höchstens eine Alternative an — ein Nein akzeptierst du freundlich. " +
+  "Kein Druck: ein klares Nein (kein Interesse) akzeptierst du freundlich. " +
   "Medizinische Fragen beantwortest du nicht, sondern bietest einen Rückruf der Praxis an. " +
   "Wünscht jemand keine Anrufe mehr, bestätige das ausdrücklich und verabschiede dich höflich.";
+
+// W-OUTREACH-2 (Chef, 05.07.2026): "Es werden keine Terminwünsche verneint."
+// Lisa hat zwei Kalender-Werkzeuge (offer_slots, book_slot) und bucht LIVE im
+// Gespräch. Kein "die Praxis meldet sich", solange die Werkzeuge funktionieren.
+const LIVE_BOOKING_RULES =
+  "Terminbuchung: Du hast Kalender-Werkzeuge. " +
+  "Sagt der Patient zu, rufe SOFORT book_slot mit dem angebotenen Termin (slot_iso) auf und bestätige den Termin ERST NACH der Werkzeug-Bestätigung verbindlich. " +
+  "Passt der Termin nicht oder wünscht der Patient einen anderen Zeitpunkt, rufe offer_slots auf (den Wunsch, z. B. 'Donnerstag nachmittags', als wish übergeben) und biete die freien Termine an — jeder Terminwunsch bekommt ein konkretes Angebot, du lehnst NIE ab. " +
+  "Meldet book_slot, dass der Termin inzwischen vergeben ist, entschuldige dich kurz und biete die zurückgemeldeten Alternativen direkt an. " +
+  "Funktionieren die Werkzeuge nicht, versprich nichts Festes, sondern kündige an, dass die Praxis kurzfristig mit Terminvorschlägen zurückruft.";
 
 /**
  * Anruf-Instruktion für Lisa (Recall-/Lückenfüller-Anruf).
@@ -277,7 +288,7 @@ const CALL_RULES =
 export function composeRecallCallInstruction({
   practiceName, patientName, date, timeLabel, calendarName,
   visitMotiveName, overdueDays = 0, source = "campaign",
-  outreach = null, campaignPrompt = "",
+  outreach = null, campaignPrompt = "", liveBooking = false,
 } = {}) {
   const praxis = s(practiceName) || "der Praxis";
   const o = outreach || resolveOutreach({ visitMotiveName });
@@ -288,9 +299,16 @@ export function composeRecallCallInstruction({
   const offer =
     `Angebot: Am ${dateDe(date)} um ${s(timeLabel)} Uhr${calendarName ? ` bei ${s(calendarName)}` : ""} ` +
     `ist kurzfristig ein Termin frei geworden. Frage, ob der Termin passt.`;
-  const closing =
-    "Bei Zusage: bestätige verbindlich, dass der Termin fest reserviert wird. " +
-    "Bei Absage: biete an, dass sich die Praxis wegen eines Alternativtermins meldet, und bedanke dich freundlich.";
+  // Mit Live-Buchung (W-OUTREACH-2) bucht Lisa selbst und bestätigt erst nach
+  // der Werkzeug-Rückmeldung. Ohne Werkzeuge (Fallback) verspricht sie nichts
+  // Festes — dann meldet sich die Praxis.
+  const closing = liveBooking
+    ? "Bei Zusage: buche SOFORT mit book_slot und bestätige den Termin erst nach der Werkzeug-Bestätigung. " +
+      "Möchte der Patient lieber einen anderen Zeitpunkt: offer_slots aufrufen und die freien Termine anbieten — kein Terminwunsch wird abgelehnt. " +
+      "Nur wenn der Patient gar keinen Termin möchte: bedanke dich freundlich und verabschiede dich."
+    : "Bei Zusage: bestätige, dass die Praxis den Termin einträgt und sich zur Bestätigung meldet. " +
+      "Bei Terminwunsch zu anderer Zeit: sichere zu, dass die Praxis kurzfristig mit passenden Vorschlägen zurückruft. " +
+      "Bei Absage: bedanke dich freundlich.";
 
   // Motiv-Block: Kampagnen-Override (Stufe 1) ODER Katalog/Klasse/generisch.
   let motiveBlocks;
@@ -312,7 +330,8 @@ export function composeRecallCallInstruction({
     ].filter(Boolean);
   }
 
-  const assemble = (blocks) => [head, CALL_RULES, ...blocks, offer, closing].join(" ");
+  const rules = liveBooking ? [CALL_RULES, LIVE_BOOKING_RULES] : [CALL_RULES];
+  const assemble = (blocks) => [head, ...rules, ...blocks, offer, closing].join(" ");
 
   // Kürzen bei Überlänge — von der entbehrlichsten Info zur wichtigsten.
   let blocks = motiveBlocks;
@@ -332,10 +351,10 @@ export function composeRecallCallInstruction({
   if (text.length > CALL_INSTRUCTION_LIMIT) {
     // Letzte Sicherung (z. B. überlanger Kampagnen-Prompt): Motiv-Teil kappen,
     // Regeln/Angebot/Abschluss bleiben vollständig.
-    const fixedLen = [head, CALL_RULES, offer, closing].join(" ").length + 2;
+    const fixedLen = [head, ...rules, offer, closing].join(" ").length + 2;
     const budget = Math.max(0, CALL_INSTRUCTION_LIMIT - fixedLen);
     const motivePart = blocks.join(" ").slice(0, budget > 1 ? budget - 1 : 0) + "…";
-    text = [head, CALL_RULES, motivePart, offer, closing].join(" ");
+    text = [head, ...rules, motivePart, offer, closing].join(" ");
   }
   return text;
 }

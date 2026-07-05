@@ -4,7 +4,7 @@
 import express from "express";
 import { completeTask } from "../tools/createTask.js";
 import { assertAppEnabled } from "../entitlements.js";
-import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot } from "../clara/booking.js";
+import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot, ensureBerlinTz } from "../clara/booking.js";
 import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory } from "../clara/daySchedule.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "../clara/anamnese.js";
 import { polishForChannel } from "../clara/dictation.js";
@@ -38,6 +38,7 @@ import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExa
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
 import { lisaSendSms, lisaStartCall } from "../lisa/outbound.js";
+import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { createCase, getCase, listCases, listActiveCasesByPatientIds, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext } from "../brain/caseStore.js";
@@ -1892,15 +1893,48 @@ router.post("/tools/gapfill-call-patient", async (req, res) => {
       }
     }
 
-    let practiceName = "";
-    try { practiceName = (await loadBooking(clientId))?.practiceName || ""; } catch { /* optional */ }
+    let booking = null;
+    try { booking = await loadBooking(clientId); } catch { /* optional */ }
+    const practiceName = booking?.practiceName || "";
+
+    // W-OUTREACH-2: Kalender-Kontext für Lisas Live-Buchung (book_slot/
+    // offer_slots). Nur möglich, wenn der Patient per Suche feststeht (ID!)
+    // und Kalender + Besuchsgrund auflösbar sind — sonst läuft der Anruf wie
+    // bisher ohne Buchungswerkzeuge (Praxis meldet sich).
+    let bookingContext = null;
+    const liveBooking = liveBookingConfigured();
+    if (liveBooking && booking) {
+      const sel = await getSelectedPatient(clientId).catch(() => null);
+      const selPhone = String(sel?.mobilePhoneNumber || "").trim();
+      const samePatient = sel?.id && (!req.body?.phone || selPhone === target.phone);
+      const cal = resolveCalendar(booking, calendarName) ||
+        (booking.calendars || []).find((x) => x.id === String(booking.defaultCalendarId || "")) || null;
+      const vms = Array.isArray(booking.visitMotives) ? booking.visitMotives : [];
+      const q = visitMotiveName.toLowerCase();
+      const vm = q ? (vms.find((v) => String(v.name || "").toLowerCase() === q) ||
+        vms.find((v) => String(v.name || "").toLowerCase().includes(q) || q.includes(String(v.name || "").toLowerCase()))) : null;
+      if (samePatient && cal?.id && vm?.id && date) {
+        bookingContext = {
+          kind: "invite",
+          patientId: String(sel.id),
+          patientName: target.name || `${sel.firstName || ""} ${sel.lastName || ""}`.trim(),
+          visitMotiveId: vm.id,
+          visitMotiveName: vm.name || null,
+          calendarId: cal.id,
+          calendarName: cal.name || null,
+          slotIso: time ? ensureBerlinTz(`${date}T${normTime(time)}:00`) : null,
+        };
+      }
+    }
+
     const instruction = composeInviteInstruction({
       patientName: target.name, practiceName, date, time, calendarName, reason, message,
+      liveBooking: !!bookingContext,
     });
 
     const confirm = req.body?.confirm === true || req.body?.confirm === "true";
     if (!confirm) {
-      const readback = inviteReadback({ patientName: target.name, date, time, calendarName, message });
+      const readback = inviteReadback({ patientName: target.name, date, time, calendarName, message, liveBooking: !!bookingContext });
       return res.json({ ok: true, needsConfirm: true, message: override ? `Achtung, Ausnahmetermin außerhalb der regulären Verfügbarkeit. ${readback}` : readback });
     }
     // Testsuite-Schutz: kompletter Pfad, aber NIEMAND wird angerufen.
@@ -1913,6 +1947,7 @@ router.post("/tools/gapfill-call-patient", async (req, res) => {
       contactName: target.name,
       callLanguage: req.body?.callLanguage,
       by: op?.name || "Team",
+      bookingContext,
     });
     res.json(out);
   } catch (e) {

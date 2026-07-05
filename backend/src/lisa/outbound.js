@@ -232,20 +232,25 @@ async function elevenGetConversation(conversationId) {
  * 20 Minuten später drankommt") goes verbatim into Lisa's agent prompt as
  * task_prompt. One active call per number (guard against double delegation).
  *
+ * bookingContext (optional, W-OUTREACH-2): hängt den Kalender-Kontext an den
+ * Task ({patientId, patientName, visitMotiveId, visitMotiveName, calendarId,
+ * calendarName, caseId, slotIso}). NUR mit diesem Kontext dürfen Lisas
+ * Kalender-Webhook-Tools (offer_slots/book_slot) für diesen Anruf buchen.
+ *
  * @param {string} clientId
- * @param {{phone:string, instruction:string, contactName?:string, by?:string, callLanguage?:string}} input
+ * @param {{phone:string, instruction:string, contactName?:string, by?:string, callLanguage?:string, bookingContext?:object}} input
  * @returns {Promise<{ok:boolean, message:string, taskId?:string}>}
  */
-export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage } = {}) {
+export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext } = {}) {
   if (!callConfigured()) {
     return { ok: false, message: "Outbound-Anrufe sind nicht konfiguriert." };
   }
   const to = normalizePhoneE164(phone);
   if (!to) return { ok: false, message: "Die Telefonnummer habe ich nicht verstanden. Bitte noch einmal nennen." };
-  // 1600: motivspezifische Recall-Instruktionen (W-OUTREACH, outreachTemplates
-  // CALL_INSTRUCTION_LIMIT=1550) brauchen Platz für Anlass + Hintergrund +
-  // Sicherheitsregeln. ElevenLabs-Dynamic-Vars vertragen das problemlos.
-  const prompt = clip(instruction, 1600);
+  // 2200: motivspezifische Recall-Instruktionen (W-OUTREACH, outreachTemplates
+  // CALL_INSTRUCTION_LIMIT=2100) brauchen Platz für Anlass + Hintergrund +
+  // Sicherheits- + Live-Buchungs-Regeln. ElevenLabs-Dynamic-Vars vertragen das.
+  const prompt = clip(instruction, 2200);
   if (!prompt) return { ok: false, message: "Was soll Lisa am Telefon ausrichten?" };
 
   // Guard: never two parallel Lisa calls to the same number.
@@ -270,8 +275,12 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   const disclosure = await lisaDisclosurePrefix(clientId).catch(() => "");
 
   // Same dynamic-variable contract as Lisa's agent prompt expects.
+  // client_id geht mit, damit die Kalender-Webhook-Tools (offer_slots/
+  // book_slot) den Mandanten sicher auflösen — NIE vom LLM erfunden, sondern
+  // von ElevenLabs als Dynamic Variable in den Tool-Request eingesetzt.
   const dynamicVariables = {
     task_id: taskRef.id,
+    client_id: clientId,
     assigned_by: by || "Team",
     delegated_to: "Lisa",
     contact_name: name || to,
@@ -303,6 +312,8 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     outcome: null,
     resultSummary: null,
     transcriptText: null,
+    // Kalender-Kontext für Lisas Live-Buchungs-Tools (nur wenn übergeben).
+    bookingContext: bookingContext && typeof bookingContext === "object" ? bookingContext : null,
     createdAt: FieldValue.serverTimestamp(),
     ts: now,
   });
