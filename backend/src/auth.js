@@ -67,6 +67,12 @@ function isPublic(req) {
   if (p === "/clara/health") return true;
   // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
   if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
+  // Behandlungs-Companion (iPad/Handy per QR am Behandlungsstuhl, NICHT
+  // eingeloggt): Presence-Heartbeat + geteilter Aufnahme-Zustand. Der QR-Link
+  // (clientId+locationId+appointmentId, nicht erratbar) ist das Ticket —
+  // gleiches Modell wie die oeffentliche submitTreatmentDictation-Function
+  // der Plattform. Routen geben nur den Kontext EINES Termins preis.
+  if (p === "/treatment/heartbeat" || p === "/treatment/recorder") return true;
   return false;
 }
 

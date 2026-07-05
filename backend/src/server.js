@@ -29,6 +29,7 @@ import mailRouter from "./routes/mail.js";
 import testtrainRouter from "./routes/testtrain.js";
 import devicesRouter from "./routes/devices.js";
 import lisaToolsRouter from "./routes/lisaTools.js";
+import treatmentRouter from "./routes/treatment.js";
 import claraRouter from "./routes/clara.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL } from "./routes/_shared.js";
 
@@ -137,6 +138,7 @@ app.use(mailRouter);
 app.use(testtrainRouter);
 app.use(devicesRouter);
 app.use(lisaToolsRouter);
+app.use(treatmentRouter);
 app.use(claraRouter);
 
 

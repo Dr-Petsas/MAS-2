@@ -64,6 +64,29 @@ Claras Diktat-Trennung) und laesst die stille Sophie-Sonde antworten
 Frontend-Build gruen. Deep-Link `?ki=lena&appointmentId=` bleibt gueltig.
 Offen: Abnahme durch Chef im Alltag.
 
+**Nachschliff 05.07. (Befund Chef: Player/QR zu gross, doppelter Header):**
+
+- Doppelter Header weg: Seiten-Banner in `lenaWorkspace.tsx` geloescht, die
+  MAS-Kopfzeile (claraPage) reicht.
+- Player + QR raus aus der Doku-Spalte: `RecordingControls` hat jetzt einen
+  `slim`-Modus — EINE Zeile oben rechts im Patienten-Kopf (Mini-Transport
+  Zurueck/Stop/REC/Vor + Timer) plus "iPad koppeln"-Knopf mit LED
+  (gruen pulsierend = gekoppeltes Geraet sendet Heartbeat, rot = keins).
+  QR nur noch als Popover hinter dem Knopf. Diktatfeld + Analyse bekommen
+  den frei gewordenen Platz (Eintragsliste bis 52vh).
+- iPad-Seite (`/dictate/...`, dictationPage.tsx) neu als Zimmer-Konsole:
+  Playersteuerung (REC/Pause/Stop, Timer, geteilter treatment/recorder-
+  Zustand inkl. Fernsteuerung von/zur Praxis) + Diktat als DIALOG —
+  Patient LINKS (blau), Doktor RECHTS (magenta), grosser Sprecher-Umschalter;
+  Patienten-Passagen werden mit "Patient:"-Praefix gespeichert (Karteikarte
+  behaelt die Zuordnung), Segmente aller Geraete laufen live ein.
+- MAS-2 additiv: `POST /treatment/heartbeat` (Presence -> treatment/companion
+  + Termin-Metadaten + recorder + Segmente zurueck) und `POST
+  /treatment/recorder` (Zustand schreiben) — public wie
+  submitTreatmentDictation (QR-Link = Ticket), Live-Test gruen
+  (Heartbeat/Set/404/Bad-Ids), `npm test`-Failliste identisch zur Basis
+  (4 bekannte Altfaelle). Frontend-Build gruen.
+
 ## Phase W-SUCHE - MAS-Cockpit als Gedaechtnis-Suchmaschine (beschlossen 05.07.)
 
 Das bisherige Cockpit (Rote Liste + Fristen + Freigaben + Dubletten als lange
