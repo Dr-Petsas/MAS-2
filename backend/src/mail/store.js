@@ -53,6 +53,34 @@ export async function listMessages(clientId, { accountId, accountIds, folder = "
   return rows.slice(0, limit);
 }
 
+/**
+ * Zähler je Konto und Ordner für den Kontenbaum im Mail-Client (wie in
+ * Outlook/Thunderbird üblich). Nutzt Firestore-Aggregationen — es werden nur
+ * Zahlen gelesen, keine Nachrichten-Dokumente. Ungelesen wird nur für den
+ * Posteingang gezählt (in anderen Ordnern ist "seen" bedeutungslos).
+ */
+export async function folderCounts(clientId, accountIds = []) {
+  const FOLDER_SET = ["INBOX", "Sent", "Drafts", "Trash"];
+  const out = {};
+  await Promise.all((accountIds || []).map(async (accId) => {
+    const entry = {};
+    await Promise.all(FOLDER_SET.map(async (folder) => {
+      const base = msgs(clientId).where("accountId", "==", accId).where("folder", "==", folder);
+      let total = 0;
+      let unread = 0;
+      try {
+        total = (await base.count().get()).data().count || 0;
+        if (folder === "INBOX" && total > 0) {
+          unread = (await base.where("seen", "==", false).count().get()).data().count || 0;
+        }
+      } catch { /* Zähler sind Komfort — ein Aggregationsfehler darf nichts brechen */ }
+      entry[folder] = { total, unread };
+    }));
+    out[accId] = entry;
+  }));
+  return out;
+}
+
 /** All messages attached to a case (inbound replies + sent copies). */
 export async function listMessagesForCase(clientId, caseId) {
   if (!caseId) return [];

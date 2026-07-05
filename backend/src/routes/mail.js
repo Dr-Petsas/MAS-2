@@ -12,7 +12,7 @@ import { findContactsByPhone } from "../brain/addressBook.js";
 import { outboxHealth, processBrainOutbox } from "../brain/outbox.js";
 import { createAccount, updateAccount, deleteAccount, getAccountPublic } from "../mail/accounts.js";
 import { testImap, syncAccount, syncAll, sendMail } from "../mail/mailbox.js";
-import { listMessages, getMessage, markRead, listContacts, getAttachmentUrl, getAttachmentData, setMessageClassification, deleteMessage, linkMessageToCase } from "../mail/store.js";
+import { listMessages, getMessage, markRead, listContacts, getAttachmentUrl, getAttachmentData, setMessageClassification, deleteMessage, linkMessageToCase, folderCounts } from "../mail/store.js";
 import { classifyWithLLM, deriveMailSignals } from "../mail/classify.js";
 import { buildLetterPdf, letterFilename } from "../mail/letter.js";
 import { buildMailBriefing } from "../mail/briefing.js";
@@ -124,6 +124,23 @@ router.post("/mail/sync", async (req, res) => {
     }
     const out = accountId ? await syncAccount(clientId, accountId) : await syncAll(clientId);
     res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Kontenbaum-Übersicht für den Mail-Client: sichtbare Konten + Zähler je
+// Ordner (gesamt / ungelesen im Posteingang). Additiv; respektiert dieselbe
+// Sichtbarkeit wie /mail/accounts (private Postfächer nur für den Inhaber).
+router.get("/mail/overview", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const access = await mailAccess(clientId, req);
+    const ids = access.accounts.map((a) => a.id);
+    const counts = await folderCounts(clientId, ids);
+    res.json({ ok: true, clientId, accounts: access.accounts, counts });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
