@@ -25,6 +25,11 @@ coverage/
 *.sqlite3
 data/
 uploads/
+# ABER: backend/src/data ist versionierte Konfiguration (QM-Katalog etc.),
+# KEIN Mandantendatum — muss in Git (Vorfall 05.07.2026: Ordner war nur
+# lokal, wurde bei Aufraeumarbeiten geloescht, Wiederherstellung noetig).
+!backend/src/data/
+!backend/src/data/**
 
 # Logs
 *.log

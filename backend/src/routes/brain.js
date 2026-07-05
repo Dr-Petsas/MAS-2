@@ -825,7 +825,12 @@ router.post("/brain/gap-fill/run", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
-    const out = await runGapFill(clientId, { date: req.body?.date, horizonDays: Number(req.body?.horizonDays) || 1 });
+    const demoOnly = req.body?.demoOnly === true || req.body?.demoOnly === "true";
+    const out = await runGapFill(clientId, {
+      date: req.body?.date,
+      horizonDays: Number(req.body?.horizonDays) || 1,
+      demoOnly,
+    });
     res.json({ ok: true, clientId, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

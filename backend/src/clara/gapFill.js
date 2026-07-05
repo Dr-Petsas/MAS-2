@@ -45,6 +45,8 @@ const MAX_CANDIDATES_PER_LIST = Number(process.env.MAS_GAP_MAX_CANDIDATES || 8);
 const RECALL_MIN_LEAD_HOURS = Number(process.env.MAS_RECALL_MIN_LEAD_HOURS || 16);
 const THROTTLE_DAYS = 14; // no patient is proposed twice within this window
 const RECALL_LOOKBACK_DAYS = 365;
+/** Feste Kampagnen-ID fuer `scripts/seed-gapfill-demo.mjs` — nur bei demoOnly. */
+export const DEMO_GAPFILL_CAMPAIGN_ID = "demo_gapfill_campaign";
 
 const db = admin.firestore();
 
@@ -215,7 +217,7 @@ function durationOfMotive(booking, visitMotiveId, visitMotiveName) {
   return Number(byName?.duration) || 30; // safe default
 }
 
-async function campaignCandidates(clientId, locationId, booking) {
+async function campaignCandidates(clientId, locationId, booking, { demoOnly = false } = {}) {
   const out = [];
   let campaigns = [];
   try {
@@ -226,6 +228,9 @@ async function campaignCandidates(clientId, locationId, booking) {
     campaigns = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch {
     return out;
+  }
+  if (demoOnly) {
+    campaigns = campaigns.filter((c) => c.id === DEMO_GAPFILL_CAMPAIGN_ID);
   }
 
   for (const camp of campaigns) {
@@ -240,7 +245,9 @@ async function campaignCandidates(clientId, locationId, booking) {
       continue;
     }
     for (const p of patients) {
-      if (p.appointmentMade === true) continue; // already converted — out of the bucket
+      // Demo-Modus: Konversions-Status ignorieren, damit der Testlauf mit den
+      // geseedeten Patienten beliebig wiederholbar bleibt.
+      if (!demoOnly && p.appointmentMade === true) continue; // already converted — out of the bucket
       const phone = s(p.mobilePhoneNumber) || s(p.phoneNumber);
       if (!phone) continue;
       // Consent (opt-in semantics: missing flag = NOT allowed):
@@ -266,7 +273,9 @@ async function campaignCandidates(clientId, locationId, booking) {
         alreadyCalled: p.called === true,
         consent: { sms: smsOk, reminder: reminderOk },
         reason: `Kampagne »${s(camp.name)}«${camp.visitMotiveName ? ` — ${s(camp.visitMotiveName)}` : ""}`,
-        phonePrompt: s(camp.phonePrompt),
+        // Kampagnen-Vorgabe für den Anruf: neues Schema cfg.phoneKi.prompt
+        // (CampaignR, W-OUTREACH-Vorbelegung), Altbestand camp.phonePrompt.
+        phonePrompt: s(camp.cfg?.phoneKi?.prompt) || s(camp.phonePrompt),
       });
     }
   }
@@ -341,13 +350,13 @@ async function recentlyContactedKeys(clientId) {
  * already called in its campaign. Rank: most overdue first, then higher-value
  * (longer) treatments, then reachable-with-consent first.
  */
-export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = new Set() } = {}) {
+export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = new Set(), ignorePhoneThrottle = false } = {}) {
   const fits = candidates.filter((c) => {
     if (c.durationMin > gap.minutes) return false;
     if (c.calendarId && calendarId && c.calendarId !== calendarId) return false;
     if (c.alreadyCalled) return false;
     if (throttled.has(`p:${c.patientId}`)) return false;
-    if (c.phoneNorm && throttled.has(`t:${c.phoneNorm}`)) return false;
+    if (!ignorePhoneThrottle && c.phoneNorm && throttled.has(`t:${c.phoneNorm}`)) return false;
     return true;
   });
   const consentScore = (c) => (c.consent?.sms === true || c.consent?.reminder === true ? 1 : 0);
@@ -436,7 +445,7 @@ async function upsertCallListCase(clientId, { date, calendar, gap, candidates, b
  * Behandler, gate+rank candidates, upsert one approval-pending call-list case
  * per gap. Returns everything the voice/UI layer needs.
  */
-export async function runGapFill(clientId, { date, horizonDays = 1 } = {}) {
+export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false } = {}) {
   const startDate = s(date) || todayBerlin();
   const booking = await loadBooking(clientId).catch(() => null);
   if (!booking?.locationId) return { ok: false, reason: "no_booking_config", gaps: [], callLists: [] };
@@ -444,8 +453,8 @@ export async function runGapFill(clientId, { date, horizonDays = 1 } = {}) {
 
   const [allCandidates, throttled, prompt] = await Promise.all([
     Promise.all([
-      campaignCandidates(clientId, locationId, booking),
-      recallCandidates(clientId, locationId, booking),
+      campaignCandidates(clientId, locationId, booking, { demoOnly }),
+      demoOnly ? Promise.resolve([]) : recallCandidates(clientId, locationId, booking),
     ]).then(([a, b]) => [...a, ...b]),
     recentlyContactedKeys(clientId),
     getActivePrompt(clientId, "lisa"),
@@ -473,7 +482,11 @@ export async function runGapFill(clientId, { date, horizonDays = 1 } = {}) {
         .map((a) => ({ startMin: berlinMinutesOf(a.startMs), endMin: berlinMinutesOf(a.endMs || a.startMs) }));
 
       for (const gap of computeGapWindows(wd, busy)) {
-        const candidates = rankCandidatesForGap(allCandidates, gap, { calendarId: calendar.id, throttled });
+        const candidates = rankCandidatesForGap(allCandidates, gap, {
+          calendarId: calendar.id,
+          throttled,
+          ignorePhoneThrottle: demoOnly,
+        });
         gaps.push({ date: day, calendarId: calendar.id, calendarName: s(calendar.name), ...gap, candidateCount: candidates.length });
         if (!candidates.length) continue;
         const upsert = await upsertCallListCase(clientId, { date: day, calendar, gap, candidates, booking, promptTag: prompt.ok ? prompt.tag : "pv:lisa:0" });
@@ -482,7 +495,7 @@ export async function runGapFill(clientId, { date, horizonDays = 1 } = {}) {
     }
   }
 
-  return { ok: true, date: startDate, gaps, callLists, candidatesTotal: allCandidates.length };
+  return { ok: true, date: startDate, demoOnly: !!demoOnly, gaps, callLists, candidatesTotal: allCandidates.length };
 }
 
 /** UI read-model: pending + approved call lists (active gap-fill cases). */

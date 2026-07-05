@@ -22,6 +22,7 @@ import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
 import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates } from "../clara/gapFill.js";
 import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../clara/gapInvite.js";
+import { outreachForClient, buildAutoInviteMessage } from "../clara/outreachTemplates.js";
 import { spokenMorningBriefing } from "../clara/morningBriefing.js";
 import { spokenEveningBriefing } from "../clara/eveningBriefing.js";
 import { buildAsapQueue, spokenAsapQueue } from "../clara/asapQueue.js";
@@ -1714,9 +1715,15 @@ router.post("/tools/gap-briefing", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
-    const run = await runGapFill(clientId, { date: req.body?.date, horizonDays: Number(req.body?.horizonDays) || 1 });
+    const demoOnly = req.body?.demoOnly === true || req.body?.demoOnly === "true";
+    const run = await runGapFill(clientId, {
+      date: req.body?.date,
+      horizonDays: Number(req.body?.horizonDays) || 1,
+      demoOnly,
+    });
     const op = await getOperator(clientId);
     let message = buildSpokenGapBriefing(run, { operatorName: op?.name });
+    if (demoOnly) message = `[Demo-Testlauf] ${message}`;
     if (run.callLists?.length) {
       message += " Zum Loslegen sage einfach: Recall freigeben.";
     }
@@ -1847,7 +1854,7 @@ router.post("/tools/gapfill-call-patient", async (req, res) => {
     }
     const date = String(req.body?.date || "").trim();
     const time = String(req.body?.time || req.body?.uhrzeit || "").trim();
-    const message = String(req.body?.message || req.body?.saywhat || req.body?.instruction || "").trim();
+    let message = String(req.body?.message || req.body?.saywhat || req.body?.instruction || "").trim();
     const reason = String(req.body?.reason || "").trim();
     const calendarName = String(req.body?.calendarName || req.body?.doctorName || "").trim();
     const visitMotiveName = String(req.body?.visitMotiveName || req.body?.behandlung || "").trim();
@@ -1855,8 +1862,16 @@ router.post("/tools/gapfill-call-patient", async (req, res) => {
     if (!time && !date) {
       return res.json({ ok: false, message: `Für wann soll Lisa ${target.name || "dem Patienten"} den Termin anbieten? Sag mir Tag und Uhrzeit.` });
     }
+    // W-OUTREACH: Ohne diktierte Botschaft baut Clara selbst eine motiv-
+    // spezifische Kernbotschaft aus dem zentralen Vorlagen-Katalog (der Chef
+    // hört sie im Bestätigungs-Readback und kann sie ändern). Nur wenn auch
+    // kein Besuchsgrund da ist, fragt Clara nach.
+    if (!message && visitMotiveName) {
+      const outreach = await outreachForClient(clientId, visitMotiveName).catch(() => null);
+      message = buildAutoInviteMessage({ visitMotiveName, outreach: outreach || undefined });
+    }
     if (!message) {
-      return res.json({ ok: false, message: `Was genau soll Lisa ${target.name || "dem Patienten"} am Telefon sagen? Zum Beispiel der Grund für den Anruf.` });
+      return res.json({ ok: false, message: `Was genau soll Lisa ${target.name || "dem Patienten"} am Telefon sagen? Zum Beispiel der Grund für den Anruf — oder nenne mir die Behandlung, dann formuliere ich es.` });
     }
 
     // Vorab-Verifikation gegen den ECHTEN Kalender (Sprechzeiten + Belegung):

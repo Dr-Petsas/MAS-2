@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "description": "Aktivierungsregeln: wann ein Artefakt für eine Praxis nötig wird. required: always (Baseline im Sektor) | conditional (nur wenn when zutrifft) | recommended (Vorschlag, Mensch bestätigt). when-Grammatik: { sector:[...] } | { capability:'x', eq:true } | { activity:'y', eq:true } | { any:[...] } | { all:[...] }. Fehlt 'when', gilt die Regel immer (innerhalb des Sektors via sector-Feld).",
+    "version": "1.0"
+  },
+  "rules": [
+    { "artifactKey": "hygiene_plan", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Hygieneplan ist für jede Praxis verpflichtend (Länderhygieneverordnungen)." },
+    { "artifactKey": "cleaning_disinfection_plan", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Reinigungs- und Desinfektionsplan als Teil des Hygienemanagements." },
+    { "artifactKey": "skin_protection_plan", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Hautschutz wegen Händedesinfektion/Handschuhen (GefStoffV/TRGS 401)." },
+    { "artifactKey": "hazardous_substances_register", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Desinfektions-/Reinigungsmittel sind Gefahrstoffe (GefStoffV §6)." },
+    { "artifactKey": "qm_handbook", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Einrichtungsinternes QM ist Pflicht (§135a SGB V)." },
+    { "artifactKey": "training_register", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Fortbildungs-/Unterweisungsnachweise sind QM- und Arbeitsschutzpflicht." },
+    { "artifactKey": "team_meeting_minutes", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Teambesprechungen als QM-Instrument dokumentieren." },
+    { "artifactKey": "emergency_plan", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Notfallmanagement ist Anwendungsbereich der QM-RL." },
+    { "artifactKey": "accident_book", "required": "always", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Verbandbuch/Unfalldokumentation (DGUV Vorschrift 1)." },
+    { "artifactKey": "cirs_log", "required": "recommended", "when": { "sector": ["arzt", "zahnarzt"] }, "reason": "Fehler-/Risikomanagement (CIRS) empfohlen, je nach Praxisgröße." },
+
+    { "artifactKey": "sterilization_log", "required": "conditional", "when": { "capability": "eigene_sterilisation", "eq": true }, "reason": "Eigene Aufbereitung → Chargendokumentation Pflicht (MPBetreibV)." },
+    { "artifactKey": "constancy_book", "required": "conditional", "when": { "capability": "roentgen", "eq": true }, "reason": "Röntgenbetrieb → Konstanzprüfung Pflicht (StrlSchG/StrlSchV)." },
+    { "artifactKey": "radiation_protection_training", "required": "conditional", "when": { "capability": "roentgen", "eq": true }, "reason": "Röntgen → Aktualisierung der Strahlenschutz-Fachkunde (alle 5 Jahre)." },
+    { "artifactKey": "temperature_log", "required": "conditional", "when": { "capability": "impfstoff_kuehlschrank", "eq": true }, "reason": "Medikamenten-/Impfstoffkühlschrank → Temperaturkontrolle." },
+    { "artifactKey": "emergency_checklist", "required": "conditional", "when": { "capability": "notfallkoffer", "eq": true }, "reason": "Notfallkoffer vorhanden → regelmäßige Vollständigkeitsprüfung." },
+    { "artifactKey": "emergency_checklist", "required": "conditional", "when": { "capability": "narkose_sedierung", "eq": true }, "reason": "Narkose/Sedierung → erweiterte Notfallbereitschaft." },
+    { "artifactKey": "medical_device_book", "required": "conditional", "when": { "capability": "medizinprodukte_aktiv", "eq": true }, "reason": "Aktive Medizinprodukte → Medizinproduktebuch (MPBetreibV)." },
+    { "artifactKey": "device_inventory", "required": "conditional", "when": { "capability": "medizinprodukte_aktiv", "eq": true }, "reason": "Aktive Medizinprodukte → Bestandsverzeichnis." },
+    { "artifactKey": "instruction_records", "required": "conditional", "when": { "capability": "medizinprodukte_aktiv", "eq": true }, "reason": "Aktive Medizinprodukte → Einweisungsprotokolle." },
+    { "artifactKey": "biohazard_register", "required": "conditional", "when": { "any": [ { "capability": "labor_eigen", "eq": true }, { "capability": "infektioes_hoch", "eq": true } ] }, "reason": "Labor/erhöhte Infektionsgefahr → Biostoffverzeichnis (BioStoffV)." }
+  ]
+}

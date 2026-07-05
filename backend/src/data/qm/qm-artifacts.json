@@ -1,0 +1,251 @@
+{
+  "_meta": {
+    "description": "Katalog aller QM-Bücher/Pläne/Verzeichnisse, die Julia führen kann. Stammwissen (kein Mandantendatum). type: plan|book|register|handbook. recurrenceMode: fixed (fester Zyklus) | anchor_on_completion (Frist ab letzter Erledigung) | on_event (anlassbezogen, kein Zyklus). requiredFields: Pflichtfelder, ohne die ein Job nicht 'erledigt' werden kann.",
+    "version": "1.0"
+  },
+  "artifacts": [
+    {
+      "key": "hygiene_plan",
+      "type": "plan",
+      "category": "hygiene",
+      "title": "Hygieneplan",
+      "legalBasis": ["IfSG §23", "Länderhygieneverordnungen", "BioStoffV", "TRBA 250"],
+      "hasInterview": true,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "cleaning_disinfection_plan",
+      "type": "plan",
+      "category": "hygiene",
+      "title": "Reinigungs- und Desinfektionsplan",
+      "legalBasis": ["IfSG §23", "TRBA 250", "VAH-Liste"],
+      "hasInterview": false,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "skin_protection_plan",
+      "type": "plan",
+      "category": "arbeitsschutz",
+      "title": "Hautschutzplan",
+      "legalBasis": ["GefStoffV", "TRGS 401", "DGUV"],
+      "hasInterview": false,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [],
+      "exportFormats": ["pdf"]
+    },
+    {
+      "key": "sterilization_log",
+      "type": "book",
+      "category": "hygiene",
+      "title": "Sterilisationsbuch / Chargendokumentation",
+      "legalBasis": ["MPBetreibV", "RKI/DGSV Aufbereitung"],
+      "hasInterview": false,
+      "defaultCycle": "perCharge",
+      "recurrenceMode": "fixed",
+      "requiredFields": [
+        { "key": "charge", "label": "Chargennummer", "type": "text", "required": true },
+        { "key": "programm", "label": "Programm/Zyklus", "type": "text", "required": true },
+        { "key": "freigabe", "label": "Freigabe erfolgt", "type": "enum", "options": ["ja", "nein"], "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "constancy_book",
+      "type": "book",
+      "category": "patientensicherheit",
+      "title": "Konstanzprüfungsbuch (Röntgen)",
+      "legalBasis": ["StrlSchG", "StrlSchV"],
+      "hasInterview": false,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "anchor_on_completion",
+      "requiredFields": [
+        { "key": "geraet", "label": "Gerät", "type": "text", "required": true },
+        { "key": "ergebnis", "label": "Prüfergebnis", "type": "enum", "options": ["bestanden", "nicht_bestanden"], "required": true },
+        { "key": "pruefwert", "label": "Messwert", "type": "number", "required": false }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "temperature_log",
+      "type": "book",
+      "category": "patientensicherheit",
+      "title": "Temperaturkontrollliste (Kühlschrank)",
+      "legalBasis": ["AMG/Lagerung", "STIKO/Impfstoffe"],
+      "hasInterview": false,
+      "defaultCycle": "daily",
+      "recurrenceMode": "fixed",
+      "requiredFields": [
+        { "key": "temperatur", "label": "Temperatur (°C)", "type": "number", "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "emergency_checklist",
+      "type": "book",
+      "category": "notfall",
+      "title": "Notfall-Checkliste (Notfallkoffer)",
+      "legalBasis": ["QM-RL §4 Notfallmanagement"],
+      "hasInterview": false,
+      "defaultCycle": "monthly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [
+        { "key": "vollstaendig", "label": "Vollständig & Verfallsdaten ok", "type": "enum", "options": ["ja", "nein"], "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "emergency_plan",
+      "type": "plan",
+      "category": "notfall",
+      "title": "Notfallplan",
+      "legalBasis": ["QM-RL §4 Notfallmanagement", "DGUV Vorschrift 1"],
+      "hasInterview": false,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [],
+      "exportFormats": ["pdf"]
+    },
+    {
+      "key": "medical_device_book",
+      "type": "book",
+      "category": "technik",
+      "title": "Medizinproduktebuch",
+      "legalBasis": ["MPBetreibV §12/§13"],
+      "hasInterview": false,
+      "defaultCycle": "onEvent",
+      "recurrenceMode": "on_event",
+      "requiredFields": [
+        { "key": "geraet", "label": "Gerät", "type": "text", "required": true },
+        { "key": "vorgang", "label": "Vorgang", "type": "text", "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "device_inventory",
+      "type": "register",
+      "category": "technik",
+      "title": "Bestandsverzeichnis Medizinprodukte",
+      "legalBasis": ["MPBetreibV §13"],
+      "hasInterview": false,
+      "defaultCycle": "onEvent",
+      "recurrenceMode": "on_event",
+      "requiredFields": [],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "instruction_records",
+      "type": "register",
+      "category": "technik",
+      "title": "Einweisungsprotokolle",
+      "legalBasis": ["MPBetreibV §4"],
+      "hasInterview": false,
+      "defaultCycle": "onEvent",
+      "recurrenceMode": "on_event",
+      "requiredFields": [],
+      "exportFormats": ["pdf"]
+    },
+    {
+      "key": "hazardous_substances_register",
+      "type": "register",
+      "category": "arbeitsschutz",
+      "title": "Gefahrstoffverzeichnis",
+      "legalBasis": ["GefStoffV §6 Abs. 12"],
+      "hasInterview": false,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "biohazard_register",
+      "type": "register",
+      "category": "arbeitsschutz",
+      "title": "Biostoffverzeichnis",
+      "legalBasis": ["BioStoffV", "TRBA 250"],
+      "hasInterview": false,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "accident_book",
+      "type": "book",
+      "category": "arbeitsschutz",
+      "title": "Verbandbuch / Unfallbuch",
+      "legalBasis": ["DGUV Vorschrift 1 §24 Abs. 6"],
+      "hasInterview": false,
+      "defaultCycle": "onEvent",
+      "recurrenceMode": "on_event",
+      "requiredFields": [],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "qm_handbook",
+      "type": "handbook",
+      "category": "organisation",
+      "title": "QM-Handbuch",
+      "legalBasis": ["§135a SGB V", "QM-RL G-BA"],
+      "hasInterview": false,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [],
+      "exportFormats": ["pdf"]
+    },
+    {
+      "key": "training_register",
+      "type": "register",
+      "category": "organisation",
+      "title": "Fortbildungs- und Schulungsverzeichnis",
+      "legalBasis": ["QM-RL", "ArbSchG Unterweisung"],
+      "hasInterview": false,
+      "defaultCycle": "onEvent",
+      "recurrenceMode": "on_event",
+      "requiredFields": [],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "team_meeting_minutes",
+      "type": "register",
+      "category": "organisation",
+      "title": "Teambesprechungsprotokolle",
+      "legalBasis": ["QM-RL"],
+      "hasInterview": false,
+      "defaultCycle": "onEvent",
+      "recurrenceMode": "on_event",
+      "requiredFields": [],
+      "exportFormats": ["pdf"]
+    },
+    {
+      "key": "cirs_log",
+      "type": "book",
+      "category": "patientensicherheit",
+      "title": "Fehler- und Risikoprotokoll (CIRS)",
+      "legalBasis": ["QM-RL Fehler-/Risikomanagement"],
+      "hasInterview": false,
+      "defaultCycle": "onEvent",
+      "recurrenceMode": "on_event",
+      "requiredFields": [],
+      "exportFormats": ["pdf"]
+    },
+    {
+      "key": "radiation_protection_training",
+      "type": "register",
+      "category": "patientensicherheit",
+      "title": "Strahlenschutz-Fortbildungsnachweis",
+      "legalBasis": ["StrlSchG §49 (Aktualisierung Fachkunde alle 5 Jahre)"],
+      "hasInterview": false,
+      "defaultCycle": "fiveYearly",
+      "recurrenceMode": "anchor_on_completion",
+      "requiredFields": [],
+      "exportFormats": ["pdf"]
+    }
+  ]
+}

@@ -6,6 +6,8 @@ import { runGapFill, approveCallList } from "./gapFill.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
 import { listCases, addUpdate, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
+import { resolveOutreach, composeRecallCallInstruction, composeRecallSms } from "./outreachTemplates.js";
+import { specialtyKeyForClient } from "./dokuPflicht.js";
 import { callOperator, setPendingCallContext, clearPendingCallContext } from "./devices.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { getOperator, emitCommand } from "./sessions.js";
@@ -79,28 +81,40 @@ function channelFor(candidate) {
   return callConfigured() ? "call" : (smsOk && smsConfigured() ? "sms" : null);
 }
 
-function buildSmsOffer({ name, booking, date, timeLabel }) {
-  const praxis = s(booking?.practiceName) || "Ihrer Praxis";
-  const phone = s(booking?.practicePhone);
-  return (
-    `Guten Tag${name ? ` ${name}` : ""}, hier ist ${praxis}. ` +
-    `Bei uns ist am ${dateDe(date)} um ${timeLabel} Uhr kurzfristig ein Termin frei geworden — ` +
-    `passend zu Ihrem fälligen Besuch. Wenn Sie möchten, rufen Sie uns kurz an` +
-    `${phone ? ` unter ${phone}` : ""}, dann reservieren wir ihn für Sie.`
-  );
+// W-OUTREACH (05.07.2026): Anruf und SMS sagen jetzt WARUM kontaktiert wird.
+// Die motivspezifischen Bausteine kommen aus outreachTemplates (zentraler
+// Katalog, Kaskade Kampagnen-Override > Katalog > Klasse > generisch) — die
+// Sicherheitsregeln stehen fest in composeRecallCallInstruction.
+
+function resolveCandidateOutreach(cand, specialtyKey) {
+  return resolveOutreach({ specialtyKey, visitMotiveName: s(cand.visitMotiveName) });
 }
 
-function buildCallInstruction({ name, booking, date, timeLabel, calendarName, visitMotiveName }) {
-  const praxis = s(booking?.practiceName) || "der Praxis";
-  return (
-    `Du rufst im Auftrag von ${praxis} an. Gesprächspartner: ${name || "der Patient"}. ` +
-    `Biete einen kurzfristig frei gewordenen Termin am ${dateDe(date)} um ${timeLabel} Uhr` +
-    `${calendarName ? ` bei ${calendarName}` : ""}` +
-    `${visitMotiveName ? ` (${visitMotiveName})` : ""} an — der Besuch ist laut Recall fällig. ` +
-    `Wenn der Termin passt: bestätige verbindlich, dass er fest reserviert wird. ` +
-    `Wenn nicht: biete an, dass sich die Praxis wegen eines Alternativtermins meldet. ` +
-    `Nenne KEINE medizinischen Details. Sei freundlich und fasse dich kurz.`
-  );
+function buildSmsOffer({ cand, booking, date, timeLabel, specialtyKey }) {
+  return composeRecallSms({
+    practiceName: booking?.practiceName,
+    practicePhone: booking?.practicePhone,
+    patientName: cand?.name,
+    date,
+    timeLabel,
+    visitMotiveName: cand?.visitMotiveName,
+    outreach: resolveCandidateOutreach(cand || {}, specialtyKey),
+  });
+}
+
+function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey }) {
+  return composeRecallCallInstruction({
+    practiceName: booking?.practiceName,
+    patientName: cand?.name,
+    date,
+    timeLabel,
+    calendarName,
+    visitMotiveName: cand?.visitMotiveName,
+    overdueDays: cand?.overdueDays,
+    source: cand?.source || (cand?.campaignId ? "campaign" : "recall"),
+    outreach: resolveCandidateOutreach(cand || {}, specialtyKey),
+    campaignPrompt: cand?.phonePrompt,
+  });
 }
 
 /**
@@ -117,6 +131,7 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
   if (!list || !list.approvedBy) return { ok: false, reason: "not_approved" };
 
   const booking = await loadBooking(clientId).catch(() => null);
+  const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
   const timeLabel = minutesToHHMM(list.slot?.startMin);
   const candidates = Array.isArray(list.candidates) ? [...list.candidates] : [];
   let calls = 0;
@@ -136,7 +151,7 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
     if (channel === "sms") {
       const out = await lisaSendSms(clientId, {
         phone: cand.phone,
-        message: buildSmsOffer({ name: cand.name, booking, date: list.date, timeLabel }),
+        message: buildSmsOffer({ cand, booking, date: list.date, timeLabel, specialtyKey }),
         recipientName: cand.name,
         by: by || "Recall-Coach",
       });
@@ -146,8 +161,8 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
       const out = await lisaStartCall(clientId, {
         phone: cand.phone,
         instruction: buildCallInstruction({
-          name: cand.name, booking, date: list.date, timeLabel,
-          calendarName: list.calendarName, visitMotiveName: cand.visitMotiveName,
+          cand, booking, date: list.date, timeLabel,
+          calendarName: list.calendarName, specialtyKey,
         }),
         contactName: cand.name,
         by: by || "Recall-Coach",
@@ -228,6 +243,9 @@ export async function approveAndExecute(clientId, { date, caseId, by } = {}) {
 
 const ACCEPT_RE = /\b(ja,? (sehr )?gerne|passt (mir )?(gut|sehr gut|super|prima)|das passt|einverstanden|in ordnung|nehme ich|machen wir( so)?|sehr gut,? danke|perfekt)\b/i;
 const DECLINE_RE = /(passt (mir )?(leider )?nicht|kein interesse|keine zeit|m[öo]chte (das )?nicht|nicht n[öo]tig|lieber nicht|absagen|kein bedarf|brauche keinen)/i;
+// Beschwerde-/Opt-out-Wächter (W-OUTREACH): Diese Formulierungen bedeuten
+// "hier ist etwas schiefgelaufen" — Reputation geht vor Terminfüllung.
+const COMPLAINT_RE = /(nicht mehr anrufen|keine anrufe mehr|nie wieder anrufen|in ruhe lassen|h[öo]ren sie auf|bel[äa]stig|unversch[äa]mt|frechheit|beschwerde|beschwer(e|t)|anwalt|abmahnung|datenschutz|werbeanruf|dsgvo)/i;
 
 function patientSaid(transcriptText) {
   return String(transcriptText || "")
@@ -297,7 +315,29 @@ export async function sweepRecallOutcomes(clientId) {
       let outcome = task.outcome || (task.status === "failed" ? "failed" : "reached");
       if (outcome === "reached") {
         const said = patientSaid(task.transcriptText);
-        if (DECLINE_RE.test(said)) outcome = "declined";
+        if (COMPLAINT_RE.test(said)) {
+          // Beschwerde/Opt-out schlägt ALLES: kein SMS-Fallback, kein weiterer
+          // Kontakt aus dieser Aktion, Mensch übernimmt (ASAP-Queue P1).
+          outcome = "complaint";
+          await addUpdate(clientId, c.id, {
+            by: "Recall-Coach",
+            kind: "note",
+            text: `ACHTUNG Beschwerde/Opt-out: ${cand.name} hat sich im Anruf beschwert oder keine Anrufe mehr gewünscht — bitte Transkript prüfen (Lisa-Task ${contact.taskId}) und den Kontaktwunsch in der Patientenakte hinterlegen. Es geht KEINE weitere Nachricht aus dieser Aktion raus.`,
+          });
+          await appendEvent(clientId, {
+            channel: "lisa_call",
+            direction: "outbound",
+            type: "note",
+            counterparty: { kind: "patient", name: cand.name, ref: cand.phone || null },
+            subject: { name: cand.name },
+            summary: `Recall-Anruf bei ${cand.name}: Beschwerde bzw. Opt-out-Wunsch im Gespräch erkannt. Keine weiteren Kontakte aus dieser Aktion; bitte Kontaktwunsch dauerhaft hinterlegen.`,
+            signals: { complaintStated: true, needsHuman: true },
+            payloadRef: { kind: "lisa_task", id: contact.taskId },
+            extractor: "recall@complaint-guard",
+            tags: ["recall", "complaint", "optout"],
+          }).catch(() => {});
+        }
+        else if (DECLINE_RE.test(said)) outcome = "declined";
         else if (ACCEPT_RE.test(said)) outcome = await bookAcceptedCandidate(clientId, c, list, cand);
         else {
           outcome = "unclear";
@@ -309,9 +349,10 @@ export async function sweepRecallOutcomes(clientId) {
         }
       } else if ((outcome === "voicemail" || outcome === "no_answer") && cand.consent?.sms === true && smsConfigured() && !contact.fallbackSmsTaskId) {
         // Nicht erreicht, aber SMS erlaubt -> Terminangebot als SMS hinterher.
+        const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
         const out = await lisaSendSms(clientId, {
           phone: cand.phone,
-          message: buildSmsOffer({ name: cand.name, booking, date: list.date, timeLabel: minutesToHHMM(list.slot?.startMin) }),
+          message: buildSmsOffer({ cand, booking, date: list.date, timeLabel: minutesToHHMM(list.slot?.startMin), specialtyKey }),
           recipientName: cand.name,
           by: "Recall-Coach",
         });
@@ -494,7 +535,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
     return "Es laufen gerade keine Recall-Aktionen. Sage: Recall starten — dann schaue ich nach Lücken und Kandidaten.";
   }
 
-  let booked = 0, declined = 0, noAnswer = 0, pending = 0, smsSent = 0, unclear = 0;
+  let booked = 0, declined = 0, noAnswer = 0, pending = 0, smsSent = 0, unclear = 0, complaints = 0;
   for (const c of lists) {
     for (const cand of c.callList.candidates || []) {
       const ct = cand.contact;
@@ -505,6 +546,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
         case "declined": declined++; break;
         case "voicemail":
         case "no_answer": noAnswer++; break;
+        case "complaint": complaints++; break;
         case "unclear":
         case "accepted_booking_failed": unclear++; break;
         default: pending++; break;
@@ -513,6 +555,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
   }
 
   const parts = [`Recall-Stand für ${lists.length} Liste${lists.length === 1 ? "" : "n"}:`];
+  if (complaints) parts.push(`WICHTIG: ${complaints} Beschwerde${complaints === 1 ? "" : "n"} beziehungsweise Opt-out — bitte sofort im Monitor prüfen.`);
   if (booked) parts.push(`${booked} Termin${booked === 1 ? "" : "e"} fest gebucht.`);
   if (smsSent) parts.push(`${smsSent} SMS mit Terminangebot verschickt.`);
   if (declined) parts.push(`${declined} Absage${declined === 1 ? "" : "n"}.`);

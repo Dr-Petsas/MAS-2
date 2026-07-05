@@ -1,0 +1,88 @@
+{
+  "_meta": {
+    "description": "Default-Profile pro Fachrichtung. Liefern NUR Vorbelegungen (activities/capabilities) und die Liste der zu bestätigenden Merkmale (confirmQuestions). Die finale Bücher-/Planliste entsteht aus der Regel-Engine, nicht aus dieser Datei.",
+    "version": "1.0"
+  },
+  "fachrichtungen": [
+    {
+      "key": "zahnmedizin",
+      "label": "Zahnarztpraxis",
+      "sector": "zahnarzt",
+      "defaultActivities": { "konservativ": true, "operativ": true, "invasiv": true, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": true, "eigene_sterilisation": true, "notfallkoffer": true, "medizinprodukte_aktiv": true, "labor_eigen": false, "impfstoff_kuehlschrank": false, "narkose_sedierung": false, "infektioes_hoch": false },
+      "confirmQuestions": ["roentgen", "eigene_sterilisation", "narkose_sedierung", "labor_eigen"]
+    },
+    {
+      "key": "oralchirurgie_mkg",
+      "label": "Oralchirurgie / MKG",
+      "sector": "zahnarzt",
+      "defaultActivities": { "konservativ": false, "operativ": true, "invasiv": true, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": true, "eigene_sterilisation": true, "notfallkoffer": true, "medizinprodukte_aktiv": true, "narkose_sedierung": true, "labor_eigen": false, "impfstoff_kuehlschrank": false, "infektioes_hoch": false },
+      "confirmQuestions": ["roentgen", "eigene_sterilisation", "narkose_sedierung"]
+    },
+    {
+      "key": "allgemeinmedizin",
+      "label": "Allgemeinmedizin / Hausarzt",
+      "sector": "arzt",
+      "defaultActivities": { "konservativ": true, "operativ": false, "invasiv": false, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": false, "eigene_sterilisation": false, "notfallkoffer": true, "medizinprodukte_aktiv": true, "impfstoff_kuehlschrank": true, "labor_eigen": false, "narkose_sedierung": false, "infektioes_hoch": false },
+      "confirmQuestions": ["roentgen", "labor_eigen", "impfstoff_kuehlschrank", "eigene_sterilisation"]
+    },
+    {
+      "key": "dermatologie",
+      "label": "Dermatologie",
+      "sector": "arzt",
+      "defaultActivities": { "konservativ": true, "operativ": true, "invasiv": true, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": false, "eigene_sterilisation": true, "notfallkoffer": true, "medizinprodukte_aktiv": true, "labor_eigen": false, "impfstoff_kuehlschrank": false, "narkose_sedierung": false, "infektioes_hoch": false },
+      "confirmQuestions": ["operativ", "eigene_sterilisation", "labor_eigen"]
+    },
+    {
+      "key": "orthopaedie_unfallchirurgie",
+      "label": "Orthopädie / Unfallchirurgie",
+      "sector": "arzt",
+      "defaultActivities": { "konservativ": true, "operativ": true, "invasiv": true, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": true, "eigene_sterilisation": true, "notfallkoffer": true, "medizinprodukte_aktiv": true, "labor_eigen": false, "impfstoff_kuehlschrank": false, "narkose_sedierung": false, "infektioes_hoch": false },
+      "confirmQuestions": ["roentgen", "operativ", "eigene_sterilisation"]
+    },
+    {
+      "key": "gynaekologie",
+      "label": "Gynäkologie",
+      "sector": "arzt",
+      "defaultActivities": { "konservativ": true, "operativ": true, "invasiv": true, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": false, "eigene_sterilisation": true, "notfallkoffer": true, "medizinprodukte_aktiv": true, "labor_eigen": true, "impfstoff_kuehlschrank": true, "narkose_sedierung": false, "infektioes_hoch": false },
+      "confirmQuestions": ["operativ", "eigene_sterilisation", "labor_eigen", "impfstoff_kuehlschrank"]
+    },
+    {
+      "key": "kinder_jugendmedizin",
+      "label": "Kinder- und Jugendmedizin",
+      "sector": "arzt",
+      "defaultActivities": { "konservativ": true, "operativ": false, "invasiv": false, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": false, "eigene_sterilisation": false, "notfallkoffer": true, "medizinprodukte_aktiv": true, "impfstoff_kuehlschrank": true, "labor_eigen": false, "narkose_sedierung": false, "infektioes_hoch": false },
+      "confirmQuestions": ["impfstoff_kuehlschrank", "labor_eigen", "roentgen"]
+    },
+    {
+      "key": "radiologie",
+      "label": "Radiologie",
+      "sector": "arzt",
+      "defaultActivities": { "konservativ": false, "operativ": false, "invasiv": true, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": true, "eigene_sterilisation": false, "notfallkoffer": true, "medizinprodukte_aktiv": true, "labor_eigen": false, "impfstoff_kuehlschrank": false, "narkose_sedierung": false, "infektioes_hoch": false },
+      "confirmQuestions": ["roentgen", "medizinprodukte_aktiv", "notfallkoffer"]
+    },
+    {
+      "key": "chirurgie",
+      "label": "Chirurgie / Ambulantes Operieren",
+      "sector": "arzt",
+      "defaultActivities": { "konservativ": true, "operativ": true, "invasiv": true, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": false, "eigene_sterilisation": true, "notfallkoffer": true, "medizinprodukte_aktiv": true, "narkose_sedierung": true, "labor_eigen": false, "impfstoff_kuehlschrank": false, "infektioes_hoch": false },
+      "confirmQuestions": ["operativ", "eigene_sterilisation", "narkose_sedierung", "roentgen"]
+    },
+    {
+      "key": "hno",
+      "label": "Hals-Nasen-Ohren-Heilkunde",
+      "sector": "arzt",
+      "defaultActivities": { "konservativ": true, "operativ": true, "invasiv": true, "diagnostisch": true },
+      "defaultCapabilities": { "roentgen": false, "eigene_sterilisation": true, "notfallkoffer": true, "medizinprodukte_aktiv": true, "labor_eigen": false, "impfstoff_kuehlschrank": false, "narkose_sedierung": false, "infektioes_hoch": false },
+      "confirmQuestions": ["operativ", "eigene_sterilisation", "roentgen"]
+    }
+  ]
+}
