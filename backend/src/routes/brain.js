@@ -338,7 +338,13 @@ router.get("/brain/answer", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
-    const out = await answerBrain(clientId, { q: req.query?.q || "", sinceDays: req.query?.sinceDays });
+    const out = await answerBrain(clientId, {
+      q: req.query?.q || "",
+      sinceDays: req.query?.sinceDays,
+      // Eingeloggter Nutzer (Anzeigename): begrenzt Kalender-Antworten auf den
+      // eigenen Kalender — Kollegen-Termine nur auf Nachfrage (Chef 05.07.).
+      operator: req.query?.operator || "",
+    });
     res.set("Cache-Control", "no-store");
     if (!out.ok) return res.status(out.reason === "empty_query" ? 400 : 502).json({ ok: false, ...out });
     res.json({ ok: true, clientId, ...out });

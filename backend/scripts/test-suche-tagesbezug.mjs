@@ -60,5 +60,31 @@ check(ctx.text.includes("ABWESEND/GESPERRT: Dr. Nikolaou"), "Abwesenheit als eig
 const empty = buildCalendarContext({ date: "2026-07-06", calendars: [], appointments: [] });
 check(empty.count === 0 && empty.text.includes("keine Termine"), "leerer Tag -> '(keine Termine eingetragen)'");
 
+console.log("\n=== Sichtbereich: eingeloggter Behandler sieht nur den eigenen Kalender ===");
+const dayFixture = {
+  date: "2026-07-06",
+  calendars: [{ id: "c1", name: "Dr. Petsas" }, { id: "c2", name: "Dr. Patrikis" }, { id: "c3", name: "Dr. Nikolaou" }],
+  appointments: [
+    { startMs: at(9, 0), endMs: at(9, 30), calendarId: "c1", patientName: "Andrea Sablon", isAbsence: false },
+    { startMs: at(9, 45), endMs: at(10, 15), calendarId: "c1", patientName: "Andreza Queiroz", isAbsence: false },
+    { startMs: at(9, 0), endMs: at(9, 45), calendarId: "c2", patientName: "Kai-Uwe Ingenhoven", isAbsence: false },
+    { startMs: at(10, 0), endMs: at(11, 0), calendarId: "c2", patientName: "Ralitsa Mitkova", isAbsence: false },
+    { startMs: at(8, 0), endMs: at(18, 0), calendarId: "c3", isAbsence: true },
+  ],
+};
+const own = buildCalendarContext(dayFixture, { operator: "Dr. PETSAS", query: "welche patienten habe ich am montag" });
+check(own.scoped === true, "Operator 'Dr. PETSAS' -> Block ist eingegrenzt");
+check(own.count === 2 && own.text.includes("Andrea Sablon") && !own.text.includes("Ingenhoven"), "nur Petsas-Termine im Block (Patrikis nicht)");
+check(own.hiddenSummary.includes("Dr. Patrikis: 2 Termine") && own.hiddenSummary.includes("Dr. Nikolaou") && own.hiddenSummary.includes("abwesend"), `Zusammenfassung nennt Patrikis-Zahl + Nikolaou-Abwesenheit (war '${own.hiddenSummary}')`);
+const named = buildCalendarContext(dayFixture, { operator: "Dr. Petsas", query: "welche patienten hat patrikis am montag" });
+check(named.scoped === true && named.text.includes("Ingenhoven") && named.text.includes("Mitkova"), "Nachfrage nach 'patrikis' -> dessen Termine sichtbar");
+check(named.text.includes("Andrea Sablon"), "eigene Termine bleiben bei Namens-Nachfrage sichtbar");
+const all = buildCalendarContext(dayFixture, { operator: "Dr. Petsas", query: "alle termine am montag" });
+check(all.scoped === false && all.count === 4, "'alle termine' -> ganze Praxis sichtbar");
+const team = buildCalendarContext(dayFixture, { operator: "Marie Musterfrau", query: "welche patienten haben wir am montag" });
+check(team.scoped === false && team.count === 4, "Nutzer ohne eigenen Kalender (Empfang) -> voller Tagesplan");
+const noOp = buildCalendarContext(dayFixture, { operator: "", query: "welche patienten am montag" });
+check(noOp.scoped === false && noOp.count === 4, "ohne operator-Angabe -> Verhalten wie bisher (alles)");
+
 console.log(failed ? `\n${failed} CHECK(S) FAILED` : "\nALL CHECKS PASSED");
 process.exit(failed ? 1 : 0);

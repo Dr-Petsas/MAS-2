@@ -3,7 +3,7 @@ import { queryLatest, queryByPatient } from "./eventStore.js";
 import { applyHumanReview } from "./events.js";
 import { TOPIC_LABELS, isActiveStatus } from "./cases.js";
 import { searchPatient } from "../clara/agentBooking.js";
-import { getDayAppointments, todayBerlin } from "../clara/daySchedule.js";
+import { getDayAppointments, todayBerlin, isOwnCalendar } from "../clara/daySchedule.js";
 import { chat, llmInfo } from "../mail/llm.js";
 
 // ============================================================================
@@ -502,15 +502,50 @@ export function resolveDayIntent(query, todayIso = todayBerlin()) {
 const BERLIN_HM = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
 const BERLIN_DAY = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
+// Titel-/Fuelltokens, die in Kalendernamen stecken, aber nichts identifizieren.
+const CAL_NAME_NOISE = new Set(["dr", "prof", "med", "dent", "dres", "herr", "frau", "praxis", "zahnarzt", "zahnaerztin"]);
+
+// Fragt die Frage ausdruecklich nach der GANZEN Praxis / allen Behandlern?
+function asksForWholePractice(foldedQuery) {
+  return /\b(alle[nrs]?|gesamte?n?|ganze[nr]?|komplette?n?|praxis(weit)?|team|kollegen?|kolleginnen?|behandlern?|aerzten?|arzten?|jede[nrs]?)\b/.test(foldedQuery);
+}
+
 /**
  * Kalender-Kontext fuer den KI-Prompt: der ECHTE Tagesplan als Textblock
  * (ein Termin je Zeile, sortiert; Abwesenheiten separat). Pure — testbar.
+ *
+ * Sichtbereich (Chef-Vorgabe 05.07.): Ist ``operator`` (der eingeloggte
+ * Nutzer) einem Kalender zuzuordnen, enthaelt der Block standardmaessig NUR
+ * dessen Termine; andere Behandler erscheinen als Zusammenfassungszeile
+ * ("nur auf Nachfrage"). Nennt die Frage einen anderen Behandler beim Namen
+ * oder fragt nach der ganzen Praxis ("alle", "Team", …), wird entsprechend
+ * mehr gezeigt. Ohne Kalender-Zuordnung (Empfang, unbekannter Name) bleibt
+ * der volle Tagesplan sichtbar.
  */
-export function buildCalendarContext(day) {
-  const nameById = new Map((day.calendars || []).map((c) => [c.id, c.name]));
+export function buildCalendarContext(day, { operator = "", query = "" } = {}) {
+  const calendars = day.calendars || [];
+  const nameById = new Map(calendars.map((c) => [c.id, c.name]));
   const label = BERLIN_DAY.format(new Date(`${day.date}T12:00:00Z`));
   const appts = (day.appointments || []).slice().sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
   const calName = (a) => nameById.get(a.calendarId) || a.calendarName || "";
+
+  // --- Sichtbereich bestimmen -----------------------------------------------
+  const fq = fold(query);
+  const qTokens = new Set(tokenize(query));
+  const ownIds = new Set(calendars.filter((c) => isOwnCalendar(c.name, operator)).map((c) => c.id));
+  const namedIds = new Set();
+  for (const c of calendars) {
+    if (ownIds.has(c.id)) continue;
+    const nameTokens = tokenize(c.name).filter((t) => t.length >= 3 && !CAL_NAME_NOISE.has(t));
+    if (nameTokens.some((t) => qTokens.has(t))) namedIds.add(c.id);
+  }
+  const scoped = !!operator && ownIds.size > 0 && !asksForWholePractice(fq);
+  const visible = (a) => {
+    if (!scoped) return true;
+    if (a.isAbsence && !a.calendarId) return true; // praxisweite Sperre (Feiertag o. Ae.)
+    return ownIds.has(a.calendarId) || namedIds.has(a.calendarId);
+  };
+
   // Erst die Termine (chronologisch), Abwesenheiten gesammelt am Ende — so
   // liest das Modell die Patientenliste am Stueck.
   // PatientStatus-Enum der Plattform: 4 = unentschuldigt abwesend, 5 =
@@ -518,28 +553,50 @@ export function buildCalendarContext(day) {
   // sie genauso als abgesagt kennzeichnen (nicht kommentarlos listen).
   const absentTag = (a) => (a.patientStatus === 4 ? " — NICHT ERSCHIENEN (im Kalender durchgestrichen)"
     : a.patientStatus === 5 ? " — ABGESAGT/entschuldigt (im Kalender durchgestrichen)" : "");
-  const lines = appts.filter((a) => !a.isAbsence).map((a) =>
+  const shown = appts.filter(visible);
+  const lines = shown.filter((a) => !a.isAbsence).map((a) =>
     `• ${BERLIN_HM.format(new Date(a.startMs))} Uhr: ${a.patientName || "(ohne Name)"}${calName(a) ? ` — bei ${calName(a)}` : ""}${a.visitMotive ? ` — ${a.visitMotive}` : ""}${a.newPatient ? " — Neupatient" : ""}${absentTag(a)}`);
   const count = lines.length;
-  for (const a of appts.filter((x) => x.isAbsence)) {
+  for (const a of shown.filter((x) => x.isAbsence)) {
     lines.push(`• ABWESEND/GESPERRT: ${calName(a) || "Praxis"} ${BERLIN_HM.format(new Date(a.startMs))}–${BERLIN_HM.format(new Date(a.endMs || a.startMs))}`);
   }
-  return { label, count, text: lines.length ? lines.join("\n") : "(keine Termine eingetragen)" };
+
+  // Ausgeblendete Behandler als Zusammenfassung ("nur auf Nachfrage").
+  let hiddenSummary = "";
+  if (scoped) {
+    const byCal = new Map(); // calId -> { name, count, absent }
+    for (const a of appts) {
+      if (visible(a)) continue;
+      const key = a.calendarId || calName(a) || "?";
+      if (!byCal.has(key)) byCal.set(key, { name: calName(a) || "Weitere", count: 0, absent: false });
+      const s = byCal.get(key);
+      if (a.isAbsence) s.absent = true;
+      else s.count += 1;
+    }
+    hiddenSummary = [...byCal.values()]
+      .map((s) => `${s.name}: ${s.count ? `${s.count} Termin${s.count === 1 ? "" : "e"}` : ""}${s.count && s.absent ? ", " : ""}${s.absent ? "abwesend/gesperrt" : ""}`)
+      .join(" · ");
+  }
+
+  return { label, count, scoped, hiddenSummary, text: lines.length ? lines.join("\n") : "(keine Termine eingetragen)" };
 }
 
-export async function answerBrain(clientId, { q, sinceDays } = {}) {
+export async function answerBrain(clientId, { q, sinceDays, operator } = {}) {
   const query = String(q || "").trim();
   if (!query) return { ok: false, reason: "empty_query" };
+  const who = String(operator || "").trim();
 
   // 0) Tagesbezug? Dann den ECHTEN Kalender fuer diesen Tag laden — die
   //    Gedaechtnis-Events (SMS/Anrufe) sind fuer Terminfragen unvollstaendig
-  //    und enthalten auch Geloeschtes. Fehler hier aendern nichts am Verhalten.
+  //    und enthalten auch Geloeschtes. ``operator`` (eingeloggter Nutzer)
+  //    begrenzt den Block auf den eigenen Kalender — Kollegen-Termine gibt es
+  //    nur auf Nachfrage. Fehler hier aendern nichts am Verhalten.
   const dayIntent = resolveDayIntent(query);
   let calendar = null;
   if (dayIntent) {
     try {
       const day = await getDayAppointments(clientId, { date: dayIntent.date });
-      if (day?.ok) calendar = { date: day.date, ...buildCalendarContext(day) };
+      if (day?.ok) calendar = { date: day.date, ...buildCalendarContext(day, { operator: who, query }) };
     } catch { /* Kalender nicht lesbar -> KI antwortet wie bisher nur aus Treffern */ }
   }
 
@@ -597,11 +654,25 @@ export async function answerBrain(clientId, { q, sinceDays } = {}) {
       "Die Fundstellen sind dafür nur Gesprächs-Historie: nenne KEINEN Termin, der nicht im KALENDER steht (z. B. verschobene oder gelöschte), und lasse keinen aus dem KALENDER weg.",
       "Nenne bei jedem Termin die Uhrzeit aus dem KALENDER; Termine aus dem KALENDER brauchen keine Fundstellen-Nummer.",
     );
+    if (calendar.scoped) {
+      system.push(
+        `Der Fragende ist ${who} — der KALENDER zeigt deshalb nur die eigenen Termine.`,
+        "Zähle KEINE Termine anderer Behandler auf; erwähne sie höchstens in EINEM Schlusssatz als Zahl (steht unter WEITERE BEHANDLER) mit dem Hinweis, dass du sie auf Nachfrage zeigst.",
+      );
+    }
   }
 
   const todayLabel = BERLIN_DAY.format(new Date());
   const userParts = [`Frage: ${query}`, `Heute ist ${todayLabel}.`];
-  if (calendar) userParts.push(`KALENDER — gebuchte Termine am ${calendar.label}:\n${calendar.text}`);
+  if (calendar) {
+    const calHead = calendar.scoped
+      ? `KALENDER — eigene Termine von ${who} am ${calendar.label}:`
+      : `KALENDER — gebuchte Termine am ${calendar.label}:`;
+    userParts.push(`${calHead}\n${calendar.text}`);
+    if (calendar.scoped && calendar.hiddenSummary) {
+      userParts.push(`WEITERE BEHANDLER am ${calendar.label} (nur auf Nachfrage aufzählen): ${calendar.hiddenSummary}`);
+    }
+  }
   userParts.push(`Fundstellen aus dem Praxisgedächtnis:\n${lines.length ? lines.join("\n") : "(keine)"}`);
 
   const messages = [
@@ -613,7 +684,7 @@ export async function answerBrain(clientId, { q, sinceDays } = {}) {
   if (!out.ok) {
     return { ok: false, reason: out.reason || "llm_error", model: out.model, sources: hits, hitCount: hits.length };
   }
-  const extra = calendar ? { calendarDate: calendar.date, calendarCount: calendar.count } : {};
+  const extra = calendar ? { calendarDate: calendar.date, calendarCount: calendar.count, calendarScope: calendar.scoped ? "own" : "all" } : {};
   return { ok: true, answer: out.text, model: out.model, sources: hits, hitCount: hits.length, ...extra };
 }
 
