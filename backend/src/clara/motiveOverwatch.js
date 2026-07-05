@@ -260,10 +260,11 @@ export function klassifiziereMotivName(name) {
     ["endo", /endo|wurzelkanal|wurzelbehandlung|trepanation/],
     ["par", /\bpar\b|parodont|\bupt\b|kuerettage/],
     ["stiftaufbau", /stiftaufbau/],
-    ["fuellung", /fuellung|\bf[1-4]\b|komposit/],
+    // "Fuellungspolitur" ist Politur, kein Fuellungs-Ziel.
+    ["fuellung", /fuellung(?!spolitur)|\bf[1-4]\b|komposit/],
     ["pzr", /\bpzr\b|zahnreinigung|prophylaxe/],
     ["schiene", /schiene|\bukps\b|\bkb\b|\bslm\b/],
-    ["krone", /krone|bruecke|prothetik|veneer|inlay|onlay|praep|abformung|zahnersatz/],
+    ["krone", /krone|bruecke|prothetik|veneer|inlay|onlay|praep|abformung|zahnersatz|\bze\b/],
   ];
   for (const [key, rx] of reihenfolge) {
     if (rx.test(t)) {
@@ -335,6 +336,48 @@ export function findeZielMotiv(visitMotives, behandlungKey, { apptDauerMin = 0, 
     (String(a.name).length - String(b.name).length) ||
     String(a.name).localeCompare(String(b.name), "de"));
   return kandidaten[0];
+}
+
+// --- Besuchsgrund-Katalog des Standorts ------------------------------------------
+// Ziel-Motive kommen aus der PLATTFORM-Collection visitMotives (der volle
+// Katalog, z.B. "IMP Implantation OP klein") — booking.visitMotives in
+// mas_config ist nur die buchbare Teilmenge (11 von 132 beim Demo-Client)
+// und enthaelt die OP-Motive gerade NICHT. Fallback: booking-Liste.
+// Kleiner TTL-Cache, damit Sweep/Diktat-Hooks nicht pro Termin lesen.
+const _vmCache = new Map(); // clientId -> { atMs, motives }
+const _VM_TTL_MS = 10 * 60 * 1000;
+
+export async function ladeVisitMotives(clientId, locationId, booking = null) {
+  const hit = _vmCache.get(clientId);
+  if (hit && Date.now() - hit.atMs < _VM_TTL_MS) return hit.motives;
+  let motives = [];
+  try {
+    const snap = await admin.firestore()
+      .collection("clients").doc(clientId)
+      .collection("locations").doc(locationId)
+      .collection("visitMotives").get();
+    motives = snap.docs.map((d) => {
+      const x = d.data() || {};
+      return {
+        id: d.id,
+        name: String(x.name || ""),
+        duration: Number(x.duration) || 0,
+        color: String(x.color || ""),
+        specialityId: String(x.specialityId || ""),
+      };
+    }).filter((v) => v.name);
+  } catch { /* Fallback unten */ }
+  if (!motives.length && Array.isArray(booking?.visitMotives)) {
+    motives = booking.visitMotives.map((v) => ({
+      id: String(v.id || ""),
+      name: String(v.name || ""),
+      duration: Number(v.duration) || 0,
+      color: "",
+      specialityId: "",
+    })).filter((v) => v.id && v.name);
+  }
+  _vmCache.set(clientId, { atMs: Date.now(), motives });
+  return motives;
 }
 
 // --- Konfiguration ---------------------------------------------------------------
@@ -448,7 +491,8 @@ export async function pruefeUndKorrigiereBesuchsgrund(clientId, {
   }
   const detected = erkannt.map((e) => ({ key: e.key, label: e.label, prio: e.prio }));
   const apptDauerMin = Math.max(0, Math.round((tsToMs(ap.end) - startMs) / 60000));
-  const ziel = findeZielMotiv(booking?.visitMotives, dominant.key, {
+  const alleMotive = await ladeVisitMotives(clientId, locId, booking);
+  const ziel = findeZielMotiv(alleMotive, dominant.key, {
     apptDauerMin,
     mappingId: String(cfg.mapping?.[dominant.key] || ""),
   });
@@ -512,29 +556,15 @@ export async function pruefeUndKorrigiereBesuchsgrund(clientId, {
 
   // Korrigieren: visitMotive in exakt der Form ersetzen, die die Plattform
   // speichert ({id, name, color, specialityId} — appointment.toJSON). Farbe/
-  // Speciality aus der visitMotives-Collection des Standorts; Fallback: Werte
-  // des alten Motivs (besser falsche Farbe als falscher Bucket).
-  let zielVoll = { id: ziel.id, name: String(ziel.name || "") };
-  try {
-    const vmSnap = await admin.firestore()
-      .collection("clients").doc(clientId)
-      .collection("locations").doc(locId)
-      .collection("visitMotives").doc(ziel.id).get();
-    const vm = vmSnap.exists ? (vmSnap.data() || {}) : {};
-    zielVoll = {
-      id: ziel.id,
-      name: String(vm.name || ziel.name || ""),
-      color: String(vm.color || ap.visitMotive?.color || ""),
-      specialityId: String(vm.specialityId || ap.visitMotive?.specialityId || ""),
-    };
-  } catch {
-    zielVoll = {
-      id: ziel.id,
-      name: String(ziel.name || ""),
-      color: String(ap.visitMotive?.color || ""),
-      specialityId: String(ap.visitMotive?.specialityId || ""),
-    };
-  }
+  // Speciality kommen aus dem Katalog; Fallback: Werte des alten Motivs
+  // (besser falsche Farbe als falscher Bucket). Start/Ende bleiben unberuehrt
+  // — die Behandlung hat mit ihrer echten Dauer stattgefunden.
+  const zielVoll = {
+    id: ziel.id,
+    name: String(ziel.name || ""),
+    color: String(ziel.color || ap.visitMotive?.color || ""),
+    specialityId: String(ziel.specialityId || ap.visitMotive?.specialityId || ""),
+  };
 
   try {
     await apptRef(clientId, locId, apptId).set({

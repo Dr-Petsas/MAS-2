@@ -296,12 +296,18 @@ Vorteil: Clara antwortet privat ins Ohr, Haende bleiben steril.
       `/tools/motive-overwatch` (days, dryRun). Sekundaerbehandlungen als
       Metadaten am Termin (motiveOverwatch.detected), Audit als Brain-Event
       (motive-overwatch:<apptId>:<motiveId>, idempotent) + gesprochene
-      Bestaetigung. Ziel-Motiv: Namens-Klassifikation (Beratungs-Motive nie
-      OP-Ziel), bei mehreren Kandidaten Dauer-Naehe ("klein"/"gross"),
-      Override mas_config/motive_overwatch.mapping. Notaus:
-      MAS_MOTIVE_OVERWATCH=0 bzw. mas_config enabled=false; Modus
+      Bestaetigung. Ziel-Motiv: voller visitMotives-Katalog des Standorts
+      (132 Motive beim Demo-Client; booking.visitMotives ist nur die
+      buchbare Teilmenge OHNE OP-Motive) + Namens-Klassifikation
+      (Beratungs-Motive nie OP-Ziel), bei mehreren Kandidaten Dauer-Naehe
+      ("klein"/"gross"), Override mas_config/motive_overwatch.mapping.
+      Notaus: MAS_MOTIVE_OVERWATCH=0 bzw. mas_config enabled=false; Modus
       "vorschlag" schreibt nur Metadaten.
-      Test: `scripts/test-motive-overwatch.mjs` (34 Checks, gruen).
+      Tests: `scripts/test-motive-overwatch.mjs` (38 Checks, gruen, Teil
+      von npm test) + `scripts/e2e-motive-overwatch.mjs` (manuell, echter
+      Termin mit Rollback — 05.07. gruen: KFO-Kontrolle + Implantat-Diktat
+      -> "IMP Implantation OP klein", Audit + Brain-Event, zweites Diktat
+      ohne erneute Ansage).
       OFFEN (Warteliste): Tagesend-Liste der "hinweisen"-Faelle ans
       Chef-Handy (heute: gesprochener Hinweis direkt beim Diktat).
 - [ ] **Entity-Linking:** Anruf -> Patient -> Vorgang (Abnahmefall:
@@ -398,6 +404,53 @@ mit Tool-Pflicht ans LLM, daher das steife "nicht verstanden".
       Clarify statt Leer-Turn) steht als Folgepaket W-INTENT auf der
       Warteliste — erst W-HUMAN abschliessen und messen.
 
+## Phase W-OUTREACH - Recall mit Substanz (beschlossen 05.07. frueh, Chef)
+
+**Auftrag:** "Man kann nicht ohne Grund anrufen und sagen der Doktor hat Luft.
+Lisa muss erkennen: Bucket PZR -> die waren lange nicht bei der Reinigung, also
+biete ich Kontroll- und Reinigungstermine an. Fuer JEDEN Besuchsgrund, JEDE
+Fachrichtung (Zahnarzt, Orthopaede, Gynaekologe). KEIN Arzt will sich mit den
+Inhalten auseinandersetzen - es muss von alleine perfekt funktionieren. Es geht
+um GELD und REPUTATION."
+
+**Architektur-Entscheid:** Inhalte werden EINMAL zentral produziert (Ableitung
+aus den 26 gepruefteten Onboarding-Fachkatalogen `landingpages-catalog/`),
+NIE pro Praxis, KEINE Laufzeit-LLM-Kreativitaet Richtung Patient. Aufloesung
+pro Anruf/SMS: Kampagnen-Override (`cfg.phoneKi.prompt`) > Katalog-Eintrag
+(exakt/fuzzy per Motivname) > kanonische Klasse (Vorsorge/Reinigung/Nachsorge/
+Kontrolle/Beratung/Behandlung) > generischer sicherer Fallback. Jede Stufe
+sicher, hoehere Stufen nur spezifischer. Sicherheitsregeln (keine Diagnosen,
+keine Preise, kein Druck, ein Angebot + eine Alternative, Nein akzeptieren,
+Rueckruf statt Medizinauskunft) stehen IM Rahmen, nie in der Vorlage.
+
+- [x] **Outreach-Katalog-Build:** `scripts/build-outreach-catalog.mjs` liest
+      die 26 Fachkataloge, extrahiert pro Besuchsgrund purpose/purposeShort/
+      consequence aus den redaktionell gepruefeten Landingpage-Texten
+      (Du->Sie-Normalisierung, HTML-Strip, Laengen-Caps, Qualitaets-Guards),
+      schreibt `backend/src/data/outreach-catalog.json` (MAS) und
+      `docgendaweb/public/outreach-catalog.de.json` (CampaignR, lazy fetch).
+- [x] **Aufloesungs-Modul** `src/clara/outreachTemplates.js`: Kaskade s. o.,
+      matchLevel exact/fuzzy/class/generic wird auditiert; Komposition
+      Anruf-Instruktion (<=1550, Sicherheitsregeln fix) + Recall-SMS (<=440).
+- [x] **Verdrahtung MAS-Pfad:** `recallCoach.executeCallList` (Anruf + SMS)
+      und SMS-Fallback im Sweep nutzen die Vorlagen; Kampagnen-`phonePrompt`
+      (bisher toter Draht) hat Vorrang. `gapfill_call_patient` fuellt die
+      Chef-Botschaft aus der Vorlage vor, wenn keine diktiert wurde
+      (Bestaetigungs-Readback bleibt Pflicht). Lisa-Clip 800 -> 1600.
+- [x] **Beschwerde-Waechter im Sweep:** "nicht mehr anrufen"/Beschwerde im
+      Transkript -> outcome complaint, KEIN SMS-Fallback, ALERT-Note am
+      Vorgang + Brain-Event (complaintStated/needsHuman -> ASAP P1).
+- [x] **CampaignR-Vorbelegung:** Kampagnen-Seite laedt den Katalog (public
+      Asset), belegt E-Mail/SMS/Telefon-Prompt beim ersten Laden und ueber
+      "Texte vorschlagen" motivspezifisch vor (Herkunftshinweis am Feld);
+      Cloud Function `buildCampaignTaskPrompt` nutzt cfg.phoneKi.prompt
+      bereits -> Pfad 1 automatisch versorgt, KEIN Functions-Deploy noetig.
+- [x] Tests: `scripts/test-outreach.mjs` (pur, ohne Firestore) in der
+      npm-Suite; node --check; Clara-Schnell-Gate.
+- Warteliste (bewusst NICHT jetzt): E-Mail-Kanal im Lueckenfueller (via
+  Nadine) + Vorlaufzeit-Kaskade; persistente Opt-out-Sperrliste; blueprintId
+  am Plattform-VisitMotive; Erst-N-Transkript-Review-UI im Monitor.
+
 ## Reihenfolge
 
 1. Phase 0 (sofort) -> parallel Dens-Kickoff-Fragen raus + Hardware bestellen
@@ -416,6 +469,14 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 - 04.07.2026: Firestore-Export als Datensicherung einrichten (gcloud fehlt
   auf der Maschine; Code-Sicherung besteht, Daten-Backup noch offen).
+- 05.07.2026: W-OUTREACH-Folgen: E-Mail-Kanal im Lueckenfueller (Nadine) mit
+  Vorlaufzeit-Kaskade (>=5 Tage: E-Mail zuerst, dann SMS, dann Anruf).
+- 05.07.2026: Persistente Opt-out-Sperrliste (mas_config/outreach_optout),
+  gespeist aus Beschwerde-Waechter; Plattform-Feld smsAllowed nachziehen.
+- 05.07.2026: blueprintId am Plattform-VisitMotive mitschreiben (Onboarding +
+  Motiv-Anlage), damit Outreach-Matching ohne Namens-Fuzzy auskommt.
+- 05.07.2026: Erst-Anruf-Kontrolle im Monitor: erste N Transkripte einer
+  neuen Kampagne als Review-Karte, Auto-Pause bei Auffaelligkeit.
 - 04.07.2026: W-INTENT — volle Zwei-Stufen-Intent-Schicht (Resolver R0-R2,
   Fast-Path, Clarify-Pfad, Transcript-Repair, Guards fragen statt strippen).
   Skizze liegt im Chat vom 04.07.; bauen erst nach W-HUMAN-Abschluss.

@@ -27,16 +27,20 @@ async function cleanup() {
   await Promise.all(snap.docs.map((d) => d.ref.delete()));
 }
 
-// Besuchsgruende wie beim Demo-Client (Namen mit Praxis-Kuerzeln).
+// Besuchsgruende: ECHTE Namen aus dem visitMotives-Katalog des Demo-Clients
+// (dump-visitmotives.mjs, 05.07.2026) — Overwatch muss mit den Praxis-
+// Kuerzeln (IMP/KCH/ZE/PRO) und "OP klein/gross" umgehen koennen.
 const MOTIVE = [
-  { id: "m-kons", name: "Kons Besprechung", duration: 15 },
-  { id: "m-imp-beratung", name: "IMP Implantat-Beratung", duration: 30 },
-  { id: "m-imp-klein", name: "IMP Implantat-OP klein", duration: 60 },
-  { id: "m-imp-gross", name: "IMP Implantat-OP gross", duration: 120 },
-  { id: "m-kontrolle", name: "01 Kontrolle", duration: 15 },
-  { id: "m-fuellung", name: "F2 Fuellung", duration: 30 },
-  { id: "m-pzr", name: "PZR Zahnreinigung", duration: 60 },
-  { id: "m-endo", name: "ENDO Wurzelkanalbehandlung", duration: 60 },
+  { id: "m-imp-bespr", name: "IMP Besprechung", duration: 30 },
+  { id: "m-imp-klein", name: "IMP Implantation OP klein", duration: 30 },
+  { id: "m-imp-gross", name: "IMP Implantation OP groß", duration: 120 },
+  { id: "m-imp-kontrolle", name: "IMP Kontrolluntersuchung", duration: 15 },
+  { id: "m-kch-kontrolle", name: "KCH Kontrolluntersuchung", duration: 15 },
+  { id: "m-kch-fuellung", name: "KCH Füllung klein", duration: 30 },
+  { id: "m-kch-politur", name: "KCH Füllungspolitur", duration: 15 },
+  { id: "m-pzr", name: "PRO professionelle Zahnreinigung", duration: 30 },
+  { id: "m-endo", name: "KCH Endo klein", duration: 40 },
+  { id: "m-ze-eingl", name: "ZE Eingliederung klein", duration: 30 },
 ];
 
 async function run() {
@@ -81,11 +85,14 @@ async function run() {
   check(erkenneAusStreckenLabel("Fuellungstherapie")?.key === "fuellung", "Strecke Fuellungstherapie -> fuellung");
   check(erkenneAusStreckenLabel("") === null, "leeres Label -> null");
 
-  console.log("\n=== 3) Besuchsgrund-Namen klassifizieren ===");
+  console.log("\n=== 3) Besuchsgrund-Namen klassifizieren (echte Katalognamen) ===");
   check(klassifiziereMotivName("Kons Besprechung")?.key === "besprechung", "Kons Besprechung -> besprechung");
-  check(klassifiziereMotivName("IMP Implantat-Beratung")?.key === "besprechung", "Implantat-BERATUNG -> besprechung (nie OP-Ziel)");
-  check(klassifiziereMotivName("IMP Implantat-OP klein")?.key === "implantation", "Implantat-OP klein -> implantation");
-  check(klassifiziereMotivName("01 Kontrolle")?.key === "kontrolle", "01 Kontrolle -> kontrolle");
+  check(klassifiziereMotivName("IMP Besprechung")?.key === "besprechung", "IMP Besprechung -> besprechung (nie OP-Ziel)");
+  check(klassifiziereMotivName("IMP Implantation OP klein")?.key === "implantation", "IMP Implantation OP klein -> implantation");
+  check(klassifiziereMotivName("IMP Kontrolluntersuchung")?.key === "kontrolle", "IMP Kontrolluntersuchung -> kontrolle");
+  check(klassifiziereMotivName("KCH Füllungspolitur")?.key !== "fuellung", "Füllungspolitur ist KEIN Füllungs-Ziel");
+  check(klassifiziereMotivName("ZE Eingliederung klein")?.key === "krone", "ZE Eingliederung -> krone/prothetik");
+  check(klassifiziereMotivName("ZE Planerstellung KVA/HKP")?.key === "besprechung", "ZE Planerstellung KVA/HKP -> besprechung");
 
   console.log("\n=== 4) Korrektur-Politik (Prioritaetsleiter) ===");
   const imp = { key: "implantation", label: "Implantation", prio: 4 };
@@ -107,13 +114,15 @@ async function run() {
     "nichts erkannt -> nichts tun");
 
   console.log("\n=== 5) Ziel-Motiv der Praxis finden ===");
-  const ziel60 = findeZielMotiv(MOTIVE, "implantation", { apptDauerMin: 45 });
-  check(ziel60?.id === "m-imp-klein", `45-Min-Termin -> Implantat-OP klein (Dauer-Nähe), war: ${ziel60?.name}`);
+  const ziel30 = findeZielMotiv(MOTIVE, "implantation", { apptDauerMin: 30 });
+  check(ziel30?.id === "m-imp-klein", `30-Min-Termin -> Implantation OP klein (Dauer-Nähe), war: ${ziel30?.name}`);
   const ziel120 = findeZielMotiv(MOTIVE, "implantation", { apptDauerMin: 110 });
-  check(ziel120?.id === "m-imp-gross", `110-Min-Termin -> Implantat-OP gross, war: ${ziel120?.name}`);
-  check(findeZielMotiv(MOTIVE, "implantation", {})?.id !== "m-imp-beratung",
-    "Implantat-BERATUNG wird nie als OP-Ziel gewählt");
-  const fest = findeZielMotiv(MOTIVE, "implantation", { apptDauerMin: 45, mappingId: "m-imp-gross" });
+  check(ziel120?.id === "m-imp-gross", `110-Min-Termin -> Implantation OP groß, war: ${ziel120?.name}`);
+  check(findeZielMotiv(MOTIVE, "implantation", {})?.id !== "m-imp-bespr",
+    "IMP Besprechung wird nie als OP-Ziel gewählt");
+  const zielFuellung = findeZielMotiv(MOTIVE, "fuellung", { apptDauerMin: 15 });
+  check(zielFuellung?.id === "m-kch-fuellung", `Füllungs-Ziel ist die Füllung, nie die Politur (war: ${zielFuellung?.name})`);
+  const fest = findeZielMotiv(MOTIVE, "implantation", { apptDauerMin: 30, mappingId: "m-imp-gross" });
   check(fest?.id === "m-imp-gross", "explizites Mapping aus mas_config gewinnt");
   check(findeZielMotiv(MOTIVE, "wsr", {}) === null, "keine passende Behandlungsart -> null (kein_ziel-Pfad)");
 
