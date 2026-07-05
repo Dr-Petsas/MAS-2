@@ -3,6 +3,7 @@ import { queryLatest, queryByPatient } from "./eventStore.js";
 import { applyHumanReview } from "./events.js";
 import { TOPIC_LABELS, isActiveStatus } from "./cases.js";
 import { searchPatient } from "../clara/agentBooking.js";
+import { getDayAppointments, todayBerlin } from "../clara/daySchedule.js";
 import { chat, llmInfo } from "../mail/llm.js";
 
 // ============================================================================
@@ -439,9 +440,108 @@ const QUESTION_STOPWORDS = new Set([
   "unserer", "unserem", "unseren", "meine", "meiner", "meinem", "meinen", "sache", "thema", "stand", "dazu", "da", "dort", "hier",
 ]);
 
+// ---------------------------------------------------------------------------
+// Tagesbezug (Befund 05.07.: "welche Patienten habe ich am Montag" wurde aus
+// SMS-/Anruf-Events geraten — Doppeltermine fehlten, geloeschte tauchten auf).
+// Erkennt "heute/morgen/uebermorgen/gestern", Wochentage und explizite Daten
+// ("6.7.", "06.07.2026", "6. Juli"). Liefert das Berlin-Datum als ISO, damit
+// der KI-Modus den ECHTEN Tagesplan laedt (Clara-Lesepfad getDayAppointments,
+// gleiche Kalender-Paritaet wie am Telefon) statt aus dem Gedaechtnis zu raten.
+// ---------------------------------------------------------------------------
+
+const WEEKDAY_INDEX = { sonntag: 0, montag: 1, dienstag: 2, mittwoch: 3, donnerstag: 4, freitag: 5, samstag: 6, sonnabend: 6 };
+const MONTH_INDEX = {
+  januar: 1, februar: 2, maerz: 3, marz: 3, april: 4, mai: 5, juni: 6,
+  juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12,
+};
+
+export function resolveDayIntent(query, todayIso = todayBerlin()) {
+  const f = fold(query); // klein + Umlaute gefaltet ("übermorgen" -> "ubermorgen")
+  const base = new Date(`${todayIso}T12:00:00Z`); // Mittag: Tages-Arithmetik ohne TZ-Kippen
+  if (isNaN(base.getTime())) return null;
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const shift = (days) => iso(new Date(base.getTime() + days * 86_400_000));
+  const clampDate = (y, mo, d) => {
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(Date.UTC(y, mo - 1, d, 12));
+    return dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d ? iso(dt) : null;
+  };
+
+  // 1) Explizites Datum: "6.7." / "06.07.2026" / "6. Juli [2026]"
+  let m = f.match(/\b(\d{1,2})\.\s?(\d{1,2})\.(?:\s?(\d{4}))?(?!\d)/);
+  if (m) {
+    const year = m[3] ? Number(m[3]) : base.getUTCFullYear();
+    const date = clampDate(year, Number(m[2]), Number(m[1]));
+    if (date) return { date, phrase: m[0].trim() };
+  }
+  m = f.match(/\b(\d{1,2})\.?\s*(januar|februar|maerz|marz|april|mai|juni|juli|august|september|oktober|november|dezember)(?:\s+(\d{4}))?\b/);
+  if (m) {
+    const year = m[3] ? Number(m[3]) : base.getUTCFullYear();
+    const date = clampDate(year, MONTH_INDEX[m[2]], Number(m[1]));
+    if (date) return { date, phrase: m[0].trim() };
+  }
+
+  // 2) Relative Woerter (uebermorgen VOR morgen pruefen — Teilwort!).
+  if (/\bubermorgen\b/.test(f)) return { date: shift(2), phrase: "übermorgen" };
+  if (/\bmorgen\b/.test(f)) return { date: shift(1), phrase: "morgen" };
+  if (/\bheute\b/.test(f)) return { date: shift(0), phrase: "heute" };
+  if (/\bgestern\b/.test(f)) return { date: shift(-1), phrase: "gestern" };
+
+  // 3) Wochentag: naechstes Vorkommen (heute eingeschlossen); klingt die Frage
+  //    nach Vergangenheit ("hatte", "war", "letzten Montag"), das letzte.
+  for (const [name, idx] of Object.entries(WEEKDAY_INDEX)) {
+    if (!new RegExp(`\\b${name}\\b`).test(f)) continue;
+    const past = /\b(letzten?|vergangenen?|war(en)?|hatten?|gewesen)\b/.test(f);
+    let delta = (idx - base.getUTCDay() + 7) % 7;
+    if (past) delta = delta === 0 ? -7 : delta - 7;
+    return { date: shift(delta), phrase: name };
+  }
+  return null;
+}
+
+const BERLIN_HM = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
+const BERLIN_DAY = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+/**
+ * Kalender-Kontext fuer den KI-Prompt: der ECHTE Tagesplan als Textblock
+ * (ein Termin je Zeile, sortiert; Abwesenheiten separat). Pure — testbar.
+ */
+export function buildCalendarContext(day) {
+  const nameById = new Map((day.calendars || []).map((c) => [c.id, c.name]));
+  const label = BERLIN_DAY.format(new Date(`${day.date}T12:00:00Z`));
+  const appts = (day.appointments || []).slice().sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
+  const calName = (a) => nameById.get(a.calendarId) || a.calendarName || "";
+  // Erst die Termine (chronologisch), Abwesenheiten gesammelt am Ende — so
+  // liest das Modell die Patientenliste am Stueck.
+  // PatientStatus-Enum der Plattform: 4 = unentschuldigt abwesend, 5 =
+  // entschuldigt — der Kalender streicht solche Termine durch; die KI soll
+  // sie genauso als abgesagt kennzeichnen (nicht kommentarlos listen).
+  const absentTag = (a) => (a.patientStatus === 4 ? " — NICHT ERSCHIENEN (im Kalender durchgestrichen)"
+    : a.patientStatus === 5 ? " — ABGESAGT/entschuldigt (im Kalender durchgestrichen)" : "");
+  const lines = appts.filter((a) => !a.isAbsence).map((a) =>
+    `• ${BERLIN_HM.format(new Date(a.startMs))} Uhr: ${a.patientName || "(ohne Name)"}${calName(a) ? ` — bei ${calName(a)}` : ""}${a.visitMotive ? ` — ${a.visitMotive}` : ""}${a.newPatient ? " — Neupatient" : ""}${absentTag(a)}`);
+  const count = lines.length;
+  for (const a of appts.filter((x) => x.isAbsence)) {
+    lines.push(`• ABWESEND/GESPERRT: ${calName(a) || "Praxis"} ${BERLIN_HM.format(new Date(a.startMs))}–${BERLIN_HM.format(new Date(a.endMs || a.startMs))}`);
+  }
+  return { label, count, text: lines.length ? lines.join("\n") : "(keine Termine eingetragen)" };
+}
+
 export async function answerBrain(clientId, { q, sinceDays } = {}) {
   const query = String(q || "").trim();
   if (!query) return { ok: false, reason: "empty_query" };
+
+  // 0) Tagesbezug? Dann den ECHTEN Kalender fuer diesen Tag laden — die
+  //    Gedaechtnis-Events (SMS/Anrufe) sind fuer Terminfragen unvollstaendig
+  //    und enthalten auch Geloeschtes. Fehler hier aendern nichts am Verhalten.
+  const dayIntent = resolveDayIntent(query);
+  let calendar = null;
+  if (dayIntent) {
+    try {
+      const day = await getDayAppointments(clientId, { date: dayIntent.date });
+      if (day?.ok) calendar = { date: day.date, ...buildCalendarContext(day) };
+    } catch { /* Kalender nicht lesbar -> KI antwortet wie bisher nur aus Treffern */ }
+  }
 
   // 1) Stichwoerter aus der Frage ziehen (Fuellwoerter raus).
   const keywords = tokenize(query).filter((t) => t.length >= 3 && !QUESTION_STOPWORDS.has(t));
@@ -469,7 +569,7 @@ export async function answerBrain(clientId, { q, sinceDays } = {}) {
     hits = (await searchBrain(clientId, { sinceDays, limit: 12 })).results || [];
   }
 
-  if (!hits.length) {
+  if (!hits.length && !calendar) {
     return { ok: true, answer: "Dazu findet sich nichts im Praxisgedächtnis — kein Treffer bei Patienten, Vorgängen oder Ereignissen.", sources: [], model: llmInfo().model, hitCount: 0 };
   }
 
@@ -484,25 +584,37 @@ export async function answerBrain(clientId, { q, sinceDays } = {}) {
     return `[${i + 1}] ${art}${when ? `, ${when}` : ""}: ${h.title}${h.snippet ? ` — ${h.snippet}` : ""}`;
   });
 
+  const system = [
+    "Du bist MAS, die interne Suche einer Arztpraxis, und antwortest dem Praxisteam.",
+    "Antworte AUSSCHLIESSLICH aus den nummerierten Fundstellen — nichts erfinden, kein Weltwissen.",
+    "Kurz und konkret auf Deutsch: 2 bis 6 Sätze; bei mehreren Punkten eine Stichpunktliste mit Datum.",
+    "Belege Aussagen mit den Fundstellen-Nummern in eckigen Klammern, z. B. [1] oder [2][3].",
+    "Wenn die Fundstellen die Frage nicht beantworten, sage das ehrlich und schlage einen besseren Suchbegriff vor.",
+  ];
+  if (calendar) {
+    system.push(
+      "Zusätzlich gibt es einen Block KALENDER: das ist der Live-Terminkalender der Praxis — für Fragen nach Terminen oder dem Tagesplan ist er die EINZIGE gültige Quelle, vollständig und aktuell.",
+      "Die Fundstellen sind dafür nur Gesprächs-Historie: nenne KEINEN Termin, der nicht im KALENDER steht (z. B. verschobene oder gelöschte), und lasse keinen aus dem KALENDER weg.",
+      "Nenne bei jedem Termin die Uhrzeit aus dem KALENDER; Termine aus dem KALENDER brauchen keine Fundstellen-Nummer.",
+    );
+  }
+
+  const todayLabel = BERLIN_DAY.format(new Date());
+  const userParts = [`Frage: ${query}`, `Heute ist ${todayLabel}.`];
+  if (calendar) userParts.push(`KALENDER — gebuchte Termine am ${calendar.label}:\n${calendar.text}`);
+  userParts.push(`Fundstellen aus dem Praxisgedächtnis:\n${lines.length ? lines.join("\n") : "(keine)"}`);
+
   const messages = [
-    {
-      role: "system",
-      content: [
-        "Du bist MAS, die interne Suche einer Arztpraxis, und antwortest dem Praxisteam.",
-        "Antworte AUSSCHLIESSLICH aus den nummerierten Fundstellen — nichts erfinden, kein Weltwissen.",
-        "Kurz und konkret auf Deutsch: 2 bis 6 Sätze; bei mehreren Punkten eine Stichpunktliste mit Datum.",
-        "Belege Aussagen mit den Fundstellen-Nummern in eckigen Klammern, z. B. [1] oder [2][3].",
-        "Wenn die Fundstellen die Frage nicht beantworten, sage das ehrlich und schlage einen besseren Suchbegriff vor.",
-      ].join(" "),
-    },
-    { role: "user", content: `Frage: ${query}\n\nFundstellen aus dem Praxisgedächtnis:\n${lines.join("\n")}` },
+    { role: "system", content: system.join(" ") },
+    { role: "user", content: userParts.join("\n\n") },
   ];
 
   const out = await chat(messages, { temperature: 0.2, maxTokens: 550, timeoutMs: 60000 });
   if (!out.ok) {
     return { ok: false, reason: out.reason || "llm_error", model: out.model, sources: hits, hitCount: hits.length };
   }
-  return { ok: true, answer: out.text, model: out.model, sources: hits, hitCount: hits.length };
+  const extra = calendar ? { calendarDate: calendar.date, calendarCount: calendar.count } : {};
+  return { ok: true, answer: out.text, model: out.model, sources: hits, hitCount: hits.length, ...extra };
 }
 
 /**
