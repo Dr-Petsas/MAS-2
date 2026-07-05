@@ -14,6 +14,7 @@ import { saveTreatmentDictation, strikeTreatmentDictation, readPatientTreatmentD
 import { strukturiereKarteikarte } from "../clara/dokuNote.js";
 import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechnung, sophieMitSlotfill } from "../clara/dokuAbrechnung.js";
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken } from "../clara/dokuWaechter.js";
+import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
 import { freiFormulieren } from "../clara/freiSprech.js";
 import { karteDoku, karteLuecken, karteSophie } from "../clara/karten.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
@@ -1029,6 +1030,28 @@ router.post("/tools/save-treatment-dictation", async (req, res) => {
         out.dokuLuecken = luecken.map((l) => ({ date: l.date, motive: l.motive }));
       }
 
+      // Clara Overwatch (05.07.2026): passt der gebuchte Besuchsgrund zur
+      // dokumentierten Behandlung? Bei klarem Mismatch (Kons-Besprechung
+      // gebucht, Implantat dokumentiert) wird der Besuchsgrund des Termins
+      // korrigiert — sonst landet der Patient im falschen Recall-Bucket.
+      // Best-effort: gespeichert ist gespeichert.
+      try {
+        const ow = await pruefeUndKorrigiereBesuchsgrund(clientId, {
+          appointmentId: out.appointmentId,
+          locationId: out.locationId || apptInfo?.locationId || "",
+          text: [out.combinedText || teil.dokuText || "", teil.abrechnungText || ""].filter(Boolean).join("\n"),
+          streckenLabel: sonde?.status === "complete" ? (sonde.label || "") : "",
+          basis: "doku",
+        });
+        if (ow?.spoken) out.message = `${out.message} ${ow.spoken}`.trim();
+        if (ow && ow.status !== "skip" && ow.status !== "disabled") {
+          out.motiveOverwatch = { status: ow.status, from: ow.from?.name, to: ow.to?.name, dominant: ow.dominant?.label };
+          if (ow.status === "corrected" && ow.to?.name) out.motiveName = ow.to.name;
+        }
+      } catch (e) {
+        log.warn("overwatch.hook_failed", { clientId, err: String(e?.message || e) });
+      }
+
       // Doku-Memo-Karte fürs Handy: Notiz-Punkte + offene Fragen auf der
       // "geflippten Rückseite" während des Diktierens (Wunsch 04.07.2026).
       try {
@@ -1183,6 +1206,34 @@ router.post("/tools/doku-luecken", async (req, res) => {
       luecken: luecken.map((l) => ({ appointmentId: l.appointmentId, date: l.date, patientName: l.patientName, motive: l.motive })),
       message: sprichPraxisLuecken(luecken),
       card: karteLuecken(luecken),
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// 1g7) CLARA OVERWATCH — Besuchsgrund-Sweep (05.07.2026): prueft dokumentierte
+// Termine der letzten Tage, ob der gebuchte Besuchsgrund zur DOKUMENTIERTEN
+// Behandlung passt (Kons-Besprechung gebucht, Implantat dokumentiert -> Termin
+// wird auf Implantat-OP umgestellt, damit der Recall-Bucket stimmt).
+// body: { days?:number, dryRun?:boolean } — dryRun berichtet nur, schreibt nichts.
+router.post("/tools/motive-overwatch", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const tage = Number(req.body?.days) > 0 ? Math.min(Number(req.body.days), 30) : 7;
+    const dryRun = req.body?.dryRun === true;
+    const { ok, ergebnisse } = await overwatchSweep(clientId, { tageZurueck: tage, dryRun });
+    if (!ok) return res.json({ ok: false, message: "Ich finde den Standort der Praxis nicht." });
+    return res.json({
+      ok: true,
+      count: ergebnisse.length,
+      dryRun,
+      ergebnisse,
+      message: sprichSweep(ergebnisse),
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -1457,6 +1508,27 @@ router.post("/tools/bill-treatment", async (req, res) => {
     // Abrechnungs-Karte fürs Handy: Endsummen bzw. Sophies Gegenfrage. Nur hier
     // beim EXPLIZITEN Abrechnen — Briefings bleiben frei von Euro-Zahlen.
     try { out.card = karteSophie(out); } catch { /* Karte ist Komfort */ }
+
+    // Clara Overwatch: die ABGERECHNETE Strecke ist die zweite unabhaengige
+    // Quelle fuer "was wurde wirklich gemacht". Weicht sie vom gebuchten
+    // Besuchsgrund ab (Implantat abgerechnet, Kons-Besprechung gebucht),
+    // wird der Termin korrigiert — fuer den richtigen Recall-Bucket.
+    if (out?.ok && out.status === "complete" && appointmentId) {
+      try {
+        const ow = await pruefeUndKorrigiereBesuchsgrund(clientId, {
+          appointmentId,
+          text,
+          streckenLabel: String(out.label || ""),
+          basis: "abrechnung",
+        });
+        if (ow?.spoken) out.message = `${out.message || ""} ${ow.spoken}`.trim();
+        if (ow && ow.status !== "skip" && ow.status !== "disabled") {
+          out.motiveOverwatch = { status: ow.status, from: ow.from?.name, to: ow.to?.name, dominant: ow.dominant?.label };
+        }
+      } catch (e) {
+        log.warn("overwatch.billing_hook_failed", { clientId, err: String(e?.message || e) });
+      }
+    }
     return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

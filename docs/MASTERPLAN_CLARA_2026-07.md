@@ -275,6 +275,35 @@ Vorteil: Clara antwortet privat ins Ohr, Haende bleiben steril.
       `proaktiv_snooze` (2x am Tag = Rest des Tages nur P0).
       Tests: `scripts/test-interrupt-policy.mjs` (20 Checks, gruen);
       Katalogfall snooze-01 gruen gegen echtes LLM.
+- [x] **Clara Overwatch — Besuchsgrund-Waechter (Auftrag Chef 05.07.):**
+      Passt die DOKUMENTIERTE/ABGERECHNETE Behandlung nicht zum gebuchten
+      Besuchsgrund (Kons-Besprechung gebucht, Implantat gesetzt), korrigiert
+      Clara den Besuchsgrund des Termins — auch rueckwirkend ("behandelt") —
+      damit der Patient im RICHTIGEN Recall-Bucket landet (Plattform rechnet
+      Buckets ueber visitMotive.id, Nachtlauf 03:00 zieht die Korrektur nach).
+      ERLEDIGT 05.07.: `src/clara/motiveOverwatch.js`.
+      Entscheide: EIN Termin, EIN dominanter Besuchsgrund (kein Splitting,
+      keine Doppel-Buckets); Dominanz ueber klinische PRIORITAETSLEITER
+      (Implantation/OP 4 > Extraktion/Endo/PAR/Krone 3 > Fuellung/PZR 2 >
+      Kontrolle 1 > Besprechung 0), NIE ueber Umsatz. Auto-Korrektur nur
+      nach oben (>= Stufe 3, oder Stufe 2 wenn Besprechung gebucht);
+      Kontrolle+kleine Behandlung -> nur Hinweis (Kontroll-Recall bleibt);
+      Downgrades nie. Erkennung deterministisch satzweise mit Zukunfts-/
+      Besprechungs-Wachen ("geplant"/"besprochen" zaehlt nicht als Tat);
+      zweite Quelle: Sophie-Strecken-Label bei status complete.
+      Eingehaengt: save-treatment-dictation (nach Doku-Check/Sonde) +
+      bill-treatment (nach complete); Sweep-Endpoint POST
+      `/tools/motive-overwatch` (days, dryRun). Sekundaerbehandlungen als
+      Metadaten am Termin (motiveOverwatch.detected), Audit als Brain-Event
+      (motive-overwatch:<apptId>:<motiveId>, idempotent) + gesprochene
+      Bestaetigung. Ziel-Motiv: Namens-Klassifikation (Beratungs-Motive nie
+      OP-Ziel), bei mehreren Kandidaten Dauer-Naehe ("klein"/"gross"),
+      Override mas_config/motive_overwatch.mapping. Notaus:
+      MAS_MOTIVE_OVERWATCH=0 bzw. mas_config enabled=false; Modus
+      "vorschlag" schreibt nur Metadaten.
+      Test: `scripts/test-motive-overwatch.mjs` (34 Checks, gruen).
+      OFFEN (Warteliste): Tagesend-Liste der "hinweisen"-Faelle ans
+      Chef-Handy (heute: gesprochener Hinweis direkt beim Diktat).
 - [ ] **Entity-Linking:** Anruf -> Patient -> Vorgang (Abnahmefall:
       Kollegenanruf "Dr. Koenig wegen Patient Mayer"). Rolling Summary pro
       Vorgang ueber Bianca -> Case -> Lisa.
