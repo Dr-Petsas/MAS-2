@@ -27,7 +27,10 @@ function firstLine(value) {
  *   to?: string, subject?: string, body?: string, date?: number,
  *   signature?: {name?:string, role?:string},
  *   signatureImage?: Buffer, stampImage?: Buffer,
- *   layout?: object  // per-placeholder mm coordinates (overrides DIN defaults)
+ *   layout?: object,  // per-placeholder mm coordinates (overrides DIN defaults)
+ *   stationeryOnly?: boolean  // only the static stationery (letterhead, fold
+ *     marks, typeset sender, footer) — no recipient/date/subject/body/signature.
+ *     Used by the inline editor as the page background it writes on.
  * }} input
  * @returns {Promise<Buffer>}
  */
@@ -87,9 +90,12 @@ export function buildLetterPdf(input = {}) {
         L[slot] = { ...defaultLayout[slot], ...(rawLayout && rawLayout[slot] ? rawLayout[slot] : {}) };
       }
 
-      // --- Image letterhead: full-page background drawn first ---
+      // --- Image letterhead: full-page background, on EVERY page (like the PDF
+      // letterhead overlay, so multi-page letters keep the branded paper) ---
       if (useAsset && lh.kind === "image") {
-        try { doc.image(lh.buffer, 0, 0, { width: pageW, height: pageH }); } catch { /* ignore bad image */ }
+        const drawBg = () => { try { doc.image(lh.buffer, 0, 0, { width: pageW, height: pageH }); } catch { /* ignore bad image */ } };
+        drawBg();
+        doc.on("pageAdded", drawBg);
       }
 
       // --- Fold + punch marks (skip on asset letterheads that print their own) ---
@@ -114,6 +120,7 @@ export function buildLetterPdf(input = {}) {
         doc.moveTo(leftX, 48.5 * MM).lineTo(leftX + 85 * MM, 48.5 * MM).strokeColor("#cccccc").lineWidth(0.3).stroke();
       }
 
+      if (!input.stationeryOnly) {
       // --- Recipient address window (placeholder: recipient) ---
       doc.font("Helvetica").fontSize(11).fillColor("#000000");
       doc.text(lines(input.to).join("\n") || "", L.recipient.x * MM, L.recipient.y * MM, { width: L.recipient.w * MM });
@@ -133,11 +140,12 @@ export function buildLetterPdf(input = {}) {
       }
 
       // --- Body (placeholder: body) — Anrede, Textbausteine & Grußformel flow
-      // here as one column from the body anchor (y=0 → just below the subject). ---
+      // here as one column from the body anchor (y=0 → just below the subject).
+      // Blocksatz (justify) ist Vorgabe — der Inline-Editor zeigt denselben Satz. ---
       const bodyX = L.body.x * MM;
       const bodyY = L.body.y > 0 ? L.body.y * MM : y;
       doc.font("Helvetica").fontSize(11).fillColor("#000000");
-      doc.text(input.body || "", bodyX, bodyY, { width: L.body.w * MM, align: "left", lineGap: 2.5 });
+      doc.text(input.body || "", bodyX, bodyY, { width: L.body.w * MM, align: "justify", lineGap: 2.5 });
 
       // --- Signature + stamp zone: fixed, non-overlapping slots ---------------
       // The body (Anrede, Textbausteine, Grußformel) flows as one text column
@@ -191,6 +199,7 @@ export function buildLetterPdf(input = {}) {
           if (sigRole) doc.font("Helvetica").fontSize(9).fillColor("#555555").text(sigRole, sigX, doc.y, { width: sigImgW + 20 * MM });
         }
       }
+      } // end !stationeryOnly
 
       // --- Footer (three columns) — only without an asset (asset prints its own) ---
       if (!useAsset) {

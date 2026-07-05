@@ -18,7 +18,7 @@ import { buildLetterPdf, letterFilename } from "../mail/letter.js";
 import { buildMailBriefing } from "../mail/briefing.js";
 import { getLetterSettings, setLetterSettings } from "../mail/letterSettings.js";
 import { saveLetterheadAsset, getLetterheadMeta, deleteLetterheadAsset, listLetterheads, setActiveLetterhead, deleteLetterhead } from "../mail/letterhead.js";
-import { saveLetterAsset, getLetterAssetMeta, deleteLetterAsset } from "../mail/letterAssets.js";
+import { saveLetterAsset, getLetterAssetMeta, deleteLetterAsset, getLetterAssetBuffer } from "../mail/letterAssets.js";
 import { listBlocks, createBlock, updateBlock, deleteBlock, seedDefaultBlocks } from "../mail/letterBlocks.js";
 import { draftLetter, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
 import { extractText } from "../mail/extract.js";
@@ -626,14 +626,18 @@ router.post("/mail/letter/extract", async (req, res) => {
 
 
 // Live preview (alias of /mail/letter) — kept explicit for the editor's intent.
+// `stationery: true` liefert NUR das Briefpapier (Briefkopf, Falzmarken, Fußzeile,
+// gesetzter Absenderblock) ohne Inhalt — der Inline-Editor rastert das als
+// Seitenhintergrund und schreibt direkt darauf.
 router.post("/mail/letter/preview", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
     if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
     const { settings, letterhead, signatureImage, stampImage } = await renderArgs(clientId);
     const layout = req.body?.layout || null; // unsaved layout for live design preview
-    const buffer = await buildLetterPdf({ settings, letterhead, signatureImage, stampImage, layout, to: req.body?.to, subject: req.body?.subject, body: req.body?.body });
-    res.json({ ok: true, clientId, base64: buffer.toString("base64") });
+    const stationeryOnly = req.body?.stationery === true;
+    const buffer = await buildLetterPdf({ settings, letterhead, signatureImage, stampImage, layout, stationeryOnly, to: req.body?.to, subject: req.body?.subject, body: req.body?.body });
+    res.json({ ok: true, clientId, base64: buffer.toString("base64"), usedAsset: !!letterhead, settings: stationeryOnly ? settings : undefined });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -763,6 +767,26 @@ router.get("/mail/letter/asset/:kind", async (req, res) => {
     const clientId = resolveClientId(req);
     if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
     res.json({ ok: true, clientId, asset: await getLetterAssetMeta(clientId, req.params.kind) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Die Bild-BYTES von Unterschrift/Stempel — der Inline-Editor zeigt sie live an
+// ihrer echten Position auf dem Briefbogen. 404, wenn keins hinterlegt ist.
+router.get("/mail/letter/asset/:kind/file", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const [buffer, meta] = await Promise.all([
+      getLetterAssetBuffer(clientId, req.params.kind),
+      getLetterAssetMeta(clientId, req.params.kind),
+    ]);
+    if (!buffer) return res.status(404).json({ ok: false, error: "not_found" });
+    res.set("Content-Type", meta?.contentType || "image/png");
+    res.set("Cache-Control", "private, max-age=300");
+    res.send(buffer);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
