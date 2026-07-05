@@ -23,7 +23,7 @@ import { resolvePatientSubject } from "../brain/identity.js";
 import { createCase, getCase, listCases, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext, saveCaseDraft, attachEventId } from "../brain/caseStore.js";
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "../brain/caseBriefing.js";
 import { buildRedList, spokenRedList } from "../brain/redList.js";
-import { searchBrain, buildKarteikarte } from "../brain/search.js";
+import { searchBrain, buildKarteikarte, answerBrain } from "../brain/search.js";
 import { getDsgvoConfig, setDsgvoConfig } from "../brain/aiDisclosure.js";
 import { analyzeContactDupes, mergeContacts } from "../brain/addressBook.js";
 import { enqueueBrainWrite } from "../brain/outbox.js";
@@ -320,6 +320,27 @@ router.get("/brain/search", async (req, res) => {
       sinceDays: req.query?.sinceDays,
       limit: req.query?.limit,
     });
+    // Suchergebnisse sind dynamisch: ETag/304 hier hatte im Browser sporadisch
+    // leere Trefferlisten erzeugt (Befund 05.07.) — deshalb nie cachen.
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// KI-Modus der Suche: Frage in Saetzen beantwortet, NUR aus den Suchtreffern,
+// ueber das lokale LLM (DSGVO: bleibt im Praxisnetz). Antwort + Quellen.
+router.get("/brain/answer", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await answerBrain(clientId, { q: req.query?.q || "", sinceDays: req.query?.sinceDays });
+    res.set("Cache-Control", "no-store");
+    if (!out.ok) return res.status(out.reason === "empty_query" ? 400 : 502).json({ ok: false, ...out });
     res.json({ ok: true, clientId, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -341,6 +362,7 @@ router.get("/brain/karteikarte", async (req, res) => {
     const name = (req.query?.name || "").trim();
     if (!patientId && !name) return res.status(400).json({ error: "patientId_or_name_required" });
     const out = await buildKarteikarte(clientId, { patientId, name, sinceDays: req.query?.sinceDays });
+    res.set("Cache-Control", "no-store");
     res.json({ ok: true, clientId, patientId: patientId || null, name: name || null, eventCount: out.events.length, caseCount: out.cases.length, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

@@ -3,6 +3,7 @@ import { queryLatest, queryByPatient } from "./eventStore.js";
 import { applyHumanReview } from "./events.js";
 import { TOPIC_LABELS, isActiveStatus } from "./cases.js";
 import { searchPatient } from "../clara/agentBooking.js";
+import { chat, llmInfo } from "../mail/llm.js";
 
 // ============================================================================
 // Gedaechtnis-Suche (W-SUCHE, 05.07.2026) — Google-artige UNIVERSAL-Suche.
@@ -356,13 +357,17 @@ export async function searchBrain(clientId, opts = {}) {
   const fAssignee = (opts.assignee || "").trim().toLowerCase();
   if (fAssignee) filtered = filtered.filter((r) => r.kind === "case" && String(r.assignee || "").toLowerCase() === fAssignee);
 
-  // Sortierung: mit Suchbegriff nach Score (Patienten oben), dann Aktualitaet;
-  // ohne Begriff rein nach letzter Aktivitaet (= "letzte Vorgaenge").
-  filtered.sort((a, b) =>
-    tokens.length
-      ? (b.score - a.score) || ((b.lastContactAt || b.ts || 0) - (a.lastContactAt || a.ts || 0))
-      : ((b.lastContactAt || 0) - (a.lastContactAt || 0))
-  );
+  // Sortierung (Chef-Vorgabe 05.07.): CHRONOLOGISCH, neueste zuerst — nur die
+  // Patienten-Karteikarten stehen immer oben (die DB hat den Namen bestaetigt).
+  // Der Score bleibt Tiebreaker bei gleichem Zeitstempel.
+  const when = (r) => r.lastContactAt || r.ts || r.updatedAtMs || 0;
+  filtered.sort((a, b) => {
+    const ap = a.kind === "patient" ? 1 : 0;
+    const bp = b.kind === "patient" ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    if (ap && bp) return b.score - a.score;
+    return (when(b) - when(a)) || (b.score - a.score);
+  });
 
   return {
     count: filtered.length,
@@ -413,6 +418,91 @@ function buildFacets(hits) {
     .sort((a, b) => b.count - a.count);
 
   return { kind: kinds, status, topic, channel, assignee };
+}
+
+/**
+ * KI-Modus (Chef-Wunsch 05.07.: "wie bei Google Search"): beantwortet die
+ * Suchfrage in Saetzen — NUR aus den eigenen Suchtreffern (kein Weltwissen,
+ * nichts erfinden), ueber das LOKALE LLM (gleiche Engine wie Nadine, DSGVO:
+ * Patientendaten verlassen das Praxisnetz nicht). Liefert Antwort + die
+ * verwendeten Fundstellen (Quellen), damit das Frontend sie verlinken kann.
+ */
+// Fuellwoerter natuerlicher Fragen ("Was ist mit der ...?") — fuer die
+// Fundstellen-Suche irrelevant und toedlich fuer die UND-Logik.
+const QUESTION_STOPWORDS = new Set([
+  "was", "ist", "sind", "war", "waren", "mit", "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer",
+  "wie", "wer", "wen", "wem", "wann", "wo", "warum", "wieso", "weshalb", "welche", "welcher", "welches", "wurde", "worden",
+  "hat", "habe", "haben", "hatte", "gibt", "gab", "geht", "ging", "steht", "stand", "kam", "kommt", "lief", "laeuft", "lauft",
+  "es", "wir", "ich", "uns", "mir", "mich", "man", "sich", "sie", "er", "ihm", "ihr", "und", "oder", "aber", "auch", "noch",
+  "schon", "mal", "denn", "eigentlich", "bitte", "gerade", "aktuell", "neues", "los", "fuer", "fur", "von", "vom", "zu", "zum",
+  "zur", "im", "in", "am", "an", "auf", "um", "bei", "beim", "aus", "nach", "ueber", "uber", "unter", "unser", "unsere",
+  "unserer", "unserem", "unseren", "meine", "meiner", "meinem", "meinen", "sache", "thema", "stand", "dazu", "da", "dort", "hier",
+]);
+
+export async function answerBrain(clientId, { q, sinceDays } = {}) {
+  const query = String(q || "").trim();
+  if (!query) return { ok: false, reason: "empty_query" };
+
+  // 1) Stichwoerter aus der Frage ziehen (Fuellwoerter raus).
+  const keywords = tokenize(query).filter((t) => t.length >= 3 && !QUESTION_STOPWORDS.has(t));
+  const kwQuery = keywords.join(" ");
+
+  // 2) Suche: erst alle Stichwoerter (UND); wenn leer, jedes Stichwort einzeln
+  //    und zusammenfuehren; ganz ohne Stichwoerter ("Was gibt es Neues?") die
+  //    juengsten Eintraege — die KI fasst dann den aktuellen Stand zusammen.
+  let hits = [];
+  if (kwQuery) {
+    hits = (await searchBrain(clientId, { q: kwQuery, sinceDays, limit: 12 })).results || [];
+    if (!hits.length && keywords.length > 1) {
+      const seen = new Set();
+      for (const kw of keywords.slice(0, 5)) {
+        const part = (await searchBrain(clientId, { q: kw, sinceDays, limit: 6 })).results || [];
+        for (const h of part) {
+          const key = `${h.kind}:${h.id}`;
+          if (!seen.has(key)) { seen.add(key); hits.push(h); }
+        }
+      }
+      hits.sort((a, b) => ((b.lastContactAt || b.ts || 0) - (a.lastContactAt || a.ts || 0)));
+      hits = hits.slice(0, 12);
+    }
+  } else {
+    hits = (await searchBrain(clientId, { sinceDays, limit: 12 })).results || [];
+  }
+
+  if (!hits.length) {
+    return { ok: true, answer: "Dazu findet sich nichts im Praxisgedächtnis — kein Treffer bei Patienten, Vorgängen oder Ereignissen.", sources: [], model: llmInfo().model, hitCount: 0 };
+  }
+
+  const fmtD = (ms) => (ms ? new Date(ms).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" }) : "");
+  const lines = hits.map((h, i) => {
+    const art = h.kind === "patient"
+      ? `Patient (Karteikarte${h.birthDate ? `, geb. ${h.birthDate}` : ""})`
+      : h.kind === "case"
+        ? `Vorgang „${h.topicLabel || h.topic}“, ${h.isActive ? "offen" : "erledigt"}${h.assignee ? `, liegt bei ${h.assignee}` : ""}`
+        : `Ereignis (${CHANNEL_LABELS[h.channel] || h.channel})`;
+    const when = fmtD(h.lastContactAt || h.ts);
+    return `[${i + 1}] ${art}${when ? `, ${when}` : ""}: ${h.title}${h.snippet ? ` — ${h.snippet}` : ""}`;
+  });
+
+  const messages = [
+    {
+      role: "system",
+      content: [
+        "Du bist MSS, die interne Suche einer Arztpraxis, und antwortest dem Praxisteam.",
+        "Antworte AUSSCHLIESSLICH aus den nummerierten Fundstellen — nichts erfinden, kein Weltwissen.",
+        "Kurz und konkret auf Deutsch: 2 bis 6 Sätze; bei mehreren Punkten eine Stichpunktliste mit Datum.",
+        "Belege Aussagen mit den Fundstellen-Nummern in eckigen Klammern, z. B. [1] oder [2][3].",
+        "Wenn die Fundstellen die Frage nicht beantworten, sage das ehrlich und schlage einen besseren Suchbegriff vor.",
+      ].join(" "),
+    },
+    { role: "user", content: `Frage: ${query}\n\nFundstellen aus dem Praxisgedächtnis:\n${lines.join("\n")}` },
+  ];
+
+  const out = await chat(messages, { temperature: 0.2, maxTokens: 550, timeoutMs: 60000 });
+  if (!out.ok) {
+    return { ok: false, reason: out.reason || "llm_error", model: out.model, sources: hits, hitCount: hits.length };
+  }
+  return { ok: true, answer: out.text, model: out.model, sources: hits, hitCount: hits.length };
 }
 
 /**

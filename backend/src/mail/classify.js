@@ -24,7 +24,7 @@ export const CATEGORY_LABELS = [
 ];
 
 const SPAM_KW = ["viagra", "casino", "lottery", "you won", "sie haben gewonnen", "bitcoin gewinn", "millionen gewonnen", "erbschaft"];
-const WERBUNG_KW = ["newsletter", "abmelden", "unsubscribe", "sonderangebot", "rabatt", "gewinnspiel", "jetzt kaufen", "black friday", "webinar", "kostenlos testen", "exklusives angebot", "% sparen"];
+const WERBUNG_KW = ["newsletter", "abmelden", "unsubscribe", "sonderangebot", "rabatt", "gewinnspiel", "jetzt kaufen", "black friday", "webinar", "kostenlos testen", "exklusives angebot", "% sparen", "deal", "jetzt sichern", "gutschein", "sale", "aktionspreis", "monatlich kündbar", "jetzt bestellen", "shop entdecken"];
 
 // Category keyword rules — most specific first; first match wins.
 // Keep keywords SPECIFIC: avoid words that appear in commercial Impressum
@@ -49,6 +49,26 @@ const STRONG_CATEGORIES = ["Gerichtliche Klage", "Beschwerde", "Rechnung", "Ford
 // Categories that must always be handled — they win even over ad signals.
 const SERIOUS_CATEGORIES = ["Gerichtliche Klage", "Forderungsmanagement", "Rechnung", "Beschwerde", "Versicherung"];
 const AD_SENDER_RE = /no-?reply|newsletter|mailing|marketing|notification|\bshop\b|\bsales?\b|info@|news@/;
+
+// STRUKTURELLE Newsletter-Marker (Abmelde-Fusszeile, "im Browser anzeigen").
+// Echte Rechnungen/Mahnungen/Anwaltspost tragen so etwas nie — deshalb duerfen
+// diese Marker (2 Treffer, oder 1 Treffer + Werbe-Betreff) sogar "ernste"
+// Kategorien ueberstimmen. Vorfall 05.07.2026: Sky-Newsletter ("Deal sichern",
+// 🍿-Betreff) wurde wegen Preis-/Abo-Woertern als Rechnung eingestuft und
+// erzeugte einen Vorgang "Rechnung/Kosten – Jetzt Sky Deal sichern".
+const NEWSLETTER_STRUCT_KW = [
+  "abmelden", "unsubscribe", "abbestellen", "im browser anzeigen", "im browser ansehen",
+  "im browser öffnen", "nicht richtig angezeigt", "webansicht", "e-mail-einstellungen",
+  "newsletter", "werbe-e-mail", "keine e-mails mehr erhalten",
+];
+// Werbe-Betreff: Emoji oder typische Kauf-Trigger.
+const PROMO_SUBJECT_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]|deal|sale|% ?rabatt|sparen|sichern|gratis|geschenkt|angebot|nur heute|black friday/iu;
+
+function newsletterStructHits(haystack) {
+  let n = 0;
+  for (const k of NEWSLETTER_STRUCT_KW) if (haystack.includes(k)) n += 1;
+  return n;
+}
 
 const low = (s) => String(s || "").toLowerCase();
 
@@ -79,6 +99,16 @@ export function classifyByKeywords({ subject = "", fromAddress = "", text = "" }
   const looksAd = WERBUNG_KW.some((k) => hasWord(h, k)) || AD_SENDER_RE.test(fromL);
   if (looksAd && !SERIOUS_CATEGORIES.includes(category)) {
     return { category: "Werbung", relevant: false, relevanceReason: "Werbung/Newsletter – keine Antwort nötig" };
+  }
+
+  // Massen-Newsletter mit Abmelde-Struktur schlagen sogar "ernste" Kategorien:
+  // ein Streaming-Deal ist keine Rechnung, auch wenn er Preise nennt. Bewusst
+  // konservativ, damit echte Rechnungen mit Standard-Fusszeile ("im Browser
+  // anzeigen") NICHT verschluckt werden: Werbe-Betreff + 1 Marker, oder >= 3
+  // Marker (so viel Abmelde-Apparat hat keine echte Rechnung/Anwaltspost).
+  const structHits = newsletterStructHits(h);
+  if ((structHits >= 1 && PROMO_SUBJECT_RE.test(low(subject))) || structHits >= 3) {
+    return { category: "Werbung", relevant: false, relevanceReason: "Massen-Newsletter (Abmelde-Fußzeile) – keine Antwort nötig" };
   }
 
   const strong = STRONG_CATEGORIES.includes(category);
