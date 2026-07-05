@@ -111,6 +111,41 @@ Karteikarten + 3 Vorgaenge + Ereignisse. Backend-Suite: 42/46 gruen, die
 schon VOR W-SUCHE rot (identisch in mas2_test_lisa_popup/overwatch-Laeufen,
 andere Baustellen).
 
+### W-SUCHE-2 - Feinschliff nach Chef-Feedback (05.07., FERTIG)
+
+Chef-Feedback zur ersten Fassung: chronologisch statt Ranking, Name/Titel
+schlecht, Werbung sickert ein ("Sky Deal" als Rechnung/Kosten-Vorgang),
+Praxis-Branding fehlt, Karteikarte soll wie eine echte Karteikarte aussehen,
+Browser-Vor/Zurueck ueber alles, 3 Skins, "Rote Liste" ist ein Medikamenten-
+verzeichnis (Wording raus), KI-Modus wie bei Google.
+
+- **Name:** Cockpit -> **MSS**, Schlagzeile "Weiss alles. Findet alles.
+  Vergisst nichts." MSS erster Eintrag in der MAS-KI-Leiste; Praxisname +
+  Logo oben rechts (Location-Logo, sonst Monogramm).
+- **Chronologie:** `searchBrain` sortiert neueste zuerst (Score nur noch
+  Tiebreaker, Patienten-Karteikarten bleiben oben); Datum vorn in jeder
+  Trefferzeile.
+- **Werbefilter:** Massen-Newsletter mit Abmelde-Struktur (Werbe-Betreff +
+  1 Marker oder >=3 Marker) schlagen jetzt auch "ernste" Kategorien in
+  `mail/classify.js`; echte Rechnung/Anwaltspost bleibt relevant (getestet).
+  Sky-Vorgang case_d348... geschlossen.
+- **KI-Modus:** `GET /brain/answer` — Stichwort-Extraktion aus natuerlicher
+  Frage (Stoppwoerter raus, UND-Suche, Fallback einzeln), Antwort NUR aus
+  Suchtreffern ueber lokales LLM (qwen3 via Ollama, DSGVO on-prem), mit
+  nummerierten Quellen. Frontend: Sparkle-Knopf in der Suchleiste, Antwort-
+  Panel mit klickbaren Quellen-Chips.
+- **Browser-Navigation:** URL fuehrend; Ansichtswechsel = pushState,
+  Tippen = replace; Zurueck/Vor traegt durch Suche/Vorgang/Karteikarte/
+  Ereignis (Mirror-Effekt mit Erst-Lauf-Sperre gegen Deep-Link-Verlust).
+- **Skins:** 3 Stile (Hell/Papier/Nacht) als CSS-Variablen auf
+  `.mss-outer[data-skin]`, Umschalter oben rechts, localStorage.
+- **Karteikarte:** Reiter-Lasche, rote Randlinie, liniertes Kopffeld,
+  Kennzahlen — echte Karteikarten-Optik.
+- **Cache:** `/brain/search|answer|karteikarte` senden `Cache-Control:
+  no-store`, Frontend `cache:"no-store"` (Browser-304 => leere Listen).
+- Commits: MAS-2 e21b06a, Frontend adf96a6b. Live getestet: Flyeralarm-
+  Frage beantwortet mit Quelle [1] in ~8 s; Sky nur noch als geschlossen.
+
 ## Phase 1 - Vermessen & Entschlacken (Woche 1-3)
 
 Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,
