@@ -427,7 +427,7 @@ Rueckruf statt Medizinauskunft) stehen IM Rahmen, nie in der Vorlage.
       die 26 Fachkataloge, extrahiert pro Besuchsgrund purpose/purposeShort/
       consequence aus den redaktionell gepruefeten Landingpage-Texten
       (Du->Sie-Normalisierung, HTML-Strip, Laengen-Caps, Qualitaets-Guards),
-      schreibt `backend/src/data/outreach-catalog.json` (MAS) und
+      schreibt `backend/src/clara/outreach-catalog.json` (MAS, in Git) und
       `docgendaweb/public/outreach-catalog.de.json` (CampaignR, lazy fetch).
 - [x] **Aufloesungs-Modul** `src/clara/outreachTemplates.js`: Kaskade s. o.,
       matchLevel exact/fuzzy/class/generic wird auditiert; Komposition
@@ -450,6 +450,12 @@ Rueckruf statt Medizinauskunft) stehen IM Rahmen, nie in der Vorlage.
 - Warteliste (bewusst NICHT jetzt): E-Mail-Kanal im Lueckenfueller (via
   Nadine) + Vorlaufzeit-Kaskade; persistente Opt-out-Sperrliste; blueprintId
   am Plattform-VisitMotive; Erst-N-Transkript-Review-UI im Monitor.
+
+**FERTIG 05.07.2026:** Alle Punkte gebaut, 44 Outreach-Checks + Demo-Playbook
+(dryRun) gruen, Clara-Schnell-Gate gruen. Commits: MAS-2 `aa9c216`,
+pickadoc-live-base `97e0d4f6`. Nebenfund behoben: `backend/src/data/qm/*.json`
+(QM-Katalog) war durch `data/`-Ignore NIE in Git — wiederhergestellt und
+`.gitignore`-Ausnahme fuer `backend/src/data/` gesetzt.
 
 ## Reihenfolge
 
