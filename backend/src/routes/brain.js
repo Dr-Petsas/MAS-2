@@ -23,6 +23,7 @@ import { resolvePatientSubject } from "../brain/identity.js";
 import { createCase, getCase, listCases, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext, saveCaseDraft, attachEventId } from "../brain/caseStore.js";
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "../brain/caseBriefing.js";
 import { buildRedList, spokenRedList } from "../brain/redList.js";
+import { searchBrain, buildKarteikarte } from "../brain/search.js";
 import { getDsgvoConfig, setDsgvoConfig } from "../brain/aiDisclosure.js";
 import { analyzeContactDupes, mergeContacts } from "../brain/addressBook.js";
 import { enqueueBrainWrite } from "../brain/outbox.js";
@@ -83,6 +84,24 @@ router.get("/brain/timeline", async (req, res) => {
       events = await queryRecent(clientId, Date.now() - sinceMinutes * 60_000);
     }
     res.json({ ok: true, clientId, count: events.length, events });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Single event by id (for the search-engine Cockpit detail view / deep links).
+// Additive; must sit before the ":id/resolve" and ":id/annotate" POST paths is
+// irrelevant (different method), but declared here for readability.
+router.get("/brain/events/:id", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const event = await getEvent(clientId, req.params.id);
+    if (!event) return res.status(404).json({ ok: false, reason: "not_found" });
+    res.json({ ok: true, clientId, event });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -274,6 +293,55 @@ router.get("/brain/red-list", async (req, res) => {
     }
     const out = await buildRedList(clientId);
     res.json({ ok: true, clientId, ...out, spoken: spokenRedList(out) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Gedaechtnis-Suche (W-SUCHE): Google-artige UNIVERSAL-Suche. Trefferarten:
+// patient (Karteikarte), case (Vorgang), event (Einzel-Ereignis). ?q= Begriff
+// (leer = letzte Vorgaenge), Filter ?kind=&status=open|done&topic=&channel=
+// &assignee=&limit=. Gerankte Treffer mit Snippet + Facetten. Rein additiv,
+// kein Volltext-Index (In-Memory-Scan + Patienten-CF).
+router.get("/brain/search", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await searchBrain(clientId, {
+      q: req.query?.q || "",
+      kind: req.query?.kind || "",
+      status: req.query?.status || "",
+      topic: req.query?.topic || "",
+      channel: req.query?.channel || "",
+      assignee: req.query?.assignee || "",
+      sinceDays: req.query?.sinceDays,
+      limit: req.query?.limit,
+    });
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Karteikarte: ALLES aus dem Gedaechtnis zu EINEM Patienten (Ereignisse +
+// Vorgaenge, auch nur namens-zugeordnete). ?patientId= und/oder ?name=
+// ("Vorname Nachname" — alle Namens-Tokens muessen vorkommen). Termine/
+// Behandlungsdoku ergaenzt das Frontend aus der Plattform-DB.
+router.get("/brain/karteikarte", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const patientId = (req.query?.patientId || "").trim();
+    const name = (req.query?.name || "").trim();
+    if (!patientId && !name) return res.status(400).json({ error: "patientId_or_name_required" });
+    const out = await buildKarteikarte(clientId, { patientId, name, sinceDays: req.query?.sinceDays });
+    res.json({ ok: true, clientId, patientId: patientId || null, name: name || null, eventCount: out.events.length, caseCount: out.cases.length, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

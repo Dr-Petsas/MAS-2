@@ -64,6 +64,53 @@ Claras Diktat-Trennung) und laesst die stille Sophie-Sonde antworten
 Frontend-Build gruen. Deep-Link `?ki=lena&appointmentId=` bleibt gueltig.
 Offen: Abnahme durch Chef im Alltag.
 
+## Phase W-SUCHE - MAS-Cockpit als Gedaechtnis-Suchmaschine (beschlossen 05.07.)
+
+Das bisherige Cockpit (Rote Liste + Fristen + Freigaben + Dubletten als lange
+Listenwand) ist zu kompliziert (Befund Chef 05.07.). Neubau als **Google-artige
+UNIVERSAL-Suche ueber das Praxisgedaechtnis** mit DREI Trefferarten (Erweiterung
+05.07. nach Befund "Sablon/flyeralarm = 0 Treffer" - Case-only reichte nicht):
+
+- **patient** -> Karteikarte: ALLES zu einer Person (Termine/Behandlungen aus
+  der Plattform-DB, Telefonate, E-Mails, Briefe, Doku, Vorgaenge)
+- **case** -> Vorgang (Thread pro Person+Thema) mit Detailseite + Aktionen
+- **event** -> Einzel-Ereignis, auch OHNE Vorgang (oeffnet seinen Vorgang,
+  sonst eigene Detailseite)
+
+Startseite (ohne Suchbegriff): Suchleiste + die letzten 5 Vorgaenge.
+
+- **Backend (rein additiv):** Modul `src/brain/search.js` mit `searchBrain`
+  (Cases via `listCases` + NEUESTE Ereignisse via neuem `eventStore.queryLatest`
+  (ts desc; asc haette bei vollem Fenster genau die neuesten verworfen) +
+  Patienten via `searchPatient`-CF) und `buildKarteikarte` (Ereignisse per
+  patientId UND Namens-Tokens - findet auch unmatched Eintraege; alle
+  Namens-Tokens muessen vorkommen, nie Teiltreffer fremder Patienten).
+  Routen: `GET /brain/search?q&kind&status&topic&channel&assignee&limit`,
+  `GET /brain/karteikarte?patientId&name`, `GET /brain/events/:id`.
+  Ranking nach Feldgewicht (Name/Titel > Verlauf), Boosts offen/Frist/
+  Aktualitaet; Patienten immer oben. Facetten inkl. `kind`.
+  Bestehende `/brain/*`-Vertraege unveraendert.
+- **Frontend:** `masCockpit.tsx` = Suchmaschine (SERP mit gemischten Treffern,
+  Snippet-Highlight, Filter-Chips; Vorgangs-Detail mit Verlauf + Erledigt/
+  Zuweisen; Karteikarten-Seite mit Vorgaengen, Terminen aus der Plattform-DB
+  (Kalender-Paritaet: needsConfirmation/declined ausgeblendet, Lena-Doku-Link
+  pro Termin) + Gedaechtnis-Verlauf; Ereignis-Detail mit Erledigt-Aktion).
+  Deep-Links: `?ki=cockpit&q=&case=&patient=&pname=&event=`.
+  `ClaraBrain` (`?ki=clara`) bleibt unangetastet.
+- **Plattform-Regel:** fachunabhaengig - reine Gedaechtnis-Suche, kein
+  med-dent-Spezialwissen im Code.
+- DoD: Name/Firma/Thema eingeben -> gerankte gemischte Trefferliste mit
+  Snippet; Patiententreffer oeffnet Karteikarte mit allem; Startseite zeigt
+  Suchfeld + letzte 5 Cases; alte Cockpit-Funktionen (Erledigen/Freigeben)
+  bleiben erreichbar; Frontend-Build + `node --check` gruen.
+
+**Status 05.07.: FERTIG.** Live verifiziert: "flyeralarm" -> Vorgang
+(Anwaltsschreiben) + Clara-Proaktiv-Ereignis; "sablon" -> 2 Patienten-
+Karteikarten + 3 Vorgaenge + Ereignisse. Backend-Suite: 42/46 gruen, die
+4 roten (day-schedule, doku-lernloop, mail-briefing, memo-trennung) waren
+schon VOR W-SUCHE rot (identisch in mas2_test_lisa_popup/overwatch-Laeufen,
+andere Baustellen).
+
 ## Phase 1 - Vermessen & Entschlacken (Woche 1-3)
 
 Messwerte 04.07.: `pickadoc_session_worker.py` ~10.300 Zeilen,

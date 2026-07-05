@@ -70,6 +70,21 @@ export async function queryRecent(clientId, sinceTs, limit = 500) {
 }
 
 /**
+ * Newest events since a timestamp (ms), DESCENDING by time — for search and
+ * Karteikarte, where the freshest facts matter and the window may exceed the
+ * cap (queryRecent ascending would then drop exactly the newest ones).
+ * Single-field range+order → no composite index required.
+ */
+export async function queryLatest(clientId, sinceTs, limit = 500) {
+  const snap = await col(clientId)
+    .where("ts", ">=", Number(sinceTs) || 0)
+    .orderBy("ts", "desc")
+    .limit(Math.max(1, Math.min(2000, limit)))
+    .get();
+  return snap.docs.map((d) => d.data());
+}
+
+/**
  * Events about one patient (most recent first). Equality-only query (single
  * field index) + in-memory sort to avoid a composite index.
  */
