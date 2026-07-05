@@ -119,9 +119,10 @@ Praxis-Branding fehlt, Karteikarte soll wie eine echte Karteikarte aussehen,
 Browser-Vor/Zurueck ueber alles, 3 Skins, "Rote Liste" ist ein Medikamenten-
 verzeichnis (Wording raus), KI-Modus wie bei Google.
 
-- **Name:** Cockpit -> **MSS**, Schlagzeile "Weiss alles. Findet alles.
-  Vergisst nichts." MSS erster Eintrag in der MAS-KI-Leiste; Praxisname +
-  Logo oben rechts (Location-Logo, sonst Monogramm).
+- **Name:** Cockpit -> **MAS** (Korrektur Chef 05.07.: MAS, nicht MSS),
+  Schlagzeile "Weiss alles. Findet alles. Vergisst nichts." MAS erster
+  Eintrag in der MAS-KI-Leiste; Praxisname + Logo oben rechts
+  (Location-Logo, sonst Monogramm).
 - **Chronologie:** `searchBrain` sortiert neueste zuerst (Score nur noch
   Tiebreaker, Patienten-Karteikarten bleiben oben); Datum vorn in jeder
   Trefferzeile.

@@ -488,7 +488,7 @@ export async function answerBrain(clientId, { q, sinceDays } = {}) {
     {
       role: "system",
       content: [
-        "Du bist MSS, die interne Suche einer Arztpraxis, und antwortest dem Praxisteam.",
+        "Du bist MAS, die interne Suche einer Arztpraxis, und antwortest dem Praxisteam.",
         "Antworte AUSSCHLIESSLICH aus den nummerierten Fundstellen — nichts erfinden, kein Weltwissen.",
         "Kurz und konkret auf Deutsch: 2 bis 6 Sätze; bei mehreren Punkten eine Stichpunktliste mit Datum.",
         "Belege Aussagen mit den Fundstellen-Nummern in eckigen Klammern, z. B. [1] oder [2][3].",
