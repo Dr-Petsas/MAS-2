@@ -1,0 +1,555 @@
+[
+  {
+    "id": "4uX8nEwcScACBuYXBx7o",
+    "kind": "call",
+    "phone": "+491776004600",
+    "contactName": "Testsuite Smoke-Test",
+    "prompt": "Dies ist ein Testanruf der Pickadoc Testsuite. Es ist keine Aktion noetig. Einen schoenen Abend.",
+    "conversationId": "conv_9101ktshyakdebgsw1zsw86v1520",
+    "callSid": "CAd2edcbaa9bd7fce802c4e47ea89ceb0d",
+    "assignedBy": "Dr. Michael Petsas",
+    "resultSummary": null,
+    "ts": 1781121624479,
+    "createdAt": {
+      "_seconds": 1781121625,
+      "_nanoseconds": 66000000
+    },
+    "endedAt": {
+      "_seconds": 1781121661,
+      "_nanoseconds": 355000000
+    },
+    "transcriptText": "user: Dein Anruf wurde an Voicemail weitergeleitet. Die gewünschte Gesprächsperson ist nicht zu erreichen. Hinterlasse eine Nachricht nach dem Signalton und lege auf, wenn du sie fertig gesprochen hast.",
+    "outcome": "voicemail",
+    "status": "done"
+  },
+  {
+    "id": "5mRKYIT9MuKgyM6gmzeX",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Die Gespraechssimulation ist fertig: Superuser-Dashboard -> Test & Train -> Simulation -> 'Gespraech starten'. Dr.-Petsas-LLM befragt Clara mit Live-Daten, Mitschrift laeuft live mit, am Ende gibt es Audio. Live auf docgenda.web.app.",
+    "providerSid": "SM7f9327a30d73f557ca417454831bf2cb",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781248161976,
+    "createdAt": {
+      "_seconds": 1781248162,
+      "_nanoseconds": 68000000
+    }
+  },
+  {
+    "id": "6lY36klHCuuRORIPmCZ2",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petzas",
+    "body": "komm schnell!",
+    "providerSid": "SM82429879048deecbbeda2e87977e976d",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781080870209,
+    "createdAt": {
+      "_seconds": 1781080870,
+      "_nanoseconds": 518000000
+    }
+  },
+  {
+    "id": "8msmkqKXyojo1TD7ZDLY",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Clara-Wache: 4 Gespraeche geprueft, 2 Fehler gefixt, deployed - weiter testen",
+    "providerSid": "SM727e4425a0779e3222f16205ec7ab136",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781357166086,
+    "createdAt": {
+      "_seconds": 1781357164,
+      "_nanoseconds": 731000000
+    }
+  },
+  {
+    "id": "IDqsYHYP0RY6wQthQpLc",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Clara-Wache: griechisch is drin kollega",
+    "providerSid": "SM8f0cce696f13750818b8255f599067e6",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781273403570,
+    "createdAt": {
+      "_seconds": 1781273403,
+      "_nanoseconds": 289000000
+    }
+  },
+  {
+    "id": "J8bhIhjeIc9SHEOQJcWE",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Clara-Wache: keine neuen Gespraeche seit letztem Check, nichts geaendert",
+    "providerSid": "SM1e131422975d9f260e3a5e2b7a413130",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781328033199,
+    "createdAt": {
+      "_seconds": 1781328032,
+      "_nanoseconds": 212000000
+    }
+  },
+  {
+    "id": "KCyW1p2R2yccJBOmVt6x",
+    "kind": "call",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petzas",
+    "prompt": "Dr. Patrik wartet jetzt auf ihn.",
+    "conversationId": "conv_4101ktrb38bee5es0crw4w4hd2ry",
+    "callSid": "CA29d88860f5a3e11362a10979bedb3bb2",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781080891534,
+    "createdAt": {
+      "_seconds": 1781080892,
+      "_nanoseconds": 153000000
+    },
+    "endedAt": {
+      "_seconds": 1781080918,
+      "_nanoseconds": 541000000
+    },
+    "resultSummary": "Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich rufe an, um Sie daran zu erinnern, dass Dr. Patrik jetzt auf Sie wartet. Soll ich Ihnen mit der Planung eines neuen Termins behilflich sein?",
+    "transcriptText": "user: Hallo?\nagent: Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich rufe an, um Sie daran zu erinnern, dass Dr. Patrik jetzt auf Sie wartet. Soll ich Ihnen mit der Planung eines neuen Termins behilflich sein?",
+    "outcome": "reached",
+    "status": "done"
+  },
+  {
+    "id": "KVomefyU5euX5dAH9xgZ",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Clara-Wache: Lauf 20260614_1520 abgebrochen - Details per Mail, Stack laeuft weiter",
+    "providerSid": "SM8bb38aa07b5ef8aa9db1e0a8c1fac0b0",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781443210229,
+    "createdAt": {
+      "_seconds": 1781443207,
+      "_nanoseconds": 890000000
+    }
+  },
+  {
+    "id": "KnJIRGqjHxDDvmLwQvg4",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Testlauf fuer die Demo: Clara kann jetzt SMS ueber Lisa verschicken. (Diese Nachricht wurde automatisch gesendet.)",
+    "providerSid": "SMc764415a2d594024e5629791fabbf693",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781043217384,
+    "createdAt": {
+      "_seconds": 1781043217,
+      "_nanoseconds": 596000000
+    }
+  },
+  {
+    "id": "Q1OhPBhHqyPXuac3PCUk",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Clara-Wache: Lauf 20260613_2320 abgebrochen - Details per Mail, Stack laeuft weiter",
+    "providerSid": "SM5fbb37bb7a701e49c6c9d0b00a34c96c",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781385610267,
+    "createdAt": {
+      "_seconds": 1781385608,
+      "_nanoseconds": 513000000
+    }
+  },
+  {
+    "id": "S6dgYeFaq29vCVB2z0mN",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "MAS: Dein Mailkonto dr.petsas@med-dent.clinic war getrennt und ist jetzt automatisch repariert + neu geladen.",
+    "providerSid": "SM8779b9b6ddf2e0f8986d958ef63d1d52",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1782895705495,
+    "createdAt": {
+      "_seconds": 1782895705,
+      "_nanoseconds": 740000000
+    }
+  },
+  {
+    "id": "UqsvrfgFI0WuDxy8t8Cu",
+    "kind": "call",
+    "status": "calling",
+    "phone": "+4917632145136",
+    "contactName": "Xenofon Thermos",
+    "prompt": "Du rufst im Auftrag von der Praxis an. Gesprächspartner: Xenofon Thermos. Biete einen kurzfristig frei gewordenen Termin am Freitag, 12. Juni um 11:00 Uhr bei Dr. Petsas (KCH Kontrolluntersuchung) an — der Besuch ist laut Recall fällig. Wenn der Termin passt: bestätige verbindlich, dass er fest reserviert wird. Wenn nicht: biete an, dass sich die Praxis wegen eines Alternativtermins meldet. Nenne KEINE medizinischen Details. Sei freundlich und fasse dich kurz.",
+    "conversationId": "conv_3201ktv46mp8fb0tpbpnbx0cx158",
+    "callSid": "CA79f51d384e3e431fa6267c69c89ed8f6",
+    "assignedBy": "Dr. Michael Petsas",
+    "outcome": null,
+    "resultSummary": null,
+    "transcriptText": null,
+    "ts": 1781174326898,
+    "createdAt": {
+      "_seconds": 1781174326,
+      "_nanoseconds": 275000000
+    }
+  },
+  {
+    "id": "VdzITj6fA0mrsS3cOh49",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Chef",
+    "body": "Pickadoc-Report (Sophie/Lena/Clara) steht bereit: https://docgenda.web.app/sophie-report (nach Login). Neu live: 3 Kontextmenue-Punkte + Lena-Doku-Seite. Clara-Briefing + Doku-Diktat gebaut, brauchen noch Release-Gate + Neustart.",
+    "providerSid": "SMdf112fa13ac371b4df57491b757df0ec",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1782229691289,
+    "createdAt": {
+      "_seconds": 1782229690,
+      "_nanoseconds": 881000000
+    }
+  },
+  {
+    "id": "cEOH2fMHo2T5CiTztx1h",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": null,
+    "body": "Hallo.",
+    "providerSid": "SMe73aa9cf402cdeff9e6d3bb376b0eafe",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781177532311,
+    "createdAt": {
+      "_seconds": 1781177531,
+      "_nanoseconds": 747000000
+    }
+  },
+  {
+    "id": "ecXp8pUzmBry7dcwfJ45",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": null,
+    "body": "Hurra?",
+    "providerSid": "SMd696dc6148da5acd7051bb789b6b3508",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1782297896618,
+    "createdAt": {
+      "_seconds": 1782297896,
+      "_nanoseconds": 953000000
+    }
+  },
+  {
+    "id": "eeeOuMx733SLgnwpkbcH",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Clara-Wache: Lauf 20260614_0720 abgebrochen - Details per Mail, Stack laeuft weiter",
+    "providerSid": "SM9d419d528e265c298184f234c8b7534c",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781414410216,
+    "createdAt": {
+      "_seconds": 1781414408,
+      "_nanoseconds": 88000000
+    }
+  },
+  {
+    "id": "jfkAOFHglwtjNIguE0z3",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Clara-Wache: Humor-Update live (Ampel-Sprueche, Bewertungs-Kommentare). Suite 113/118. Wache ab 23:20 alle 8 Std, danach jeweils Kurz-SMS.",
+    "providerSid": "SM3320b43e3c1f474acf7b47a9e04ed667",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781272565669,
+    "createdAt": {
+      "_seconds": 1781272565,
+      "_nanoseconds": 450000000
+    }
+  },
+  {
+    "id": "kEoEyaaxdQCyygW928qu",
+    "kind": "call",
+    "status": "calling",
+    "phone": "+4915127155235",
+    "contactName": "Kurt Gökce",
+    "prompt": "Du rufst im Auftrag von der Praxis an. Gesprächspartner: Kurt Gökce. Biete einen kurzfristig frei gewordenen Termin am Freitag, 12. Juni um 11:00 Uhr bei Dr. Petsas (KCH Kontrolluntersuchung) an — der Besuch ist laut Recall fällig. Wenn der Termin passt: bestätige verbindlich, dass er fest reserviert wird. Wenn nicht: biete an, dass sich die Praxis wegen eines Alternativtermins meldet. Nenne KEINE medizinischen Details. Sei freundlich und fasse dich kurz.",
+    "conversationId": "conv_4501ktv46hwhf1zratr3456nxh8g",
+    "callSid": "CAd473be1e557971f4af8bb291c500c2a6",
+    "assignedBy": "Dr. Michael Petsas",
+    "outcome": null,
+    "resultSummary": null,
+    "transcriptText": null,
+    "ts": 1781174324013,
+    "createdAt": {
+      "_seconds": 1781174323,
+      "_nanoseconds": 561000000
+    }
+  },
+  {
+    "id": "kJaIFSraP33DocQH5xV9",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "Clara-Wache: 3 Gespraeche geprueft, 1 Fehler gefixt, deployed - weiter testen",
+    "providerSid": "SM37cd634651953cb575be22d5d720ec82",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781299799597,
+    "createdAt": {
+      "_seconds": 1781299798,
+      "_nanoseconds": 994000000
+    }
+  },
+  {
+    "id": "kvN36zEdwU1Hzu1ImGrO",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petzlas",
+    "body": "Komm schnell.",
+    "providerSid": "SM2f67910b81a8f50671bec59094641cce",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781088540580,
+    "createdAt": {
+      "_seconds": 1781088540,
+      "_nanoseconds": 771000000
+    }
+  },
+  {
+    "id": "m8tUyCGEx82GKW1c6YOu",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petzas",
+    "body": "Komm schnell!",
+    "providerSid": "SM7e2bce765bf6b1d73c54a81805e058e2",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781080857517,
+    "createdAt": {
+      "_seconds": 1781080858,
+      "_nanoseconds": 8000000
+    }
+  },
+  {
+    "id": "nUBRPTjPea1QUn2z1uNB",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "MAS: Dein Mailkonto dr.petsas@med-dent.clinic war getrennt und ist jetzt automatisch repariert + neu geladen.",
+    "providerSid": "SM7299f90ad30cf1592e3b32779d951d4d",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781280818608,
+    "createdAt": {
+      "_seconds": 1781280818,
+      "_nanoseconds": 244000000
+    }
+  },
+  {
+    "id": "o7ETsSBU81YzfvMN6aqi",
+    "kind": "call",
+    "phone": "+491734444865",
+    "contactName": "Maria Patsea",
+    "prompt": "Du rufst im Auftrag von der Praxis an. Gesprächspartner: Maria Patsea. Biete einen kurzfristig frei gewordenen Termin am Freitag, 12. Juni um 11:00 Uhr bei Dr. Petsas (KCH Kontrolluntersuchung) an — der Besuch ist laut Recall fällig. Wenn der Termin passt: bestätige verbindlich, dass er fest reserviert wird. Wenn nicht: biete an, dass sich die Praxis wegen eines Alternativtermins meldet. Nenne KEINE medizinischen Details. Sei freundlich und fasse dich kurz.",
+    "conversationId": "conv_2701ktv46jv0e5eb03e6emkv4b5c",
+    "callSid": "CA36aaeef71df30b079c21be6872f7f3db",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781174325007,
+    "createdAt": {
+      "_seconds": 1781174324,
+      "_nanoseconds": 468000000
+    },
+    "endedAt": {
+      "_seconds": 1781174389,
+      "_nanoseconds": 662000000
+    },
+    "resultSummary": "Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich rufe an, um Ihnen einen kurzfristig frei gewordenen Termin am Freitag, den 12. Juni um 11:00 Uhr bei Dr. Petsas für eine Kontrolluntersuchung anzubieten. Der Besuch ist laut unserem System fällig. Ist dieser Termin für Sie passend? Natürlich, ich warte gerne. Bitte l…",
+    "transcriptText": "user: Hallo, wenn Sie Ihren Namen und den Grund Ihres Anrufs hinterlassen, seh ich nach, ob diese Person verfügbar ist.\nagent: Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich rufe an, um Ihnen einen kurzfristig frei gewordenen Termin am Freitag, den 12. Juni um 11:00 Uhr bei Dr. Petsas für eine Kontrolluntersuchung anzubieten. Der Besuch ist laut unserem System fällig. Ist dieser Termin für Sie passend?\nuser: Danke. Bleibe in der Leitung.\nagent: Natürlich, ich warte gerne. Bitte lassen Sie mich wissen, wenn Sie bereit sind, weiterzusprechen.\nuser: Musik beginnt\nagent: ...\nuser: Die Person ist leider nicht erreichbar. Wenn du eine weitere Nachricht hinterlassen möchtest, antworte nach dem Ton.",
+    "outcome": "no_answer",
+    "status": "done"
+  },
+  {
+    "id": "oxFwl917PleG7QHlIHsi",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "MAS: Dein Mailkonto dr.petsas@med-dent.clinic war getrennt und ist jetzt automatisch repariert + neu geladen.",
+    "providerSid": "SM021e522ace7cce8b9268236cf2ec5cde",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781280607992,
+    "createdAt": {
+      "_seconds": 1781280607,
+      "_nanoseconds": 642000000
+    }
+  },
+  {
+    "id": "r3x98jecSArvFQb7ryE9",
+    "kind": "call",
+    "phone": "+491722720212",
+    "contactName": "Jasemin Atakay",
+    "prompt": "Du rufst im Auftrag von der Praxis an. Gesprächspartner: Jasemin Atakay. Biete einen kurzfristig frei gewordenen Termin am Freitag, 12. Juni um 11:00 Uhr bei Dr. Petsas (KCH Kontrolluntersuchung) an — der Besuch ist laut Recall fällig. Wenn der Termin passt: bestätige verbindlich, dass er fest reserviert wird. Wenn nicht: biete an, dass sich die Praxis wegen eines Alternativtermins meldet. Nenne KEINE medizinischen Details. Sei freundlich und fasse dich kurz.",
+    "conversationId": "conv_0801ktv46kswes1sz6gtey0gj6tv",
+    "callSid": "CA773da81a658f67a130e1a0a168850430",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781174325963,
+    "createdAt": {
+      "_seconds": 1781174325,
+      "_nanoseconds": 459000000
+    },
+    "endedAt": {
+      "_seconds": 1781174464,
+      "_nanoseconds": 743000000
+    },
+    "resultSummary": "Sind Sie noch da? Falls Sie noch weitere Fragen oder Anliegen haben, lassen Sie es mich bitte wissen. Sind Sie noch am Apparat? Wenn Sie noch Zeit benötigen, lassen Sie es mich bitte wissen. Sind Sie noch da? Wenn Sie bereit sind, weiterzusprechen, lassen Sie es mich...",
+    "transcriptText": "user: Hallo, wenn Sie Ihren Namen und den Grund Ihres Anrufs hinterlassen, seh ich nach, ob diese Person verfügbar ist.\nagent: Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich rufe im Auftrag von der Praxis an, um Ihnen einen kurzfristig frei gewordenen Termin am Freitag, den 12. Juni um 11:00 Uhr bei Dr. Petsas für eine Kontrolluntersuchung anzubieten. Der Besuch ist laut Recall fällig. Passt Ihnen dieser Termin? Wenn nicht, kann sich die Praxis wegen eines Alternativtermins bei Ihnen melden.\nuser: Danke Ihnen. Bleibe in der Leitung.\nagent: Natürlich, ich warte gerne. Bitte lassen Sie es mich wissen, wenn Sie soweit sind.\nuser: ...\nagent: Sind Sie noch da? Bitte lassen Sie mich wissen, wenn Sie bereit sind, weiterzusprechen.\nuser: Die Person ist leider nicht erreichbar. Wenn du eine weitere Nachricht hinterlassen möchtest, antworte nach dem Ton.\nagent: Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich wollte Ihnen einen kurzfristig frei gewordenen Termin am Freitag, den 12. Juni um 11:00 Uhr bei Dr. Petsas für eine Kontrolluntersuchung anbieten. Bitte lassen Sie uns wissen, ob dieser Termin für Sie passt oder ob wir einen Alternativtermin vereinbaren sollen. Vielen Dank und einen schönen Tag.\nuser: ...\nagent: Sind Sie noch da? Falls Sie noch weitere Fragen oder Anliegen haben, lassen Sie es mich bitte wissen.\nuser: ...\nagent: Sind Sie noch am Apparat? Wenn Sie noch Zeit benötigen, lassen Sie es mich bitte wissen.\nuser: ...\nagent: Sind Sie noch da? Wenn Sie bereit sind, weiterzusprechen, lassen Sie es mich...",
+    "outcome": "no_answer",
+    "status": "done"
+  },
+  {
+    "id": "t7FJGzanRPFtyAgp6h5B",
+    "kind": "call",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "prompt": "Dies ist ein kurzer Testanruf fuer die morgige Produktdemo. Richte aus: Die Integration von Clara und Lisa funktioniert. Bedanke dich und beende das Gespraech freundlich.",
+    "conversationId": "conv_8901ktq76geefhv86a8e2bhnqxkk",
+    "callSid": "CAc9bcfb825eed398173c010b1020d7630",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781043249617,
+    "createdAt": {
+      "_seconds": 1781043249,
+      "_nanoseconds": 978000000
+    },
+    "endedAt": {
+      "_seconds": 1781043273,
+      "_nanoseconds": 699000000
+    },
+    "resultSummary": "Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich wollte Ihnen mitteilen,...",
+    "transcriptText": "user: Hallo.\nagent: Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich wollte Ihnen mitteilen,...",
+    "outcome": "reached",
+    "status": "done"
+  },
+  {
+    "id": "uvsESfxpJ7tJFVUZq0hW",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petsas",
+    "body": "MAS: Dein Mailkonto dr.petsas@med-dent.clinic war getrennt und ist jetzt automatisch repariert + neu geladen.",
+    "providerSid": "SM5867294b4a70fb7e1dff67684068e43e",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1782463702129,
+    "createdAt": {
+      "_seconds": 1782463699,
+      "_nanoseconds": 807000000
+    }
+  },
+  {
+    "id": "x3cMzSXg7vF6lf5zQfC3",
+    "kind": "call",
+    "phone": "+491776004600",
+    "contactName": "Stefan Meier",
+    "prompt": "Du rufst freundlich im Auftrag der Zahnarztpraxis Dr. Petsas an. Gespraechspartner: Stefan Meier. Regeln: keine Diagnosen, ausser dem Terminangebot keine festen Zusagen, bleib kurz und hoeflich. Anliegen: Herrn Meiers Implantate wurden vor rund zwei Jahren gesetzt - jetzt steht turnusmaessig eine kurze Routine-Kontrolle an, dazu bieten wir eine professionelle Zahnreinigung an. Biete konkret HEUTE einen Termin an, z. B. 16:30 Uhr; passt das nicht, biete morgen frueh an. Bei Rueckfragen zu Dauer, Kosten oder Ablauf: antworte ruhig und allgemein, Details klaert die Praxis bei der Bestaetigung, und lenke freundlich zum Terminangebot zurueck - bleib nicht stehen. Bei Zusage: die Praxis reserviert und meldet sich. Bei Absage: bedanke dich und biete an, dass sich die Praxis wieder meldet.",
+    "conversationId": "conv_0501kv89g1yzfy8r2rjf1x4t5w2y",
+    "callSid": "CAd75a658e8737ac419920a8a8f911e1f1",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781616085877,
+    "createdAt": {
+      "_seconds": 1781616085,
+      "_nanoseconds": 311000000
+    },
+    "endedAt": {
+      "_seconds": 1781616182,
+      "_nanoseconds": 188000000
+    },
+    "resultSummary": "Hallo, hier ist Lisa aus der Zahnarztpraxis Dr. Petsas. Ich rufe an, um mit Ihnen, Herr Meier, einen Termin für eine Routine-Kontrolle Ihrer Implantate zu vereinbaren. Diese wurden vor etwa zwei Jahren gesetzt. Dazu bieten wir auch eine professionelle Zahnreinigung an. Ich kann Ihnen heute um 16:30 Uhr einen Termin an…",
+    "transcriptText": "user: Hallo.\nagent: Hallo, hier ist Lisa aus der Zahnarztpraxis Dr. Petsas. Ich rufe an, um mit Ihnen, Herr Meier, einen Termin für eine Routine-Kontrolle Ihrer Implantate zu vereinbaren. Diese wurden vor etwa zwei Jahren gesetzt. Dazu bieten wir auch eine professionelle Zahnreinigung an. Ich kann Ihnen heute um 16:30 Uhr einen Termin anbieten. Passt Ihnen das?\nuser: Ja, das passt her.\nagent: Perfekt, dann trage ich den Termin heute um 16:30 Uhr für Sie ein. Die Praxis wird sich noch einmal bei Ihnen melden, um alles zu bestätigen. Vielen Dank und ich wünsche Ihnen einen schönen Tag.\nuser: Danke, wiederhören.\nagent: Es scheint ein kleines Problem mit der Aktualisierung zu geben, aber der Termin ist für heute um 16:30 Uhr notiert. Falls Sie noch Fragen haben, können Sie sich gerne an die Praxis wenden. Ich wünsche Ihnen einen schönen Tag...\nuser: Danke.",
+    "outcome": "reached",
+    "status": "done",
+    "hasAudio": true,
+    "transcriptItems": [
+      {
+        "role": "user",
+        "message": "Hallo.",
+        "timeInCallSecs": 1
+      },
+      {
+        "role": "agent",
+        "message": "Hallo, hier ist Lisa aus der Zahnarztpraxis Dr. Petsas. Ich rufe an, um mit Ihnen, Herr Meier, einen Termin für eine Routine-Kontrolle Ihrer Implantate zu vereinbaren. Diese wurden vor etwa zwei Jahren gesetzt. Dazu bieten wir auch eine professionelle Zahnreinigung an. Ich kann Ihnen heute um 16:30 Uhr einen Termin anbieten. Passt Ihnen das?",
+        "timeInCallSecs": 3
+      },
+      {
+        "role": "user",
+        "message": "Ja, das passt her.",
+        "timeInCallSecs": 23
+      },
+      {
+        "role": "agent",
+        "message": "Perfekt, dann trage ich den Termin heute um 16:30 Uhr für Sie ein. Die Praxis wird sich noch einmal bei Ihnen melden, um alles zu bestätigen. Vielen Dank und ich wünsche Ihnen einen schönen Tag.",
+        "timeInCallSecs": 27
+      },
+      {
+        "role": "user",
+        "message": "Danke, wiederhören.",
+        "timeInCallSecs": 38
+      },
+      {
+        "role": "agent",
+        "message": "Es scheint ein kleines Problem mit der Aktualisierung zu geben, aber der Termin ist für heute um 16:30 Uhr notiert. Falls Sie noch Fragen haben, können Sie sich gerne an die Praxis wenden. Ich wünsche Ihnen einen schönen Tag...",
+        "timeInCallSecs": 46
+      },
+      {
+        "role": "user",
+        "message": "Danke.",
+        "timeInCallSecs": 56
+      }
+    ],
+    "durationSecs": 59
+  },
+  {
+    "id": "z08J5Qm6uhPxcvYPDRve",
+    "kind": "sms",
+    "status": "done",
+    "phone": "+491776004600",
+    "contactName": "Dr. Petzlas",
+    "body": "Sie haben eine Anfrage erhalten.",
+    "providerSid": "SMdf4a7c1141211e02185017cb796e168c",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781088530486,
+    "createdAt": {
+      "_seconds": 1781088530,
+      "_nanoseconds": 706000000
+    }
+  },
+  {
+    "id": "zvXMtU3BwGArS1o6bree",
+    "kind": "call",
+    "phone": "+491788058625",
+    "contactName": "Asiyeh Ahmadzadeh-Rishehri",
+    "prompt": "Du rufst im Auftrag von der Praxis an. Gesprächspartner: Asiyeh Ahmadzadeh-Rishehri. Biete einen kurzfristig frei gewordenen Termin am Freitag, 12. Juni um 11:00 Uhr bei Dr. Petsas (KCH Kontrolluntersuchung) an — der Besuch ist laut Recall fällig. Wenn der Termin passt: bestätige verbindlich, dass er fest reserviert wird. Wenn nicht: biete an, dass sich die Praxis wegen eines Alternativtermins meldet. Nenne KEINE medizinischen Details. Sei freundlich und fasse dich kurz.",
+    "conversationId": "conv_4701ktv46gz9fzerrhsqr9nfdrhw",
+    "callSid": "CA59a1a37cfae71a881b6fac7b492a097e",
+    "assignedBy": "Dr. Michael Petsas",
+    "ts": 1781174322948,
+    "createdAt": {
+      "_seconds": 1781174322,
+      "_nanoseconds": 585000000
+    },
+    "endedAt": {
+      "_seconds": 1781174420,
+      "_nanoseconds": 6000000
+    },
+    "resultSummary": "Sind Sie noch da? Möchten Sie noch etwas besprechen? Sind Sie noch am Apparat? Bitte lassen Sie mich wissen, ob ich Ihnen noch weiterhelfen kann. Sind Sie noch da, Frau Ahmadzadeh-Rishehri? Wenn Sie keine...",
+    "transcriptText": "user: ¿Aló?\nagent: ...\nuser: Alo.\nagent: Hallo,...\nuser: Hallo?\nagent: ...\nuser: Ja, bitte schön.\nagent: Hallo, hier ist Lisa aus der Praxis Dr. Petsas. Ich rufe an, um Ihnen einen kurzfristig frei gewordenen Termin am Freitag, den 12. Juni um 11:00 Uhr anzubieten. Es handelt sich um eine Kontrolluntersuchung, die laut unserem Recall fällig ist. Passt Ihnen dieser Termin? Wenn ja, bestätige ich ihn gerne verbindlich für Sie. Wenn nicht, kann sich die Praxis wegen eines Alternativtermins melden.\nuser: Nein. Es ist nich möglich.\nagent: ...\nuser: Danke schön.\nagent: Kein Problem, die Praxis wird sich bei Ihnen wegen eines Alternativtermins melden. Ich wünsche Ihnen einen schönen Tag.\nuser: ...\nagent: Sind Sie noch da? Möchten Sie noch etwas besprechen?\nuser: ...\nagent: Sind Sie noch am Apparat? Bitte lassen Sie mich wissen, ob ich Ihnen noch weiterhelfen kann.\nuser: ...\nagent: Sind Sie noch da, Frau Ahmadzadeh-Rishehri? Wenn Sie keine...",
+    "outcome": "reached",
+    "status": "done"
+  }
+]
