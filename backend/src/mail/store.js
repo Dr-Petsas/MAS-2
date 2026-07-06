@@ -161,8 +161,14 @@ export async function getAttachmentUrl(clientId, id, idx) {
   }
 }
 
-/** Raw attachment bytes for inline preview/download, or a signed URL to redirect to. */
-export async function getAttachmentData(clientId, id, idx) {
+/**
+ * Raw attachment bytes for inline preview/download, or a signed URL to redirect
+ * to. With asBuffer:true werden auch Storage-Anhänge serverseitig geladen und
+ * als Buffer geliefert (kein Redirect) — nötig für JSON/base64-Antworten an das
+ * Frontend (Weiterleiten mit Original-Anhängen), da der Browser dem Redirect
+ * auf storage.googleapis.com wegen CORS nicht per fetch folgen kann.
+ */
+export async function getAttachmentData(clientId, id, idx, { asBuffer = false } = {}) {
   const m = await getMessage(clientId, id);
   if (!m) return { ok: false, reason: "not_found" };
   const att = (m.attachments || [])[Number(idx)];
@@ -176,6 +182,10 @@ export async function getAttachmentData(clientId, id, idx) {
   if (att.stored && att.storagePath) {
     try {
       const bucket = admin.storage().bucket();
+      if (asBuffer) {
+        const [buf] = await bucket.file(att.storagePath).download();
+        return { ok: true, buffer: buf, contentType: att.contentType, filename: att.filename };
+      }
       const [url] = await bucket.file(att.storagePath).getSignedUrl({ action: "read", expires: Date.now() + 3600 * 1000 });
       return { ok: true, redirect: url, filename: att.filename, contentType: att.contentType };
     } catch (e) {

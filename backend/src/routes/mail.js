@@ -489,6 +489,27 @@ router.get("/mail/messages/:id/attachments/:idx/raw", async (req, res) => {
 });
 
 
+// Anhang-Bytes als JSON/base64 (CORS-sicher, kein Storage-Redirect): das
+// Frontend nutzt das fuer "Weiterleiten mit Original-Anhaengen" im Composer.
+// Additiv — bestehende /raw- und Signed-URL-Routen bleiben unveraendert.
+router.get("/mail/messages/:id/attachments/:idx/base64", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const access = await mailAccess(clientId, req);
+    if (access.allowedIds) {
+      const m = await getMessage(clientId, req.params.id);
+      if (!canSeeMessage(access, m)) return res.status(403).json({ error: "account_forbidden" });
+    }
+    const out = await getAttachmentData(clientId, req.params.id, Number(req.params.idx), { asBuffer: true });
+    if (!out.ok) return res.status(out.reason === "not_found" || out.reason === "no_attachment" || out.reason === "not_stored" ? 404 : 400).json({ ok: false, ...out });
+    res.json({ ok: true, clientId, filename: out.filename || "anhang", contentType: out.contentType || "application/octet-stream", size: out.buffer.length, base64: out.buffer.toString("base64") });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
 // Ad-hoc / live-preview letter PDF (no case). Body: { to, subject, body }.
 router.post("/mail/letter", async (req, res) => {
   try {

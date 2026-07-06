@@ -37,7 +37,10 @@ import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL } from "./routes/_shared.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
-app.use(express.json({ limit: "8mb" }));
+// 25mb: Nadines Composer erlaubt bis 15 MB Anhaenge pro Mail; base64 in JSON
+// blaeht das auf ~20 MB auf. Mit dem alten 8mb-Limit scheiterte /mail/send ab
+// ~6 MB echter Dateigroesse mit einem nichtssagenden HTTP 413.
+app.use(express.json({ limit: "25mb" }));
 
 // Request id + structured access log. We log method, route path (NOT the query
 // string, which can carry patient names in ?q=), status, duration and the
