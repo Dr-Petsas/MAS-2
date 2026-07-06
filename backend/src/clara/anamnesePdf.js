@@ -21,9 +21,11 @@ import { isAffirmative, isNegative, catFor, clip, topicFromQuestion } from "./an
 //
 // Die Findings-Heuristik (NOTABLE-Kategorien) ist DIESELBE wie fuer
 // unsignierte Boegen (anamnese.js) — beide Wege muessen dieselben Flags
-// melden. Ergebnis wird pro Dokument in Firestore gecacht
-// (mas_anamnese_pdf/{docId}), denn ein signiertes PDF aendert sich nie mehr.
-// NUR LESEN: weder PDF noch pdocument werden veraendert.
+// melden. Ergebnis wird pro Patient+Dokument in Firestore gecacht
+// (mas_anamnese_pdf/{patientId}_{docId}), denn ein signiertes PDF aendert
+// sich nie mehr. Der Patient MUSS in den Key: Massenversand vergibt dieselbe
+// pdocument-ID an viele Patienten. NUR LESEN: weder PDF noch pdocument
+// werden veraendert.
 //
 // Bewusste Grenze: Freitext-Antworten auf reine Text-Labels ("Sonstige
 // Stoffwechsel-Erkrankungen:") sind im flachen Textdump nicht sicher von
@@ -34,7 +36,11 @@ import { isAffirmative, isNegative, catFor, clip, topicFromQuestion } from "./an
 // ============================================================================
 
 const CACHE_COL = "mas_anamnese_pdf";
-const CACHE_VERSION = 2; // hochzaehlen, wenn Parser/Heuristik sich aendern
+// v3 (06.07.2026): Cache-Key ist jetzt patientId_docId. Vorher nur docId —
+// ein Anamnese-Massenversand vergibt aber DIESELBE pdocument-ID an viele
+// Patienten (20x zGtAS... gefunden), und so bekamen alle die Befunde des
+// zuerst verarbeiteten Patienten (Vorfall: "ueberall Hashimoto/Nickel").
+const CACHE_VERSION = 3; // hochzaehlen, wenn Parser/Heuristik sich aendern
 
 const CHECKED = "\ue800";
 const UNCHECKED = "\uf096";
@@ -222,7 +228,10 @@ export async function findingsAusSigniertemPdf(clientId, locationId, patientId, 
   const docId = String(pdoc?.id || "").trim();
   if (!docId) return null;
   const db = admin.firestore();
-  const cacheRef = db.collection("clients").doc(clientId).collection(CACHE_COL).doc(docId);
+  // Cache-Key MUSS den Patienten enthalten: pdocument-IDs sind bei
+  // Massenversand ueber viele Patienten hinweg identisch, das PDF in Storage
+  // liegt aber pro Patient (…/patients/{pid}/documents/{docId}.pdf).
+  const cacheRef = db.collection("clients").doc(clientId).collection(CACHE_COL).doc(`${patientId}_${docId}`);
 
   try {
     const snap = await cacheRef.get();

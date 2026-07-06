@@ -59,14 +59,19 @@ check("Parser: Ueberschrift 'Allergien' nicht als Befund", !f.some((x) => x.text
 
 // --- B) Echte Alt-PDFs ------------------------------------------------------
 const db = admin.firestore();
+// ACHTUNG: Galatola und Sykioti teilen sich DIESELBE pdocument-ID
+// (Massenversand) — genau der Fall, der den Cache frueher vergiftete
+// (alle bekamen Galatolas Hashimoto/Nickel). Beide muessen ihre EIGENEN
+// Befunde liefern; der Cache-Key ist deshalb patientId_docId.
 const FAELLE = [
   { pid: "02IVQRkEOnanyfznWNao", docId: "1Hjf75EkieTP7jvfAF0P", wer: "Gordula Küppers (2022)", erwartet: [["Medikamente", "candesatan"]] },
   { pid: "04VJQei6MQNwPyv5ocph", docId: "zGtAS84YTVNOmP7gfbRo", wer: "Maria Galatola (2025)", erwartet: [["Allergie", "nickel"], ["Vorerkrankung", "hashimoto"]] },
+  { pid: "04qBzW3i1KKHNI7N3ob7", docId: "zGtAS84YTVNOmP7gfbRo", wer: "Eirini Sykioti (2025, gleiche Doc-ID wie Galatola)", erwartet: [["Medikamente", "ametriptilin"]], verboten: ["hashimoto", "nickel"] },
   { pid: "03xtEagU6pyFjZDDflfd", docId: "MctyI3ojCond1zphfnqv", wer: "Serafim Papathanassiou (2022, alles Nein)", erwartet: [] },
 ];
 
 for (const fall of FAELLE) {
-  await db.collection("clients").doc(CLIENT).collection("mas_anamnese_pdf").doc(fall.docId).delete().catch(() => {});
+  await db.collection("clients").doc(CLIENT).collection("mas_anamnese_pdf").doc(`${fall.pid}_${fall.docId}`).delete().catch(() => {});
 }
 
 for (const fall of FAELLE) {
@@ -78,10 +83,13 @@ for (const fall of FAELLE) {
   for (const [cat, sub] of fall.erwartet) {
     check(`${fall.wer}: ${cat} enthaelt "${sub}"`, r.findings.some((x) => x.category === cat && x.text.toLowerCase().includes(sub)));
   }
+  for (const sub of (fall.verboten || [])) {
+    check(`${fall.wer}: "${sub}" darf NICHT auftauchen (fremder Patient)`, !r.findings.some((x) => x.text.toLowerCase().includes(sub)), JSON.stringify(r.findings));
+  }
   if (!fall.erwartet.length) {
     check(`${fall.wer}: keine Befunde (alles verneint)`, r.findings.length === 0, JSON.stringify(r.findings));
   }
-  const cache = await db.collection("clients").doc(CLIENT).collection("mas_anamnese_pdf").doc(fall.docId).get();
+  const cache = await db.collection("clients").doc(CLIENT).collection("mas_anamnese_pdf").doc(`${fall.pid}_${fall.docId}`).get();
   check(`${fall.wer}: Cache gefuellt`, cache.exists && Array.isArray(cache.data()?.findings));
 }
 
