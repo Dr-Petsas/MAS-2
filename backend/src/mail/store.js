@@ -38,13 +38,35 @@ function listShape(id, d) {
 }
 
 export async function listMessages(clientId, { accountId, accountIds, folder = "INBOX", limit = 50 } = {}) {
+  // Neueste zuerst DIREKT per Firestore-Sortierung (Composite-Index folder+date
+  // bzw. accountId+folder+date). Vorfall 06.07.2026: 458 Werbemails an einem Tag
+  // schoben den Posteingang ueber den 300er-Deckel der alten index-freien
+  // Abfrage (ohne orderBy liefert Firestore nach Doc-ID!) — neue Mails (Dampsoft,
+  // Patienten) waren gespeichert, aber im Client unsichtbar.
+  try {
+    let q = msgs(clientId).where("folder", "==", folder);
+    if (accountId) q = q.where("accountId", "==", accountId);
+    // Bei Nutzer-Scoping werden fremde Konten erst im Speicher entfernt —
+    // dafuer mehr holen, damit nach dem Filtern noch `limit` Zeilen bleiben.
+    const fetchN = !accountId && Array.isArray(accountIds) ? Math.min(500, limit * 3) : limit;
+    const snap = await q.orderBy("date", "desc").limit(fetchN).get();
+    let rows = snap.docs.map((doc) => listShape(doc.id, doc.data()));
+    if (!accountId && Array.isArray(accountIds)) {
+      const set = new Set(accountIds);
+      rows = rows.filter((r) => set.has(r.accountId));
+    }
+    return rows.slice(0, limit);
+  } catch (e) {
+    // Index fehlt (FAILED_PRECONDITION) => alter In-Memory-Pfad als Notbehelf,
+    // damit der Posteingang nie komplett ausfaellt. Alles andere weiterwerfen.
+    const msg = String(e?.message || "");
+    if (e?.code !== 9 && !/index/i.test(msg)) throw e;
+    console.warn(`[mail-store] listMessages ohne Index (Fallback aktiv): ${msg.slice(0, 140)}`);
+  }
   let q = msgs(clientId).where("folder", "==", folder);
   if (accountId) q = q.where("accountId", "==", accountId);
-  // Avoid composite-index requirements: filter in query, sort in memory.
   const snap = await q.limit(Math.min(300, limit * 3)).get();
   let rows = snap.docs.map((doc) => listShape(doc.id, doc.data()));
-  // Per-user mailbox scoping: when a set of accessible accounts is given, keep
-  // only messages from those mailboxes (admins pass no set and see everything).
   if (!accountId && Array.isArray(accountIds)) {
     const set = new Set(accountIds);
     rows = rows.filter((r) => set.has(r.accountId));

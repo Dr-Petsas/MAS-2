@@ -247,10 +247,15 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
 
   await ref.set(doc, { merge: true });
   const created = !existing.exists;
+  // Frische-Wache: Adressbuch und Gehirn nur fuer Mails der letzten 14 Tage
+  // (Fenster wie backfillInboundMailBrain) — ein Historien-Backfill (07.07.2026)
+  // darf keine Monate alten Mails als "neue" Vorgaenge in Briefings/Tickets
+  // spuelen oder lastSeenAt im geteilten Adressbuch zurueckdrehen.
+  const isFresh = (doc.date || 0) > Date.now() - 14 * 86400000;
   // Only practice-relevant inbound senders enter the address book — including
   // the phone number from the signature, so "Ruf Herrn Kasper an" works without
   // re-digging through the inbox.
-  if ((direction || "in") === "in" && classification.relevant !== false) {
+  if ((direction || "in") === "in" && classification.relevant !== false && isFresh) {
     const sigPhone = extractPhoneFromText(`${text.value} ${html.value.replace(/<[^>]+>/g, " ")}`);
     await upsertContact(clientId, from, { category: classification.category, subject: doc.subject, ts: doc.date, phone: sigPhone });
   }
@@ -258,7 +263,7 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
   // Clara's timeline and the case/ticket system see patient mail IMMEDIATELY —
   // not only once someone happens to reply. Idempotent (stable event id) and
   // failure-safe (recordCommunication queues a retry on error, never throws).
-  if (created && (direction || "in") === "in" && classification.relevant !== false) {
+  if (created && (direction || "in") === "in" && classification.relevant !== false && isFresh) {
     await recordInboundMail(clientId, id, doc).catch(() => { /* outbox already captured it */ });
   }
   return { id, created, threadId };
@@ -318,6 +323,9 @@ async function recordInboundMail(clientId, msgId, doc) {
     channel: "nadine_email",
     direction: "in",
     type: "interaction",
+    // Ereignis-Zeit = Mail-Eingang, nicht Sync-Zeit — nachgeholte Mails landen
+    // an der richtigen Stelle der Timeline statt als "heute neu" im Briefing.
+    ts: doc.date || undefined,
     counterparty: { kind: isPatient ? "patient" : "unknown", name: senderLabel, ref: senderAddr || null },
     subject,
     signals,
@@ -496,6 +504,37 @@ export async function syncAll(clientId, opts = {}) {
 
 // --- SMTP ------------------------------------------------------------------
 
+// data:-Bilder im HTML (Logo/Unterschrift/Stempel aus dem Signatur-Editor) fuer
+// den VERSAND in CID-Anhaenge umwandeln — Gmail/Outlook zeigen data:-URIs nicht
+// an, cid:-referenzierte Inline-Anhaenge dagegen zuverlaessig. Die in Firestore
+// gespeicherte Kopie behaelt die data:-URIs (Anzeige in Nadines Gesendet-Ordner).
+function inlineImagesToCid(html) {
+  if (!html || !/src=["']data:image\//i.test(html)) return { html, attachments: [] };
+  const attachments = [];
+  let i = 0;
+  const out = String(html).replace(
+    /src=(["'])data:(image\/[a-z0-9.+-]+);base64,([^"']+)\1/gi,
+    (_m, q, mime, b64) => {
+      i += 1;
+      const cid = `inline-${i}@mas.local`;
+      const ext = (mime.split("/")[1] || "png").replace(/[^a-z0-9]/gi, "") || "png";
+      try {
+        attachments.push({
+          filename: `inline-${i}.${ext}`,
+          content: Buffer.from(b64, "base64"),
+          contentType: mime,
+          cid,
+          contentDisposition: "inline",
+        });
+      } catch {
+        return `src=${q}data:${mime};base64,${b64}${q}`; // defektes base64: unveraendert lassen
+      }
+      return `src=${q}cid:${cid}${q}`;
+    }
+  );
+  return { html: out, attachments };
+}
+
 /**
  * Send a message via an account's SMTP, store an outgoing copy, and return the
  * messageId. In DRY_RUN we skip the network but still persist the outgoing copy,
@@ -527,6 +566,13 @@ export async function sendMail(clientId, accountId, { to, cc, bcc, subject, text
       auth: { user: acc.smtp.user, pass: acc.smtpPassword },
     });
     try {
+      // Eingebettete data:-Bilder nur fuer den Draht in CID-Anhaenge umwandeln;
+      // die persistierte Kopie unten nutzt weiterhin das Original-HTML.
+      const inline = inlineImagesToCid(html);
+      const userAtts = attachments?.length
+        ? attachments.map((a) => ({ filename: a.filename || "attachment", content: Buffer.from(a.content, "base64") }))
+        : [];
+      const allAtts = [...userAtts, ...inline.attachments];
       info = await transporter.sendMail({
         from,
         to: toList.join(", "),
@@ -534,13 +580,11 @@ export async function sendMail(clientId, accountId, { to, cc, bcc, subject, text
         bcc: bcc?.length ? (Array.isArray(bcc) ? bcc.join(", ") : bcc) : undefined,
         subject,
         text: text || undefined,
-        html: html || undefined,
+        html: inline.html || undefined,
         messageId,
         inReplyTo: replyToMessageId || undefined,
         references: replyToMessageId || undefined,
-        attachments: attachments?.length
-          ? attachments.map((a) => ({ filename: a.filename || "attachment", content: Buffer.from(a.content, "base64") }))
-          : undefined,
+        attachments: allAtts.length ? allAtts : undefined,
       });
     } catch (smtpErr) {
       // Don't throw — surface a clean failure so the route returns a useful body
