@@ -195,7 +195,8 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
   const ref = msgs(clientId).doc(id);
   const existing = await ref.get();
 
-  const threadId = existing.exists ? existing.data().threadId : await deriveThreadId(clientId, parsed, messageId);
+  const prev = existing.exists ? existing.data() : null;
+  const threadId = prev ? prev.threadId : await deriveThreadId(clientId, parsed, messageId);
   const text = clip(parsed.text || "");
   const html = clip(parsed.html || "");
   const from = addr(parsed.from) || { name: "", address: "" };
@@ -203,11 +204,25 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
   const cc = addrList(parsed.cc);
   const attachments = await storeAttachments(clientId, account.id, id, parsed.attachments || []);
 
+  // Ziel-Ordner bestimmen. Zwei Sonderfaelle:
+  //  - Papierkorb bleibt Papierkorb (sonst holt der naechste Sync die Mail zurueck).
+  //  - Selbst-adressierte Mails liegen auf dem Server in INBOX UND Gesendet;
+  //    wir fuehren EIN Dokument je Message-ID => der Posteingang gewinnt, sonst
+  //    verschwaende die Mail dort, sobald der Gesendet-Sync sie erneut sieht.
+  let effFolder = folder || "INBOX";
+  let effDirection = direction || "in";
+  if (prev?.folder === "Trash") {
+    effFolder = "Trash";
+    effDirection = prev.direction || effDirection;
+  } else if (prev?.folder === "INBOX" && effFolder === "Sent") {
+    effFolder = "INBOX";
+    effDirection = prev.direction || "in";
+  }
+
   // Praxisrelevanz + Kategorie: keyword-classify inbound mail at sync time so the
   // badges are always present. Keep any prior LLM refinement (aiClassifiedAt).
   let classification = {};
-  if ((direction || "in") === "in") {
-    const prev = existing.exists ? existing.data() : null;
+  if (effDirection === "in") {
     if (prev?.aiClassifiedAt) {
       classification = { category: prev.category || "Sonstiges", relevant: prev.relevant !== false, relevanceReason: prev.relevanceReason || "" };
     } else {
@@ -218,10 +233,8 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
 
   const doc = {
     accountId: account.id,
-    // Einmal in den Papierkorb verschobene Mails dort lassen, sonst würde der
-    // nächste Sync sie zurück in den Posteingang holen.
-    folder: existing.exists && existing.data().folder === "Trash" ? "Trash" : (folder || "INBOX"),
-    direction: direction || "in",
+    folder: effFolder,
+    direction: effDirection,
     uid: uid || null,
     messageId,
     threadId,
@@ -232,7 +245,7 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
     cc,
     subject: parsed.subject || "(kein Betreff)",
     date: parsed.date ? new Date(parsed.date).getTime() : Date.now(),
-    seen: seen != null ? !!seen : direction === "out",
+    seen: seen != null ? !!seen : effDirection === "out",
     preview: (parsed.text || "").replace(/\s+/g, " ").trim().slice(0, 200),
     textBody: text.value,
     textTruncated: text.truncated,
@@ -255,7 +268,7 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
   // Only practice-relevant inbound senders enter the address book — including
   // the phone number from the signature, so "Ruf Herrn Kasper an" works without
   // re-digging through the inbox.
-  if ((direction || "in") === "in" && classification.relevant !== false && isFresh) {
+  if (effDirection === "in" && classification.relevant !== false && isFresh) {
     const sigPhone = extractPhoneFromText(`${text.value} ${html.value.replace(/<[^>]+>/g, " ")}`);
     await upsertContact(clientId, from, { category: classification.category, subject: doc.subject, ts: doc.date, phone: sigPhone });
   }
@@ -263,7 +276,7 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
   // Clara's timeline and the case/ticket system see patient mail IMMEDIATELY —
   // not only once someone happens to reply. Idempotent (stable event id) and
   // failure-safe (recordCommunication queues a retry on error, never throws).
-  if (created && (direction || "in") === "in" && classification.relevant !== false && isFresh) {
+  if (created && effDirection === "in" && classification.relevant !== false && isFresh) {
     await recordInboundMail(clientId, id, doc).catch(() => { /* outbox already captured it */ });
   }
   return { id, created, threadId };
@@ -447,8 +460,24 @@ export async function testImap(creds) {
   }
 }
 
-/** Pull the most recent messages from one account's INBOX into Firestore. */
-export async function syncAccount(clientId, accountId, { limit = 30 } = {}) {
+/** Den Gesendet-Ordner des Servers finden: erst IMAP special-use (\Sent),
+ *  dann uebliche Namen (Strato: "Sent Items"). null = keiner vorhanden. */
+function findSentPath(boxes = []) {
+  const byUse = boxes.find((b) => String(b.specialUse || "").toLowerCase() === "\\sent");
+  if (byUse) return byUse.path;
+  const names = new Set(["sent items", "sent", "sent messages", "gesendet", "gesendete objekte", "gesendete elemente", "inbox.sent"]);
+  const hit = boxes.find((b) => names.has(String(b.path || "").toLowerCase()) || names.has(String(b.name || "").toLowerCase()));
+  return hit?.path || null;
+}
+
+/**
+ * Pull the most recent messages of one account into Firestore — INBOX (in)
+ * UND Gesendet-Ordner des Servers (out, z. B. vom Handy/Outlook verschickt).
+ * Vorfall 07.07.2026: "Postausgang" zeigte nur Nadines eigene Kopien, weil der
+ * Server-Gesendet-Ordner nie synchronisiert wurde. inbox/sent sind einzeln
+ * schaltbar (Backfill nutzt das).
+ */
+export async function syncAccount(clientId, accountId, { limit = 30, inbox = true, sent = true } = {}) {
   const acc = await getAccountWithSecrets(clientId, accountId);
   if (!acc) return { ok: false, reason: "not_found" };
   if (acc.active === false) return { ok: false, reason: "inactive" };
@@ -458,27 +487,38 @@ export async function syncAccount(clientId, accountId, { limit = 30 } = {}) {
   let fetched = 0, created = 0, failed = 0;
   try {
     await withTimeout(client.connect(), 20000, "IMAP-Verbindung", () => { try { client.close(); } catch { /* */ } });
-    const lock = await withTimeout(client.getMailboxLock("INBOX"), 10000, "IMAP-Postfachsperre", () => { try { client.close(); } catch { /* */ } });
-    try {
-      const exists = Number(client.mailbox?.exists || 0);
-      if (exists < 1) { await markSync(clientId, accountId, {}); return { ok: true, fetched: 0, created: 0 }; }
-      const from = Math.max(1, exists - (limit - 1));
-      for await (const message of client.fetch(`${from}:*`, { uid: true, flags: true, source: true })) {
-        fetched++;
-        // Per-message isolation: one malformed mail must not abort the whole
-        // sync. Count it as failed and keep going.
-        try {
-          const parsed = await simpleParser(message.source);
-          const seen = message.flags?.has?.("\\Seen") ?? false;
-          const r = await storeMessage(clientId, acc, { parsed, uid: message.uid, folder: "INBOX", direction: "in", seen });
-          if (r.created) created++;
-        } catch (msgErr) {
-          failed++;
-          console.error(`[mail-sync] message uid=${message.uid} skipped:`, msgErr?.message || msgErr);
+
+    const jobs = [];
+    if (inbox) jobs.push({ path: "INBOX", folder: "INBOX", direction: "in" });
+    if (sent) {
+      const boxes = await client.list().catch(() => []);
+      const sentPath = findSentPath(boxes);
+      if (sentPath) jobs.push({ path: sentPath, folder: "Sent", direction: "out" });
+    }
+
+    for (const job of jobs) {
+      const lock = await withTimeout(client.getMailboxLock(job.path), 10000, "IMAP-Postfachsperre", () => { try { client.close(); } catch { /* */ } });
+      try {
+        const exists = Number(client.mailbox?.exists || 0);
+        if (exists < 1) continue;
+        const from = Math.max(1, exists - (limit - 1));
+        for await (const message of client.fetch(`${from}:*`, { uid: true, flags: true, source: true })) {
+          fetched++;
+          // Per-message isolation: one malformed mail must not abort the whole
+          // sync. Count it as failed and keep going.
+          try {
+            const parsed = await simpleParser(message.source);
+            const seen = job.direction === "out" ? true : (message.flags?.has?.("\\Seen") ?? false);
+            const r = await storeMessage(clientId, acc, { parsed, uid: message.uid, folder: job.folder, direction: job.direction, seen });
+            if (r.created) created++;
+          } catch (msgErr) {
+            failed++;
+            console.error(`[mail-sync] ${job.path} uid=${message.uid} skipped:`, msgErr?.message || msgErr);
+          }
         }
+      } finally {
+        lock.release();
       }
-    } finally {
-      lock.release();
     }
     await markSync(clientId, accountId, {});
     return { ok: true, fetched, created, failed };
@@ -613,7 +653,9 @@ export async function sendMail(clientId, accountId, { to, cc, bcc, subject, text
         content: Buffer.from(a.content, "base64"),
       })),
     },
-    folder: "SENT",
+    // "Sent" (nicht mehr "SENT"): derselbe Ordnername, den auch der Server-
+    // Gesendet-Sync und der Kontenbaum (folderCounts) verwenden.
+    folder: "Sent",
     direction: "out",
     seen: true,
   });

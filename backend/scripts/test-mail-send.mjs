@@ -51,9 +51,11 @@ await addUpdate(TEST, link.caseId, { by: "Nadine", kind: "note", text: `E-Mail g
 const resolved = await setStatus(TEST, link.caseId, "resolved", { by: "Nadine", note: "Per E-Mail beantwortet" });
 check(resolved.ok, "Vorgang nach Versand erledigt");
 
-const sentBox = await listMessages(TEST, { folder: "SENT" });
-check(sentBox.length === 1 && sentBox[0].to?.[0]?.address === "karl.huber@example.de", "Ausgangskopie im Ordner SENT");
-check(sentBox[0].direction === "out" && sentBox[0].subject === "Ihre Terminbestätigung", "Ausgangsnachricht korrekt gespeichert");
+// Seit 07.07.2026 heisst der Ordner kanonisch "Sent" (wie Server-Sync und
+// Kontenbaum) — vorher "SENT".
+const sentBox = await listMessages(TEST, { folder: "Sent" });
+check(sentBox.length === 1 && sentBox[0].to?.[0]?.address === "karl.huber@example.de", "Ausgangskopie im Ordner Sent");
+check(sentBox[0]?.direction === "out" && sentBox[0]?.subject === "Ihre Terminbestätigung", "Ausgangsnachricht korrekt gespeichert");
 
 const finalCase = await getCase(TEST, link.caseId);
 check(finalCase.status === "resolved", "Status = erledigt");
