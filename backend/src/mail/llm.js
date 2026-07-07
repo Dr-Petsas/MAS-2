@@ -12,8 +12,25 @@ function cfg() {
   };
 }
 
+function stripThink(text) {
+  // qwen3 may emit <think>…</think> reasoning inline — strip it for clean output.
+  return String(text || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
+
 /**
  * Chat completion against the local model.
+ *
+ * Vorfall 07.07.2026 ("KI-Antwort ist leer"): Ollama >= 0.31 fuehrt bei
+ * Denk-Modellen (qwen3:8b) das Reasoning als EIGENES Feld und zaehlt es aufs
+ * max_tokens-Budget an. Bei laengerem Kontext frisst das Denken das ganze
+ * Budget auf (finish_reason=length) und `content` kommt LEER zurueck — Nadines
+ * Entwuerfe/Klassifikationen waren dann leere Strings. Deshalb laeuft der
+ * Aufruf jetzt primaer ueber Ollamas native API mit `think:false` (schneller,
+ * kein Denk-Overhead); ist die Basis-URL kein Ollama (z. B. vLLM), greift der
+ * bisherige OpenAI-kompatible Pfad. Leere Antworten sind ein Fehler
+ * (reason=llm_empty), damit Aufrufer auf ihre Vorlagen zurueckfallen statt
+ * leere Texte anzuzeigen.
+ *
  * @param {{role:string, content:string}[]} messages
  * @param {{ temperature?: number, maxTokens?: number, timeoutMs?: number }} opts
  * @returns {Promise<{ok:boolean, text:string, reason?:string, model:string}>}
@@ -23,6 +40,35 @@ export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeo
   const base = (baseOverride || c.base).replace(/\/+$/, "");
   const apiKey = c.apiKey;
   const model = modelOverride || c.model;
+
+  // 1) Ollama-nativ (/api/chat) mit abgeschaltetem Denken.
+  const nativeBase = base.replace(/\/v1$/, "");
+  {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const resp = await fetch(`${nativeBase}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, messages, think: false, stream: false, options: { temperature, num_predict: maxTokens } }),
+        signal: ctrl.signal,
+      });
+      if (resp.ok) {
+        const data = await resp.json().catch(() => null);
+        const text = stripThink(data?.message?.content);
+        if (text) return { ok: true, text, model };
+        // leer => unten den OpenAI-Pfad probieren statt leeren Text liefern
+      }
+      // Kein Ollama (404) oder Fehlerstatus => OpenAI-kompatibler Pfad unten.
+    } catch (e) {
+      if (e?.name === "AbortError") return { ok: false, text: "", reason: "llm_timeout", model };
+      // Netzfehler: unten weiterprobieren (gleiche Basis kann /v1 trotzdem koennen).
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  // 2) OpenAI-kompatibler Pfad (vLLM, LM Studio, Nicht-Ollama-Server).
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -37,9 +83,8 @@ export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeo
       return { ok: false, text: "", reason: `llm_http_${resp.status}`, model, detail: detail.slice(0, 200) };
     }
     const data = await resp.json();
-    let text = data?.choices?.[0]?.message?.content || "";
-    // qwen3 may emit <think>…</think> reasoning — strip it for clean output.
-    text = String(text).replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    const text = stripThink(data?.choices?.[0]?.message?.content);
+    if (!text) return { ok: false, text: "", reason: "llm_empty", model };
     return { ok: true, text, model };
   } catch (e) {
     const reason = e?.name === "AbortError" ? "llm_timeout" : "llm_unreachable";
