@@ -59,16 +59,30 @@ $sfuDetail = 'kein Listener'
 if ($sfu) { $sfuDetail = 'lauscht' }
 Add-Check 'LiveKit SFU (7880)' $sfu $sfuDetail 'livekit-server.exe via start-mas-stack.ps1 starten'
 
-# --- 4) Ollama: Modell geladen ---------------------------------------------
+# --- 4) LLM: Modell erreichbar (lokal Ollama ODER remote vLLM) -------------
+$llmLocal = ($llmBase -match '127\.0\.0\.1:11434|localhost:11434')
 $modelLoaded = $false
 try {
-    $ps = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/ps' -TimeoutSec 6 -ErrorAction Stop
-    $modelLoaded = [bool]($ps.models | Where-Object { $_.name -eq $llmModel })
-    $names = ($ps.models | ForEach-Object { $_.name }) -join ', '
-    if (-not $names) { $names = '(keins)' }
-    Add-Check 'Ollama Modell geladen' $modelLoaded ("erwartet '" + $llmModel + "'; geladen: " + $names) ('ollama run ' + $llmModel + '  (laedt + haelt warm); .env LIVEAVATAR_LLM_MODEL pruefen')
+    if ($llmLocal) {
+        $ps = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/ps' -TimeoutSec 6 -ErrorAction Stop
+        $modelLoaded = [bool]($ps.models | Where-Object { $_.name -eq $llmModel })
+        $names = ($ps.models | ForEach-Object { $_.name }) -join ', '
+        if (-not $names) { $names = '(keins)' }
+        Add-Check 'LLM Modell (lokal)' $modelLoaded ("erwartet '" + $llmModel + "'; geladen: " + $names) ('ollama run ' + $llmModel + '  (laedt + haelt warm); .env LIVEAVATAR_LLM_MODEL pruefen')
+    } else {
+        $models = Invoke-RestMethod -Uri ($llmBase.TrimEnd('/') + '/models') -TimeoutSec 8 -ErrorAction Stop
+        $ids = @($models.data | ForEach-Object { $_.id })
+        $modelLoaded = $ids -contains $llmModel
+        $names = ($ids -join ', ')
+        if (-not $names) { $names = '(keins)' }
+        Add-Check 'LLM Modell (remote)' $modelLoaded ("erwartet '" + $llmModel + "' via " + $llmBase + "; verfuegbar: " + $names) ('vLLM auf ' + $llmBase + ' pruefen; Tailscale/VPN aktiv?')
+    }
 } catch {
-    Add-Check 'Ollama Modell geladen' $false 'Ollama nicht erreichbar (11434)' 'Ollama-App starten'
+    if ($llmLocal) {
+        Add-Check 'LLM Modell (lokal)' $false 'Ollama nicht erreichbar (11434)' 'Ollama-App starten'
+    } else {
+        Add-Check 'LLM Modell (remote)' $false ('LLM nicht erreichbar: ' + $llmBase) ('vLLM-Server pruefen; Tailscale/VPN aktiv?')
+    }
 }
 
 # --- 5) TOOL-CALLING (der entscheidende Check, OHNE Nebenwirkungen) ---------
@@ -78,13 +92,17 @@ try {
 $toolOk = $false
 $toolDetail = ''
 try {
+    # WICHTIG (09.07.2026): Wie der echte Worker-Pfad anfragen. qwen3.6 ist ein
+    # Reasoning-Modell; ohne '/no_think' und mit knappem Budget verbraucht es die
+    # Tokens im Denk-Block und liefert den tool_call nicht -> falsch-ROT. Der
+    # Worker haengt '/no_think' an und gibt genug Budget. Hier identisch.
     $payload = @{
         model       = $llmModel
         stream      = $false
-        max_tokens  = 80
-        temperature = 0.3
+        max_tokens  = 256
+        temperature = 0.0
         messages    = @(
-            @{ role = 'system'; content = 'Du bist ein Praxis-Assistent. Nutze fuer Kalenderfragen das passende Tool.' },
+            @{ role = 'system'; content = 'Du bist ein Praxis-Assistent. Nutze fuer Kalenderfragen das passende Tool. /no_think' },
             @{ role = 'user';   content = 'Was habe ich morgen fuer Termine?' }
         )
         tools = @(@{
