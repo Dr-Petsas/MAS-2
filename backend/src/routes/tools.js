@@ -5,7 +5,7 @@ import express from "express";
 import { completeTask } from "../tools/createTask.js";
 import { assertAppEnabled } from "../entitlements.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot, ensureBerlinTz } from "../clara/booking.js";
-import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory } from "../clara/daySchedule.js";
+import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory } from "../clara/daySchedule.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "../clara/anamnese.js";
 import { polishForChannel } from "../clara/dictation.js";
 import { buildSpokenDayOverview } from "../clara/dayOverview.js";
@@ -616,7 +616,29 @@ router.post("/tools/day-appointments", async (req, res) => {
       log.warn("day-appointments memory hints failed", { clientId, err: String(err?.message || err) });
     }
 
-    const message = [list, memory].filter(Boolean).join(" ");
+    // Vorbereitung pro Tagespatient (09.07.2026): Anamnese-Auffaelligkeiten
+    // (Allergien/Medikamente/Vorerkrankungen) + letzte Behandlung. Pro Patient
+    // zwei Reads — deshalb auf die ersten MEMORY_HINT_MAX Patienten begrenzt und
+    // strikt best-effort: die Liste darf nie an der Vorbereitung scheitern.
+    let prep = "";
+    try {
+      const uniquePids = [...new Set(appts.filter((a) => !a.isAbsence && a.patientId).map((a) => a.patientId))].slice(0, 5);
+      const prepMap = new Map();
+      await Promise.all(uniquePids.map(async (pid) => {
+        const [ana, hist] = await Promise.all([
+          getPatientAnamnese(clientId, { patientId: pid }).catch(() => null),
+          getPatientAppointments(clientId, { patientId: pid }).catch(() => null),
+        ]);
+        const findings = (ana && ana.ok && ana.hasAnamnese) ? (ana.findings || []) : [];
+        const lastAppt = (hist && hist.ok) ? (hist.last || null) : null;
+        if (findings.length || lastAppt) prepMap.set(pid, { findings, lastAppt });
+      }));
+      prep = buildSpokenPatientPrep(appts, prepMap);
+    } catch (err) {
+      log.warn("day-appointments patient prep failed", { clientId, err: String(err?.message || err) });
+    }
+
+    const message = [list, memory, prep].filter(Boolean).join(" ");
     try { await emitCommand(clientId, { type: "navigate", date: day.date, calendarId: calendarId || null }); } catch { /* no live session */ }
     return res.json({ ok: true, date: day.date, message, count: appts.filter((a) => !a.isAbsence).length });
   } catch (e) {

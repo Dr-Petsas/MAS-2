@@ -2,7 +2,7 @@ import "dotenv/config";
 import admin from "../src/firebase.js";
 import { masCollection } from "../src/tenant.js";
 import { ensureBerlinTz } from "../src/clara/booking.js";
-import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, todayBerlin } from "../src/clara/daySchedule.js";
+import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin } from "../src/clara/daySchedule.js";
 
 // Clara day-schedule briefing: pure compute (counts/gaps/highlights/spoken) plus
 // a Firestore integration run that seeds a throwaway tenant's calendar and reads
@@ -96,6 +96,44 @@ async function run() {
   check(/Schlafschiene/.test(hints), "E-Mail-Inhalt (Snippet) wird vorgelesen");
   console.log("  hints: " + hints);
   check(buildSpokenMemoryHints(day1, new Map()) === "", "Ohne Vorgänge -> keine Hinweise");
+
+  console.log("\n=== Dedup: Docs-Ampel + 'Dokumente'-Vorgang nicht doppelt (09.07.2026) ===");
+  // day1: Thrandorf (pT) hat docsStatus 'yellow' -> die Termin-Zeile meldet die
+  // Unterlagen schon. Diedershagen (pD) hat 'green'.
+  const dedupMap = new Map([
+    ["pT", [{ topic: "document", status: "open", assignee: "Nadine",
+      lastContactAt: Date.now() - 86400000,
+      updates: [{ kind: "contact", ts: Date.now() - 86400000, text: "Unterlagen noch nicht zurück." }] }]],
+    ["pD", [{ topic: "appointment", status: "open", assignee: "Nadine",
+      lastContactAt: Date.now() - 86400000,
+      updates: [{ kind: "contact", ts: Date.now() - 86400000, text: "Frage zur Schlafschiene." }] }]],
+  ]);
+  const dedup = buildSpokenMemoryHints(day1, dedupMap);
+  check(!/Thrandorf/.test(dedup), "Docs-Ampel gelb: 'Dokumente'-Vorgang wird NICHT zusätzlich genannt");
+  check(/Herrn Diedershagen/.test(dedup) && /Thema Termin/.test(dedup), "Anderer Vorgang (Docs grün) bleibt erhalten");
+  console.log("  dedup: " + dedup);
+  const onlyDoc = buildSpokenMemoryHints(day1, new Map([["pT", [{ topic: "document", status: "open", updates: [] }]]]));
+  check(onlyDoc === "", "Nur 'Dokumente'-Vorgang bei gelber Ampel -> gar kein Hinweis (keine Dopplung)");
+
+  console.log("\n=== Vorbereitung: Anamnese-Flags + letzte Behandlung (09.07.2026) ===");
+  const dayAgo = Date.now() - 200 * 86400000; // >6 Monate zurueck -> Jahr wird genannt, wenn nicht aktuelles
+  const prepMap = new Map([
+    ["pT", {
+      findings: [{ category: "Allergie", text: "Penicillin" }, { category: "Medikamente", text: "Marcumar" }],
+      lastAppt: { startMs: Date.now() - 30 * 86400000, visitMotive: "PZR" },
+    }],
+    // Diedershagen: keine Befunde, aber eine Vorbehandlung.
+    ["pD", { findings: [], lastAppt: { startMs: Date.now() - 10 * 86400000, visitMotive: "Kontrolle" } }],
+  ]);
+  const prep = buildSpokenPatientPrep(day1, prepMap);
+  check(/^Zur Vorbereitung:/.test(prep), "Vorbereitung beginnt mit 'Zur Vorbereitung:'");
+  check(/Frau Thrandorf/.test(prep) && /Allergie: Penicillin/.test(prep) && /Medikamente: Marcumar/.test(prep), "Anamnese-Flags pro Patient genannt");
+  check(/zuletzt .*Kontrolle/.test(prep) || /zuletzt zur Kontrolle/.test(prep), "Letzte Behandlung (Kontrolle) genannt");
+  console.log("  prep: " + prep);
+  // Patient ganz ohne Befund UND ohne Vorbehandlung -> nicht erwaehnt.
+  const prepNone = buildSpokenPatientPrep(day1, new Map([["pT", { findings: [], lastAppt: null }]]));
+  check(prepNone === "", "Ohne Befund und ohne Vorbehandlung -> keine Vorbereitung");
+  check(buildSpokenPatientPrep(day1, new Map()) === "", "Leere Map -> keine Vorbereitung");
 
   const emptyList = buildSpokenDayList([], { date: DATE, calendars });
   check(/keine Termine gebucht/.test(emptyList), "Leere Liste -> ehrliche Meldung");

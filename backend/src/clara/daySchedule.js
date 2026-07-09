@@ -967,7 +967,16 @@ export function buildSpokenMemoryHints(appointments = [], casesByPatientId = new
   for (const a of real) {
     if (seen.has(a.patientId)) continue;
     seen.add(a.patientId);
-    const cases = casesByPatientId.get(a.patientId) || [];
+    let cases = casesByPatientId.get(a.patientId) || [];
+    if (!cases.length) continue;
+    // Dedup (09.07.2026, Live-Test): Die Termin-Zeile meldet die Dokumenten-
+    // Ampel bereits ("Unterlagen noch nicht unterschrieben/verschickt"). Ein
+    // zusaetzlicher offener Vorgang mit Thema "document" ist dann dieselbe
+    // Sache doppelt (Chef: "doppelt gemoppelt und nervig") -> weglassen.
+    // Andere Themen (Beschwerde, Rueckruf, Rechnung ...) bleiben erhalten.
+    if (a.docsStatus === "yellow" || a.docsStatus === "red") {
+      cases = cases.filter((c) => c.topic !== "document");
+    }
     if (!cases.length) continue;
     const c = cases[0];
     const updates = Array.isArray(c.updates) ? c.updates : [];
@@ -988,4 +997,57 @@ export function buildSpokenMemoryHints(appointments = [], casesByPatientId = new
   }
   if (!hints.length) return "";
   return `Aus dem Praxisgedächtnis: ${hints.join(" ")}`;
+}
+
+/**
+ * Vorbereitungs-Hinweise pro Tagespatient (09.07.2026, Chef-Wunsch): auffaellige
+ * Anamnese-Befunde (Allergien/Medikamente/Vorerkrankungen) und die letzte
+ * Behandlung. Pure — gefuettert mit den normalisierten Terminen plus einer
+ * Map(patientId -> { findings:[{category,text}], lastAppt }). Patienten ohne
+ * Befund UND ohne Vorbehandlung werden uebersprungen (kein Geschwaetz).
+ */
+export function buildSpokenPatientPrep(appointments = [], prepByPatientId = new Map()) {
+  const real = appointments.filter((a) => !a.isAbsence && a.patientId).sort((x, y) => x.startMs - y.startMs);
+  const thisYear = todayBerlin().slice(0, 4);
+  const seen = new Set();
+  const bits = [];
+  for (const a of real) {
+    if (seen.has(a.patientId)) continue;
+    seen.add(a.patientId);
+    const p = prepByPatientId.get(a.patientId);
+    if (!p) continue;
+
+    // Anamnese-Befunde je Kategorie buendeln (Fakten aus getPatientAnamnese).
+    const byCat = new Map();
+    for (const f of (p.findings || [])) {
+      if (!byCat.has(f.category)) byCat.set(f.category, []);
+      const t = f.text && f.text !== "ja" ? f.text : "";
+      if (t) byCat.get(f.category).push(t);
+    }
+    const flagParts = [];
+    for (const [cat, texts] of byCat) {
+      flagParts.push(texts.length ? `${cat}: ${[...new Set(texts)].join(", ")}` : cat);
+    }
+
+    // Letzte Behandlung (Vorbehandlung): Datum + Behandlungsart.
+    let lastSeg = "";
+    const la = p.lastAppt;
+    if (la && la.startMs) {
+      const day = dayOfMs(la.startMs);
+      let rel = relativeDayLabel(day);
+      const year = day.slice(0, 4);
+      if (year !== thisYear && !/^(gestern|vorgestern)$/.test(rel)) rel = `${rel} ${year}`;
+      const motive = spokenMotive(la.visitMotive) || (la.visitMotive ? `für ${la.visitMotive}` : "");
+      lastSeg = `zuletzt${motive ? ` ${motive}` : ""}${rel ? ` ${rel}` : ""}`.trim();
+    }
+
+    const segs = [];
+    if (flagParts.length) segs.push(flagParts.join("; "));
+    if (lastSeg) segs.push(lastSeg);
+    if (!segs.length) continue;
+    bits.push(`Bei ${spokenPatient(a)} ${segs.join(", ")}`);
+    if (bits.length >= MEMORY_HINT_MAX) break;
+  }
+  if (!bits.length) return "";
+  return `Zur Vorbereitung: ${bits.join(". ")}.`;
 }
