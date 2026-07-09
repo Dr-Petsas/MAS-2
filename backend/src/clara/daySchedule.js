@@ -978,13 +978,28 @@ export function buildSpokenMemoryHints(appointments = [], casesByPatientId = new
       cases = cases.filter((c) => c.topic !== "document");
     }
     if (!cases.length) continue;
-    const c = cases[0];
-    const updates = Array.isArray(c.updates) ? c.updates : [];
-    const last = [...updates].reverse().find((u) => u.kind === "contact") || updates[updates.length - 1];
-    const lastMs = c.lastContactAt?.toMillis?.() ?? (typeof c.lastContactAt === "number" ? c.lastContactAt : 0);
+
+    // NUR echte Kommunikation/Behandlung (09.07.2026, Chef): reine Kalender-
+    // Automatik ("Neuer Termin/Termin verschoben/entfernt ... durch das Team")
+    // ist Echo des Kalenders und interessiert den Arzt im Briefing nicht. Solche
+    // Beobachtungen tragen eine Event-ID "appt-watch:..." (aus calendarWatch.js).
+    // Wir suchen pro Vorgang den JUENGSTEN ECHTEN Kontakt (Anruf/Mail/SMS ->
+    // "hat wegen Schmerzen angerufen", "will Ratenzahlung"); ein Vorgang, der NUR
+    // aus Kalender-Automatik besteht, wird uebersprungen.
+    const isCalendarEcho = (u) => String(u?.eventId || "").startsWith("appt-watch:");
+    let c = null;
+    let last = null;
+    for (const cand of cases) {
+      const ups = Array.isArray(cand.updates) ? cand.updates : [];
+      const genuine = [...ups].reverse().find((u) => u.kind === "contact" && !isCalendarEcho(u));
+      if (genuine) { c = cand; last = genuine; break; }
+    }
+    if (!c || !last) continue;
+
+    const lastMs = last.ts || (c.lastContactAt?.toMillis?.() ?? (typeof c.lastContactAt === "number" ? c.lastContactAt : 0));
 
     let line = `Zu ${spokenPatient(a)} gibt es einen offenen Vorgang, Thema ${TOPIC_LABELS[c.topic] || c.topic || "Allgemein"}`;
-    const when = relativeAgo(lastMs || last?.ts);
+    const when = relativeAgo(lastMs);
     if (when) line += `, letzter Kontakt ${when}`;
     if (c.assignee) line += `, liegt bei ${c.assignee}`;
     // Spoken text: raw e-mail addresses read terribly — speak the name instead.

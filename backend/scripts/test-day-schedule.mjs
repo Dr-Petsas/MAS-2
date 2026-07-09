@@ -115,6 +115,31 @@ async function run() {
   const onlyDoc = buildSpokenMemoryHints(day1, new Map([["pT", [{ topic: "document", status: "open", updates: [] }]]]));
   check(onlyDoc === "", "Nur 'Dokumente'-Vorgang bei gelber Ampel -> gar kein Hinweis (keine Dopplung)");
 
+  console.log("\n=== Kalender-Echo raus: nur echte Kommunikation/Behandlung (09.07.2026) ===");
+  // Vorgang, der NUR aus Kalender-Automatik besteht (Event-ID appt-watch:...) ->
+  // reines Kalender-Echo, darf NICHT ins Briefing.
+  const echoOnly = new Map([["pD", [{
+    topic: "appointment", status: "open", assignee: "Nadine", lastContactAt: Date.now() - 3600000,
+    updates: [
+      { kind: "contact", by: "Clara", ts: Date.now() - 7200000, eventId: "appt-watch:abc:created", text: "Neuer Termin: Herr Diedershagen am Montag, 09:00 Uhr, angelegt durch das Team." },
+      { kind: "contact", by: "Clara", ts: Date.now() - 3600000, eventId: "appt-watch:abc:moved:123", text: "Termin verschoben: Herr Diedershagen." },
+    ],
+  }]]]);
+  check(buildSpokenMemoryHints(day1, echoOnly) === "", "Reines Kalender-Echo (nur appt-watch) -> kein Hinweis");
+
+  // Mischung: Kalender-Automatik PLUS echter Anruf -> der echte Anruf wird genannt.
+  const mixed = new Map([["pD", [{
+    topic: "complaint", status: "open", assignee: "Lisa", lastContactAt: Date.now() - 3600000,
+    updates: [
+      { kind: "contact", by: "Bianca", ts: Date.now() - 7200000, eventId: "bianca-call:xyz", text: "Anruf von Herrn Diedershagen: hat noch Schmerzen seit gestern." },
+      { kind: "contact", by: "Clara", ts: Date.now() - 3600000, eventId: "appt-watch:def:moved:9", text: "Termin verschoben: Herr Diedershagen." },
+    ],
+  }]]]);
+  const mixedHints = buildSpokenMemoryHints(day1, mixed);
+  check(/Schmerzen seit gestern/.test(mixedHints), "Mischung: echter Anruf (Schmerzen) wird genannt");
+  check(!/verschoben/.test(mixedHints), "Mischung: Kalender-Echo (verschoben) wird NICHT genannt");
+  console.log("  mixed: " + mixedHints);
+
   console.log("\n=== Vorbereitung: Anamnese-Flags + letzte Behandlung (09.07.2026) ===");
   const dayAgo = Date.now() - 200 * 86400000; // >6 Monate zurueck -> Jahr wird genannt, wenn nicht aktuelles
   const prepMap = new Map([
