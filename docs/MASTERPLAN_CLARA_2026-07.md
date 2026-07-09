@@ -531,6 +531,33 @@ mit Tool-Pflicht ans LLM, daher das steife "nicht verstanden".
       Clarify statt Leer-Turn) steht als Folgepaket W-INTENT auf der
       Warteliste — erst W-HUMAN abschliessen und messen.
 
+## Phase W-HUMAN Stufe 2 - Lockerheit 1-4 (Auftrag Chef 09.07., praezisiert 10.07.)
+
+**Auftrag:** "Setz bitte 1-4 um, aber keinen zweiten LLM-Gang wie in 5
+beschrieben. Insbesondere Starts und Begruessungen sollten interessant sein,
+z.B. die Uhrzeit miteinbeziehen oder das letzte auffaellige Ereignis, wenn es
+unmittelbar mit der Kontaktaufnahme zeitlich passt." Voraussetzung (erfuellt
+10.07.): Speicherpunkt Clara v6.0 mit vollstaendigem Rollback-Anker.
+
+Leitprinzip unveraendert: **Fakten-Kern (Zahlen/Namen/Zeiten) bleibt woertlich
+aus dem Tool; Variation entsteht NUR im Code (Pools), nie im LLM.**
+
+- [ ] **(1) Rotierende warme Rahmen-Pools** um die verbatim-Briefings
+      (daySchedule buildSpokenDayBriefing/-List, rangeOverview) - vary()-Muster.
+- [ ] **(2) Zahl-getriebene Reaktion** ("Ein voller Tag." bei >= 20,
+      "Ueberschaubar." bei <= 3) - deterministisch aus der echten Zahl.
+- [ ] **(3) Kollegialer Vor-/Nachsatz** um den unantastbaren Fakten-Kern
+      (Einleitung/Abschluss, oft leer, nie zweimal dieselbe Zeile).
+- [ ] **(4) Sprechbarkeit in sanitize_reply** (Clara-Voice): Stunden-Bereiche
+      "9-12 Uhr" -> "neun bis zwoelf Uhr", Anzahlen bis 999 vor Zaehl-Nomen.
+- [ ] **Starts/Begruessungen:** tageszeitbewusste Begruessungs-Pools im Profil
+      (morgens/mittags/abends/nachts, optional gesprochene Uhrzeit) + frisches
+      auffaelliges Ereignis (<= 45 min, aus mas_events) direkt nach dem Hallo -
+      profil-gated (nur assistant_mode=internal), Bianca byte-identisch.
+- [ ] KEIN zweiter LLM-Gang (Punkt 5 bewusst gestrichen, Chef 09.07.).
+- [ ] DoD: node-Tests (day-schedule, date-range, greeting-context) gruen,
+      Release-Gate gruen, Backend + Worker neu gestartet, committet.
+
 ## Phase W-OUTREACH - Recall mit Substanz (beschlossen 05.07. frueh, Chef)
 
 **Auftrag:** "Man kann nicht ohne Grund anrufen und sagen der Doktor hat Luft.
@@ -708,6 +735,15 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 - 05.07.2026: Sablon-Seed bereinigt: Demo-Anamnese-Antworten aus dem echten
   Bogen entfernt (unseed-Skript), seed-anamnese-sablon.mjs geloescht —
   keine erfundenen Befunde mehr in Patientendaten.
+- 10.07.2026: **Speicherpunkt Clara v6.0** (Rollback-Anker, Auftrag Chef):
+  alle drei Repos committet + annotierter Tag `clara-v6.0`; Clara-Voice
+  Voll-Gate GRUEN (133/139, 0 unkontrollierte Halluzinationen, Tag
+  `stabil-2026-07-10-0035`); Git-Bundles aller Repos nach
+  `C:\repo-backups\2026-07-10-clara-v6.0\` (verify ok). Rollback:
+  `git checkout clara-v6.0` je Repo bzw. `git clone <bundle>`.
+  Stand enthaelt: Wake/Stopp robust (Verhoerer, Quittungen, Farb-Feedback),
+  WP1-3 Fakten-Waechter, Zeitraum-Abfragen, Briefing bereinigt, Mail-Sync
+  inkrementell.
 - 05.07.2026: Sophie Implantat-PLANUNG umgebaut (billingTestPage):
   (1) Roentgen-Konflikte (OPG+Zahnfilm) werden ueber die neue rechtfertigende
   Indikation je Aufnahme (Dropdown, roentgenIndikation.ts, vorbelegt) geloest —
