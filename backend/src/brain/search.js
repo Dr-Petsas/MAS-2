@@ -108,13 +108,24 @@ export async function searchBrain(clientId, opts = {}) {
   const q = String(opts.q || "").trim();
   const tokens = tokenize(q);
   const limit = Math.max(1, Math.min(100, Number(opts.limit) || 40));
-  const sinceDays = Math.max(1, Math.min(1000, Number(opts.sinceDays) || 400));
-  const sinceTs = Date.now() - sinceDays * 24 * 3_600_000;
   const now = Date.now();
 
+  // Startseite (leere Suche) zeigt nur die letzten Vorgaenge. Dafuer reicht ein
+  // kleines Fenster: die neuesten ~40 Cases (listCases sortiert updatedAt desc)
+  // + genug Ereignisse, um deren Snippets/Kanaele/Fristen anzureichern. Frueher
+  // wurden hier IMMER 300 Cases + bis zu 2000 Ereignisse ueber 400 Tage geladen
+  // — nur um 5 Zeilen zu zeigen (langsamer Erst-Load). Die echte Suche (mit
+  // Begriff) laedt unveraendert breit, damit kein Treffer verloren geht.
+  const browse = tokens.length === 0;
+  const defaultSinceDays = browse ? 120 : 400;
+  const sinceDays = Math.max(1, Math.min(1000, Number(opts.sinceDays) || defaultSinceDays));
+  const sinceTs = now - sinceDays * 24 * 3_600_000;
+  const caseLimit = browse ? Math.max(40, limit * 4) : 300;
+  const eventLimit = browse ? 300 : 2000;
+
   const [cases, events, patientsRes] = await Promise.all([
-    listCases(clientId, { limit: 300 }).catch(() => []),
-    queryLatest(clientId, sinceTs, 2000).catch(() => []),
+    listCases(clientId, { limit: caseLimit }).catch(() => []),
+    queryLatest(clientId, sinceTs, eventLimit).catch(() => []),
     tokens.length ? searchPatient(clientId, q).catch(() => null) : Promise.resolve(null),
   ]);
   const evById = new Map(events.map((e) => [e.id, e]));
