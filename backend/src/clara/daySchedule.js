@@ -209,6 +209,61 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
   return { ok: true, date: day, locationId, calendars: booking.calendars || [], appointments: appts };
 }
 
+// Obergrenze fuer einen Bereichs-Read (Firestore-Kosten + Sprech-Laenge). Ein
+// Jahr passt; laengere Angaben werden ab `from` gekappt.
+export const MAX_RANGE_DAYS = 366;
+
+// Termine ueber einen DATUMSBEREICH [from..to] (beide inklusive, ISO-Tage).
+// EINE Firestore-Query, danach EXAKT dieselben Filter wie getDayAppointments
+// (temporaere Holds + Multi-Day raus, virtuelle Termine wie der Plattform-
+// Kalender ausblenden, optional calendarId). Bewusst OHNE die pro-Patient
+// Unterschriften-Ampel (liveDocsStatusByPatient) — ein Bereichs-Ueberblick
+// zaehlt Auslastung, nicht die Doku-Ampel jedes Einzeltermins. Vertragstreu:
+// getDayAppointments bleibt fuer Einzeltage unveraendert.
+export async function getRangeAppointments(clientId, { from, to, calendarId } = {}) {
+  const fromDay = (from || "").trim() || todayBerlin();
+  let toDay = (to || "").trim() || fromDay;
+  if (toDay < fromDay) { const t = toDay; toDay = fromDay; from = t; } // defensiv tauschen
+  // Bereich kappen (from bleibt, Ende begrenzen).
+  const cap = new Date(ensureBerlinTz(`${fromDay}T00:00:00`));
+  cap.setUTCDate(cap.getUTCDate() + (MAX_RANGE_DAYS - 1));
+  const capDay = cap.toISOString().slice(0, 10);
+  const clamped = toDay > capDay;
+  if (clamped) toDay = capDay;
+
+  const booking = await loadBooking(clientId).catch(() => null);
+  const locationId = booking?.locationId;
+  if (!locationId) return { ok: false, reason: "no_location", from: fromDay, to: toDay };
+
+  const rangeStart = new Date(ensureBerlinTz(`${fromDay}T00:00:00`));
+  const rangeEnd = new Date(ensureBerlinTz(`${toDay}T23:59:59`));
+  if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) {
+    return { ok: false, reason: "bad_date", from: fromDay, to: toDay };
+  }
+
+  const snap = await admin.firestore()
+    .collection("clients").doc(clientId)
+    .collection("locations").doc(locationId)
+    .collection("appointments")
+    .where("start", ">=", rangeStart)
+    .where("start", "<=", rangeEnd)
+    .orderBy("start")
+    .get();
+
+  let appts = snap.docs.map((d) => normalizeAppointment(d.id, d.data())).filter(Boolean);
+  appts = appts.filter((a) => (a.patientId || a.isAbsence) && !a.isMultiDay);
+  const showVirtual = await showVirtualAppointments(clientId, locationId);
+  if (!showVirtual) {
+    appts = appts.filter((a) => a.isAbsence || !isVirtualStatus(a.status));
+  }
+  if (calendarId) appts = appts.filter((a) => a.calendarId === calendarId);
+
+  return {
+    ok: true, from: fromDay, to: toDay, clamped, locationId,
+    calendars: booking.calendars || [], appointments: appts,
+  };
+}
+
 // --- pure: build the structured briefing ------------------------------------
 
 // Absenzen (Urlaub/OP-Block/Mittag) als "besetzt"-Intervalle eines Kalenders.

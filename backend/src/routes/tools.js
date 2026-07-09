@@ -9,6 +9,8 @@ import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, todayBe
 import { getPatientAnamnese, buildSpokenAnamnese } from "../clara/anamnese.js";
 import { polishForChannel } from "../clara/dictation.js";
 import { buildSpokenDayOverview } from "../clara/dayOverview.js";
+import { resolveDateRange } from "../clara/dateRange.js";
+import { buildSpokenRangeOverview, buildSpokenRangeList } from "../clara/rangeOverview.js";
 import { buildNextPatientsBriefing } from "../clara/nextPatientsBriefing.js";
 import { saveTreatmentDictation, strikeTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs, resolveAppointmentInfo, readAppointmentSegments, combineActiveSegments } from "../clara/treatmentDoc.js";
 import { strukturiereKarteikarte } from "../clara/dokuNote.js";
@@ -376,6 +378,23 @@ async function resolveDayCalendarScope(clientId, body) {
   return { calendarId: null, scope: "all" };
 }
 
+// Datumsbereich aus dem Tool-Body: entweder explizite ISO-Grenzen (from+to)
+// ODER eine gesprochene Phrase (range: "letzte Woche", "naechster Monat", ...),
+// die deterministisch aufgeloest wird. Liefert null, wenn KEIN Zeitraum vorliegt
+// -> der Aufrufer bleibt dann beim unveraenderten Einzeltag-Pfad (Vertragstreue).
+function resolveRangeFromBody(body) {
+  const iso = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(String(s || "").trim()) ? String(s).trim() : "");
+  const from = iso(body?.from);
+  const to = iso(body?.to);
+  if (from && to) return { from, to, label: "" };
+  const phrase = String(body?.range || "").trim();
+  if (phrase) {
+    const r = resolveDateRange(phrase, todayBerlin());
+    if (r) return r;
+  }
+  return null;
+}
+
 
 // Clara: "Was steht heute (oder am …) im Kalender?" — reads the ACTUAL booked
 // appointments and speaks a per-Behandler overview incl. free gaps + highlights.
@@ -482,6 +501,22 @@ router.post("/tools/day-briefing", async (req, res) => {
     const date = (req.body?.date || "").trim() || todayBerlin();
     const calScope = await resolveDayCalendarScope(clientId, req.body);
     const calendarId = calScope.calendarId;
+
+    // Zeitraum-Zweig (09.07.2026): "Wie war letzte Woche?", "Wie voll ist
+    // naechster Monat?", "dieses Quartal" -> aggregiertes Bereichs-Lagebild
+    // (Summe + vollster/ruhigster Tag). Nur wenn ein Zeitraum vorliegt; sonst
+    // laeuft der unveraenderte Einzeltag-Pfad weiter.
+    const range = resolveRangeFromBody(req.body);
+    if (range) {
+      const r = await buildSpokenRangeOverview(clientId, {
+        from: range.from, to: range.to, calendarId, rangeLabel: range.label,
+      });
+      if (!r.ok) return res.json({ ok: false, message: r.message });
+      let rmsg = r.message;
+      try { rmsg = (await freiFormulieren(rmsg, { kontext: "Zeitraum-Lagebild fuer den Chef" })).text; } catch { /* deterministisch weiter */ }
+      return res.json({ ok: true, date: r.from, from: r.from, to: r.to, days: r.days, message: rmsg, counts: r.counts, card: null });
+    }
+
     const op = await getOperator(clientId);
     const opDoctor = operatorDoctorNameOf(op);
     // Lagebild statt Einzelvorlesen: Kopfzeile (Termine + E-Mails + Anrufe) +
@@ -537,6 +572,19 @@ router.post("/tools/day-appointments", async (req, res) => {
     const date = (req.body?.date || "").trim() || todayBerlin();
     const calScope = await resolveDayCalendarScope(clientId, req.body);
     const calendarId = calScope.calendarId;
+
+    // Zeitraum-Zweig (09.07.2026): "Wer kam letzte Woche?", "Termine naechsten
+    // Monat" -> Tages-Aufschluesselung ueber den Bereich (statt Einzeltermine).
+    // Nur bei vorliegendem Zeitraum; sonst unveraenderter Einzeltag-Pfad.
+    const range = resolveRangeFromBody(req.body);
+    if (range) {
+      const r = await buildSpokenRangeList(clientId, {
+        from: range.from, to: range.to, calendarId, rangeLabel: range.label,
+      });
+      if (!r.ok) return res.json({ ok: false, message: r.message });
+      return res.json({ ok: true, date: r.from, from: r.from, to: r.to, message: r.message, count: r.count });
+    }
+
     const day = await getDayAppointments(clientId, { date, calendarId });
     if (!day.ok) return res.json({ ok: false, message: day.reason === "no_location" ? "Es ist keine Praxis-Buchungskonfiguration hinterlegt." : `Terminliste nicht verfügbar (${day.reason}).` });
 
