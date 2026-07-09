@@ -52,6 +52,9 @@
     body.st-user       { --accent: var(--turq);   background: radial-gradient(120% 90% at 50% 0%, #0f2a28 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
     body.st-thinking   { --accent: var(--amber);  background: radial-gradient(120% 90% at 50% 0%, #2a2410 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
     body.st-clara      { --accent: var(--green);  background: radial-gradient(120% 90% at 50% 0%, #0f2a24 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    /* Wake-Word-Standby ("Clara stopp"): gelb wie Pause, aber ruhig —
+       kein Denk-Puls. Unterscheidet sich von st-thinking durch Label+Orb. */
+    body.st-standby    { --accent: var(--amber);  background: radial-gradient(120% 90% at 50% 0%, #2a2410 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
     body.st-ended      { --accent: var(--ink-soft); }
     /* Glow-Aura oben, wie ::before im Website-Screen. */
     body::before {
@@ -187,6 +190,9 @@
     body.st-clara .orb { animation: breathe 1.3s ease-in-out infinite; }
     body.st-clara .ring.r1 { animation: rip 1.6s ease-out infinite; }
     body.st-clara .ring.r2 { animation: rip 1.6s ease-out .8s infinite; }
+    /* Standby: ruhiges, langsames Atmen — pausiert, nicht beschäftigt. */
+    body.st-standby .orb { animation: breathe 5s ease-in-out infinite; opacity: .82; }
+    body.st-standby .wave span { animation-play-state: paused; opacity: .5; }
 
     .state-label { font-size: 15px; font-weight: 700; letter-spacing: .3px; min-height: 22px;
                    color: var(--accent); transition: color .45s ease; text-align: center; }
@@ -502,6 +508,7 @@
     let chatPipeline = false;
     let phase = incoming ? "ringing" : "idle";
     let voice = "listening";
+    let wakeStandby = false;
 
     const chatUi = mountClaraChat(document.body, {
       async onSend(text) {
@@ -685,7 +692,9 @@
     // ── Zustandsmaschine: ein Button, Farben erzählen den Rest ───────────────
     // phase: idle | ringing | connecting | live | ended
     // voice (nur live): listening | user | thinking | clara
-    const ALL_ST = ["st-idle","st-ringing","st-connecting","st-listening","st-user","st-thinking","st-clara","st-ended"];
+    // wakeStandby (nur live): Wake-Word-Pause ("Clara stopp") — überlagert
+    // listening/user als eigener gelber Ruhezustand, bis "Clara start" kommt.
+    const ALL_ST = ["st-idle","st-ringing","st-connecting","st-listening","st-user","st-thinking","st-clara","st-standby","st-ended"];
 
     const LABELS = {
       idle:       ["", "Tippen zum Sprechen"],
@@ -695,6 +704,7 @@
       user:       ["Du sprichst", ""],
       thinking:   ["Clara denkt nach …", ""],
       clara:      ["Clara spricht", ""],
+      standby:    ["Pausiert", "Sag „Clara Start“"],
       ended:      ["Anruf beendet", "Tippen für neue Verbindung"],
     };
 
@@ -720,10 +730,14 @@
 
     let lastAgentState = "";
     function render() {
-      const st = phase === "live" ? voice : phase;
+      // Standby überdeckt nur die Ruhe-Zustände: Claras eigene Quittung
+      // ("Gestoppt.") pulst weiter grün, Denken bleibt gelb-pulsierend.
+      const live = phase === "live";
+      const overlayStandby = live && wakeStandby && (voice === "listening" || voice === "user");
+      const st = overlayStandby ? "standby" : (live ? voice : phase);
       document.body.classList.remove(...ALL_ST);
       document.body.classList.add("st-" + st);
-      const key = phase === "live" ? voice : phase;
+      const key = st;
       const [label, hint] = LABELS[key] || ["", ""];
       els.stateLabel.textContent = label;
       els.hint.textContent = hint;
@@ -865,6 +879,7 @@
       connecting = true;
       stopRing();
       phase = forChat ? "live" : "connecting";
+      wakeStandby = false;
       render();
       setStatus(forChat ? "Chat-Verbindung …" : "");
       try {
@@ -928,10 +943,20 @@
               } else if (phase === "live" && voice === "clara") {
                 voice = "listening"; render();
               }
-            } else if (obj.type === "final_transcript" && phase === "live") {
+            } else if (obj.type === "final_transcript" && phase === "live" && !wakeStandby) {
               // Nutzer-Satz ist fertig -> Clara holt Tools / denkt nach,
               // bis das naechste audio_state=speaking kommt.
               voice = "thinking"; render();
+            } else if (obj.type === "wake_state") {
+              // Wake-Word (09.07.2026): "Clara stopp" -> gelbes Pausiert,
+              // "Clara start" -> sofort zurück zu "Ich höre zu". Kommt
+              // idempotent vom Worker, die Anzeige heilt sich selbst.
+              const standby = obj.state === "standby";
+              if (standby !== wakeStandby) {
+                wakeStandby = standby;
+                if (phase === "live" && voice === "thinking" && standby) voice = "listening";
+                render();
+              }
             }
           } catch {}
         });
@@ -985,6 +1010,7 @@
       chatPipeline = false;
       phase = "ended";
       voice = "listening";
+      wakeStandby = false;
       els.calling.textContent = "Anruf beendet";
       setStatus("");
       render();
