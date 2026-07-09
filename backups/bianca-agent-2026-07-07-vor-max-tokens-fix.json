@@ -1,0 +1,1619 @@
+{
+  "agent_id": "pSUVNVsczM4risVkBNAt",
+  "name": "Med Dent Zahnklinik",
+  "conversation_config": {
+    "asr": {
+      "quality": "high",
+      "provider": "scribe_realtime",
+      "user_input_audio_format": "pcm_16000",
+      "keywords": [
+        "Dr. Petsas",
+        " Dr. Patrikis",
+        " Dr. Nikolaou",
+        " MedDent",
+        " Zahnklinik",
+        " Termin",
+        " Wurzelbehandlung",
+        " Zahnreinigung",
+        " Zahnschmerzen",
+        " Ibuprofen",
+        " Paracetamol",
+        " Amoxycillin",
+        " Novalgin",
+        " Depon",
+        " Aspirin",
+        " Sobelin",
+        " Clindamycin",
+        " Prednisolon",
+        " Resmed Schienen",
+        " Narval Schienen",
+        " Schnarchschienen",
+        " Kieferscan",
+        " Zähnescan",
+        " Schlafapnoe"
+      ]
+    },
+    "turn": {
+      "turn_timeout": 10.0,
+      "initial_wait_time": null,
+      "silence_end_call_timeout": 10.0,
+      "mode": "turn",
+      "turn_eagerness": "normal",
+      "spelling_patience": "auto",
+      "speculative_turn": false,
+      "retranscribe_on_turn_timeout": false,
+      "turn_model": "turn_v2",
+      "interruption_ignore_terms": [],
+      "interruption_ignore_term_languages": [],
+      "transcribe_on_disabled_interruptions": false,
+      "soft_timeout_config": {
+        "timeout_seconds": -1.0,
+        "message": "Hhmmmm...yeah give me a second...",
+        "additional_soft_timeout_messages": [],
+        "use_llm_generated_message": false,
+        "randomize_fillers": false,
+        "max_soft_timeouts_per_generation": 1,
+        "llm_generated_message_prompt_override": null
+      }
+    },
+    "tts": {
+      "model_id": "eleven_flash_v2_5",
+      "voice_id": "cgSgspJ2msm6clMCkdW9",
+      "supported_voices": [],
+      "expressive_mode": false,
+      "suggested_audio_tags": [],
+      "agent_output_audio_format": "pcm_16000",
+      "optimize_streaming_latency": 3,
+      "stability": 0.85,
+      "speed": 1.02,
+      "similarity_boost": 0.75,
+      "text_normalisation_type": "system_prompt",
+      "pronunciation_dictionary_locators": [],
+      "enable_phoneme_tags": false,
+      "audio_filter": null
+    },
+    "conversation": {
+      "text_only": false,
+      "max_duration_seconds": 600,
+      "client_events": [
+        "audio",
+        "interruption",
+        "user_transcript",
+        "agent_response",
+        "agent_response_correction",
+        "vad_score",
+        "internal_turn_probability",
+        "internal_tentative_agent_response"
+      ],
+      "file_input": {
+        "enabled": true,
+        "max_files_per_conversation": 10
+      },
+      "monitoring_enabled": false,
+      "monitoring_events": [
+        "user_transcript",
+        "agent_response",
+        "agent_response_correction"
+      ],
+      "dtmf_input_settings": null,
+      "background_sound": {
+        "source_type": null,
+        "source_id": null,
+        "volume": 0.6,
+        "crossfade_loop": false
+      },
+      "source_attribution": false
+    },
+    "language_presets": {
+      "zh": {
+        "overrides": {
+          "asr": null,
+          "turn": null,
+          "tts": null,
+          "conversation": null,
+          "agent": {
+            "first_message": "你好，Med Dent牙科诊所杜塞尔多夫，您正在与Bianca通话...",
+            "language": null,
+            "max_conversation_duration_message": null,
+            "prompt": null
+          }
+        },
+        "first_message_translation": {
+          "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+          "text": "你好，Med Dent牙科诊所杜塞尔多夫，您正在与Bianca通话..."
+        },
+        "soft_timeout_translation": null
+      },
+      "el": {
+        "overrides": {
+          "asr": null,
+          "turn": null,
+          "tts": {
+            "voice_id": null,
+            "stability": null,
+            "speed": null,
+            "similarity_boost": null
+          },
+          "conversation": null,
+          "agent": {
+            "first_message": "Γεια σας, Κλινική Οδοντιατρικής Med Dent Ντίσελντορφ, μιλάτε με την Μπιάνκα ...",
+            "language": null,
+            "max_conversation_duration_message": null,
+            "prompt": null
+          }
+        },
+        "first_message_translation": {
+          "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+          "text": "Γεια σας, Κλινική Οδοντιατρικής Med Dent Ντίσελντορφ, μιλάτε με την Μπιάνκα ..."
+        },
+        "soft_timeout_translation": null
+      },
+      "tr": {
+        "overrides": {
+          "asr": null,
+          "turn": null,
+          "tts": null,
+          "conversation": null,
+          "agent": {
+            "first_message": "Merhaba, Med Dent-Diş Kliniği Düsseldorf, Bianca ile konuşuyorsunuz ...",
+            "language": null,
+            "max_conversation_duration_message": null,
+            "prompt": null
+          }
+        },
+        "first_message_translation": {
+          "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+          "text": "Merhaba, Med Dent-Diş Kliniği Düsseldorf, Bianca ile konuşuyorsunuz ..."
+        },
+        "soft_timeout_translation": null
+      },
+      "ru": {
+        "overrides": {
+          "asr": null,
+          "turn": null,
+          "tts": null,
+          "conversation": null,
+          "agent": {
+            "first_message": "Здравствуйте, стоматологическая клиника Med Dent в Дюссельдорфе, вас приветствует Бьянка ...",
+            "language": null,
+            "max_conversation_duration_message": null,
+            "prompt": null
+          }
+        },
+        "first_message_translation": {
+          "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+          "text": "Здравствуйте, стоматологическая клиника Med Dent в Дюссельдорфе, вас приветствует Бьянка ..."
+        },
+        "soft_timeout_translation": null
+      },
+      "fr": {
+        "overrides": {
+          "asr": null,
+          "turn": null,
+          "tts": null,
+          "conversation": null,
+          "agent": {
+            "first_message": "Bonjour, Med Dent-Clinique Dentaire Düsseldorf, vous parlez avec Bianca ...",
+            "language": null,
+            "max_conversation_duration_message": null,
+            "prompt": null
+          }
+        },
+        "first_message_translation": {
+          "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+          "text": "Bonjour, Med Dent-Clinique Dentaire Düsseldorf, vous parlez avec Bianca ..."
+        },
+        "soft_timeout_translation": null
+      }
+    },
+    "vad": {
+      "background_voice_detection": false
+    },
+    "agent": {
+      "first_message": "Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...",
+      "language": "de",
+      "hinglish_mode": false,
+      "dynamic_variables": {
+        "dynamic_variable_placeholders": {
+          "doctors_list": "[\"Dr. Michael Petsas\",\"Test0 Doctor0\",\"Test1 Doctor1\",\"Test10 Doctor10\",\"Test11 Doctor11\",\"Test12 Doctor12\",\"Test13 Doctor13\",\"Test14 Doctor14\",\"Test15 Doctor15\",\"Test16 Doctor16\",\"Test17 Doctor17\",\"Test18 Doctor18\",\"Test19 Doctor19\",\"Test2 Doctor2\",\"Test3 Doctor3\",\"Test4 Doctor4\",\"Test5 Doctor5\",\"Test6 Doctor6\",\"Test7 Doctor7\",\"Test8 Doctor8\",\"Test9 Doctor9\",\"Kiriakos Tzannis\"]",
+          "current_time": "2011-10-05T14:48:00.000Z",
+          "patient_time_zone": "Europe/Berlin",
+          "current_week_day": "1",
+          "free_time_slots": "1",
+          "next_week_days": "1",
+          "tomorrow_week_day": "Montag",
+          "day_after_tomorrow_week_day": "Dienstag",
+          "visit_motive_names": "[]",
+          "visit_motive_details": "{}",
+          "patient_is_known": "true",
+          "patient_first_name": "Hans",
+          "patient_last_name": "Schmidt",
+          "patient_phone_number": "0123456789",
+          "caller_context": "",
+          "ai_disclosure": ""
+        }
+      },
+      "disable_first_message_interruptions": false,
+      "max_conversation_duration_message": "",
+      "text_behavior_overrides": null,
+      "prompt": {
+        "prompt": "\n        - Das aktuelle Datum ist {{current_time}} (bereits lokalisiert).\n        - Heute ist {{current_week_day}}.\n        - Morgen ist {{tomorrow_week_day}}.\n        - Übermorgen ist {{day_after_tomorrow_week_day}}\n        - Zeitzone des Patienten: {{patient_time_zone}}.\n        - Frage nicht explizit nach dem Geschlecht des Patienten, leite es aus der Stimme ab. \n        - Sage zum Patienten aber niemals \"Frau oder Herr\", wenn du ihn ansprichst und das Geschlecht aus der Stimme nicht erkennen kannst.\n        - Diese Gesprächsführung ist geschäftsentscheidend, halte dich exakt an das Skript!\n    \n\n# Rolle:\n- Du bist ein Telefonassistent in der Zahnklinik \"MedDent\" in Düsseldorf.\n- Dein Name lautet Bianca.\n\n# Aufgaben:\n- Du berätst Patienten zu zahnmedizinischen und allgemeinen medizinischen Fragen.\n- Du kannst Termine erstellen, verschieben oder absagen.\n- Du bereitest Rezepte, Überweisungen und Krankmeldungen zur Abholung vor.\n- Du nimmst Nachrichten für die Zahnärzte entgegen.\n- Du kannst einen Rückruf anbieten und aufnehmen.\n- Du kannst Anrufer mit den behandelnden Zahnärzten verbinden.\n-Du hast keine Informationen über laufende  Behandlungen oder Bearbeitungszuständen und verweist auf die Rücksprache mit dem entsprechenden Behandler\n\n# Besondere Features:\n- Du bist freundlich, hilfsbereit und informativ – halte deine Antworten immer sehr kurz.\n- Du übernimmst nur eingehende Gespräche.\n- Wenn ein Patient zurückruft, weil er von Lisa nicht erreicht wurde, erkläre:  „Vermutlich wollte Doktor Petsas einen Termin zur Kontrolle oder Weiterbehandlung mit Ihnen abstimmen.“\n- Du stellst niemals mehr als eine Frage auf einmal. \n\n\n# Patienten:\n- Merke dir alle Namen und Angaben während des Gesprächs.\n- Erfrage den Grund des Terminwunsches empathisch.\n- Reagiere beruhigend:\n> Beispiel:  \n> **Antwort**: „Ich glaube, ich brauche eine Wurzelbehandlung.“  \n> **Reaktion**: „Keine Sorge, der Doktor ist sehr erfahren – das wird schon.“\n\n- Frage nicht explizit nach dem Geschlecht – leite es aus der Stimme ab.\n- Bitte den Nachnamen immer buchstabieren zu lassen.\n\n# Termine:\n- Du kannst Termine bei Doktor Petsas, Doktor Patrikis oder Doktor Nikolaou buchen.\n- Frage, bei welchem Zahnarzt der Termin gewünscht ist.\n- Sollte es zu Problemen bei der Terminbuchung kommen oder der Patient bei einem Menschen oder Online einen Termin buchen möchte, dann sage, dass er auch selber online unter www.med-dent.clinic (mit \"c\") einen Termin buchen kann.\n\n**Wichtig**:  \n- Kein Termin, wenn nur ein Rezept gewünscht ist.\n- Keine Terminbuchung ohne Vorname, Nachname, Mobilnummer und Datum.\n\n# Überweiser:\nWenn Patienten:\n- Resmed Schienen,\n- Narval schienen,\n- Schnarchschienen,\n- Kieferscan oder Zähnescan,\n- Schlafapnoebehandlung oder Schlafapnoeschiene\nwollen oder vom Schlaflabor, Dr. Grüger oder Dr Lange kommen zwecks Schiene sagst du, dass wir Narval Schienen von Resmed aus Lyon / Frankreich herstellen und dafür einen Termin für einen Scan der Zähne brauchen. Du gibst diesen Patienten dann einen Termin bei dem Zahnarzt Ihrer Wahl, Doktor Petsas, Doktor Patrikis oder Doktor Nikolaou.\n\n\n\n\n# Sonstiges:\n- Du antwortest in der Sprache des Patienten.\n- Reagiere auf abweichende Fragen und leite danach zurück zum Ablauf.\n- Sprich niemals über deine KI-Natur.\n- Bleib immer in der Rolle – keine privaten Themen.\n- Sprich in klarer, gesprochener Sprache. Vermeide Fachjargon.\n- Verwende Satzfüller wie \"uhm\", \"verstehe\", \"okay\" für Natürlichkeit.\n- \"Dr. med.\" wird ohne Sprachpause gesprochen.\n- Falsch verstandene Medikamentennamen interpretierst du intelligent: z. B. \"Evoprofen\" → \"Ibuprofen\".\n- Wenn ein Patient keine Mobilnummer hat, frage freundlich nach einer Festnetznummer. Ohne Telefonnummer kann leider kein Termin erstellt werden.\n- Wenn der Anrufer schwer verständlich ist, bitte ihn höflich, langsamer oder lauter zu sprechen oder in einer ruhigeren Umgebung anzurufen.\n- Wunschzeit außerhalb Öffnungszeiten:  „Leider vergeben wir nur Termine innerhalb der regulären Praxiszeiten. Ich schaue, was am nächsten passenden Tag verfügbar ist.“\n\n- **Mehrere Termine gleichzeitig gewünscht**:  \n  „Wenn mehrere Personen Termine möchten, erfasse alle separat – mit jeweiligem Namen, Grund und Telefonnummer.“\n\n\n\n# RÜCKRUFER-KONTEXT (aus dem Praxisgedächtnis, kann leer sein):\n{{caller_context}}\n# Wenn oben Kontext steht: Die Praxis kennt diese Rufnummer. Erkenne den\n# Zusammenhang FRÜH im Gespräch an (z.B. \"Ah, wir hatten versucht Sie zu\n# erreichen\") statt bei Null anzufangen. Erfinde nichts dazu; wenn der\n# Anrufer ein ANDERES Anliegen hat, folge dem Anrufer.\n\n\n# ESKALATION (wichtig)\n- Droht der Anrufer mit Anwalt, Kammer, Anzeige oder Presse, oder ist er\n  hoerbar wuetend/verzweifelt: bleib RUHIG und freundlich, entschuldige\n  dich NICHT pauschal, sondern biete AKTIV an, dass sich ein Mitglied des\n  Praxisteams persoenlich und zeitnah meldet. Frage nach der besten\n  Rueckrufnummer und Uhrzeit.\n- Fasse das Anliegen solcher Anrufer besonders sorgfaeltig und woertlich\n  zusammen (wer, was, welche Frist, welche Drohung) - die Praxis sieht das\n  sofort auf der roten Liste.\n- Diskutiere NIE ueber Schuld, Rechnungen oder rechtliche Fragen. Keine\n  Zusagen ausser dem persoenlichen Rueckruf.\n\n\n# HINWEIS-ANSAGE (zuschaltbar, kann leer sein)\n{{ai_disclosure}}\n- Steht oben ein Hinweis-Satz: sage ihn EINMAL direkt nach deiner\n  Begruessung, dann normal weiter. Ist oben nichts: KEINE solche Ansage.\n",
+        "llm": "gpt-4.1",
+        "reasoning_effort": null,
+        "thinking_budget": null,
+        "enable_reasoning_summary": false,
+        "temperature": 0.3,
+        "max_tokens": 65,
+        "tool_ids": [],
+        "built_in_tools": {
+          "end_call": null,
+          "language_detection": {
+            "type": "system",
+            "name": "language_detection",
+            "description": "spricht in der Sprache des Anrufers",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "interruption_mode": "allow",
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "language_detection"
+            }
+          },
+          "transfer_to_agent": null,
+          "transfer_to_number": {
+            "type": "system",
+            "name": "transfer_to_number",
+            "description": "wenn jemand mit einem Zahnarzt oder Mitarbeiter srpechen möchte",
+            "response_timeout_secs": 20,
+            "disable_interruptions": true,
+            "interruption_mode": "disable_during_tool_and_turn",
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "transfer_to_number",
+              "transfers": [
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "sip_uri",
+                    "sip_uri": "sip:+4921130293034@87.106.34.137"
+                  },
+                  "transfer_type": "sip_refer",
+                  "uui": null,
+                  "post_dial_digits": null,
+                  "require_acceptance": false,
+                  "phone_number": null,
+                  "condition": "Wenn der Anrufer mit Dr.Patrikis sprechen möchte, verbindest du ihn mit dieser Telefonnummer."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "sip_uri",
+                    "sip_uri": "sip:+4921130293035@87.106.34.137"
+                  },
+                  "transfer_type": "sip_refer",
+                  "uui": null,
+                  "post_dial_digits": null,
+                  "require_acceptance": false,
+                  "phone_number": null,
+                  "condition": "Wenn der Anrufer mit Dr.Petsas sprechen möchte, verbindest du ihn mit dieser Telefonnummer."
+                }
+              ],
+              "enable_client_message": true
+            }
+          },
+          "skip_turn": null,
+          "play_keypad_touch_tone": {
+            "type": "system",
+            "name": "play_keypad_touch_tone",
+            "description": "",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "interruption_mode": "allow",
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "play_keypad_touch_tone",
+              "use_out_of_band_dtmf": false,
+              "suppress_turn_after_dtmf": false
+            }
+          },
+          "voicemail_detection": null,
+          "update_state": null,
+          "memory_entry_search": null,
+          "memory_entry_create": null,
+          "memory_entry_update": null,
+          "memory_entry_delete": null,
+          "agent_prompt_change": null,
+          "procedure_update": null,
+          "procedure_create": null,
+          "procedure_delete": null,
+          "transfer_to_genesys_chat": null,
+          "run_subagent": null
+        },
+        "enable_parallel_tool_calls": false,
+        "mcp_server_ids": [],
+        "native_mcp_server_ids": [],
+        "knowledge_base": [
+          {
+            "type": "text",
+            "name": "Praxisinformationen",
+            "id": "MReK3fpnnZuhyvoyn6gi",
+            "usage_mode": "auto"
+          }
+        ],
+        "custom_llm": null,
+        "speech_engine": null,
+        "ignore_default_personality": false,
+        "rag": {
+          "enabled": false,
+          "embedding_model": "e5_mistral_7b_instruct",
+          "optional_rag_enabled": false,
+          "max_vector_distance": 0.6,
+          "max_documents_length": 50000,
+          "max_retrieved_rag_chunks_count": 20,
+          "num_candidates": null,
+          "query_rewrite_prompt_override": null
+        },
+        "timezone": "Europe/Berlin",
+        "backup_llm_config": {
+          "preference": "default"
+        },
+        "cascade_timeout_seconds": 8.0,
+        "tools": [
+          {
+            "type": "system",
+            "name": "language_detection",
+            "description": "spricht in der Sprache des Anrufers",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "interruption_mode": "allow",
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "language_detection"
+            }
+          },
+          {
+            "type": "system",
+            "name": "transfer_to_number",
+            "description": "wenn jemand mit einem Zahnarzt oder Mitarbeiter srpechen möchte",
+            "response_timeout_secs": 20,
+            "disable_interruptions": true,
+            "interruption_mode": "disable_during_tool_and_turn",
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "transfer_to_number",
+              "transfers": [
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "sip_uri",
+                    "sip_uri": "sip:+4921130293034@87.106.34.137"
+                  },
+                  "transfer_type": "sip_refer",
+                  "uui": null,
+                  "post_dial_digits": null,
+                  "require_acceptance": false,
+                  "phone_number": null,
+                  "condition": "Wenn der Anrufer mit Dr.Patrikis sprechen möchte, verbindest du ihn mit dieser Telefonnummer."
+                },
+                {
+                  "custom_sip_headers": [],
+                  "transfer_destination": {
+                    "type": "sip_uri",
+                    "sip_uri": "sip:+4921130293035@87.106.34.137"
+                  },
+                  "transfer_type": "sip_refer",
+                  "uui": null,
+                  "post_dial_digits": null,
+                  "require_acceptance": false,
+                  "phone_number": null,
+                  "condition": "Wenn der Anrufer mit Dr.Petsas sprechen möchte, verbindest du ihn mit dieser Telefonnummer."
+                }
+              ],
+              "enable_client_message": true
+            }
+          },
+          {
+            "type": "system",
+            "name": "play_keypad_touch_tone",
+            "description": "",
+            "response_timeout_secs": 20,
+            "disable_interruptions": false,
+            "interruption_mode": "allow",
+            "force_pre_tool_speech": false,
+            "pre_tool_speech": "auto",
+            "assignments": [],
+            "tool_call_sound": null,
+            "tool_call_sound_behavior": "auto",
+            "tool_error_handling_mode": "auto",
+            "params": {
+              "system_tool_type": "play_keypad_touch_tone",
+              "use_out_of_band_dtmf": false,
+              "suppress_turn_after_dtmf": false
+            }
+          }
+        ]
+      }
+    }
+  },
+  "metadata": {
+    "created_at_unix_secs": 1731481625,
+    "updated_at_unix_secs": 1783436838
+  },
+  "platform_settings": {
+    "evaluation": {
+      "criteria": [
+        {
+          "id": "patient_satisfaction",
+          "name": "patient_satisfaction",
+          "type": "prompt",
+          "conversation_goal_prompt": "Evaluate wether the patient was satisfied with the service and not upset",
+          "use_knowledge_base": false,
+          "scope": "conversation",
+          "llm": null,
+          "scoring_mode": "binary",
+          "max_score": 100,
+          "score_instructions": null
+        },
+        {
+          "id": "tool_error",
+          "name": "tool_error",
+          "type": "prompt",
+          "conversation_goal_prompt": "Evaluate if the agent encountered an error while attempting to use a tool or function. A failure is defined as the agent explicitly stating that a tool did not work, mentioning a system error, or apologizing because it could not retrieve data/perform an action due to a technical issue. Look for the api response.",
+          "use_knowledge_base": false,
+          "scope": "agent",
+          "llm": null,
+          "scoring_mode": "binary",
+          "max_score": 100,
+          "score_instructions": null
+        }
+      ]
+    },
+    "widget": {
+      "variant": "full",
+      "placement": "bottom-right",
+      "expandable": "never",
+      "avatar": {
+        "type": "orb",
+        "color_1": "#2792DC",
+        "color_2": "#9CE6E6"
+      },
+      "feedback_mode": "none",
+      "end_feedback": null,
+      "bg_color": "#ffffff",
+      "text_color": "#000000",
+      "btn_color": "#000000",
+      "btn_text_color": "#ffffff",
+      "border_color": "#e1e1e1",
+      "focus_color": "#000000",
+      "border_radius": null,
+      "btn_radius": null,
+      "action_text": null,
+      "start_call_text": null,
+      "end_call_text": null,
+      "expand_text": null,
+      "listening_text": null,
+      "speaking_text": null,
+      "shareable_page_text": null,
+      "shareable_page_show_terms": true,
+      "terms_text": null,
+      "terms_html": null,
+      "terms_key": null,
+      "show_avatar_when_collapsed": false,
+      "disable_banner": false,
+      "override_link": null,
+      "markdown_link_allowed_hosts": [],
+      "markdown_link_include_www": true,
+      "markdown_link_allow_http": true,
+      "mic_muting_enabled": false,
+      "transcript_enabled": false,
+      "text_input_enabled": false,
+      "conversation_mode_toggle_enabled": false,
+      "default_expanded": false,
+      "always_expanded": false,
+      "dismissible": false,
+      "show_agent_status": false,
+      "show_conversation_id": true,
+      "strip_audio_tags": true,
+      "syntax_highlight_theme": null,
+      "text_contents": {
+        "main_label": null,
+        "start_call": null,
+        "start_chat": null,
+        "new_call": null,
+        "end_call": null,
+        "mute_microphone": null,
+        "change_language": null,
+        "collapse": null,
+        "expand": null,
+        "copied": null,
+        "accept_terms": null,
+        "dismiss_terms": null,
+        "listening_status": null,
+        "speaking_status": null,
+        "connecting_status": null,
+        "chatting_status": null,
+        "input_label": null,
+        "input_placeholder": null,
+        "input_placeholder_text_only": null,
+        "input_placeholder_new_conversation": null,
+        "user_ended_conversation": null,
+        "agent_ended_conversation": null,
+        "conversation_id": null,
+        "error_occurred": null,
+        "copy_id": null,
+        "initiate_feedback": null,
+        "request_follow_up_feedback": null,
+        "thanks_for_feedback": null,
+        "thanks_for_feedback_details": null,
+        "follow_up_feedback_placeholder": null,
+        "submit": null,
+        "go_back": null,
+        "send_message": null,
+        "text_mode": null,
+        "voice_mode": null,
+        "switched_to_text_mode": null,
+        "switched_to_voice_mode": null,
+        "copy": null,
+        "download": null,
+        "wrap": null,
+        "agent_working": null,
+        "agent_done": null,
+        "agent_error": null
+      },
+      "styles": {
+        "base": null,
+        "base_hover": null,
+        "base_active": null,
+        "base_border": null,
+        "base_subtle": null,
+        "base_primary": null,
+        "base_error": null,
+        "accent": null,
+        "accent_hover": null,
+        "accent_active": null,
+        "accent_border": null,
+        "accent_subtle": null,
+        "accent_primary": null,
+        "overlay_padding": null,
+        "button_radius": null,
+        "input_radius": null,
+        "bubble_radius": null,
+        "sheet_radius": null,
+        "compact_sheet_radius": null,
+        "dropdown_sheet_radius": null
+      },
+      "language_selector": false,
+      "supports_text_only": false,
+      "custom_avatar_path": null,
+      "language_presets": {}
+    },
+    "data_collection": {
+      "message": {
+        "type": "boolean",
+        "description": "This is true if the patient gives just a message",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "allowed_values_dynamic_variable": "",
+        "constant_value": "",
+        "is_omitted": false,
+        "llm": null
+      },
+      "medicalReferral": {
+        "type": "boolean",
+        "description": "This is true, if the patient needs a medical referral.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "allowed_values_dynamic_variable": "",
+        "constant_value": "",
+        "is_omitted": false,
+        "llm": null
+      },
+      "reason": {
+        "type": "string",
+        "description": "Dies ist der Grund für den Anruf, z.B. Termin erstellen, Terminabsage, der Patient braucht ein Rezept oder eine Nachricht an die Praxis oder Arzt.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "allowed_values_dynamic_variable": "",
+        "constant_value": "",
+        "is_omitted": false,
+        "llm": null
+      },
+      "medicalReport": {
+        "type": "boolean",
+        "description": "This is true if the patient needs a medical report, but not for a prescription.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "allowed_values_dynamic_variable": "",
+        "constant_value": "",
+        "is_omitted": false,
+        "llm": null
+      },
+      "prescription": {
+        "type": "boolean",
+        "description": "This is true, if the patient needs a prescription.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "allowed_values_dynamic_variable": "",
+        "constant_value": "",
+        "is_omitted": false,
+        "llm": null
+      },
+      "cancellation": {
+        "type": "boolean",
+        "description": "This is true if the patient cancels an existing appointment, but not if the user cancels the current booking process.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "allowed_values_dynamic_variable": "",
+        "constant_value": "",
+        "is_omitted": false,
+        "llm": null
+      },
+      "appointment": {
+        "type": "boolean",
+        "description": "This is only true, if the patient books an appointment.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "allowed_values_dynamic_variable": "",
+        "constant_value": "",
+        "is_omitted": false,
+        "llm": null
+      },
+      "callbackRequest": {
+        "type": "boolean",
+        "description": "This is true, if we need to call the patient back. If no callback is needed or requested return false.",
+        "enum": null,
+        "is_system_provided": false,
+        "dynamic_variable": "",
+        "allowed_values_dynamic_variable": "",
+        "constant_value": "",
+        "is_omitted": false,
+        "llm": null
+      }
+    },
+    "data_collection_scopes": {},
+    "overrides": {
+      "conversation_config_override": {
+        "asr": {
+          "keywords": false
+        },
+        "turn": {
+          "soft_timeout_config": {
+            "message": false
+          }
+        },
+        "tts": {
+          "voice_id": true,
+          "stability": false,
+          "speed": false,
+          "similarity_boost": false
+        },
+        "conversation": {
+          "text_only": false
+        },
+        "agent": {
+          "first_message": true,
+          "language": true,
+          "max_conversation_duration_message": false,
+          "prompt": {
+            "prompt": true,
+            "llm": false,
+            "tool_ids": false,
+            "native_mcp_server_ids": false,
+            "knowledge_base": false
+          }
+        }
+      },
+      "custom_llm_extra_body": true,
+      "enable_conversation_initiation_client_data_from_webhook": true,
+      "enable_starting_workflow_node_id_from_client": false
+    },
+    "workspace_overrides": {
+      "conversation_initiation_client_data_webhook": null,
+      "webhooks": {
+        "post_call_webhook_id": null,
+        "events": [
+          "transcript"
+        ],
+        "transcript_format": "json",
+        "send_audio": false
+      }
+    },
+    "testing": {
+      "attached_tests": [],
+      "referenced_tests_ids": []
+    },
+    "archived": false,
+    "guardrails": {
+      "version": "1",
+      "focus": {
+        "is_enabled": false
+      },
+      "prompt_injection": {
+        "is_enabled": false
+      },
+      "content": {
+        "execution_mode": "streaming",
+        "config": {
+          "sexual": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "profanity": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "religion_or_politics": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "medical_and_legal_information": {
+            "is_enabled": false,
+            "threshold": 0.3
+          }
+        },
+        "trigger_action": {
+          "type": "end_call"
+        }
+      },
+      "moderation": {
+        "execution_mode": "streaming",
+        "config": {
+          "sexual": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "violence_graphic": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "harassment_threatening": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "hate": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "hate_threatening": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm_instructions": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "self_harm_intent": {
+            "is_enabled": false,
+            "threshold": 0.3
+          },
+          "sexual_minors": {
+            "is_enabled": false,
+            "threshold": 0.3
+          }
+        }
+      },
+      "custom": {
+        "config": {
+          "configs": []
+        }
+      }
+    },
+    "summary_language": null,
+    "auth": {
+      "enable_auth": false,
+      "allowlist": [],
+      "require_origin_header": false,
+      "shareable_token": null
+    },
+    "call_limits": {
+      "agent_concurrency_limit": -1,
+      "daily_limit": 100000,
+      "bursting_enabled": true
+    },
+    "ban": null,
+    "smb_metadata": null,
+    "privacy": {
+      "record_voice": true,
+      "retention_days": -1,
+      "delete_transcript_and_pii": false,
+      "delete_audio": false,
+      "apply_to_existing_conversations": false,
+      "zero_retention_mode": false,
+      "conversation_history_redaction": {
+        "enabled": false,
+        "entities": []
+      }
+    },
+    "trust_context": "unknown",
+    "analysis_llm": "gemini-2.5-flash",
+    "topic_discovery": {
+      "enabled": true
+    },
+    "alerting": null,
+    "overview_dashboard_template_id": null,
+    "safety": {
+      "is_blocked_ivc": false,
+      "is_blocked_non_ivc": false,
+      "ignore_safety_evaluation": false
+    }
+  },
+  "phone_numbers": [
+    {
+      "phone_number": "+4921186942833",
+      "label": "MedDent Zahnklinik",
+      "supports_inbound": true,
+      "supports_outbound": true,
+      "phone_number_id": "1jgciYFB3GetO1iLFoFA",
+      "assigned_agent": {
+        "agent_id": "pSUVNVsczM4risVkBNAt",
+        "agent_name": "Med Dent Zahnklinik",
+        "environment": null,
+        "branch_id": null
+      },
+      "provider": "twilio"
+    },
+    {
+      "phone_number": "+4921190993971",
+      "label": "MedDent Zaluma",
+      "supports_inbound": true,
+      "supports_outbound": false,
+      "phone_number_id": "phnum_6401kfd4rtarfq0va4vkmpqqtjpj",
+      "assigned_agent": {
+        "agent_id": "pSUVNVsczM4risVkBNAt",
+        "agent_name": "Med Dent Zahnklinik",
+        "environment": null,
+        "branch_id": null
+      },
+      "provider": "sip_trunk",
+      "provider_config": null,
+      "outbound_trunk": null,
+      "inbound_trunk": {
+        "allowed_addresses": [
+          "0.0.0.0/0"
+        ],
+        "allowed_numbers": null,
+        "media_encryption": "allowed",
+        "has_auth_credentials": true,
+        "username": "278508vc01",
+        "remote_domains": [
+          "vc.zaluma.tel"
+        ],
+        "attributes_to_headers": {}
+      },
+      "livekit_stack": "standard",
+      "store_sip_messages": true
+    }
+  ],
+  "whatsapp_accounts": [],
+  "workflow": {
+    "edges": {
+      "edge_01k8z0wy99e48tr4db5p1wm30t": {
+        "source": "node_01k8z0kd1we48tr4crcxnr41va",
+        "target": "node_01k80qe601fak9ztk3xydp5q7v",
+        "forward_condition": {
+          "label": null,
+          "type": "result",
+          "successful": true
+        },
+        "backward_condition": null
+      },
+      "edge_01k8z6xetwf24b45jx68ezsfhk": {
+        "source": "node_01k8z6t57jf24b45j7h78ysd76",
+        "target": "node_01k8z6xetsf24b45jjaps8g2r9",
+        "forward_condition": {
+          "label": "Patient confirmed new date",
+          "type": "llm",
+          "condition": "Der Patient hat das neue Datum bestätigt."
+        },
+        "backward_condition": null
+      },
+      "edge_01k82tfv6pfak9ztsx0wmx47vk": {
+        "source": "node_01k80qe601fak9ztk3xydp5q7v",
+        "target": "node_01k82tfv6mfak9ztsqjgjk0hfx",
+        "forward_condition": {
+          "label": "Kein weiteres Anliegen",
+          "type": "llm",
+          "condition": "Der Patient hat kein weiteres Anliegen mehr."
+        },
+        "backward_condition": null
+      },
+      "edge_01k8z72ec1f24b45k0jqkg4jws": {
+        "source": "node_01k8z6xetsf24b45jjaps8g2r9",
+        "target": "node_01k80qe601fak9ztk3xydp5q7v",
+        "forward_condition": {
+          "label": null,
+          "type": "result",
+          "successful": true
+        },
+        "backward_condition": null
+      },
+      "edge_01k80qf417fak9ztkxz9nbpy39": {
+        "source": "node_01k80qe601fak9ztk3xydp5q7v",
+        "target": "node_01k80qf414fak9ztkg2me18ffx",
+        "forward_condition": {
+          "label": "Termin vereinbaren",
+          "type": "llm",
+          "condition": "Der Patient möchte einen neuen Termin vereinbaren."
+        },
+        "backward_condition": {
+          "label": "abbrechen",
+          "type": "llm",
+          "condition": "Der Patient möchte doch keinen Termin erstellen"
+        }
+      },
+      "edge_01k80rm24wfak9ztnda06btvh7": {
+        "source": "node_01k80qe601fak9ztk3xydp5q7v",
+        "target": "node_01k80rm24sfak9ztn6r431yysm",
+        "forward_condition": {
+          "label": "Allgemeines Anliegen",
+          "type": "llm",
+          "condition": "Der Patient benötigt eine Überweisung oder ein anderes Dokument."
+        },
+        "backward_condition": {
+          "label": "abbrechen",
+          "type": "llm",
+          "condition": "Der Patient benötigt doch kein Dokument.\n\nOder wir wissen welches Dokument der Patient benötigt und seinen Nachnamen und Mobilnummer haben.\n"
+        }
+      },
+      "edge_01k82sbs5kfak9ztqs6czg5rxj": {
+        "source": "node_01k80rz6hjfak9ztpkgge5ydc7",
+        "target": "node_01k82sbs5hfak9ztqqhrh4zft9",
+        "forward_condition": {
+          "label": null,
+          "type": "unconditional"
+        },
+        "backward_condition": null
+      },
+      "edge_01k8zbpycpf6drwr31er07a4qv": {
+        "source": "node_01k80qe601fak9ztk3xydp5q7v",
+        "target": "node_01k8zbpm7xf6drwr2dvkkj1f4z",
+        "forward_condition": {
+          "label": "Möchte einen Rückruf ",
+          "type": "llm",
+          "condition": "Der Patient möchte einen Rückruf erhalten."
+        },
+        "backward_condition": {
+          "label": "abbrechen",
+          "type": "llm",
+          "condition": "Der Patient möchte doch keinen Rückruf.\nOder wir haben den Nachnamen und die Mobilnummer der Patienten.\n"
+        }
+      },
+      "edge_01k8z4b02kf24b45gcfv2fh879": {
+        "source": "node_01k80qe601fak9ztk3xydp5q7v",
+        "target": "node_01k8z4b02ff24b45g33aby1z4p",
+        "forward_condition": {
+          "label": "postpone appointment",
+          "type": "llm",
+          "condition": "Der Patient möchte einen bestehenden Termin verschieben."
+        },
+        "backward_condition": {
+          "label": "abbrechen",
+          "type": "llm",
+          "condition": "Der Patient möchte doch keinen Termin verschieben"
+        }
+      },
+      "edge_01k80qe604fak9ztkdyt56yd08": {
+        "source": "start_node",
+        "target": "node_01k80qe601fak9ztk3xydp5q7v",
+        "forward_condition": {
+          "label": null,
+          "type": "unconditional"
+        },
+        "backward_condition": null
+      },
+      "edge_01k8z0kd1ze48tr4d7qj6d1v6a": {
+        "source": "node_01k80rfqy4fak9ztmgtw9xps9g",
+        "target": "node_01k8z0kd1we48tr4crcxnr41va",
+        "forward_condition": {
+          "label": "Appointment cancelation confirmed",
+          "type": "llm",
+          "condition": "If the patient confirms the appointment cancelation."
+        },
+        "backward_condition": {
+          "label": null,
+          "type": "result",
+          "successful": false
+        }
+      },
+      "edge_01k80rz6hmfak9ztpsyfhndvnv": {
+        "source": "node_01k80qf414fak9ztkg2me18ffx",
+        "target": "node_01k80rz6hjfak9ztpkgge5ydc7",
+        "forward_condition": {
+          "label": "Wunschdatum erhalten?",
+          "type": "llm",
+          "condition": "Wenn du den Namen des Arztes und das gewünschte Daum vom Patienten erhalten hast."
+        },
+        "backward_condition": null
+      },
+      "edge_01k8v3hepvfvj936myrggkmjdw": {
+        "source": "node_01k82sbs5hfak9ztqqhrh4zft9",
+        "target": "node_01k80qe601fak9ztk3xydp5q7v",
+        "forward_condition": {
+          "label": "Weiteres Anliegen",
+          "type": "llm",
+          "condition": "Der Patient hat ein anderes Anliegen"
+        },
+        "backward_condition": null
+      },
+      "edge_01k80rfqy7fak9ztmr0nsyad70": {
+        "source": "node_01k80qe601fak9ztk3xydp5q7v",
+        "target": "node_01k80rfqy4fak9ztmgtw9xps9g",
+        "forward_condition": {
+          "label": "Termin absagen",
+          "type": "llm",
+          "condition": "Der Patient möchte einen bestehenden Termin absagen oder stornieren"
+        },
+        "backward_condition": {
+          "label": "patient wants something else",
+          "type": "llm",
+          "condition": "The user does not want to cancel an appointment, he wants something else."
+        }
+      },
+      "edge_01k8z6r17af24b45hwk47cehy8": {
+        "source": "node_01k8z4b02ff24b45g33aby1z4p",
+        "target": "node_01k8z6r176f24b45hkd69099qt",
+        "forward_condition": {
+          "label": "got appointment data",
+          "type": "llm",
+          "condition": "Du hast das Datum des bestehenden Termins und den Nachnamen erhalten"
+        },
+        "backward_condition": {
+          "label": null,
+          "type": "result",
+          "successful": false
+        }
+      },
+      "edge_01k8z6tdyef24b45jebxmxc2wt": {
+        "source": "node_01k8z6r176f24b45hkd69099qt",
+        "target": "node_01k8z6t57jf24b45j7h78ysd76",
+        "forward_condition": {
+          "label": null,
+          "type": "result",
+          "successful": true
+        },
+        "backward_condition": null
+      },
+      "edge_01kkgcar81fzss1pc7mafd508f": {
+        "source": "node_01k80qe601fak9ztk3xydp5q7v",
+        "target": "node_01kkgcar80fzss1pby709xfp10",
+        "forward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "Der Patient möchte wissen, wann sein nächster Termin ist, oder ob für ihn ein Termin eingetragen ist (z. B. weil er keine Terminbestätigung erhalten hat)."
+        },
+        "backward_condition": {
+          "label": null,
+          "type": "llm",
+          "condition": "Der Patient hat erfahren wann sein nächster Termin ist oder er hat ein anderes Anliegen."
+        }
+      },
+      "edge_0116ym852v0r6s0tggqn10g0zs": {
+        "source": "node_01k80qf414fak9ztkg2me18ffx",
+        "target": "node_01k8zbpm7xf6drwr2dvkkj1f4z",
+        "forward_condition": {
+          "label": "Rückruf gewünscht",
+          "type": "llm",
+          "condition": "Der Patient möchte einen Rückruf durch das Praxisteam erhalten oder hat einem Rückruf zugestimmt."
+        },
+        "backward_condition": {
+          "label": "zurück",
+          "type": "llm",
+          "condition": "Der Rückrufwunsch wurde vollständig aufgenommen (Name und Nummer bestätigt) oder der Patient möchte doch keinen Rückruf."
+        }
+      },
+      "edge_0105mj45392hcy2ftbcg03c5h2": {
+        "source": "node_01k80rfqy4fak9ztmgtw9xps9g",
+        "target": "node_01k8zbpm7xf6drwr2dvkkj1f4z",
+        "forward_condition": {
+          "label": "Rückruf gewünscht",
+          "type": "llm",
+          "condition": "Der Patient möchte einen Rückruf durch das Praxisteam erhalten oder hat einem Rückruf zugestimmt."
+        },
+        "backward_condition": {
+          "label": "zurück",
+          "type": "llm",
+          "condition": "Der Rückrufwunsch wurde vollständig aufgenommen (Name und Nummer bestätigt) oder der Patient möchte doch keinen Rückruf."
+        }
+      },
+      "edge_01hg5bnq0s5xjzfv56k7z0jke6": {
+        "source": "node_01k8z4b02ff24b45g33aby1z4p",
+        "target": "node_01k8zbpm7xf6drwr2dvkkj1f4z",
+        "forward_condition": {
+          "label": "Rückruf gewünscht",
+          "type": "llm",
+          "condition": "Der Patient möchte einen Rückruf durch das Praxisteam erhalten oder hat einem Rückruf zugestimmt."
+        },
+        "backward_condition": {
+          "label": "zurück",
+          "type": "llm",
+          "condition": "Der Rückrufwunsch wurde vollständig aufgenommen (Name und Nummer bestätigt) oder der Patient möchte doch keinen Rückruf."
+        }
+      }
+    },
+    "nodes": {
+      "node_01k82sbs5hfak9ztqqhrh4zft9": {
+        "type": "override_agent",
+        "position": {
+          "x": 1112.9420628524445,
+          "y": -88.49696550604699
+        },
+        "edge_order": [
+          "edge_01k8v3hepvfvj936myrggkmjdw"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": false
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": "# Ziel: Finde zusammen mit dem Patienten einen freien Terminslot.\n\n# PATIENTENDATEN:\n# patient_is_known=\"{{patient_is_known}}\"\n# patient_first_name=\"{{patient_first_name}}\"\n# patient_last_name=\"{{patient_last_name}}\"\n# patient_phone=\"{{patient_phone_number}}\"\n\nwenn patient_is_known == \"false\" dann erfrage nacheinander Vorname, Nachname und Telefonnummer.\nDer Nachname muss buchstabiert werden.\n\n# HARTE REGEL:\n# Wenn unklar ist, ob der Anruf für die anrufende Person ist, frage einmal:\n# „Ist der Termin für Sie oder für jemand anderen?“\n#\n# Wenn für jemand anderen:\n# - patient_is_known und alle hinterlegten Daten ignorieren\n# - Daten der betroffenen Person neu abfragen\n# - der Patientennachname muss immer buchstabiert werden\n# Wenn für die anrufende Person UND patient_is_known=\"true\":\n# - Name und Telefonnummer NICHT erneut abfragen (auch nicht zur Bestätigung)\n\n# Wichtig:\n - erfrage immer nur eine Information gleichzeitig\n - getFreeTimeSlots höchstens zweimal versuchen\n\nDie Antwort enthält slots als String mit einer JSON-Liste. MUSS:\nString → Array parsen,\nnur Zeiten anbieten, die exakt in diesem Array stehen.\n\nWenn keine Uhrzeit genannt wurde, biete den frühesten Slot an dem gewünschten Tag an.\n\nWenn an dem gewünschten Tag kein Termin frei ist, dann informiere den Patienten darüber.\n\n# Zulässig sind nur folgende Ärzte: {{doctors_list}}.\n Wenn Patient egal sagt, wähle zufällig; nenne max. 3 Namen. Arzt einmal bestätigen.\n\n# Wunschzeit außerhalb Öffnungszeiten: „Leider nur innerhalb unserer Praxiszeiten. Ich schaue den nächsten passenden Tag.“\n\n# Wenn du alle nötigen Daten hast, dann lies nochmal das Datum und die Uhrzeit vor und lass dir dies vom Patienten bestätigen, erst dann erstelle einen Termin mit dem Tool \"createAppointment_local\"\nWenn der Patient kein weiters Anliegen hat, dann bedanke dich und verabschiede dich, bevor du das Gespräch beendest.\n\n# Beachte das heutige Datum und den Wochentag! Heute ist {{current_week_day}}. \nWenn der Patient nur sagt \"morgen\" oder einen Wochentag nennt, dann berechne das gewünschte Datum. \nMorgen ist {{tomorrow_week_day}}.  \nÜbermorgen ist {{day_after_tomorrow_week_day}}\n\n\n# WICHTIG: Der Patient darf nur einen Termin buchen der in der Liste der {{free_time_slots}} existiert!\nVergib NIEMALS einen Slot der nicht in dieser Liste steht!\n",
+              "llm": null,
+              "tool_ids": [],
+              "built_in_tools": {
+                "end_call": {
+                  "type": "system",
+                  "name": "end_call",
+                  "description": "",
+                  "disable_interruptions": false,
+                  "interruption_mode": "allow",
+                  "force_pre_tool_speech": false,
+                  "pre_tool_speech": "auto",
+                  "assignments": [],
+                  "tool_error_handling_mode": "auto",
+                  "params": {
+                    "system_tool_type": "end_call"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "additional_prompt": "\n\n# GESPRÄCHSFÜHRUNG (WICHTIG):\n- Kündige eine Suche oder Aktion höchstens EINMAL kurz an (z. B. „Einen Moment bitte.\") und führe sie dann SOFORT aus. Wiederhole die Ankündigung nicht und fasse das Anliegen nicht erneut zusammen.\n- Bestätige Angaben des Patienten höchstens EINMAL kurz. Stelle keine Frage erneut, die bereits beantwortet wurde.\n- Maximal ZWEI Versuche mit dem Tool. Schlägt auch der zweite Versuch fehl, sage, dass mit diesen Angaben kein Termin im System gefunden wurde, und biete einen Rückruf durch das Praxisteam an. Starte keinen weiteren Versuch und stelle die gleichen Fragen nicht noch einmal.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [
+          "tool_2201k92ts2qqek4v3mzzwb8q34g3",
+          "tool_0501k92tgdh8f7gtxwr5fr1xjt33"
+        ],
+        "label": "Termindaten abfragen",
+        "entry_behavior": "auto"
+      },
+      "node_01k8z6t57jf24b45j7h78ysd76": {
+        "type": "override_agent",
+        "position": {
+          "x": 1336.0434600588014,
+          "y": 847.148325721913
+        },
+        "edge_order": [
+          "edge_01k8z6xetwf24b45jx68ezsfhk"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": false
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": "Ziel:\nFinde zusammen mit dem Patienten einen neuen freien Terminslot.\nWenn man sich auf einen Slot geeinigt hat, frage nach dem Vornamen.\n\nHARTE REGEL – ÜBERSCHREIBT ALLES ANDERE:\nDu darfst ausschließlich Termine verwenden, die in der Liste {{free_time_slots}} vorkommen.\nEin Slot „kommt vor“, wenn die vom Patienten genannte Uhrzeit (HH:mm) in mindestens einem Eintrag der Liste enthalten ist.\nEs ist dir strikt VERBOTEN, Zeiten zu nennen, vorzuschlagen oder zu bestätigen,\ndie NICHT in dieser Liste vorkommen.\n\nWICHTIG:\n- Verlasse dich NIEMALS nur auf die Zeiten, die du dem Patienten bereits genannt hast.\n- Immer wenn der Patient eine neue Zeit nennt, musst du die Variable {{free_time_slots}} NEU in ein Array parsen\n  und deine Entscheidung ausschließlich auf Basis dieses Arrays treffen.\n\nVerarbeitung der Slots:\n1. Die Slots kommen als String mit einer JSON-Liste → parse {{free_time_slots}} in ein Array von Strings.\n2. Filtere dieses Array immer nach dem zuvor gemeinsam gewählten Datum.\n3. Wenn der Patient keine Uhrzeit nennt, biete den frühesten Slot des gewünschten Tages aus diesem gefilterten Array an.\n4. Biete nur Zeiten an, die in diesem gefilterten Array vorkommen.\n\nWenn der Patient eine Uhrzeit nennt (z. B. „acht Uhr fünfundvierzig“, „8:45“, „13 Uhr“):\n- Bevor du entscheidest, parse {{free_time_slots}} NOCHMAL in ein Array und filtere nach dem gewünschten Datum.\n- Normalisiere die genannte Zeit zu HH:mm (8:45 → 08:45, 13 Uhr → 13:00).\n- Ein Slot passt, wenn der String des Slots diese Uhrzeit enthält (z. B. „T08:45“ oder „08:45“ im Slot-String).\n- Es zählt die Übereinstimmung der Uhrzeit (HH:mm), nicht exakte Stringgleichheit mit dem gesamten Slot-String.\n- Wenn mindestens ein Slot im gefilterten Array diese Uhrzeit enthält:\n  → Bestätige diesen Slot (z. B. „Gern, 8:45 ist frei.“) und verwende genau diesen Slot.\n- Wenn KEIN Slot im gefilterten Array diese Uhrzeit enthält:\n  → Antworte natürlich: „Da ist leider nichts frei.“\n  → Danach biete maximal ZWEI Alternativen an:\n     die beiden frühesten Slots des gewünschten Tages aus dem gefilterten Array.\n  → Keine weiteren Zeiten nennen. Nichts erfinden.\n\nSprachstil:\n- Natürlich, freundlich, kurz.\n- Keine technischen Formulierungen wie „Array“, „JSON“ oder „Datenstruktur“ gegenüber dem Patienten.\n- Keine Erklärungen über interne Regeln oder Filterlogik.\n\nWichtig:\n- Niemals Alternativen erfinden.\n- Niemals Öffnungszeiten erwähnen.\n- Der Patient darf ausschließlich einen Slot wählen, der in {{free_time_slots}} vorkommt\n  (gemäß der Regel oben: Uhrzeit HH:mm muss in mindestens einem Eintrag stehen).\n- Die Regeln oben haben absolute Priorität.",
+              "llm": null,
+              "tool_ids": [],
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "\n\n# GESPRÄCHSFÜHRUNG (WICHTIG):\n- Kündige eine Suche oder Aktion höchstens EINMAL kurz an (z. B. „Einen Moment bitte.\") und führe sie dann SOFORT aus. Wiederhole die Ankündigung nicht und fasse das Anliegen nicht erneut zusammen.\n- Bestätige Angaben des Patienten höchstens EINMAL kurz. Stelle keine Frage erneut, die bereits beantwortet wurde.\n- Maximal ZWEI Versuche mit dem Tool. Schlägt auch der zweite Versuch fehl, sage, dass mit diesen Angaben kein Termin im System gefunden wurde, und biete einen Rückruf durch das Praxisteam an. Starte keinen weiteren Versuch und stelle die gleichen Fragen nicht noch einmal.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [
+          "tool_2201k92ts2qqek4v3mzzwb8q34g3",
+          "tool_0501k92tgdh8f7gtxwr5fr1xjt33"
+        ],
+        "label": "Termindaten abfragen",
+        "entry_behavior": "auto"
+      },
+      "node_01k80rfqy4fak9ztmgtw9xps9g": {
+        "type": "override_agent",
+        "position": {
+          "x": 1541.566929190773,
+          "y": 170.3327313464504
+        },
+        "edge_order": [
+          "edge_01k80rfqy7fak9ztmr0nsyad70",
+          "edge_01k8z0kd1ze48tr4d7qj6d1v6a",
+          "edge_0105mj45392hcy2ftbcg03c5h2"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": false
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": null,
+              "llm": null,
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "Ziel:\nDen bestehenden Termin des Patienten absagen.\n\n# PATIENTENDATEN:\n# patient_is_known=\"{{patient_is_known}}\"\n# patient_first_name=\"{{patient_first_name}}\"\n# patient_last_name=\"{{patient_last_name}}\"\n# patient_phone=\"{{patient_phone_number}}\"\n#\n# HARTE REGEL:\n# Wenn unklar ist, ob der Anruf für die anrufende Person ist, frage einmal:\n# „Ist der Termin für Sie oder für jemand anderen?“\n#\n# Wenn für jemand anderen:\n# - patient_is_known und alle hinterlegten Daten ignorieren\n# - Daten der betroffenen Person neu abfragen\n#\n# Wenn für die anrufende Person UND patient_is_known=\"true\":\n# - Name und Telefonnummer NICHT erneut abfragen (auch nicht zur Bestätigung)\n# - Wiederhole das Datum und den Nachnamen und frage ob dies korrekt ist.\n\nVorgehen:\n1. Erfrage zuerst das Datum, an dem der Termin gelöscht werden soll.\n2. Wiederhole die Daten und frage den Patienten, ob der Termin nun abgesagt werden soll.\n\nDatumsberechnung:\n- Berücksichtige das heutige Datum: Heute ist {{current_week_day}} der {{current_time}}.\n- Nutze auch {{next_week_days}}.\n- Morgen ist {{tomorrow_week_day}}.\n- Übermorgen ist {{day_after_tomorrow_week_day}}\n- Beispiele für zulässige Angaben des Patienten:\n  * „Am Mittwoch“\n  * „Morgen früh“\n  * „Nächste Woche Montag um 15 Uhr“\n  * „Heute Nachmittag“\n\nWICHTIG:\nWenn das Tool bei der Stornierung antwortet mit:\n   \"Error code:404. Details: 404, message='Not Found', ...\"\ndann bedeutet das NICHT ein technisches Problem, sondern:\n   → Es existiert kein Termin an diesem Tag für diesen Patienten.\n\nIn diesem Fall sag NICHT:\n   „Es gab ein technisches Problem…“\nsondern formuliere natürlich und kundenfreundlich:\n   „Ich konnte für dieses Datum keinen Termin finden. Möchten Sie ein anderes Datum prüfen?“\n\nKEINE technischen Begriffe verwenden und NICHT von Systemfehlern sprechen.\nDieses Verhalten hat absolute Priorität.\n\n\n# GESPRÄCHSFÜHRUNG (WICHTIG):\n- Kündige eine Suche oder Aktion höchstens EINMAL kurz an (z. B. „Einen Moment bitte.\") und führe sie dann SOFORT aus. Wiederhole die Ankündigung nicht und fasse das Anliegen nicht erneut zusammen.\n- Bestätige Angaben des Patienten höchstens EINMAL kurz. Stelle keine Frage erneut, die bereits beantwortet wurde.\n- Maximal ZWEI Versuche mit dem Tool. Schlägt auch der zweite Versuch fehl, sage, dass mit diesen Angaben kein Termin im System gefunden wurde, und biete einen Rückruf durch das Praxisteam an. Starte keinen weiteren Versuch und stelle die gleichen Fragen nicht noch einmal.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "label": "Termin absagen",
+        "entry_behavior": "auto"
+      },
+      "node_01k8zbpm7xf6drwr2dvkkj1f4z": {
+        "type": "override_agent",
+        "position": {
+          "x": -202.40237958758883,
+          "y": -328.7906212770058
+        },
+        "edge_order": [
+          "edge_01k8zbpycpf6drwr31er07a4qv",
+          "edge_0116ym852v0r6s0tggqn10g0zs",
+          "edge_0105mj45392hcy2ftbcg03c5h2",
+          "edge_01hg5bnq0s5xjzfv56k7z0jke6"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": false
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": null,
+              "llm": null,
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "Wenn der Patient einen Rückruf wünscht, dann teile dem Patienten mit dass wir sein Anliegen notiert haben und uns melden. \n - Dazu erfragen wir den Nachnamen buchstabiert \n - und danach die Mobilnummer.\n\n# Wichtig: Stelle immer nur eine Frage gleichzeitig!",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "label": "Rückruf anfordern",
+        "entry_behavior": "auto"
+      },
+      "node_01k8z6r176f24b45hkd69099qt": {
+        "type": "tool",
+        "position": {
+          "x": 1307.8559986755592,
+          "y": 588.8116968037618
+        },
+        "edge_order": [
+          "edge_01k8z6r17af24b45hwk47cehy8",
+          "edge_01k8z6tdyef24b45jebxmxc2wt"
+        ],
+        "tools": [
+          {
+            "tool_id": "tool_9001k92tz11xfv2rvbfre7vf8xav"
+          }
+        ]
+      },
+      "start_node": {
+        "type": "start",
+        "position": {
+          "x": 21.0,
+          "y": 344.0
+        },
+        "edge_order": [
+          "edge_01k80qe604fak9ztkdyt56yd08"
+        ]
+      },
+      "node_01k8z4b02ff24b45g33aby1z4p": {
+        "type": "override_agent",
+        "position": {
+          "x": 827.5450426033354,
+          "y": 593.7014696477644
+        },
+        "edge_order": [
+          "edge_01k8z6r17af24b45hwk47cehy8",
+          "edge_01k8z4b02kf24b45gcfv2fh879",
+          "edge_01hg5bnq0s5xjzfv56k7z0jke6"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": false
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": null,
+              "llm": null,
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "Ziel: Den bestehenden Termin des Patienten verschieben\n\n# PATIENTENDATEN:\n# patient_is_known=\"{{patient_is_known}}\"\n# patient_first_name=\"{{patient_first_name}}\"\n# patient_last_name=\"{{patient_last_name}}\"\n# patient_phone=\"{{patient_phone_number}}\"\n\nVorgehen: \n- Erfrage das Datum des bestehenden Termins\n- wenn patient_is_known == \"false\" dann erfrage nacheinander Vorname, Nachname und Telefonnummer.\n- Der Nachname muss buchstabiert werden.\n\n# HARTE REGEL:\n# Wenn unklar ist, ob der Anruf für die anrufende Person ist, frage einmal:\n# „Ist der Termin für Sie oder für jemand anderen?“\n#\n# Wenn für jemand anderen:\n# - patient_is_known und alle hinterlegten Daten ignorieren\n# - Daten der betroffenen Person neu abfragen\n# - der Patientennachname muss immer buchstabiert werden\n# Wenn für die anrufende Person UND patient_is_known=\"true\":\n# - Name und Telefonnummer NICHT erneut abfragen (auch nicht zur Bestätigung)\n# - Wiederhole das Datum und den Nachnamen und frage ob dies korrekt ist.\n\n**Wichtig für die Datumsberechnung:**\n* Beachte das heutige Datum und den Wochentag! Heute ist {{current_week_day}} der {{current_time}}.\n* Nimm auch {{next_week_days}} zu Hilfe.\n* Morgen ist {{tomorrow_week_day}}.\n* Übermorgen ist {{day_after_tomorrow_week_day}}\n\n\n**Beispiele für zulässige Antworten des Patienten:**\n* \"Am Mittwoch\"\n* \"Morgen früh\"\n* \"Nächste Woche Montag um 15 Uhr\"\n* \"Heute Nachmittag\"\n\n# GESPRÄCHSFÜHRUNG (WICHTIG):\n- Kündige eine Suche oder Aktion höchstens EINMAL kurz an (z. B. „Einen Moment bitte.\") und führe sie dann SOFORT aus. Wiederhole die Ankündigung nicht und fasse das Anliegen nicht erneut zusammen.\n- Bestätige Angaben des Patienten höchstens EINMAL kurz. Stelle keine Frage erneut, die bereits beantwortet wurde.\n- Maximal ZWEI Versuche mit dem Tool. Schlägt auch der zweite Versuch fehl, sage, dass mit diesen Angaben kein Termin im System gefunden wurde, und biete einen Rückruf durch das Praxisteam an. Starte keinen weiteren Versuch und stelle die gleichen Fragen nicht noch einmal.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "label": "Termin verschieben",
+        "entry_behavior": "auto"
+      },
+      "node_01k8z6xetsf24b45jjaps8g2r9": {
+        "type": "tool",
+        "position": {
+          "x": 793.5294417647816,
+          "y": 834.882701472566
+        },
+        "edge_order": [
+          "edge_01k8z72ec1f24b45k0jqkg4jws"
+        ],
+        "tools": [
+          {
+            "tool_id": "tool_0701k930626zfqp86q3wqxt33x7p"
+          }
+        ]
+      },
+      "node_01k8z0kd1we48tr4crcxnr41va": {
+        "type": "tool",
+        "position": {
+          "x": 1486.375,
+          "y": 365.2378744821478
+        },
+        "edge_order": [
+          "edge_01k8z0wy99e48tr4db5p1wm30t",
+          "edge_01k8z0kd1ze48tr4d7qj6d1v6a"
+        ],
+        "tools": [
+          {
+            "tool_id": "tool_6801k92tn380ezatjg6xs5t6pxx4"
+          }
+        ]
+      },
+      "node_01k80qf414fak9ztkg2me18ffx": {
+        "type": "override_agent",
+        "position": {
+          "x": 755.9912570069259,
+          "y": -584.8324397668648
+        },
+        "edge_order": [
+          "edge_01k80rz6hmfak9ztpsyfhndvnv",
+          "edge_01k80qf417fak9ztkxz9nbpy39",
+          "edge_0116ym852v0r6s0tggqn10g0zs"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": false
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": null,
+              "llm": null,
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "Frage den Patienten nacheinander:\n1. Den Grund für seinen Besuch (welche Leistung / welcher Besuchsgrund).\n2. Den Versicherungsstatus (gesetzlich versichert, privat versichert oder Selbstzahler).\n3. Bei welchem Arzt er den Termin buchen möchte.\n4. Wann er den Termin haben möchte.\n\n# Wichtig: Stelle immer nur eine Frage gleichzeitig!\n\n**Besuchsgrund**\n- Folgende Besuchsgründe können per Telefon gebucht werden: {{visit_motive_names}}\n- Nutze die Details in {{visit_motive_details}}: Dort steht pro Besuchsgrund, welche Versicherungsarten (patientTypes) buchbar sind und welche Ärzte (doctorNames) die Leistung anbieten.\n- Nimm immer einen Besuchsgrund aus der Liste, meist sagen die Patienten z.B. \"Kontrolle\" wenn \"Kontrolluntersuchung\" gemeint ist.\n- Wenn der Patient gesetzlich versichert ist und der gewählte Besuchsgrund in {{visit_motive_details}} nur \"private_self_payer\" in patientTypes hat, sage sofort freundlich: \"Diese Leistung bieten wir nur für Privatpatienten bzw. Selbstzahler an.\" und biete ggf. eine alternative Leistung an oder beende den Buchungsablauf.\n\n**Versicherungsstatus**\n- Zulässige Angaben: gesetzlich versichert, privat versichert oder Selbstzahler.\n- Erst nach der Klärung des Versicherungsstatus die Arztauswahl vornehmen.\n\n**Regeln für die Arztauswahl:**\n- Für den gewählten Besuchsgrund sind nur die in {{visit_motive_details}} unter \"doctorNames\" genannten Ärzte zulässig. Nenne und akzeptiere nur diese Ärzte für diese Leistung.\n- Wenn in {{visit_motive_details}} für den Besuchsgrund keine doctorNames stehen, nutze die Liste {{doctors_list}}.\n- Wenn dem Patienten der Arzt egal ist, wähle einen zufälligen Arzt aus den für diesen Besuchsgrund zulässigen Ärzten (doctorNames bzw. doctors_list).\n- Patienten nennen oft nur den Nachnamen; akzeptiere auch ähnliche Namen (z. B. Patient sagt \"Dr. Patikis\", Liste enthält \"Dr. Theodosios Patrikis\" → diesen zuordnen).\n- Wiederhole einmal den vollständigen Arztnamen zur Bestätigung, sobald du ihn identifiziert hast.\n- Formuliere nicht: \"Es scheint, dass es einen kleinen Fehler im Namen gibt. Meinen Sie vielleicht …?\" Stattdessen z. B.: \"Meinten Sie Dr. Michael Petsas?\"\n- Verlange NIEMALS, dass der Patient den Namen des Arztes buchstabiert.\n\n**Wenn nur ein Arzt die Leistung anbietet:**\n- Prüfe in {{visit_motive_details}} für den gewählten Besuchsgrund die Liste \"doctorNames\".\n- Enthält \"doctorNames\" für diesen Besuchsgrund nur einen einzigen Arzt, frage NICHT \"Bei welchem Arzt möchten Sie den Termin?\".\n- Nimm diesen Arzt direkt und sage einmal zur Bestätigung, z. B.: \"Für [Besuchsgrund] ist bei uns Dr. [Name] zuständig. Ich schaue jetzt nach einem passenden Termin.\"\n- Anschließend mit der nächsten Frage fortfahren (z. B. Wunschdatum, falls noch nicht geklärt).\n\n**Wichtig für die Datumsberechnung:**\n- Heute ist {{current_week_day}}. Nutze {{next_week_days}}.\n- \"Morgen\" = {{tomorrow_week_day}}, \"Übermorgen\" = {{day_after_tomorrow_week_day}}.\n- Wenn der Patient nur \"morgen\" oder einen Wochentag nennt, berechne daraus das konkrete Datum.\n\n**Beispiele für zulässige Antworten des Patienten (Wunschdatum):**\n- \"Am Mittwoch\"\n- \"Morgen früh\"\n- \"Nächste Woche Montag um 15 Uhr\"\n- \"Heute Nachmittag\"\n\n## WICHTIG: Vor dem Abruf der freien Termine müssen Besuchsgrund, Versicherungsstatus und Arzt feststehen. Kläre zuerst den Besuchsgrund und den Versicherungsstatus, dann den Arzt, dann das Wunschdatum.\n\n# GESPRÄCHSFÜHRUNG (WICHTIG):\n- Kündige eine Suche oder Aktion höchstens EINMAL kurz an (z. B. „Einen Moment bitte.\") und führe sie dann SOFORT aus. Wiederhole die Ankündigung nicht und fasse das Anliegen nicht erneut zusammen.\n- Bestätige Angaben des Patienten höchstens EINMAL kurz. Stelle keine Frage erneut, die bereits beantwortet wurde.\n- Nennt der Patient einen Wunschtag oder Zeitraum (z. B. „Freitag\", „nächste Woche\"), bestimme das konkrete Datum und übergib es als startDate an die Terminsuche. Biete keine Termine vor dem Wunschtag an.\n- Wenn keine Termine verfügbar sind: sage das klar und biete genau zwei Wege an: (1) anderes Datum oder anderer Arzt, (2) Rückruf durch das Praxisteam. Sage nicht, der Patient solle später erneut anrufen.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "label": "Wunschdatum oder Termindatum erfragen",
+        "entry_behavior": "auto"
+      },
+      "node_01k80qe601fak9ztk3xydp5q7v": {
+        "type": "override_agent",
+        "position": {
+          "x": 354.7103109656301,
+          "y": 338.7966448445172
+        },
+        "edge_order": [
+          "edge_01k80rm24wfak9ztnda06btvh7",
+          "edge_01k80rfqy7fak9ztmr0nsyad70",
+          "edge_01k80qf417fak9ztkxz9nbpy39",
+          "edge_01k82tfv6pfak9ztsx0wmx47vk",
+          "edge_01k8z4b02kf24b45gcfv2fh879",
+          "edge_01k8zbpycpf6drwr31er07a4qv",
+          "edge_01kkgcar81fzss1pc7mafd508f"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": false
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": null,
+              "llm": null,
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "Finde heraus welches Anliegen der Patient hat und leite dann immer zum entsprechenden Subagent weiter.\n\n# GESPRÄCHSFÜHRUNG (WICHTIG):\n- Verspreche niemals etwas, das du nicht selbst über ein verfügbares Tool auslösen kannst (z. B. Post oder E-Mails versenden). Wenn das Praxisteam etwas erledigen muss, biete einen Rückruf an.\n- Kündige Aktionen höchstens einmal an und wiederhole dich nicht.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "label": "main agent",
+        "entry_behavior": "auto"
+      },
+      "node_01k82tfv6mfak9ztsqjgjk0hfx": {
+        "type": "end",
+        "position": {
+          "x": -497.3363962556026,
+          "y": 35.98080280087345
+        },
+        "edge_order": []
+      },
+      "node_01k80rm24sfak9ztn6r431yysm": {
+        "type": "override_agent",
+        "position": {
+          "x": 261.31379356375055,
+          "y": -337.0995959440429
+        },
+        "edge_order": [
+          "edge_01k80rm24wfak9ztnda06btvh7"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": false
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "conversation": {
+            "client_events": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": null,
+              "llm": "gpt-4.1-mini",
+              "built_in_tools": {},
+              "custom_llm": null
+            }
+          }
+        },
+        "additional_prompt": "Wenn der Patient ein Dokument benötigt wie z.B. eine Überweisung, Rezept oder Krankschreibung, dann teile dem Patienten mit dass wir sein Anliegen notiert haben und uns melden. \n - Dazu erfragen wir den Nachnamen buchstabiert \n - und danach die Mobilnummer.\n\n# Wichtig: Stelle immer nur eine Frage gleichzeitig!",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [],
+        "label": "Überweisung, Rezept anfordern",
+        "entry_behavior": "auto"
+      },
+      "node_01k80rz6hjfak9ztpkgge5ydc7": {
+        "type": "tool",
+        "position": {
+          "x": 1122.5072291658157,
+          "y": -299.48745893568287
+        },
+        "edge_order": [
+          "edge_01k82sbs5kfak9ztqs6czg5rxj"
+        ],
+        "tools": [
+          {
+            "tool_id": "tool_2201k92ts2qqek4v3mzzwb8q34g3"
+          }
+        ]
+      },
+      "node_01kkgcar80fzss1pby709xfp10": {
+        "type": "override_agent",
+        "position": {
+          "x": 122.6497703181228,
+          "y": 706.89322522679
+        },
+        "edge_order": [
+          "edge_01kkgcar81fzss1pc7mafd508f"
+        ],
+        "conversation_config": {
+          "turn": {
+            "turn_eagerness": null,
+            "spelling_patience": null,
+            "speculative_turn": null
+          },
+          "tts": {
+            "voice_id": null
+          },
+          "agent": {
+            "prompt": {
+              "prompt": null,
+              "llm": null,
+              "built_in_tools": {}
+            }
+          }
+        },
+        "additional_prompt": "# Ziel: Suche den nächsten anstehenden Termin des Patienten.\n\n# PATIENTENDATEN:\n# patient_is_known=\"{{patient_is_known}}\"\n# patient_first_name=\"{{patient_first_name}}\"\n# patient_last_name=\"{{patient_last_name}}\"\n# patient_phone=\"{{patient_phone_number}}\"\n\nwenn patient_is_known == \"false\" dann erfrage nacheinander Vorname, Nachname und Telefonnummer.\nDer Nachname muss buchstabiert werden.\n\n# HARTE REGEL:\n# Wenn unklar ist, ob der Anruf für die anrufende Person ist, frage einmal:\n# „Ist der Termin für Sie oder für jemand anderen?“\n#\n# Wenn für jemand anderen:\n# - patient_is_known und alle hinterlegten Daten ignorieren\n# - Daten der betroffenen Person neu abfragen\n#\n# Wenn für die anrufende Person UND patient_is_known=\"true\":\n# - Name und Telefonnummer NICHT erneut abfragen (auch nicht zur Bestätigung)\n\n# Wichtig:\n - erfrage immer nur eine Information gleichzeitig\n\nBenutze das tool findAppointment_production um nach dem nächsten anstehenden Termin für den Patienten zu suchen.\n\n# GESPRÄCHSFÜHRUNG (WICHTIG):\n- Kündige eine Suche oder Aktion höchstens EINMAL kurz an (z. B. „Einen Moment bitte.\") und führe sie dann SOFORT aus. Wiederhole die Ankündigung nicht und fasse das Anliegen nicht erneut zusammen.\n- Bestätige Angaben des Patienten höchstens EINMAL kurz. Stelle keine Frage erneut, die bereits beantwortet wurde.\n- Maximal ZWEI Versuche mit dem Tool. Schlägt auch der zweite Versuch fehl, sage, dass mit diesen Angaben kein Termin im System gefunden wurde, und biete einen Rückruf durch das Praxisteam an. Starte keinen weiteren Versuch und stelle die gleichen Fragen nicht noch einmal.",
+        "additional_knowledge_base": [],
+        "additional_tool_ids": [
+          "tool_8601kkf3qfacer3a845q47n0s8z2"
+        ],
+        "label": "Nächsten Termin finden",
+        "entry_behavior": "auto"
+      }
+    },
+    "prevent_subagent_loops": true
+  },
+  "access_info": {
+    "is_creator": true,
+    "creator_name": "dr.petsas@pickadoc.de",
+    "creator_email": "dr.petsas@pickadoc.de",
+    "role": "admin",
+    "anonymous_access_level_override": null,
+    "access_source": "creator"
+  },
+  "tags": [],
+  "version_id": "agtvrsn_1001kwyhx1zdeeztv2qq8yh5ew8q",
+  "branch_id": "agtbrch_3801ks0pegnffqh85pkspyekqman",
+  "main_branch_id": "agtbrch_3801ks0pegnffqh85pkspyekqman",
+  "procedures": {},
+  "trust_context": "unknown"
+}

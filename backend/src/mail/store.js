@@ -34,6 +34,12 @@ function listShape(id, d) {
     relevant: d.relevant == null ? null : !!d.relevant,
     relevanceReason: d.relevanceReason || null,
     aiClassifiedAt: d.aiClassifiedAt || null,
+    // Sichtbare "beantwortet"-Markierung — v. a. für Praxis-Postfächer, damit
+    // nicht vier Mitarbeiter dieselbe Mail beantworten. Wer + wann steht schon
+    // in der Liste (dort wird entschieden, ob geantwortet werden muss).
+    answered: !!d.answered,
+    answeredAt: d.answeredAt || null,
+    answeredBy: d.answeredBy || null,
   };
 }
 
@@ -159,6 +165,25 @@ export async function setMessageClassification(clientId, id, { category, relevan
     updatedAt: FieldValue.serverTimestamp(),
   });
   return { ok: true };
+}
+
+/**
+ * Mark an inbound message as answered so the inbox shows a visible "beantwortet
+ * von … am …" badge. The FIRST answer wins the attribution (so a later editor
+ * doesn't overwrite who actually handled it); a repeated call only refreshes
+ * the timestamp. Best-effort — never blocks the actual send.
+ */
+export async function markAnswered(clientId, id, { by = "", ts = Date.now() } = {}) {
+  if (!id) return { ok: false, reason: "no_id" };
+  const ref = msgs(clientId).doc(String(id));
+  const snap = await ref.get().catch(() => null);
+  if (!snap || !snap.exists) return { ok: false, reason: "not_found" };
+  const cur = snap.data() || {};
+  const patch = { answered: true, answeredAt: ts, updatedAt: FieldValue.serverTimestamp() };
+  // Ersten Beantworter festhalten; spätere Antworten überschreiben ihn nicht.
+  if (!cur.answered || !cur.answeredBy) patch.answeredBy = String(by || cur.answeredBy || "Team");
+  await ref.update(patch).catch(() => {});
+  return { ok: true, answeredBy: patch.answeredBy || cur.answeredBy || String(by || "") };
 }
 
 /** Attach a message to a case (so inbound replies show up on the thread). */

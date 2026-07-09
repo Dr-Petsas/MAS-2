@@ -46,17 +46,34 @@ function checkTcp(port, host = "127.0.0.1", timeoutMs = 1500) {
   });
 }
 
-async function checkOllamaModel(model) {
+function isLocalOllama(base) {
+  const b = String(base || "").toLowerCase();
+  return b.includes("127.0.0.1:11434") || b.includes("localhost:11434");
+}
+
+async function checkLlmModel(model, base) {
   try {
-    const r = await fetch("http://127.0.0.1:11434/api/ps", { signal: AbortSignal.timeout(6000) });
+    if (isLocalOllama(base)) {
+      const r = await fetch("http://127.0.0.1:11434/api/ps", { signal: AbortSignal.timeout(6000) });
+      const j = await r.json();
+      const names = (j?.models || []).map((m) => m.name);
+      const ok = names.includes(model);
+      const loaded = names.length ? names.join(", ") : "(keins)";
+      return { ok, detail: `erwartet '${model}'; geladen: ${loaded}`,
+        fix: `ollama run ${model}  (laedt + haelt warm); .env LIVEAVATAR_LLM_MODEL pruefen` };
+    }
+    const r = await fetch(`${base.replace(/\/+$/, "")}/models`, { signal: AbortSignal.timeout(8000) });
     const j = await r.json();
-    const names = (j?.models || []).map((m) => m.name);
-    const ok = names.includes(model);
-    const loaded = names.length ? names.join(", ") : "(keins)";
-    return { ok, detail: `erwartet '${model}'; geladen: ${loaded}`,
-      fix: `ollama run ${model}  (laedt + haelt warm); .env LIVEAVATAR_LLM_MODEL pruefen` };
+    const ids = (j?.data || []).map((m) => m.id);
+    const ok = ids.includes(model);
+    const available = ids.length ? ids.join(", ") : "(keins)";
+    return { ok, detail: `erwartet '${model}' via ${base}; verfuegbar: ${available}`,
+      fix: `vLLM auf ${base} pruefen; Tailscale/VPN aktiv?` };
   } catch (e) {
-    return { ok: false, detail: "Ollama nicht erreichbar (11434)", fix: "Ollama-App starten" };
+    if (isLocalOllama(base)) {
+      return { ok: false, detail: "Ollama nicht erreichbar (11434)", fix: "Ollama-App starten" };
+    }
+    return { ok: false, detail: `LLM nicht erreichbar: ${base}`, fix: "vLLM-Server pruefen; Tailscale/VPN aktiv?" };
   }
 }
 
@@ -146,7 +163,7 @@ export async function runClaraHealth() {
   checks.push({ name: "LiveKit SFU (7880)", ok: sfu, detail: sfu ? "lauscht" : "kein Listener",
     fix: "livekit-server.exe via start-mas-stack.ps1 starten" });
 
-  checks.push({ name: "Ollama Modell", ...(await checkOllamaModel(model)) });
+  checks.push({ name: isLocalOllama(base) ? "LLM Modell (lokal)" : "LLM Modell (remote)", ...(await checkLlmModel(model, base)) });
   checks.push({ name: "Tool-Calling (LLM)", ...(await checkToolCalling(model, base)) });
   checks.push({ name: "Clara Worker", ...(await checkWorker()) });
 

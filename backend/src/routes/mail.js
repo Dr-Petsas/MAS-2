@@ -12,7 +12,7 @@ import { findContactsByPhone } from "../brain/addressBook.js";
 import { outboxHealth, processBrainOutbox } from "../brain/outbox.js";
 import { createAccount, updateAccount, deleteAccount, getAccountPublic } from "../mail/accounts.js";
 import { testImap, syncAccount, syncAll, sendMail } from "../mail/mailbox.js";
-import { listMessages, getMessage, markRead, listContacts, getAttachmentUrl, getAttachmentData, setMessageClassification, deleteMessage, linkMessageToCase, folderCounts } from "../mail/store.js";
+import { listMessages, getMessage, markRead, listContacts, getAttachmentUrl, getAttachmentData, setMessageClassification, deleteMessage, linkMessageToCase, markAnswered, folderCounts } from "../mail/store.js";
 import { classifyWithLLM, deriveMailSignals } from "../mail/classify.js";
 import { buildLetterPdf, letterFilename } from "../mail/letter.js";
 import { buildMailBriefing } from "../mail/briefing.js";
@@ -270,7 +270,10 @@ router.post("/mail/messages/:id/log-reply", async (req, res) => {
       try { await linkMessageToCase(clientId, req.params.id, caseId); } catch { /* non-blocking */ }
     }
 
-    res.json({ ok: true, clientId, eventId: rec?.eventId || null, caseId, queued: !!rec?.queued });
+    // Sichtbare Beantwortet-Markierung (wer/wann) auf der Eingangsmail.
+    const answered = await markAnswered(clientId, req.params.id, { by }).catch(() => null);
+
+    res.json({ ok: true, clientId, eventId: rec?.eventId || null, caseId, queued: !!rec?.queued, answered });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -330,6 +333,14 @@ router.post("/mail/send", async (req, res) => {
     const out = await sendMail(clientId, accountId, req.body || {});
     if (!out.ok) return res.status(400).json({ ok: false, ...out });
 
+    // Sichtbare Beantwortet-Markierung auf der Eingangsmail (Antwort-Fall):
+    // damit der Posteingang zeigt, dass + von wem schon geantwortet wurde und
+    // nicht mehrere Mitarbeiter dieselbe Mail beantworten. Best-effort.
+    const by = actorName(req);
+    let answered = null;
+    const replyToId = String(req.body?.replyToMessageId || "").trim();
+    if (replyToId) answered = await markAnswered(clientId, replyToId, { by }).catch(() => null);
+
     // Every outgoing patient communication is logged to the shared brain right
     // here on the server — so the KI/manual reply and the compose path are all
     // covered, and the frontend can NEVER "send but forget to log". Reliable:
@@ -339,10 +350,9 @@ router.post("/mail/send", async (req, res) => {
     if (req.body?.logToBrain !== false) {
       // recordCommunication is failure-safe (queues a retry instead of throwing);
       // the guard is purely defensive so brain logging can never break a send.
-      const by = actorName(req);
       brain = await logOutboundMail(clientId, { storedId: out.storedId, body: req.body || {}, by }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
     }
-    res.json({ ok: true, clientId, ...out, brain });
+    res.json({ ok: true, clientId, ...out, brain, answered });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

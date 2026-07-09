@@ -28,7 +28,7 @@ for (const a of accounts) {
   if (a.active === false || !a.imap?.host) continue;
   console.log(`- ${a.email}: Gesendet-Backfill ... (${new Date().toLocaleTimeString("de-DE")})`);
   const t0 = Date.now();
-  const r = await syncAccount(cid, a.id, { limit: 5000, inbox: false, sent: true }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+  const r = await syncAccount(cid, a.id, { limit: 5000, inbox: false, sent: true, full: true }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
   console.log(`  -> ${JSON.stringify(r)} (${((Date.now() - t0) / 60000).toFixed(1)} min)`);
 }
 console.log("Gesendet-Backfill fertig.");

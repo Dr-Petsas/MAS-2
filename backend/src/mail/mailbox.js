@@ -4,7 +4,7 @@ import { simpleParser } from "mailparser";
 import { createHash, randomUUID } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
-import { getAccountWithSecrets, markSync } from "./accounts.js";
+import { getAccountWithSecrets, markSync, saveSyncState } from "./accounts.js";
 import { classifyByKeywords, deriveMailSignals } from "./classify.js";
 import { getLetterSettings } from "./letterSettings.js";
 import { recordCommunication } from "../brain/record.js";
@@ -471,13 +471,25 @@ function findSentPath(boxes = []) {
 }
 
 /**
- * Pull the most recent messages of one account into Firestore — INBOX (in)
- * UND Gesendet-Ordner des Servers (out, z. B. vom Handy/Outlook verschickt).
- * Vorfall 07.07.2026: "Postausgang" zeigte nur Nadines eigene Kopien, weil der
- * Server-Gesendet-Ordner nie synchronisiert wurde. inbox/sent sind einzeln
- * schaltbar (Backfill nutzt das).
+ * Pull mail of one account into Firestore — INBOX (in) UND Gesendet-Ordner des
+ * Servers (out, z. B. vom Handy/Outlook verschickt). Vorfall 07.07.2026:
+ * "Postausgang" zeigte nur Nadines eigene Kopien, weil der Server-Gesendet-
+ * Ordner nie synchronisiert wurde. inbox/sent sind einzeln schaltbar.
+ *
+ * INKREMENTELL (09.07.2026): Statt bei jedem Tick die letzten `limit` Mails
+ * komplett neu herunterzuladen (und Anhänge/Klassifikation neu zu schreiben),
+ * merkt sich der Sync pro Ordner die UIDVALIDITY + höchste bereits gespeicherte
+ * UID (mas_mail_accounts.syncState). Existiert ein gültiger Cursor, wird nur
+ * `UID > lastUid` geholt — meist NICHTS, wenn keine neue Mail da ist. So verhält
+ * sich Nadine wie ein echter Mailclient (voller Bestand steht, es wird nur oben
+ * aufgefrischt), statt bei jedem Aufruf "von null" zu laden.
+ *
+ * Erster Lauf (kein Cursor) oder geänderte UIDVALIDITY ⇒ SEED: die letzten
+ * `limit` Mails per Sequenz-Fenster (wie bisher), damit der Posteingang sofort
+ * gefüllt ist. `full: true` erzwingt IMMER das Sequenz-Fenster mit `limit`
+ * (Historien-Backfill: pullt auch alte Mails UNTERHALB des Cursors).
  */
-export async function syncAccount(clientId, accountId, { limit = 30, inbox = true, sent = true } = {}) {
+export async function syncAccount(clientId, accountId, { limit = 30, inbox = true, sent = true, full = false } = {}) {
   const acc = await getAccountWithSecrets(clientId, accountId);
   if (!acc) return { ok: false, reason: "not_found" };
   if (acc.active === false) return { ok: false, reason: "inactive" };
@@ -500,9 +512,36 @@ export async function syncAccount(clientId, accountId, { limit = 30, inbox = tru
       const lock = await withTimeout(client.getMailboxLock(job.path), 10000, "IMAP-Postfachsperre", () => { try { client.close(); } catch { /* */ } });
       try {
         const exists = Number(client.mailbox?.exists || 0);
-        if (exists < 1) continue;
-        const from = Math.max(1, exists - (limit - 1));
-        for await (const message of client.fetch(`${from}:*`, { uid: true, flags: true, source: true })) {
+        const uidValidity = client.mailbox?.uidValidity != null ? String(client.mailbox.uidValidity) : null;
+        const uidNext = Number(client.mailbox?.uidNext || 0);
+        const prior = acc.syncState?.[job.folder];
+        const priorUid = Number(prior?.lastUid) || 0;
+        // Inkrementell nur bei intaktem Cursor: gleiche UIDVALIDITY + bekannte
+        // Obergrenze. Sonst (Erstlauf, Postfach neu aufgesetzt, full) SEED.
+        const canIncrement = !full && !!uidValidity && prior?.uidValidity && String(prior.uidValidity) === uidValidity && priorUid > 0;
+
+        if (exists < 1) {
+          // Leeres Postfach: Cursor halten, damit ein späteres SEED unnötig bleibt.
+          await saveSyncState(clientId, accountId, job.folder, { uidValidity, lastUid: priorUid });
+          continue;
+        }
+
+        // Schnellpfad: nichts Neues seit dem letzten Sync (kein Fetch nötig).
+        if (canIncrement && uidNext && priorUid + 1 >= uidNext) {
+          await saveSyncState(clientId, accountId, job.folder, { uidValidity, lastUid: priorUid });
+          continue;
+        }
+
+        // Range + Modus wählen: inkrementell per UID, sonst Sequenz-Fenster.
+        const range = canIncrement ? `${priorUid + 1}:*` : `${Math.max(1, exists - (limit - 1))}:*`;
+        const fetchOpts = canIncrement ? { uid: true } : undefined;
+        let maxUid = priorUid;
+
+        for await (const message of client.fetch(range, { uid: true, flags: true, source: true }, fetchOpts)) {
+          const mUid = Number(message.uid) || 0;
+          // UID FETCH "n:*" liefert immer die höchste UID mit, auch wenn keine
+          // Mail qualifiziert — schon Gespeichertes überspringen (kein Refetch).
+          if (canIncrement && mUid && mUid <= priorUid) continue;
           fetched++;
           // Per-message isolation: one malformed mail must not abort the whole
           // sync. Count it as failed and keep going.
@@ -515,7 +554,10 @@ export async function syncAccount(clientId, accountId, { limit = 30, inbox = tru
             failed++;
             console.error(`[mail-sync] ${job.path} uid=${message.uid} skipped:`, msgErr?.message || msgErr);
           }
+          if (mUid > maxUid) maxUid = mUid;
         }
+        // Cursor fortschreiben (auch nach SEED), damit der nächste Tick inkrementell läuft.
+        await saveSyncState(clientId, accountId, job.folder, { uidValidity, lastUid: maxUid });
       } finally {
         lock.release();
       }

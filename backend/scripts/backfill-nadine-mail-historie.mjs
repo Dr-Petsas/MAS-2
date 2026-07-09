@@ -19,7 +19,10 @@ for (const a of accounts) {
   if (a.active === false || !a.imap?.host) { console.log(`- ${a.email}: uebersprungen (inaktiv/kein IMAP)`); continue; }
   console.log(`- ${a.email}: starte Voll-Sync ... (${new Date().toLocaleTimeString("de-DE")})`);
   const t0 = Date.now();
-  const r = await syncAccount(cid, a.id, { limit: LIMIT }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+  // full:true erzwingt das Sequenz-Fenster (ganze Historie), ignoriert den
+  // inkrementellen UID-Cursor — sonst würde der Backfill nur Neues oberhalb des
+  // Cursors holen und die alten Mails NIE nachladen.
+  const r = await syncAccount(cid, a.id, { limit: LIMIT, full: true }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
   const mins = ((Date.now() - t0) / 60000).toFixed(1);
   console.log(`  -> ${JSON.stringify(r)} (${mins} min)`);
 }

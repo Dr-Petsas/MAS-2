@@ -158,3 +158,22 @@ export async function markSync(clientId, id, { error } = {}) {
     lastError: error ? String(error) : null,
   }).catch(() => {});
 }
+
+/**
+ * Persist the per-folder IMAP sync cursor: the server's UIDVALIDITY plus the
+ * highest UID we have already stored. The next sync uses this to fetch ONLY
+ * genuinely new mail (UID > lastUid) instead of re-downloading a whole window
+ * every tick — the difference between "reloads everything from zero" and a
+ * real mail client that only tops up. Changes UIDVALIDITY ⇒ the caller re-seeds.
+ * Best-effort: a failed write just means the next tick re-seeds that folder
+ * (idempotent via Message-ID, so no duplicates).
+ */
+export async function saveSyncState(clientId, id, folder, { uidValidity, lastUid } = {}) {
+  // Firestore map keys must not contain . $ / [ ] # — the folder labels we use
+  // ("INBOX", "Sent") are safe, but sanitise defensively for server sub-paths.
+  const key = (s(folder) || "INBOX").replace(/[.$/[\]#]/g, "_");
+  await col(clientId).doc(s(id)).set({
+    syncState: { [key]: { uidValidity: uidValidity == null ? null : String(uidValidity), lastUid: Number(lastUid) || 0, at: Date.now() } },
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true }).catch(() => {});
+}
