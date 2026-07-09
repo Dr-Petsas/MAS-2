@@ -155,7 +155,7 @@ export async function buildSpokenRangeList(clientId, { from, to, calendarId, ran
   const dayBits = days.map(
     (d) => `${germanWeekday(d.day)} ${d.total} ${d.total === 1 ? "Termin" : "Termine"}`,
   );
-  const message = `Im Zeitraum ${spanLabel} ${verb} Sie: ${dayBits.join("; ")}. `
+  const message = `Im Zeitraum ${spanLabel} ${verb}: ${dayBits.join("; ")}. `
     + `Insgesamt ${total} ${total === 1 ? "Termin" : "Termine"}.`;
 
   return { ok: true, from: data.from, to: data.to, count: total, message };
