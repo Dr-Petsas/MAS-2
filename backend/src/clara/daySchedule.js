@@ -298,7 +298,7 @@ function freeSubGaps(start, end, busy) {
  * free gaps, plus practice-wide highlights (new patients, unconfirmed, video,
  * absence blocks). Pure — feed it normalized appointments.
  */
-export function computeDayBriefing(appointments = [], { calendars = [] } = {}) {
+export function computeDayBriefing(appointments = [], { calendars = [], nowMs = Date.now() } = {}) {
   const nameById = new Map((calendars || []).map((c) => [c.id, c.name]));
   const real = appointments.filter((a) => !a.isAbsence);
   const absences = appointments.filter((a) => a.isAbsence);
@@ -352,6 +352,22 @@ export function computeDayBriefing(appointments = [], { calendars = [] } = {}) {
       docsStatus: a.docsStatus,
     }));
 
+  // now-Aufteilung (Chef 10.07.2026): mittags will niemand mehr hoeren, wie
+  // viele Termine der Vormittag hatte — "was steht NOCH an" zaehlt nur die
+  // Zukunft. Rein additiv: `remaining` liegt neben den Tages-Gesamtzahlen,
+  // bestehende Felder aendern sich nicht. Ein Termin gilt als "durch", sobald
+  // sein Ende (ersatzweise Beginn) vor jetzt liegt.
+  const isAhead = (a) => (a.endMs || a.startMs || 0) >= nowMs;
+  const remainingReal = real.filter(isAhead);
+  const remaining = {
+    total: remainingReal.length,
+    past: real.length - remainingReal.length,
+    firstMs: remainingReal.length ? Math.min(...remainingReal.map((a) => a.startMs)) : 0,
+    lastMs: remainingReal.length ? Math.max(...remainingReal.map((a) => a.endMs || a.startMs)) : 0,
+    newPatients: remainingReal.filter((a) => a.newPatient).length,
+    unconfirmed: remainingReal.filter((a) => a.status === "needsConfirmation").length,
+  };
+
   return {
     total: real.length,
     byCalendar,
@@ -361,6 +377,7 @@ export function computeDayBriefing(appointments = [], { calendars = [] } = {}) {
     docsYellow: real.filter((a) => a.docsStatus === "yellow").length,
     docsRed: real.filter((a) => a.docsStatus === "red").length,
     attention,
+    remaining,
     absences: absences.map((a) => ({ calendarName: a.calendarName, startMs: a.startMs, endMs: a.endMs })),
     firstMs: real.length ? Math.min(...real.map((a) => a.startMs)) : 0,
     lastMs: real.length ? Math.max(...real.map((a) => a.endMs || a.startMs)) : 0,
@@ -382,7 +399,7 @@ function spokenGaps(gaps) {
 // mit eigenem Namen + vollem Datum anzusprechen ("Dr. Michael Petsas,
 // Donnerstag, 11. Juni ...") nervt: er weiß, wer er ist und welcher Tag ist.
 // Daher "Sie haben heute ..." sobald der eigene Kalender gelesen wird.
-export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = "", overview = false } = {}) {
+export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = "", overview = false, nowMs = Date.now() } = {}) {
   const day = date || todayBerlin();
   const rel = relativeDayLabel(day);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -390,7 +407,7 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   // mehr "Heute haben Sie 5 Termine ... frei ist noch von 9:30" sagen, wenn
   // laengst alles vorbei ist. Ist der eigene Kalender-Tag durch, sprechen wir
   // im Rueckblick und lassen vergangene Freislots/Vorbereitungs-Hinweise weg.
-  const nowMs = Date.now();
+  // nowMs ist injizierbar (Tests) — Default ist die echte Uhr.
   const isToday = day === todayBerlin();
   const dayOver = Boolean(isToday && briefing?.lastMs && nowMs > briefing.lastMs);
   const futureGaps = (gaps) => (isToday ? (gaps || []).filter((x) => (x.endMs || x.startMs || 0) > nowMs) : (gaps || []));
@@ -424,7 +441,33 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   }
   const cals = briefing.byCalendar || [];
 
-  if (cals.length === 1) {
+  // Mittags-Blickwinkel (Chef 10.07.2026): laeuft der Tag schon, will niemand
+  // hoeren, wie viele Termine der Vormittag hatte — "was steht NOCH an" zaehlt
+  // nur die Zukunft. Greift nur HEUTE, wenn etwas durch UND etwas offen ist;
+  // morgens (nichts durch) und abends (dayOver, nichts offen) bleibt alles wie
+  // gehabt. Zahlen bleiben woertlich aus dem Kalender.
+  const rem = briefing.remaining || {};
+  const midday = Boolean(isToday && !dayOver && rem.past > 0 && rem.total > 0);
+
+  if (midday) {
+    const K = rem.total;
+    const M = rem.past;
+    const noun = K === 1 ? "einen Termin" : `${K} Termine`;
+    const nounN = K === 1 ? "ein Termin" : `${K} Termine`;
+    const bis = rem.lastMs
+      ? (K === 1 ? `um ${spokenTime(rem.firstMs)}` : `bis ${spokenTime(rem.lastMs)}`)
+      : "";
+    const durch = M === 1 ? "einer ist schon durch" : `${M} sind schon durch`;
+    parts.push(vary("brief.rest", [
+      cap(`${rel} haben Sie noch ${noun} vor sich${bis ? `, ${bis}` : ""} — ${durch}.`),
+      cap(`${rel} ${K === 1 ? "steht" : "stehen"} noch ${nounN} an${bis ? `, ${bis}` : ""} — ${durch}.`),
+      `Ab jetzt ${K === 1 ? "kommt noch" : "kommen noch"} ${noun}${bis ? `, ${bis}` : ""}. ${cap(durch)}.`,
+    ]));
+    const remGaps = (briefing.byCalendar || [])
+      .flatMap((c) => futureGaps(c.gaps))
+      .sort((a, b) => a.startMs - b.startMs);
+    if (remGaps.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(remGaps)}.`);
+  } else if (cals.length === 1) {
     // Ein Kalender: Eröffnung und Detail in EINEM Satz statt zwei fast
     // identischen Zeilen hintereinander.
     const c = cals[0];
@@ -492,7 +535,7 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   // ("Ein voller Tag." / "Überschaubar.") direkt nach dem Fakten-Satz. Die
   // Zahl selbst bleibt wörtlich aus dem Kalender; mittlere Tage bleiben still.
   if (!dayOver) {
-    const mood = dayLoadReaction(briefing.total);
+    const mood = dayLoadReaction(midday ? rem.total : briefing.total);
     if (mood) parts.push(mood);
   }
 
@@ -510,17 +553,22 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     return `${parts.join(" ")} ${recap}`.trim();
   }
 
+  // Mittags beziehen sich Hinweise nur auf die NOCH kommenden Termine — ein
+  // Neupatient vom Vormittag ist längst da, ein vergangener Video-Termin
+  // gelaufen. Sonst (morgens/ganzer Tag) zaehlen die Tages-Gesamtzahlen.
+  const hlNew = midday ? rem.newPatients : briefing.newPatients;
+  const unconf = midday ? rem.unconfirmed : briefing.unconfirmed;
   const hl = [];
-  if (briefing.newPatients) hl.push(briefing.newPatients === 1 ? "ein Neupatient" : `${briefing.newPatients} Neupatienten`);
-  if (briefing.videoCalls) hl.push(briefing.videoCalls === 1 ? "ein Video-Termin" : `${briefing.videoCalls} Video-Termine`);
+  if (hlNew) hl.push(hlNew === 1 ? "ein Neupatient" : `${hlNew} Neupatienten`);
+  if (!midday && briefing.videoCalls) hl.push(briefing.videoCalls === 1 ? "ein Video-Termin" : `${briefing.videoCalls} Video-Termine`);
   if (hl.length) {
     const singular = hl.length === 1 && hl[0].startsWith("ein ");
     parts.push(`Darunter ${singular ? "ist" : "sind"} ${hl.join(" und ")}.`);
   }
-  if (briefing.unconfirmed) {
-    parts.push(briefing.unconfirmed === 1
+  if (unconf) {
+    parts.push(unconf === 1
       ? "Ein Termin ist noch unbestätigt."
-      : `${briefing.unconfirmed} Termine sind noch unbestätigt.`);
+      : `${unconf} Termine sind noch unbestätigt.`);
   }
   if (briefing.absences.length) {
     parts.push(briefing.absences.length === 1
@@ -532,15 +580,21 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   // ein paar gesprochene Hinweise verträgt ein Briefing nicht; der Rest steht
   // im Kalender und kommt über die Terminliste.
   const SPOKEN_ATTENTION_MAX = 6;
-  const att = briefing.attention || [];
+  // Mittags nur noch Hinweise zu KOMMENDEN Terminen — Unterlagen fuer einen
+  // Vormittags-Termin sind kein "Vorzubereiten" mehr. Zaehlungen aus der
+  // (ggf. gefilterten) Liste ableiten, damit "davon noch nicht verschickt"
+  // stimmt (ausserhalb midday identisch zu briefing.docsRed/docsYellow).
+  const att = (briefing.attention || []).filter((a) => !midday || (a.startMs || 0) >= nowMs);
+  const attRed = att.filter((a) => a.docsStatus === "red").length;
+  const attYellow = att.filter((a) => a.docsStatus === "yellow").length;
   if (att.length && overview) {
     // Zoom-out: NICHT jeden Termin einzeln vorlesen (das nervt und liess den
     // Loop-Guard faelschlich anschlagen — "ich drehe mich im Kreis"). Stattdessen
     // zaehlen + Detail auf Zuruf.
-    const prep = briefing.docsRed + briefing.docsYellow;
+    const prep = attRed + attYellow;
     const notes = att.length - prep > 0 ? att.length - prep : 0;
     const bits = [];
-    if (prep) bits.push(`bei ${prep} ${prep === 1 ? "Termin fehlen noch Unterlagen" : "Terminen fehlen noch Unterlagen"}${briefing.docsRed ? ` (${briefing.docsRed} davon noch nicht verschickt)` : ""}`);
+    if (prep) bits.push(`bei ${prep} ${prep === 1 ? "Termin fehlen noch Unterlagen" : "Terminen fehlen noch Unterlagen"}${attRed ? ` (${attRed} davon noch nicht verschickt)` : ""}`);
     if (notes) bits.push(`${notes} ${notes === 1 ? "Termin hat eine Notiz" : "Termine haben Notizen"}`);
     if (bits.length) parts.push(`Vorzubereiten: ${bits.join(", ")}. Sag Bescheid, dann gehe ich die Termine einzeln durch.`);
     if (att.some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());

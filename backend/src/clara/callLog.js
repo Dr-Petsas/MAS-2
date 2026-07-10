@@ -4,6 +4,7 @@ import { todayBerlin, relativeDayLabel } from "./daySchedule.js";
 import { ensureBerlinTz } from "./booking.js";
 import { pick } from "./variation.js";
 import { callLogQuip } from "./humor.js";
+import { summarizeForSpeech } from "./summarize.js";
 
 // ============================================================================
 // Gesprochenes Anruf-Protokoll — "Waren heute Anrufe für mich da?"
@@ -66,9 +67,17 @@ export async function spokenCallLog(clientId, { date } = {}) {
 
   const parts = [];
   const who = (e) => e.counterparty?.name || e.subject?.name || "ein unbekannter Anrufer";
-  const short = (e) => {
+  // Name + Uhrzeit bleiben IMMER deterministisch aus dem Ereignis. Nur der
+  // freie Anliegen-Text wird bei sehr langen Notizen fluessig verdichtet
+  // (Chef 10.07.2026, abgeschottetes LLM + Zahlen-Waechter); kurze Notizen
+  // bleiben unveraendert, lange fallen bei LLM-Ausfall auf harte Kappung zurueck.
+  const short = async (e) => {
     const s = String(e.summary || "").trim();
-    return s.length > 160 ? `${s.slice(0, 157)}...` : s;
+    if (!s) return "";
+    if (s.length <= 220) return s;
+    const sum = await summarizeForSpeech("call", s, { maxSentences: 2, timeoutMs: 9000 });
+    if (sum.ok) return sum.text;
+    return `${s.slice(0, 197)}...`;
   };
 
   if (inbound.length) {
@@ -78,7 +87,8 @@ export async function spokenCallLog(clientId, { date } = {}) {
       `${rel} ${inbound.length === 1 ? "hat es einmal geklingelt" : `hat es ${inbound.length} Mal geklingelt`}.`,
     ])));
     for (const e of inbound.slice(0, 6)) {
-      parts.push(`Um ${spokenTime(e.ts)}: ${who(e)}${short(e) ? ` — ${short(e)}` : ""}`);
+      const s = await short(e);
+      parts.push(`Um ${spokenTime(e.ts)}: ${who(e)}${s ? ` — ${s}` : ""}`);
     }
     if (inbound.length > 6) parts.push(`Und ${inbound.length - 6} weitere — Details stehen im Monitor.`);
   } else {

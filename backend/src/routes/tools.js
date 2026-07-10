@@ -33,6 +33,7 @@ import { approveAndExecute, snoozeInitiative, initiativeSuffix, recallStatusSpok
 import { planAbsence, approveAbsence, absenceStatusSpoken } from "../clara/absencePlanner.js";
 import { lookupCaller, normalizePhone } from "../clara/callerLookup.js";
 import { spokenCallLog } from "../clara/callLog.js";
+import { summarizeForSpeech } from "../clara/summarize.js";
 import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext } from "../clara/sessions.js";
@@ -324,8 +325,23 @@ router.post("/tools/read-email", async (req, res) => {
     ).replace(/<[^>]*>/g, "").trim() || "Unbekannt";
     const when = full?.date ? new Date(full.date).toLocaleString("de-DE", { timeZone: "Europe/Berlin", weekday: "long", hour: "2-digit", minute: "2-digit" }) : "";
     const more = hits.length > 1 ? ` Es gibt noch ${hits.length - 1} weitere passende E-Mail${hits.length > 2 ? "s" : ""}.` : "";
-    const message = `E-Mail von ${fromLabel}${when ? `, eingegangen ${when}` : ""}. Betreff: ${full?.subject || "(kein Betreff)"}. Inhalt: ${body || "(kein Text erkennbar)"}${more}`;
-    return res.json({ ok: true, message, messageId: hits[0].id });
+    const subj = full?.subject || "(kein Betreff)";
+    const head = `E-Mail von ${fromLabel}${when ? `, eingegangen ${when}` : ""}. Betreff: ${subj}.`;
+
+    // Zusammenfassen statt Textwand (Chef 10.07.2026): Standard ist eine
+    // fluessige Zusammenfassung des ECHTEN Inhalts (abgeschottetes LLM,
+    // Zahlen-Waechter). Will der Chef den Wortlaut, ruft die KI mit full=true
+    // erneut auf. LLM offline/unsicher -> deterministischer Volltext wie bisher.
+    const wantFull = req.body?.full === true || String(req.body?.full || "").toLowerCase() === "true";
+    if (!wantFull && body && body.length >= 200) {
+      const sum = await summarizeForSpeech("email", body, { subject: subj, sender: fromLabel });
+      if (sum.ok) {
+        const message = `${head} Zusammengefasst: ${sum.text} Soll ich die ganze Mail vorlesen?${more}`;
+        return res.json({ ok: true, message, messageId: hits[0].id, summarized: true });
+      }
+    }
+    const message = `${head} Inhalt: ${body || "(kein Text erkennbar)"}${more}`;
+    return res.json({ ok: true, message, messageId: hits[0].id, summarized: false });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

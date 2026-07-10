@@ -60,11 +60,14 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
     };
   }
 
-  const briefing = computeDayBriefing(dayData.appointments, { calendars: dayData.calendars });
+  // Eine gemeinsame "jetzt"-Uhr fuer Zaehlung und Sprechtext, damit der
+  // Mittags-Blickwinkel (was steht NOCH an) konsistent ist.
+  const nowMs = Date.now();
+  const briefing = computeDayBriefing(dayData.appointments, { calendars: dayData.calendars, nowMs });
   const parts = [];
 
   // 1. Kalender-Kopf (Zoom-out: Gesamtzahl + Tagesspanne, keine Einzelzeilen).
-  parts.push(buildSpokenDayBriefing(briefing, { date: dayData.date, operatorDoctorName, overview: true }));
+  parts.push(buildSpokenDayBriefing(briefing, { date: dayData.date, operatorDoctorName, overview: true, nowMs }));
 
   let hadComms = false;
   let hadHighlights = false;

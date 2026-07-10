@@ -38,8 +38,13 @@ async function run() {
     { startMs: at(11, 0).getTime(), endMs: at(11, 30).getTime(), calendarId: "cal2", calendarName: "Dr. Zwei", patientId: "p3", patientName: "Cara C", newPatient: false, status: "confirmed", isAbsence: false, isVideoCall: true },
     { startMs: at(14, 0).getTime(), endMs: at(15, 0).getTime(), calendarId: "cal1", calendarName: "Dr. Test", patientId: "", patientName: "", isAbsence: true, isVideoCall: false, status: "" },
   ];
-  const b = computeDayBriefing(appts, { calendars });
+  // Fixe "jetzt"-Uhr VOR allen Terminen, damit der Sprechtext deterministisch
+  // im klassischen (nicht-mittags) Zweig landet — unabhaengig von der echten
+  // Uhrzeit beim Testlauf (seit dem Mittags-Blickwinkel 10.07.2026).
+  const MORNING = at(6, 0).getTime();
+  const b = computeDayBriefing(appts, { calendars, nowMs: MORNING });
   check(b.total === 3, `3 echte Termine (war ${b.total})`);
+  check(b.remaining && b.remaining.total === 3 && b.remaining.past === 0, "remaining: morgens alle 3 offen, 0 durch");
   check(b.newPatients === 1, "1 Neupatient gezählt");
   check(b.unconfirmed === 1, "1 unbestätigt gezählt");
   check(b.videoCalls === 1, "1 Video-Termin gezählt");
@@ -48,7 +53,7 @@ async function run() {
   check(cal1 && cal1.count === 2, "cal1 hat 2 Termine");
   check(cal1 && cal1.gaps.length === 1 && cal1.gaps[0].minutes === 45, `Lücke 45 min erkannt (war ${cal1?.gaps?.[0]?.minutes})`);
 
-  const spoken = buildSpokenDayBriefing(b, { date: DATE, operatorName: "Frau Klein" });
+  const spoken = buildSpokenDayBriefing(b, { date: DATE, operatorName: "Frau Klein", nowMs: MORNING });
   // Gewollter Stil seit dem Natürlichkeits-Rework: ganze Sätze, Zeitangabe
   // vorn, keine Stichwort-Labels. Seit Lockerheit 1 (10.07.2026) rotiert der
   // Rahmen-Satz — die ZAHL muss aber in jeder Variante wörtlich drinstehen.
@@ -59,6 +64,31 @@ async function run() {
 
   const empty = buildSpokenDayBriefing(computeDayBriefing([], { calendars }), { date: DATE });
   check(/keine Termine gebucht|Kalender leer|steht nichts im Kalender/.test(empty), "Leerer Tag -> ehrliche Meldung");
+
+  console.log("\n=== Mittags-Blickwinkel: nur noch kommende Termine (10.07.2026) ===");
+  // Zwei Termine vormittags (durch), zwei nachmittags (offen) — jetzt = 12:00.
+  const MIDDAY = at(12, 0).getTime();
+  const dayMix = [
+    { startMs: at(9, 0).getTime(), endMs: at(9, 30).getTime(), calendarId: "cal1", calendarName: "Dr. Test", patientId: "m1", patientName: "Vormittag Eins", newPatient: true, status: "confirmed", isAbsence: false, isVideoCall: false },
+    { startMs: at(10, 0).getTime(), endMs: at(10, 30).getTime(), calendarId: "cal1", calendarName: "Dr. Test", patientId: "m2", patientName: "Vormittag Zwei", newPatient: false, status: "confirmed", isAbsence: false, isVideoCall: false },
+    { startMs: at(15, 0).getTime(), endMs: at(15, 30).getTime(), calendarId: "cal1", calendarName: "Dr. Test", patientId: "m3", patientName: "Nachmittag Eins", newPatient: false, status: "confirmed", isAbsence: false, isVideoCall: false },
+    { startMs: at(16, 0).getTime(), endMs: at(16, 30).getTime(), calendarId: "cal1", calendarName: "Dr. Test", patientId: "m4", patientName: "Nachmittag Zwei", newPatient: true, status: "confirmed", isAbsence: false, isVideoCall: false },
+  ];
+  const bMid = computeDayBriefing(dayMix, { calendars: [{ id: "cal1", name: "Dr. Test" }], nowMs: MIDDAY });
+  check(bMid.remaining.total === 2 && bMid.remaining.past === 2, "remaining mittags: 2 offen, 2 durch");
+  check(bMid.remaining.newPatients === 1, "remaining: nur der noch kommende Neupatient zaehlt (1)");
+  const midSpoken = buildSpokenDayBriefing(bMid, { date: DATE, operatorDoctorName: "Dr. Test", overview: true, nowMs: MIDDAY });
+  check(/noch (2 Termine|zwei Termine)/.test(midSpoken) || /kommen noch 2 Termine/.test(midSpoken), "Mittags nennt NUR die 2 noch kommenden Termine");
+  check(/2 sind schon durch|zwei sind schon durch/.test(midSpoken), "Mittags haekt den Vormittag kurz ab ('2 sind schon durch')");
+  check(!/insgesamt 4/.test(midSpoken) && !/4 Termine/.test(midSpoken), "Mittags zaehlt NICHT alle 4 Termine des Tages");
+  check(/ein Neupatient/.test(midSpoken), "Mittags nennt den noch kommenden Neupatienten");
+  console.log("  midday: " + midSpoken);
+
+  // Morgens (nichts durch) -> klassischer Zweig, ganzer Tag.
+  const bMorn = computeDayBriefing(dayMix, { calendars: [{ id: "cal1", name: "Dr. Test" }], nowMs: at(7, 0).getTime() });
+  const mornSpoken = buildSpokenDayBriefing(bMorn, { date: DATE, operatorDoctorName: "Dr. Test", overview: true, nowMs: at(7, 0).getTime() });
+  check(/4 Termine/.test(mornSpoken), "Morgens (nichts durch) -> ganzer Tag, alle 4 Termine");
+  check(!/schon durch/.test(mornSpoken), "Morgens kein 'schon durch'");
 
   console.log("\n=== Sprechliste mit Patientennamen (list_day_appointments) ===");
   const list = buildSpokenDayList(appts.map((a) => ({ ...a, visitMotive: a.isAbsence ? "" : "Kontrolle" })), { date: DATE, calendars });
