@@ -34,6 +34,7 @@ import { planAbsence, approveAbsence, absenceStatusSpoken } from "../clara/absen
 import { lookupCaller, normalizePhone } from "../clara/callerLookup.js";
 import { spokenCallLog } from "../clara/callLog.js";
 import { summarizeForSpeech } from "../clara/summarize.js";
+import { spokenCommsDigest } from "../clara/commsDigest.js";
 import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext } from "../clara/sessions.js";
@@ -2109,6 +2110,23 @@ router.post("/tools/call-log", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const message = await spokenCallLog(clientId, { date: req.body?.date });
+    res.json({ ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Voice: "Was ist heute reingekommen?" — EIN kombinierter Digest der
+// eingehenden Kommunikation (Anrufe, E-Mails, Briefe, Empfang), mit kurzem
+// Inhalt je Eingang. Ergaenzt call_log (nur Telefon) und read_email (eine Mail).
+router.post("/tools/comms-digest", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const message = await spokenCommsDigest(clientId, { date: req.body?.date });
     res.json({ ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
