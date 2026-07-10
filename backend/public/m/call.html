@@ -867,6 +867,37 @@
       } catch {}
     }
 
+    // ── Bildschirm wachhalten während eines aktiven Anrufs ───────────────────
+    // Ohne das schaltet das Handy nach seiner Display-Zeit ab; Mobil-Browser
+    // (v.a. iOS Safari) frieren dann JS + WebRTC ein und der Ton verstummt
+    // mitten im Gespräch. Der Screen-WakeLock hält das Display an, solange
+    // Clara verbunden ist. Das Betriebssystem gibt ihn beim Wegblenden von
+    // selbst frei — deshalb wird er bei Rückkehr neu angefordert.
+    let wakeLock = null;
+    async function requestWakeLock() {
+      try {
+        if (!("wakeLock" in navigator) || wakeLock) return;
+        wakeLock = await navigator.wakeLock.request("screen");
+        // Wird der Lock (durch OS/Hintergrund) freigegeben, Referenz leeren,
+        // damit visibilitychange ihn sauber neu anfordern kann.
+        wakeLock.addEventListener("release", () => { wakeLock = null; });
+      } catch { wakeLock = null; }
+    }
+    async function releaseWakeLock() {
+      try { if (wakeLock) await wakeLock.release(); } catch {}
+      wakeLock = null;
+    }
+
+    // Kommt die App aus dem Hintergrund zurück (oder das Display geht wieder
+    // an), WakeLock erneuern und Tonausgabe/Mikro-Analyse reaktivieren — iOS
+    // und Android suspenden <audio> + AudioContext beim Wegblenden.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible" || !connected) return;
+      requestWakeLock();
+      try { if (micCtx && micCtx.state === "suspended") micCtx.resume(); } catch {}
+      if (!chatPipeline) tryPlayAudio();
+    });
+
     async function connect({ textOnly = false } = {}) {
       if (connecting || connected) return;
       if (!clientId) {
@@ -965,6 +996,7 @@
         await room.localParticipant.setMicrophoneEnabled(!forChat);
         connected = true;
         connecting = false;
+        requestWakeLock();
         if (forChat) {
           voice = "listening";
           setStatus("verbunden – tippe deine Nachricht");
@@ -1007,6 +1039,7 @@
 
     function teardownUI() {
       stopMicWatch();
+      releaseWakeLock();
       chatPipeline = false;
       phase = "ended";
       voice = "listening";
