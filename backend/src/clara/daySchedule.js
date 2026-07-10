@@ -3,7 +3,7 @@ import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { holidayName, isWeekend, daySpecialLabel } from "./holidays.js";
 import { redDocsQuip } from "./humor.js";
-import { pick, vary } from "./speech.js";
+import { pick, vary, maybe, dayLoadReaction, warmClose } from "./speech.js";
 
 // Clara's day-schedule read model: a spoken "what's on the calendar today" that
 // reads the ACTUAL booked appointments (not just free slots, not tickets).
@@ -398,10 +398,30 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     const blocks = briefing?.absences?.length
       ? ` Es ${briefing.absences.length === 1 ? "ist nur eine Sperrzeit" : `sind nur ${briefing.absences.length} Sperrzeiten`} eingetragen.`
       : "";
-    return cap(`${rel} sind keine Termine gebucht.${blocks}${closedDayReason(day)}`).trim();
+    // Lockerheit 1 (10.07.2026): auch die Leer-Meldung rotiert. Fakten-frei —
+    // alle Varianten sagen dasselbe: kein Termin an diesem Tag.
+    const leer = vary("brief.leer", [
+      `${rel} sind keine Termine gebucht.`,
+      `${rel} ist der Kalender leer.`,
+      `${rel} steht nichts im Kalender.`,
+      `${rel} sind keine Termine gebucht — freie Bahn.`,
+    ]);
+    return cap(`${leer}${blocks}${closedDayReason(day)}`).trim();
   }
 
   const parts = [];
+  // Lockerheit 3 (10.07.2026): gelegentlicher lockerer Auftakt VOR dem
+  // Fakten-Satz (ca. jedes vierte Mal, sonst direkt zur Sache). Nie im
+  // Zoom-out (das hat seine eigene kompakte Form).
+  if (!overview && !dayOver) {
+    const intro = maybe("brief.intro", [
+      "Einmal Kalender, bitte.",
+      "Kurzer Blick in den Kalender.",
+      "Ich habe den Tag vor mir.",
+      "Der Kalender sagt Folgendes.",
+    ], 0.25);
+    if (intro) parts.push(intro);
+  }
   const cals = briefing.byCalendar || [];
 
   if (cals.length === 1) {
@@ -414,9 +434,27 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     // Zeitangabe IMMER nach vorn: "Heute haben Sie ...", "Nächste Woche
     // Donnerstag haben Sie ...", "Am 15. Juni haben Sie ..." — abends im
     // Rueckblick ("Heute hatten Sie ...").
-    parts.push(isOwnCalendar(c.calendarName, operatorDoctorName)
-      ? cap(`${rel} ${dayOver ? "hatten" : "haben"} Sie ${span}.`)
-      : cap(`${rel} ${dayOver ? "hatte" : "hat"} ${c.calendarName || "die Praxis"} ${span}.`));
+    // Lockerheit 1 (10.07.2026): der Rahmen-Satz rotiert; Fakten (Zahl +
+    // Zeiten in `span`) bleiben wörtlich. Nur Verbformen, die den Akkusativ
+    // behalten ("haben"/"erwarten") — keine Kasus-Fehler bei "einen Termin".
+    const own = isOwnCalendar(c.calendarName, operatorDoctorName);
+    const who = c.calendarName || "die Praxis";
+    if (dayOver) {
+      parts.push(own
+        ? cap(`${rel} hatten Sie ${span}.`)
+        : cap(`${rel} hatte ${who} ${span}.`));
+    } else {
+      parts.push(own
+        ? vary("brief.eigen", [
+            cap(`${rel} haben Sie ${span}.`),
+            `Sie haben ${rel} ${span}.`,
+            cap(`${rel} erwarten Sie ${span}.`),
+          ])
+        : vary("brief.fremd", [
+            cap(`${rel} hat ${who} ${span}.`),
+            `${who} hat ${rel} ${span}.`,
+          ]));
+    }
     const g1 = dayOver ? [] : futureGaps(c.gaps);
     if (g1.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(g1)}.`);
   } else if (overview) {
@@ -428,7 +466,16 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       : "";
     parts.push(cap(`${rel} ${dayOver ? "standen" : "stehen"} insgesamt ${briefing.total} Termine im Kalender${span}.`));
   } else {
-    parts.push(cap(`${rel} ${dayOver ? "standen" : "stehen"} insgesamt ${briefing.total} Termine im Kalender.`));
+    // Lockerheit 1: auch der Gesamt-Satz rotiert (alle Varianten enthalten
+    // "insgesamt N Termine" — die Zahl bleibt wörtlich aus dem Kalender).
+    parts.push(dayOver
+      ? cap(`${rel} standen insgesamt ${briefing.total} Termine im Kalender.`)
+      : vary("brief.gesamt", [
+          cap(`${rel} stehen insgesamt ${briefing.total} Termine im Kalender.`),
+          `Im Kalender stehen ${rel} insgesamt ${briefing.total} Termine.`,
+          cap(`${rel} sind insgesamt ${briefing.total} Termine eingetragen.`),
+          `Der Kalender zeigt ${rel} insgesamt ${briefing.total} Termine.`,
+        ]));
     for (const c of cals) {
       const own = isOwnCalendar(c.calendarName, operatorDoctorName);
       const who = own ? (dayOver ? "Sie hatten" : "Sie haben") : `${c.calendarName || "Der Kalender"} ${dayOver ? "hatte" : "hat"}`;
@@ -441,6 +488,14 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     }
   }
 
+  // Lockerheit 2 (10.07.2026): deterministische Einordnung der ECHTEN Zahl
+  // ("Ein voller Tag." / "Überschaubar.") direkt nach dem Fakten-Satz. Die
+  // Zahl selbst bleibt wörtlich aus dem Kalender; mittlere Tage bleiben still.
+  if (!dayOver) {
+    const mood = dayLoadReaction(briefing.total);
+    if (mood) parts.push(mood);
+  }
+
   // Tag ist durch: kurzer Rueckblick, KEINE vorausschauenden Hinweise mehr
   // (Freislots, Vorzubereiten, Unbestaetigtes ergeben abends keinen Sinn).
   if (dayOver) {
@@ -448,6 +503,9 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       "Das war Ihr Tag.",
       "Der Tag ist damit durch.",
       "Für heute war das alles.",
+      "Damit ist der Kalender für heute abgearbeitet.",
+      "Mehr steht heute nicht mehr an.",
+      "Feierabendreif — das war alles.",
     ], day);
     return `${parts.join(" ")} ${recap}`.trim();
   }
@@ -500,6 +558,13 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     // Rote Ampel = Unterlagen NIE verschickt — das darf nicht passieren.
     // Clara darf sich darüber hörbar aufregen (EIN Spruch pro Vorlesung).
     if (att.some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());
+  }
+
+  // Lockerheit 3 (10.07.2026): gelegentlicher kollegialer Nachsatz — nur wenn
+  // nicht schon eine Nachfrage-Einladung im Text steht (Zoom-out hat eigene).
+  if (!overview) {
+    const close = warmClose("brief.close");
+    if (close) parts.push(close);
   }
 
   return parts.join(" ");
@@ -652,7 +717,14 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
     return msg;
   }
 
-  if (!real.length) return cap(`${rel} sind keine Termine gebucht.${closedDayReason(day)}`);
+  if (!real.length) {
+    const leer = vary("liste.leer", [
+      `${rel} sind keine Termine gebucht.`,
+      `${rel} ist der Kalender leer.`,
+      `${rel} steht nichts im Kalender.`,
+    ]);
+    return cap(`${leer}${closedDayReason(day)}`);
+  }
 
   const nameById = new Map((calendars || []).map((c) => [c.id, c.name]));
   const groups = new Map();
@@ -675,17 +747,31 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
     budget -= entries.length;
     // Zeitangabe nach vorn ("Heute haben Sie um 9 Uhr Frau Sablon ...");
     // "haben"/"hat" governs the accusative, which spokenPatient produces.
+    // Lockerheit 1 (10.07.2026): Einstiegs-Rahmen rotiert; nur Formen, die
+    // "haben/hat" + Akkusativ behalten (Namen/Zeiten bleiben wörtlich).
     const lead = isOwn(who)
-      ? (first ? cap(`${rel} haben Sie`) : "Außerdem haben Sie")
-      : (first ? cap(`${rel} hat ${who}`) : `${who} hat`);
+      ? (first
+          ? vary("liste.eigen", [cap(`${rel} haben Sie`), `Sie haben ${rel}`])
+          : vary("liste.eigen2", ["Außerdem haben Sie", "Dazu haben Sie"]))
+      : (first
+          ? vary("liste.fremd", [cap(`${rel} hat ${who}`), `${who} hat ${rel}`])
+          : `${who} hat`);
     parts.push(`${lead} ${joinSpoken(entries)}.`);
     first = false;
   }
-  if (groups.size > 1) parts.unshift(`Das sind ${real.length} Termine insgesamt.`);
+  if (groups.size > 1) {
+    // Lockerheit 2: Einordnung der echten Gesamtzahl direkt nach dem Zähl-Satz.
+    const mood = dayLoadReaction(real.length);
+    if (mood) parts.unshift(mood);
+    parts.unshift(`Das sind ${real.length} Termine insgesamt.`);
+  }
   if (truncated) parts.push(`Das waren die ersten ${SPOKEN_LIST_MAX} — der Rest steht im Kalender.`);
   // Mindestens ein roter Termin in der vorgelesenen Liste? Ein Aufreger-Satz
   // ans Ende (nicht pro Termin — sonst kippt der Witz ins Genervte).
   if (real.slice(0, SPOKEN_LIST_MAX).some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());
+  // Lockerheit 3: gelegentlicher kollegialer Nachsatz (oft leer).
+  const close = warmClose("liste.close");
+  if (close) parts.push(close);
   return parts.join(" ");
 }
 

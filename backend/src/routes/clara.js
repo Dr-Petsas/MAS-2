@@ -15,6 +15,7 @@ import { askWorkforce as wfAsk, setBetriebsferien as wfSetBetriebsferien, spoken
 import { createSession, endSession, setOperator } from "../clara/sessions.js";
 import { identifyByPin, listOperators, saveOperators, OPERATOR_ROLES, roleLabel } from "../clara/operators.js";
 import { identifyByDevice, callOperator, consumePendingCallContext } from "../clara/devices.js";
+import { getGreetingContext } from "../clara/greetingContext.js";
 import { runClaraHealth, statusPageHtml } from "../clara/health.js";
 import { loadProof, proofToSvg } from "../clara/proofCard.js";
 import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, qmRoute, resolveClientId } from "./_shared.js";
@@ -211,6 +212,25 @@ router.post("/clara/pending-context", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const context = await consumePendingCallContext(clientId);
+    res.json({ ok: true, context: context || null });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Voice-Worker: Gibt es ein FRISCHES auffaelliges Ereignis (<= 45 min), das
+// Clara direkt nach dem Hallo erwaehnen kann? (W-HUMAN Stufe 2, 10.07.2026:
+// "Starts sollen interessant sein - das letzte auffaellige Ereignis, wenn es
+// zeitlich passt.") Nicht-konsumierend, rein lesend; kein Treffer -> null.
+// WICHTIG: Route steht VOR den /clara/:clientId-Catch-alls.
+router.get("/clara/greeting-context", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const context = await getGreetingContext(clientId);
     res.json({ ok: true, context: context || null });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

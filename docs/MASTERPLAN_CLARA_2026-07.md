@@ -542,21 +542,29 @@ unmittelbar mit der Kontaktaufnahme zeitlich passt." Voraussetzung (erfuellt
 Leitprinzip unveraendert: **Fakten-Kern (Zahlen/Namen/Zeiten) bleibt woertlich
 aus dem Tool; Variation entsteht NUR im Code (Pools), nie im LLM.**
 
-- [ ] **(1) Rotierende warme Rahmen-Pools** um die verbatim-Briefings
-      (daySchedule buildSpokenDayBriefing/-List, rangeOverview) - vary()-Muster.
-- [ ] **(2) Zahl-getriebene Reaktion** ("Ein voller Tag." bei >= 20,
-      "Ueberschaubar." bei <= 3) - deterministisch aus der echten Zahl.
-- [ ] **(3) Kollegialer Vor-/Nachsatz** um den unantastbaren Fakten-Kern
-      (Einleitung/Abschluss, oft leer, nie zweimal dieselbe Zeile).
-- [ ] **(4) Sprechbarkeit in sanitize_reply** (Clara-Voice): Stunden-Bereiche
-      "9-12 Uhr" -> "neun bis zwoelf Uhr", Anzahlen bis 999 vor Zaehl-Nomen.
-- [ ] **Starts/Begruessungen:** tageszeitbewusste Begruessungs-Pools im Profil
-      (morgens/mittags/abends/nachts, optional gesprochene Uhrzeit) + frisches
-      auffaelliges Ereignis (<= 45 min, aus mas_events) direkt nach dem Hallo -
-      profil-gated (nur assistant_mode=internal), Bianca byte-identisch.
-- [ ] KEIN zweiter LLM-Gang (Punkt 5 bewusst gestrichen, Chef 09.07.).
-- [ ] DoD: node-Tests (day-schedule, date-range, greeting-context) gruen,
-      Release-Gate gruen, Backend + Worker neu gestartet, committet.
+- [x] **(1) Rotierende warme Rahmen-Pools** um die verbatim-Briefings
+      (daySchedule buildSpokenDayBriefing/-List, rangeOverview) - vary()-Muster,
+      dazu maybe() (Wahrscheinlichkeits-Zeile, oft leer) in speech.js.
+- [x] **(2) Zahl-getriebene Reaktion** ("Ein voller Tag." bei >= 20,
+      "Ueberschaubar." bei <= 3) - dayLoadReaction()/rangeLoadReaction(),
+      deterministisch aus der echten Zahl, mittlere Tage bleiben unkommentiert.
+- [x] **(3) Kollegialer Vor-/Nachsatz** um den unantastbaren Fakten-Kern
+      (maybe()-Einleitung, warmClose()-Abschluss ~ jedes 3. Mal, vary-Gedaechtnis
+      verhindert direkte Wiederholung).
+- [x] **(4) Sprechbarkeit in sanitize_reply** (Clara-Voice): Stunden-Bereiche
+      "9-12 Uhr" -> "neun bis zwoelf Uhr", Anzahlen bis 999 als Zahlwort
+      ("128 Anrufe" -> "hundertachtundzwanzig Anrufe"), Telefonnummern durch
+      Nachbarschafts-Pruefung weiter geschuetzt.
+- [x] **Starts/Begruessungen:** tageszeitbewusste greeting_pools im Profil
+      (morning/midday/afternoon/evening/night, {{current_hm}} als gesprochene
+      Uhrzeit; services/greeting_pools.py, Anti-Wiederholung, pro Session
+      memoiert fuer TTS-Cache) + frisches auffaelliges Ereignis (<= 45 min,
+      nur echte Kommunikations-Kanaele, keine Kalender-Automatik) via
+      GET /clara/greeting-context direkt nach dem Hallo - profil-gated
+      (nur assistant_mode=internal), Bianca/Lisa byte-identisch.
+- [x] KEIN zweiter LLM-Gang (Punkt 5 bewusst gestrichen, Chef 09.07.).
+- [x] DoD erfuellt 10.07.: node-Tests (day-schedule, greeting-context) gruen,
+      Release-Gate voll gruen, Backend + Worker neu gestartet, committet.
 
 ## Phase W-OUTREACH - Recall mit Substanz (beschlossen 05.07. frueh, Chef)
 
@@ -744,6 +752,17 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Stand enthaelt: Wake/Stopp robust (Verhoerer, Quittungen, Farb-Feedback),
   WP1-3 Fakten-Waechter, Zeitraum-Abfragen, Briefing bereinigt, Mail-Sync
   inkrementell.
+- 10.07.2026: **W-HUMAN Stufe 2 (Lockerheit 1-4 + Starts) fertig**: warme
+  Rahmen-Pools + Zahl-Reaktion + kollegiale Vor-/Nachsaetze um die verbatim-
+  Briefings (speech.js maybe/dayLoadReaction/warmClose, daySchedule,
+  rangeOverview); Sprechbarkeit 4 (Stunden-Bereiche als Worte, Zahlwoerter
+  bis 999); tageszeitbewusste greeting_pools (Profil + services/
+  greeting_pools.py, {{current_hm}}) und frisches auffaelliges Ereignis
+  (<= 45 min) via GET /clara/greeting-context direkt nach dem Hallo.
+  Fakten-Kern bleibt woertlich, Variation NUR im Code — kein zweiter
+  LLM-Gang. Tests: test-day-schedule/test-greeting-context (node),
+  test_greeting_pools/test_speakability (python) gruen; Voll-Gate gruen;
+  Backend + Worker neu gestartet.
 - 05.07.2026: Sophie Implantat-PLANUNG umgebaut (billingTestPage):
   (1) Roentgen-Konflikte (OPG+Zahnfilm) werden ueber die neue rechtfertigende
   Indikation je Aufnahme (Dropdown, roentgenIndikation.ts, vorbelegt) geloest —

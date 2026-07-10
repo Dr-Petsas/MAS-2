@@ -1,4 +1,5 @@
 import { getRangeAppointments, todayBerlin } from "./daySchedule.js";
+import { vary } from "./speech.js";
 
 // Gesprochene Ausgabe fuer einen DATUMSBEREICH (Woche/Monat/Quartal/...).
 // day_briefing-Bereich  -> buildSpokenRangeOverview (Summe + Auffaelligster Tag)
@@ -60,6 +61,29 @@ function haveVerb(to) {
   return (to && to < todayBerlin()) ? "hatten Sie" : "haben Sie";
 }
 
+// Lockerheit 2 (10.07.2026): Einordnung des Zeitraums aus dem DURCHSCHNITT
+// pro Termin-Tag (die Gesamtzahl allein sagt bei einer Woche wenig). Rein
+// deterministisch aus den echten Zahlen; mittlere Auslastung bleibt still.
+function rangeLoadReaction(total, daysWithAppts) {
+  if (!total || !daysWithAppts) return "";
+  const avg = total / daysWithAppts;
+  if (avg >= 18) {
+    return vary("zeitraum.voll", [
+      "Insgesamt ordentlich gefüllt.",
+      "Da ist ordentlich Betrieb.",
+      "Ein gut gebuchter Zeitraum.",
+    ]);
+  }
+  if (avg <= 4) {
+    return vary("zeitraum.ruhig", [
+      "Insgesamt eher ruhig.",
+      "Alles entspannt machbar.",
+      "Da bleibt viel Luft.",
+    ]);
+  }
+  return "";
+}
+
 /**
  * Bereichs-Lagebild fuer day_briefing: Gesamtzahl + Neupatienten + der
  * vollste/ruhigste Tag. Kompakt (2-3 Saetze), kein Termin einzeln.
@@ -109,6 +133,9 @@ export async function buildSpokenRangeOverview(clientId, { from, to, calendarId,
         `Verteilt auf ${days.length} ${days.length === 1 ? "Tag" : "Tage"} mit Terminen.`,
       );
     }
+    // Lockerheit 2: deterministische Einordnung (oft leer, nie erfunden).
+    const mood = rangeLoadReaction(total, days.length);
+    if (mood) parts.push(mood);
   }
 
   return {

@@ -3,6 +3,7 @@ import admin from "../src/firebase.js";
 import { masCollection } from "../src/tenant.js";
 import { ensureBerlinTz } from "../src/clara/booking.js";
 import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin } from "../src/clara/daySchedule.js";
+import { dayLoadReaction } from "../src/clara/speech.js";
 
 // Clara day-schedule briefing: pure compute (counts/gaps/highlights/spoken) plus
 // a Firestore integration run that seeds a throwaway tenant's calendar and reads
@@ -23,6 +24,7 @@ const at = (h, m) => new Date(ensureBerlinTz(`${DATE}T${String(h).padStart(2, "0
 async function cleanup() {
   const appts = await db.collection("clients").doc(C).collection("locations").doc(LOC).collection("appointments").get();
   await Promise.all(appts.docs.map((d) => d.ref.delete()));
+  await db.collection("clients").doc(C).collection("locations").doc(LOC).delete().catch(() => {});
   const cfg = await masCollection(C, "mas_config").get();
   await Promise.all(cfg.docs.map((d) => d.ref.delete()));
 }
@@ -48,14 +50,15 @@ async function run() {
 
   const spoken = buildSpokenDayBriefing(b, { date: DATE, operatorName: "Frau Klein" });
   // Gewollter Stil seit dem Natürlichkeits-Rework: ganze Sätze, Zeitangabe
-  // vorn ("Heute stehen insgesamt …"), keine Stichwort-Labels wie "Tagesplan:".
-  check(/insgesamt 3 Termine im Kalender/.test(spoken) && /Dr\. Test/.test(spoken), "Sprechtext nennt Terminzahl + Behandler");
+  // vorn, keine Stichwort-Labels. Seit Lockerheit 1 (10.07.2026) rotiert der
+  // Rahmen-Satz — die ZAHL muss aber in jeder Variante wörtlich drinstehen.
+  check(/insgesamt 3 Termine/.test(spoken) && /Dr\. Test/.test(spoken), "Sprechtext nennt Terminzahl + Behandler");
   check(/Frei ist (dort|dazwischen) noch/.test(spoken), "Sprechtext nennt freie Lücke");
   check(/Neupatient/.test(spoken), "Sprechtext nennt Hinweise (Neupatient)");
   console.log("  spoken: " + spoken);
 
   const empty = buildSpokenDayBriefing(computeDayBriefing([], { calendars }), { date: DATE });
-  check(/keine Termine gebucht/.test(empty), "Leerer Tag -> ehrliche Meldung");
+  check(/keine Termine gebucht|Kalender leer|steht nichts im Kalender/.test(empty), "Leerer Tag -> ehrliche Meldung");
 
   console.log("\n=== Sprechliste mit Patientennamen (list_day_appointments) ===");
   const list = buildSpokenDayList(appts.map((a) => ({ ...a, visitMotive: a.isAbsence ? "" : "Kontrolle" })), { date: DATE, calendars });
@@ -63,8 +66,8 @@ async function run() {
   check(/Anna A/.test(list) && /Bert B/.test(list) && /Cara C/.test(list), "Liste nennt alle Patientennamen");
   check(/zur Kontrolle/.test(list), "Behandlungsart natürlich formuliert");
   check(/ein Neupatient/.test(list), "Liste markiert Neupatienten");
-  // "Heute hat Dr. Test um 9 Uhr …" — Zeitangabe vorn, daher Inversion.
-  check(/hat Dr\. Test um/.test(list) && /Dr\. Zwei hat um/.test(list), "Liste gruppiert nach Behandler");
+  // "Heute hat Dr. Test um 9 Uhr …" bzw. rotiert "Dr. Test hat heute um …".
+  check(/(hat Dr\. Test um|Dr\. Test hat \S+ um)/.test(list) && /Dr\. Zwei hat um/.test(list), "Liste gruppiert nach Behandler");
   console.log("  spoken: " + list);
 
   console.log("\n=== Natürliche Ansage (reales Beispiel) ===");
@@ -74,13 +77,14 @@ async function run() {
     { startMs: at(14, 45).getTime(), endMs: at(15, 0).getTime(), calendarId: "calP", calendarName: "Dr. Petsas", patientId: "pD", patientName: "Michael Diedershagen", patientLastName: "Diedershagen", patientGender: "m", visitMotive: "SLM Besprechung", comments: "bringt vielleicht seine Frau mit zur Kontrolle", docsStatus: "green", newPatient: false, status: "confirmed", isAbsence: false },
   ];
   const own = buildSpokenDayList(day1, { date: DATE, calendars: petsasCal, operatorDoctorName: "Dr. Petsas" });
-  check(/^Heute haben Sie um 14 Uhr Frau Thrandorf mit akuten Beschwerden/.test(own), "Eigener Kalender -> 'Heute haben Sie ... Frau Thrandorf mit akuten Beschwerden'");
+  // Rahmen rotiert seit Lockerheit 1: "Heute haben Sie ..." ODER "Sie haben heute ...".
+  check(/^(Heute haben Sie|Sie haben heute) um 14 Uhr Frau Thrandorf mit akuten Beschwerden/.test(own), "Eigener Kalender -> 'haben Sie ... Frau Thrandorf mit akuten Beschwerden'");
   check(/und um 14 Uhr 45 Herrn Diedershagen zur SLM-Besprechung/.test(own), "'um 14 Uhr 45 Herrn Diedershagen zur SLM-Besprechung'");
   check(/Unterlagen sind noch nicht unterschrieben/.test(own), "Gelbe Unterlagen-Ampel wird angesagt");
   check(/Notiz: bringt vielleicht seine Frau mit/.test(own), "Terminnotiz wird vorgelesen");
   console.log("  spoken: " + own);
   const foreign = buildSpokenDayList(day1, { date: DATE, calendars: petsasCal, operatorDoctorName: "Dr. Nikolaou" });
-  check(/^Heute hat Dr\. Petsas/.test(foreign), "Fremder Kalender -> 'Heute hat Dr. Petsas ...'");
+  check(/^(Heute hat Dr\. Petsas|Dr\. Petsas hat heute)/.test(foreign), "Fremder Kalender -> 'hat Dr. Petsas ...'");
 
   console.log("\n=== Praxisgedächtnis-Hinweise (Shared Memory) ===");
   const caseMap = new Map([["pD", [{
@@ -161,7 +165,17 @@ async function run() {
   check(buildSpokenPatientPrep(day1, new Map()) === "", "Leere Map -> keine Vorbereitung");
 
   const emptyList = buildSpokenDayList([], { date: DATE, calendars });
-  check(/keine Termine gebucht/.test(emptyList), "Leere Liste -> ehrliche Meldung");
+  check(/keine Termine gebucht|Kalender leer|steht nichts im Kalender/.test(emptyList), "Leere Liste -> ehrliche Meldung");
+
+  console.log("\n=== Lockerheit 2: Zahl-Reaktion deterministisch (10.07.2026) ===");
+  check(dayLoadReaction(0) === "", "0 Termine -> keine Einordnung");
+  check(dayLoadReaction(10) === "", "10 Termine (Mitte) -> keine Einordnung");
+  check(dayLoadReaction(2).length > 0, "2 Termine -> ruhige Einordnung");
+  check(dayLoadReaction(22).length > 0, "22 Termine -> volle Einordnung");
+  check(dayLoadReaction(35).length > 0, "35 Termine -> sehr volle Einordnung");
+  // Fakten-Schutz: die Einordnung enthaelt NIE Ziffern (nichts erfunden).
+  const moods = [dayLoadReaction(2), dayLoadReaction(22), dayLoadReaction(35)];
+  check(moods.every((m) => !/\d/.test(m)), "Einordnung enthaelt keine Ziffern");
 
   const many = Array.from({ length: 30 }, (_, i) => ({
     startMs: at(8, 0).getTime() + i * 900000, endMs: at(8, 0).getTime() + i * 900000 + 900000,
@@ -175,6 +189,12 @@ async function run() {
   console.log("\n=== Firestore-Integration (isolierter Test-Mandant) ===");
   await cleanup();
   await masCollection(C, "mas_config").doc("booking").set({ clientId: C, locationId: LOC, calendars, visitMotives: [{ id: "vm1", name: "Kontrolle", duration: 15 }] });
+  // a2 traegt Status "needsConfirmation" — der wird wie im Plattform-Kalender
+  // ausgeblendet, WENN die Location virtuelle Termine versteckt. Der Test will
+  // aber Temp-Hold-/Multi-Day-Filter pruefen, nicht den Virtual-Filter — also
+  // explizit einschalten statt sich auf Altbestand im Test-Mandanten zu
+  // verlassen (bis 10.07. stand das Flag zufaellig noch aus frueheren Laeufen).
+  await db.collection("clients").doc(C).collection("locations").doc(LOC).set({ showVirtualAppointments: true });
 
   const apptCol = db.collection("clients").doc(C).collection("locations").doc(LOC).collection("appointments");
   const mk = (id, o) => apptCol.doc(id).set(o);

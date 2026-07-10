@@ -86,6 +86,84 @@ export function vary(key, variants) {
   return arr[idx];
 }
 
+// ============================================================================
+// Lockerheit 1-3 (W-HUMAN Stufe 2, Chef 09./10.07.2026): kleine warme Rahmen
+// um den unantastbaren Fakten-Kern. Alles hier ist Code, kein LLM — die
+// Fakten (Zahlen/Namen/Zeiten) stehen NIE in den Pools, nur drumherum.
+// ============================================================================
+
+/**
+ * Zieht mit Wahrscheinlichkeit p eine vary()-Zeile, sonst "". Fuer kollegiale
+ * Vor-/Nachsaetze, die NICHT jedes Mal kommen sollen (sonst neues Schema F).
+ * @param {string} key
+ * @param {string[]} variants
+ * @param {number} [p=0.35]
+ * @returns {string}
+ */
+export function maybe(key, variants, p = 0.35) {
+  if (Math.random() >= p) return "";
+  return vary(key, variants);
+}
+
+// Zahl-getriebene Reaktion auf die TAGES-Terminzahl (Lockerheit 2). Kommt
+// NACH dem Fakten-Satz ("... 23 Termine ...") — die Zahl selbst bleibt
+// woertlich, die Einordnung ist deterministisch aus derselben Zahl abgeleitet
+// und kann darum nichts erfinden. Mittlere Tage (4-19) bleiben unkommentiert.
+const DAY_LOAD_HIGH = [
+  "Ein voller Tag.",
+  "Da ist ordentlich was los.",
+  "Ein straffes Programm.",
+  "Das wird sportlich.",
+  "Gut gebucht, würde ich sagen.",
+  "Da kommt einiges zusammen.",
+];
+const DAY_LOAD_VERY_HIGH = [
+  "Ein richtig voller Tag — tief durchatmen.",
+  "Das ist sportlich, selbst für Sie.",
+  "Volles Haus. Ich halte Ihnen den Rücken frei.",
+  "Ein Marathon-Tag. Kaffee steht hoffentlich bereit.",
+];
+const DAY_LOAD_LOW = [
+  "Ein ruhiger Tag.",
+  "Überschaubar.",
+  "Da bleibt Luft zwischendurch.",
+  "Ein entspannter Tag.",
+  "Da bleibt Zeit für den Papierkram.",
+];
+
+/**
+ * Deterministische Einordnung der Terminzahl eines Tages. Leerstring fuer
+ * mittlere Tage. Fakten NIE hier hinein — nur Tonlage.
+ * @param {number} total echte Terminzahl aus dem Kalender
+ * @returns {string}
+ */
+export function dayLoadReaction(total) {
+  const n = Number(total) || 0;
+  if (n >= 30) return vary("last.sehr_hoch", DAY_LOAD_VERY_HIGH);
+  if (n >= 20) return vary("last.hoch", DAY_LOAD_HIGH);
+  if (n >= 1 && n <= 3) return vary("last.niedrig", DAY_LOAD_LOW);
+  return "";
+}
+
+// Kollegiale Abschluss-Zeilen (Lockerheit 3). Bewusst per maybe() nur
+// GELEGENTLICH — ein Angebot, keine Floskel-Pflicht.
+const WARM_CLOSE = [
+  "Wenn Sie zu einem Termin mehr wissen wollen, sagen Sie es einfach.",
+  "Details zu einzelnen Patienten habe ich parat — einfach fragen.",
+  "Ich habe alles im Blick, fragen Sie ruhig nach.",
+  "Sagen Sie Bescheid, wenn ich irgendwo tiefer reinschauen soll.",
+  "Bei Fragen zu einem Namen: einfach ansprechen.",
+];
+
+/**
+ * Gelegentlicher kollegialer Nachsatz (ca. jedes dritte Mal, sonst "").
+ * @param {string} [key="warm.close"]
+ * @returns {string}
+ */
+export function warmClose(key = "warm.close") {
+  return maybe(key, WARM_CLOSE, 0.3);
+}
+
 // Klinische Entscheidungs-Hinweise fuer den Zahnarzt, deterministisch aus den
 // Anamnese-Befunden abgeleitet. Bewusst als "erwaegen/pruefen" formuliert —
 // Clara erinnert, ordnet nichts an und erfindet nichts.
