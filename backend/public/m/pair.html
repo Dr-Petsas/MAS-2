@@ -315,7 +315,31 @@
     els.btnPair.addEventListener("click", pairNow);
     els.btnCode.addEventListener("click", pairWithCode);
 
-    els.btnUnpair.addEventListener("click", () => {
+    els.btnUnpair.addEventListener("click", async () => {
+      els.btnUnpair.disabled = true;
+      els.btnUnpair.textContent = "Wird entfernt …";
+      const d = loadDevice();
+      // 1) Serverseitige Registrierung löschen (deviceKey-gesichert), damit
+      //    Clara dieses Handy nicht mehr anruft.
+      try {
+        if (d?.clientId && d?.deviceId && d?.deviceKey) {
+          await fetch("/clara/devices/unpair", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId: d.clientId, deviceId: d.deviceId, deviceKey: d.deviceKey }),
+          });
+        }
+      } catch {}
+      // 2) Push-Subscription im Browser wirklich kündigen — sonst blieben
+      //    Mitteilungen möglich, sobald das Gerät je wieder registriert würde.
+      try {
+        if ("serviceWorker" in navigator && "PushManager" in window) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          const sub = reg && await reg.pushManager.getSubscription();
+          if (sub) await sub.unsubscribe();
+        }
+      } catch {}
+      // 3) Lokale Kopplung vergessen.
       clearDevice();
       location.reload();
     });

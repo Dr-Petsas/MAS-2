@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import { assertAppEnabled } from "../entitlements.js";
 import { listOperators, normalizeRole } from "../clara/operators.js";
-import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured } from "../clara/devices.js";
+import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured } from "../clara/devices.js";
 import { log } from "../log.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 
@@ -117,6 +117,25 @@ router.post("/clara/devices/refresh", async (req, res) => {
     if (!clientId) return res.status(400).json({ ok: false, error: "client_id_required" });
     const r = await refreshSubscription(clientId, req.body?.deviceId, req.body?.deviceKey, req.body?.subscription);
     if (!r.ok) return res.status(401).json({ ok: false, error: r.reason });
+    res.json(r);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Public (deviceKey-gated): the phone unpairs ITSELF — deletes its server-side
+// registration so Clara stops ringing it. The phone additionally unsubscribes
+// its own browser PushSubscription (see /m/pair.html). Without this route the
+// phone-side "Entfernen" only cleared local storage while the device kept
+// ringing from the server.
+router.post("/clara/devices/unpair", async (req, res) => {
+  try {
+    const clientId = (req.body?.clientId || "").trim();
+    if (!clientId) return res.status(400).json({ ok: false, error: "client_id_required" });
+    const r = await removeOwnDevice(clientId, req.body?.deviceId, req.body?.deviceKey);
+    if (!r.ok) return res.status(401).json({ ok: false, error: r.reason });
+    log.info("device unpaired (self)", { requestId: req.requestId, clientId, deviceId: req.body?.deviceId });
     res.json(r);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

@@ -3,7 +3,7 @@ import admin from "../src/firebase.js";
 import { masCollection } from "../src/tenant.js";
 import {
   PAIRING_TOKEN_TTL_MS, platformFromUserAgent, validateSubscription,
-  createPairingToken, redeemPairingToken, listDevices, removeDevice,
+  createPairingToken, redeemPairingToken, listDevices, removeDevice, removeOwnDevice,
   identifyByDevice, refreshSubscription, buildCallPayload,
   sendCallToDevice, callDevice, callOperator, pushConfigured,
 } from "../src/clara/devices.js";
@@ -146,6 +146,36 @@ async function run() {
   await removeDevice(C, r1.deviceId);
   check((await listDevices(C)).length === 0, "Gerät entfernt -> Liste leer");
   check((await identifyByDevice(C, r1.deviceId, r1.deviceKey)) === null, "entferntes Gerät kann sich nicht mehr ausweisen");
+
+  console.log("\n=== firestore: Endpoint-Dedupe (dasselbe Handy koppelt erneut) ===");
+  await cleanup();
+  const tA = await createPairingToken(C, OP);
+  const rA = await redeemPairingToken(C, tA.token, { subscription: FAKE_SUB });
+  const tB = await createPairingToken(C, OP);
+  const rB = await redeemPairingToken(C, tB.token, { subscription: FAKE_SUB });
+  const afterRepair = await listDevices(C);
+  check(rA.ok && rB.ok, "beide Kopplungen erfolgreich eingelöst");
+  check(afterRepair.length === 1 && afterRepair[0].id === rB.deviceId, "gleicher Endpoint -> nur die NEUE Registrierung bleibt (Dedupe)");
+  check((await identifyByDevice(C, rA.deviceId, rA.deviceKey)) === null, "alte Dublette entfernt (kann nicht mehr klingeln)");
+
+  console.log("\n=== firestore: Selbst-Entkoppeln (deviceKey-gesichert) ===");
+  const uBad = await removeOwnDevice(C, rB.deviceId, "falscher-key");
+  check(uBad.ok === false && uBad.reason === "device_auth_failed", "falscher deviceKey -> abgelehnt, Gerät bleibt");
+  check((await listDevices(C)).length === 1, "Gerät nach abgelehntem Unpair noch da");
+  const uOk = await removeOwnDevice(C, rB.deviceId, rB.deviceKey);
+  check(uOk.ok === true, "richtiger deviceKey -> Selbst-Entkoppeln ok");
+  check((await listDevices(C)).length === 0, "nach Selbst-Entkoppeln -> Liste leer");
+  const uGone = await removeOwnDevice(C, rB.deviceId, rB.deviceKey);
+  check(uGone.ok === true && uGone.alreadyGone === true, "erneutes Entkoppeln -> idempotent (alreadyGone)");
+
+  console.log("\n=== firestore: removeDevice räumt Geschwister mit gleichem Endpoint ===");
+  await cleanup();
+  // Zwei Alt-Dubletten mit identischem Endpoint direkt anlegen (Vor-Dedupe-Zustand).
+  await masCollection(C, "mas_devices").doc("dev_dup1").set({ id: "dev_dup1", operatorId: OP.id, subscription: FAKE_SUB, secretHash: "x", createdAtMs: Date.now() });
+  await masCollection(C, "mas_devices").doc("dev_dup2").set({ id: "dev_dup2", operatorId: OP.id, subscription: FAKE_SUB, secretHash: "y", createdAtMs: Date.now() });
+  const rmDup = await removeDevice(C, "dev_dup1");
+  check(rmDup.ok === true && rmDup.siblingsRemoved === 1, "removeDevice meldet 1 entferntes Geschwister");
+  check((await listDevices(C)).length === 0, "beide Dubletten mit gleichem Endpoint entfernt");
 
   await cleanup();
   console.log(failed ? `\n${failed} CHECK(S) FAILED` : "\nALLE CHECKS OK");

@@ -236,6 +236,13 @@ export async function redeemPairingToken(clientId, token, { subscription, userAg
       });
       return { id: t.operatorId, name: t.operatorName, role: t.role, doctorName: t.doctorName || null };
     });
+    // Same phone, fresh pairing: now that the NEW registration is committed,
+    // drop any earlier docs that used this exact push endpoint. Each redeem
+    // mints a brand-new deviceId, so without this the registry accumulated
+    // duplicates of ONE device — and removing "the" device in the UI left
+    // older duplicates that kept ringing. Runs AFTER the transaction so a
+    // failed re-redeem (token_used/expired) never deletes the good device.
+    await deleteDevicesByEndpoint(clientId, v.subscription.endpoint, { exceptId: deviceId }).catch(() => {});
     return { ok: true, deviceId, deviceKey, operator };
   } catch (e) {
     return { ok: false, reason: e?.code || String(e?.message || e) };
@@ -259,9 +266,57 @@ export async function listDevices(clientId, { operatorId = "" } = {}) {
     .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
 }
 
+/**
+ * Delete every device doc for this tenant whose push subscription shares the
+ * given endpoint. One physical phone == one endpoint, so this keeps the
+ * registry free of duplicates and makes both re-pairing and unpairing
+ * idempotent. Returns the number of docs removed.
+ */
+async function deleteDevicesByEndpoint(clientId, endpoint, { exceptId = "" } = {}) {
+  const ep = s(endpoint);
+  if (!ep) return 0;
+  const snap = await devicesCol(clientId).where("subscription.endpoint", "==", ep).get();
+  let removed = 0;
+  await Promise.all(snap.docs.map((d) => {
+    if (exceptId && d.id === s(exceptId)) return null;
+    removed++;
+    return d.ref.delete().catch(() => {});
+  }));
+  return removed;
+}
+
 export async function removeDevice(clientId, deviceId) {
   if (!s(deviceId)) return { ok: false, reason: "device_id_required" };
-  await devicesCol(clientId).doc(s(deviceId)).delete();
+  const ref = devicesCol(clientId).doc(s(deviceId));
+  const snap = await ref.get();
+  const endpoint = snap.exists ? s(snap.data()?.subscription?.endpoint) : "";
+  await ref.delete();
+  // Belt-and-suspenders: also drop any legacy sibling docs sharing this phone's
+  // push endpoint, so the phone truly stops ringing after a single "Entfernen".
+  const siblingsRemoved = endpoint
+    ? await deleteDevicesByEndpoint(clientId, endpoint, { exceptId: s(deviceId) }).catch(() => 0)
+    : 0;
+  return { ok: true, siblingsRemoved };
+}
+
+/**
+ * Phone-initiated unpair: the phone deletes its OWN registration, authenticated
+ * by deviceKey (same PIN-less trust as refresh/self-test), and clears sibling
+ * duplicates sharing its push endpoint. The phone additionally unsubscribes its
+ * browser PushSubscription locally — server-side we can only drop the record.
+ */
+export async function removeOwnDevice(clientId, deviceId, deviceKey) {
+  if (!s(deviceId) || !s(deviceKey)) return { ok: false, reason: "device_auth_failed" };
+  const ref = devicesCol(clientId).doc(s(deviceId));
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: true, alreadyGone: true };
+  const d = snap.data();
+  if (!safeEq(hashSecret(clientId, s(deviceKey)), d.secretHash || "")) {
+    return { ok: false, reason: "device_auth_failed" };
+  }
+  const endpoint = s(d.subscription?.endpoint);
+  await ref.delete();
+  if (endpoint) await deleteDevicesByEndpoint(clientId, endpoint, { exceptId: s(deviceId) }).catch(() => {});
   return { ok: true };
 }
 
