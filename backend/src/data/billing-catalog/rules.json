@@ -1,0 +1,139 @@
+{
+  "_meta": {
+    "description": "Abrechnungs-Regelwerk: Ausschluesse (nicht nebeneinander), Haeufigkeits-Warnungen und Bezugseinheit (je Zahn/Kanal/Flaeche/Quadrant/Sitzung). Quelle: GOZ Anlage 1 Abrechnungsbestimmungen + gaengige BEMA-Regeln. Haeufigkeits-Regeln sind reine WARNHINWEISE (keine Patienten-Historie verfuegbar).",
+    "version": "1.0",
+    "verifyRules": true
+  },
+  "bezug": {
+    "goz": {
+      "0080": "perJawHalfOrFront",
+      "2030": "perJawHalfOrFront",
+      "2040": "perJawHalfOrFront",
+      "2050": "perTooth", "2060": "perTooth", "2070": "perTooth", "2080": "perTooth",
+      "2090": "perTooth", "2100": "perTooth", "2110": "perTooth", "2120": "perTooth",
+      "2330": "perCavity", "2340": "perCavity",
+      "2360": "perCanal", "2400": "perCanal", "2410": "perCanal", "2420": "perCanal", "2440": "perCanal",
+      "2430": "perToothPerSession",
+      "2200": "perTooth", "2210": "perTooth", "2220": "perTooth",
+      "4050": "perTooth", "4055": "perTooth", "4060": "perTooth",
+      "4070": "perTooth", "4075": "perTooth", "4080": "perPeriodontium",
+      "4090": "perPeriodontium", "4100": "perPeriodontium",
+      "9010": "perImplant"
+    },
+    "bema": {
+      "13a": "perTooth", "13b": "perTooth", "13c": "perTooth", "13d": "perTooth",
+      "28": "perCanal", "32": "perCanal", "35": "perCanal",
+      "34": "perToothPerSession",
+      "43": "perTooth", "44": "perTooth", "45": "perTooth", "47a": "perTooth", "48": "perTooth",
+      "107": "perSession", "Zst": "perSession",
+      "40": "perTooth", "41a": "perTooth"
+    }
+  },
+  "exclusions": {
+    "goz": [
+      { "a": "0030", "b": "0040", "scope": "behandlungsfall", "reason": "0030 und 0040 nicht nebeneinander." },
+      { "a": "1040", "b": "4050", "scope": "sameSession", "reason": "PZR (1040) nicht neben 4050." },
+      { "a": "1040", "b": "4055", "scope": "sameSession", "reason": "PZR (1040) nicht neben 4055." },
+      { "a": "1040", "b": "4060", "scope": "sameSession", "reason": "PZR (1040) nicht neben 4060." },
+      { "a": "1040", "b": "4070", "scope": "sameSession", "reason": "PZR (1040) nicht neben 4070." },
+      { "a": "1040", "b": "4075", "scope": "sameSession", "reason": "PZR (1040) nicht neben 4075." },
+      { "a": "1040", "b": "1020", "scope": "sameSession", "reason": "PZR (1040) nicht neben 1020." },
+      { "a": "4060", "b": "4050", "scope": "sameSession", "reason": "4060 nicht neben 4050." },
+      { "a": "4060", "b": "4055", "scope": "sameSession", "reason": "4060 nicht neben 4055." },
+      { "a": "4090", "b": "4050", "scope": "sameSession", "reason": "Neben Lappen-OP (4090/4100) keine 4050-4080." },
+      { "a": "4100", "b": "4070", "scope": "sameSession", "reason": "Neben Lappen-OP (4090/4100) keine 4050-4080." },
+      { "a": "3300", "b": "3310", "scope": "sameSession", "reason": "3300 nicht neben 3310." },
+      { "a": "3300", "b": "3060", "scope": "sameSession", "reason": "3300 nicht neben 3060." },
+      { "a": "3310", "b": "3060", "scope": "sameSession", "reason": "3310 nicht neben 3060." },
+      { "a": "2210", "b": "implant", "scope": "context", "reason": "2210 nicht im Zusammenhang mit Implantaten." },
+      { "a": "5040", "b": "5080", "scope": "always", "reason": "5040 nicht neben 5080." }
+    ],
+    "bema": [
+      { "a": "01", "b": "Ä1", "scope": "sameSession", "reason": "01 und Ä1 i.d.R. nicht am selben Tag (Befundabhaengig pruefen)." }
+    ]
+  },
+  "frequencyWarnings": {
+    "goz": [
+      { "code": "1000", "max": 1, "per": "year", "reason": "1000 nur 1x je Jahr." },
+      { "code": "1010", "max": 3, "per": "year", "reason": "1010 nur 3x je Jahr." },
+      { "code": "1020", "max": 4, "per": "year", "reason": "1020 hoechstens 4x je Jahr." },
+      { "code": "4000", "max": 2, "per": "year", "reason": "4000 hoechstens 2x je Jahr." },
+      { "code": "4005", "max": 2, "per": "year", "reason": "4005 hoechstens 2x je Jahr." },
+      { "code": "2400", "max": 2, "per": "sessionPerCanal", "reason": "2400 je Kanal hoechstens 2x je Sitzung." }
+    ],
+    "bema": [
+      { "code": "01", "max": 1, "per": "halfYear", "reason": "01 i.d.R. 1x je Kalenderhalbjahr." },
+      { "code": "107", "max": 1, "per": "year", "reason": "Zst (107) regelmaessig 1x je Kalenderjahr." }
+    ]
+  },
+  "factor": {
+    "goz": { "default": 2.3, "begruendungAb": 2.3, "max": 3.5, "maxOhneVereinbarung": 3.5 }
+  },
+  "begruendungspflicht": {
+    "goz": [
+      { "code": "0090", "when": "moreThanOncePerTooth", "reason": "0090 > 1x je Zahn begruendungspflichtig." },
+      { "code": "0060", "withCode": "0050", "reason": "0050 neben 0060 begruendungspflichtig." },
+      { "code": "2410", "when": "secondTimeSameCanal", "reason": "2410 erneut fuer denselben Kanal begruendungspflichtig." }
+    ]
+  },
+  "pointValues": {
+    "_hinweis": "Euro je Punkt (1,0-fach). Honorar = Punkte * euroProPunkt * Faktor. GOZ und GOAE sind bundeseinheitlich fix; BEMA ist KZV-/regionsabhaengig und MUSS pro Praxis hinterlegt werden.",
+    "goz": { "euroProPunkt": 0.0562421, "fixed": true, "source": "GOZ 2012 §5 Abs. 1 (Punktwert 5,62421 Cent)" },
+    "goae": { "euroProPunkt": 0.0582873, "fixed": true, "source": "GOAE §5 Abs. 1 (Punktwert 5,82873 Cent)", "note": "Fuer privat abgerechnete Roentgenleistungen (Ä-Reihe). Eigener GOAE-Katalog mit Punktzahlen noch anzulegen." },
+    "bema": { "euroProPunkt": null, "fixed": false, "regional": true, "verify": true, "note": "Punktwert KZV-abhaengig (ca. 0,9-1,2 EUR/Punkt je nach Region/Jahr) – pro Praxis/KZV setzen. BEMA-Bewertungszahlen in bema.json ebenfalls noch nachzutragen (verifyPoints)." }
+  },
+  "vergesellschaftung": {
+    "_hinweis": "Wenn eine Leistung erfasst ist, sind diese Begleitpositionen zu ziehen/zu pruefen. klasse: pflicht=immer automatisch, regel=in der Regel (als Annahme, abschaltbar), bedingt=nur bei Indikation. ziel: 'code' (Ziffer), 'materialKlasse' (materials.json), oder 'ableitung' (berechnet, z. B. punktschwelle). 'wenn' kann eine Ziffer ODER 'kategorie:<x>' sein.",
+    "regeln": [
+      {
+        "wenn": "9010", "system": "goz", "kontext": "Implantatinsertion",
+        "ziehe": [
+          { "code": "9000", "system": "goz", "klasse": "regel", "grund": "Implantatbezogene Analyse/Vermessung je Kiefer", "bezug": "perJaw" },
+          { "code": "0100", "system": "goz", "klasse": "regel", "grund": "Leitungsanaesthesie" },
+          { "materialKlasse": "anaesthetikum", "klasse": "regel", "grund": "Anaesthetikum-Karpule (Auslage §9)" },
+          { "ableitung": "punktschwelle", "klasse": "pflicht", "grund": "Nichtstationaerer OP-Zuschlag nach Punktzahl (0500-0530)" },
+          { "code": "3290", "system": "goz", "klasse": "regel", "grund": "Postoperative Kontrolle", "zeit": "+7..10 Tage" }
+        ]
+      },
+      {
+        "wenn": "kategorie:chirurgie", "kontext": "Jeder chirurgische Eingriff (Extraktion/Osteotomie/Implantat/WSR ...)",
+        "ziehe": [
+          { "code": "0100", "altCode": "0090", "system": "goz", "klasse": "regel", "grund": "Anaesthesie – Region entscheidet (UK-Seitenzahn=Leitung 0100, OK=Infiltration 0090)" },
+          { "materialKlasse": "naht", "klasse": "bedingt", "grund": "Nahtmaterial (Auslage §9), falls Wundverschluss genaeht" },
+          { "code": "3290", "altCode": "3300", "system": "goz", "klasse": "regel", "grund": "Postoperative Kontrolle / Fadenzug", "zeit": "+7..10 Tage" }
+        ]
+      },
+      {
+        "wenn": "2410", "system": "goz", "kontext": "Wurzelkanalaufbereitung",
+        "ziehe": [
+          { "code": "2400", "system": "goz", "klasse": "regel", "grund": "Elektrometrische Laengenbestimmung", "bezug": "perCanal" },
+          { "code": "2440", "system": "goz", "klasse": "regel", "grund": "Wurzelfuellung", "bezug": "perCanal" }
+        ]
+      },
+      {
+        "wenn": "kategorie:fuellung", "kontext": "Fuellungstherapie",
+        "ziehe": [
+          { "code": "0090", "altCode": "0100", "system": "goz", "klasse": "regel", "grund": "Anaesthesie" }
+        ]
+      }
+    ]
+  },
+  "punktschwelle": {
+    "_hinweis": "Abgeleitete Position: der nichtstationaere OP-Zuschlag (GOZ §5 Abs. 1, Nrn. 0500-0530) ergibt sich aus der Punktzahl der hoechstbewerteten operativen Leistung des Behandlungstages. Genau EINE Stufe, 1x je Behandlungstag, nur zum Einfachsatz (nicht steigerbar).",
+    "goz": {
+      "opZuschlag": {
+        "basis": "hoechstbewertete operative Einzelleistung des Behandlungstages",
+        "exklusiv": true,
+        "haeufigkeit": "1x je Behandlungstag",
+        "nurEinfachfaktor": true,
+        "anwendbarAuf": ["chirurgie", "implantologie", "parodontalchirurgie"],
+        "stufen": [
+          { "vonPunkte": 250, "bisPunkte": 499, "code": "0500", "zuschlagPunkte": 400 },
+          { "vonPunkte": 500, "bisPunkte": 799, "code": "0510", "zuschlagPunkte": 750 },
+          { "vonPunkte": 800, "bisPunkte": 1199, "code": "0520", "zuschlagPunkte": 1300 },
+          { "vonPunkte": 1200, "bisPunkte": null, "code": "0530", "zuschlagPunkte": 2200 }
+        ]
+      }
+    }
+  }
+}

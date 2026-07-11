@@ -20,6 +20,7 @@
 
 import express from "express";
 import admin from "./../firebase.js";
+import { structureTreatment, billTreatment } from "../lena/lenaDoc.js";
 
 const router = express.Router();
 
@@ -140,6 +141,47 @@ router.post("/treatment/recorder", async (req, res) => {
 
     res.set("Cache-Control", "no-store");
     res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/structure — Diktat-Segmente klassifizieren (lokales LLM)
+// und die Karteikarte deterministisch aus den ECHTEN Segmenttexten bauen.
+// Ersetzt die OpenAI-Cloud-Function structureTreatmentNote (Quota tot,
+// Patiententexte bleiben im Haus). Aufrufer: eingeloggte Plattform (Lena-Seite).
+router.post("/treatment/structure", async (req, res) => {
+  try {
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const by = String(req.auth?.name || req.auth?.email || req.auth?.userId || "mas-lena").slice(0, 60);
+    const r = await structureTreatment(k.clientId, k.locationId, k.appointmentId, { updatedBy: by });
+    res.set("Cache-Control", "no-store");
+    if (!r.ok) {
+      const code = r.error === "no_segments" ? 409 : 502;
+      return res.status(code).json(r);
+    }
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/billing — BEMA/BEMA+/GOZ-Vorschlaege aus der Doku (lokales
+// LLM mit Katalog-Grounding, deterministischer Fallback). Ersetzt die
+// OpenAI-Cloud-Function generateTreatmentBilling.
+router.post("/treatment/billing", async (req, res) => {
+  try {
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const by = String(req.auth?.name || req.auth?.email || req.auth?.userId || "mas-lena").slice(0, 60);
+    const r = await billTreatment(k.clientId, k.locationId, k.appointmentId, { updatedBy: by });
+    res.set("Cache-Control", "no-store");
+    if (!r.ok) {
+      const code = r.error === "no_content" ? 409 : 502;
+      return res.status(code).json(r);
+    }
+    res.json(r);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

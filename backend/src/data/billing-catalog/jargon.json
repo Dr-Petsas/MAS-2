@@ -1,0 +1,457 @@
+{
+  "_meta": {
+    "description": "Zahnmedizinisches Abrechnungs-Jargon-Mapping. Uebersetzt gesprochene Kuerzel/Praxisjargon in eindeutige Behandlungs-Begriffe und schlaegt BEMA-/GOZ-Ziffern als KANDIDATEN vor (kein automatischer Ansatz). Alle Ziffern referenzieren die Kataloge bema.json/goz.json.",
+    "version": "1.0",
+    "verifyCodes": true
+  },
+  "entries": [
+    {
+      "term": "Bef",
+      "aliases": ["befund", "befundung", "eingehende untersuchung", "untersuchung", "01"],
+      "meaning": "Eingehende Untersuchung / Befund",
+      "category": "Diagnostik",
+      "bema": ["01"],
+      "goz": ["0010"]
+    },
+    {
+      "term": "Ber",
+      "aliases": ["beratung", "beratungsgespraech", "aufklaerung", "aerztliche beratung"],
+      "meaning": "Beratung eines Kranken",
+      "category": "Diagnostik",
+      "bema": ["Ä1"],
+      "goz": []
+    },
+    {
+      "term": "PSI",
+      "aliases": ["psi", "parodontaler screening index", "screening index", "parodontalscreening"],
+      "meaning": "Parodontaler Screening-Index",
+      "category": "Diagnostik",
+      "bema": ["04"],
+      "goz": ["4005"]
+    },
+    {
+      "term": "ViPr",
+      "aliases": ["vipr", "vitalitaetspruefung", "vitalitaet", "sensibilitaetspruefung", "sensibilitaet", "kaeltetest", "vitalitaetstest"],
+      "meaning": "Vitalitaets-/Sensibilitaetspruefung",
+      "category": "Diagnostik",
+      "bema": ["8"],
+      "goz": ["0070"]
+    },
+    {
+      "term": "Rx",
+      "aliases": ["rx", "roentgen", "zahnfilm", "einzelzahnfilm", "roentgenaufnahme", "za aufnahme", "zahnaufnahme", "rö2"],
+      "meaning": "Roentgen Einzelzahnaufnahme(n)",
+      "category": "Roentgen",
+      "bema": ["Ä925a", "Ä925b"],
+      "goz": []
+    },
+    {
+      "term": "OPG",
+      "aliases": ["opg", "panorama", "panoramaschichtaufnahme", "ptg", "orthopantomogramm", "psa"],
+      "meaning": "Panoramaschichtaufnahme (OPG)",
+      "category": "Roentgen",
+      "bema": ["Ä935d"],
+      "goz": []
+    },
+    {
+      "term": "I",
+      "aliases": ["i", "infiltration", "infiltrationsanaesthesie", "infiltra", "spritze infiltration", "lokalanaesthesie infiltration"],
+      "meaning": "Infiltrationsanaesthesie",
+      "category": "Anaesthesie",
+      "bema": ["40"],
+      "goz": ["0090"]
+    },
+    {
+      "term": "L",
+      "aliases": ["l", "l1", "leitung", "leitungsanaesthesie", "leitungsana", "block", "leitungsblock"],
+      "meaning": "Leitungsanaesthesie (intraoral)",
+      "category": "Anaesthesie",
+      "bema": ["41a"],
+      "goz": ["0100"]
+    },
+    {
+      "term": "OFA",
+      "aliases": ["ofa", "oberflaechenanaesthesie", "oberflaechen anaesthesie", "anaesthesie gel", "andocken"],
+      "meaning": "Intraorale Oberflaechenanaesthesie",
+      "category": "Anaesthesie",
+      "bema": [],
+      "goz": ["0080"]
+    },
+    {
+      "term": "Fue",
+      "aliases": ["fuellung", "fuel", "kompositfuellung", "komposit", "fuellungstherapie", "gefuellt", "fuellung gelegt", "f1", "f2", "f3", "f4", "einflaechig", "zweiflaechig", "dreiflaechig"],
+      "meaning": "Fuellung (plastisch / Komposit adhaesiv)",
+      "category": "Konservierend",
+      "bema": ["13a", "13b", "13c", "13d"],
+      "goz": ["2050", "2060", "2070", "2080", "2090", "2100", "2110", "2120", "2197"]
+    },
+    {
+      "term": "Kofferdam",
+      "aliases": ["kofferdam", "spanngummi", "rubberdam", "rubber dam", "trockenlegung"],
+      "meaning": "Anlegen von Kofferdam/Spanngummi",
+      "category": "Konservierend",
+      "bema": ["12"],
+      "goz": ["2040"]
+    },
+    {
+      "term": "Cp",
+      "aliases": ["cp", "caries profunda", "indirekte ueberkappung", "ueberkappung indirekt", "exkavieren tief"],
+      "meaning": "Indirekte Ueberkappung (Caries profunda)",
+      "category": "Endodontie",
+      "bema": ["25"],
+      "goz": ["2330"]
+    },
+    {
+      "term": "P",
+      "aliases": ["direkte ueberkappung", "ueberkappung direkt", "pulpaeroeffnung ueberkappt"],
+      "meaning": "Direkte Ueberkappung",
+      "category": "Endodontie",
+      "bema": ["26"],
+      "goz": ["2340"]
+    },
+    {
+      "term": "Trep",
+      "aliases": ["trep", "trepanation", "eroeffnung zahn", "aufbohren", "entlastung", "trep1"],
+      "meaning": "Trepanation eines Zahnes",
+      "category": "Endodontie",
+      "bema": ["31"],
+      "goz": ["2390"]
+    },
+    {
+      "term": "VitE",
+      "aliases": ["vite", "exstirpation", "pulpaexstirpation", "vitalexstirpation", "nerv gezogen", "nerv entfernt"],
+      "meaning": "Exstirpation der vitalen Pulpa, je Kanal",
+      "category": "Endodontie",
+      "bema": ["28"],
+      "goz": ["2360"]
+    },
+    {
+      "term": "Laengenmessung",
+      "aliases": ["laengenmessung", "elektrometrische laengenbestimmung", "endometrie", "messaufnahme laenge", "arbeitslaenge"],
+      "meaning": "Elektrometrische Laengenbestimmung eines Wurzelkanals",
+      "category": "Endodontie",
+      "bema": [],
+      "goz": ["2400"]
+    },
+    {
+      "term": "WK",
+      "aliases": ["wk", "wurzelkanal", "wurzelkanalbehandlung", "endo", "endodontie", "aufbereitung", "kanalaufbereitung", "aufbereit"],
+      "meaning": "Aufbereitung des Wurzelkanalsystems, je Kanal",
+      "category": "Endodontie",
+      "bema": ["32"],
+      "goz": ["2410"]
+    },
+    {
+      "term": "Med",
+      "aliases": ["med", "medikamentoese einlage", "einlage", "ca(oh)2", "calciumhydroxid einlage", "medikament kanal"],
+      "meaning": "Medikamentoese Einlage, je Zahn und Sitzung",
+      "category": "Endodontie",
+      "bema": ["34"],
+      "goz": ["2430"]
+    },
+    {
+      "term": "WF",
+      "aliases": ["wf", "wurzelfuellung", "wurzelkanalfuellung", "kanal gefuellt", "obturation", "wurzel gefuellt"],
+      "meaning": "Wurzelkanalfuellung, je Kanal",
+      "category": "Endodontie",
+      "bema": ["35"],
+      "goz": ["2440"]
+    },
+    {
+      "term": "X",
+      "aliases": ["x", "x1", "x2", "x3", "ex", "extr", "extraktion", "extrahiert", "zahn gezogen", "zahn entfernt", "entfernung zahn", "gezogen"],
+      "meaning": "Extraktion (Zahnentfernung)",
+      "category": "Chirurgie",
+      "bema": ["43", "44", "45"],
+      "goz": ["3000", "3010", "3020"]
+    },
+    {
+      "term": "Ost",
+      "aliases": ["ost", "ost1", "ost2", "osteotomie", "operative entfernung", "op entfernung", "chirurgische entfernung", "verlagerter zahn", "weisheitszahn op", "retiniert"],
+      "meaning": "Osteotomie / operative Zahnentfernung",
+      "category": "Chirurgie",
+      "bema": ["47a", "48"],
+      "goz": ["3030", "3040", "3045"]
+    },
+    {
+      "term": "Naht",
+      "aliases": ["naht", "wundnaht", "naehen", "genaeht", "wundverschluss", "situationsnaht"],
+      "meaning": "Wundnaht / Wundverschluss (i.d.R. Bestandteil der OP)",
+      "category": "Chirurgie",
+      "bema": [],
+      "goz": []
+    },
+    {
+      "term": "XN",
+      "aliases": ["xn", "wundrevision", "chirurgische wundrevision", "nachblutung revision"],
+      "meaning": "Chirurgische Wundrevision",
+      "category": "Chirurgie",
+      "bema": ["46"],
+      "goz": ["3310"]
+    },
+    {
+      "term": "WR",
+      "aliases": ["wr", "wr1", "wr2", "wsr", "wurzelspitzenresektion", "spitzenresektion", "apektomie"],
+      "meaning": "Wurzelspitzenresektion",
+      "category": "Chirurgie",
+      "bema": ["54a", "54b", "54c"],
+      "goz": ["3110", "3120"]
+    },
+    {
+      "term": "Inz",
+      "aliases": ["inz", "inzision", "abszess eroeffnet", "abszessinzision", "abszesseroeffnung"],
+      "meaning": "Abszesseroeffnung (Inzision)",
+      "category": "Chirurgie",
+      "bema": ["Ä161"],
+      "goz": ["3070"]
+    },
+    {
+      "term": "Zyste",
+      "aliases": ["zyste", "zystektomie", "zystostomie", "zystenoperation"],
+      "meaning": "Zystenoperation",
+      "category": "Chirurgie",
+      "bema": ["56a", "56b", "56c", "56d"],
+      "goz": ["3190", "3200"]
+    },
+    {
+      "term": "Blutstillung",
+      "aliases": ["blutstillung", "blutung gestillt", "nachblutung gestillt", "haemostase"],
+      "meaning": "Stillung einer uebermaessigen Blutung",
+      "category": "Chirurgie",
+      "bema": ["36", "37"],
+      "goz": ["3050", "3060"]
+    },
+    {
+      "term": "Nachbehandlung",
+      "aliases": ["nachbehandlung", "wundkontrolle", "tamponieren", "kontrolle nach op", "postoperative kontrolle"],
+      "meaning": "Chirurgische Nachbehandlung/Kontrolle",
+      "category": "Chirurgie",
+      "bema": ["38"],
+      "goz": ["3290", "3300"]
+    },
+    {
+      "term": "ZST",
+      "aliases": ["zst", "zahnstein", "zahnsteinentfernung", "scaling", "supragingival", "harte belaege"],
+      "meaning": "Zahnsteinentfernung (harte Belaege)",
+      "category": "Prophylaxe",
+      "bema": ["107"],
+      "goz": ["4050", "4055"]
+    },
+    {
+      "term": "PZR",
+      "aliases": ["pzr", "professionelle zahnreinigung", "zahnreinigung", "prophylaxe", "reinigung", "politur"],
+      "meaning": "Professionelle Zahnreinigung (je Zahn)",
+      "category": "Prophylaxe",
+      "bema": [],
+      "goz": ["1040"]
+    },
+    {
+      "term": "Fluoridierung",
+      "aliases": ["fluoridierung", "fluorid", "fluoridlack", "lackieren", "fla", "fluoridgel"],
+      "meaning": "Lokale Fluoridierung",
+      "category": "Prophylaxe",
+      "bema": ["IP4", "FLA"],
+      "goz": ["1020"]
+    },
+    {
+      "term": "Fissurenversiegelung",
+      "aliases": ["fissurenversiegelung", "versiegelung", "fissur versiegelt", "ip5", "sealing"],
+      "meaning": "Fissurenversiegelung",
+      "category": "Prophylaxe",
+      "bema": ["IP5"],
+      "goz": ["2000"]
+    },
+    {
+      "term": "MHU",
+      "aliases": ["mhu", "mundhygienestatus", "mundhygiene unterweisung", "ip1", "putztraining"],
+      "meaning": "Mundhygienestatus / -unterweisung",
+      "category": "Prophylaxe",
+      "bema": ["IP1", "IP2"],
+      "goz": ["1000", "1010"]
+    },
+    {
+      "term": "PAStatus",
+      "aliases": ["pa status", "parodontalstatus", "par status", "taschenmessung", "sondierungstiefen", "6 punkt messung"],
+      "meaning": "Parodontalstatus erstellen",
+      "category": "Parodontologie",
+      "bema": [],
+      "goz": ["4000"]
+    },
+    {
+      "term": "PA",
+      "aliases": ["pa", "parodontitis", "parodontologie", "parodontalbehandlung", "geschlossene kuerettage", "subgingival", "wurzelglaettung", "srp", "scaling and root planing"],
+      "meaning": "Geschlossene Parodontalbehandlung (Wurzelglaettung)",
+      "category": "Parodontologie",
+      "bema": [],
+      "goz": ["4070", "4075"]
+    },
+    {
+      "term": "Lappen",
+      "aliases": ["lappen", "lappenoperation", "offene kuerettage", "offenes vorgehen", "pa chirurgie"],
+      "meaning": "Lappenoperation / offene Kuerettage",
+      "category": "Parodontologie",
+      "bema": [],
+      "goz": ["4090", "4100"]
+    },
+    {
+      "term": "Aufbau",
+      "aliases": ["aufbau", "stumpfaufbau", "aufbaufuellung", "kronenaufbau", "kompositaufbau"],
+      "meaning": "Kronenaufbau (plastisch)",
+      "category": "Konservierend",
+      "bema": ["16"],
+      "goz": ["2180"]
+    },
+    {
+      "term": "Stift",
+      "aliases": ["stift", "stiftaufbau", "wurzelstift", "glasfaserstift", "schraubenaufbau"],
+      "meaning": "Stiftaufbau / Schraubenaufbau",
+      "category": "Konservierend",
+      "bema": ["16"],
+      "goz": ["2190", "2195"]
+    },
+    {
+      "term": "AdhaesiveBefestigung",
+      "aliases": ["adhaesive befestigung", "adhaesiv befestigt", "eingeklebt", "adhaesiv zementiert"],
+      "meaning": "Adhaesive Befestigung",
+      "category": "Konservierend",
+      "bema": [],
+      "goz": ["2197"]
+    },
+    {
+      "term": "Inlay",
+      "aliases": ["inlay", "einlagefuellung", "onlay", "keramikinlay"],
+      "meaning": "Einlagefuellung (Inlay/Onlay)",
+      "category": "Konservierend",
+      "bema": [],
+      "goz": ["2150", "2160", "2170"]
+    },
+    {
+      "term": "Krone",
+      "aliases": ["krone", "vollkrone", "ueberkronung", "krone praepariert", "krone eingegliedert", "teilkrone", "veneer"],
+      "meaning": "Krone / Teilkrone / Veneer",
+      "category": "Zahnersatz",
+      "bema": [],
+      "goz": ["2200", "2210", "2220"]
+    },
+    {
+      "term": "Provisorium",
+      "aliases": ["provisorium", "provi", "langzeitprovisorium", "temporaere krone", "provisorische krone"],
+      "meaning": "Provisorium (Krone/Bruecke)",
+      "category": "Zahnersatz",
+      "bema": [],
+      "goz": ["2260", "2270", "5120", "5140"]
+    },
+    {
+      "term": "Bruecke",
+      "aliases": ["bruecke", "brueckenglied", "brueckenanker", "spanne", "adhaesivbruecke", "klebebruecke"],
+      "meaning": "Brueckenversorgung",
+      "category": "Zahnersatz",
+      "bema": [],
+      "goz": ["5000", "5010", "5070", "5150", "5160"]
+    },
+    {
+      "term": "Prothese",
+      "aliases": ["prothese", "teilprothese", "vollprothese", "totalprothese", "modellguss", "modellgussprothese", "herausnehmbarer zahnersatz"],
+      "meaning": "Herausnehmbarer Zahnersatz (Prothese/Modellguss)",
+      "category": "Zahnersatz",
+      "bema": [],
+      "goz": ["5200", "5210", "5220", "5230"]
+    },
+    {
+      "term": "Abformung",
+      "aliases": ["abdruck", "abformung", "abgeformt", "situationsabdruck", "scan", "intraoralscan", "digitale abformung", "funktionsabformung"],
+      "meaning": "Abformung / Intraoralscan",
+      "category": "Diagnostik",
+      "bema": [],
+      "goz": ["0050", "0060", "0065", "5170", "5180", "5190"]
+    },
+    {
+      "term": "Implantat",
+      "aliases": ["implantat", "implantation", "implantiert", "implantatinsertion", "enossales implantat"],
+      "meaning": "Implantatinsertion",
+      "category": "Implantologie",
+      "bema": [],
+      "goz": ["9010"]
+    },
+    {
+      "term": "Sinuslift",
+      "aliases": ["sinuslift", "sinusbodenelevation", "interner sinuslift", "externer sinuslift"],
+      "meaning": "Sinusbodenelevation (Sinuslift)",
+      "category": "Implantologie",
+      "bema": [],
+      "goz": ["9110", "9120"]
+    },
+    {
+      "term": "Augmentation",
+      "aliases": ["augmentation", "knochenaufbau", "gbr", "knochenersatz", "kieferkammaufbau"],
+      "meaning": "Augmentation / Knochenaufbau",
+      "category": "Implantologie",
+      "bema": [],
+      "goz": ["9100", "9090"]
+    },
+    {
+      "term": "Schiene",
+      "aliases": ["schiene", "aufbissschiene", "knirscherschiene", "michiganschiene", "aufbissbehelf"],
+      "meaning": "Aufbissbehelf / Schiene",
+      "category": "Schiene",
+      "bema": [],
+      "goz": ["7000", "7010"]
+    },
+    {
+      "term": "FAL",
+      "aliases": ["fal", "funktionsanalyse", "klinische funktionsanalyse", "cmd diagnostik", "funktionsdiagnostik"],
+      "meaning": "Klinische Funktionsanalyse",
+      "category": "Funktion",
+      "bema": [],
+      "goz": ["8000"]
+    },
+    {
+      "term": "UPT",
+      "aliases": ["upt", "upta", "uptb", "uptc", "uptd", "upte", "uptf", "uptg", "unterstuetzende parodontitistherapie"],
+      "meaning": "Unterstuetzende Parodontitistherapie (UPT-Strecke)",
+      "category": "Parodontologie",
+      "bema": ["UPTa", "UPTb", "UPTc", "UPTd", "UPTe", "UPTf", "UPTg"],
+      "goz": []
+    },
+    {
+      "term": "Politur",
+      "aliases": ["politur", "poliert", "fuellungspolitur", "nachpolieren", "finieren"],
+      "meaning": "Kontrolle/Finieren/Polieren einer Restauration",
+      "category": "Konservierend",
+      "bema": [],
+      "goz": ["2130"]
+    },
+    {
+      "term": "Sofortimplantat",
+      "aliases": ["sofortimplantat", "sofort implantat", "immediate implant", "immediate placement"],
+      "meaning": "Implantatinsertion im frischen Extraktionsalveole (Sofortimplantation)",
+      "category": "Implantologie",
+      "bema": [],
+      "goz": ["9010", "3000", "3010"]
+    },
+    {
+      "term": "Knochenentnahme",
+      "aliases": ["knochen entnommen", "knochen aus der region", "autologer knochen", "knochenblock", "knochenspane"],
+      "meaning": "Intraorale Knochenentnahme ausserhalb des Aufbaugebietes",
+      "category": "Implantologie",
+      "bema": [],
+      "goz": ["9140"]
+    },
+    {
+      "term": "Implantatplanung",
+      "aliases": ["implantatbezogene analyse", "vermessung", "diagnostik implant", "planung implant"],
+      "meaning": "Implantatbezogene Analyse und Vermessung",
+      "category": "Implantologie",
+      "bema": [],
+      "goz": ["9000"]
+    },
+    {
+      "term": "Fadenzug",
+      "aliases": ["faeden ziehen", "faden ziehen", "nahtentfernung", "wv", "wiedervorstellung"],
+      "meaning": "Chirurgische Nachbehandlung / Kontrolle (Fadenentfernung)",
+      "category": "Chirurgie",
+      "bema": ["38"],
+      "goz": ["3290", "3300"]
+    }
+  ]
+}

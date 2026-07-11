@@ -1,0 +1,161 @@
+{
+  "_meta": {
+    "description": "Abrechnungsketten / Leistungskomplexe. Eine erkannte Trigger-Prozedur wird zum VOLLSTAENDIGEN abrechenbaren Vorgang expandiert: obligatorische + optionale Positionen + Vollstaendigkeits-Rueckfragen. Ziffern referenzieren bema.json/goz.json. Vorschlagscharakter – Freigabe durch Zahnarzt erforderlich.",
+    "version": "1.0"
+  },
+  "chains": [
+    {
+      "id": "extraktion",
+      "label": "Extraktion (einfach)",
+      "trigger": ["extraktion", "extrah", "zahn gezogen", "zahn entfernt", "entfernung eines", "x1", "x2", "x3", "gezogen"],
+      "obligatorisch": [
+        { "role": "Extraktion", "bema": ["43", "44", "45"], "goz": ["3000", "3010", "3020"], "bezug": "perTooth" }
+      ],
+      "optional": [
+        { "role": "Anaesthesie", "bema": ["40", "41a"], "goz": ["0090", "0100"], "frage": "Anaesthesie (Infiltration/Leitung) durchgefuehrt?" },
+        { "role": "Roentgen", "bema": ["Ä925a"], "goz": [], "frage": "Roentgenkontrolle (Zahnfilm) angefertigt?" },
+        { "role": "Nachbehandlung", "bema": ["38"], "goz": ["3290", "3300"], "frage": "Postoperative Kontrolle/Nachbehandlung erfolgt?" }
+      ],
+      "vollstaendigkeitsChecks": [
+        "Extraktion ohne Anaesthesie dokumentiert – wurde wirklich keine Anaesthesie gesetzt?",
+        "Wurde der betroffene Zahn (FDI) eindeutig erfasst?"
+      ]
+    },
+    {
+      "id": "osteotomie",
+      "label": "Operative Zahnentfernung (Osteotomie)",
+      "trigger": ["osteotomie", "operative entfernung", "verlagerter zahn", "retiniert", "weisheitszahn op", "ost1", "ost2"],
+      "obligatorisch": [
+        { "role": "Osteotomie", "bema": ["47a", "48"], "goz": ["3030", "3040", "3045"], "bezug": "perTooth" }
+      ],
+      "optional": [
+        { "role": "Anaesthesie", "bema": ["41a", "40"], "goz": ["0100", "0090"], "frage": "Leitungs-/Infiltrationsanaesthesie?" },
+        { "role": "Roentgen/OPG", "bema": ["Ä925a", "Ä935d"], "goz": [], "frage": "Roentgen/OPG zur Lagebestimmung?" },
+        { "role": "Wundrevision/Naht", "bema": ["46"], "goz": ["3310"], "frage": "Wundrevision/Naht erforderlich (sofern selbststaendig)?" },
+        { "role": "OP-Zuschlag (nichtstationaer)", "bema": [], "goz": ["0500", "0510"], "frage": "Nichtstationaerer OP-Zuschlag (Punktzahlgrenze pruefen)?" },
+        { "role": "Nachbehandlung", "bema": ["38"], "goz": ["3290", "3300"], "frage": "Postoperative Nachbehandlung/Kontrolle?" }
+      ],
+      "vollstaendigkeitsChecks": [
+        "Material (Naht/Membran/Knochenersatz) gesondert berechnungsfaehig – erfasst?",
+        "OP-Zuschlag (GOZ 0500ff.) je nach Punktzahl der Hauptleistung geprueft?"
+      ]
+    },
+    {
+      "id": "fuellung",
+      "label": "Fuellungstherapie",
+      "fachbereich": "konservierend",
+      "materialSets": ["set-fuellung-komposit"],
+      "trigger": ["fuellung", "komposit", "kompositfuellung", "f1", "f2", "f3", "f4", "gefuellt"],
+      "obligatorisch": [
+        { "role": "Fuellung", "klasse": "pflicht", "bema": ["13a", "13b", "13c", "13d"], "goz": ["2060", "2080", "2100", "2120"], "bezug": "perTooth", "hinweis": "Flaechenzahl bestimmt die Ziffer (ein-/zwei-/drei-/mehrflaechig)." }
+      ],
+      "optional": [
+        { "role": "Anaesthesie", "klasse": "regel", "bema": ["40", "41a"], "goz": ["0090", "0100"], "frage": "Anaesthesie gesetzt?" },
+        { "role": "Kofferdam", "klasse": "bedingt", "bema": ["12"], "goz": ["2040"], "frage": "Kofferdam/Spanngummi angelegt?" },
+        { "role": "Adhaesive Befestigung", "klasse": "bedingt", "bema": [], "goz": ["2197"], "frage": "Adhaesivtechnik (GOZ 2197) zusaetzlich?" },
+        { "role": "Caries-profunda-Therapie", "klasse": "bedingt", "bema": ["25"], "goz": ["2330"], "frage": "Caries profunda / indirekte Ueberkappung erfolgt?" },
+        { "role": "Aufbau", "klasse": "bedingt", "bema": ["16"], "goz": ["2180"], "frage": "Aufbaufuellung/Stumpfaufbau noetig?" }
+      ],
+      "vollstaendigkeitsChecks": [
+        "Anzahl der gefuellten Flaechen erfasst (bestimmt die korrekte Ziffer)?",
+        "Mehrere Fuellungen/Zaehne in dieser Sitzung – je Zahn separat erfasst?"
+      ]
+    },
+    {
+      "id": "endo_wkb",
+      "label": "Wurzelkanalbehandlung (Endodontie)",
+      "trigger": ["wurzelkanal", "wurzelkanalbehandlung", "endodontie", "endo", "wk", "wf", "wurzelfu", "trepan", "aufbereit", "kanalaufbereitung"],
+      "obligatorisch": [
+        { "role": "Trepanation", "bema": ["31"], "goz": ["2390"], "bezug": "perTooth" },
+        { "role": "Aufbereitung", "bema": ["32"], "goz": ["2410"], "bezug": "perCanal" },
+        { "role": "Wurzelfuellung", "bema": ["35"], "goz": ["2440"], "bezug": "perCanal" }
+      ],
+      "optional": [
+        { "role": "Anaesthesie", "bema": ["40", "41a"], "goz": ["0090", "0100"], "frage": "Anaesthesie?" },
+        { "role": "Exstirpation vitale Pulpa", "bema": ["28"], "goz": ["2360"], "frage": "Vitale Pulpa exstirpiert (je Kanal)?" },
+        { "role": "Elektrometrische Laengenmessung", "bema": [], "goz": ["2400"], "frage": "Elektrometrische Laengenbestimmung je Kanal?" },
+        { "role": "Roentgen Messaufnahme(n)", "bema": ["Ä925a"], "goz": [], "frage": "Mess-/Kontrollaufnahmen (Roentgen) angefertigt?" },
+        { "role": "Medikamentoese Einlage", "bema": ["34"], "goz": ["2430"], "frage": "Medikamentoese Einlage (je Zahn/Sitzung)?" },
+        { "role": "Provisorischer Verschluss", "bema": ["11"], "goz": ["2020"], "frage": "Temporaerer/provisorischer Verschluss?" },
+        { "role": "OP-Mikroskop-Zuschlag", "bema": [], "goz": ["0110"], "frage": "OP-Mikroskop verwendet (GOZ 0110)?" }
+      ],
+      "vollstaendigkeitsChecks": [
+        "Anzahl der Kanaele erfasst? Aufbereitung (2410/32) und WF (2440/35) sind je Kanal abzurechnen.",
+        "Mess-/Kontrollroentgen dokumentiert? WF ohne Roentgenkontrolle pruefen.",
+        "Laengenbestimmung (GOZ 2400) je Kanal erfasst?"
+      ]
+    },
+    {
+      "id": "pa_geschlossen",
+      "label": "Parodontalbehandlung (geschlossen)",
+      "trigger": ["parodontitis", "parodontalbehandlung", "wurzelglaettung", "geschlossene kuerettage", "srp", "subgingival"],
+      "obligatorisch": [
+        { "role": "PA-Therapie geschlossen", "bema": [], "goz": ["4070", "4075"], "bezug": "perTooth" }
+      ],
+      "optional": [
+        { "role": "Parodontalstatus", "bema": [], "goz": ["4000"], "frage": "Parodontalstatus erstellt/dokumentiert?" },
+        { "role": "PSI/Index", "bema": ["04"], "goz": ["4005"], "frage": "PSI/Index erhoben?" },
+        { "role": "Anaesthesie", "bema": ["40", "41a"], "goz": ["0090", "0100"], "frage": "Anaesthesie noetig?" },
+        { "role": "Vorbehandlung Zahnstein/PZR", "bema": ["107"], "goz": ["1040"], "frage": "Vorbehandlung (Zahnstein/PZR) erfolgt?" }
+      ],
+      "vollstaendigkeitsChecks": [
+        "PA-Therapie ist je Zahn (ein-/mehrwurzelig) abzurechnen – Zahnzahl erfasst?",
+        "Hinweis: GKV-PAR folgt eigener Strecke (PAR-Richtlinie/BEMA Teil 4) – separat pruefen."
+      ]
+    },
+    {
+      "id": "krone",
+      "label": "Krone / Teilkrone",
+      "trigger": ["krone", "vollkrone", "ueberkronung", "teilkrone", "veneer"],
+      "obligatorisch": [
+        { "role": "Krone", "bema": [], "goz": ["2200", "2210", "2220"], "bezug": "perTooth" }
+      ],
+      "optional": [
+        { "role": "Aufbau/Stift", "bema": ["16"], "goz": ["2180", "2190", "2195"], "frage": "Stumpfaufbau/Stift zur Kronenaufnahme?" },
+        { "role": "Adhaesive Befestigung", "bema": [], "goz": ["2197"], "frage": "Adhaesiv befestigt (GOZ 2197)?" },
+        { "role": "Provisorium", "bema": [], "goz": ["2260", "2270"], "frage": "Provisorium gefertigt?" },
+        { "role": "Abformung/Scan", "bema": [], "goz": ["0065", "0050"], "frage": "Optisch-elektronische/konventionelle Abformung (sofern gesondert)?" }
+      ],
+      "vollstaendigkeitsChecks": [
+        "GOZ 2200-2220 umfassen Abformung/Einprobe/Eingliederung – nicht zusaetzlich berechnen.",
+        "Material-/Laborkosten gesondert (BEB) – erfasst?"
+      ]
+    },
+    {
+      "id": "implantat",
+      "label": "Implantatinsertion",
+      "trigger": ["implantat", "implantation", "implantiert", "implantatinsertion"],
+      "obligatorisch": [
+        { "role": "Implantatinsertion", "bema": [], "goz": ["9010"], "bezug": "perImplant" }
+      ],
+      "optional": [
+        { "role": "Implantatplanung/Analyse", "bema": [], "goz": ["9000"], "frage": "Implantatbezogene Analyse/Vermessung je Kiefer?" },
+        { "role": "Navigations-/Bohrschablone", "bema": [], "goz": ["9003", "9005"], "frage": "Orientierungs-/Navigationsschablone verwendet?" },
+        { "role": "Augmentation/Knochenaufbau", "bema": [], "goz": ["9090", "9100"], "frage": "Augmentation/Knochenaufbau erfolgt?" },
+        { "role": "Sinuslift", "bema": [], "goz": ["9110", "9120"], "frage": "Sinusbodenelevation (intern/extern)?" },
+        { "role": "Anaesthesie", "bema": ["41a"], "goz": ["0100"], "frage": "Leitungsanaesthesie?" },
+        { "role": "OP-Zuschlag", "bema": [], "goz": ["0500", "0510", "0520"], "frage": "Nichtstationaerer OP-Zuschlag je nach Punktzahl?" }
+      ],
+      "vollstaendigkeitsChecks": [
+        "Implantat, Implantatteile und Einmalfraesen sind gesondert berechnungsfaehig – erfasst?",
+        "Freilegung (9040) als zweite Phase spaeter pruefen."
+      ]
+    },
+    {
+      "id": "pzr_prophylaxe",
+      "label": "Prophylaxe / PZR",
+      "trigger": ["pzr", "professionelle zahnreinigung", "zahnreinigung", "prophylaxe", "zahnstein"],
+      "obligatorisch": [
+        { "role": "Reinigung", "bema": ["107"], "goz": ["1040"], "bezug": "perTooth" }
+      ],
+      "optional": [
+        { "role": "Fluoridierung", "bema": ["IP4", "FLA"], "goz": ["1020"], "frage": "Fluoridierung durchgefuehrt?" },
+        { "role": "Mundhygienestatus/-unterweisung", "bema": ["IP1", "IP2"], "goz": ["1000", "1010"], "frage": "Mundhygienestatus/-unterweisung?" }
+      ],
+      "vollstaendigkeitsChecks": [
+        "PZR (GOZ 1040) ist je Zahn/Implantat/Brueckenglied abzurechnen – Zahnzahl erfasst?",
+        "Ausschluss beachten: 1040 nicht neben 1020/4050/4055/4060/4070/4075/4090/4100."
+      ]
+    }
+  ]
+}
