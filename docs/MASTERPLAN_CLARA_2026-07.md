@@ -161,6 +161,18 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       MAS-Route `POST /treatment/lena-stt-url` (Launcher meldet die Tunnel-URL)
       veroeffentlicht `settings/lenaStt`. OFFEN: reale WER-Messung mit echtem
       Praxis-Audio, GPU-Umzug 5090, ggf. Named Tunnel statt Quick-Tunnel.
+      TEIL 3 (Zwei-Lavalier-Setup am PC) LIVE (11.07.): Chef nutzt zwei
+      Ansteckmikros an EINEM Funk-Empfaenger (USB, links/rechts) statt
+      Raummikro+Handy. `LenaStereoSplitCapture` splittet die Kanaele
+      (ChannelSplitter -> zwei WS-Verbindungen raum/arzt). WICHTIG: Pegelmeter
+      und Aufnahme teilen sich EINEN getUserMedia-Stream (vorher zwei Streams
+      -> je nach Treiber Mono fuer die Aufnahme: "Meter trennt, Dialog
+      nicht"). Geraetewahl automatisch: virtuelle Geraete (Voice-Changer,
+      VB-Audio ...) ausgeschlossen, DJI/"Mic Mini" bevorzugt, Wahl in
+      localStorage gemerkt. UI entruempelt (Chef 11.07.): kein Stereo-
+      Umschalter, kein Geraete-Dropdown, `micSelect.tsx` geloescht; geblieben
+      sind L/R-Pegelmeter, "Links = Patient/Arzt"-Tausch und ein Knopf zu den
+      Windows-Sound-Einstellungen.
 - [x] **W-LENA-3 Live-UI (Layout erhalten).** LIVE (11.07.2026). Datepicker/
       Arztfilter/Patientenliste bleiben. Rechts jetzt Umschalter Dialog<->Struktur:
       Dialog = chronologischer Verlauf (Patient links / Arzt rechts, Kanal=Sprecher
@@ -177,6 +189,20 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       `functions:structureTreatmentNote` + Hosting. OFFEN (bewusst W-LENA-4):
       manuelles Verschieben/Markieren von Segmenten; raeumliche Gruppierung
       benachbarter Abschnitte.
+      NACHTRAG (11.07., LIVE): Strukturieren laeuft NICHT mehr ueber die
+      OpenAI-Cloud-Function (Quota tot, DSGVO), sondern ueber die neue
+      MAS-Route `POST /treatment/structure` (`backend/src/lena/lenaDoc.js`):
+      lokales Qwen klassifiziert die Segmente (nur Nummern->Abschnitt+
+      Smalltalk-Flag), die Karteikarte wird deterministisch aus den ECHTEN
+      Segmenttexten gebaut und nach `treatment/main` geschrieben. Dazu
+      Vorgriff auf W-LENA-5: `POST /treatment/billing` schlaegt BEMA/BEMA+/
+      GOZ vor (lokales LLM mit Katalog-Grounding aus `backend/src/data/
+      billing-catalog/*`, `validateCatalogCodes` gegen Katalog, determinis-
+      tischer `expandBillingFromText`-Fallback ohne LLM). Frontend: neues
+      `AbrechnungPanel` auf der Lena-Seite (Vorschlaege + Vollstaendigkeits-
+      fragen + Entfernen-Knopf, Disclaimer "unverbindlich"). E2E getestet
+      am 11.07. (structure: 12/12 Segmente klassifiziert; billing: GOZ 9010
+      je Implantat + BEMA 41a aus echtem Diktat, quelle=llm).
 - [ ] **W-LENA-4 Korrektur-Modell (markiert, kein Freitext).** Sprachkorrektur,
       Auto-Vorschlag+Bestaetigen, Auswahl aus STT-Hypothesen; Segmente
       verschieben; jede Aenderung mit Wer/Wann/Wie markiert, Original bleibt
@@ -887,6 +913,25 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Empfaenger-Wahl + Zuordnung "Links = Patient/Arzt". Zusaetzlich ein
   Mikrofon-Auswaehler (micSelect.tsx) fuer Arzt-/Patienten-/Empfaenger-Geraet
   (Auswahl pro Kanal in localStorage). Hosting deployed, Typecheck sauber.
+- 11.07.2026 (abends): **Lena Kanaltrennung repariert + Struktur/Abrechnung
+  auf MAS LIVE** — Befund Chef: "Meter trennt, Dialog nicht" + Strukturieren
+  tot + Pseudo-Einstellungen nerven. Ursachen und Fixes:
+  (1) Meter und Aufnahme oeffneten ZWEI getUserMedia-Streams — je nach
+  Treiber lieferte der zweite nur Mono. Jetzt EIN geteilter Stereo-Stream
+  fuer beide; Geraetewahl automatisch (virtuelle Geraete wie "Voice Changer"
+  ausgeschlossen — genau der hatte die Trennung gefressen; DJI/USB bevorzugt,
+  Wahl gemerkt). (2) UI entruempelt: Stereo-Umschalter, Dropdown und
+  micSelect.tsx raus; L/R-Pegel, "Links = Patient/Arzt" und Sound-
+  Einstellungen-Knopf bleiben. (3) Strukturieren + Abrechnungsvorschlaege
+  rufen die neuen MAS-Routen `/treatment/structure` + `/treatment/billing`
+  (lokales Qwen; OpenAI-Function hatte tote Quota — Cloud-Weg fuer
+  Patiententexte damit ganz zu). Neues AbrechnungPanel auf der Lena-Seite.
+  E2E: structure 12/12 Segmente, billing GOZ 9010 + BEMA 41a aus echtem
+  Diktat. Deploy: MAS committet + neu gestartet (Gate GRUEN), Hosting-Build
+  gruen + deployed. Fremde QM/Julia-WIP-Dateien waehrend des Builds gestasht
+  (Regel 1) und danach zurueckgeholt; deren Compile-Blocker (kaputte
+  Anfuehrungszeichen juliaWorkspace Z. 1097, customButtons-Union
+  calendarCtrl) im Arbeitsstand mitrepariert, gehoeren aber der QM-Session.
 - 11.07.2026: **W-LENA-3 (Live-UI + 9 Abschnitte + Smalltalk-Filter) LIVE** —
   lenaWorkspace hat rechts jetzt den Umschalter Dialog<->Struktur. Dialog =
   chronologischer Verlauf (Patient links / Arzt rechts ueber `source`) mit
