@@ -876,6 +876,17 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Lena-STT-Tunnel scharf (`settings/lenaStt` veroeffentlicht, /health ueber
   Tunnel ok), Hosting-Build gruen + deployed (docgenda.web.app), Clara-Smoke
   GRUEN. OFFEN: reale WER-Messung, 5090-Umzug, ggf. Named Tunnel.
+- 11.07.2026: **Lena Stereo-Split am PC LIVE** — Praxis hat statt Raummikro
+   zwei Ansteckmikros (DJI Mic Mini), die per Funk in EINEN Empfaenger am
+  Line-In gehen. Im DJI-Stereo-Modus liegt TX1 links, TX2 rechts. Neu:
+  `LenaStereoSplitCapture` (services/lenaStt.ts) oeffnet EINEN Stereo-Eingang
+  mit abgeschaltetem Browser-DSP (sonst Mono-Downmix) und streamt linken +
+  rechten Kanal getrennt an ZWEI WebSockets des lena_stt-Dienstes (Kanal =
+  Sprecher) — der Dienst behandelt jede Verbindung unabhaengig, keine
+  Server-Aenderung. recordingControls: Umschalter "2 Mikros am PC (Stereo)",
+  Empfaenger-Wahl + Zuordnung "Links = Patient/Arzt". Zusaetzlich ein
+  Mikrofon-Auswaehler (micSelect.tsx) fuer Arzt-/Patienten-/Empfaenger-Geraet
+  (Auswahl pro Kanal in localStorage). Hosting deployed, Typecheck sauber.
 - 11.07.2026: **W-LENA-3 (Live-UI + 9 Abschnitte + Smalltalk-Filter) LIVE** —
   lenaWorkspace hat rechts jetzt den Umschalter Dialog<->Struktur. Dialog =
   chronologischer Verlauf (Patient links / Arzt rechts ueber `source`) mit
