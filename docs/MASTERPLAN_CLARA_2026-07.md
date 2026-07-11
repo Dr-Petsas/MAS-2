@@ -932,6 +932,24 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   (Regel 1) und danach zurueckgeholt; deren Compile-Blocker (kaputte
   Anfuehrungszeichen juliaWorkspace Z. 1097, customButtons-Union
   calendarCtrl) im Arbeitsstand mitrepariert, gehoeren aber der QM-Session.
+- 11.07.2026 (spaeter Abend): **Lena Dominanz-Gate gegen Uebersprechen LIVE**
+  — Befund Chef: Transkription trennt trotz Kanal-Split weiter nicht. ECHTE
+  Ursache: zwei Ansteckmikros im selben Raum hoeren BEIDE Sprecher; die STT
+  normalisiert das leise Uebersprechen (~-10 bis -15 dB) und transkribiert es
+  mit — Kanal-Splitten allein KANN das nicht loesen (der Pegelmeter zeigt
+  relative Lautstaerke, die STT nicht). Fix in `LenaStereoSplitCapture`
+  (services/lenaStt.ts): EIN Stereo-Worklet liefert L/R als Paar; ein
+  Dominanz-Gate vergleicht pro ~21-ms-Block die geglaetteten Huellkurven
+  (Attack sofort, Release ~200 ms) und reicht nur den deutlich lauteren
+  Kanal (Faktor 2 = ~+6 dB) an die Erkennung durch, der leisere bekommt
+  Stille (seine Segmentierung schliesst sauber). Beide aehnlich laut
+  (Doppel-Sprechen) => beide offen, nichts geht verloren; Stille => kein
+  Eingriff. Dazu Identik-Detektor: liefert der Empfaenger links=rechts
+  (Mono-Modus am Geraet), kommt eine klare Fehlermeldung statt stiller
+  Doppel-Transkription. Gate-Logik simuliert (Arzt spricht: Patientenkanal
+  100/100 Bloecke stumm; Doppel-Sprechen: 50/50 offen; Stille: 50/50 offen).
+  Typecheck sauber, Hosting deployed (fremde QM-WIP wieder per Stash
+  umgangen).
 - 11.07.2026: **W-LENA-3 (Live-UI + 9 Abschnitte + Smalltalk-Filter) LIVE** —
   lenaWorkspace hat rechts jetzt den Umschalter Dialog<->Struktur. Dialog =
   chronologischer Verlauf (Patient links / Arzt rechts ueber `source`) mit
