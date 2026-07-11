@@ -161,12 +161,22 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       MAS-Route `POST /treatment/lena-stt-url` (Launcher meldet die Tunnel-URL)
       veroeffentlicht `settings/lenaStt`. OFFEN: reale WER-Messung mit echtem
       Praxis-Audio, GPU-Umzug 5090, ggf. Named Tunnel statt Quick-Tunnel.
-- [ ] **W-LENA-3 Live-UI (Layout erhalten).** Datepicker/Arztfilter/Patienten-
-      liste bleiben. Rechts: waehrend der Aufnahme chronologischer Dialog
-      (Patient/Arzt), nach Stopp Toggle auf 9 farbcodierte Abschnitte
-      (Endo-Feilenfolge weiss-gelb-orange-rot-violett-blau-tuerkis-gruen-
-      schwarz, Zwischenstufen interpoliert). Smalltalk-Filter nur fuer die
-      Anzeige. Alles im Shared Memory (`lena_doc`-Events).
+- [x] **W-LENA-3 Live-UI (Layout erhalten).** LIVE (11.07.2026). Datepicker/
+      Arztfilter/Patientenliste bleiben. Rechts jetzt Umschalter Dialog<->Struktur:
+      Dialog = chronologischer Verlauf (Patient links / Arzt rechts, Kanal=Sprecher
+      ueber `source` raum/arzt) mit ausblendbarem Smalltalk (nur Anzeige, Rohtext
+      bleibt in `dictations`). Struktur = 9 feste farbcodierte Abschnitte
+      (Endo-Feilenfolge weiss-gelb-orange-rot-violett-blau-tuerkis-gruen-schwarz):
+      anamnese/befund/diagnose/aufklaerung/vorbereitung/behandlung/nebenleistung/
+      nachsorge/procedere. WICHTIG (Anti-Halluzination): Das LLM in
+      `structureTreatmentNote` KLASSIFIZIERT nur jedes Segment (per Nummer) in
+      Abschnitt + Smalltalk-Flag und schreibt diese Metadaten (`section`,
+      `smalltalk`) an die Segment-Dokumente - es schreibt den Text NICHT um. Die
+      Struktur-Ansicht gruppiert die ECHTEN Segmenttexte; unklassifizierte landen
+      sichtbar in einem eigenen Eimer (nichts geht verloren). Deploy:
+      `functions:structureTreatmentNote` + Hosting. OFFEN (bewusst W-LENA-4):
+      manuelles Verschieben/Markieren von Segmenten; raeumliche Gruppierung
+      benachbarter Abschnitte.
 - [ ] **W-LENA-4 Korrektur-Modell (markiert, kein Freitext).** Sprachkorrektur,
       Auto-Vorschlag+Bestaetigen, Auswahl aus STT-Hypothesen; Segmente
       verschieben; jede Aenderung mit Wer/Wann/Wie markiert, Original bleibt
@@ -866,6 +876,16 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Lena-STT-Tunnel scharf (`settings/lenaStt` veroeffentlicht, /health ueber
   Tunnel ok), Hosting-Build gruen + deployed (docgenda.web.app), Clara-Smoke
   GRUEN. OFFEN: reale WER-Messung, 5090-Umzug, ggf. Named Tunnel.
+- 11.07.2026: **W-LENA-3 (Live-UI + 9 Abschnitte + Smalltalk-Filter) LIVE** —
+  lenaWorkspace hat rechts jetzt den Umschalter Dialog<->Struktur. Dialog =
+  chronologischer Verlauf (Patient links / Arzt rechts ueber `source`) mit
+  ausblendbarem Smalltalk (nur Anzeige, Rohtext bleibt). Struktur = 9 feste
+  farbcodierte Abschnitte (Endo-Folge weiss->schwarz), gruppiert die ECHTEN
+  Segmenttexte. `structureTreatmentNote` klassifiziert jedes Segment nur
+  (Nummer -> Abschnitt + smalltalk-Flag, KEIN Umschreiben) und schreibt
+  `section`/`smalltalk` an die dictations-Docs; unklassifizierte bleiben in
+  einem sichtbaren Eimer. Deploy: `functions:structureTreatmentNote` +
+  Hosting-Build gruen + deployed. Frontend- + Functions-Typecheck sauber.
 - 10.07.2026: **Speicherpunkt Clara v6.0** (Rollback-Anker, Auftrag Chef):
   alle drei Repos committet + annotierter Tag `clara-v6.0`; Clara-Voice
   Voll-Gate GRUEN (133/139, 0 unkontrollierte Halluzinationen, Tag
