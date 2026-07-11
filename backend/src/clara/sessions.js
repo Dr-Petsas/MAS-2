@@ -151,6 +151,61 @@ export async function clearActiveCase(clientId) {
   return { ok: true };
 }
 
+// --- Lena-Aufnahme: schwebende Bestaetigung + laufende Aufnahme (W-LENA-1) ---
+// pendingRecording: der noch NICHT bestaetigte Aufnahme-Kandidat ("Aufnahme
+// fuer Frau Mueller, richtig?"). Ein "Ja" startet ihn, "Nein, Herr Meier"
+// ersetzt ihn. Nie geraten: der Patient stammt IMMER aus dem echten Kalender.
+// activeRecording: die gerade laufende Aufnahme (fuer "Clara, beende die
+// Aufnahme" ohne Namensnennung).
+
+export async function setPendingRecording(clientId, pending) {
+  await voiceStateRef(clientId).set(
+    { updatedAt: FieldValue.serverTimestamp(), pendingRecording: pending || null },
+    { merge: true }
+  );
+  await mirrorToSession(clientId, { pendingRecording: pending || null });
+  return { ok: true };
+}
+
+export async function getPendingRecording(clientId) {
+  const snap = await voiceStateRef(clientId).get();
+  if (!snap.exists) return null;
+  return snap.data()?.pendingRecording || null;
+}
+
+export async function clearPendingRecording(clientId) {
+  await voiceStateRef(clientId).set(
+    { updatedAt: FieldValue.serverTimestamp(), pendingRecording: null },
+    { merge: true }
+  );
+  await mirrorToSession(clientId, { pendingRecording: null });
+  return { ok: true };
+}
+
+export async function setActiveRecording(clientId, active) {
+  await voiceStateRef(clientId).set(
+    { updatedAt: FieldValue.serverTimestamp(), activeRecording: active || null },
+    { merge: true }
+  );
+  await mirrorToSession(clientId, { activeRecording: active || null });
+  return { ok: true };
+}
+
+export async function getActiveRecording(clientId) {
+  const snap = await voiceStateRef(clientId).get();
+  if (!snap.exists) return null;
+  return snap.data()?.activeRecording || null;
+}
+
+export async function clearActiveRecording(clientId) {
+  await voiceStateRef(clientId).set(
+    { updatedAt: FieldValue.serverTimestamp(), activeRecording: null },
+    { merge: true }
+  );
+  await mirrorToSession(clientId, { activeRecording: null });
+  return { ok: true };
+}
+
 // --- Server-side operator (who is speaking) ------------------------------
 // Set once per session after PIN/login identification. Voice tools read it to
 // scope the briefing by role and to credit the real human in the case log.

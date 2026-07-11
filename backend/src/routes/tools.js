@@ -37,7 +37,8 @@ import { summarizeForSpeech } from "../clara/summarize.js";
 import { spokenCommsDigest } from "../clara/commsDigest.js";
 import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
-import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext } from "../clara/sessions.js";
+import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
+import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession } from "../clara/treatmentRecording.js";
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
@@ -865,6 +866,159 @@ async function resolveSpokenPatientForRead(clientId, { rawName, hint, askWho }) 
   await setPatientCandidates(clientId, candidates, sel);
   return { done: false, sel };
 }
+
+
+// --- LENA-AUFNAHME per Sprachbefehl (W-LENA-1) -------------------------------
+// "Clara, starte/beende die Aufnahme". Der Patient wird IMMER halluzinations-
+// frei aus dem echten Kalender gebunden: explizite appointmentId (Termin offen)
+// startet sofort mit Readback; sonst schlaegt Clara den aktuellen Stuhl-
+// Patienten (bzw. den genannten Namen) vor und wartet auf Bestaetigung, damit
+// nie ins falsche Blatt dokumentiert wird. "Nein, Herr Meier" ist eine
+// Korrektur (neuer Kalender-Abgleich), "Ja" startet den schwebenden Kandidaten.
+function _recTruthy(v) {
+  if (v === true) return true;
+  const s = String(v || "").trim().toLowerCase();
+  return ["true", "1", "yes", "confirm", "bestaetigt", "bestätigt"].includes(s);
+}
+function _recIsYes(s) {
+  const n = String(s || "").trim().toLowerCase().replace(/[.!?,]+$/g, "");
+  return ["ja", "jap", "jo", "genau", "richtig", "stimmt", "passt", "korrekt",
+    "ok", "okay", "jawohl", "genau so", "ja bitte", "ja genau"].includes(n);
+}
+async function _recPropose(clientId, info) {
+  const when = spokenApptWhen(info.apptStartMs);
+  const who = info.patientName || "den Patienten";
+  await setPendingRecording(clientId, {
+    appointmentId: info.appointmentId, locationId: info.locationId,
+    patientId: info.patientId || "", patientName: info.patientName || "",
+  });
+  return {
+    ok: true, needsConfirm: true, appointmentId: info.appointmentId,
+    patientName: info.patientName || "",
+    message: `Aufnahme für ${who}${when} — richtig?`,
+  };
+}
+async function _recBegin(clientId, info, by) {
+  const out = await startRecordingSession(clientId, {
+    locationId: info.locationId, appointmentId: info.appointmentId,
+    patientName: info.patientName, patientId: info.patientId, by,
+  });
+  if (out.ok) {
+    await setActiveRecording(clientId, {
+      appointmentId: info.appointmentId, locationId: info.locationId,
+      patientId: info.patientId || "", patientName: info.patientName || "",
+      startedAtMs: Date.now(),
+    });
+    await clearPendingRecording(clientId);
+  }
+  return out;
+}
+
+router.post("/tools/start-treatment-recording", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const appointmentId = String(req.body?.appointmentId || "").trim();
+    let patientId = String(req.body?.patientId || "").trim();
+    let name = String(req.body?.lastName || req.body?.name || "").trim();
+    const confirm = _recTruthy(req.body?.confirm) || _recIsYes(name);
+    if (_recIsYes(name)) name = "";
+    const operator = await getOperator(clientId).catch(() => null);
+    const by = operator?.name || "Clara";
+
+    // A) Termin explizit offen (Deep-Link) -> sofort starten, Name als Readback.
+    if (appointmentId) {
+      const info = await resolveAppointmentInfo(clientId, { appointmentId });
+      if (!info?.ok) return res.json({ ok: false, message: info?.message || "Den Termin finde ich nicht." });
+      return res.json(await _recBegin(clientId, info, by));
+    }
+
+    // B) Bestaetigung ("Ja") eines schwebenden Kandidaten.
+    if (confirm && !name && !patientId) {
+      const pend = await getPendingRecording(clientId);
+      if (pend?.appointmentId && pend?.locationId) {
+        return res.json(await _recBegin(clientId, {
+          ok: true, appointmentId: pend.appointmentId, locationId: pend.locationId,
+          patientId: pend.patientId || "", patientName: pend.patientName || "",
+        }, by));
+      }
+      // kein schwebender Kandidat -> weiter zur Zeit-/Kontext-Aufloesung
+    }
+
+    // C) Name genannt (Erstauswahl ODER Korrektur "Nein, Herr Meier").
+    if (name || patientId) {
+      if (!patientId && name) {
+        const r = await resolveSpokenPatientForRead(clientId, {
+          rawName: name, hint: String(req.body?.hint || "").trim(),
+          askWho: "Für welchen Patienten soll ich die Aufnahme starten? Bitte den Namen nennen.",
+        });
+        if (r.done) return res.json(r.payload);
+        patientId = r.sel?.id || ""; name = r.sel?.lastName || name;
+      }
+      const info = await resolveAppointmentInfo(clientId, { patientId, lastName: name });
+      if (!info?.ok) return res.json({ ok: false, message: info?.message || `Zu ${name || "dem Patienten"} finde ich heute keinen Termin.` });
+      return res.json(await _recPropose(clientId, info));
+    }
+
+    // D) Nichts genannt: zuletzt gewaehlter Patient, sonst "wer sitzt im Stuhl?".
+    const selPat = await getSelectedPatient(clientId).catch(() => null);
+    if (selPat?.id) {
+      const info = await resolveAppointmentInfo(clientId, { patientId: selPat.id, lastName: selPat.lastName || "" });
+      if (info?.ok) return res.json(await _recPropose(clientId, info));
+    }
+    const day = await getDayAppointments(clientId, { date: todayBerlin() });
+    if (day?.ok) {
+      const pick = pickCurrentAppointment(day.appointments || [], Date.now());
+      if (pick.appointment) {
+        const a = pick.appointment;
+        return res.json(await _recPropose(clientId, {
+          ok: true, appointmentId: a.id, locationId: day.locationId,
+          patientName: a.patientName, patientId: a.patientId,
+          apptStartMs: a.startMs, motiveName: a.visitMotive,
+        }));
+      }
+      if (pick.reason === "ambiguous") {
+        return res.json({ ok: true, needsConfirm: true, message: "Es laufen gerade mehrere Behandlungen. Für welchen Patienten soll ich aufnehmen?" });
+      }
+    }
+    return res.json({ ok: true, needsConfirm: true, message: "Für welchen Patienten soll ich die Aufnahme starten?" });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+router.post("/tools/stop-treatment-recording", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const active = await getActiveRecording(clientId).catch(() => null);
+    let appointmentId = String(req.body?.appointmentId || "").trim();
+    let locationId = "";
+    let patientName = "";
+    if (appointmentId) {
+      const info = await resolveAppointmentInfo(clientId, { appointmentId });
+      if (info?.ok) { locationId = info.locationId; patientName = info.patientName; }
+    } else if (active?.appointmentId && active?.locationId) {
+      appointmentId = active.appointmentId;
+      locationId = active.locationId;
+      patientName = active.patientName || "";
+    }
+    if (!appointmentId || !locationId) {
+      await clearPendingRecording(clientId).catch(() => {});
+      return res.json({ ok: true, message: "Es läuft gerade keine Aufnahme." });
+    }
+    const out = await stopRecordingSession(clientId, { locationId, appointmentId, patientName });
+    await clearActiveRecording(clientId).catch(() => {});
+    await clearPendingRecording(clientId).catch(() => {});
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
 
 
 // 1d) BEHANDLUNGS-HISTORIE: "Was wurde bei Herrn Meier zuletzt gemacht?" ->

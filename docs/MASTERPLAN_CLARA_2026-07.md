@@ -87,6 +87,77 @@ Offen: Abnahme durch Chef im Alltag.
   (Heartbeat/Set/404/Bad-Ids), `npm test`-Failliste identisch zur Basis
   (4 bekannte Altfaelle). Frontend-Build gruen.
 
+### W-LENA Neubau - "Meisterstueck" (beschlossen 11.07.2026, Chef)
+
+**Auftrag (woertlich):** "Das muss ein Meisterstueck werden. Das Wichtigste ist
+perfekte Transkription und perfektes Abrechnungsziffern-Matching - daran misst
+sich unser Erfolg: Gimmick oder Personalersatz (unser klares Ziel)."
+
+Lena wird zur Ambient-Behandlungsdoku ausgebaut: Arzt-Patient-Gespraech
+aufzeichnen + transkribieren, Smalltalk (nur fuer die Anzeige) filtern, in
+farbcodierte Abschnitte gliedern, daraus HALLUZINATIONSFREI Abrechnungs-
+Absichten fuer Sophie ableiten. Aktivierung per Rechtsklick (Kalender),
+Termin-Popup UND - wichtigste Funktion - per Sprachbefehl an Clara. **Clara
+selbst (Wake/Sleep, Fakten-Waechter, Briefings) bleibt unangetastet.**
+
+Leitplanken (unverhandelbar):
+- **Nie Patient raten:** die Patientenbindung kommt IMMER aus dem echten
+  Kalender (offener Termin > genannter Name > aktueller Stuhl-Patient), mit
+  Bestaetigung/Readback und Korrekturschleife ("Nein, Herr Meier").
+- **Keine Codes aus dem LLM:** das Modell extrahiert nur Konzept+Attribute aus
+  dem Transkript; Sophie expandiert deterministisch ueber `billing-catalog/*`
+  zu BEMA/BEMA-PLUS/GOZ. BEMA-PLUS = GKV + abdingbare Wahlleistungen (Flag
+  "Vereinbarung erforderlich").
+- **Keine Freitext-Eingabe:** Korrektur nur per Sprache / Auto-Vorschlag /
+  Auswahl aus Hypothesen; jede Aenderung wird markiert (§ 630f BGB).
+- **Plattform-Regel:** Fachwissen in Kataloge/Daten, nicht in Code
+  (Augenarzt/Hausarzt muss ebenso funktionieren).
+
+Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
+
+- [x] **W-LENA-1 Fundament: Sprachbefehl + Patientenbindung (11.07.).**
+      "Clara, starte/beende die Aufnahme" steuert Lena, NICHT Claras Wake/Sleep.
+      GEBAUT: (a) Clara-Voice `worker_wake.is_recording_command()` als Vor-Gate
+      im `WakeGate` - ein Aufnahme-Kommando (Aufnahme-Substantiv/-Verb + Start/
+      Stop) dispatcht IMMER ans LLM und legt Clara NIE schlafen (auch bei
+      "beende/stopp die Aufnahme"); blosses "Clara stop" bleibt Sleep. Neue
+      Gruppe `recording` im Tool-Subsetting. (b) MAS `clara/treatmentRecording.js`
+      (reine `pickCurrentAppointment`-Bindung + Recorder-Schreiben + Live-Follow
+      `open_lena_recording`) + Tools `start_treatment_recording`/
+      `stop_treatment_recording` in `routes/tools.js`; schwebende Bestaetigung +
+      laufende Aufnahme in `voice_state` (`pendingRecording`/`activeRecording`).
+      (c) Clara-Profil: zwei Tools (Gruppe recording) + stt_keywords
+      (Aufnahme/Lena). (d) Frontend: `open_lena_recording` schickt den Monitor
+      via Live-Follow zu Lena. Tests gruen: `test_wake_word.py` (+23 Checks),
+      `test_tool_subsetting.py`, `scripts/test-lena-recording.mjs` (pure),
+      Clara-Release-Gate voll gruen, `node --check`. OFFEN (bewusst W-LENA-3):
+      Bindung an einen bereits im Monitor GEOEFFNETEN Termin per Sprache (der
+      Bildschirm-Weg "Aufnahme starten" im Termin-Dialog deckt das schon ab).
+- [ ] **W-LENA-2 Audio + STT (das erste Erfolgskriterium).** Getrennter,
+      medizinisch trainierter STT-Dienst (Parakeet-medical live + Canary
+      Post-Processing/Batch), 2-Kanal (Arzt-Headset + Raummikro fuer Patient),
+      Roh-Audio je Segment. Laeuft SEPARAT vom Clara-Stack (kein GPU im Zimmer;
+      iPad nur Anzeige/Steuerung). Domaenen-Boosting + Post-Korrektur. DoD:
+      messbar hohe Wortgenauigkeit auf Medizin-Vokabular, Clara-Gate weiter
+      gruen.
+- [ ] **W-LENA-3 Live-UI (Layout erhalten).** Datepicker/Arztfilter/Patienten-
+      liste bleiben. Rechts: waehrend der Aufnahme chronologischer Dialog
+      (Patient/Arzt), nach Stopp Toggle auf 9 farbcodierte Abschnitte
+      (Endo-Feilenfolge weiss-gelb-orange-rot-violett-blau-tuerkis-gruen-
+      schwarz, Zwischenstufen interpoliert). Smalltalk-Filter nur fuer die
+      Anzeige. Alles im Shared Memory (`lena_doc`-Events).
+- [ ] **W-LENA-4 Korrektur-Modell (markiert, kein Freitext).** Sprachkorrektur,
+      Auto-Vorschlag+Bestaetigen, Auswahl aus STT-Hypothesen; Segmente
+      verschieben; jede Aenderung mit Wer/Wann/Wie markiert, Original bleibt
+      (§ 630f).
+- [ ] **W-LENA-5 Abrechnungs-Bruecke (das zweite Erfolgskriterium).** Nur
+      gruene/gelbe Abschnitte speisen Sophie. LLM -> Leistungsabsichten
+      (Konzept+Attribute), Sophie expandiert deterministisch ueber
+      `billing-catalog/*` zu BEMA-BEMA PLUS-GOZ; Ausschoepfungs-Slider aus der
+      Sandbox in den echten Fluss. Manuelle +/- markiert.
+- [ ] **W-LENA-6 Zusammenfassung + Uebergabe.** Nach dem Gespraech kompakte
+      Abrechnungs-Zusammenfassung; Sophie/Clara nehmen Ergaenzungen auf.
+
 ## Phase W-SUCHE - MAS-Cockpit als Gedaechtnis-Suchmaschine (beschlossen 05.07.)
 
 Das bisherige Cockpit (Rote Liste + Fristen + Freigaben + Dubletten als lange
@@ -743,6 +814,17 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 - 05.07.2026: Sablon-Seed bereinigt: Demo-Anamnese-Antworten aus dem echten
   Bogen entfernt (unseed-Skript), seed-anamnese-sablon.mjs geloescht —
   keine erfundenen Befunde mehr in Patientendaten.
+- 11.07.2026: **W-LENA Neubau begonnen (Meisterstueck)** — WP1-6 im Plan
+  verankert. **W-LENA-1 FERTIG:** Sprachbefehl "Clara, starte/beende die
+  Aufnahme" mit halluzinationsfreier Patientenbindung. Clara-Voice
+  worker_wake-Vor-Gate (Aufnahme-Kommando dispatcht, legt Clara nie schlafen;
+  blosses "Clara stop" bleibt Sleep) + Tool-Subsetting-Gruppe `recording`;
+  MAS `clara/treatmentRecording.js` + Tools start/stop_treatment_recording +
+  voice_state pending/activeRecording; Profil zwei Tools + stt_keywords;
+  Frontend Live-Follow `open_lena_recording` (Monitor -> Lena). Tests gruen
+  (test_wake_word +23, test_tool_subsetting, scripts/test-lena-recording.mjs),
+  Clara-Release-Gate voll gruen, node --check. Live-Worker-Neustart steht
+  noch aus (Produktion) — auf Freigabe wartend.
 - 10.07.2026: **Speicherpunkt Clara v6.0** (Rollback-Anker, Auftrag Chef):
   alle drei Repos committet + annotierter Tag `clara-v6.0`; Clara-Voice
   Voll-Gate GRUEN (133/139, 0 unkontrollierte Halluzinationen, Tag
