@@ -149,9 +149,18 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       Tests `test_lena_stt.py` (16/16) + WS-Smoke + `eval_wer.py` (WER-
       Messharness, ausfuehrbar sobald echtes/TTS-Audio vorliegt). Clara-Gate
       weiter GRUEN.
-      TEIL 2 (offen): Frontend-Ingress (Browser/iPad-Mikro streamt PCM statt
-      Web-Speech), wss-Erreichbarkeit (Tunnel + URL via Firestore
-      `settings/lenaStt`), reale WER-Messung, danach 2-Kanal-Hardware.
+      TEIL 2 (Frontend-Ingress) LIVE (11.07.): `services/lenaStt.ts` loest die
+      wss-Adresse aus `settings/lenaStt` auf (wie masRuntime), oeffnet das
+      Mikro, rechnet auf 16k-Mono-PCM (AudioWorklet) und streamt an den Dienst
+      (partial/final). ZWEI KANAELE = ZWEI SPRECHER: PC-Raummikro schreibt
+      Kanal `raum` (Patient, links), Handy-Headset Kanal `arzt` (Arzt, rechts);
+      der manuelle Umschalter auf `/dictate` entfaellt. Beide Oberflaechen
+      (recordingControls + dictationPage) nutzen die STT bevorzugt und fallen
+      bei Nichterreichbarkeit sauber auf Web-Speech zurueck (kein Regressions-
+      risiko). Segmente werden pro Sprechpause sofort als Dialog geschrieben.
+      MAS-Route `POST /treatment/lena-stt-url` (Launcher meldet die Tunnel-URL)
+      veroeffentlicht `settings/lenaStt`. OFFEN: reale WER-Messung mit echtem
+      Praxis-Audio, GPU-Umzug 5090, ggf. Named Tunnel statt Quick-Tunnel.
 - [ ] **W-LENA-3 Live-UI (Layout erhalten).** Datepicker/Arztfilter/Patienten-
       liste bleiben. Rechts: waehrend der Aufnahme chronologischer Dialog
       (Patient/Arzt), nach Stopp Toggle auf 9 farbcodierte Abschnitte
@@ -846,6 +855,17 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Tunnel, Unit-Tests 16/16, WS-Smoke, WER-Harness). KEIN Import aus dem
   Clara-Stack -> Clara bleibt unantastbar; Clara-Gate weiter GRUEN. Offen:
   Frontend-Ingress (Browser-Mikro -> wss) + reale WER-Messung + 2-Kanal.
+- 11.07.2026: **W-LENA-2 Teil 2 (Frontend-Ingress) LIVE** — `lenaStt.ts`
+  (wss-Discovery aus `settings/lenaStt`, Mikro -> 16k-PCM via AudioWorklet ->
+  WS, 3,5-s-Timeout + Retry mit frischer URL); recordingControls (Kanal
+  `raum`) und dictationPage (Kanal `arzt`, Umschalter entfernt) nutzen die
+  medizinische STT bevorzugt, Web-Speech-Fallback (kein Regressionsrisiko);
+  Segmente pro Sprechpause sofort als Dialog. MAS-Route
+  `POST /treatment/lena-stt-url` (Launcher meldet Tunnel-URL). Deploy-Kette:
+  3 Repos committet, MAS-Backend neu (neue Route antwortet 400 statt 404),
+  Lena-STT-Tunnel scharf (`settings/lenaStt` veroeffentlicht, /health ueber
+  Tunnel ok), Hosting-Build gruen + deployed (docgenda.web.app), Clara-Smoke
+  GRUEN. OFFEN: reale WER-Messung, 5090-Umzug, ggf. Named Tunnel.
 - 10.07.2026: **Speicherpunkt Clara v6.0** (Rollback-Anker, Auftrag Chef):
   alle drei Repos committet + annotierter Tag `clara-v6.0`; Clara-Voice
   Voll-Gate GRUEN (133/139, 0 unkontrollierte Halluzinationen, Tag
