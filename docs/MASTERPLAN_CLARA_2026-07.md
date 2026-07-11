@@ -133,13 +133,25 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       Clara-Release-Gate voll gruen, `node --check`. OFFEN (bewusst W-LENA-3):
       Bindung an einen bereits im Monitor GEOEFFNETEN Termin per Sprache (der
       Bildschirm-Weg "Aufnahme starten" im Termin-Dialog deckt das schon ab).
-- [ ] **W-LENA-2 Audio + STT (das erste Erfolgskriterium).** Getrennter,
-      medizinisch trainierter STT-Dienst (Parakeet-medical live + Canary
-      Post-Processing/Batch), 2-Kanal (Arzt-Headset + Raummikro fuer Patient),
-      Roh-Audio je Segment. Laeuft SEPARAT vom Clara-Stack (kein GPU im Zimmer;
-      iPad nur Anzeige/Steuerung). Domaenen-Boosting + Post-Korrektur. DoD:
-      messbar hohe Wortgenauigkeit auf Medizin-Vokabular, Clara-Gate weiter
-      gruen.
+- [~] **W-LENA-2 Audio + STT (das erste Erfolgskriterium).** Getrennter,
+      medizinisch trainierter STT-Dienst (Parakeet live + med. Post-Korrektur),
+      Roh-Audio je Segment. Laeuft SEPARAT vom Clara-Stack. Domaenen-Boosting +
+      Post-Korrektur. DoD: messbar hohe Wortgenauigkeit auf Medizin-Vokabular,
+      Clara-Gate weiter gruen.
+      TEIL 1 (Dienst) FERTIG (11.07.): isolierter `lena_stt/`-Dienst
+      (FastAPI/uvicorn, Port 8140, EIGENER Prozess/Modell — kein Import aus dem
+      Clara-Stack). Parakeet-ONNX (primeline) auf CPU (device umschaltbar;
+      GPU-Upgrade spaeter in EIGENEM venv mit onnxruntime-gpu, nie im
+      Clara-Env). Reine Energie-VAD `Segmenter`; medizinische Fach-
+      Nachkorrektur (`data/medical_terms_de.txt` = Vokabular als DATEN, nicht
+      Code); WS-Protokoll (PCM rein, partial/final raus mit Korrektur-Liste);
+      Launcher `start-lena-stt.ps1` (LAN + optional Cloudflare `wss://`);
+      Tests `test_lena_stt.py` (16/16) + WS-Smoke + `eval_wer.py` (WER-
+      Messharness, ausfuehrbar sobald echtes/TTS-Audio vorliegt). Clara-Gate
+      weiter GRUEN.
+      TEIL 2 (offen): Frontend-Ingress (Browser/iPad-Mikro streamt PCM statt
+      Web-Speech), wss-Erreichbarkeit (Tunnel + URL via Firestore
+      `settings/lenaStt`), reale WER-Messung, danach 2-Kanal-Hardware.
 - [ ] **W-LENA-3 Live-UI (Layout erhalten).** Datepicker/Arztfilter/Patienten-
       liste bleiben. Rechts: waehrend der Aufnahme chronologischer Dialog
       (Patient/Arzt), nach Stopp Toggle auf 9 farbcodierte Abschnitte
@@ -825,6 +837,15 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   (test_wake_word +23, test_tool_subsetting, scripts/test-lena-recording.mjs),
   Clara-Release-Gate voll gruen, node --check. Live-Worker-Neustart steht
   noch aus (Produktion) — auf Freigabe wartend.
+- 11.07.2026: **W-LENA-1 LIVE** — MAS-Backend + Clara-Worker neu gestartet
+  (Smoke GRUEN, Tool-Calling ok, Worker registriert), neue Route
+  `/tools/stop-treatment-recording` antwortet.
+- 11.07.2026: **W-LENA-2 Teil 1 (STT-Dienst) FERTIG** — isolierter
+  `lena_stt/`-Dienst (Parakeet-ONNX CPU, medizinische Nachkorrektur,
+  Energie-VAD-Segmenter, WS-Protokoll, Launcher mit optionalem Cloudflare-
+  Tunnel, Unit-Tests 16/16, WS-Smoke, WER-Harness). KEIN Import aus dem
+  Clara-Stack -> Clara bleibt unantastbar; Clara-Gate weiter GRUEN. Offen:
+  Frontend-Ingress (Browser-Mikro -> wss) + reale WER-Messung + 2-Kanal.
 - 10.07.2026: **Speicherpunkt Clara v6.0** (Rollback-Anker, Auftrag Chef):
   alle drei Repos committet + annotierter Tag `clara-v6.0`; Clara-Voice
   Voll-Gate GRUEN (133/139, 0 unkontrollierte Halluzinationen, Tag
