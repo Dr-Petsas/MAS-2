@@ -145,4 +145,38 @@ router.post("/treatment/recorder", async (req, res) => {
   }
 });
 
+// POST /treatment/lena-stt-url — der Lena-STT-Launcher (start-lena-stt.ps1)
+// meldet hier die aktuelle oeffentliche wss-Adresse des STT-Dienstes; das
+// Backend veroeffentlicht sie nach settings/lenaStt (public read). Die Web-App
+// loest die Adresse ZUR LAUFZEIT von dort auf (wie settings/masRuntime) — der
+// Cloudflare-Quick-Tunnel wechselt bei jedem Neustart, und der STT-Dienst zieht
+// spaeter auf einen anderen Server um; nur die Firestore-URL aendert sich dann.
+//
+// Schutz: Ist LENA_STT_PUBLISH_TOKEN gesetzt, muss der Request ihn tragen
+// (Header x-lena-token ODER Body token), damit niemand die STT-Adresse der
+// Praxis von aussen umbiegen kann.
+router.post("/treatment/lena-stt-url", async (req, res) => {
+  try {
+    const want = String(process.env.LENA_STT_PUBLISH_TOKEN || "").trim();
+    if (want) {
+      const got = String(req.get("x-lena-token") || req.body?.token || "").trim();
+      if (got !== want) return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+    const url = String(req.body?.url || "").trim().replace(/\/+$/, "");
+    // Nur oeffentliche wss-URLs (kein ws:// aus dem LAN — der HTTPS-Client
+    // wuerde es ohnehin als Mixed-Content blockieren).
+    if (!/^wss:\/\/[^\s]+$/i.test(url)) {
+      return res.status(400).json({ ok: false, error: "bad_url" });
+    }
+    await admin.firestore().collection("settings").doc("lenaStt").set({
+      wsUrl: url,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, wsUrl: url });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 export default router;
