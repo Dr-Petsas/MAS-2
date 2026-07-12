@@ -39,7 +39,7 @@ import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession } from "../clara/treatmentRecording.js";
-import { readTreatmentDictation, findInTreatment, readTreatmentLabels, findBackdatedAppointment } from "../clara/lenaDictation.js";
+import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../clara/lenaDictation.js";
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
@@ -1307,6 +1307,38 @@ router.post("/tools/read-treatment-labels", async (req, res) => {
       if (sel?.id) { patientId = sel.id; lastName = sel.lastName || ""; }
     }
     const out = await readTreatmentLabels(clientId, { appointmentId, patientId, lastName, date });
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 7d+ LABEL ANLEGEN: "Clara, plane fuer Frau Meier eine Fuellung an 35" ->
+// gesprochene Behandlung serverseitig zu einem Sophie-Label machen (Konzept +
+// Attribute, KEINE Ziffern) und additiv in den Sophie-Plan des Termins schreiben.
+router.post("/tools/add-treatment-label", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const text = String(req.body?.behandlung || req.body?.text || req.body?.query || "").trim();
+    let patientId = "";
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    const appointmentId = String(req.body?.appointmentId || "").trim();
+    const date = String(req.body?.date || "").trim();
+    if (!appointmentId && lastName) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: lastName, hint: String(req.body?.hint || "").trim(),
+        askWho: "Für welchen Patienten soll ich die Behandlung planen? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || ""; lastName = r.sel?.lastName || lastName;
+    } else if (!appointmentId && !lastName) {
+      const sel = await getSelectedPatient(clientId).catch(() => null);
+      if (sel?.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+    }
+    const out = await addTreatmentLabel(clientId, { text, appointmentId, patientId, lastName, date });
     return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

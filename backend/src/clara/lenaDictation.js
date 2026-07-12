@@ -16,6 +16,8 @@ import {
   combineActiveSegments,
 } from "./treatmentDoc.js";
 import { getPatientAppointments } from "./daySchedule.js";
+import { intakeToAbsichten } from "./billingIntake.js";
+import { loadSophieKatalog, konzeptLabelIndex } from "./sophieKatalog.js";
 
 const _BERLIN = "Europe/Berlin";
 
@@ -258,6 +260,109 @@ export async function findInTreatment(clientId, { query, appointmentId, patientI
     found: true,
     ...treffer,
     message: `Gefunden bei ${who}${wann ? ` am ${wann}` : ""}: „${best}". Die Stelle habe ich dir auf den Bildschirm gelegt.`,
+  };
+}
+
+/**
+ * Sprechbare/anzeigbare Kurzform einer Absicht — Server-Spiegel von
+ * `behandlungsLabel` im Frontend (Label + Zahn + Flaechen + Implantat-Zusaetze).
+ * Bewusst schlank: die Ziffern/Details rechnet Sophie, hier zaehlt Lesbarkeit.
+ */
+function _absichtLabel(absicht, labelIdx) {
+  const konz = labelIdx.get(absicht.konzeptId);
+  const teile = [konz?.label || absicht.konzeptId];
+  const at = absicht.attrs || {};
+  if (at.zahn) teile.push(`an ${at.zahn}`);
+  if (at.flaechen) teile.push(String(at.flaechen).toUpperCase());
+  const zusatz = [];
+  if (at.augmentation === "ja") zusatz.push("Augmentation");
+  if (at.sinuslift === "intern") zusatz.push("Sinuslift intern");
+  if (at.sinuslift === "extern") zusatz.push("Sinuslift extern");
+  if (at.knochenherkunft === "eigenknochen") zusatz.push("Eigenknochen");
+  if (at.membran === "titanmesh") zusatz.push("Titangitter");
+  if (at.membran === "kollagen") zusatz.push("Kollagenmembran");
+  if (at.prf === "ja") zusatz.push("PRF");
+  let s = teile.join(" ");
+  if (zusatz.length) s += ` mit ${zusatz.join(", ")}`;
+  return s.trim();
+}
+
+/**
+ * LABEL ANLEGEN (7d+): eine GESPROCHENE Behandlung serverseitig als Sophie-Label
+ * am Termin planen. Erkennt Konzept + Attribute ueber `intakeToAbsichten` (lokales
+ * LLM + serverseitig gespiegelter Konzept-Katalog) — NIEMALS Ziffern (die leitet
+ * Sophie deterministisch ab) — und schreibt sie ADDITIV in
+ * appointment.sophiePlan.absichten; terminGrund wird aus allen Absichten neu
+ * gebaut. So wird aus "Fuellung an 35" ohne geoeffnetes Frontend ein echtes
+ * Sophie-Label, das die Planungsseite als Karte zeigt und read_treatment_labels vorliest.
+ */
+export async function addTreatmentLabel(clientId, { text, appointmentId, patientId, lastName, date } = {}) {
+  const eingabe = String(text || "").trim();
+  if (!eingabe) return { ok: false, message: "Welche Behandlung soll ich für Sophie notieren?" };
+
+  const info = await resolveAppointmentInfo(clientId, { appointmentId, patientId, lastName, date });
+  if (!info?.ok) return { ok: false, message: info?.message || "Ich konnte keinen passenden Termin finden." };
+  const who = info.patientName || "diesem Patienten";
+
+  const katalog = await loadSophieKatalog();
+  if (!katalog) {
+    return { ok: false, message: "Der Behandlungs-Katalog ist auf dem Server noch nicht geladen. Bitte einmal Sophie im Browser öffnen, dann kann ich das notieren." };
+  }
+
+  let erg;
+  try {
+    erg = await intakeToAbsichten({ text: eingabe, katalog });
+  } catch (e) {
+    return { ok: false, message: `Die Behandlung konnte ich nicht erkennen: ${String(e?.message || e)}` };
+  }
+  const neu = (erg?.absichten || []).filter((a) => a && a.konzept);
+  if (!neu.length) {
+    return { ok: true, empty: true, appointmentId: info.appointmentId, message: `Aus „${eingabe}" konnte ich keine klare Behandlung erkennen. Bitte anders formulieren.` };
+  }
+
+  const labelIdx = konzeptLabelIndex(katalog);
+  const now = Date.now();
+  const neueAbsichten = neu.map((a, i) => ({
+    id: `clara_${now.toString(36)}_${i}`,
+    konzeptId: String(a.konzept),
+    attrs: (a.attrs && typeof a.attrs === "object") ? a.attrs : {},
+  }));
+
+  const apptRef = admin.firestore()
+    .collection("clients").doc(clientId)
+    .collection("locations").doc(info.locationId)
+    .collection("appointments").doc(info.appointmentId);
+
+  let bestehende = [];
+  try {
+    const snap = await apptRef.get();
+    const sp = snap.exists ? snap.data()?.sophiePlan : null;
+    if (Array.isArray(sp?.absichten)) bestehende = sp.absichten;
+  } catch { /* neuer Plan */ }
+
+  const alle = [...bestehende, ...neueAbsichten];
+  const terminGrund = alle.map((a) => _absichtLabel(a, labelIdx)).filter(Boolean).join(" · ");
+  const plan = {
+    absichten: alle,
+    terminGrund,
+    behandlungsdatum: new Date(info.apptStartMs || now).toISOString().slice(0, 10),
+    quelle: "clara",
+  };
+  try {
+    await apptRef.set({ sophiePlan: plan }, { merge: true });
+  } catch (e) {
+    return { ok: false, message: `Den Plan konnte ich nicht speichern: ${String(e?.message || e)}` };
+  }
+
+  const neuLabels = neueAbsichten.map((a) => _absichtLabel(a, labelIdx)).filter(Boolean).join(", ");
+  const unbek = Array.isArray(erg?.unbekannt) && erg.unbekannt.length
+    ? ` Nicht zuordnen konnte ich: ${erg.unbekannt.join(", ")}.`
+    : "";
+  return {
+    ok: true,
+    appointmentId: info.appointmentId,
+    added: neueAbsichten.length,
+    message: `Für ${who} notiert: ${neuLabels}. Die Ziffern leitet Sophie ab.${unbek}`,
   };
 }
 

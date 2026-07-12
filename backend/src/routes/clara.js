@@ -9,6 +9,7 @@ import QRCode from "qrcode";
 import { assertAppEnabled } from "../entitlements.js";
 import { createClaraSession } from "../clara/session.js";
 import { intakeToAbsichten } from "../clara/billingIntake.js";
+import { cacheSophieKatalog } from "../clara/sophieKatalog.js";
 import { resolveAppointmentInfo, readAppointmentSegments, combineActiveSegments } from "../clara/treatmentDoc.js";
 import { appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechnung } from "../clara/dokuAbrechnung.js";
 import { askWorkforce as wfAsk, setBetriebsferien as wfSetBetriebsferien, spokenBetriebsferien as wfSpokenBetriebsferien, parseDateFromText as wfParseDate } from "../clara/workforce.js";
@@ -98,6 +99,11 @@ router.post("/clara/billing-intake", async (req, res) => {
     const zahn = String(req.body?.zahn || "").trim();
     const katalog = req.body?.katalog || {};
     const beispiele = Array.isArray(req.body?.beispiele) ? req.body.beispiele : [];
+    // 7d+: den mitgeschickten Katalog serverseitig spiegeln, damit Clara am
+    // Telefon/Headset gesprochene Behandlungen OHNE Frontend erkennen kann.
+    if (katalog && Array.isArray(katalog.konzepte) && katalog.konzepte.length) {
+      cacheSophieKatalog(katalog).catch(() => {});
+    }
     const out = await intakeToAbsichten({ text, zahn, katalog, beispiele });
     res.json(out);
   } catch (e) {
