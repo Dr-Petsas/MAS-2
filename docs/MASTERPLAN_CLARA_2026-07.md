@@ -313,11 +313,17 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
         per `emitCommand` an den Monitor. OFFEN (Frontend-Deploy, separat): die
         Fundstelle im Live-Follow-Consumer sichtbar einblenden (analog
         `open_lena_recording`) — Sprach-Ausgabe funktioniert bereits.
-      - [x] **7f Historische Abfrage FERTIG 12.07.** Read-back/Suche/Historie
-        akzeptieren `date` (JJJJ-MM-TT) -> `resolveAppointmentInfo` bindet den
-        Termin dieses Tages; „was habe ich bei Frau Meier am 3.4. nachgetragen"
-        laeuft ueber `read_treatment_dictation`/`patient_treatments`, ergaenzen
-        ueber `save_treatment_dictation` mit `date`.
+      - [x] **7f Historische Abfrage + Backdated-Nachtrag FERTIG 12.07.** Read-
+        back/Suche/Historie akzeptieren `date` (JJJJ-MM-TT); „was habe ich bei
+        Frau Meier am 3.4. nachgetragen" laeuft ueber `read_treatment_dictation`/
+        `patient_treatments`. NEU: `start_backdated_dictation` — Nachtrag zu
+        einem ZURUECKLIEGENDEN Termin: `resolveRelativeDate()` deutet „vor drei
+        Wochen"/„letzten Monat"/„gestern", `findBackdatedAppointment()` waehlt
+        den echten Kalendertermin, der dem Ziel am naechsten liegt, und schlaegt
+        ihn MIT Datum+Wochentag+Behandlung zur BESTAETIGUNG vor; erst nach „Ja"
+        laeuft das Diktat, an genau diesen alten Termin gebunden (Tee schreibt
+        dorthin). „Nein, vom 3. April" = Korrektur. So landet ein Nachtrag nie
+        auf dem falschen Termin.
 
 ## Phase W-SUCHE - MAS-Cockpit als Gedaechtnis-Suchmaschine (beschlossen 05.07.)
 

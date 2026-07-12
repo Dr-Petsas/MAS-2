@@ -15,6 +15,7 @@ import {
   readAppointmentSegments,
   combineActiveSegments,
 } from "./treatmentDoc.js";
+import { getPatientAppointments } from "./daySchedule.js";
 
 const _BERLIN = "Europe/Berlin";
 
@@ -30,6 +31,118 @@ function _tsToMs(ts) {
 function _germanDate(ms) {
   if (!ms) return "";
   return new Intl.DateTimeFormat("de-DE", { timeZone: _BERLIN, day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(ms));
+}
+
+/** Ausfuehrliches, sprechbares Datum mit Wochentag ("Dienstag, den 23. Juni 2026"). */
+function _germanWeekdayDate(ms) {
+  if (!ms) return "";
+  const wd = new Intl.DateTimeFormat("de-DE", { timeZone: _BERLIN, weekday: "long" }).format(new Date(ms));
+  const rest = new Intl.DateTimeFormat("de-DE", { timeZone: _BERLIN, day: "numeric", month: "long", year: "numeric" }).format(new Date(ms));
+  return `${wd}, den ${rest}`;
+}
+
+const _ZAHLWORT = {
+  ein: 1, eine: 1, einem: 1, einer: 1, eins: 1, zwei: 2, drei: 3, vier: 4,
+  fuenf: 5, "fünf": 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10,
+  elf: 11, zwoelf: 12, "zwölf": 12, "paar": 3, einigen: 5, einige: 5,
+};
+
+function _anzahl(token) {
+  const t = String(token || "").trim().toLowerCase();
+  if (/^\d+$/.test(t)) return parseInt(t, 10);
+  return _ZAHLWORT[t] || 0;
+}
+
+/**
+ * Relative deutsche Zeitangabe -> ungefaehrer Ziel-Zeitpunkt (ms). Bewusst
+ * ungefaehr: der Backdated-Finder waehlt anschliessend den ECHTEN Termin, der
+ * dem Ziel am naechsten liegt, und laesst ihn bestaetigen. Gibt null zurueck,
+ * wenn nichts erkannt wurde. "vor drei Wochen", "vor 2 Monaten", "gestern",
+ * "letzte Woche", "vorletzten Monat" …
+ */
+export function resolveRelativeDate(when, fromMs = Date.now()) {
+  const s = String(when || "").trim().toLowerCase();
+  if (!s) return null;
+  const d = new Date(fromMs);
+
+  if (/\bvorgestern\b/.test(s)) { d.setDate(d.getDate() - 2); return d.getTime(); }
+  if (/\bgestern\b/.test(s)) { d.setDate(d.getDate() - 1); return d.getTime(); }
+
+  // "vor X Tagen/Wochen/Monaten/Jahren"
+  let m = s.match(/vor\s+([\wäöü]+)\s+(tag|tage|tagen|woche|wochen|monat|monate|monaten|jahr|jahre|jahren)/);
+  if (m) {
+    const n = _anzahl(m[1]) || 1;
+    const unit = m[2];
+    if (/^tag/.test(unit)) d.setDate(d.getDate() - n);
+    else if (/^woche/.test(unit)) d.setDate(d.getDate() - 7 * n);
+    else if (/^monat/.test(unit)) d.setMonth(d.getMonth() - n);
+    else if (/^jahr/.test(unit)) d.setFullYear(d.getFullYear() - n);
+    return d.getTime();
+  }
+
+  // "letzte/vergangene Woche", "letzten/vorletzten Monat", "letztes Jahr"
+  if (/(vorletzt)\w*\s+woche/.test(s)) { d.setDate(d.getDate() - 14); return d.getTime(); }
+  if (/(letzt|vergangen)\w*\s+woche/.test(s)) { d.setDate(d.getDate() - 7); return d.getTime(); }
+  if (/(vorletzt)\w*\s+monat/.test(s)) { d.setMonth(d.getMonth() - 2); return d.getTime(); }
+  if (/(letzt|vergangen)\w*\s+monat/.test(s)) { d.setMonth(d.getMonth() - 1); return d.getTime(); }
+  if (/(letzt|vergangen)\w*\s+jahr/.test(s)) { d.setFullYear(d.getFullYear() - 1); return d.getTime(); }
+
+  return null;
+}
+
+function _absoluteDateMs(dateStr) {
+  const s = String(dateStr || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  // Mittag lokal, damit Zeitzonen-Verschiebungen den Tag nicht kippen.
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0).getTime();
+}
+
+/**
+ * BACKDATED: den vergangenen Termin eines Patienten finden, der einer
+ * (relativen oder absoluten) Zeitangabe am naechsten liegt — fuer einen
+ * Nachtrag zu einer zurueckliegenden Behandlung. Waehlt IMMER aus den ECHTEN
+ * Kalenderterminen (nie geraten) und liefert den Vorschlag zur Bestaetigung.
+ * @returns {Promise<{ok:boolean, message?:string, appointmentId?:string,
+ *   locationId?:string, patientId?:string, patientName?:string,
+ *   apptStartMs?:number, motiveName?:string, dateLabel?:string}>}
+ */
+export async function findBackdatedAppointment(clientId, { patientId, lastName, firstName, date, when } = {}) {
+  const targetMs = _absoluteDateMs(date) || resolveRelativeDate(when);
+  const hist = await getPatientAppointments(clientId, {
+    patientId: String(patientId || "").trim(),
+    lastName: String(lastName || "").trim(),
+    firstName: String(firstName || "").trim(),
+  });
+  const who = `${firstName || ""} ${lastName || ""}`.trim() || "dem Patienten";
+  if (!hist?.ok) return { ok: false, message: `Die Termine von ${who} kann ich gerade nicht abrufen.` };
+  const past = (hist.past || []).filter((a) => a?.id && a.startMs);
+  if (!past.length) return { ok: false, message: `Zu ${who} finde ich keinen vergangenen Termin.` };
+
+  let pick;
+  if (targetMs) {
+    // Termin, dessen Start dem Ziel am naechsten liegt.
+    pick = past.reduce((best, a) =>
+      Math.abs(a.startMs - targetMs) < Math.abs(best.startMs - targetMs) ? a : best, past[0]);
+  } else {
+    // Keine verwertbare Zeitangabe -> juengster vergangener Termin (Rueckfrage
+    // hilft der Chef ohnehin per Bestaetigung).
+    pick = past[past.length - 1];
+  }
+
+  // Konsistente Termin-Form (locationId, Patient, Besuchsgrund, Start).
+  const info = await resolveAppointmentInfo(clientId, { appointmentId: pick.id });
+  if (!info?.ok) return { ok: false, message: info?.message || "Den gefundenen Termin konnte ich nicht lesen." };
+  return {
+    ok: true,
+    appointmentId: info.appointmentId,
+    locationId: info.locationId,
+    patientId: info.patientId || String(patientId || ""),
+    patientName: info.patientName || who,
+    apptStartMs: info.apptStartMs || pick.startMs,
+    motiveName: info.motiveName || String(pick.visitMotive || ""),
+    dateLabel: _germanWeekdayDate(info.apptStartMs || pick.startMs),
+  };
 }
 
 /** Text in Saetze zerlegen (fuer Vorlesen/Suche) — grob, aber robust. */

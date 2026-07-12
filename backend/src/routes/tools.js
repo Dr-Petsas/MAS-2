@@ -39,7 +39,7 @@ import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession } from "../clara/treatmentRecording.js";
-import { readTreatmentDictation, findInTreatment, readTreatmentLabels } from "../clara/lenaDictation.js";
+import { readTreatmentDictation, findInTreatment, readTreatmentLabels, findBackdatedAppointment } from "../clara/lenaDictation.js";
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
@@ -1136,6 +1136,85 @@ router.post("/tools/stop-patient-dictation", async (req, res) => {
     await clearActiveRecording(clientId).catch(() => {});
     await clearPendingRecording(clientId).catch(() => {});
     return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 7f NACHTRAG ZU VERGANGENEM TERMIN: "Clara, ich moechte einen Nachtrag zu
+// Frau Meier von vor drei Wochen machen." -> den passenden VERGANGENEN Termin
+// aus dem echten Kalender finden, mit Datum + Behandlung zur BESTAETIGUNG
+// vorschlagen; erst nach "Ja" beginnt das Diktat, gebunden an genau diesen
+// alten Termin (Tee schreibt die Segmente dorthin). "Nein, vom 3. April" =
+// Korrektur (neuer Zeitpunkt). So landet ein Nachtrag nie auf dem falschen
+// Termin.
+router.post("/tools/start-backdated-dictation", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    let patientId = String(req.body?.patientId || "").trim();
+    let name = String(req.body?.lastName || req.body?.name || "").trim();
+    let firstName = "";
+    const when = String(req.body?.when || "").trim();
+    const date = String(req.body?.date || "").trim();
+    const confirm = _recTruthy(req.body?.confirm) || _recIsYes(name);
+    if (_recIsYes(name)) name = "";
+    const operator = await getOperator(clientId).catch(() => null);
+    const by = operator?.name || "Clara";
+
+    // A) Bestaetigung ("Ja") des vorgeschlagenen vergangenen Termins.
+    if (confirm && !name && !patientId && !when && !date) {
+      const pend = await getPendingRecording(clientId);
+      if (pend?.appointmentId && pend?.locationId) {
+        const out = await _recBegin(clientId, {
+          ok: true, appointmentId: pend.appointmentId, locationId: pend.locationId,
+          patientId: pend.patientId || "", patientName: pend.patientName || "",
+        }, by, { mode: pend.mode || "dictation", forceTee: pend.forceTee !== false });
+        if (out.ok) {
+          const wann = pend.dateLabel ? ` zum Termin vom ${pend.dateLabel}` : "";
+          const wer = pend.patientName ? ` für ${pend.patientName}` : "";
+          out.message = `Alles klar — ich nehme jetzt Ihren Nachtrag${wann}${wer} auf. Ich starte die Aufnahme.`;
+        }
+        return res.json(out);
+      }
+      return res.json({ ok: true, needsConfirm: true, message: "Zu welchem vergangenen Termin soll ich den Nachtrag aufnehmen? Bitte Patient und Zeitpunkt nennen." });
+    }
+
+    // B) Patient aufloesen (Name genannt ODER Kontext-Patient).
+    if (!patientId && name) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: name, hint: String(req.body?.hint || "").trim(),
+        askWho: "Für welchen Patienten soll ich den Nachtrag aufnehmen? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || ""; name = r.sel?.lastName || name; firstName = r.sel?.firstName || "";
+    } else if (!patientId && !name) {
+      const sel = await getSelectedPatient(clientId).catch(() => null);
+      if (sel?.id) { patientId = sel.id; name = sel.lastName || ""; firstName = sel.firstName || ""; }
+    }
+    if (!patientId && !name) {
+      return res.json({ ok: true, needsConfirm: true, message: "Für welchen Patienten und welchen vergangenen Termin soll ich den Nachtrag aufnehmen?" });
+    }
+
+    // C) Vergangenen Termin finden (relativer/absoluter Zeitpunkt) + vorschlagen.
+    const found = await findBackdatedAppointment(clientId, { patientId, lastName: name, firstName, when, date });
+    if (!found.ok) {
+      const hint = (when || date) ? "" : " Von wann war die Behandlung — zum Beispiel vor drei Wochen oder ein konkretes Datum?";
+      return res.json({ ok: false, message: `${found.message || "Ich finde den Termin nicht."}${hint}` });
+    }
+    await setPendingRecording(clientId, {
+      appointmentId: found.appointmentId, locationId: found.locationId,
+      patientId: found.patientId || "", patientName: found.patientName || "",
+      mode: "dictation", forceTee: true, backdated: true, dateLabel: found.dateLabel,
+    });
+    const grund = found.motiveName ? `, ${found.motiveName}` : "";
+    return res.json({
+      ok: true, needsConfirm: true,
+      appointmentId: found.appointmentId, patientName: found.patientName,
+      message: `Nachtrag zu ${found.patientName}: Termin am ${found.dateLabel}${grund}. Richtig?`,
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
