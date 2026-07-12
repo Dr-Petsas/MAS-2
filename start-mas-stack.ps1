@@ -6,7 +6,8 @@
 #   1. MAS-2 Backend      (node, Port 4000)  - Tools/Brain/Mail-API
 #   2. Cloudflare-Tunnel  (Port 4000 -> https://<zufall>.trycloudflare.com, siehe logs\tunnel-url.txt)
 #   3. LiveKit SFU        (Port 7880)        - Audio-Transport fuer Clara Voice
-#   4. Clara Voice Worker (Port 8091)        - STT/LLM/TTS-Pipeline
+#   4. Lena-STT           (Port 8140)        - med. STT fuer Behandlungsdoku (Arzt-Tee + Browser-Lena)
+#   5. Clara Voice Worker (Port 8091)        - STT/LLM/TTS-Pipeline (CLARA_LENA_TEE=1 -> tee'd zu Lena-STT)
 #   (Ollama startet sich selbst ueber die Ollama-App.)
 
 $ErrorActionPreference = 'Continue'
@@ -58,7 +59,24 @@ if (Test-PortListening 7880) {
     Write-StackLog "LiveKit SFU: $(if (Test-PortListening 7880) { 'OK' } else { 'FEHLER - siehe Log' })"
 }
 
-# --- 4) Clara Voice Worker (Health-Port 8091) ---
+# --- 4) Lena-STT (Port 8140, med. STT fuer Behandlungsdoku) ---
+# Eigenes idempotentes Skript (eigener GPU-venv, eigenes Modell). Der Clara-Worker
+# tee't waehrend einer Aufnahme/eines Diktats die Arzt-Stimme hierher (CLARA_LENA_TEE=1),
+# und die Browser-Lena-Seite nutzt die per -Tunnel veroeffentlichte wss-Adresse.
+# Non-fatal: faellt Lena-STT aus, laeuft der Rest des Stacks normal weiter.
+if (Test-PortListening 8140) {
+    Write-StackLog "Lena-STT: laeuft bereits (Port 8140)"
+} else {
+    Write-StackLog "Lena-STT: starte (Modell-Load dauert, siehe logs\lena_stt_*.log)..."
+    try {
+        & 'powershell' -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice\lena_stt\start-lena-stt.ps1' -Tunnel
+        Write-StackLog "Lena-STT: $(if (Test-PortListening 8140) { 'OK (Port 8140)' } else { 'noch nicht bereit - Modell laedt evtl. weiter' })"
+    } catch {
+        Write-StackLog "Lena-STT: Start fehlgeschlagen: $($_.Exception.Message)"
+    }
+}
+
+# --- 5) Clara Voice Worker (Health-Port 8091) ---
 if (Test-PortListening 8091) {
     Write-StackLog "Clara Worker: laeuft bereits (Port 8091)"
 } else {
@@ -72,7 +90,7 @@ if (Test-PortListening 8091) {
     Write-StackLog "Clara Worker: gestartet (Modell-Load dauert ~30-60s, Log: clara_$Stamp.log)"
 }
 
-# --- 5) Selbsttest: nach dem Start pruefen, dass Clara WIRKLICH antwortet ----
+# --- 6) Selbsttest: nach dem Start pruefen, dass Clara WIRKLICH antwortet ----
 # Der Worker braucht ~30-60s fuer STT-Modell-Load + LiveKit-Registrierung.
 # Wir warten darauf (max. 90s) und lassen dann clara-smoke.ps1 laufen, das pro
 # Komponente GRUEN/ROT meldet - inkl. Tool-Calling (der 1011c18-Fehler waere

@@ -293,7 +293,12 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
         Endpoints `/tools/start-patient-dictation` + `/tools/stop-patient-dictation`,
         Tools im Profil (Gruppe `doku`+`recording`, verbatim), Routing in
         `tool_subsetting.py`, Tests im Release-Gate. Voraussetzung wie W-LENA-2:
-        `CLARA_LENA_TEE=1` + Wake-Wort aktiv.
+        `CLARA_LENA_TEE=1` + Wake-Wort aktiv. **SCHARF geschaltet 12.07. (Chef):**
+        `CLARA_LENA_TEE=1` ist jetzt DAUERHAFT gesetzt — in `start-clara.ps1`
+        (Process-Env, Notaus via `.env`/Umgebung=0) und als User-Env (`setx`).
+        `lena_stt` (Port 8140) startet ab sofort MIT dem Stack (`start-mas-stack.ps1`,
+        Schritt 4, `-Tunnel`, idempotent+non-fatal), damit der Tee beim „alles
+        starten" nie ins Leere laeuft.
       - [x] **7b Vorlesen (Read-back), FERTIG 12.07.** `read_treatment_dictation`
         (`mode` = `full` | `last` | `summary`) liest die Doku eines Termins
         verbatim vor (ueber `combineActiveSegments()`), Modul `lenaDictation.js`.
@@ -306,13 +311,20 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       - [x] **7d Labels per Sprache (Lesen) FERTIG 12.07.** `read_treatment_labels`
         liest den `sophiePlan.terminGrund` vor. Ergaenzen/Loeschen bewusst ueber
         Diktat (7c), NICHT durch serverseitiges Verbiegen von `sophiePlan`
-        (Konzept-Katalog liegt im Frontend; Sophie erkennt neu). OFFEN: echte
-        Konzept-Erkennung serverseitig (braucht geteilten `konzeptKatalog`).
+        (Konzept-Katalog liegt im Frontend; Sophie erkennt neu).
+      - [ ] **7d+ Label-ERSTELLUNG per Sprache — BESCHLOSSEN 12.07. (Chef: „brauchen
+        wir"), NAECHSTES Paket.** Ein gesprochenes „Fuellung an 35" soll der Server
+        direkt in ein strukturiertes Sophie-Label (`Leistungsabsicht`: Konzept +
+        Attribute, KEINE Ziffer) umwandeln. Voraussetzung: der `konzeptKatalog`
+        (heute nur im Frontend) muss auf dem Server verfuegbar sein — groesserer
+        Umbau (Katalog teilen, `erkennePerLLM`/Intake serverseitig aufrufen und in
+        `sophiePlan.absichten` schreiben). Als eigenes Arbeitspaket ausbauen.
       - [x] **7e Suche + Push (Sprache) FERTIG 12.07.** `find_in_treatment` findet
         die Passage, spricht sie (Patient/Datum/Passage) UND pusht `lena_find_result`
-        per `emitCommand` an den Monitor. OFFEN (Frontend-Deploy, separat): die
-        Fundstelle im Live-Follow-Consumer sichtbar einblenden (analog
-        `open_lena_recording`) — Sprach-Ausgabe funktioniert bereits.
+        per `emitCommand` an den Monitor. Sprach-Ausgabe funktioniert. VERWORFEN
+        12.07. (Chef: „machen wir nicht"): die visuelle Fundstellen-Markierung im
+        Frontend-Follow-Consumer — der `lena_find_result`-Push bleibt bestehen,
+        wird aber bewusst NICHT im Bildschirm ausgewertet.
       - [x] **7f Historische Abfrage + Backdated-Nachtrag FERTIG 12.07.** Read-
         back/Suche/Historie akzeptieren `date` (JJJJ-MM-TT); „was habe ich bei
         Frau Meier am 3.4. nachgetragen" laeuft ueber `read_treatment_dictation`/
