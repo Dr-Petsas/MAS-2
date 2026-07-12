@@ -21,7 +21,7 @@
 import express from "express";
 import admin from "./../firebase.js";
 import { structureTreatment, billTreatment, flagSmalltalk } from "../lena/lenaDoc.js";
-import { appendEvent } from "../brain/eventStore.js";
+import { appendEvent, deleteEventsByIdPrefix } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 
 const _DOKU_MEMORY_TAGE = 45;
@@ -218,6 +218,27 @@ router.post("/treatment/lena-segment", async (req, res) => {
 
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, dictationId: segRef.id });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/lena-delete — die Behandlungsdoku EINES Termins KOMPLETT aus
+// dem geteilten Praxisgedaechtnis entfernen (Chef 12.07.). Ergaenzt den
+// Frontend-Hard-Delete (Diktat-Segmente + Karteikarte direkt auf Firestore):
+// hier verschwinden die zugehoerigen lena_doc-Audit-Events (Cockpit-/Patienten-
+// Timeline). Alle Doku-Events tragen die stabile ID `lena-doc:<appt>:<segId>`
+// (saveTreatmentDictation + /treatment/lena-segment) — der Praefix erwischt sie
+// alle. Bewusste Append-only-Ausnahme fuer Fehl-/Testaufnahmen. NICHT public
+// (isPublic) -> verlangt in Produktion einen eingeloggten Nutzer, genau wie
+// /treatment/structure. Best-effort/idempotent: nichts zu loeschen = ok, 0.
+router.post("/treatment/lena-delete", async (req, res) => {
+  try {
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const { deleted } = await deleteEventsByIdPrefix(k.clientId, `lena-doc:${k.appointmentId}:`);
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, deleted });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

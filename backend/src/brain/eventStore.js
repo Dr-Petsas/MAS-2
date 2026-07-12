@@ -177,3 +177,34 @@ export async function annotateEvent(clientId, eventId, review = {}) {
   const updated = (await ref.get()).data();
   return { ok: true, event: updated };
 }
+
+/**
+ * Loescht ALLE Events, deren Dokument-ID mit `prefix` beginnt (z. B. alle
+ * `lena-doc:<appointmentId>:` eines Termins). Bewusste Append-only-AUSNAHME:
+ * wird nur benutzt, wenn eine Behandlungsdoku KOMPLETT geloescht wird
+ * (Chef 12.07.) — dieselbe Absicht wie die Einzel-Loeschung in treatmentDoc.js
+ * (`strike`). Prefix-Suche ueber die Dokument-ID (Order nach __name__, KEIN
+ * Composite-Index noetig); paginiert, damit auch viele Segmente sicher weg sind.
+ *
+ * @param {string} clientId
+ * @param {string} prefix Dokument-ID-Praefix (nicht leer)
+ * @returns {Promise<{deleted:number}>}
+ */
+export async function deleteEventsByIdPrefix(clientId, prefix) {
+  const p = (prefix || "").trim();
+  if (!p) return { deleted: 0 };
+  const c = col(clientId);
+  const docId = admin.firestore.FieldPath.documentId();
+  const end = p + "\uf8ff";
+  let deleted = 0;
+  // Schutz gegen Endlosschleife: max. 50 Runden a 400 = 20.000 Events.
+  for (let round = 0; round < 50; round++) {
+    const snap = await c.orderBy(docId).startAt(p).endAt(end).limit(400).get();
+    if (snap.empty) break;
+    const batch = admin.firestore().batch();
+    snap.docs.forEach((d) => { batch.delete(d.ref); deleted++; });
+    await batch.commit();
+    if (snap.size < 400) break;
+  }
+  return { deleted };
+}
