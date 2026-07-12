@@ -101,22 +101,44 @@ function recorderRef(clientId, locationId, appointmentId) {
 }
 
 /**
+ * Arzt-Quelle des Standorts (W-LENA-2 Teil 4): "lavalier" (Default, zwei
+ * Ansteckmikros am PC) oder "headset" (Shokz ueber Clara -> der Worker tee't
+ * die Arzt-Stimme, der PC nimmt nur den Patienten auf). Gespeichert unter
+ * clients/{c}/locations/{l}/settings/lenaRecorder.arztSource — dieselbe Stelle,
+ * die das Frontend schreibt/liest.
+ */
+export async function getArztSource(clientId, locationId) {
+  if (!clientId || !locationId) return "lavalier";
+  try {
+    const snap = await admin.firestore()
+      .collection("clients").doc(clientId)
+      .collection("locations").doc(locationId)
+      .collection("settings").doc("lenaRecorder").get();
+    return snap.exists && snap.data()?.arztSource === "headset" ? "headset" : "lavalier";
+  } catch {
+    return "lavalier";
+  }
+}
+
+/**
  * Aufnahme starten: geteilten Recorder-Zustand auf "recording" setzen und den
  * Monitor per Live-Follow zu Lena schicken. Setzt voraus, dass Termin +
  * Patient bereits eindeutig aufgeloest sind (der Aufrufer bindet den Patienten
  * halluzinationsfrei).
  */
-export async function startRecordingSession(clientId, { locationId, appointmentId, patientName, patientId, by } = {}) {
+export async function startRecordingSession(clientId, { locationId, appointmentId, patientName, patientId, by, mode, forceTee } = {}) {
   if (!clientId || !locationId || !appointmentId) {
     return { ok: false, message: "Mir fehlt der Termin für die Aufnahme." };
   }
+  const isDictation = mode === "dictation";
   const now = Date.now();
   await recorderRef(clientId, locationId, appointmentId).set({
     status: "recording",
     command: "",
     commandAtMs: 0,
     deviceId: "clara-voice",
-    deviceLabel: "Sprachbefehl",
+    deviceLabel: isDictation ? "Diktat (Sprachbefehl)" : "Sprachbefehl",
+    mode: isDictation ? "dictation" : "recording",
     by: String(by || "Clara").slice(0, 60),
     startedAtMs: now,
     accumMs: 0,
@@ -131,15 +153,38 @@ export async function startRecordingSession(clientId, { locationId, appointmentI
       patientId: patientId || "",
       locationId,
       patientName: patientName || "",
+      mode: isDictation ? "dictation" : "recording",
     });
   } catch { /* kein aktiver Monitor -> Recorder-Zustand reicht als Wahrheit */ }
 
+  // Headset-Modus (W-LENA-2 Teil 4): der PC nimmt nur den Patienten auf; die
+  // Arzt-Stimme muss der Clara-Worker aus der LiveKit-Session an lena_stt tee'n.
+  // Diesen Auftrag geben wir im Tool-Result mit (der Worker liest `lenaTee`).
+  // W-LENA-7: Beim reinen Sprach-DIKTAT spricht der Arzt IN Clara (Headset/
+  // Telefon) — die Stimme kommt IMMER aus der LiveKit-Session. Deshalb wird der
+  // Tee dort erzwungen (forceTee), unabhaengig von der Ansteckmikro-Einstellung.
+  const arztSource = await getArztSource(clientId, locationId);
+  const teeActive = forceTee === true || arztSource === "headset";
+  const lenaTee = teeActive
+    ? { active: true, clientId, locationId, appointmentId, channel: "arzt", lang: "de-DE" }
+    : { active: false };
+
   const who = patientName || "den Patienten";
-  return { ok: true, appointmentId, patientName: patientName || "", message: `Aufnahme läuft für ${who}.` };
+  return {
+    ok: true,
+    appointmentId,
+    patientName: patientName || "",
+    arztSource,
+    lenaTee,
+    mode: isDictation ? "dictation" : "recording",
+    message: isDictation
+      ? `Ich nehme jetzt Ihr Diktat für ${who} auf. Ich starte die Aufnahme.`
+      : `Aufnahme läuft für ${who}.`,
+  };
 }
 
 /** Aufnahme beenden: dem aufnehmenden Geraet Stop signalisieren + Zustand idle. */
-export async function stopRecordingSession(clientId, { locationId, appointmentId, patientName } = {}) {
+export async function stopRecordingSession(clientId, { locationId, appointmentId, patientName, mode } = {}) {
   if (!clientId || !locationId || !appointmentId) {
     return { ok: false, message: "Es läuft gerade keine Aufnahme." };
   }
@@ -151,5 +196,7 @@ export async function stopRecordingSession(clientId, { locationId, appointmentId
     updatedAtMs: now,
   }, { merge: true });
   const who = patientName ? ` für ${patientName}` : "";
-  return { ok: true, appointmentId, message: `Aufnahme beendet${who}.` };
+  const wort = mode === "dictation" ? "Diktat" : "Aufnahme";
+  // Dem Worker signalisieren, einen etwaigen Arzt-Tee zu beenden (Headset-Modus).
+  return { ok: true, appointmentId, lenaTee: { active: false, appointmentId }, message: `${wort} beendet${who}.` };
 }

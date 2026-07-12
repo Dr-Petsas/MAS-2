@@ -20,7 +20,11 @@
 
 import express from "express";
 import admin from "./../firebase.js";
-import { structureTreatment, billTreatment } from "../lena/lenaDoc.js";
+import { structureTreatment, billTreatment, flagSmalltalk } from "../lena/lenaDoc.js";
+import { appendEvent } from "../brain/eventStore.js";
+import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
+
+const _DOKU_MEMORY_TAGE = 45;
 
 const router = express.Router();
 
@@ -146,6 +150,79 @@ router.post("/treatment/recorder", async (req, res) => {
   }
 });
 
+// POST /treatment/lena-segment — EIN Doku-Segment serverseitig anlegen
+// (W-LENA-2 Teil 4). Nutzt der Clara-Worker, wenn er im Headset-Modus die
+// Arzt-Stimme aus der LiveKit-Session an lena_stt tee't und die fertigen
+// Finals als Segmente (source=arzt) ablegen muss. Gleiches Dokument-Layout
+// wie die Plattform-CF submitTreatmentDictation ({id,text,lang,source,
+// createdAt}). Vertrauensmodell wie die anderen Public-Routen hier: die drei
+// nicht erratbaren IDs sind das Ticket; zusaetzlich muss der Termin existieren.
+// Schutz: Ist LENA_STT_PUBLISH_TOKEN gesetzt, wird derselbe Token verlangt
+// (der Worker laeuft auf derselben Maschine wie MAS und lena_stt).
+router.post("/treatment/lena-segment", async (req, res) => {
+  try {
+    const want = String(process.env.LENA_STT_PUBLISH_TOKEN || "").trim();
+    if (want) {
+      const got = String(req.get("x-lena-token") || req.body?.token || "").trim();
+      if (got !== want) return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const text = String(req.body?.text || "").trim().slice(0, 20000);
+    if (!text) return res.status(400).json({ ok: false, error: "empty_text" });
+    const lang = String(req.body?.lang || "de-DE").slice(0, 12) || "de-DE";
+    const source = String(req.body?.source || "arzt").slice(0, 20) || "arzt";
+
+    const ref = apptRef(k.clientId, k.locationId, k.appointmentId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ ok: false, error: "appointment_not_found" });
+
+    const segRef = ref.collection("dictations").doc();
+    await segRef.set({
+      id: segRef.id,
+      text,
+      lang,
+      source,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // W-LENA-7: Doku sichtbar fuers ganze Haus — dasselbe Shared-Memory-Event
+    // (Kanal lena_doc, 45 Tage) wie saveTreatmentDictation, damit auch die per
+    // Sprach-Diktat/Tee erfassten Segmente in Cockpit-/Patienten-Timeline
+    // mitlesen. Best-effort; der Diktat-Eintrag oben bleibt die fuehrende Quelle.
+    try {
+      const o = snap.data() || {};
+      const subjId = String(o.patientId || o.patient?.id || "").trim();
+      const subjName = `${o.patient?.firstName || ""} ${o.patient?.lastName || ""}`.trim();
+      const kurz = text.length > 420 ? text.slice(0, 417) + "..." : text;
+      await appendEvent(k.clientId, {
+        id: `lena-doc:${k.appointmentId}:${segRef.id}`,
+        channel: CHANNELS.LENA_DOC,
+        type: EVENT_TYPES.NOTE,
+        direction: DIRECTIONS.INTERNAL,
+        counterparty: { kind: "system", name: "Lena", ref: null },
+        subject: subjId
+          ? { patientId: subjId, name: subjName, matchStatus: "matched", matchMethod: "name" }
+          : { name: subjName, matchStatus: "unmatched" },
+        status: "none",
+        summary: `Behandlungsdokumentation (Lena, ${source}): ${kurz}`,
+        payloadRef: { kind: "dictation", id: segRef.id },
+        extractor: "lena@lena-segment",
+        tags: ["lena", "dokumentation", "behandlung"],
+        expiresAtMs: Date.now() + _DOKU_MEMORY_TAGE * 86400000,
+      });
+    } catch (memErr) {
+      // Shared-Memory ist Komfort — Segment ist bereits geschrieben.
+      console.warn("lena-segment: brain-event failed:", memErr?.message || memErr);
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, dictationId: segRef.id });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 // POST /treatment/structure — Diktat-Segmente klassifizieren (lokales LLM)
 // und die Karteikarte deterministisch aus den ECHTEN Segmenttexten bauen.
 // Ersetzt die OpenAI-Cloud-Function structureTreatmentNote (Quota tot,
@@ -161,6 +238,23 @@ router.post("/treatment/structure", async (req, res) => {
       const code = r.error === "no_segments" ? 409 : 502;
       return res.status(code).json(r);
     }
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/smalltalk — Auto-Klassifikation (11.07.2026): prueft alle
+// noch unklassifizierten Diktat-Segmente des Termins mit dem lokalen LLM und
+// schreibt das Smalltalk-Flag. Die Lena-Seite ruft das automatisch (debounced)
+// waehrend des Diktats auf — der Dialog kuerzt Belangloses dann von selbst.
+router.post("/treatment/smalltalk", async (req, res) => {
+  try {
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const r = await flagSmalltalk(k.clientId, k.locationId, k.appointmentId);
+    res.set("Cache-Control", "no-store");
+    if (!r.ok) return res.status(502).json(r);
     res.json(r);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });

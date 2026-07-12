@@ -39,6 +39,7 @@ import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession } from "../clara/treatmentRecording.js";
+import { readTreatmentDictation, findInTreatment, readTreatmentLabels } from "../clara/lenaDictation.js";
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
@@ -885,29 +886,35 @@ function _recIsYes(s) {
   return ["ja", "jap", "jo", "genau", "richtig", "stimmt", "passt", "korrekt",
     "ok", "okay", "jawohl", "genau so", "ja bitte", "ja genau"].includes(n);
 }
-async function _recPropose(clientId, info) {
+async function _recPropose(clientId, info, opts = {}) {
+  const mode = opts.mode === "dictation" ? "dictation" : "recording";
   const when = spokenApptWhen(info.apptStartMs);
   const who = info.patientName || "den Patienten";
   await setPendingRecording(clientId, {
     appointmentId: info.appointmentId, locationId: info.locationId,
     patientId: info.patientId || "", patientName: info.patientName || "",
+    mode, forceTee: opts.forceTee === true,
   });
   return {
     ok: true, needsConfirm: true, appointmentId: info.appointmentId,
     patientName: info.patientName || "",
-    message: `Aufnahme für ${who}${when} — richtig?`,
+    message: mode === "dictation"
+      ? `Diktat für ${who}${when} — richtig?`
+      : `Aufnahme für ${who}${when} — richtig?`,
   };
 }
-async function _recBegin(clientId, info, by) {
+async function _recBegin(clientId, info, by, opts = {}) {
+  const mode = opts.mode === "dictation" ? "dictation" : "recording";
   const out = await startRecordingSession(clientId, {
     locationId: info.locationId, appointmentId: info.appointmentId,
     patientName: info.patientName, patientId: info.patientId, by,
+    mode, forceTee: opts.forceTee === true,
   });
   if (out.ok) {
     await setActiveRecording(clientId, {
       appointmentId: info.appointmentId, locationId: info.locationId,
       patientId: info.patientId || "", patientName: info.patientName || "",
-      startedAtMs: Date.now(),
+      startedAtMs: Date.now(), mode,
     });
     await clearPendingRecording(clientId);
   }
@@ -935,14 +942,15 @@ router.post("/tools/start-treatment-recording", async (req, res) => {
       return res.json(await _recBegin(clientId, info, by));
     }
 
-    // B) Bestaetigung ("Ja") eines schwebenden Kandidaten.
+    // B) Bestaetigung ("Ja") eines schwebenden Kandidaten. Ein schwebendes
+    // DIKTAT wird als Diktat gestartet (mode/forceTee aus dem Pending-Eintrag).
     if (confirm && !name && !patientId) {
       const pend = await getPendingRecording(clientId);
       if (pend?.appointmentId && pend?.locationId) {
         return res.json(await _recBegin(clientId, {
           ok: true, appointmentId: pend.appointmentId, locationId: pend.locationId,
           patientId: pend.patientId || "", patientName: pend.patientName || "",
-        }, by));
+        }, by, { mode: pend.mode, forceTee: pend.forceTee }));
       }
       // kein schwebender Kandidat -> weiter zur Zeit-/Kontext-Aufloesung
     }
@@ -1011,9 +1019,215 @@ router.post("/tools/stop-treatment-recording", async (req, res) => {
       await clearPendingRecording(clientId).catch(() => {});
       return res.json({ ok: true, message: "Es läuft gerade keine Aufnahme." });
     }
-    const out = await stopRecordingSession(clientId, { locationId, appointmentId, patientName });
+    const out = await stopRecordingSession(clientId, { locationId, appointmentId, patientName, mode: active?.mode });
     await clearActiveRecording(clientId).catch(() => {});
     await clearPendingRecording(clientId).catch(() => {});
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// --- W-LENA-7: Clara-Sprach-Diktat fuer Patient -----------------------------
+// "Clara, nimm fuer Herrn XY bitte Doku auf" -> patienten-/termingebundenes
+// Diktat. Gleiche halluzinationsfreie Bindung wie die Aufnahme; Clara quittiert
+// ("Ich nehme jetzt Ihr Diktat fuer … auf, ich starte die Aufnahme") und tee't
+// die Arzt-Stimme (forceTee) als Doku-Segmente in dictations + Shared Memory.
+// "Clara, beende das Diktat" stoppt.
+router.post("/tools/start-patient-dictation", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const appointmentId = String(req.body?.appointmentId || "").trim();
+    let patientId = String(req.body?.patientId || "").trim();
+    let name = String(req.body?.lastName || req.body?.name || "").trim();
+    const confirm = _recTruthy(req.body?.confirm) || _recIsYes(name);
+    if (_recIsYes(name)) name = "";
+    const operator = await getOperator(clientId).catch(() => null);
+    const by = operator?.name || "Clara";
+    const dictOpts = { mode: "dictation", forceTee: true };
+
+    // A) Termin explizit offen -> sofort starten, Name als Readback.
+    if (appointmentId) {
+      const info = await resolveAppointmentInfo(clientId, { appointmentId });
+      if (!info?.ok) return res.json({ ok: false, message: info?.message || "Den Termin finde ich nicht." });
+      return res.json(await _recBegin(clientId, info, by, dictOpts));
+    }
+
+    // B) Bestaetigung ("Ja") eines schwebenden Diktat-Kandidaten.
+    if (confirm && !name && !patientId) {
+      const pend = await getPendingRecording(clientId);
+      if (pend?.appointmentId && pend?.locationId) {
+        return res.json(await _recBegin(clientId, {
+          ok: true, appointmentId: pend.appointmentId, locationId: pend.locationId,
+          patientId: pend.patientId || "", patientName: pend.patientName || "",
+        }, by, { mode: pend.mode || "dictation", forceTee: pend.forceTee !== false }));
+      }
+    }
+
+    // C) Name genannt (Erstauswahl ODER Korrektur).
+    if (name || patientId) {
+      if (!patientId && name) {
+        const r = await resolveSpokenPatientForRead(clientId, {
+          rawName: name, hint: String(req.body?.hint || "").trim(),
+          askWho: "Für welchen Patienten soll ich das Diktat aufnehmen? Bitte den Namen nennen.",
+        });
+        if (r.done) return res.json(r.payload);
+        patientId = r.sel?.id || ""; name = r.sel?.lastName || name;
+      }
+      const info = await resolveAppointmentInfo(clientId, { patientId, lastName: name });
+      if (!info?.ok) return res.json({ ok: false, message: info?.message || `Zu ${name || "dem Patienten"} finde ich heute keinen Termin.` });
+      return res.json(await _recPropose(clientId, info, dictOpts));
+    }
+
+    // D) Nichts genannt: zuletzt gewaehlter Patient, sonst "wer sitzt im Stuhl?".
+    const selPat = await getSelectedPatient(clientId).catch(() => null);
+    if (selPat?.id) {
+      const info = await resolveAppointmentInfo(clientId, { patientId: selPat.id, lastName: selPat.lastName || "" });
+      if (info?.ok) return res.json(await _recPropose(clientId, info, dictOpts));
+    }
+    const day = await getDayAppointments(clientId, { date: todayBerlin() });
+    if (day?.ok) {
+      const pick = pickCurrentAppointment(day.appointments || [], Date.now());
+      if (pick.appointment) {
+        const a = pick.appointment;
+        return res.json(await _recPropose(clientId, {
+          ok: true, appointmentId: a.id, locationId: day.locationId,
+          patientName: a.patientName, patientId: a.patientId,
+          apptStartMs: a.startMs, motiveName: a.visitMotive,
+        }, dictOpts));
+      }
+      if (pick.reason === "ambiguous") {
+        return res.json({ ok: true, needsConfirm: true, message: "Es laufen gerade mehrere Behandlungen. Für welchen Patienten soll ich das Diktat aufnehmen?" });
+      }
+    }
+    return res.json({ ok: true, needsConfirm: true, message: "Für welchen Patienten soll ich das Diktat aufnehmen?" });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+router.post("/tools/stop-patient-dictation", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const active = await getActiveRecording(clientId).catch(() => null);
+    let appointmentId = String(req.body?.appointmentId || "").trim();
+    let locationId = "";
+    let patientName = "";
+    if (appointmentId) {
+      const info = await resolveAppointmentInfo(clientId, { appointmentId });
+      if (info?.ok) { locationId = info.locationId; patientName = info.patientName; }
+    } else if (active?.appointmentId && active?.locationId) {
+      appointmentId = active.appointmentId;
+      locationId = active.locationId;
+      patientName = active.patientName || "";
+    }
+    if (!appointmentId || !locationId) {
+      await clearPendingRecording(clientId).catch(() => {});
+      return res.json({ ok: true, message: "Es läuft gerade kein Diktat." });
+    }
+    const out = await stopRecordingSession(clientId, { locationId, appointmentId, patientName, mode: "dictation" });
+    await clearActiveRecording(clientId).catch(() => {});
+    await clearPendingRecording(clientId).catch(() => {});
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 7b VORLESEN: "Clara, lies vor, was schon steht" / "lies das letzte Diktat" /
+// "fass die Doku zusammen". mode: full | last | summary.
+router.post("/tools/read-treatment-dictation", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    let patientId = "";
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    const appointmentId = String(req.body?.appointmentId || "").trim();
+    const date = String(req.body?.date || "").trim();
+    if (!appointmentId && lastName) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: lastName, hint: String(req.body?.hint || "").trim(),
+        askWho: "Zu welchem Patienten soll ich die Dokumentation vorlesen? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || ""; lastName = r.sel?.lastName || lastName;
+    } else if (!appointmentId && !lastName) {
+      const sel = await getSelectedPatient(clientId).catch(() => null);
+      if (sel?.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+    }
+    const modeRaw = String(req.body?.mode || "full").trim().toLowerCase();
+    const mode = ["full", "last", "summary"].includes(modeRaw) ? modeRaw : "full";
+    const out = await readTreatmentDictation(clientId, { mode, appointmentId, patientId, lastName, date });
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 7e SUCHE + PUSH: "Clara, wo habe ich bei Frau Meier die Wurzelbehandlung
+// dokumentiert?" -> Fundstelle sprechen + auf den Monitor pushen.
+router.post("/tools/find-in-treatment", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const query = String(req.body?.query || req.body?.text || "").trim();
+    let patientId = "";
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    const appointmentId = String(req.body?.appointmentId || "").trim();
+    const date = String(req.body?.date || "").trim();
+    if (!appointmentId && lastName) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: lastName, hint: String(req.body?.hint || "").trim(),
+        askWho: "Bei welchem Patienten soll ich in der Doku suchen? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || ""; lastName = r.sel?.lastName || lastName;
+    } else if (!appointmentId && !lastName) {
+      const sel = await getSelectedPatient(clientId).catch(() => null);
+      if (sel?.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+    }
+    const out = await findInTreatment(clientId, { query, appointmentId, patientId, lastName, date });
+    return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// 7d LABEL-AUSKUNFT: "Clara, welche Behandlungen sind für Frau Meier geplant?"
+// (Lesen des Sophie-Plans). Ergaenzen/Loeschen laeuft ueber Diktat/Streichen.
+router.post("/tools/read-treatment-labels", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    let patientId = "";
+    let lastName = String(req.body?.lastName || req.body?.name || "").trim();
+    const appointmentId = String(req.body?.appointmentId || "").trim();
+    const date = String(req.body?.date || "").trim();
+    if (!appointmentId && lastName) {
+      const r = await resolveSpokenPatientForRead(clientId, {
+        rawName: lastName, hint: String(req.body?.hint || "").trim(),
+        askWho: "Zu welchem Patienten soll ich die geplanten Behandlungen nennen? Bitte den Namen nennen.",
+      });
+      if (r.done) return res.json(r.payload);
+      patientId = r.sel?.id || ""; lastName = r.sel?.lastName || lastName;
+    } else if (!appointmentId && !lastName) {
+      const sel = await getSelectedPatient(clientId).catch(() => null);
+      if (sel?.id) { patientId = sel.id; lastName = sel.lastName || ""; }
+    }
+    const out = await readTreatmentLabels(clientId, { appointmentId, patientId, lastName, date });
     return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

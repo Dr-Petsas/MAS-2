@@ -161,6 +161,26 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       MAS-Route `POST /treatment/lena-stt-url` (Launcher meldet die Tunnel-URL)
       veroeffentlicht `settings/lenaStt`. OFFEN: reale WER-Messung mit echtem
       Praxis-Audio, GPU-Umzug 5090, ggf. Named Tunnel statt Quick-Tunnel.
+      TEIL 4 (Arzt-Quelle umschaltbar, beschlossen 11.07. abends) IN ARBEIT:
+      Einsteller "Arzt-Mikro: Ansteckmikrofon (Funkempfaenger) / Headset
+      (ueber Clara)" pro Standort. Motiv: Traegt der Chef das Shokz-Headset,
+      haengt es per Bluetooth am HANDY (fuer Clara) — ein zweiter Capture auf
+      dem Handy waere fragil. Loesung: EIN Mikro, EIN Capture, Verteilung am
+      Server. Drei Teile: (1) Einsteller + Persistenz in Firestore
+      (`clients/{c}/locations/{l}/settings/lenaRecorder.arztSource`), von drei
+      Parteien lesbar (Frontend-Recorder, MAS, Clara-Worker). (2) Headset-Modus:
+      der PC nimmt NUR den Patienten-Kanal auf (Mono `LenaSttCapture`,
+      channel=raum) — der Stereo-Split entfaellt. (3) Der Clara-Worker tee't
+      waehrend einer AKTIVEN Aufnahme die Arzt-Aeusserungen aus der LiveKit-
+      Session an `lena_stt` (channel=arzt) und schreibt sie als Segmente
+      (source=arzt) — derselbe Baustein, den Phase 4 (Ambient) ohnehin braucht.
+      Stufe 1: nur per Sprache gestartete Aufnahmen (der Worker kennt die
+      Aufnahme aus dem Tool-Result von start_treatment_recording); UI-gestartet
+      per Recorder-Poll spaeter. Der Worker-Tee ist FLAG-GATED
+      (`CLARA_LENA_TEE`, default AUS) — Live-Worker-Neustart erst mit dem Chef
+      am Headset (wie W-LENA-1 gestaffelt). Ansteckmikro bleibt der Default und
+      die bessere Doku-Quelle; Headset-Modus = "Clara + Doku, nur ein Geraet
+      am Koerper".
       TEIL 3 (Zwei-Lavalier-Setup am PC) LIVE (11.07.): Chef nutzt zwei
       Ansteckmikros an EINEM Funk-Empfaenger (USB, links/rechts) statt
       Raummikro+Handy. `LenaStereoSplitCapture` splittet die Kanaele
@@ -212,8 +232,92 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       (Konzept+Attribute), Sophie expandiert deterministisch ueber
       `billing-catalog/*` zu BEMA-BEMA PLUS-GOZ; Ausschoepfungs-Slider aus der
       Sandbox in den echten Fluss. Manuelle +/- markiert.
+      NACHTRAG (12.07.2026, Chef - Richtungsentscheid): Lena BESTIMMT KEINE
+      Ziffern mehr. Der "Vorgriff auf W-LENA-5" aus W-LENA-3 (das `AbrechnungPanel`
+      mit automatischer BEMA/GOZ-Bestimmung via `POST /treatment/billing`) ist
+      aus der       Lena-Seite ENTFERNT. Grund: Lena soll nur die BEHANDLUNG definieren
+      ("Implantatinsertion an 36 mit Augmentation"), die Ziffern leitet
+      AUSSCHLIESSLICH Sophie deterministisch ab - genau der schon vorhandene Pfad
+      `sophieIntakeService.erkennePerLLM` -> MAS `/clara/billing-intake` (LLM ->
+      Konzept+Attribute, NIE Ziffern) -> geteilte Sophie-Engine (GOZ 2,3/3,5 +
+      BEMA/BEMA+, Schieberegler). Lenas rechte Spalte ist jetzt die
+      Sophie-Uebergabe: der bereinigte Behandlungstext wird (debounced, 1,5 s)
+      durch `erkennePerLLM` zu KOMPAKTEN Behandlungszeilen erkannt und ins Feld
+      geschrieben (Formatter `absichtZuZeile` mappt Konzept-Label + Zahn +
+      Augmentation/Sinuslift/Flaechen/Kanaele). Der Arzt kann NACH der Behandlung
+      nachdiktieren/editieren ("touched" stoppt das Auto-Ueberschreiben; Button
+      "Neu erkennen" erzwingt Re-Erkennung).
+      UEBERGABE (12.07., Chef-Pointer "quasi dieser Schritt"): "An Sophie
+      uebergeben" (NUR Klick/Kommando) speichert die erkannten Absichten als
+      `sophiePlan` am Termin (`AppointmentsService.saveSophiePlan`) - inkl.
+      `terminGrund` = kompakter Behandlungstext (Zeilen zu einer Zeile, " · "),
+      der in Sophie oben als "Termin: …"-Label erscheint - und navigiert
+      zu `/clara?ki=sophie&appointmentId=..&modus=planen`. Sophies Sandbox
+      (`billingTestPage.tsx`) restauriert den Plan als "Geplante Behandlungen"
+      (Schritt "Leistungen planen") - der Arzt optimiert dort mit dem
+      Schieberegler und rechnet ab.       Sind Edits im Feld (touched), holt der Send
+      frische Absichten per `erkennePerLLM(text)`, sonst die gecachten.
+      Unter dem Behandlungsfeld ein zweites, benanntes Feld "Nachträge /
+      Ergänzungen" (tippen ODER diktieren, eigene STT-Instanz): was der Arzt NACH
+      der Behandlung ergänzt, wird beim Übergeben mit der Behandlung zusammen
+      erkannt und ins Label aufgenommen. Weiterleitung weiterhin NUR per Klick.
+      `billTreatment`/`/treatment/billing` bleiben im Backend erhalten (dormant,
+      kein Rueckbau), werden von Lena nicht mehr aufgerufen. Frontend live-faehig,
+      `lenaWorkspace.tsx` tsc-sauber.
 - [ ] **W-LENA-6 Zusammenfassung + Uebergabe.** Nach dem Gespraech kompakte
       Abrechnungs-Zusammenfassung; Sophie/Clara nehmen Ergaenzungen auf.
+- [~] **W-LENA-7 Clara als Sprach-Doku-Assistent (beschlossen 12.07., Chef).**
+      Clara nimmt per Sprache patienten-/termingebundene Doku/Nachtraege auf,
+      quittiert, liest vor, ergaenzt/loescht/findet. GESTAFFELT (jedes Teil FERTIG
+      vor dem naechsten), DSGVO-lokal ueber MAS (KEINE Cloud Function). Speicherpfad
+      immer die vorhandene Doppel-Spur: `…/appointments/{id}/dictations/{seg}`
+      (primaer) + `clients/…/mas_events` (Shared Memory, Kanal `lena_doc`, 45 Tage)
+      via `saveTreatmentDictation()`. Vorbild-Muster: `treatmentRecording.js`
+      (`_recPropose`/`pickCurrentAppointment`/`startRecordingSession`) und der
+      Lena-Tee (`worker_lena_tee.py`).
+      Vorstufe LIVE (12.07.): Browser-Erkenner `nachtragIntent.ts` (10 Sprach-
+      varianten „Nachtrag/Dokumentation Frau X …") schneidet Kommando+Name vom
+      Nachtrag-Diktat im Lena-Feld ab — das ist NUR der Browser, nicht Clara.
+      - [x] **7a Diktat-Modus + Quittung (FUNDAMENT, FERTIG 12.07.).** Sprachbefehl
+        „Clara, nimm fuer Herrn XY Doku auf" -> Patient/Termin aufloesen
+        (`resolveSpokenPatientForRead`+`resolveAppointmentInfo`), Bestaetigungs-
+        Flow, gesprochene Quittung „Ich nehme jetzt Ihr Diktat fuer … auf, ich
+        starte die Aufnahme" (`message`/`speak_result:"verbatim"`). Umsetzung
+        NUTZT den bewaehrten Aufnahme-+Tee-Pfad wieder (kein Wake-Gate-Umbau):
+        `startRecordingSession({mode:"dictation", forceTee:true})` setzt Recorder
+        auf `mode:dictation` und erzwingt den Arzt-Tee (Diktat kommt IMMER ueber
+        die LiveKit-Session). Die im Standby verworfenen Arzt-Aeusserungen tee't
+        `worker_lena_tee` unveraendert nach `dictations` (source=arzt) — NEU auch
+        ins Shared Memory (`/treatment/lena-segment` schreibt jetzt `lena_doc`,
+        45 Tage). `activeRecording.mode` unterscheidet Stop-Quittung. Neue MAS-
+        Endpoints `/tools/start-patient-dictation` + `/tools/stop-patient-dictation`,
+        Tools im Profil (Gruppe `doku`+`recording`, verbatim), Routing in
+        `tool_subsetting.py`, Tests im Release-Gate. Voraussetzung wie W-LENA-2:
+        `CLARA_LENA_TEE=1` + Wake-Wort aktiv.
+      - [x] **7b Vorlesen (Read-back), FERTIG 12.07.** `read_treatment_dictation`
+        (`mode` = `full` | `last` | `summary`) liest die Doku eines Termins
+        verbatim vor (ueber `combineActiveSegments()`), Modul `lenaDictation.js`.
+      - [x] **7c Nachtrag-CRUD per Sprache, FERTIG 12.07.** Aufnehmen/Ergaenzen =
+        `save_treatment_dictation`, Loeschen/Streichen = `strike_treatment_dictation`
+        (bestehend), Finden = `find_in_treatment` (neu, deterministische
+        Satz-Suche). In dieser Architektur beschreibt Lena, Sophie leitet Ziffern
+        ab — „Label ergaenzen/loeschen" laeuft daher als Diktat-Ergaenzung/
+        -Streichung (fliesst in Sophies Erkennung).
+      - [x] **7d Labels per Sprache (Lesen) FERTIG 12.07.** `read_treatment_labels`
+        liest den `sophiePlan.terminGrund` vor. Ergaenzen/Loeschen bewusst ueber
+        Diktat (7c), NICHT durch serverseitiges Verbiegen von `sophiePlan`
+        (Konzept-Katalog liegt im Frontend; Sophie erkennt neu). OFFEN: echte
+        Konzept-Erkennung serverseitig (braucht geteilten `konzeptKatalog`).
+      - [x] **7e Suche + Push (Sprache) FERTIG 12.07.** `find_in_treatment` findet
+        die Passage, spricht sie (Patient/Datum/Passage) UND pusht `lena_find_result`
+        per `emitCommand` an den Monitor. OFFEN (Frontend-Deploy, separat): die
+        Fundstelle im Live-Follow-Consumer sichtbar einblenden (analog
+        `open_lena_recording`) — Sprach-Ausgabe funktioniert bereits.
+      - [x] **7f Historische Abfrage FERTIG 12.07.** Read-back/Suche/Historie
+        akzeptieren `date` (JJJJ-MM-TT) -> `resolveAppointmentInfo` bindet den
+        Termin dieses Tages; „was habe ich bei Frau Meier am 3.4. nachgetragen"
+        laeuft ueber `read_treatment_dictation`/`patient_treatments`, ergaenzen
+        ueber `save_treatment_dictation` mit `date`.
 
 ## Phase W-SUCHE - MAS-Cockpit als Gedaechtnis-Suchmaschine (beschlossen 05.07.)
 
