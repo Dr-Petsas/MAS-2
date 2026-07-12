@@ -312,13 +312,21 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
         liest den `sophiePlan.terminGrund` vor. Ergaenzen/Loeschen bewusst ueber
         Diktat (7c), NICHT durch serverseitiges Verbiegen von `sophiePlan`
         (Konzept-Katalog liegt im Frontend; Sophie erkennt neu).
-      - [ ] **7d+ Label-ERSTELLUNG per Sprache — BESCHLOSSEN 12.07. (Chef: „brauchen
-        wir"), NAECHSTES Paket.** Ein gesprochenes „Fuellung an 35" soll der Server
-        direkt in ein strukturiertes Sophie-Label (`Leistungsabsicht`: Konzept +
-        Attribute, KEINE Ziffer) umwandeln. Voraussetzung: der `konzeptKatalog`
-        (heute nur im Frontend) muss auf dem Server verfuegbar sein — groesserer
-        Umbau (Katalog teilen, `erkennePerLLM`/Intake serverseitig aufrufen und in
-        `sophiePlan.absichten` schreiben). Als eigenes Arbeitspaket ausbauen.
+      - [x] **7d+ Label-ERSTELLUNG per Sprache — FERTIG 12.07.** Ein gesprochenes
+        „Fuellung an 35" wird jetzt SERVERSEITIG in ein strukturiertes Sophie-Label
+        (`Leistungsabsicht`: Konzept + Attribute, KEINE Ziffer) umgewandelt und
+        additiv in `sophiePlan.absichten` geschrieben (`terminGrund` neu gebaut).
+        Loesung fuer „Katalog nur im Frontend": Der Server SPIEGELT den bei jedem
+        `/clara/billing-intake` mitgeschickten Konzept-Katalog nach
+        `settings/sophieKatalog` (`clara/sophieKatalog.js`, In-Memory-Cache +
+        Schreib-Guard) — Frontend bleibt Quelle der Wahrheit, kein Doppelpflege;
+        die Kopie frischt sich bei jeder Sophie-Nutzung selbst auf. Neu:
+        `lenaDictation.addTreatmentLabel()` (Intake via `intakeToAbsichten` +
+        gespiegelter Katalog), Endpoint `/tools/add-treatment-label`, Clara-Tool
+        `add_treatment_label` (Gruppe doku, verbatim), Routing + Test. Ziffern
+        bestimmt weiterhin ausschliesslich Sophies deterministische Engine.
+        Ist der Katalog nach einem Kaltstart noch nie gespiegelt, weist Clara
+        freundlich darauf hin, einmal Sophie im Browser zu oeffnen.
       - [x] **7e Suche + Push (Sprache) FERTIG 12.07.** `find_in_treatment` findet
         die Passage, spricht sie (Patient/Datum/Passage) UND pusht `lena_find_result`
         per `emitCommand` an den Monitor. Sprach-Ausgabe funktioniert. VERWORFEN
