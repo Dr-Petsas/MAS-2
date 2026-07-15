@@ -55,6 +55,7 @@ import { listAccounts } from "../mail/accounts.js";
 import { sendMail } from "../mail/mailbox.js";
 import { listMessages, getMessage, listContacts } from "../mail/store.js";
 import { prepareCaseDraft } from "../mail/nadineAuto.js";
+import { strongLlm } from "../mail/llm.js";
 import { buildMailBriefing } from "../mail/briefing.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
@@ -337,7 +338,10 @@ router.post("/tools/read-email", async (req, res) => {
     // erneut auf. LLM offline/unsicher -> deterministischer Volltext wie bisher.
     const wantFull = req.body?.full === true || String(req.body?.full || "").toLowerCase() === "true";
     if (!wantFull && body && body.length >= 200) {
-      const sum = await summarizeForSpeech("email", body, { subject: subj, sender: fromLabel });
+      // E-Mail-Inhalte fasst das starke Modell (qwen3.6 auf dem 5090) zusammen —
+      // deutlich treffsicherer als das lokale Kleinmodell. Zahlen-Waechter greift.
+      const strong = strongLlm();
+      const sum = await summarizeForSpeech("email", body, { subject: subj, sender: fromLabel, baseUrl: strong.base, model: strong.model });
       if (sum.ok) {
         const message = `${head} Zusammengefasst: ${sum.text} Soll ich die ganze Mail vorlesen?${more}`;
         return res.json({ ok: true, message, messageId: hits[0].id, summarized: true });

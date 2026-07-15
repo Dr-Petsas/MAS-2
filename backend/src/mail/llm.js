@@ -116,6 +116,19 @@ export function llmInfo() {
   return { base, model };
 }
 
+// Nadines "starkes" Schreib-/Zusammenfassungs-Gehirn. DEFINITIV der
+// RTX-5090-Server (vLLM, qwen3.6:35b-a3b) ueber das Tailscale-Overlay — dieser
+// Host zaehlt fuer den DSGVO-Guard als lokal (CGNAT 100.64.0.0/10). KEIN
+// Rueckfall auf das schwaechere lokale qwen3:8b: ist der 5090 nicht erreichbar,
+// greift bewusst der deterministische Vorlagen-Fallback des Aufrufers, nicht ein
+// schwaecheres Modell. Nur zum Verschieben des Servers per Env ueberschreibbar.
+export function strongLlm() {
+  return {
+    base: (process.env.MAS_LETTER_BASE_URL || "http://100.77.30.98:8000/v1").replace(/\/+$/, ""),
+    model: process.env.MAS_LETTER_MODEL || "qwen3.6:35b-a3b",
+  };
+}
+
 // DSGVO guard: is the configured LLM endpoint on-premise (localhost / private
 // LAN)? Patient content must never leave the practice network, so we can verify
 // — and optionally enforce — that the model runs locally rather than in a cloud.

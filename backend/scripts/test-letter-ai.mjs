@@ -58,10 +58,12 @@ check(/Vorgang & Telefonate/.test(ctx.contextText) && /Nachfrage zur Rechnung/.t
 console.log("  --- Kontext ---\n" + ctx.contextText.split("\n").map((l) => "    " + l).join("\n"));
 
 console.log("\n=== Entwurf (Fallback wenn Modell offline) ===");
-const prevBase = process.env.MAS_LLM_BASE_URL;
-process.env.MAS_LLM_BASE_URL = "http://127.0.0.1:1/v1"; // dead port -> connection refused
+// Nadine schreibt ueber den starken Endpoint (MAS_LETTER_BASE_URL, 5090). Fuer
+// den Offline-Test genau diesen auf einen toten Port zeigen lassen.
+const prevBase = process.env.MAS_LETTER_BASE_URL;
+process.env.MAS_LETTER_BASE_URL = "http://127.0.0.1:1/v1"; // dead port -> connection refused
 const off = await draftLetter(TEST, { caseId: link.caseId, recipient: "Herr Karl Huber", direction: "Höflich erklären, dass die Position korrekt ist, und einen Termin anbieten." });
-if (prevBase === undefined) delete process.env.MAS_LLM_BASE_URL; else process.env.MAS_LLM_BASE_URL = prevBase;
+if (prevBase === undefined) delete process.env.MAS_LETTER_BASE_URL; else process.env.MAS_LETTER_BASE_URL = prevBase;
 check(!off.ok && off.fallback === true, "Modell offline -> sauberer Fallback (kein Crash)");
 check(typeof off.body === "string" && off.body.length > 0 && typeof off.subject === "string", "Fallback liefert Betreff + Text");
 

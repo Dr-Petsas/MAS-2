@@ -1,4 +1,4 @@
-import { chat, llmInfo } from "./llm.js";
+import { chat, llmInfo, strongLlm } from "./llm.js";
 import { getCaseContext, listCases } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { listMessagesForCase } from "./store.js";
@@ -281,20 +281,15 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
     `\nKONTEXT AUS DEM GEMEINSAMEN GEHIRN:\n${ctx.contextText}`,
   ].join("\n");
 
-  // Letters aren't latency-critical (unlike the voice loop), so prefer the
-  // stronger model for better faithfulness. Default is the local Ollama model;
-  // for the big jump set MAS_LETTER_BASE_URL to the RTX-5090 vLLM server
-  // (http://100.77.30.98:8000/v1) + MAS_LETTER_MODEL=qwen3.6:35b-a3b. The bigger
-  // model is slower, so the timeout is generous.
+  // Letters aren't latency-critical (unlike the voice loop), so Nadine uses the
+  // strong model on the RTX-5090 (qwen3.6). No fallback to the weaker local 8b:
+  // if the 5090 is unreachable, draftLetter degrades to the deterministic
+  // template below — never to a weaker model. The big model is slower → generous
+  // timeout.
+  const { base: strongBase, model: strongModel } = strongLlm();
   const res = await chat(
     [{ role: "system", content: system }, { role: "user", content: user }],
-    {
-      temperature: 0.3,
-      maxTokens: 900,
-      model: process.env.MAS_LETTER_MODEL || "qwen3:8b",
-      baseUrl: process.env.MAS_LETTER_BASE_URL || undefined,
-      timeoutMs: 120000,
-    }
+    { temperature: 0.3, maxTokens: 900, model: strongModel, baseUrl: strongBase, timeoutMs: 120000 }
   );
 
   if (!res.ok) {
@@ -333,15 +328,10 @@ export async function rewritePassage(clientId, { selection, instruction, fullTex
     `\nANWEISUNG:\n${ask}`,
   ].join("\n");
 
+  const { base: strongBase, model: strongModel } = strongLlm();
   const res = await chat(
     [{ role: "system", content: system }, { role: "user", content: user }],
-    {
-      temperature: 0.3,
-      maxTokens: 600,
-      model: process.env.MAS_LETTER_MODEL || "qwen3:8b",
-      baseUrl: process.env.MAS_LETTER_BASE_URL || undefined,
-      timeoutMs: 90000,
-    }
+    { temperature: 0.3, maxTokens: 600, model: strongModel, baseUrl: strongBase, timeoutMs: 90000 }
   );
   if (!res.ok) return { ok: false, reason: res.reason, text: "", model: res.model };
 

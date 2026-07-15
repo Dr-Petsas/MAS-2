@@ -48,10 +48,12 @@ const KIND_LABEL = { email: "E-Mail", call: "eines Telefonats" };
  *
  * @param {"email"|"call"} kind
  * @param {string} content Der ECHTE Quelltext (Mailbody, Anruf-Notiz).
- * @param {{ subject?:string, sender?:string, maxSentences?:number, timeoutMs?:number }} [opts]
+ * @param {{ subject?:string, sender?:string, maxSentences?:number, timeoutMs?:number, baseUrl?:string, model?:string }} [opts]
+ *   baseUrl/model: optionaler LLM-Endpunkt (z. B. der starke qwen3.6 auf dem
+ *   5090 fuer E-Mail-Zusammenfassungen); ohne Angabe das lokale Standardmodell.
  * @returns {Promise<{ok:boolean, text:string, reason?:string}>}
  */
-export async function summarizeForSpeech(kind, content, { subject = "", sender = "", maxSentences = 3, timeoutMs = 15000 } = {}) {
+export async function summarizeForSpeech(kind, content, { subject = "", sender = "", maxSentences = 3, timeoutMs = 15000, baseUrl, model } = {}) {
   const src = String(content || "").replace(/\s+/g, " ").trim();
   if (src.length < 40) return { ok: false, text: "", reason: "too_short" };
 
@@ -70,7 +72,7 @@ export async function summarizeForSpeech(kind, content, { subject = "", sender =
 
   const out = await chat(
     [{ role: "system", content: system }, { role: "user", content: user }],
-    { temperature: 0.2, maxTokens: 320, timeoutMs },
+    { temperature: 0.2, maxTokens: 320, timeoutMs, baseUrl, model },
   );
   if (!out.ok) return { ok: false, text: "", reason: out.reason || "llm_error" };
 
