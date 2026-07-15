@@ -55,13 +55,13 @@ check(b.counts.openTasks === 2, "2 Aufträge erkannt");
 check(b.counts.draftsReady === 1, "1 Entwurf bereit erkannt");
 check(/3 neue E-Mails/.test(b.spokenText) && /2 davon noch ungelesen/.test(b.spokenText), "Text nennt neue/ungelesene Mails");
 check(/Karl Huber/.test(b.spokenText), "Text nennt den Hauptabsender");
-check(/2 Aufträge/.test(b.spokenText) && /1 ist schon ein Entwurf/.test(b.spokenText), "Text nennt Aufträge + Entwurf");
+check(/2 offene Schreibaufträge/.test(b.spokenText) && /1 ist schon ein Entwurf/.test(b.spokenText), "Text nennt Aufträge + Entwurf");
 
 // Empty case
 await cleanup();
 const empty = await buildMailBriefing(TEST, {});
 check(empty.counts.newMail === 0 && empty.counts.openTasks === 0, "Leerer Stand korrekt gezählt");
-check(/keine neuen E-Mails/.test(empty.spokenText) && /keine offen/.test(empty.spokenText), "Leer-Text sinnvoll");
+check(/keine neuen E-Mails/.test(empty.spokenText) && /Schreibaufträge gibt es gerade keine/.test(empty.spokenText), "Leer-Text sinnvoll");
 
 await cleanup();
 console.log(`\n${failed === 0 ? "ALL PASS" : failed + " FAILED"}`);
