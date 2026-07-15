@@ -1,16 +1,24 @@
 {
   "_meta": {
     "description": "Versioniertes QM-Stammwissen (Recherche) fuer Julia. Pro Kategorie -> Plan -> Job: Zweck, Rechtsgrundlagen mit Fundstelle, Rechtsstand, Review-Intervall, Verantwortliche/Beauftragte, Interview-Verweis, Materialhinweis und erzeugte (wiederkehrende) Jobs. Diese Datei ist die EINE, aktualisierbare Quelle, aus der das Setup, die Regel-Engine und das Hybrid-Interview schoepfen. Sie enthaelt KEIN Mandantendatum. STAND: erster vollstaendiger Entwurf zum Gegenlesen - NOCH NICHT von catalog.js geladen, kein Live-Effekt (Wiring in einem spaeteren Schritt).",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "stand": "2026-07-15",
     "rechtlicherHinweis": "Strukturierte Arbeitshilfe, KEINE Rechtsberatung. Intervalle und Pflichten bilden den Stand der genannten Quellen ab. Die abschliessende fachliche und rechtliche Verantwortung fuer Vollstaendigkeit und Richtigkeit traegt die/der QM-Beauftragte bzw. die aerztliche Leitung der jeweiligen Praxis.",
     "artifactKatalog": "Die Plan-/Buch-Schluessel (artifactKey) referenzieren qm-artifacts.json (1:1). Interview-Schluessel (interviewKey) referenzieren qm-wizards.json.",
+    "inventarSchema": {
+      "zweck": "Macht ein Interview INDIVIDUELL pro Praxis: Ein Plan kann ein 'inventar' tragen (Geraete-/Bestandsliste). Das Interview fragt zuerst die Anzahl (frageAnzahl), dann pro Objekt die 'felder'. Aus jedem erfassten Objekt entstehen die Jobs in 'erzeugtProItem'.",
+      "felder": "Jedes Feld: { key, label, type (text|number|enum|date), options?, required?, default? }.",
+      "erzeugtProItem": "Wie erzeugtJobs, aber je Objekt EINMAL. titel darf Platzhalter aus Feldern nutzen, z. B. 'Konstanzpruefung {bezeichnung}'.",
+      "ankerFeld": "Optionaler Feldschluessel mit einem Datum (z. B. letzteValidierung/letztePruefung). Der naechste Job wird aus (Ankerdatum + Zyklus) berechnet; ohne ankerFeld startet der Zyklus ab Erstellung. So wird 'letzte Validierung am 10.03.2026 + jaehrlich' automatisch zum faelligen Job am 10.03.2027.",
+      "beispiel": "constancy_book fragt 'Wie viele Roentgengeraete?' -> pro Geraet Modalitaet/Standort/letzte Sachverstaendigenpruefung -> Jobs: monatliche Konstanzpruefung + Sachverstaendigenpruefung (Anker letztePruefung, alle 5 Jahre)."
+    },
     "aktualisierung": {
       "prinzip": "Aendert sich eine Rechtsgrundlage, wird der betroffene Plan hier mit neuem 'rechtsstand' + Changelog-Eintrag versioniert und die Top-Level-'version' erhoeht. Aktive Plaene mit aelterem rechtsstand werden im UI als 'Aktualisierung faellig' markiert und erzeugen einen Erneuerungs-Job.",
       "turnus": "Mindestens jaehrliche Sichtung; ausserplanmaessig bei Gesetzes-/Richtlinienaenderung."
     },
     "changelog": [
-      { "datum": "2026-07-15", "version": "1.0.0", "was": "Erstfassung: alle 6 Kategorien, 24 Plaene/Buecher aus qm-artifacts.json erfasst; Praxisformen + geteilte-Jobs-Regelwerk dokumentiert." }
+      { "datum": "2026-07-15", "version": "1.0.0", "was": "Erstfassung: alle 6 Kategorien, 25 Plaene/Buecher aus qm-artifacts.json erfasst; Praxisformen + geteilte-Jobs-Regelwerk dokumentiert." },
+      { "datum": "2026-07-15", "version": "1.1.0", "was": "Inventar-Schema ergaenzt: individuelle Geraete-/Bestandslisten mit Jobs je Objekt und Anker-Datum. Inventare an Roentgen-Konstanzpruefung, Sterilisation/Validierung, STK/MTK-Geraeten und Kuehlschrank ergaenzt." }
     ]
   },
 
@@ -132,10 +140,25 @@
           "verantwortlicheRolle": "hygienebeauftragte",
           "interviewKey": "sterilization_log",
           "materialhinweis": "Validierter Autoklav (Klasse B ab semikritisch B/kritisch), RDG, Indikatoren, Verpackung, Freigabeprotokoll.",
+          "inventar": {
+            "label": "Aufbereitungs-/Sterilisationsgeraete",
+            "itemLabelSingular": "Geraet",
+            "frageAnzahl": "Wie viele Aufbereitungsgeraete (Autoklav, RDG, Siegelgeraet) betreibt die Praxis?",
+            "felder": [
+              { "key": "bezeichnung", "label": "Bezeichnung/Modell", "type": "text", "required": true },
+              { "key": "geraetetyp", "label": "Geraetetyp", "type": "enum", "options": ["Autoklav Klasse B", "Autoklav Klasse S", "RDG (Reinigungs-/Desinfektionsgeraet)", "Siegelgeraet"], "required": true },
+              { "key": "standort", "label": "Standort/Raum", "type": "text" },
+              { "key": "seriennummer", "label": "Seriennummer", "type": "text" },
+              { "key": "letzteValidierung", "label": "Letzte Validierung am", "type": "date", "required": true },
+              { "key": "validierungsintervallMonate", "label": "Validierungsintervall (Monate)", "type": "number", "default": 12 }
+            ],
+            "erzeugtProItem": [
+              { "titel": "Erneute Validierung {bezeichnung}", "ankerFeld": "letzteValidierung", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 45, "typ": "pruefung" }
+            ]
+          },
           "erzeugtJobs": [
             { "titel": "Chargendokumentation & Freigabe", "cycle": "perCharge", "rolle": "sterilgutassistenz", "leadDays": 0, "typ": "doku" },
-            { "titel": "Aufbereitungs-SOP pruefen", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "review" },
-            { "titel": "Routinepruefung/Validierung Aufbereitungsgeraete", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "pruefung" }
+            { "titel": "Aufbereitungs-SOP pruefen", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "review" }
           ],
           "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
         },
@@ -183,9 +206,24 @@
           "interviewKey": null,
           "materialhinweis": "Pruefkoerper/Testphantom je Modalitaet (Zahnfilm/OPG/DVT), Protokollvorlage QS-RL.",
           "intervallHinweis": "Frequenz modalitaetsabhaengig (z. B. arbeitstaeglich/monatlich); genauer Turnus laut QS-RL und Geraetehersteller.",
-          "erzeugtJobs": [
-            { "titel": "Konstanzpruefung Roentgen", "cycle": "monthly", "rolle": "strahlenschutzbeauftragte", "leadDays": 3, "typ": "pruefung" }
-          ],
+          "inventar": {
+            "label": "Roentgengeraete",
+            "itemLabelSingular": "Roentgengeraet",
+            "frageAnzahl": "Wie viele Roentgengeraete betreibt die Praxis?",
+            "felder": [
+              { "key": "bezeichnung", "label": "Bezeichnung/Modell", "type": "text", "required": true },
+              { "key": "modalitaet", "label": "Modalitaet", "type": "enum", "options": ["Zahnfilm/Intraoral", "OPG (Panorama)", "FRS (Fernroentgen)", "DVT", "Konventionell/Projektionsradiografie"], "required": true },
+              { "key": "standort", "label": "Standort/Raum", "type": "text" },
+              { "key": "seriennummer", "label": "Seriennummer", "type": "text" },
+              { "key": "konstanzIntervall", "label": "Konstanzpruefung-Intervall", "type": "enum", "options": ["arbeitstaeglich", "monatlich"], "default": "monthly" },
+              { "key": "letztePruefung", "label": "Letzte Sachverstaendigenpruefung am", "type": "date" }
+            ],
+            "erzeugtProItem": [
+              { "titel": "Konstanzpruefung {bezeichnung}", "cycleFromFeld": "konstanzIntervall", "cycle": "monthly", "rolle": "strahlenschutzbeauftragte", "leadDays": 3, "typ": "pruefung" },
+              { "titel": "Sachverstaendigenpruefung {bezeichnung}", "ankerFeld": "letztePruefung", "cycle": "fiveYearly", "rolle": "strahlenschutzbeauftragte", "leadDays": 60, "typ": "pruefung" }
+            ]
+          },
+          "erzeugtJobs": [],
           "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
         },
         {
@@ -231,9 +269,20 @@
           "verantwortlicheRolle": "qm_beauftragte",
           "interviewKey": null,
           "materialhinweis": "Min/Max-Thermometer oder Datenlogger, Toleranzbereich 2-8 Grad C.",
-          "erzeugtJobs": [
-            { "titel": "Kuehlschranktemperatur dokumentieren", "cycle": "daily", "rolle": "assistenz", "leadDays": 0, "typ": "doku" }
-          ],
+          "inventar": {
+            "label": "Impfstoff-/Medikamentenkuehlschraenke",
+            "itemLabelSingular": "Kuehlschrank",
+            "frageAnzahl": "Wie viele Impfstoff-/Medikamentenkuehlschraenke gibt es?",
+            "felder": [
+              { "key": "bezeichnung", "label": "Bezeichnung/Standort", "type": "text", "required": true },
+              { "key": "sollMin", "label": "Soll min (Grad C)", "type": "number", "default": 2 },
+              { "key": "sollMax", "label": "Soll max (Grad C)", "type": "number", "default": 8 }
+            ],
+            "erzeugtProItem": [
+              { "titel": "Temperatur dokumentieren {bezeichnung}", "cycle": "daily", "rolle": "assistenz", "leadDays": 0, "typ": "doku" }
+            ]
+          },
+          "erzeugtJobs": [],
           "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
         },
         {
@@ -356,9 +405,22 @@
           "verantwortlicheRolle": "medizinproduktebeauftragte",
           "interviewKey": null,
           "materialhinweis": "Pruefprotokolle, Fristen je Geraet (Herstellerangabe beachten).",
-          "erzeugtJobs": [
-            { "titel": "STK/MTK beauftragen", "cycle": "twoYearly", "rolle": "medizinproduktebeauftragte", "leadDays": 45, "typ": "pruefung" }
-          ],
+          "inventar": {
+            "label": "Geraete mit STK-/MTK-Pflicht",
+            "itemLabelSingular": "Geraet",
+            "frageAnzahl": "Welche STK-/MTK-pflichtigen Geraete betreibt die Praxis (Laser, HF-Chirurgie, Defibrillator, Anaesthesiegeraet ...)?",
+            "felder": [
+              { "key": "bezeichnung", "label": "Bezeichnung/Modell", "type": "text", "required": true },
+              { "key": "pruefart", "label": "Pruefart", "type": "enum", "options": ["STK (sicherheitstechnisch)", "MTK (messtechnisch)", "STK + MTK"], "required": true },
+              { "key": "standort", "label": "Standort/Raum", "type": "text" },
+              { "key": "intervallMonate", "label": "Pruefintervall (Monate)", "type": "number", "default": 24 },
+              { "key": "letztePruefung", "label": "Letzte Pruefung am", "type": "date", "required": true }
+            ],
+            "erzeugtProItem": [
+              { "titel": "STK/MTK {bezeichnung} beauftragen", "ankerFeld": "letztePruefung", "cycle": "twoYearly", "rolle": "medizinproduktebeauftragte", "leadDays": 45, "typ": "pruefung" }
+            ]
+          },
+          "erzeugtJobs": [],
           "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
         },
         {
