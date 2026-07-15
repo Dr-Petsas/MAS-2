@@ -17,6 +17,22 @@ function stripThink(text) {
   return String(text || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
+// Heuristik: nur echte Ollama-Instanzen sprechen die native /api/chat-API. Der
+// Standard-Port 11434 ODER ein localhost-Endpunkt gelten als Ollama; alles
+// andere (z. B. vLLM auf dem RTX-5090-Server unter :8000) hat kein /api/chat und
+// wird direkt ueber den OpenAI-kompatiblen Pfad angesprochen — so entfaellt der
+// unnoetige 404-Fehlversuch gegen den Denk-freien Native-Pfad.
+function looksLikeOllama(base) {
+  try {
+    const u = new URL(base);
+    if (u.port === "11434") return true;
+    const h = u.hostname.toLowerCase();
+    return h === "localhost" || h === "127.0.0.1" || h === "::1";
+  } catch {
+    return true; // im Zweifel wie bisher: nativ zuerst probieren
+  }
+}
+
 /**
  * Chat completion against the local model.
  *
@@ -41,9 +57,10 @@ export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeo
   const apiKey = c.apiKey;
   const model = modelOverride || c.model;
 
-  // 1) Ollama-nativ (/api/chat) mit abgeschaltetem Denken.
+  // 1) Ollama-nativ (/api/chat) mit abgeschaltetem Denken — nur bei einer
+  //    Ollama-Basis. Bei vLLM/anderen OpenAI-Servern direkt zu Pfad 2 springen.
   const nativeBase = base.replace(/\/v1$/, "");
-  {
+  if (looksLikeOllama(base)) {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
