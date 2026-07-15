@@ -2,6 +2,9 @@ import { chat, llmInfo } from "./llm.js";
 import { getCaseContext, listCases } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { listMessagesForCase } from "./store.js";
+import { getLetterSettings } from "./letterSettings.js";
+import { getProfile } from "../qm/books.js";
+import { getFachrichtung } from "../qm/catalog.js";
 
 // AI letter drafting that draws on the SHARED BRAIN. Nadine gathers context from
 // phone calls / the case thread, related e-mails, and an uploaded/pasted source
@@ -128,7 +131,7 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
 
 const FALLBACK_NOTE = "[KI-Modell nicht erreichbar — Vorlage aus Kontext. Bitte Text ergänzen.]";
 
-function fallbackDraft({ direction, recipient, context }) {
+function fallbackDraft({ direction, recipient, context, signature }) {
   const name = (recipient || "").split(/\r?\n/)[0]?.trim() || "";
   const subject = clip((direction || "Ihr Anliegen").replace(/[\r\n]+/g, " "), 60);
   const body = [
@@ -140,7 +143,7 @@ function fallbackDraft({ direction, recipient, context }) {
     context && context !== "(kein Kontext vorhanden)" ? "Kontext lag vor (siehe Vorgang)." : "",
     "",
     "Mit freundlichen Grüßen",
-    "Ihr Praxisteam",
+    signature || "",
   ].filter((l) => l !== "").join("\n");
   return { subject, body };
 }
@@ -158,6 +161,37 @@ function parseLetterJson(text) {
 }
 
 /**
+ * Who is Nadine writing FOR? Derived from the logged-in tenant — never
+ * hardcoded to a dental practice. Organisation name + optional signature come
+ * from the letterhead settings; an optional branch label comes from the QM
+ * practice profile (Fachrichtung). Any/all fields may be empty: then Nadine is
+ * simply a neutral professional writer, which also fits a non-medical sender.
+ *
+ * @param {string} clientId
+ * @returns {Promise<{orgName:string, branchLabel:string|null, signature:string|null}>}
+ */
+async function loadSenderProfile(clientId) {
+  const out = { orgName: "", branchLabel: null, signature: null };
+  try {
+    const [settings, profile] = await Promise.all([
+      getLetterSettings(clientId).catch(() => null),
+      getProfile(clientId).catch(() => null),
+    ]);
+    if (settings) {
+      out.orgName = String(settings.senderName || "").trim();
+      const sigName = String(settings.signatureName || "").trim();
+      const sigRole = String(settings.signatureRole || "").trim();
+      if (sigName) out.signature = sigRole ? `${sigName}, ${sigRole}` : sigName;
+    }
+    if (profile?.fachrichtung) {
+      const f = getFachrichtung(profile.fachrichtung);
+      if (f?.label) out.branchLabel = f.label;
+    }
+  } catch { /* any read error → neutral profile, never block the draft */ }
+  return out;
+}
+
+/**
  * Draft a letter from a rough direction + brain context.
  * @returns {Promise<{ok:boolean, subject:string, body:string, contextUsed:object, model:string, fallback:boolean, reason?:string}>}
  */
@@ -166,18 +200,25 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
     ? await assembleContext(clientId, { caseId, patientName, sourceText })
     : { contextText: (sourceText && sourceText.trim()) ? "## Hochgeladener/zitierter Brief\n" + clip(sourceText, 4000) : "(kein Kontext vorhanden)", caseId: null, patient: patientName || null, counts: { calls: 0, emails: 0 }, sourceIncluded: !!(sourceText && sourceText.trim()) };
 
+  const sp = await loadSenderProfile(clientId);
+  const closing = sp.signature
+    ? `Beende den Brief mit der Grußformel „Mit freundlichen Grüßen“ und darunter der Signatur „${sp.signature}“.`
+    : "Beende den Brief mit der Grußformel „Mit freundlichen Grüßen“ ohne erfundene Personennamen — die Unterschrift/Signatur ergänzt der Absender selbst.";
+
   const system = [
-    "Du bist Nadine, die Schreib-Assistentin einer deutschen Zahnarztpraxis.",
-    "Schreibe einen professionellen, höflichen Brief auf Deutsch (Sie-Form).",
-    "Nutze AUSSCHLIESSLICH die bereitgestellten Fakten aus Kontext und Quelle — erfinde nichts, keine erfundenen Beträge/Diagnosen.",
-    "Schlage NIEMALS konkrete Termine, Daten oder Uhrzeiten vor, die nicht ausdrücklich im Kontext stehen — bitte stattdessen höflich um einen Terminwunsch.",
+    "Du bist Nadine, eine professionelle Schreibkraft. Du verfasst im Auftrag des Absenders Briefe und E-Mails.",
+    sp.orgName ? `Absender ist ${sp.orgName}${sp.branchLabel ? ` (${sp.branchLabel})` : ""}.` : "",
+    "Schreibe professionell, höflich und präzise auf Deutsch (Sie-Form).",
+    "Nutze AUSSCHLIESSLICH die bereitgestellten Fakten aus Kontext und Quelle — erfinde nichts, keine erfundenen Beträge, Daten oder Namen.",
+    "Gehe KONKRET auf das Eingangsschreiben ein: greife dessen Anliegen, Fragen und — falls vorhanden — Aktenzeichen/Bezug ausdrücklich auf.",
+    "Schlage NIEMALS konkrete Termine, Daten oder Uhrzeiten vor, die nicht ausdrücklich im Kontext stehen.",
     "Wenn eine Information fehlt, formuliere neutral oder bitte höflich um die fehlende Angabe.",
     tone ? `Tonfall: ${tone}.` : "Tonfall: sachlich, freundlich, verbindlich.",
-    "WICHTIG: Füge KEINEN Briefkopf, KEINE Absenderadresse, KEINE Telefonnummer/E-Mail und KEINE erfundenen Namen hinzu — Briefkopf und Unterschrift ergänzt die Praxis automatisch.",
-    "Beende den Brief mit der Grußformel 'Mit freundlichen Grüßen' und einer Zeile 'Ihr Praxisteam' (keine erfundenen Personennamen).",
+    "WICHTIG: Füge KEINEN Briefkopf, KEINE Absenderadresse und KEINE Telefonnummer/E-Mail hinzu — Briefkopf und Signatur ergänzt der Absender automatisch.",
+    closing,
     "Antworte NUR mit JSON in genau diesem Format: {\"subject\": \"…\", \"body\": \"…\"}.",
     "Der body enthält nur Anrede, Fließtext und Grußformel mit Zeilenumbrüchen (\\n).",
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 
   const user = [
     direction ? `RICHTUNG / AUFTRAG:\n${direction}` : "RICHTUNG / AUFTRAG:\n(keine — formuliere ein passendes, neutrales Schreiben aus dem Kontext)",
@@ -202,7 +243,7 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
   );
 
   if (!res.ok) {
-    return { ok: false, ...fallbackDraft({ direction, recipient, context: ctx.contextText }), contextUsed: ctx, model: res.model, fallback: true, reason: res.reason };
+    return { ok: false, ...fallbackDraft({ direction, recipient, context: ctx.contextText, signature: sp.signature }), contextUsed: ctx, model: res.model, fallback: true, reason: res.reason };
   }
 
   const parsed = parseLetterJson(res.text);
@@ -223,7 +264,7 @@ export async function rewritePassage(clientId, { selection, instruction, fullTex
   if (!ask) return { ok: false, reason: "no_instruction", text: "" };
 
   const system = [
-    "Du bist Nadine, die Schreib-Assistentin einer deutschen Zahnarztpraxis.",
+    "Du bist Nadine, eine professionelle Schreibkraft.",
     "Du bekommst eine MARKIERTE PASSAGE aus einem Brief und eine ANWEISUNG, wie sie geändert werden soll.",
     "Formuliere AUSSCHLIESSLICH die markierte Passage gemäß Anweisung um (Deutsch, Sie-Form).",
     "Erfinde keine neuen Fakten, Beträge, Diagnosen, Termine oder Namen.",
