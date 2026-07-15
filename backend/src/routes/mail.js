@@ -22,6 +22,7 @@ import { saveLetterAsset, getLetterAssetMeta, deleteLetterAsset, getLetterAssetB
 import { listBlocks, createBlock, updateBlock, deleteBlock, seedDefaultBlocks } from "../mail/letterBlocks.js";
 import { draftLetter, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
 import { extractText } from "../mail/extract.js";
+import { saveDocument } from "../mail/documents.js";
 import { log } from "../log.js";
 import { actorName, canManageAccount, canSeeMessage, logOutboundMail, mailAccess, renderArgs, resolveAnsweredEvent, resolveClientId } from "./_shared.js";
 
@@ -651,6 +652,41 @@ router.post("/mail/letter/extract", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
     const out = await extractText(req.body || {});
     res.json({ ok: out.ok, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Persistiere eine hochgeladene/eingefügte Unterlage DAUERHAFT im gemeinsamen
+// Gehirn und hänge sie an den passenden Vorgang — so fließt sie in FOLGE-Briefe
+// wieder als Kontext ein (nicht nur in den einen Entwurf). Body:
+// { text? | base64?, filename?, contentType?, patientName?, recipient?, caseId? }.
+// Nimmt Klartext direkt oder extrahiert vorher aus base64 (Text/PDF).
+router.post("/mail/documents", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const b = req.body || {};
+    let text = String(b.text || "").trim();
+    let kind = "text";
+    if (!text && b.base64) {
+      const ex = await extractText({ base64: b.base64, filename: b.filename, contentType: b.contentType });
+      if (!ex.ok || !ex.text) return res.json({ ok: false, clientId, reason: "no_text", note: ex.note || "Kein Text extrahierbar." });
+      text = ex.text;
+      kind = ex.kind || "text";
+    }
+    if (!text) return res.status(400).json({ error: "no_text" });
+    const saved = await saveDocument(clientId, {
+      text,
+      kind,
+      filename: b.filename,
+      patientName: b.patientName,
+      recipient: b.recipient,
+      caseId: b.caseId,
+      uploadedBy: actorName(req),
+    });
+    res.json({ ok: saved.ok, clientId, ...saved });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
