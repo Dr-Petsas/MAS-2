@@ -1,0 +1,569 @@
+{
+  "_meta": {
+    "description": "Versioniertes QM-Stammwissen (Recherche) fuer Julia. Pro Kategorie -> Plan -> Job: Zweck, Rechtsgrundlagen mit Fundstelle, Rechtsstand, Review-Intervall, Verantwortliche/Beauftragte, Interview-Verweis, Materialhinweis und erzeugte (wiederkehrende) Jobs. Diese Datei ist die EINE, aktualisierbare Quelle, aus der das Setup, die Regel-Engine und das Hybrid-Interview schoepfen. Sie enthaelt KEIN Mandantendatum. STAND: erster vollstaendiger Entwurf zum Gegenlesen - NOCH NICHT von catalog.js geladen, kein Live-Effekt (Wiring in einem spaeteren Schritt).",
+    "version": "1.0.0",
+    "stand": "2026-07-15",
+    "rechtlicherHinweis": "Strukturierte Arbeitshilfe, KEINE Rechtsberatung. Intervalle und Pflichten bilden den Stand der genannten Quellen ab. Die abschliessende fachliche und rechtliche Verantwortung fuer Vollstaendigkeit und Richtigkeit traegt die/der QM-Beauftragte bzw. die aerztliche Leitung der jeweiligen Praxis.",
+    "artifactKatalog": "Die Plan-/Buch-Schluessel (artifactKey) referenzieren qm-artifacts.json (1:1). Interview-Schluessel (interviewKey) referenzieren qm-wizards.json.",
+    "aktualisierung": {
+      "prinzip": "Aendert sich eine Rechtsgrundlage, wird der betroffene Plan hier mit neuem 'rechtsstand' + Changelog-Eintrag versioniert und die Top-Level-'version' erhoeht. Aktive Plaene mit aelterem rechtsstand werden im UI als 'Aktualisierung faellig' markiert und erzeugen einen Erneuerungs-Job.",
+      "turnus": "Mindestens jaehrliche Sichtung; ausserplanmaessig bei Gesetzes-/Richtlinienaenderung."
+    },
+    "changelog": [
+      { "datum": "2026-07-15", "version": "1.0.0", "was": "Erstfassung: alle 6 Kategorien, 24 Plaene/Buecher aus qm-artifacts.json erfasst; Praxisformen + geteilte-Jobs-Regelwerk dokumentiert." }
+    ]
+  },
+
+  "praxisformen": {
+    "description": "Bestimmt, wie viele eigenstaendige QM-Einheiten (Praxen) ein Mandant hat. In Julia werden Praxen explizit angelegt und benannt; jede Praxis fuehrt ihre eigenen Plaene/Jobs/Buecher.",
+    "formen": [
+      {
+        "key": "einzelpraxis",
+        "label": "Einzelpraxis",
+        "qmEinheiten": 1,
+        "hinweis": "Eine Praxis wird automatisch angelegt ('Meine Praxis'). Kein Mehraufwand."
+      },
+      {
+        "key": "bag",
+        "label": "Berufsausuebungsgemeinschaft (Gemeinschaftspraxis)",
+        "qmEinheiten": 1,
+        "hinweis": "Gemeinsame Berufsausuebung = EIN QM-Buchwerk fuer die BAG, mehrere Behandler teilen es."
+      },
+      {
+        "key": "praxisgemeinschaft",
+        "label": "Praxisgemeinschaft",
+        "qmEinheiten": "n",
+        "hinweis": "Jede/r Behandler/in ist eigenstaendig und muss auf Pruefung ein VOLLSTAENDIGES eigenes Buchwerk vorlegen. In Julia je Praxis eine eigene QM-Einheit anlegen (z. B. Dr. Petsas / Dr. Petrikis / Dr. Nikolaou). Geteilte Geraete/Raeume ueber 'teilbar'-Plaene abbilden."
+      }
+    ]
+  },
+
+  "geteilteJobsPolicy": {
+    "description": "Regelwerk gegen Push-Spam bei geteiltem Personal / identischen Aufgaben ueber mehrere Praxen. Grundsatz: Ausfuehrung und Nachweis trennen - 'einmal tun, mehrfach dokumentieren'.",
+    "regeln": [
+      "Ein wirklich geteilter Plan (dasselbe Geraet/derselbe Vorgang, z. B. ein Sterilisator, ein Roentgen) traegt teilbar=true und erzeugt EINEN Job mit Liste beteiligter praxisIds. Eine Person, ein Zeitpunkt, EIN Push.",
+      "Beim Erledigen eines geteilten Jobs wird der Nachweis in das Kontrollbuch JEDER beteiligten Praxis geschrieben (Fan-out, append-only, selber Ausfuehrungs-Zeitstempel).",
+      "Rechtlich getrennte, aber identische Aufgaben (z. B. eigene Personalunterweisung je Praxis): getrennte Buch-Eintraege je Praxis, aber Dedup auf der Zustell-Ebene - einmal abhaken -> Fan-out.",
+      "Dedup-Schluessel je (Empfaenger, Tag, Ausfuehrungs-ID) verhindert Doppelzustellung an dieselbe Person.",
+      "Push-Buendelung pro Person UND pro Praxis; jeder Job bleibt einzeln abhakbar (keine Sammelaufgabe, die Einzeljobs verdeckt)."
+    ]
+  },
+
+  "beauftragte": {
+    "description": "Gesetzlich/organisatorisch benannte Rollen. Werden je Praxis EINMAL benannt und gelten fuer alle Plaene ihrer Kategorie(n).",
+    "rollen": [
+      { "key": "hygienebeauftragte", "label": "Hygienebeauftragte/r", "kategorien": ["hygiene"], "grundlage": "KRINKO/RKI, Laenderhygieneverordnungen" },
+      { "key": "strahlenschutzbeauftragte", "label": "Strahlenschutzbeauftragte/r", "kategorien": ["patientensicherheit"], "grundlage": "StrlSchG §70, StrlSchV", "pflichtWenn": "roentgen" },
+      { "key": "medizinproduktebeauftragte", "label": "Beauftragte/r fuer Medizinproduktesicherheit (MPSB)", "kategorien": ["technik"], "grundlage": "MPBetreibV §6", "pflichtWenn": "einrichtungMitMehrAls20Beschaeftigten" },
+      { "key": "ersthelfer", "label": "Ersthelfer/in / Notfallbeauftragte/r", "kategorien": ["notfall"], "grundlage": "DGUV Vorschrift 1 §26" },
+      { "key": "sicherheitsbeauftragte", "label": "Sicherheits-/Gefahrstoffbeauftragte/r", "kategorien": ["arbeitsschutz"], "grundlage": "SGB VII §22, GefStoffV" },
+      { "key": "qm_beauftragte", "label": "QM-Beauftragte/r", "kategorien": ["organisation"], "grundlage": "G-BA QM-Richtlinie, §135a SGB V" },
+      { "key": "datenschutzbeauftragte", "label": "Datenschutzbeauftragte/r", "kategorien": ["organisation"], "grundlage": "DSGVO Art. 37, BDSG §38", "pflichtWenn": "mind10PersonenRegelmaessigeVerarbeitung" }
+    ]
+  },
+
+  "reprozessierungsKlassen": {
+    "description": "Hoechste Einstufung der aufzubereitenden Instrumente (KRINKO/BfArM 'Anforderungen an die Aufbereitung von Medizinprodukten'). Steuert Umfang von Sterilisationsbuch, validierten Prozessen und Aufbereitungs-SOP. Mit ausfuehrlicher Beschreibung, damit z. B. ein operativ taetiger Zahnarzt sich korrekt einstuft.",
+    "klassen": [
+      { "value": "", "label": "Keine eigene Aufbereitung", "beschreibung": "Es werden keine wiederverwendbaren Medizinprodukte selbst aufbereitet (nur Einmalprodukte oder externe Aufbereitung)." },
+      { "value": "unkritisch", "label": "Unkritisch", "beschreibung": "Produkte, die nur mit intakter Haut in Beruehrung kommen (z. B. Blutdruckmanschette, Ablageflaechen). Reinigung/Desinfektion genuegt, keine Sterilisation." },
+      { "value": "semikritisch_a", "label": "Semikritisch A", "beschreibung": "Kontakt mit Schleimhaut oder krankhaft veraenderter Haut, glatte Oberflaeche, leicht aufbereitbar (z. B. Mundspiegel, Abformloeffel). Reinigung + Desinfektion, ggf. thermisch." },
+      { "value": "semikritisch_b", "label": "Semikritisch B", "beschreibung": "Wie A, aber schwer aufbereitbar (enge/lange Lumen, komplexe Geometrie, z. B. Uebertragungsinstrumente/Winkelstuecke, flexible Endoskope ohne Gewebekontakt). Validierte, dokumentierte Verfahren erforderlich." },
+      { "value": "kritisch_a", "label": "Kritisch A", "beschreibung": "Durchdringen Haut/Schleimhaut, Kontakt mit Blut/Gewebe/inneren Organen, glatt und gut aufbereitbar (z. B. Skalpellgriffe, Pinzetten, Zangen). Reinigung/Desinfektion + Sterilisation (dampfsterilisiert), validiert." },
+      { "value": "kritisch_b", "label": "Kritisch B", "beschreibung": "Wie Kritisch A, aber schwer aufbereitbar (Hohlkoerper/Lumen, z. B. chirurgische Uebertragungsinstrumente, Trepanbohrer, OP-Sauger). Nur mit validierten Verfahren, hoehere Anforderungen an RDG/Autoklav (Klasse B) und Dokumentation. GILT AUCH FUER OPERATIV TAETIGE ZAHNAERZTE ohne Facharzttitel Oralchirurgie." }
+    ]
+  },
+
+  "kategorien": [
+    {
+      "key": "hygiene",
+      "label": "Hygiene",
+      "farbeHinweis": "Farbton wird pro erstelltem Plan vergeben, nicht pro Kategorie.",
+      "beauftragter": "hygienebeauftragte",
+      "rechtsgrundlagen": [
+        { "kurz": "IfSG §23", "fundstelle": "Infektionsschutzgesetz §23 (Einrichtungshygiene, Hygieneplan-Pflicht)" },
+        { "kurz": "KRINKO/RKI", "fundstelle": "KRINKO-Empfehlungen (Infektionspraevention in der Zahnheilkunde/ambulanten Medizin)" },
+        { "kurz": "DAHZ Rahmen-Hygieneplan", "fundstelle": "DAHZ/BZAEK Rahmen-Hygieneplan (jeweils aktuelle Fassung)" },
+        { "kurz": "BioStoffV / TRBA 250", "fundstelle": "Biostoffverordnung, TRBA 250 (Biologische Arbeitsstoffe im Gesundheitswesen)" },
+        { "kurz": "KRINKO/BfArM Aufbereitung", "fundstelle": "Anforderungen an die Aufbereitung von Medizinprodukten" }
+      ],
+      "plaene": [
+        {
+          "artifactKey": "hygiene_plan",
+          "titel": "Hygieneplan",
+          "zweck": "Zentrale schriftliche Festlegung aller Hygienemassnahmen (Haende, Flaechen, Instrumente, Wasser, Entsorgung, PSA). Pflicht fuer jede Praxis.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "hygienebeauftragte",
+          "interviewKey": "hygiene_plan",
+          "materialhinweis": "VAH-gelistete Haende-/Flaechendesinfektionsmittel, Dosierhilfen, PSA je Taetigkeit.",
+          "erzeugtJobs": [
+            { "titel": "Hygieneplan pruefen & aktualisieren", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "review" },
+            { "titel": "Hygiene-Unterweisung Team", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 14, "typ": "unterweisung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "cleaning_disinfection_plan",
+          "titel": "Reinigungs- und Desinfektionsplan",
+          "zweck": "Was wird wie, womit, wann, von wem gereinigt/desinfiziert - je Bereich (Behandlungszimmer, Aufbereitung, Labor, WC, Wartezimmer).",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "hygienebeauftragte",
+          "interviewKey": "cleaning_disinfection_plan",
+          "materialhinweis": "VAH-Flaechendesinfektion je Bereich, Einwirkzeiten laut Hersteller, Dosiertabelle.",
+          "erzeugtJobs": [
+            { "titel": "R+D-Plan pruefen & aktualisieren", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "review" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "sterilization_log",
+          "titel": "Sterilisationsbuch / Chargendokumentation",
+          "zweck": "Nachweis jeder Aufbereitungs-/Sterilisations-Charge inkl. Programm und Freigabe. Nur bei eigener Aufbereitung.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn eigene_sterilisation",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "hygienebeauftragte",
+          "interviewKey": "sterilization_log",
+          "materialhinweis": "Validierter Autoklav (Klasse B ab semikritisch B/kritisch), RDG, Indikatoren, Verpackung, Freigabeprotokoll.",
+          "erzeugtJobs": [
+            { "titel": "Chargendokumentation & Freigabe", "cycle": "perCharge", "rolle": "sterilgutassistenz", "leadDays": 0, "typ": "doku" },
+            { "titel": "Aufbereitungs-SOP pruefen", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "review" },
+            { "titel": "Routinepruefung/Validierung Aufbereitungsgeraete", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "pruefung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "op_hygiene_plan",
+          "titel": "OP-Hygieneplan (ambulantes Operieren)",
+          "zweck": "Erweiterter Hygieneplan fuer den separaten OP-Bereich; nur bei ambulanten Operationen.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn ambulant_operieren",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "hygienebeauftragte",
+          "interviewKey": "op_hygiene_plan",
+          "materialhinweis": "OP-Flaechendesinfektion, sterile Abdeckung, Schleusenregime, Aufbereitung OP-Instrumente (kritisch).",
+          "erzeugtJobs": [
+            { "titel": "OP-Hygieneplan pruefen & aktualisieren", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "review" },
+            { "titel": "Aufbereitung OP-Bereich", "cycle": "perUse", "rolle": "hygienebeauftragte", "leadDays": 0, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        }
+      ]
+    },
+
+    {
+      "key": "patientensicherheit",
+      "label": "Patientensicherheit",
+      "beauftragter": "strahlenschutzbeauftragte",
+      "rechtsgrundlagen": [
+        { "kurz": "StrlSchG", "fundstelle": "Strahlenschutzgesetz (Fachkunde, Beauftragte, Pruefungen)" },
+        { "kurz": "StrlSchV", "fundstelle": "Strahlenschutzverordnung" },
+        { "kurz": "QS-RL Roentgen", "fundstelle": "Richtlinie zur Qualitaetssicherung Roentgeneinrichtungen (Konstanzpruefung)" },
+        { "kurz": "G-BA QM-RL", "fundstelle": "Qualitaetsmanagement-Richtlinie (Notfall-, Fehler-, Risikomanagement)" },
+        { "kurz": "WHO SSC", "fundstelle": "WHO Surgical Safety Checklist" }
+      ],
+      "plaene": [
+        {
+          "artifactKey": "constancy_book",
+          "titel": "Konstanzpruefungsbuch (Roentgen)",
+          "zweck": "Regelmaessige Konstanzpruefung der Roentgeneinrichtung; Nachweis gleichbleibender Bildqualitaet/Dosis.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn roentgen",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "strahlenschutzbeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Pruefkoerper/Testphantom je Modalitaet (Zahnfilm/OPG/DVT), Protokollvorlage QS-RL.",
+          "intervallHinweis": "Frequenz modalitaetsabhaengig (z. B. arbeitstaeglich/monatlich); genauer Turnus laut QS-RL und Geraetehersteller.",
+          "erzeugtJobs": [
+            { "titel": "Konstanzpruefung Roentgen", "cycle": "monthly", "rolle": "strahlenschutzbeauftragte", "leadDays": 3, "typ": "pruefung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "radiation_expert_inspection",
+          "titel": "Sachverstaendigenpruefung Roentgen",
+          "zweck": "Wiederkehrende Pruefung der Roentgeneinrichtung durch behoerdlich bestimmte Sachverstaendige.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn roentgen",
+          "teilbar": true,
+          "reviewIntervalMonths": 60,
+          "verantwortlicheRolle": "strahlenschutzbeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Pruefbericht der/des Sachverstaendigen, Maengelabstellung dokumentieren.",
+          "erzeugtJobs": [
+            { "titel": "Sachverstaendigenpruefung Roentgen beauftragen", "cycle": "fiveYearly", "rolle": "strahlenschutzbeauftragte", "leadDays": 60, "typ": "pruefung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "radiation_protection_training",
+          "titel": "Strahlenschutz-Fortbildungsnachweis",
+          "zweck": "Aktualisierung der Fachkunde/Kenntnisse im Strahlenschutz alle 5 Jahre.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn roentgen",
+          "teilbar": false,
+          "reviewIntervalMonths": 60,
+          "verantwortlicheRolle": "strahlenschutzbeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Teilnahmebescheinigung anerkannter Kurs.",
+          "erzeugtJobs": [
+            { "titel": "Strahlenschutz-Fachkunde aktualisieren", "cycle": "fiveYearly", "rolle": "strahlenschutzbeauftragte", "leadDays": 90, "typ": "unterweisung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "temperature_log",
+          "titel": "Temperaturkontrollliste (Kuehlschrank)",
+          "zweck": "Taegliche Temperaturkontrolle von Impfstoff-/Medikamentenkuehlschrank zur Sicherung der Kuehlkette.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn impfstoff_kuehlschrank",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "qm_beauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Min/Max-Thermometer oder Datenlogger, Toleranzbereich 2-8 Grad C.",
+          "erzeugtJobs": [
+            { "titel": "Kuehlschranktemperatur dokumentieren", "cycle": "daily", "rolle": "assistenz", "leadDays": 0, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "op_checklist",
+          "titel": "OP-Checkliste (Team-Timeout)",
+          "zweck": "Sicherheits-Checkliste vor jedem Eingriff (Identitaet, Eingriff, Lokalisation, Einwilligung, Zaehlkontrolle).",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn ambulant_operieren",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "qm_beauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Checklistenvorlage (WHO-basiert) je Eingriff.",
+          "erzeugtJobs": [
+            { "titel": "OP-Timeout dokumentieren", "cycle": "perUse", "rolle": "behandler", "leadDays": 0, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "sedation_log",
+          "titel": "Sedierungs-/Analgosedierungsprotokoll",
+          "zweck": "Dokumentation von Sedierung/Narkose inkl. Monitoring, Nuechternheit, Entlasskriterien.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn narkose_sedierung",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "behandler",
+          "interviewKey": null,
+          "materialhinweis": "Monitoring (SpO2, RR, EKG), Notfallausstattung, Protokollvorlage laut S3-Leitlinie.",
+          "erzeugtJobs": [
+            { "titel": "Sedierung dokumentieren", "cycle": "perUse", "rolle": "behandler", "leadDays": 0, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "cirs_log",
+          "titel": "Fehler- und Risikoprotokoll (CIRS)",
+          "zweck": "Anlassbezogene Meldung und Auswertung kritischer Ereignisse/Beinahefehler.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "empfohlen",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "qm_beauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Anonymisiertes Meldeformular, Auswertungsrunde im Team.",
+          "erzeugtJobs": [
+            { "titel": "CIRS-Meldungen auswerten", "cycle": "quarterly", "rolle": "qm_beauftragte", "leadDays": 7, "typ": "review" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        }
+      ]
+    },
+
+    {
+      "key": "technik",
+      "label": "Technik & Geraete",
+      "beauftragter": "medizinproduktebeauftragte",
+      "rechtsgrundlagen": [
+        { "kurz": "MPBetreibV", "fundstelle": "Medizinprodukte-Betreiberverordnung (Bestandsverzeichnis, Medizinproduktebuch, Einweisung, STK/MTK)" },
+        { "kurz": "MPDG", "fundstelle": "Medizinprodukterecht-Durchfuehrungsgesetz" },
+        { "kurz": "MDR (EU) 2017/745", "fundstelle": "Medical Device Regulation (u. a. Sonderanfertigungen/Praxislabor)" }
+      ],
+      "plaene": [
+        {
+          "artifactKey": "medical_device_book",
+          "titel": "Medizinproduktebuch",
+          "zweck": "Geraetebezogene Dokumentation (Funktionspruefungen, Einweisungen, Instandhaltungen) fuer aktive MP.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn medizinprodukte_aktiv",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "medizinproduktebeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Geraeteliste, Bedienungsanleitungen, Einweisungsnachweise.",
+          "erzeugtJobs": [
+            { "titel": "Medizinproduktebuch pflegen", "cycle": "onEvent", "rolle": "medizinproduktebeauftragte", "leadDays": 0, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "device_inventory",
+          "titel": "Bestandsverzeichnis Medizinprodukte",
+          "zweck": "Vollstaendiges Verzeichnis aller aktiven nicht-implantierbaren Medizinprodukte.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn medizinprodukte_aktiv",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "medizinproduktebeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Hersteller, UMDNS/Typ, Seriennummer, Standort.",
+          "erzeugtJobs": [
+            { "titel": "Bestandsverzeichnis aktualisieren", "cycle": "yearly", "rolle": "medizinproduktebeauftragte", "leadDays": 30, "typ": "review" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "instruction_records",
+          "titel": "Einweisungsprotokolle",
+          "zweck": "Nachweis der Einweisung des Personals in aktive Medizinprodukte (vor erster Anwendung).",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn medizinprodukte_aktiv",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "medizinproduktebeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Einweisungsvorlage, Unterschrift eingewiesene Person + Einweiser.",
+          "erzeugtJobs": [
+            { "titel": "Einweisung neues Geraet/neue Person", "cycle": "onEvent", "rolle": "medizinproduktebeauftragte", "leadDays": 0, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "device_stk_log",
+          "titel": "Sicherheitstechnische Kontrolle (STK/MTK)",
+          "zweck": "Wiederkehrende sicherheits-/messtechnische Kontrolle von Geraeten mit entsprechender Pflicht.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn mp_anlage1",
+          "teilbar": true,
+          "reviewIntervalMonths": 24,
+          "verantwortlicheRolle": "medizinproduktebeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Pruefprotokolle, Fristen je Geraet (Herstellerangabe beachten).",
+          "erzeugtJobs": [
+            { "titel": "STK/MTK beauftragen", "cycle": "twoYearly", "rolle": "medizinproduktebeauftragte", "leadDays": 45, "typ": "pruefung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "praxislabor_mdr",
+          "titel": "Praxislabor / Sonderanfertigungen (MDR)",
+          "zweck": "Dokumentation von Eigenherstellung/Sonderanfertigungen inkl. Konformitaetserklaerung und Materialcharge.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "wenn labor_eigen",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "medizinproduktebeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Konformitaetserklaerung MDR Anhang XIII, Materialchargen-Nachweise.",
+          "erzeugtJobs": [
+            { "titel": "Sonderanfertigung dokumentieren", "cycle": "onEvent", "rolle": "behandler", "leadDays": 0, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        }
+      ]
+    },
+
+    {
+      "key": "notfall",
+      "label": "Notfall",
+      "beauftragter": "ersthelfer",
+      "rechtsgrundlagen": [
+        { "kurz": "G-BA QM-RL", "fundstelle": "QM-Richtlinie §4 (Notfallmanagement)" },
+        { "kurz": "DGUV Vorschrift 1", "fundstelle": "Grundsaetze der Praevention (Ersthelfer, Erste Hilfe)" }
+      ],
+      "plaene": [
+        {
+          "artifactKey": "emergency_checklist",
+          "titel": "Notfall-Checkliste (Notfallkoffer)",
+          "zweck": "Regelmaessige Kontrolle von Vollstaendigkeit und Verfallsdaten des Notfallkoffers/-medikamente.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "ersthelfer",
+          "interviewKey": null,
+          "materialhinweis": "Notfallmedikamente, Beatmungsbeutel, Sauerstoff, ggf. AED - mit Verfallsdaten-Liste.",
+          "erzeugtJobs": [
+            { "titel": "Notfallkoffer pruefen (Vollstaendigkeit/Verfall)", "cycle": "monthly", "rolle": "ersthelfer", "leadDays": 3, "typ": "pruefung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "emergency_plan",
+          "titel": "Notfallplan",
+          "zweck": "Schriftlicher Ablauf fuer medizinische Notfaelle (Rollen, Alarmierung, Ausruestung) + jaehrliches Training.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "ersthelfer",
+          "interviewKey": null,
+          "materialhinweis": "Notfallplan-Aushang, Notrufnummern, Zustaendigkeiten.",
+          "erzeugtJobs": [
+            { "titel": "Notfallplan pruefen & Notfalltraining", "cycle": "yearly", "rolle": "ersthelfer", "leadDays": 30, "typ": "unterweisung" },
+            { "titel": "Ersthelfer-Ausbildung auffrischen", "cycle": "twoYearly", "rolle": "ersthelfer", "leadDays": 60, "typ": "unterweisung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        }
+      ]
+    },
+
+    {
+      "key": "arbeitsschutz",
+      "label": "Arbeitsschutz",
+      "beauftragter": "sicherheitsbeauftragte",
+      "rechtsgrundlagen": [
+        { "kurz": "ArbSchG", "fundstelle": "Arbeitsschutzgesetz (Gefaehrdungsbeurteilung, Unterweisung)" },
+        { "kurz": "GefStoffV / TRGS 401", "fundstelle": "Gefahrstoffverordnung, TRGS 401 (Hautbelastung)" },
+        { "kurz": "BioStoffV / TRBA 250", "fundstelle": "Biostoffverordnung, TRBA 250" },
+        { "kurz": "DGUV Vorschrift 1", "fundstelle": "Grundsaetze der Praevention (Verbandbuch, Unterweisung)" }
+      ],
+      "plaene": [
+        {
+          "artifactKey": "skin_protection_plan",
+          "titel": "Hautschutzplan",
+          "zweck": "Festlegung von Hautschutz, -reinigung und -pflege je Taetigkeit; jaehrliche Unterweisung.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "sicherheitsbeauftragte",
+          "interviewKey": "skin_protection_plan",
+          "materialhinweis": "Hautschutz-/Hautpflegemittel, Schutzhandschuhe je Taetigkeit.",
+          "erzeugtJobs": [
+            { "titel": "Hautschutzplan pruefen & Unterweisung", "cycle": "yearly", "rolle": "sicherheitsbeauftragte", "leadDays": 14, "typ": "unterweisung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "hazardous_substances_register",
+          "titel": "Gefahrstoffverzeichnis",
+          "zweck": "Verzeichnis aller Gefahrstoffe inkl. Sicherheitsdatenblaetter und Einstufung.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "sicherheitsbeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Aktuelle Sicherheitsdatenblaetter, Gefahrstoffkennzeichnung.",
+          "erzeugtJobs": [
+            { "titel": "Gefahrstoffverzeichnis aktualisieren", "cycle": "yearly", "rolle": "sicherheitsbeauftragte", "leadDays": 30, "typ": "review" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "biohazard_register",
+          "titel": "Biostoffverzeichnis",
+          "zweck": "Verzeichnis der biologischen Arbeitsstoffe und Schutzmassnahmen (TRBA 250).",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": true,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "sicherheitsbeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Gefaehrdungsbeurteilung biologische Arbeitsstoffe, Impfangebot Hepatitis B.",
+          "erzeugtJobs": [
+            { "titel": "Biostoffverzeichnis & Gefaehrdungsbeurteilung pruefen", "cycle": "yearly", "rolle": "sicherheitsbeauftragte", "leadDays": 30, "typ": "review" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "accident_book",
+          "titel": "Verbandbuch / Unfallbuch",
+          "zweck": "Dokumentation von Erste-Hilfe-Leistungen und Arbeitsunfaellen (Aufbewahrung 5 Jahre).",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "sicherheitsbeauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Verbandbuch-Vorlage (datenschutzkonform), Aufbewahrung 5 Jahre.",
+          "erzeugtJobs": [
+            { "titel": "Erste-Hilfe-/Unfalleintrag", "cycle": "onEvent", "rolle": "ersthelfer", "leadDays": 0, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        }
+      ]
+    },
+
+    {
+      "key": "organisation",
+      "label": "Organisation",
+      "beauftragter": "qm_beauftragte",
+      "rechtsgrundlagen": [
+        { "kurz": "§135a SGB V", "fundstelle": "Verpflichtung zum einrichtungsinternen Qualitaetsmanagement" },
+        { "kurz": "G-BA QM-RL", "fundstelle": "Qualitaetsmanagement-Richtlinie" },
+        { "kurz": "ArbSchG", "fundstelle": "Arbeitsschutzgesetz (jaehrliche Unterweisung)" },
+        { "kurz": "DSGVO / BDSG", "fundstelle": "Datenschutz-Grundverordnung, Bundesdatenschutzgesetz" }
+      ],
+      "plaene": [
+        {
+          "artifactKey": "qm_handbook",
+          "titel": "QM-Handbuch",
+          "zweck": "Zentrale Zusammenstellung aller QM-Regelungen, Prozesse und Zustaendigkeiten der Praxis.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "qm_beauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Prozessbeschreibungen, Organigramm, Verantwortlichkeitsmatrix.",
+          "erzeugtJobs": [
+            { "titel": "QM-Handbuch/Managementbewertung pruefen", "cycle": "yearly", "rolle": "qm_beauftragte", "leadDays": 30, "typ": "review" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "training_register",
+          "titel": "Fortbildungs- und Schulungsverzeichnis",
+          "zweck": "Nachweis aller Fortbildungen/Unterweisungen des Teams; jaehrliche Pflicht-Unterweisungen.",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "immer",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "qm_beauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Teilnahmenachweise, Unterweisungsthemen-Liste.",
+          "erzeugtJobs": [
+            { "titel": "Jaehrliche Arbeitsschutz-Unterweisung", "cycle": "yearly", "rolle": "sicherheitsbeauftragte", "leadDays": 14, "typ": "unterweisung" },
+            { "titel": "Jaehrliche Datenschutz-Unterweisung", "cycle": "yearly", "rolle": "datenschutzbeauftragte", "leadDays": 14, "typ": "unterweisung" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        },
+        {
+          "artifactKey": "team_meeting_minutes",
+          "titel": "Teambesprechungsprotokolle",
+          "zweck": "Dokumentation regelmaessiger Teambesprechungen (Beschluesse, Massnahmen).",
+          "rechtsstand": "2026-07-15",
+          "pflicht": "empfohlen",
+          "teilbar": false,
+          "reviewIntervalMonths": 12,
+          "verantwortlicheRolle": "qm_beauftragte",
+          "interviewKey": null,
+          "materialhinweis": "Protokollvorlage, Massnahmenverfolgung.",
+          "erzeugtJobs": [
+            { "titel": "Teambesprechung protokollieren", "cycle": "quarterly", "rolle": "qm_beauftragte", "leadDays": 7, "typ": "doku" }
+          ],
+          "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
+        }
+      ]
+    }
+  ]
+}
