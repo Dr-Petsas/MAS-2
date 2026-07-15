@@ -540,8 +540,9 @@ router.post("/mail/letter", async (req, res) => {
 
 
 // KI-Schreibhilfe: draft a letter from a rough direction + the SHARED BRAIN
-// (phone calls / case thread, related e-mails) + an uploaded/pasted source letter.
-// Body: { caseId?, patientName?, recipient?, sourceText?, direction, tone? }
+// (phone calls / case thread, related e-mails, gespeicherte Unterlagen) + aus dem
+// Archiv gewählte frühere Briefe (sourceLetterIds) + ein hochgeladener Quelltext.
+// Body: { caseId?, patientName?, recipient?, sourceText?, sourceLetterIds?, direction, tone?, recipientType? }
 router.post("/mail/letter/ai-draft", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -552,6 +553,7 @@ router.post("/mail/letter/ai-draft", async (req, res) => {
       patientName: b.patientName,
       recipient: b.recipient,
       sourceText: b.sourceText,
+      sourceLetterIds: b.sourceLetterIds,
       direction: b.direction,
       tone: b.tone,
       recipientType: b.recipientType,

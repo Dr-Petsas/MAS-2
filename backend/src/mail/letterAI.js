@@ -3,6 +3,7 @@ import { getCaseContext, listCases } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { listMessagesForCase } from "./store.js";
 import { listDocumentsForCase } from "./documents.js";
+import { getLetter, listLetters } from "./letterArchive.js";
 import { getLetterSettings } from "./letterSettings.js";
 import { getProfile } from "../qm/books.js";
 import { getFachrichtung } from "../qm/catalog.js";
@@ -60,7 +61,7 @@ export async function letterContextSummary(clientId, { caseId, patientName } = {
   };
 }
 
-export async function assembleContext(clientId, { caseId, patientName, sourceText } = {}) {
+export async function assembleContext(clientId, { caseId, patientName, sourceText, sourceLetterIds } = {}) {
   let resolvedCaseId = (caseId || "").trim() || null;
   let patient = null;
 
@@ -78,6 +79,7 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
   let calls = 0;
   let emails = 0;
   let docs = 0;
+  let letters = 0;
   let sourceCategory = null; // Klassifizierung des Eingangsschreibens (steuert den Ton)
 
   if (resolvedCaseId) {
@@ -136,6 +138,35 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
     }
   }
 
+  // Frühere Briefe als Kontext: explizit aus dem Archiv gewählte (sourceLetterIds)
+  // PLUS automatisch die letzten Briefe DIESES Vorgangs — damit ein Folge-
+  // Schreiben an denselben Ton/Sachstand anknüpft, ohne dass man es manuell
+  // heraussuchen muss. Dedupe, Deckel auf 4 Briefe, jeweils gekappt.
+  {
+    const wanted = [];
+    const seen = new Set();
+    for (const id of Array.isArray(sourceLetterIds) ? sourceLetterIds : []) {
+      const key = String(id || "").trim();
+      if (key && !seen.has(key)) { seen.add(key); wanted.push(key); }
+    }
+    if (resolvedCaseId) {
+      const recent = await listLetters(clientId, { caseId: resolvedCaseId, limit: 3 }).catch(() => ({ items: [] }));
+      for (const it of recent.items || []) {
+        if (!seen.has(it.id)) { seen.add(it.id); wanted.push(it.id); }
+      }
+    }
+    const picked = (await Promise.all(wanted.slice(0, 4).map((id) => getLetter(clientId, id).catch(() => null)))).filter(Boolean);
+    letters = picked.length;
+    if (picked.length) {
+      const blocks = picked.map((l) => {
+        const when = l.ts ? new Date(l.ts).toLocaleDateString("de-DE") : "";
+        const head = `### An ${l.recipient?.split(/\r?\n/)[0] || l.patientName || "Unbekannt"}${when ? ` (${when})` : ""} — ${l.subject || "(kein Betreff)"}`;
+        return `${head}\n${clip(l.body, 1500)}`;
+      });
+      sections.push("## Frühere Briefe (als Kontext)\n" + blocks.join("\n\n"));
+    }
+  }
+
   if (sourceText && sourceText.trim()) {
     sections.push("## Hochgeladener/zitierter Brief (worauf geantwortet wird)\n" + clip(sourceText, 4000));
   }
@@ -145,7 +176,7 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
     caseId: resolvedCaseId,
     patient,
     sourceCategory,
-    counts: { calls, emails, docs },
+    counts: { calls, emails, docs, letters },
     sourceIncluded: !!(sourceText && sourceText.trim()),
   };
 }
@@ -259,10 +290,10 @@ function inferRecipientType(haystack) {
  *   wird er aus der Klassifizierung des Eingangsschreibens bzw. per Heuristik abgeleitet.
  * @returns {Promise<{ok:boolean, subject:string, body:string, contextUsed:object, model:string, fallback:boolean, reason?:string}>}
  */
-export async function draftLetter(clientId, { caseId, patientName, recipient, sourceText, direction, tone, recipientType, useContext = true } = {}) {
+export async function draftLetter(clientId, { caseId, patientName, recipient, sourceText, sourceLetterIds, direction, tone, recipientType, useContext = true } = {}) {
   const ctx = useContext
-    ? await assembleContext(clientId, { caseId, patientName, sourceText })
-    : { contextText: (sourceText && sourceText.trim()) ? "## Hochgeladener/zitierter Brief\n" + clip(sourceText, 4000) : "(kein Kontext vorhanden)", caseId: null, patient: patientName || null, sourceCategory: null, counts: { calls: 0, emails: 0 }, sourceIncluded: !!(sourceText && sourceText.trim()) };
+    ? await assembleContext(clientId, { caseId, patientName, sourceText, sourceLetterIds })
+    : { contextText: (sourceText && sourceText.trim()) ? "## Hochgeladener/zitierter Brief\n" + clip(sourceText, 4000) : "(kein Kontext vorhanden)", caseId: null, patient: patientName || null, sourceCategory: null, counts: { calls: 0, emails: 0, docs: 0, letters: 0 }, sourceIncluded: !!(sourceText && sourceText.trim()) };
 
   // Empfaengertyp: expliziter Wert > Kategorie des Eingangsschreibens > Heuristik.
   const rtype =
