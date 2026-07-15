@@ -43,16 +43,18 @@ async function prepareCaseDraftInner(clientId, caseId, { by = "Nadine" } = {}) {
     `Antwortschreiben zum Vorgang „${c.title}“ vorbereiten.`;
   const recipient = c.subject?.name || "";
 
-  // Confidentiality guard: only pull the patient's prior history into the draft
-  // when we are SURE who the patient is (a confirmed patientId). On an ambiguous/
-  // unmatched subject we draft from THIS matter only and flag it, so one
-  // patient's data can never bleed into a reply addressed to someone else.
+  // Confidentiality guard: we ALWAYS draft from THIS matter's own context
+  // (its thread, phone calls and the incoming letter) — that is scoped to a
+  // single case and can never bleed another patient's data in. What we gate on
+  // a confirmed identity is only whether we TRUST the recipient enough to skip
+  // the caution banner below; on an ambiguous subject we still use the case
+  // context but flag it for a human check before sending.
   const strongIdentity = !!c.subject?.patientId && c.subject?.matchStatus === "matched";
 
   let draft = null;
   let fallback = true;
   try {
-    const r = await draftLetter(clientId, { caseId, recipient, direction: instruction, useContext: strongIdentity });
+    const r = await draftLetter(clientId, { caseId, recipient, direction: instruction, useContext: true });
     if (r && r.body && !r.fallback) {
       draft = {
         channel: "email",

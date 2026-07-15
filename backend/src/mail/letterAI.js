@@ -14,6 +14,29 @@ function clip(s, n) {
   return t.length > n ? t.slice(0, n) + " …" : t;
 }
 
+// HTML-Mail auf sprechbaren/lesbaren Fliesstext reduzieren (fuer den Fall, dass
+// nur ein htmlBody vorliegt). Bewusst simpel — es geht um Kontext, nicht um
+// pixelgenaues Rendering.
+function htmlToText(html) {
+  return String(html || "")
+    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Bester verfuegbarer Klartext einer Mail: Textteil, sonst HTML entkernt, sonst
+// die Vorschau. So bekommt Nadine den ECHTEN Inhalt statt nur eines Snippets.
+function plainBody(m) {
+  const t = String(m?.textBody || "").trim();
+  if (t) return t;
+  const h = htmlToText(m?.htmlBody);
+  if (h) return h;
+  return String(m?.preview || "").trim();
+}
+
 /**
  * Pull together everything Nadine should know before writing.
  * @param {string} clientId
@@ -55,17 +78,37 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
     const ctx = await getCaseContext(clientId, resolvedCaseId).catch(() => null);
     if (ctx) {
       if (!patient) patient = ctx.case?.subject?.name || null;
-      calls = (ctx.events || []).length;
+      // "Telefonate" = echte Anruf-Kontakte (Bianca/Lisa), nicht jedes Event.
+      // Der Vorgangskontext enthaelt den Verlauf der Kontakte inkl. Anrufen —
+      // so fliessen Telefonate in jeden Brief-/Mail-Entwurf ein.
+      calls = (ctx.events || []).filter((e) => /call/i.test(e?.channel || "")).length;
       sections.push("## Vorgang & Telefonate\n" + ctx.contextText);
 
       const mail = await listMessagesForCase(clientId, resolvedCaseId).catch(() => []);
       emails = mail.length;
       if (mail.length) {
-        const lines = mail.map((m) => {
-          const who = m.direction === "out" ? "Gesendet an " + (m.to?.[0]?.address || "") : "Von " + (m.from?.name || m.from?.address || "");
-          return `- ${who}: ${m.subject || "(kein Betreff)"} — ${clip(m.preview || m.textBody, 200)}`;
-        });
-        sections.push("## Zugehörige E-Mails\n" + lines.join("\n"));
+        // Das juengste EINGEGANGENE Schreiben ist das, worauf geantwortet wird —
+        // es kommt im VOLLTEXT (gekappt), damit Nadine konkret darauf eingeht,
+        // statt nur auf einen 200-Zeichen-Anriss (Vorfall: zu unpraezise).
+        const inbound = mail.filter((m) => m.direction !== "out");
+        const primary = inbound.length ? inbound[inbound.length - 1] : null;
+        if (primary) {
+          const from = primary.from?.name || primary.from?.address || "unbekannt";
+          sections.push(
+            "## Eingangsschreiben, auf das geantwortet wird\n" +
+            `Von ${from}, Betreff: ${primary.subject || "(kein Betreff)"}\n\n` +
+            clip(plainBody(primary), 4000)
+          );
+        }
+        // Alle weiteren Mails (inkl. bereits gesendeter) nur als kurzer Anriss.
+        const rest = mail.filter((m) => m !== primary);
+        if (rest.length) {
+          const lines = rest.map((m) => {
+            const who = m.direction === "out" ? "Gesendet an " + (m.to?.[0]?.address || "") : "Von " + (m.from?.name || m.from?.address || "");
+            return `- ${who}: ${m.subject || "(kein Betreff)"} — ${clip(m.preview || plainBody(m), 200)}`;
+          });
+          sections.push("## Weitere zugehörige E-Mails\n" + lines.join("\n"));
+        }
       }
     }
   }
