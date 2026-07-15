@@ -76,6 +76,7 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
   const sections = [];
   let calls = 0;
   let emails = 0;
+  let sourceCategory = null; // Klassifizierung des Eingangsschreibens (steuert den Ton)
 
   if (resolvedCaseId) {
     const ctx = await getCaseContext(clientId, resolvedCaseId).catch(() => null);
@@ -96,6 +97,7 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
         const inbound = mail.filter((m) => m.direction !== "out");
         const primary = inbound.length ? inbound[inbound.length - 1] : null;
         if (primary) {
+          sourceCategory = primary.category || null;
           const from = primary.from?.name || primary.from?.address || "unbekannt";
           sections.push(
             "## Eingangsschreiben, auf das geantwortet wird\n" +
@@ -124,6 +126,7 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
     contextText: sections.join("\n\n") || "(kein Kontext vorhanden)",
     caseId: resolvedCaseId,
     patient,
+    sourceCategory,
     counts: { calls, emails },
     sourceIncluded: !!(sourceText && sourceText.trim()),
   };
@@ -191,14 +194,65 @@ async function loadSenderProfile(clientId) {
   return out;
 }
 
+// Register/Tonfall je Empfaengertyp. Nadine schreibt eben NICHT nur an Patienten,
+// sondern auch an Behoerden, Gerichte, Anwaelte, Versicherungen, Firmen und
+// Privatpersonen — jede Gruppe erwartet einen anderen Ton.
+const REGISTER = Object.freeze({
+  behoerde: "Empfänger ist eine Behörde bzw. ein Gericht: streng sachlich, formell und knapp, ohne Floskeln; nimm auf Aktenzeichen/Geschäftszeichen und Fristen ausdrücklich Bezug und halte dich exakt an die Faktenlage.",
+  anwalt: "Empfänger ist eine Anwaltskanzlei: formell, präzise und sachlich; mache KEINE Schuldeingeständnisse oder Zusagen ohne Deckung im Kontext; nimm auf Fristen und Aktenzeichen Bezug.",
+  versicherung: "Empfänger ist eine Versicherung/Krankenkasse: sachlich und strukturiert; nimm auf Versicherten-, Schaden- oder Vorgangsnummer Bezug, falls vorhanden.",
+  geschaeftlich: "Empfänger ist ein Unternehmen/Geschäftspartner: professionell-geschäftlicher, verbindlicher Ton.",
+  patient: "Empfänger ist eine Privatperson/ein Patient: persönlich, freundlich und gut verständlich, ohne Fachjargon.",
+});
+
+// Klassifizierungs-Kategorie des Eingangsschreibens -> Empfaengertyp.
+const CATEGORY_TO_TYPE = Object.freeze({
+  "Gerichtliche Klage": "behoerde",
+  "Forderungsmanagement": "anwalt",
+  "Rechnung": "geschaeftlich",
+  "Versicherung": "versicherung",
+  "Labor": "geschaeftlich",
+  "Praxissoftware": "geschaeftlich",
+  "Terminanfrage": "patient",
+  "Beschwerde": "patient",
+});
+
+function normalizeType(t) {
+  const v = String(t || "").trim().toLowerCase();
+  return REGISTER[v] ? v : null;
+}
+
+// Stichwort-Heuristik als letzte Instanz, wenn weder ein expliziter Typ noch
+// eine Kategorie vorliegt (z. B. Ad-hoc-Brief aus dem Editor ohne Vorgang).
+function inferRecipientType(haystack) {
+  const h = String(haystack || "").toLowerCase();
+  if (/(amtsgericht|landgericht|staatsanwalt|\bgericht\b|behörde|behoerde|\bamt\b|ordnungsamt|finanzamt|jugendamt|gesundheitsamt|kammer)/.test(h)) return "behoerde";
+  if (/(rechtsanwalt|rechtsanwält|anwalt|anwält|kanzlei|\brae\b)/.test(h)) return "anwalt";
+  if (/(versicherung|krankenkasse|krankenversicherung|beihilfe|\bkasse\b)/.test(h)) return "versicherung";
+  if (/(gmbh|\bag\b|\bkg\b|\bug\b|firma|labor|lieferant)/.test(h)) return "geschaeftlich";
+  return null;
+}
+
 /**
  * Draft a letter from a rough direction + brain context.
+ * @param {string} clientId
+ * @param {{caseId?:string, patientName?:string, recipient?:string, sourceText?:string, direction?:string, tone?:string, recipientType?:string, useContext?:boolean}} input
+ *   recipientType (optional): behoerde | anwalt | versicherung | geschaeftlich | patient. Fehlt er,
+ *   wird er aus der Klassifizierung des Eingangsschreibens bzw. per Heuristik abgeleitet.
  * @returns {Promise<{ok:boolean, subject:string, body:string, contextUsed:object, model:string, fallback:boolean, reason?:string}>}
  */
-export async function draftLetter(clientId, { caseId, patientName, recipient, sourceText, direction, tone, useContext = true } = {}) {
+export async function draftLetter(clientId, { caseId, patientName, recipient, sourceText, direction, tone, recipientType, useContext = true } = {}) {
   const ctx = useContext
     ? await assembleContext(clientId, { caseId, patientName, sourceText })
-    : { contextText: (sourceText && sourceText.trim()) ? "## Hochgeladener/zitierter Brief\n" + clip(sourceText, 4000) : "(kein Kontext vorhanden)", caseId: null, patient: patientName || null, counts: { calls: 0, emails: 0 }, sourceIncluded: !!(sourceText && sourceText.trim()) };
+    : { contextText: (sourceText && sourceText.trim()) ? "## Hochgeladener/zitierter Brief\n" + clip(sourceText, 4000) : "(kein Kontext vorhanden)", caseId: null, patient: patientName || null, sourceCategory: null, counts: { calls: 0, emails: 0 }, sourceIncluded: !!(sourceText && sourceText.trim()) };
+
+  // Empfaengertyp: expliziter Wert > Kategorie des Eingangsschreibens > Heuristik.
+  const rtype =
+    normalizeType(recipientType) ||
+    CATEGORY_TO_TYPE[ctx.sourceCategory] ||
+    inferRecipientType(`${recipient || ""} ${direction || ""}`) ||
+    null;
+  const registerLine = rtype ? REGISTER[rtype] : "";
 
   const sp = await loadSenderProfile(clientId);
   const closing = sp.signature
@@ -211,6 +265,7 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
     "Schreibe professionell, höflich und präzise auf Deutsch (Sie-Form).",
     "Nutze AUSSCHLIESSLICH die bereitgestellten Fakten aus Kontext und Quelle — erfinde nichts, keine erfundenen Beträge, Daten oder Namen.",
     "Gehe KONKRET auf das Eingangsschreiben ein: greife dessen Anliegen, Fragen und — falls vorhanden — Aktenzeichen/Bezug ausdrücklich auf.",
+    registerLine,
     "Schlage NIEMALS konkrete Termine, Daten oder Uhrzeiten vor, die nicht ausdrücklich im Kontext stehen.",
     "Wenn eine Information fehlt, formuliere neutral oder bitte höflich um die fehlende Angabe.",
     tone ? `Tonfall: ${tone}.` : "Tonfall: sachlich, freundlich, verbindlich.",

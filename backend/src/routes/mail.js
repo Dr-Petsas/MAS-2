@@ -552,6 +552,7 @@ router.post("/mail/letter/ai-draft", async (req, res) => {
       sourceText: b.sourceText,
       direction: b.direction,
       tone: b.tone,
+      recipientType: b.recipientType,
       useContext: b.useContext !== false,
     });
     res.json({ ok: true, clientId, ...out, llm: llmInfo() });
