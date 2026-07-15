@@ -69,15 +69,44 @@ async function visionOcr(buffer, contentType = "image/png", timeoutMs = 90000) {
   }
 }
 
-async function tesseractOcr(buffer) {
+// Grobe Format-Erkennung an den Magic-Bytes. Verhindert, dass abgeschnittene
+// oder Nicht-Bild-Daten überhaupt an Tesseract gehen (das wirft sonst teils
+// out-of-band und würde den Prozess crashen).
+function looksLikeImage(buffer) {
+  if (!buffer || buffer.length < 12) return false;
+  const b = buffer;
+  // PNG
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return true;
+  // JPEG
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return true;
+  // GIF
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return true;
+  // BMP
+  if (b[0] === 0x42 && b[1] === 0x4d) return true;
+  // TIFF (II* / MM*)
+  if ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 0x2a) || (b[0] === 0x4d && b[1] === 0x4d && b[2] === 0x00)) return true;
+  // WEBP (RIFF....WEBP)
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return true;
+  return false;
+}
+
+async function tesseractOcr(buffer, timeoutMs = 90000) {
+  if (!looksLikeImage(buffer)) {
+    return { ok: false, text: "", engine: "tesseract", note: "kein_bild" };
+  }
   const lang = String(process.env.MAS_OCR_LANG || "deu+eng").trim();
   const langPath = String(process.env.MAS_OCR_LANG_PATH || "").trim();
   let worker = null;
   try {
     const { createWorker } = await import("tesseract.js");
-    const opts = langPath ? { langPath } : undefined;
+    // errorHandler fängt Worker-Fehler, die Tesseract sonst per
+    // process.nextTick global wirft (createWorker.js) — würde den Prozess töten.
+    const opts = { errorHandler: () => { /* geschluckt, recognize rejectet ohnehin */ } };
+    if (langPath) opts.langPath = langPath;
     worker = await createWorker(lang, undefined, opts);
-    const { data } = await worker.recognize(buffer);
+    const recog = worker.recognize(buffer);
+    const guard = new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), timeoutMs));
+    const { data } = await Promise.race([recog, guard]);
     const text = String(data?.text || "").trim();
     if (!text) return { ok: false, text: "", engine: "tesseract", note: "leer" };
     return { ok: true, text, engine: "tesseract" };
