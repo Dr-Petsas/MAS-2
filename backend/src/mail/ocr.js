@@ -18,6 +18,7 @@
 //
 // Rückgabe immer { ok, text, engine, note? } — nie werfen, damit der Aufrufer
 // sauber auf den "bitte Text einfügen"-Hinweis zurückfallen kann.
+import fs from "node:fs";
 
 // keep_alive für Ollama parsen: reine Zahl -> Sekunden (0 = sofort entladen),
 // sonst Dauer-String ("30s", "5m") unverändert an Ollama durchreichen.
@@ -37,11 +38,37 @@ function visionCfg() {
   return {
     base,
     kind,
-    model: String(process.env.MAS_OCR_VISION_MODEL || "qwen3-vl").trim(),
+    model: String(process.env.MAS_OCR_VISION_MODEL || "qwen-vl").trim(),
     apiKey: String(process.env.MAS_OCR_VISION_API_KEY || "ollama").trim(),
-    // Default 0 = VL-Modell direkt nach der Anfrage aus dem VRAM entladen.
+    // Default 0 = VL-Modell direkt nach der Anfrage aus dem VRAM entladen (Ollama).
     keepAlive: parseKeepAlive(process.env.MAS_OCR_VISION_KEEP_ALIVE),
+    // On-demand-Container: URL, die den (gestoppten) VL-Container startet.
+    wakeUrl: String(process.env.MAS_OCR_VISION_WAKE_URL || "").trim() || null,
+    wakeMethod: String(process.env.MAS_OCR_VISION_WAKE_METHOD || "GET").trim().toUpperCase() === "POST" ? "POST" : "GET",
+    // Wie lange auf Bereitschaft warten, während der Container hochfährt (ms).
+    startupWaitMs: Math.max(0, Number(process.env.MAS_OCR_VISION_STARTUP_WAIT_MS || 0) || 0),
   };
+}
+
+// On-demand-Container anstupsen und auf Bereitschaft warten. No-op, wenn weder
+// Wake-URL noch Startup-Wartezeit gesetzt sind (dann verhält sich alles wie
+// gegen ein bereits laufendes Endpoint). Der Container STOPPT sich selbst per
+// Idle-Timeout (Box-Seite) -> VRAM wird danach automatisch frei.
+async function ensureVlAwake(c) {
+  if (!c.wakeUrl && c.startupWaitMs <= 0) return;
+  if (c.wakeUrl) {
+    try { await fetch(c.wakeUrl, { method: c.wakeMethod }); } catch { /* Trigger best-effort */ }
+  }
+  if (c.startupWaitMs <= 0) return;
+  const deadline = Date.now() + c.startupWaitMs;
+  const modelsUrl = `${c.base}/models`;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(modelsUrl, { headers: { Authorization: `Bearer ${c.apiKey}` } });
+      if (r.ok) return;
+    } catch { /* noch nicht bereit */ }
+    await new Promise((res) => setTimeout(res, 2000));
+  }
 }
 
 const OCR_PROMPT =
@@ -125,6 +152,7 @@ async function visionOcrOpenai(c, buffer, contentType, timeoutMs) {
 async function visionOcr(buffer, contentType = "image/png", timeoutMs = 90000) {
   const c = visionCfg();
   if (!c) return { ok: false, text: "", engine: "vision", note: "kein Vision-Endpoint konfiguriert" };
+  await ensureVlAwake(c);
   return c.kind === "ollama"
     ? visionOcrOllama(c, buffer, timeoutMs)
     : visionOcrOpenai(c, buffer, contentType, timeoutMs);
@@ -151,12 +179,25 @@ function looksLikeImage(buffer) {
   return false;
 }
 
+// Lokalen langPath finden: explizit per Env, sonst das Arbeitsverzeichnis, WENN
+// dort die *.traineddata liegen (backend/deu.traineddata etc.). So bleibt OCR im
+// DSGVO-isolierten Netz OFFLINE — kein CDN-Download, kein Hänger bis Timeout.
+function resolveLangPath(lang) {
+  const explicit = String(process.env.MAS_OCR_LANG_PATH || "").trim();
+  if (explicit) return explicit;
+  const first = String(lang || "deu").split("+")[0].trim() || "deu";
+  try {
+    if (fs.existsSync(`${process.cwd()}/${first}.traineddata`)) return process.cwd();
+  } catch { /* egal — dann CDN-Default */ }
+  return "";
+}
+
 async function tesseractOcr(buffer, timeoutMs = 90000) {
   if (!looksLikeImage(buffer)) {
     return { ok: false, text: "", engine: "tesseract", note: "kein_bild" };
   }
   const lang = String(process.env.MAS_OCR_LANG || "deu+eng").trim();
-  const langPath = String(process.env.MAS_OCR_LANG_PATH || "").trim();
+  const langPath = resolveLangPath(lang);
   let worker = null;
   try {
     const { createWorker } = await import("tesseract.js");
@@ -202,6 +243,7 @@ export function ocrInfo() {
     visionKind: c?.kind || null,
     visionModel: c?.model || null,
     keepAlive: c ? c.keepAlive : null,
+    onDemand: c ? (!!c.wakeUrl || c.startupWaitMs > 0) : null,
     tesseractLang: String(process.env.MAS_OCR_LANG || "deu+eng").trim(),
   };
 }
