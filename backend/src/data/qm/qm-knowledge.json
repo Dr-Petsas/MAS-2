@@ -131,15 +131,22 @@
         },
         {
           "artifactKey": "sterilization_log",
-          "titel": "Sterilisationsbuch / Chargendokumentation",
-          "zweck": "Nachweis jeder Aufbereitungs-/Sterilisations-Charge inkl. Programm und Freigabe. Nur bei eigener Aufbereitung.",
+          "titel": "Instrumentenaufbereitung — Ablaufkette & Pruefungen",
+          "zweck": "Beschreibt die Aufbereitungs-Ablaufkette (Reinigung/Desinfektion, Verpackung, Sterilisation, Freigabe, Lagerung) und die wiederkehrenden Pruefungen als Jobs. Die einzelne Chargen-/Freigabedokumentation laeuft im Praxis-/Steri-Dokusystem (z. B. Dampsoft, MELAG MELAtrace/MELAdoc) und wird von Julia NICHT dupliziert.",
           "rechtsstand": "2026-07-15",
           "pflicht": "wenn eigene_sterilisation",
           "teilbar": true,
           "reviewIntervalMonths": 12,
           "verantwortlicheRolle": "hygienebeauftragte",
           "interviewKey": "sterilization_log",
-          "materialhinweis": "Validierter Autoklav (Klasse B ab semikritisch B/kritisch), RDG, Indikatoren, Verpackung, Freigabeprotokoll.",
+          "materialhinweis": "Validierter Autoklav (Klasse B ab semikritisch B/kritisch), RDG, Siegelgeraet, Chargen-Indikatoren, VE-Wasser, Sterilgut-Vorratsschrank.",
+          "dokumentationssystem": {
+            "frage": "Womit wird die Chargen-/Freigabedokumentation gefuehrt?",
+            "type": "enum",
+            "options": ["Dampsoft", "MELAG MELAtrace/MELAdoc", "DIOS", "SegoSoft", "Papier/manuell", "anderes"],
+            "allowOther": true,
+            "hinweis": "Nur zur Info hinterlegt — die Chargendoku bleibt in diesem System; Julia fuehrt keine Charge doppelt."
+          },
           "inventar": {
             "label": "Aufbereitungs-/Sterilisationsgeraete",
             "itemLabelSingular": "Geraet",
@@ -157,8 +164,11 @@
             ]
           },
           "erzeugtJobs": [
-            { "titel": "Chargendokumentation & Freigabe", "cycle": "perCharge", "rolle": "sterilgutassistenz", "leadDays": 0, "typ": "doku" },
-            { "titel": "Aufbereitungs-SOP pruefen", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "review" }
+            { "titel": "Aufbereitungs-SOP pruefen & aktualisieren", "cycle": "yearly", "rolle": "hygienebeauftragte", "leadDays": 30, "typ": "review" },
+            { "titel": "Tagesroutine Autoklav (Vakuum-/Bowie-Dick-Test)", "cycle": "workday", "rolle": "sterilgutassistenz", "leadDays": 0, "typ": "pruefung" },
+            { "titel": "Tuer-/Staubschutzdichtungen Autoklav & Steri-Schublade pruefen", "cycle": "quarterly", "rolle": "hygienebeauftragte", "leadDays": 7, "typ": "pruefung" },
+            { "titel": "Sterilgutlager/Vorratsschrank pruefen (Verpackung, Lagerdauer, Sauberkeit)", "cycle": "monthly", "rolle": "sterilgutassistenz", "leadDays": 3, "typ": "pruefung" },
+            { "titel": "Wasserqualitaet (VE-Wasser) pruefen", "cycle": "monthly", "rolle": "hygienebeauftragte", "leadDays": 3, "typ": "pruefung" }
           ],
           "changelog": [ { "datum": "2026-07-15", "was": "Erfasst." } ]
         },

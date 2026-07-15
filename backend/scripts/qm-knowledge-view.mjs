@@ -67,6 +67,7 @@ function planCard(p) {
       </div>
       ${p.intervallHinweis ? `<div class="hint">Hinweis: ${esc(p.intervallHinweis)}</div>` : ""}
       ${p.materialhinweis ? `<div class="mat"><b>Material:</b> ${esc(p.materialhinweis)}</div>` : ""}
+      ${p.dokumentationssystem ? `<div class="mat"><b>Dokumentiert mit:</b> „${esc(p.dokumentationssystem.frage)}" — ${esc((p.dokumentationssystem.options || []).join(", "))}</div>` : ""}
       ${inv}
       ${jobs ? `<table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>${jobs}</tbody></table>` : ""}
     </div>`;
