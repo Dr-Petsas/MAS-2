@@ -207,11 +207,18 @@ async function tesseractOcr(buffer, timeoutMs = 90000) {
     if (langPath) opts.langPath = langPath;
     worker = await createWorker(lang, undefined, opts);
     const recog = worker.recognize(buffer);
-    const guard = new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), timeoutMs));
-    const { data } = await Promise.race([recog, guard]);
-    const text = String(data?.text || "").trim();
-    if (!text) return { ok: false, text: "", engine: "tesseract", note: "leer" };
-    return { ok: true, text, engine: "tesseract" };
+    // Guard-Timer merken und IMMER löschen — sonst hält der Timeout-Timer den
+    // Prozess bis zum Ablauf am Leben, auch wenn recognize längst zurück ist.
+    let guardTimer;
+    const guard = new Promise((_, rej) => { guardTimer = setTimeout(() => rej(new Error("timeout")), timeoutMs); });
+    try {
+      const { data } = await Promise.race([recog, guard]);
+      const text = String(data?.text || "").trim();
+      if (!text) return { ok: false, text: "", engine: "tesseract", note: "leer" };
+      return { ok: true, text, engine: "tesseract" };
+    } finally {
+      clearTimeout(guardTimer);
+    }
   } catch (e) {
     return { ok: false, text: "", engine: "tesseract", note: String(e?.message || e).slice(0, 120) };
   } finally {
