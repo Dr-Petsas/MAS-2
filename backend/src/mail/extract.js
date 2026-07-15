@@ -1,7 +1,9 @@
 // Extract plain text from an uploaded letter so Nadine can "answer" it. Supports
-// plain text and PDF (text-layer). Image-only/scanned PDFs need OCR which is not
-// wired yet — we return a clear hint instead of failing, so the user can still
-// paste the text manually.
+// plain text, PDF (text-layer) and — per Hybrid-OCR (Vision-Endpoint bzw. lokal
+// Tesseract) — Bilder. Gescannte PDFs OHNE Textlayer werden ehrlich mit einem
+// Hinweis quittiert (Rasterung braucht zusätzliche Abhängigkeiten); ein Foto/
+// Scan als Bild (JPG/PNG) läuft dagegen durch die OCR.
+import { ocrImage } from "./ocr.js";
 
 function guessKind(filename = "", contentType = "") {
   const ct = String(contentType).toLowerCase();
@@ -35,14 +37,17 @@ export async function extractText({ base64, text, filename, contentType } = {}) 
       const data = await pdfParse(buf);
       const t = String(data?.text || "").trim();
       if (t) return { ok: true, text: t, kind: "pdf" };
-      return { ok: false, text: "", kind: "pdf", note: "PDF enthält keinen Text-Layer (vermutlich gescannt). Bitte Text einfügen oder OCR nutzen." };
+      return { ok: false, text: "", kind: "pdf", note: "PDF enthält keinen Text-Layer (vermutlich gescannt). Bitte als Bild (JPG/PNG) hochladen oder Text einfügen." };
     } catch (e) {
       return { ok: false, text: "", kind: "pdf", note: "PDF-Textextraktion nicht verfügbar (" + String(e?.message || e).slice(0, 80) + "). Bitte Text einfügen." };
     }
   }
 
   if (kind === "image") {
-    return { ok: false, text: "", kind: "image", note: "Bild erkannt — OCR ist noch nicht aktiviert. Bitte den Brieftext einfügen." };
+    // Hybrid-OCR: Vision-Endpoint (5090-VL, falls konfiguriert) sonst Tesseract.
+    const ocr = await ocrImage(buf, { contentType });
+    if (ocr.ok && ocr.text) return { ok: true, text: ocr.text, kind: "image", ocrEngine: ocr.engine };
+    return { ok: false, text: "", kind: "image", note: "Bild erkannt, aber OCR lieferte keinen Text (" + (ocr.note || ocr.engine) + "). Bitte den Brieftext einfügen." };
   }
 
   // Last resort: try to read as UTF-8 text.
