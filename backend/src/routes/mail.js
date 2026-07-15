@@ -23,6 +23,7 @@ import { listBlocks, createBlock, updateBlock, deleteBlock, seedDefaultBlocks } 
 import { draftLetter, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
 import { extractText } from "../mail/extract.js";
 import { saveDocument } from "../mail/documents.js";
+import { archiveLetter, listLetters, getLetter } from "../mail/letterArchive.js";
 import { log } from "../log.js";
 import { actorName, canManageAccount, canSeeMessage, logOutboundMail, mailAccess, renderArgs, resolveAnsweredEvent, resolveClientId } from "./_shared.js";
 
@@ -598,46 +599,132 @@ router.post("/mail/letter/ai-rewrite", async (req, res) => {
 
 
 // Write a FINISHED letter into the SHARED BRAIN (ticket/case), threaded onto the
-// recipient's patient case so Clara & the briefing see it. Default behaviour when
-// a letter is finalised; the editor's "Privat" switch skips this call entirely.
-// Body: { recipient?, patientName?, subject?, body?, private? }.
+// recipient's patient case so Clara & the briefing see it — UND immer ins
+// Briefarchiv (mas_letters, Volldatensatz inkl. Input/Kontext) für Folge-Briefe.
+// Der "Privat"-Schalter (private:true) archiviert weiterhin, überspringt aber
+// den Gehirn-Eintrag (kein Event, keine Vorgang-Verknüpfung, nicht an Clara).
+// Body: { recipient?, patientName?, subject?, body?, private?, recipientType?,
+//   direction?, tone?, sourceText?, sourceLetterIds?, contextText?, model?,
+//   contextCounts? }.
 router.post("/mail/letter/log", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
     if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
     const b = req.body || {};
-    if (b.private === true) return res.json({ ok: true, clientId, logged: false, reason: "private" });
-
+    const by = actorName(req);
     const clip = (s, n) => { const t = String(s || "").trim(); return t.length > n ? t.slice(0, n) + " …" : t; };
     const nameHint = String(b.patientName || "").trim() || String(b.recipient || "").split(/\r?\n/)[0]?.trim() || "";
-    let subject = { name: nameHint };
-    let isPatient = false;
-    if (nameHint) {
-      const subj = await resolvePatientSubject(clientId, nameHint).catch(() => null);
-      if (subj?.patientId) { subject = { patientId: subj.patientId, name: subj.name || nameHint, matchStatus: "matched", matchMethod: subj.matchMethod || "name" }; isPatient = true; }
+
+    let eventId = null;
+    let caseId = null;
+
+    // Privat: NICHT ins Gehirn — nur archivieren.
+    if (b.private !== true) {
+      let subject = { name: nameHint };
+      let isPatient = false;
+      if (nameHint) {
+        const subj = await resolvePatientSubject(clientId, nameHint).catch(() => null);
+        if (subj?.patientId) { subject = { patientId: subj.patientId, name: subj.name || nameHint, matchStatus: "matched", matchMethod: subj.matchMethod || "name" }; isPatient = true; }
+      }
+
+      const summary = [
+        `Brief an ${nameHint || "(unbekannt)"} — Betreff „${b.subject || "(kein Betreff)"}“${by !== "Nadine" ? ` (verfasst durch ${by})` : ""}`,
+        clip(b.body, 1200) || "(kein Text)",
+      ].join("\n\n");
+
+      const { event } = await appendEvent(clientId, {
+        channel: "nadine_letter",
+        direction: "out",
+        type: "interaction",
+        counterparty: { kind: isPatient ? "patient" : "unknown", name: nameHint || "Unbekannt", ref: null },
+        subject,
+        summary,
+        extractor: "nadine@letter",
+        payloadRef: { kind: "letter", subject: b.subject || "", body: clip(b.body, 8000) },
+      });
+      eventId = event.id;
+
+      let caseLink = null;
+      try { caseLink = await linkEventToCase(clientId, event, { by }); } catch (err) { caseLink = { error: String(err?.message || err) }; }
+      caseId = caseLink?.caseId || null;
     }
 
-    const by = actorName(req);
-    const summary = [
-      `Brief an ${nameHint || "(unbekannt)"} — Betreff „${b.subject || "(kein Betreff)"}“${by !== "Nadine" ? ` (verfasst durch ${by})` : ""}`,
-      clip(b.body, 1200) || "(kein Text)",
-    ].join("\n\n");
+    // Immer ins Archiv (Volldatensatz für Folge-Briefe). Best-effort: ein
+    // Archiv-Fehler darf den Gehirn-Eintrag nicht rückgängig machen.
+    let letterId = null;
+    try {
+      const arch = await archiveLetter(clientId, {
+        recipient: b.recipient,
+        patientName: nameHint,
+        caseId,
+        recipientType: b.recipientType,
+        subject: b.subject,
+        body: b.body,
+        private: b.private === true,
+        direction: b.direction,
+        tone: b.tone,
+        sourceText: b.sourceText,
+        sourceLetterIds: b.sourceLetterIds,
+        contextText: b.contextText,
+        model: b.model,
+        contextCounts: b.contextCounts,
+        eventId,
+        createdBy: by,
+      });
+      letterId = arch.id;
+    } catch (err) { /* Archiv best-effort */ }
 
-    const { event } = await appendEvent(clientId, {
-      channel: "nadine_letter",
-      direction: "out",
-      type: "interaction",
-      counterparty: { kind: isPatient ? "patient" : "unknown", name: nameHint || "Unbekannt", ref: null },
-      subject,
-      summary,
-      extractor: "nadine@letter",
-      payloadRef: { kind: "letter", subject: b.subject || "", body: clip(b.body, 8000) },
+    res.json({ ok: true, clientId, logged: b.private !== true, eventId, caseId, letterId });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Briefarchiv: Liste (neueste zuerst, Filter q/patientName/caseId, Cursor-
+// paginiert) und Detail (Volldatensatz inkl. Input/Kontext).
+router.get("/mail/letters", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const out = await listLetters(clientId, {
+      q: req.query.q,
+      patientName: req.query.patientName,
+      caseId: req.query.caseId,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      cursor: req.query.cursor,
     });
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
 
-    let caseLink = null;
-    try { caseLink = await linkEventToCase(clientId, event, { by }); } catch (err) { caseLink = { error: String(err?.message || err) }; }
+router.get("/mail/letters/:id", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const letter = await getLetter(clientId, req.params.id);
+    if (!letter) return res.status(404).json({ error: "not_found", clientId });
+    res.json({ ok: true, clientId, letter });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
 
-    res.json({ ok: true, clientId, logged: true, eventId: event.id, caseId: caseLink?.caseId || null });
+// PDF eines archivierten Briefs — ON-DEMAND aus den gespeicherten Feldern neu
+// gerendert (nutzt IMMER das aktuelle Briefpapier/Layout des Mandanten).
+router.get("/mail/letters/:id/pdf", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const letter = await getLetter(clientId, req.params.id);
+    if (!letter) return res.status(404).json({ error: "not_found", clientId });
+    const { settings, letterhead, signatureImage, stampImage } = await renderArgs(clientId);
+    const buffer = await buildLetterPdf({ settings, letterhead, signatureImage, stampImage, to: letter.recipient || "", subject: letter.subject || "", body: letter.body || "" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${letterFilename(letter.subject || "Brief")}"`);
+    res.end(buffer);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
