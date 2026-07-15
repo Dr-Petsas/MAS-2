@@ -2,6 +2,7 @@ import { chat, llmInfo, strongLlm } from "./llm.js";
 import { getCaseContext, listCases } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { listMessagesForCase } from "./store.js";
+import { listDocumentsForCase } from "./documents.js";
 import { getLetterSettings } from "./letterSettings.js";
 import { getProfile } from "../qm/books.js";
 import { getFachrichtung } from "../qm/catalog.js";
@@ -76,6 +77,7 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
   const sections = [];
   let calls = 0;
   let emails = 0;
+  let docs = 0;
   let sourceCategory = null; // Klassifizierung des Eingangsschreibens (steuert den Ton)
 
   if (resolvedCaseId) {
@@ -115,6 +117,22 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
           sections.push("## Weitere zugehörige E-Mails\n" + lines.join("\n"));
         }
       }
+
+      // Dauerhaft gespeicherte Unterlagen dieses Vorgangs (Uploads/Scans, Block
+      // E). Der 5090-Steckbrief (digest, Block F) kommt bevorzugt zum Einsatz —
+      // sonst der Volltext gekappt. So "erinnert" sich ein FOLGE-Brief an alles,
+      // was zu diesem Vorgang je hochgeladen wurde.
+      const documents = await listDocumentsForCase(clientId, resolvedCaseId, 5).catch(() => []);
+      docs = documents.length;
+      if (documents.length) {
+        const blocks = documents.map((d) => {
+          const head = `### ${d.filename || "Unterlage"}`;
+          const meta = d.digest ? "(Steckbrief)" : "(Auszug)";
+          const content = d.digest ? String(d.digest).trim() : clip(d.text, 2000);
+          return `${head} ${meta}\n${content}`;
+        });
+        sections.push("## Zugehörige Unterlagen\n" + blocks.join("\n\n"));
+      }
     }
   }
 
@@ -127,7 +145,7 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
     caseId: resolvedCaseId,
     patient,
     sourceCategory,
-    counts: { calls, emails },
+    counts: { calls, emails, docs },
     sourceIncluded: !!(sourceText && sourceText.trim()),
   };
 }
