@@ -4,6 +4,7 @@ import { masCollection } from "../tenant.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { linkEventToCase } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
+import { chat, strongLlm } from "./llm.js";
 
 // ============================================================================
 // Hochgeladene/eingefügte Unterlagen (Briefe, PDFs, gescannte Schreiben), die
@@ -42,6 +43,44 @@ function docId(clientId, text, filename) {
   return `doc_${h}`;
 }
 
+// Ab dieser Länge lohnt eine 5090-Verdichtung; kürzere Unterlagen fließen
+// ohnehin im Volltext in den Kontext (kein Digest nötig).
+const DIGEST_MIN_CHARS = 1200;
+
+/**
+ * Verdichte eine Unterlage mit dem STARKEN 5090-Modell (qwen3.6) zu einem
+ * faktentreuen Steckbrief: Art/Absender, Kernanliegen, Forderungen/Fragen,
+ * Aktenzeichen, Fristen (mit Datum), Beträge. Erfindet nichts — fehlende
+ * Angaben werden weggelassen. Gibt "" zurück, wenn das Modell nicht erreichbar
+ * ist (Aufrufer nutzt dann den Volltext-Fallback).
+ *
+ * @param {string} text
+ * @param {{ baseUrl?:string, model?:string, timeoutMs?:number }} [opts]
+ * @returns {Promise<string>}
+ */
+export async function summarizeDocument(text, opts = {}) {
+  const body = clip(text, 16000);
+  if (!body) return "";
+  const s = strongLlm();
+  const res = await chat(
+    [
+      {
+        role: "system",
+        content:
+          "Du bist ein präziser Extraktor für eingehende Schreiben (Briefe, E-Mails, Bescheide, Rechnungen). " +
+          "Erstelle einen knappen deutschen Steckbrief in Stichpunkten mit — sofern vorhanden — genau diesen Punkten: " +
+          "Art/Absender des Schreibens; Kernanliegen; konkrete Forderungen oder Fragen; Aktenzeichen/Referenz; " +
+          "Fristen und Termine (mit exaktem Datum); Beträge (mit Währung). " +
+          "Übernimm Zahlen, Daten und Aktenzeichen WORTGETREU. Erfinde nichts — was nicht dasteht, lässt du weg. " +
+          "Keine Anrede, keine Floskeln, nur die Fakten.",
+      },
+      { role: "user", content: body },
+    ],
+    { temperature: 0.1, maxTokens: 500, timeoutMs: 90000, baseUrl: s.base, model: s.model }
+  );
+  return res.ok ? res.text : "";
+}
+
 /**
  * Persistiere eine Unterlage dauerhaft im gemeinsamen Gehirn und hänge sie an
  * den passenden Vorgang (über die Patienten-/Empfänger-Identität).
@@ -57,8 +96,15 @@ export async function saveDocument(clientId, input = {}) {
 
   const filename = String(input.filename || "").trim() || "Unterlage";
   const kind = String(input.kind || "").trim() || "text";
-  const digest = String(input.digest || "").trim() || null;
   const uploadedBy = String(input.uploadedBy || "").trim() || "Team";
+
+  // Lange Unterlagen: vom 5090 verstehen lassen (faktentreuer Steckbrief) statt
+  // sie später blind zu kappen. Scheitert das Modell, bleibt digest leer → der
+  // Kontext-Assembler fällt auf den Volltext zurück.
+  let digest = String(input.digest || "").trim() || null;
+  if (!digest && text.length >= DIGEST_MIN_CHARS) {
+    digest = (await summarizeDocument(text).catch(() => "")) || null;
+  }
   const nameHint =
     String(input.patientName || "").trim() ||
     String(input.recipient || "").split(/\r?\n/)[0]?.trim() ||
