@@ -9,6 +9,7 @@ import { encryptSecret, decryptSecret, maskSecret } from "./crypto.js";
 
 const { FieldValue } = admin.firestore;
 const COL = "mas_mail_accounts";
+const SIG_HTML_MAX = 200000; // gleiche Obergrenze wie die globale HTML-Signatur
 
 function col(clientId) {
   return masCollection(clientId, COL);
@@ -46,6 +47,10 @@ export function toPublic(doc) {
     lastSyncAt: doc.lastSyncAt || null,
     lastError: doc.lastError || null,
     passwordMask: maskSecret(doc.imapPasswordEnc),
+    // Konto-eigene E-Mail-Signatur (verhindert, dass ein Konto die falsche
+    // Signatur sendet). Leer = die globale Praxis-Signatur greift.
+    emailSignature: doc.emailSignature || "",
+    emailSignatureHtml: doc.emailSignatureHtml || "",
   };
 }
 
@@ -100,6 +105,8 @@ export async function createAccount(clientId, input = {}) {
     },
     imapPasswordEnc: input.imap?.password ? encryptSecret(input.imap.password) : "",
     smtpPasswordEnc: input.smtp?.password ? encryptSecret(input.smtp.password) : "",
+    emailSignature: s(input.emailSignature),
+    emailSignatureHtml: String(input.emailSignatureHtml || "").trim().slice(0, SIG_HTML_MAX),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     lastSyncAt: null,
@@ -119,6 +126,8 @@ export async function updateAccount(clientId, id, input = {}) {
   if (input.email != null) patch.email = s(input.email);
   if (input.active != null) patch.active = bool(input.active, true);
   if (input.ownerUserId != null) patch.ownerUserId = s(input.ownerUserId);
+  if (input.emailSignature != null) patch.emailSignature = s(input.emailSignature);
+  if (input.emailSignatureHtml != null) patch.emailSignatureHtml = String(input.emailSignatureHtml).trim().slice(0, SIG_HTML_MAX);
   if (input.visibility != null) {
     patch.visibility = s(input.visibility).toLowerCase() === "private" ? "private" : "praxis";
     const owner = input.ownerUserId != null ? s(input.ownerUserId) : s(cur.ownerUserId);

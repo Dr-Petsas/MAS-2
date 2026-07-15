@@ -632,10 +632,20 @@ export async function sendMail(clientId, accountId, { to, cc, bcc, subject, text
   const messageId = `<${randomUUID()}@${(from || "mas").split("@")[1] || "mas.local"}>`;
   let info = { messageId };
 
-  // Append the practice e-mail signature (settings.emailSignature) to every
-  // outgoing mail — covers Nadine's replies, manual sends and case sends.
-  const settings = await getLetterSettings(clientId).catch(() => ({}));
-  ({ text, html } = withSignature(text, html, { plain: settings?.emailSignature, htmlSig: settings?.emailSignatureHtml }));
+  // E-Mail-Signatur anhängen — an das SENDENDE Konto gekoppelt: hat das Konto
+  // eine eigene Signatur (Text ODER HTML), gilt AUSSCHLIESSLICH diese (kein
+  // Mischen von Konto-Text mit globalem HTML). Nur wenn das Konto gar keine
+  // Signatur hat, greift die globale Praxis-Signatur als Fallback. So kann ein
+  // Konto nie die Signatur eines anderen Kontos senden.
+  const accHasSig = !!(String(acc.emailSignature || "").trim() || String(acc.emailSignatureHtml || "").trim());
+  let sig;
+  if (accHasSig) {
+    sig = { plain: acc.emailSignature, htmlSig: acc.emailSignatureHtml };
+  } else {
+    const settings = await getLetterSettings(clientId).catch(() => ({}));
+    sig = { plain: settings?.emailSignature, htmlSig: settings?.emailSignatureHtml };
+  }
+  ({ text, html } = withSignature(text, html, sig));
 
   if (!DRY_RUN) {
     if (!acc.smtp?.host || !acc.smtp?.user || !acc.smtpPassword) {
