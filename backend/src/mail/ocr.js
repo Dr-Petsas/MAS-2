@@ -1,25 +1,46 @@
 // Hybrid-OCR für gescannte/fotografierte Unterlagen. Zwei Wege, in dieser
 // Reihenfolge — beide halten das Bild LOKAL (DSGVO):
 //
-//  1) Vision-Endpoint (optional, per Env): ein multimodales Modell auf dem
-//     5090-Server (z. B. Qwen-VL via vLLM) transkribiert das Bild. Bessere
-//     Qualität bei Layout/Handschrift. Nur aktiv, wenn MAS_OCR_VISION_BASE_URL
-//     gesetzt ist. qwen3.6:35b-a3b (das Schreib-Modell) ist ein TEXT-Modell und
-//     kann KEIN Bild lesen — dafür braucht es ein separates VL-Modell.
+//  1) Vision-Endpoint (optional, per Env): ein multimodales Modell (Qwen-VL)
+//     transkribiert das Bild. Bessere Qualität bei Layout/Handschrift. Nur aktiv,
+//     wenn MAS_OCR_VISION_BASE_URL gesetzt ist. Das Schreib-Modell qwen3.6 ist ein
+//     reines TEXT-Modell und kann KEIN Bild lesen — dafür braucht es ein VL-Modell.
+//
+//     Zwei Endpoint-Arten:
+//       - "ollama": /api/chat mit keep_alive. So bleibt qwen3.6 dauerhaft im vLLM,
+//         während das VL-Modell NUR bei Bedarf geladen und danach (keep_alive)
+//         automatisch wieder aus dem VRAM entladen wird. Empfohlen fürs 7B-VL.
+//       - "openai": /v1/chat/completions (vLLM & Co.) — Modell bleibt geladen.
+//     Auto-Erkennung: Port 11434 => ollama; sonst openai. Erzwingbar per
+//     MAS_OCR_VISION_KIND=ollama|openai.
 //  2) Tesseract (immer verfügbar): reines WASM, kein System-Binary, kein GPU.
-//     Läuft rein lokal; nur die Sprach-Trainingsdaten werden einmalig geladen
-//     (kein Patienteninhalt).
+//     Läuft rein lokal; nur die Sprach-Trainingsdaten werden einmalig geladen.
 //
 // Rückgabe immer { ok, text, engine, note? } — nie werfen, damit der Aufrufer
 // sauber auf den "bitte Text einfügen"-Hinweis zurückfallen kann.
 
+// keep_alive für Ollama parsen: reine Zahl -> Sekunden (0 = sofort entladen),
+// sonst Dauer-String ("30s", "5m") unverändert an Ollama durchreichen.
+function parseKeepAlive(raw) {
+  const s = String(raw ?? "0").trim();
+  if (s === "") return 0;
+  return /^\d+$/.test(s) ? Number(s) : s;
+}
+
 function visionCfg() {
   const base = String(process.env.MAS_OCR_VISION_BASE_URL || "").trim().replace(/\/+$/, "");
   if (!base) return null;
+  const kindEnv = String(process.env.MAS_OCR_VISION_KIND || "auto").trim().toLowerCase();
+  const kind = kindEnv === "ollama" || kindEnv === "openai"
+    ? kindEnv
+    : (/:11434(\/|$)/.test(base) ? "ollama" : "openai");
   return {
     base,
+    kind,
     model: String(process.env.MAS_OCR_VISION_MODEL || "qwen3-vl").trim(),
     apiKey: String(process.env.MAS_OCR_VISION_API_KEY || "ollama").trim(),
+    // Default 0 = VL-Modell direkt nach der Anfrage aus dem VRAM entladen.
+    keepAlive: parseKeepAlive(process.env.MAS_OCR_VISION_KEEP_ALIVE),
   };
 }
 
@@ -28,9 +49,43 @@ const OCR_PROMPT =
   "Behalte Absätze und Zeilenumbrüche grob bei. Gib NUR den reinen Text zurück — " +
   "keine Beschreibung, keine Einleitung, keine Kommentare. Wenn nichts lesbar ist, antworte mit einem leeren Text.";
 
-async function visionOcr(buffer, contentType = "image/png", timeoutMs = 90000) {
-  const c = visionCfg();
-  if (!c) return { ok: false, text: "", engine: "vision", note: "kein Vision-Endpoint konfiguriert" };
+function cleanReply(text) {
+  return String(text || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
+
+// Ollama-nativ: /api/chat mit images[] + keep_alive (on-demand laden, danach
+// per keep_alive automatisch entladen -> VRAM frei für das residente qwen3.6).
+async function visionOcrOllama(c, buffer, timeoutMs) {
+  const root = c.base.endsWith("/v1") ? c.base.slice(0, -3) : c.base;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const resp = await fetch(`${root}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.apiKey}` },
+      body: JSON.stringify({
+        model: c.model,
+        stream: false,
+        keep_alive: c.keepAlive,
+        options: { temperature: 0, num_predict: 4000 },
+        messages: [{ role: "user", content: OCR_PROMPT, images: [buffer.toString("base64")] }],
+      }),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) return { ok: false, text: "", engine: "vision-ollama", note: `http_${resp.status}` };
+    const data = await resp.json().catch(() => null);
+    const text = cleanReply(data?.message?.content);
+    if (!text) return { ok: false, text: "", engine: "vision-ollama", note: "leer" };
+    return { ok: true, text, engine: "vision-ollama" };
+  } catch (e) {
+    return { ok: false, text: "", engine: "vision-ollama", note: e?.name === "AbortError" ? "timeout" : "unreachable" };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// OpenAI-kompatibel (vLLM u. a.): /v1/chat/completions mit image_url data-URL.
+async function visionOcrOpenai(c, buffer, contentType, timeoutMs) {
   const dataUrl = `data:${contentType || "image/png"};base64,${buffer.toString("base64")}`;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -57,9 +112,7 @@ async function visionOcr(buffer, contentType = "image/png", timeoutMs = 90000) {
     });
     if (!resp.ok) return { ok: false, text: "", engine: "vision", note: `http_${resp.status}` };
     const data = await resp.json().catch(() => null);
-    const text = String(data?.choices?.[0]?.message?.content || "")
-      .replace(/<think>[\s\S]*?<\/think>/gi, "")
-      .trim();
+    const text = cleanReply(data?.choices?.[0]?.message?.content);
     if (!text) return { ok: false, text: "", engine: "vision", note: "leer" };
     return { ok: true, text, engine: "vision" };
   } catch (e) {
@@ -67,6 +120,14 @@ async function visionOcr(buffer, contentType = "image/png", timeoutMs = 90000) {
   } finally {
     clearTimeout(t);
   }
+}
+
+async function visionOcr(buffer, contentType = "image/png", timeoutMs = 90000) {
+  const c = visionCfg();
+  if (!c) return { ok: false, text: "", engine: "vision", note: "kein Vision-Endpoint konfiguriert" };
+  return c.kind === "ollama"
+    ? visionOcrOllama(c, buffer, timeoutMs)
+    : visionOcrOpenai(c, buffer, contentType, timeoutMs);
 }
 
 // Grobe Format-Erkennung an den Magic-Bytes. Verhindert, dass abgeschnittene
@@ -136,5 +197,11 @@ export async function ocrImage(buffer, { contentType } = {}) {
 /** Ist ein Vision-OCR-Endpoint konfiguriert? (für /health-Anzeige) */
 export function ocrInfo() {
   const c = visionCfg();
-  return { vision: !!c, visionModel: c?.model || null, tesseractLang: String(process.env.MAS_OCR_LANG || "deu+eng").trim() };
+  return {
+    vision: !!c,
+    visionKind: c?.kind || null,
+    visionModel: c?.model || null,
+    keepAlive: c ? c.keepAlive : null,
+    tesseractLang: String(process.env.MAS_OCR_LANG || "deu+eng").trim(),
+  };
 }
