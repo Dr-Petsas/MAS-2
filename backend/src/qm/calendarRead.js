@@ -147,6 +147,8 @@ export async function getCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE
     assignedRole: j.assignedRole || null,
     assignedAt: j.assignedAt || null,
     purpose: j.purpose,
+    instructions: Array.isArray(j.instructions) ? j.instructions : [],
+    completionCriteria: j.completionCriteria || null,
     cycle: j.cycle,
     cycleLabel: cycleLabel(j.cycle),
     requiredFields: Array.isArray(j.requiredFields) ? j.requiredFields : [],

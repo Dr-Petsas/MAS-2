@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f172a" />
+<title>QM-Aufgabe</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0; min-height: 100vh;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  .brand { font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: #64748b; font-weight: 800; margin-bottom: 10px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 18px; }
+  h1 { font-size: 20px; line-height: 1.25; margin: 0 0 6px; color: #f8fafc; }
+  .meta { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+  .meta b { color: #cbd5e1; }
+  .sec-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: #64748b; margin: 18px 0 8px; }
+  ol.steps { margin: 0; padding-left: 20px; }
+  ol.steps li { margin-bottom: 8px; line-height: 1.5; font-size: 15px; color: #e2e8f0; }
+  .done-crit { margin-top: 6px; background: #052e16; border: 1px solid #166534; color: #bbf7d0; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.5; }
+  .done-crit b { color: #86efac; }
+  .field { margin-top: 12px; }
+  .field label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 5px; }
+  .field input, .field textarea, .field select {
+    width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #475569;
+    background: #0f172a; color: #f8fafc; font-size: 16px;
+  }
+  .btn {
+    display: block; width: 100%; margin-top: 20px; padding: 16px; border: 0; border-radius: 14px;
+    font-size: 17px; font-weight: 800; cursor: pointer;
+  }
+  .btn-done { background: #16a34a; color: #fff; }
+  .btn-done:active { background: #15803d; }
+  .btn-done:disabled { background: #334155; color: #64748b; }
+  .btn-start { background: transparent; color: #cbd5e1; border: 1px solid #475569; margin-top: 12px; padding: 12px; font-size: 15px; }
+  .state { text-align: center; padding: 40px 16px; }
+  .state .big { font-size: 54px; margin-bottom: 12px; }
+  .state h2 { margin: 0 0 6px; font-size: 22px; color: #f8fafc; }
+  .state p { color: #94a3b8; margin: 0; }
+  .muted { color: #64748b; font-size: 12px; text-align: center; margin-top: 18px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">Julia · QM-Aufgabe</div>
+    <div id="app" class="card">
+      <div class="state"><div class="big">⏳</div><p>Lade Aufgabe …</p></div>
+    </div>
+    <div class="muted" id="foot"></div>
+  </div>
+
+<script>
+(function () {
+  var qs = new URLSearchParams(location.search);
+  var c = qs.get("c") || "";
+  var job = qs.get("job") || "";
+  var k = qs.get("k") || "";
+  var app = document.getElementById("app");
+  var API = ""; // gleiche Origin wie diese Seite (MAS serviert /m/ und /clara/qm/*)
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (ch) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]; }); }
+
+  function fmtDue(iso) {
+    if (!iso) return "";
+    try { return new Date(iso).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }); }
+    catch (e) { return iso; }
+  }
+
+  function stateView(icon, title, text) {
+    app.innerHTML = '<div class="state"><div class="big">' + icon + '</div><h2>' + esc(title) + '</h2><p>' + esc(text) + '</p></div>';
+  }
+
+  if (!c || !job || !k) { stateView("⚠️", "Link unvollständig", "Bitte den Link aus der Benachrichtigung erneut öffnen."); return; }
+
+  var current = null;
+
+  function render(j) {
+    current = j;
+    if (j.status === "done") {
+      stateView("✅", "Bereits erledigt", "Diese Aufgabe ist schon als erledigt dokumentiert. Danke!");
+      return;
+    }
+
+    var steps = Array.isArray(j.instructions) ? j.instructions : [];
+    var html = "";
+    html += '<h1>' + esc(j.title) + (j.deviceRef ? ' <span style="color:#94a3b8">(' + esc(j.deviceRef) + ')</span>' : "") + '</h1>';
+    html += '<div class="meta">';
+    if (j.dueAt) html += 'Fällig: <b>' + esc(fmtDue(j.dueAt)) + '</b><br>';
+    if (j.assignedToName) html += 'Zuständig: <b>' + esc(j.assignedToName) + '</b>';
+    html += '</div>';
+
+    if (j.purpose) html += '<div class="meta" style="margin-top:8px">' + esc(j.purpose) + '</div>';
+
+    if (steps.length) {
+      html += '<div class="sec-h">So wird\'s gemacht</div><ol class="steps">';
+      for (var i = 0; i < steps.length; i++) html += '<li>' + esc(steps[i]) + '</li>';
+      html += '</ol>';
+    }
+
+    if (j.completionCriteria) {
+      html += '<div class="done-crit"><b>Erledigt, wenn:</b> ' + esc(j.completionCriteria) + '</div>';
+    }
+
+    var fields = Array.isArray(j.requiredFields) ? j.requiredFields : [];
+    if (fields.length) {
+      html += '<div class="sec-h">Angaben zum Nachweis</div>';
+      for (var f = 0; f < fields.length; f++) {
+        var fld = fields[f];
+        var id = "f_" + f;
+        html += '<div class="field"><label>' + esc(fld.label || fld.key) + (fld.required ? ' *' : '') + '</label>';
+        if (fld.type === "textarea") html += '<textarea id="' + id + '" data-key="' + esc(fld.key) + '" rows="3"></textarea>';
+        else if (fld.type === "boolean") html += '<select id="' + id + '" data-key="' + esc(fld.key) + '"><option value="">—</option><option value="ja">Ja</option><option value="nein">Nein</option></select>';
+        else html += '<input id="' + id + '" data-key="' + esc(fld.key) + '" type="' + (fld.type === "number" ? "number" : "text") + '">';
+        html += '</div>';
+      }
+    }
+
+    html += '<button class="btn btn-done" id="doneBtn">✓ Als erledigt melden</button>';
+    if (j.status === "assigned" || j.status === "seen") html += '<button class="btn btn-start" id="startBtn">Ich mache es gerade …</button>';
+
+    app.innerHTML = html;
+
+    var doneBtn = document.getElementById("doneBtn");
+    if (doneBtn) doneBtn.onclick = complete;
+    var startBtn = document.getElementById("startBtn");
+    if (startBtn) startBtn.onclick = start;
+  }
+
+  function collectFields() {
+    var out = {};
+    var els = app.querySelectorAll("[data-key]");
+    for (var i = 0; i < els.length; i++) {
+      var key = els[i].getAttribute("data-key");
+      if (key && els[i].value !== "") out[key] = els[i].value;
+    }
+    return out;
+  }
+
+  function post(path, extra, cb) {
+    fetch(API + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign({ c: c, job: job, k: k }, extra || {})),
+    }).then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (d) { cb(null, d); })
+      .catch(function (e) { cb(e, null); });
+  }
+
+  function start() {
+    var b = document.getElementById("startBtn");
+    if (b) { b.disabled = true; b.textContent = "…"; }
+    post("/clara/qm/portal/start", {}, function () { if (b) b.textContent = "In Arbeit ✓"; });
+  }
+
+  function complete() {
+    var missing = null;
+    if (current && Array.isArray(current.requiredFields)) {
+      for (var i = 0; i < current.requiredFields.length; i++) {
+        var f = current.requiredFields[i];
+        if (f.required) {
+          var el = app.querySelector('[data-key="' + f.key + '"]');
+          if (!el || !el.value) { missing = f.label || f.key; break; }
+        }
+      }
+    }
+    if (missing) { alert("Bitte ausfüllen: " + missing); return; }
+
+    var b = document.getElementById("doneBtn");
+    if (b) { b.disabled = true; b.textContent = "Wird gemeldet …"; }
+    post("/clara/qm/portal/complete", { fields: collectFields() }, function (err, d) {
+      if (d && d.ok) { stateView("✅", "Erledigt — danke!", "Die Aufgabe ist dokumentiert. Du kannst diese Seite schließen."); return; }
+      if (d && d.error === "already_done") { stateView("✅", "Bereits erledigt", "Diese Aufgabe war schon dokumentiert."); return; }
+      if (b) { b.disabled = false; b.textContent = "✓ Als erledigt melden"; }
+      alert("Konnte nicht gespeichert werden. Bitte erneut versuchen." + (d && d.error ? " (" + d.error + ")" : ""));
+    });
+  }
+
+  fetch(API + "/clara/qm/portal/job?c=" + encodeURIComponent(c) + "&job=" + encodeURIComponent(job) + "&k=" + encodeURIComponent(k))
+    .then(function (r) {
+      if (r.status === 403) throw new Error("bad_token");
+      if (r.status === 404) throw new Error("not_found");
+      return r.json();
+    })
+    .then(function (d) { if (d && d.ok && d.job) render(d.job); else throw new Error("bad"); })
+    .catch(function (e) {
+      if (String(e.message) === "not_found") stateView("🔍", "Aufgabe nicht gefunden", "Vielleicht wurde sie bereits gelöscht.");
+      else if (String(e.message) === "bad_token") stateView("🔒", "Link ungültig", "Bitte den Link aus der aktuellen Benachrichtigung öffnen.");
+      else stateView("⚠️", "Fehler", "Aufgabe konnte nicht geladen werden.");
+    });
+})();
+</script>
+</body>
+</html>

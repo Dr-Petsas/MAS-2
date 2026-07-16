@@ -7,7 +7,8 @@ import { previewWizard as qmPreviewWizard, applyWizard as qmApplyWizard } from "
 import { runInterviewTurn as qmRunInterviewTurn } from "../qm/interview.js";
 import { saveProfile as qmSaveProfile, getProfile as qmGetProfile, computeRequirements as qmComputeRequirements, activateBook as qmActivateBook, deactivateBook as qmDeactivateBook, setBookResponsible as qmSetBookResponsible, markReviewed as qmMarkReviewed, listBooks as qmListBooks, setBookPlans as qmSetBookPlans } from "../qm/books.js";
 import { listDocuments as qmListDocuments, listAllDocuments as qmListAllDocuments, exportRows as qmExportRows } from "../qm/documents.js";
-import { createJob as qmCreateJob, updateJob as qmUpdateJob, deleteJob as qmDeleteJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, listJobsForStaff as qmListJobsForStaff, redistributeOpenJobs as qmRedistribute } from "../qm/jobs.js";
+import { createJob as qmCreateJob, updateJob as qmUpdateJob, deleteJob as qmDeleteJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, getJob as qmGetJob, listJobsForStaff as qmListJobsForStaff, redistributeOpenJobs as qmRedistribute } from "../qm/jobs.js";
+import { verifyPortalToken as qmVerifyPortalToken } from "../qm/portal.js";
 import { PRODUCT_PRESETS as qmHygienePresets, TASK_TEMPLATES as qmHygieneTasks, defaultProductSelection as qmHygieneDefaults, buildHygienePlans as qmBuildHygienePlans, setupHygienePlan as qmSetupHygiene } from "../qm/hygiene.js";
 import { TASK_TEMPLATES as qmSteriTasks, buildSterilizationPlans as qmBuildSteriPlans, setupSterilizationPlan as qmSetupSteri } from "../qm/sterilization.js";
 import { createSchedule as qmCreateSchedule, listSchedules as qmListSchedules, updateSchedule as qmUpdateSchedule, deleteSchedule as qmDeleteSchedule } from "../qm/schedules.js";
@@ -17,6 +18,86 @@ import { resolveBookKeyFromText as qmResolveBookKey, buildSpokenNextDue as qmSpo
 import { PUBLIC_BASE_URL, qmRoute } from "./_shared.js";
 
 const router = express.Router();
+
+
+// --- Handy-Portal (oeffentlich, nur per signiertem Ein-Job-Token) --------------
+// Die Push-Nachricht verlinkt /m/qm.html?c=&job=&k=. Diese Endpunkte pruefen den
+// Token (portal.js) und geben/aendern GENAU diesen einen Job — ohne Login. In
+// auth.js als public gelistet; die Pruefung passiert HIER, timing-safe.
+function portalGuard(req, res) {
+  const clientId = String(req.query?.c || req.body?.c || "").trim();
+  const jobId = String(req.query?.job || req.body?.job || "").trim();
+  const k = String(req.query?.k || req.body?.k || "").trim();
+  if (!clientId || !jobId || !qmVerifyPortalToken(clientId, jobId, k)) {
+    res.status(403).json({ error: "bad_token" });
+    return null;
+  }
+  return { clientId, jobId };
+}
+
+// Job-Details fuer die Handy-Seite. Das Oeffnen quittiert den Job (gesehen).
+router.get("/clara/qm/portal/job", async (req, res) => {
+  const g = portalGuard(req, res);
+  if (!g) return;
+  try {
+    const job = await qmGetJob(g.clientId, g.jobId);
+    if (!job) return res.status(404).json({ error: "not_found" });
+    if (["assigned", "overdue", "escalated"].includes(job.status)) {
+      await qmAckJob(g.clientId, g.jobId, { by: job.assignedTo || "handy" }).catch(() => {});
+    }
+    res.json({
+      ok: true,
+      job: {
+        id: job.id,
+        title: job.title,
+        deviceRef: job.deviceRef || null,
+        status: job.status,
+        dueAt: job.dueAt || null,
+        assignedToName: job.assignedToName || null,
+        purpose: job.purpose || null,
+        instructions: Array.isArray(job.instructions) ? job.instructions : [],
+        completionCriteria: job.completionCriteria || null,
+        requiredFields: Array.isArray(job.requiredFields) ? job.requiredFields : [],
+      },
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// "In Arbeit" vom Handy (optional, ein Tipp bevor erledigt).
+router.post("/clara/qm/portal/start", async (req, res) => {
+  const g = portalGuard(req, res);
+  if (!g) return;
+  try {
+    const job = await qmGetJob(g.clientId, g.jobId);
+    if (!job) return res.status(404).json({ error: "not_found" });
+    const r = await qmStartJob(g.clientId, g.jobId, { by: job.assignedTo || "handy" });
+    res.json(r.ok ? { ok: true } : { ok: false, error: r.reason });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Erledigt-Meldung vom Handy: schreibt den Nachweis + setzt Status done.
+router.post("/clara/qm/portal/complete", async (req, res) => {
+  const g = portalGuard(req, res);
+  if (!g) return;
+  try {
+    const job = await qmGetJob(g.clientId, g.jobId);
+    if (!job) return res.status(404).json({ error: "not_found" });
+    const body = req.body || {};
+    const r = await qmCompleteJob(g.clientId, g.jobId, {
+      by: job.assignedTo || "handy",
+      byName: job.assignedToName || "per Handy",
+      fields: body.fields && typeof body.fields === "object" ? body.fields : {},
+      note: "per Handy als erledigt gemeldet",
+    });
+    res.json(r.ok ? { ok: true } : { ok: false, error: r.reason });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
 
 
 // --- Profil & Anforderungs-Engine ---

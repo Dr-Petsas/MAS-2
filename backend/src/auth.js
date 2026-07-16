@@ -60,6 +60,10 @@ function isPublic(req) {
   // Patientengespraech). Jede Route prueft selbst den Secret-Header
   // X-Lisa-Tool-Secret (timing-safe, routes/lisaTools.js).
   if (p.startsWith("/lisa/tools/")) return true;
+  // QM-Handy-Portal: die zustaendige Helferin oeffnet den Push-Link ohne Login.
+  // Jede Route prueft selbst den signierten Ein-Job-Token (routes/qm.js ->
+  // portalGuard, timing-safe). Gibt nur GENAU EINEN Job frei.
+  if (p.startsWith("/clara/qm/portal/")) return true;
   // /clara/<clientId> (QR landing HTML), /clara/<clientId>/connect (phone page)
   // und /clara/<clientId>/status (System-Status-Seite, nur Read-only-Health).
   if (/^\/clara\/[^/]+(\/connect|\/status)?$/.test(p)) return true;

@@ -6,6 +6,7 @@ import { appendDocument } from "./documents.js";
 import { getBook } from "./books.js";
 import { nextDueFrom, isRecurring, cycleLabel } from "./recurrence.js";
 import { suggestAssignee, getStaff, isAbsentAt, resolveEscalationTarget } from "./staff.js";
+import { guideForJob } from "./jobGuides.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { log } from "../log.js";
@@ -100,12 +101,23 @@ export async function createJob(clientId, input = {}) {
   }
   const status = assignedTo ? JOB_STATUS.ASSIGNED : JOB_STATUS.PLANNED;
 
+  // Anleitung + Abschlusskriterium: was ist zu tun, woran ist der Job erledigt.
+  // Explizit uebergebene Werte haben Vorrang, sonst zentrale Guide-Zuordnung.
+  const title = s(input.title) || artifact.title;
+  const guide = guideForJob({ title, typ: s(input.typ) });
+  const instructions = Array.isArray(input.instructions) && input.instructions.length
+    ? input.instructions.map((x) => s(x)).filter(Boolean)
+    : guide.instructions;
+  const completionCriteria = s(input.completionCriteria) || guide.completionCriteria;
+
   const job = {
     id,
     clientId,
     bookKey,
-    title: s(input.title) || artifact.title,
+    title,
     purpose: s(input.purpose) || null,
+    instructions,
+    completionCriteria,
     deviceRef: s(input.deviceRef) || null,
     category: artifact.category,
 

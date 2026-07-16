@@ -2,6 +2,7 @@ import { notifyOperator } from "../clara/devices.js";
 import { lisaSendSms, smsConfigured } from "../lisa/outbound.js";
 import { getStaff, resolveEscalationTarget } from "./staff.js";
 import { getJob, recordPush, markOverdue, escalateJob, listDueOpenJobs, JOB_STATUS } from "./jobs.js";
+import { portalToken } from "./portal.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -39,7 +40,8 @@ export function isQuietNow(now = new Date()) {
 
 function portalUrl(publicBaseUrl, clientId, jobId) {
   const base = String(publicBaseUrl || process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
-  return `${base}/m/qm.html?c=${encodeURIComponent(clientId)}&job=${encodeURIComponent(jobId)}`;
+  const k = portalToken(clientId, jobId);
+  return `${base}/m/qm.html?c=${encodeURIComponent(clientId)}&job=${encodeURIComponent(jobId)}&k=${k}`;
 }
 
 /**
@@ -58,8 +60,13 @@ export async function pushJob(clientId, jobId, { publicBaseUrl = "", force = fal
   const staff = await getStaff(clientId, job.assignedTo);
   if (!staff) return { ok: false, reason: "staff_not_found" };
 
-  const title = "QM-Aufgabe";
-  const body = `${job.title}${job.deviceRef ? ` (${job.deviceRef})` : ""} – bitte erledigen und dokumentieren.`;
+  const title = `QM-Aufgabe: ${job.title}${job.deviceRef ? ` (${job.deviceRef})` : ""}`;
+  // Kurz-Anleitung in die Push: erste 1-2 Schritte + Abschlusskriterium, damit
+  // die Zuständige sofort weiß, WAS zu tun ist und WORAN der Job erledigt ist.
+  const steps = Array.isArray(job.instructions) ? job.instructions.filter(Boolean) : [];
+  const stepLine = steps.length ? steps.slice(0, 2).map((x, i) => `${i + 1}. ${x}`).join(" ") : "";
+  const doneLine = job.completionCriteria ? ` Fertig, wenn: ${job.completionCriteria}` : "";
+  const body = `${stepLine || "Bitte erledigen und dokumentieren."}${doneLine} → antippen zum Abhaken.`;
   const url = portalUrl(publicBaseUrl, clientId, job.id);
 
   // 1) Web-Push to paired phones
