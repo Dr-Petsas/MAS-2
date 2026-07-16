@@ -7,6 +7,7 @@ import { getBook } from "./books.js";
 import { nextDueFrom, isRecurring, cycleLabel } from "./recurrence.js";
 import { suggestAssignee, getStaff, isAbsentAt, resolveEscalationTarget } from "./staff.js";
 import { guideForJob } from "./jobGuides.js";
+import { resolveActivePraxisId } from "./praxis.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { log } from "../log.js";
@@ -110,6 +111,13 @@ export async function createJob(clientId, input = {}) {
     : guide.instructions;
   const completionCriteria = s(input.completionCriteria) || guide.completionCriteria;
 
+  // Praxis-Zuordnung: primaere Praxis (praxisId) + alle beteiligten (praxisIds).
+  // Ein geteilter Job (mehrere praxisIds) erscheint in mehreren Praxis-Kalendern
+  // und wird gemeinsam bewegt/erledigt (ein Push fuer alle -> Anti-Spam).
+  const primaryPraxis = s(input.praxisId) || (await resolveActivePraxisId(clientId));
+  let praxisIds = Array.isArray(input.praxisIds) ? input.praxisIds.map((x) => s(x)).filter(Boolean) : [];
+  if (primaryPraxis && !praxisIds.includes(primaryPraxis)) praxisIds = [primaryPraxis, ...praxisIds];
+
   const job = {
     id,
     clientId,
@@ -118,6 +126,8 @@ export async function createJob(clientId, input = {}) {
     purpose: s(input.purpose) || null,
     instructions,
     completionCriteria,
+    praxisId: primaryPraxis || null,
+    praxisIds,
     deviceRef: s(input.deviceRef) || null,
     category: artifact.category,
 
@@ -418,12 +428,20 @@ export async function recordPush(clientId, jobId, { channel = "push" } = {}) {
 const OPEN_STATES = new Set([JOB_STATUS.PLANNED, JOB_STATUS.ASSIGNED, JOB_STATUS.SEEN, JOB_STATUS.IN_PROGRESS, JOB_STATUS.OVERDUE, JOB_STATUS.ESCALATED]);
 
 /** All jobs in a time window (the QM calendar). Equality-free range on dueAtMs. */
-export async function listCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE_INTEGER, bookKey = "", deviceRef = "" } = {}) {
+export async function listCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE_INTEGER, bookKey = "", deviceRef = "", praxisId = "" } = {}) {
   const snap = await col(clientId).get();
   let jobs = snap.docs.map((d) => d.data());
   jobs = jobs.filter((j) => (j.dueAtMs || 0) >= Number(fromMs) && (j.dueAtMs || 0) <= Number(toMs));
   if (s(bookKey)) jobs = jobs.filter((j) => j.bookKey === s(bookKey));
   if (s(deviceRef)) jobs = jobs.filter((j) => j.deviceRef === s(deviceRef));
+  // Praxisfilter: Job gehoert zur Praxis (praxisId ODER in praxisIds); Altbestand
+  // ohne Zuordnung erscheint ueberall. Ohne praxisId (z. B. Clara) kein Filter.
+  const pid = s(praxisId);
+  if (pid) jobs = jobs.filter((j) => {
+    const ids = Array.isArray(j.praxisIds) ? j.praxisIds : [];
+    if (!s(j.praxisId) && ids.length === 0) return true; // Legacy: ueberall sichtbar
+    return s(j.praxisId) === pid || ids.includes(pid);
+  });
   jobs.sort((a, b) => (a.dueAtMs || 0) - (b.dueAtMs || 0));
   return jobs;
 }

@@ -2,6 +2,8 @@ import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { getArtifact } from "./catalog.js";
 import { resolveRequirements } from "./requirements.js";
+import { reviewIntervalMonthsFor } from "./reviewPolicy.js";
+import { resolveActivePraxisId } from "./praxis.js";
 
 // ============================================================================
 // QM-Bücher pro Praxis: clients/{clientId}/mas_qm_books/{bookKey}
@@ -60,14 +62,16 @@ export async function computeRequirements(clientId) {
  * Ein Buch aktivieren (idempotent). Übernimmt Metadaten aus dem Katalog und
  * setzt Verantwortliche/Beauftragte. Re-Aktivierung merged nur die Felder.
  */
-export async function activateBook(clientId, bookKey, { responsibleStaffId = "", deputyStaffId = "", responsibleRole = "", cycle = "" } = {}) {
+export async function activateBook(clientId, bookKey, { responsibleStaffId = "", deputyStaffId = "", responsibleRole = "", cycle = "", praxisId = "" } = {}) {
   const key = s(bookKey);
   const artifact = getArtifact(key);
   if (!artifact) return { ok: false, reason: "unknown_artifact" };
 
   const ref = col(clientId).doc(key);
   const snap = await ref.get();
-  const base = snap.exists ? {} : {
+  const firstActivation = !snap.exists;
+  const reviewIntervalMonths = reviewIntervalMonthsFor(artifact);
+  const base = firstActivation ? {
     key,
     title: artifact.title,
     type: artifact.type,
@@ -75,8 +79,8 @@ export async function activateBook(clientId, bookKey, { responsibleStaffId = "",
     version: 1,
     documentCount: 0,
     createdAt: FieldValue.serverTimestamp(),
-  };
-  await ref.set({
+  } : {};
+  const patch = {
     ...base,
     active: true,
     responsibleStaffId: s(responsibleStaffId) || null,
@@ -84,18 +88,35 @@ export async function activateBook(clientId, bookKey, { responsibleStaffId = "",
     responsibleRole: s(responsibleRole) || null,
     cycle: s(cycle) || artifact.defaultCycle || null,
     recurrenceMode: artifact.recurrenceMode || "fixed",
+    reviewIntervalMonths,
     updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  };
+  // Praxis-Zugehoerigkeit: dieses Buch gilt (auch) fuer die aktive Praxis.
+  // Mehrere Praxen einer Gemeinschaft koennen denselben Plan fuehren.
+  const pid = s(praxisId) || (await resolveActivePraxisId(clientId));
+  if (pid) patch.praxisIds = FieldValue.arrayUnion(pid);
+  // reviewedAt (Gültigkeits-Anker) nur bei Erst-Aktivierung setzen, damit eine
+  // Re-Aktivierung die Frist nicht heimlich zurücksetzt.
+  if (firstActivation && reviewIntervalMonths > 0) patch.reviewedAt = new Date().toISOString();
+  await ref.set(patch, { merge: true });
 
   return { ok: true, key };
 }
 
-/** Ein Buch deaktivieren (Daten bleiben erhalten — nur active=false). */
-export async function deactivateBook(clientId, bookKey) {
+/**
+ * Ein Buch fuer die aktive Praxis deaktivieren. Die Praxis wird aus praxisIds
+ * entfernt; ist danach keine Praxis mehr zugeordnet, gilt das Buch als inaktiv.
+ * Daten bleiben erhalten.
+ */
+export async function deactivateBook(clientId, bookKey, { praxisId = "" } = {}) {
   const key = s(bookKey);
   const ref = col(clientId).doc(key);
-  if (!(await ref.get()).exists) return { ok: false, reason: "not_found" };
-  await ref.set({ active: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "not_found" };
+  const pid = s(praxisId) || (await resolveActivePraxisId(clientId));
+  const cur = Array.isArray(snap.data().praxisIds) ? snap.data().praxisIds : [];
+  const next = pid ? cur.filter((x) => x !== pid) : [];
+  await ref.set({ praxisIds: next, active: next.length > 0, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   return { ok: true, key };
 }
 
@@ -109,6 +130,21 @@ export async function setBookResponsible(clientId, bookKey, { responsibleStaffId
   if (responsibleRole !== undefined) patch.responsibleRole = s(responsibleRole) || null;
   await ref.set(patch, { merge: true });
   return { ok: true, key: s(bookKey) };
+}
+
+/**
+ * Plan als überprüft markieren: setzt den Gültigkeits-Anker (reviewedAt) auf
+ * jetzt und erhöht die Version. Damit verschwindet das "abgelaufen"-Badge und
+ * die Frist läuft neu. Gibt die neue Version + reviewedAt zurück.
+ */
+export async function markReviewed(clientId, bookKey, { by = "julia" } = {}) {
+  const ref = col(clientId).doc(s(bookKey));
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "not_found" };
+  const reviewedAt = new Date().toISOString();
+  const next = Number(snap.data()?.version || 1) + 1;
+  await ref.set({ reviewedAt, reviewedBy: s(by) || "julia", version: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { ok: true, key: s(bookKey), version: next, reviewedAt };
 }
 
 /** Plan-Version erhöhen (z. B. nach Hygieneplan-Update) — gibt neue Version zurück. */
@@ -128,7 +164,8 @@ export async function bumpBookVersion(clientId, bookKey) {
 export async function setBookPlans(clientId, bookKey, plans = [], { products = null } = {}) {
   const ref = col(clientId).doc(s(bookKey));
   if (!(await ref.get()).exists) return { ok: false, reason: "not_found" };
-  const patch = { generatedPlans: Array.isArray(plans) ? plans : [], generatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
+  // Frisch erstellte/aktualisierte Pläne verlängern die Gültigkeit ab jetzt.
+  const patch = { generatedPlans: Array.isArray(plans) ? plans : [], generatedAt: FieldValue.serverTimestamp(), reviewedAt: new Date().toISOString(), updatedAt: FieldValue.serverTimestamp() };
   if (products && typeof products === "object") patch.products = products;
   await ref.set(patch, { merge: true });
   return { ok: true, key: s(bookKey), planCount: patch.generatedPlans.length };
@@ -148,10 +185,15 @@ export async function getBook(clientId, bookKey) {
   return snap.exists ? snap.data() : null;
 }
 
-/** Alle (aktiven) Bücher der Praxis. */
-export async function listBooks(clientId, { activeOnly = false } = {}) {
+/**
+ * Buecher. Mit praxisId werden nur die Buecher DIESER Praxis geliefert
+ * (Zugehoerigkeit ueber praxisIds; Altbestand ohne Feld erscheint ueberall).
+ */
+export async function listBooks(clientId, { activeOnly = false, praxisId = "" } = {}) {
   const snap = await col(clientId).get();
   let books = snap.docs.map((d) => d.data());
+  const pid = s(praxisId);
+  if (pid) books = books.filter((b) => !Array.isArray(b.praxisIds) || b.praxisIds.length === 0 || b.praxisIds.includes(pid));
   if (activeOnly) books = books.filter((b) => b.active === true);
   return books.sort((a, b) => (a.category || "").localeCompare(b.category || "") || (a.title || "").localeCompare(b.title || ""));
 }

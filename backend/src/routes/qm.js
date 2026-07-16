@@ -184,7 +184,7 @@ router.post("/clara/qm/wizards/:key/apply", qmRoute(async (clientId, req, res) =
 // --- Bücher & Nachweise ---
 router.get("/clara/qm/books", qmRoute(async (clientId, req, res) => {
   const activeOnly = String(req.query?.activeOnly || "") === "1";
-  res.json({ ok: true, clientId, books: await qmListBooks(clientId, { activeOnly }) });
+  res.json({ ok: true, clientId, books: await qmListBooks(clientId, { activeOnly, praxisId: String(req.query?.praxisId || "") }) });
 }));
 
 router.post("/clara/qm/books/activate", qmRoute(async (clientId, req, res) => {
@@ -194,7 +194,8 @@ router.post("/clara/qm/books/activate", qmRoute(async (clientId, req, res) => {
 }));
 
 router.post("/clara/qm/books/deactivate", qmRoute(async (clientId, req, res) => {
-  const r = await qmDeactivateBook(clientId, (req.body || {}).bookKey);
+  const b = req.body || {};
+  const r = await qmDeactivateBook(clientId, b.bookKey, { praxisId: b.praxisId || "" });
   res.status(r.ok ? 200 : 404).json({ clientId, ...r });
 }));
 
@@ -270,7 +271,7 @@ router.post("/clara/qm/sterilization/setup", qmRoute(async (clientId, req, res) 
 router.get("/clara/qm/calendar", qmRoute(async (clientId, req, res) => {
   const fromMs = Number(req.query?.from || 0);
   const toMs = Number(req.query?.to || Number.MAX_SAFE_INTEGER);
-  res.json({ ok: true, clientId, jobs: await qmGetCalendar(clientId, { fromMs, toMs, bookKey: String(req.query?.book || ""), deviceRef: String(req.query?.device || "") }) });
+  res.json({ ok: true, clientId, jobs: await qmGetCalendar(clientId, { fromMs, toMs, bookKey: String(req.query?.book || ""), deviceRef: String(req.query?.device || ""), praxisId: String(req.query?.praxisId || "") }) });
 }));
 
 router.post("/clara/qm/jobs", qmRoute(async (clientId, req, res) => {

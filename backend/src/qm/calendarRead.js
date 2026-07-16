@@ -133,13 +133,16 @@ export async function buildSpokenHistory(clientId, { bookKey = "", deviceRef = "
 }
 
 /** Structured QM calendar for a window (UI + spoken overview). */
-export async function getCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE_INTEGER, bookKey = "", deviceRef = "" } = {}) {
-  const jobs = await listCalendar(clientId, { fromMs, toMs, bookKey, deviceRef });
+export async function getCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE_INTEGER, bookKey = "", deviceRef = "", praxisId = "" } = {}) {
+  const jobs = await listCalendar(clientId, { fromMs, toMs, bookKey, deviceRef, praxisId });
   return jobs.map((j) => ({
     id: j.id,
     title: j.title,
     bookKey: j.bookKey,
     deviceRef: j.deviceRef,
+    praxisId: j.praxisId || null,
+    praxisIds: Array.isArray(j.praxisIds) ? j.praxisIds : [],
+    shared: Array.isArray(j.praxisIds) && j.praxisIds.length > 1,
     dueAt: j.dueAt,
     dueAtMs: j.dueAtMs,
     status: j.status,

@@ -36,6 +36,8 @@ export async function listPraxen(clientId) {
 
   if (praxen.length === 0) {
     const seeded = await createPraxis(clientId, { name: "Praxis 1" });
+    // Bestehende Buecher/Jobs dieser Standardpraxis zuordnen (einmalig).
+    await backfillPraxisId(clientId, seeded.praxis.id).catch(() => {});
     return { praxen: [{ id: seeded.praxis.id, name: seeded.praxis.name, createdAt: null }], activePraxisId: seeded.praxis.id };
   }
 
@@ -92,4 +94,40 @@ export async function setActivePraxis(clientId, praxisId) {
   if (!(await col(clientId).doc(id).get()).exists) return { ok: false, reason: "not_found" };
   await col(clientId).doc(META_ID).set({ activePraxisId: id }, { merge: true });
   return { ok: true, activePraxisId: id };
+}
+
+/**
+ * Aktuell gewaehlte Praxis-Id (oder ""). Wird als Default beim Anlegen von
+ * Buechern/Jobs genutzt, damit serverseitig erzeugte Jobs (Wizards, Scheduler)
+ * der richtigen Praxis zugeordnet werden.
+ */
+export async function resolveActivePraxisId(clientId) {
+  try {
+    const meta = await col(clientId).doc(META_ID).get();
+    if (meta.exists && s(meta.data().activePraxisId)) return s(meta.data().activePraxisId);
+    const snap = await col(clientId).get();
+    const first = snap.docs.find((d) => d.id !== META_ID);
+    return first ? first.id : "";
+  } catch { return ""; }
+}
+
+/**
+ * Altbestand (Buecher/Jobs OHNE praxisId) EINMALIG der Standardpraxis zuordnen.
+ * Wird beim ersten Anlegen der Standardpraxis aufgerufen, damit bestehende
+ * Daten unter „Praxis 1" erscheinen und neue Praxen leer starten.
+ */
+export async function backfillPraxisId(clientId, praxisId) {
+  const pid = s(praxisId);
+  if (!pid) return { books: 0, jobs: 0 };
+  let booksN = 0, jobsN = 0;
+  const booksSnap = await masCollection(clientId, "mas_qm_books").get();
+  for (const d of booksSnap.docs) {
+    const p = d.data().praxisIds;
+    if (!Array.isArray(p) || p.length === 0) { await d.ref.set({ praxisIds: [pid] }, { merge: true }); booksN++; }
+  }
+  const jobsSnap = await masCollection(clientId, "mas_qm_jobs").get();
+  for (const d of jobsSnap.docs) {
+    if (!s(d.data().praxisId)) { await d.ref.set({ praxisId: pid, praxisIds: [pid] }, { merge: true }); jobsN++; }
+  }
+  return { books: booksN, jobs: jobsN };
 }
