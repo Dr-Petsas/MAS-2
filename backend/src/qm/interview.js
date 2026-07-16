@@ -21,6 +21,45 @@ const RE_ERGEBNIS = /\[ERGEBNIS\]([\s\S]*?)\[\/ERGEBNIS\]/gi;
 const RE_STATUS_DONE = /\[STATUS\]\s*interview_abgeschlossen\s*\[\/STATUS\]/i;
 const RE_ANY_STATUS = /\[STATUS\][\s\S]*?\[\/STATUS\]/gi;
 
+// Thema-Namen vereinheitlichen (identisch zur Frontend-normTopic): klein,
+// Klammern raus, nur Wortzeichen. So matchen Backend-Kanon und Frontend-Pille.
+function normTopic(x) {
+  return String(x || "").toLowerCase()
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+    .replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+function topicTokens(x) {
+  return normTopic(x).split(" ").filter((w) => w.length >= 4);
+}
+
+/**
+ * Das vom LLM gemeldete Thema auf den EXAKTEN Namen aus der Themenliste abbilden.
+ * Das Modell benennt Themen oft anders ("Instrumentenarten" statt
+ * "Instrumenten-/Medizinprodukteaufbereitung (C)", "Entsorgung" statt
+ * "Abfallentsorgung"). Ohne diese Zuordnung fuellt sich die Fortschritts-/
+ * Pillen-Anzeige nie. Rueckgabe: kanonischer Themenname oder das Original.
+ */
+function canonicalizeTopic(thema, topics) {
+  const want = normTopic(thema);
+  if (!want) return thema;
+  for (const t of topics) if (normTopic(t) === want) return t; // exakt
+  const wt = topicTokens(thema);
+  if (!wt.length) return thema;
+  let best = null, bestScore = 0;
+  for (const t of topics) {
+    const ct = topicTokens(t);
+    if (!ct.length) continue;
+    let overlap = 0;
+    for (const w of wt) {
+      if (ct.includes(w)) { overlap += 1; continue; }
+      if (ct.some((cw) => cw.includes(w) || w.includes(cw))) overlap += 0.5;
+    }
+    const score = overlap / Math.min(wt.length, ct.length);
+    if (score > bestScore) { bestScore = score; best = t; }
+  }
+  return bestScore >= 0.5 ? best : thema;
+}
+
 /** Parst einen [ERGEBNIS]-Block-Inhalt in { thema, inhalt }. */
 function parseErgebnisBlock(inner) {
   const themaM = inner.match(/Thema:\s*(.+)/i);
@@ -112,13 +151,18 @@ export async function runInterviewTurn(clientId, opts = {}) {
     }
   }
 
-  log.info("qm.interview_turn", { clientId, bookKey, captures: parsed.captures.length, done: parsed.done });
+  // Erfasste Themen auf die kanonischen Namen der Themenliste abbilden, damit
+  // die Fortschritts-/Pillen-Anzeige im Frontend zuverlaessig matcht.
+  const topics = interviewTopics(bookKey);
+  const captures = parsed.captures.map((c) => ({ ...c, thema: canonicalizeTopic(c.thema, topics) }));
+
+  log.info("qm.interview_turn", { clientId, bookKey, captures: captures.length, done: parsed.done });
   return {
     ok: true,
     reply: parsed.reply,
-    captures: parsed.captures,
+    captures,
     done: parsed.done,
-    topics: interviewTopics(bookKey),
+    topics,
     model: r.model,
   };
 }
