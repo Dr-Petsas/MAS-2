@@ -1,0 +1,186 @@
+{
+  "_meta": {
+    "description": "Zentrale Geraete-Wissensbasis fuer Julia. Zwei Teile: (1) geraeteKatalog = globaler Katalog aller erfassbaren Geraete mit ihren wiederkehrenden Pruefungen (Validierung/Sachverstaendigen-/Konstanz-/STK-Pruefung) inkl. Rechtsgrundlage, Intervall und zustaendiger Rolle. (2) fachrichtungGeraete = pro Facharztrichtung die TYPISCHEN (typisch) und moeglichen (optional) Geraete. Bei der Praxiserstellung wird die typisch-Liste vorbelegt und ist editierbar (hinzufuegen/entfernen). Aus jedem erfassten Geraet + Datum erzeugt Julia deterministisch die faelligen Pruef-/Validierungs-Jobs.",
+    "version": "1.0",
+    "rechtsstand": "2026-07-16",
+    "quellen": ["MPBetreibV 2025 (Validierung/STK)", "StrlSchV/RoeV + QS-RL (Sachverstaendigen-/Konstanzpruefung)", "KRINKO/BfArM Aufbereitung", "DGSV", "Herstellerangaben"],
+    "hinweis": "intervalMonths=0 bedeutet: Intervall aus Herstellerangabe / arbeitstaeglich (siehe cycle). Diese Datei ist bewusst konservativ und darf pro Praxis angepasst werden."
+  },
+
+  "gruppen": {
+    "bildgebung": "Bildgebung / Roentgen",
+    "aufbereitung": "Instrumentenaufbereitung / Sterilisation",
+    "notfall": "Notfallausstattung",
+    "kuehlung": "Kuehlung (Medikamente/Impfstoffe)",
+    "medizinprodukt": "Aktive Medizinprodukte (STK)"
+  },
+
+  "geraeteKatalog": [
+    { "key": "roe_intraoral", "label": "Intraorales Roentgen (Zahnfilm/Kleinbild)", "gruppe": "bildgebung", "capability": "roentgen", "strahlung": true,
+      "pruefungen": [
+        { "typ": "sachverstaendigenpruefung", "cycle": "fiveYearly", "intervalMonths": 60, "rolle": "strahlenschutz", "legalBasis": "StrlSchV §88", "titel": "Sachverstaendigenpruefung Intraoral-Roentgen" },
+        { "typ": "konstanzpruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "strahlenschutz", "legalBasis": "QS-RL / StrlSchV §115", "titel": "Konstanzpruefung Intraoral-Roentgen" }
+      ] },
+    { "key": "opg", "label": "Panoramaschichtaufnahme (OPG)", "gruppe": "bildgebung", "capability": "roentgen", "strahlung": true,
+      "pruefungen": [
+        { "typ": "sachverstaendigenpruefung", "cycle": "fiveYearly", "intervalMonths": 60, "rolle": "strahlenschutz", "legalBasis": "StrlSchV §88", "titel": "Sachverstaendigenpruefung OPG" },
+        { "typ": "konstanzpruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "strahlenschutz", "legalBasis": "QS-RL / StrlSchV §115", "titel": "Konstanzpruefung OPG" }
+      ] },
+    { "key": "frs", "label": "Fernroentgen (FRS / Kephalometrie)", "gruppe": "bildgebung", "capability": "roentgen", "strahlung": true,
+      "pruefungen": [
+        { "typ": "sachverstaendigenpruefung", "cycle": "fiveYearly", "intervalMonths": 60, "rolle": "strahlenschutz", "legalBasis": "StrlSchV §88", "titel": "Sachverstaendigenpruefung FRS" },
+        { "typ": "konstanzpruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "strahlenschutz", "legalBasis": "QS-RL", "titel": "Konstanzpruefung FRS" }
+      ] },
+    { "key": "dvt", "label": "Digitale Volumentomographie (DVT)", "gruppe": "bildgebung", "capability": "roentgen", "strahlung": true,
+      "pruefungen": [
+        { "typ": "sachverstaendigenpruefung", "cycle": "fiveYearly", "intervalMonths": 60, "rolle": "strahlenschutz", "legalBasis": "StrlSchV §88", "titel": "Sachverstaendigenpruefung DVT" },
+        { "typ": "konstanzpruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "strahlenschutz", "legalBasis": "QS-RL", "titel": "Konstanzpruefung DVT" }
+      ] },
+    { "key": "roe_projektion", "label": "Projektionsroentgen (Thorax/Skelett)", "gruppe": "bildgebung", "capability": "roentgen", "strahlung": true,
+      "pruefungen": [
+        { "typ": "sachverstaendigenpruefung", "cycle": "fiveYearly", "intervalMonths": 60, "rolle": "strahlenschutz", "legalBasis": "StrlSchV §88", "titel": "Sachverstaendigenpruefung Roentgen (Projektion)" },
+        { "typ": "konstanzpruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "strahlenschutz", "legalBasis": "QS-RL", "titel": "Konstanzpruefung Roentgen (Projektion)" }
+      ] },
+    { "key": "c_bogen", "label": "C-Bogen (mobile Durchleuchtung)", "gruppe": "bildgebung", "capability": "roentgen", "strahlung": true,
+      "pruefungen": [
+        { "typ": "sachverstaendigenpruefung", "cycle": "fiveYearly", "intervalMonths": 60, "rolle": "strahlenschutz", "legalBasis": "StrlSchV §88", "titel": "Sachverstaendigenpruefung C-Bogen" },
+        { "typ": "konstanzpruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "strahlenschutz", "legalBasis": "QS-RL", "titel": "Konstanzpruefung C-Bogen" }
+      ] },
+    { "key": "ct", "label": "Computertomograph (CT)", "gruppe": "bildgebung", "capability": "roentgen", "strahlung": true,
+      "pruefungen": [
+        { "typ": "sachverstaendigenpruefung", "cycle": "fiveYearly", "intervalMonths": 60, "rolle": "strahlenschutz", "legalBasis": "StrlSchV §88", "titel": "Sachverstaendigenpruefung CT" },
+        { "typ": "konstanzpruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "strahlenschutz", "legalBasis": "QS-RL", "titel": "Konstanzpruefung CT" }
+      ] },
+    { "key": "mammographie", "label": "Mammographiegeraet", "gruppe": "bildgebung", "capability": "roentgen", "strahlung": true,
+      "pruefungen": [
+        { "typ": "sachverstaendigenpruefung", "cycle": "fiveYearly", "intervalMonths": 60, "rolle": "strahlenschutz", "legalBasis": "StrlSchV §88", "titel": "Sachverstaendigenpruefung Mammographie" },
+        { "typ": "konstanzpruefung", "cycle": "workday", "intervalMonths": 0, "rolle": "strahlenschutz", "legalBasis": "QS-RL Mammographie", "titel": "Konstanzpruefung Mammographie (arbeitstaeglich)" }
+      ] },
+    { "key": "mrt", "label": "Magnetresonanztomograph (MRT)", "gruppe": "bildgebung", "capability": "bildgebung_mrt", "strahlung": false,
+      "pruefungen": [
+        { "typ": "stk", "cycle": "yearly", "intervalMonths": 12, "rolle": "sicherheitsbeauftragte", "legalBasis": "MPBetreibV / Herstellerangabe", "titel": "Wartung/STK MRT" }
+      ] },
+    { "key": "sono", "label": "Sonographie / Ultraschallgeraet", "gruppe": "bildgebung", "capability": "bildgebung_sono", "strahlung": false,
+      "pruefungen": [
+        { "typ": "stk", "cycle": "yearly", "intervalMonths": 12, "rolle": "sicherheitsbeauftragte", "legalBasis": "MPBetreibV / Herstellerangabe", "titel": "Wartung Sonographie" }
+      ] },
+
+    { "key": "autoklav", "label": "Dampfsterilisator (Autoklav)", "gruppe": "aufbereitung", "capability": "eigene_sterilisation",
+      "attribute": [ { "key": "klasse", "label": "Sterilisator-Klasse", "options": ["B", "S", "N"] } ],
+      "pruefungen": [
+        { "typ": "validierung", "cycle": "yearly", "intervalMonths": 12, "rolle": "hygiene", "legalBasis": "MPBetreibV / KRINKO-BfArM", "titel": "Validierung/Revalidierung Autoklav" }
+      ] },
+    { "key": "rdg", "label": "RDG / Thermodesinfektor", "gruppe": "aufbereitung", "capability": "eigene_sterilisation",
+      "pruefungen": [
+        { "typ": "validierung", "cycle": "yearly", "intervalMonths": 12, "rolle": "hygiene", "legalBasis": "MPBetreibV / KRINKO-BfArM", "titel": "Validierung/Revalidierung RDG" }
+      ] },
+    { "key": "dac", "label": "DAC / Kombigeraet (Uebertragungsinstrumente)", "gruppe": "aufbereitung", "capability": "eigene_sterilisation",
+      "pruefungen": [
+        { "typ": "validierung", "cycle": "yearly", "intervalMonths": 12, "rolle": "hygiene", "legalBasis": "MPBetreibV / KRINKO-BfArM", "titel": "Validierung/Revalidierung DAC/Kombigeraet" }
+      ] },
+    { "key": "us_bad", "label": "Ultraschallbad", "gruppe": "aufbereitung", "capability": "eigene_sterilisation",
+      "pruefungen": [
+        { "typ": "leistungspruefung", "cycle": "quarterly", "intervalMonths": 3, "rolle": "sterilgutassistenz", "legalBasis": "KRINKO-BfArM / DGSV", "titel": "Reinigungsleistung Ultraschallbad pruefen" }
+      ] },
+    { "key": "siegelgeraet", "label": "Siegelgeraet (Sterilgutverpackung)", "gruppe": "aufbereitung", "capability": "eigene_sterilisation",
+      "pruefungen": [
+        { "typ": "validierung", "cycle": "yearly", "intervalMonths": 12, "rolle": "hygiene", "legalBasis": "DIN EN ISO 11607 / MPBetreibV", "titel": "Validierung/Pruefung Siegelgeraet" },
+        { "typ": "siegelnahtpruefung", "cycle": "workday", "intervalMonths": 0, "rolle": "sterilgutassistenz", "legalBasis": "DGSV", "titel": "Siegelnahtpruefung (arbeitstaeglich)" }
+      ] },
+    { "key": "ve_wasser", "label": "VE-/Aqua-dest-Anlage", "gruppe": "aufbereitung", "capability": "eigene_sterilisation",
+      "pruefungen": [
+        { "typ": "wasserpruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "hygiene", "legalBasis": "Herstellerangabe Autoklav", "titel": "Wasserqualitaet (VE-Wasser) pruefen" }
+      ] },
+
+    { "key": "aed", "label": "AED / Defibrillator", "gruppe": "notfall", "capability": "notfallkoffer",
+      "pruefungen": [
+        { "typ": "funktionspruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "sicherheitsbeauftragte", "legalBasis": "MPBetreibV / Herstellerangabe", "titel": "Funktions-/Elektrodenpruefung AED" },
+        { "typ": "stk", "cycle": "yearly", "intervalMonths": 24, "rolle": "sicherheitsbeauftragte", "legalBasis": "MPBetreibV Anlage 1", "titel": "STK Defibrillator" }
+      ] },
+    { "key": "notfallkoffer", "label": "Notfallkoffer / Notfallmedikamente", "gruppe": "notfall", "capability": "notfallkoffer",
+      "pruefungen": [
+        { "typ": "bestandspruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "sicherheitsbeauftragte", "legalBasis": "Praxis-SOP", "titel": "Notfallkoffer/-medikamente pruefen (Vollstaendigkeit/Verfall)" }
+      ] },
+    { "key": "sauerstoff", "label": "Sauerstoff-/Beatmungseinheit", "gruppe": "notfall", "capability": "notfallkoffer",
+      "pruefungen": [
+        { "typ": "funktionspruefung", "cycle": "monthly", "intervalMonths": 1, "rolle": "sicherheitsbeauftragte", "legalBasis": "Herstellerangabe", "titel": "Sauerstoff/Beatmung pruefen (Fuellstand/Funktion)" }
+      ] },
+
+    { "key": "kuehlschrank_med", "label": "Medikamenten-/Impfstoffkuehlschrank", "gruppe": "kuehlung", "capability": "impfstoff_kuehlschrank",
+      "pruefungen": [
+        { "typ": "temperaturkontrolle", "cycle": "workday", "intervalMonths": 0, "rolle": "hygiene", "legalBasis": "STIKO / Herstellerangabe", "titel": "Temperaturkontrolle Medikamentenkuehlschrank (arbeitstaeglich)" }
+      ] },
+
+    { "key": "endoskop_flex", "label": "Flexibles Endoskop", "gruppe": "medizinprodukt", "capability": "endoskopie",
+      "pruefungen": [
+        { "typ": "validierung", "cycle": "yearly", "intervalMonths": 12, "rolle": "hygiene", "legalBasis": "KRINKO/BfArM (Endoskop-Aufbereitung)", "titel": "Validierung Endoskop-Aufbereitung" }
+      ] },
+    { "key": "laser", "label": "Laser (therapeutisch/chirurgisch)", "gruppe": "medizinprodukt", "capability": "laser",
+      "pruefungen": [
+        { "typ": "stk", "cycle": "yearly", "intervalMonths": 12, "rolle": "sicherheitsbeauftragte", "legalBasis": "MPBetreibV Anlage 1 / OStrV", "titel": "STK/Pruefung Laser" }
+      ] },
+    { "key": "ekg", "label": "EKG-Geraet", "gruppe": "medizinprodukt", "capability": "medizinprodukte_aktiv",
+      "pruefungen": [
+        { "typ": "stk", "cycle": "yearly", "intervalMonths": 24, "rolle": "sicherheitsbeauftragte", "legalBasis": "MPBetreibV", "titel": "STK EKG" }
+      ] },
+    { "key": "op_mikroskop", "label": "OP-/Behandlungsmikroskop", "gruppe": "medizinprodukt", "capability": "medizinprodukte_aktiv",
+      "pruefungen": [
+        { "typ": "stk", "cycle": "yearly", "intervalMonths": 24, "rolle": "sicherheitsbeauftragte", "legalBasis": "MPBetreibV / Herstellerangabe", "titel": "Wartung/STK Mikroskop" }
+      ] },
+    { "key": "kolposkop", "label": "Kolposkop", "gruppe": "medizinprodukt", "capability": "medizinprodukte_aktiv",
+      "pruefungen": [
+        { "typ": "stk", "cycle": "yearly", "intervalMonths": 24, "rolle": "sicherheitsbeauftragte", "legalBasis": "MPBetreibV / Herstellerangabe", "titel": "Wartung/STK Kolposkop" }
+      ] }
+  ],
+
+  "fachrichtungGeraete": {
+    "zahnmedizin": {
+      "typisch": ["roe_intraoral", "opg", "autoklav", "rdg", "dac", "us_bad", "siegelgeraet", "ve_wasser", "notfallkoffer", "kuehlschrank_med"],
+      "optional": ["dvt", "frs", "aed", "op_mikroskop", "laser"]
+    },
+    "oralchirurgie_mkg": {
+      "typisch": ["roe_intraoral", "opg", "dvt", "autoklav", "rdg", "dac", "us_bad", "siegelgeraet", "ve_wasser", "notfallkoffer", "aed", "sauerstoff"],
+      "optional": ["frs", "c_bogen", "op_mikroskop", "laser"]
+    },
+    "allgemeinmedizin": {
+      "typisch": ["ekg", "kuehlschrank_med", "notfallkoffer", "aed"],
+      "optional": ["sono", "autoklav", "roe_projektion"]
+    },
+    "dermatologie": {
+      "typisch": ["autoklav", "siegelgeraet", "us_bad", "notfallkoffer", "laser"],
+      "optional": ["kuehlschrank_med", "aed", "sono"]
+    },
+    "orthopaedie_unfallchirurgie": {
+      "typisch": ["roe_projektion", "sono", "autoklav", "siegelgeraet", "notfallkoffer", "aed"],
+      "optional": ["c_bogen", "dvt", "rdg", "us_bad"]
+    },
+    "gynaekologie": {
+      "typisch": ["sono", "autoklav", "siegelgeraet", "us_bad", "kuehlschrank_med", "notfallkoffer"],
+      "optional": ["mammographie", "aed", "kolposkop"]
+    },
+    "kinder_jugendmedizin": {
+      "typisch": ["kuehlschrank_med", "notfallkoffer", "aed"],
+      "optional": ["sono", "ekg"]
+    },
+    "radiologie": {
+      "typisch": ["ct", "mrt", "roe_projektion", "sono", "notfallkoffer", "aed"],
+      "optional": ["mammographie", "dvt", "c_bogen"]
+    },
+    "chirurgie": {
+      "typisch": ["autoklav", "rdg", "dac", "us_bad", "siegelgeraet", "notfallkoffer", "aed", "sauerstoff"],
+      "optional": ["c_bogen", "roe_projektion", "sono", "op_mikroskop", "laser"]
+    },
+    "hno": {
+      "typisch": ["endoskop_flex", "autoklav", "us_bad", "siegelgeraet", "op_mikroskop", "notfallkoffer"],
+      "optional": ["dvt", "sono", "laser", "aed"]
+    },
+    "augenheilkunde": {
+      "typisch": ["autoklav", "siegelgeraet", "us_bad", "op_mikroskop", "notfallkoffer"],
+      "optional": ["laser", "sono", "aed"]
+    },
+    "_default": {
+      "typisch": ["notfallkoffer", "kuehlschrank_med"],
+      "optional": ["autoklav", "rdg", "siegelgeraet", "us_bad", "sono", "ekg", "aed", "roe_projektion"]
+    }
+  }
+}
