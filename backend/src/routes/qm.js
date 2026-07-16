@@ -2,11 +2,14 @@
 // Mechanischer W1.2-Split aus server.js (04.07.2026): Pfade und Handler
 // byte-identisch uebernommen, nur app. -> router. Kein Verhalten geaendert.
 import express from "express";
-import { listFachrichtungen, defaultProfileFor as qmDefaultProfileFor } from "../qm/catalog.js";
-import { saveProfile as qmSaveProfile, getProfile as qmGetProfile, computeRequirements as qmComputeRequirements, activateBook as qmActivateBook, deactivateBook as qmDeactivateBook, setBookResponsible as qmSetBookResponsible, listBooks as qmListBooks } from "../qm/books.js";
-import { listDocuments as qmListDocuments, exportRows as qmExportRows } from "../qm/documents.js";
+import { listFachrichtungen, defaultProfileFor as qmDefaultProfileFor, listWizards as qmListWizards, getWizard as qmGetWizard, getProfileWizard as qmGetProfileWizard, getOptionLists as qmGetOptionLists } from "../qm/catalog.js";
+import { previewWizard as qmPreviewWizard, applyWizard as qmApplyWizard } from "../qm/wizards.js";
+import { runInterviewTurn as qmRunInterviewTurn } from "../qm/interview.js";
+import { saveProfile as qmSaveProfile, getProfile as qmGetProfile, computeRequirements as qmComputeRequirements, activateBook as qmActivateBook, deactivateBook as qmDeactivateBook, setBookResponsible as qmSetBookResponsible, markReviewed as qmMarkReviewed, listBooks as qmListBooks, setBookPlans as qmSetBookPlans } from "../qm/books.js";
+import { listDocuments as qmListDocuments, listAllDocuments as qmListAllDocuments, exportRows as qmExportRows } from "../qm/documents.js";
 import { createJob as qmCreateJob, updateJob as qmUpdateJob, deleteJob as qmDeleteJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, listJobsForStaff as qmListJobsForStaff, redistributeOpenJobs as qmRedistribute } from "../qm/jobs.js";
 import { PRODUCT_PRESETS as qmHygienePresets, TASK_TEMPLATES as qmHygieneTasks, defaultProductSelection as qmHygieneDefaults, buildHygienePlans as qmBuildHygienePlans, setupHygienePlan as qmSetupHygiene } from "../qm/hygiene.js";
+import { TASK_TEMPLATES as qmSteriTasks, buildSterilizationPlans as qmBuildSteriPlans, setupSterilizationPlan as qmSetupSteri } from "../qm/sterilization.js";
 import { createSchedule as qmCreateSchedule, listSchedules as qmListSchedules, updateSchedule as qmUpdateSchedule, deleteSchedule as qmDeleteSchedule } from "../qm/schedules.js";
 import { upsertStaff as qmUpsertStaff, listStaff as qmListStaff, addAbsence as qmAddAbsence, removeAbsence as qmRemoveAbsence, suggestAssignee as qmSuggestAssignee } from "../qm/staff.js";
 import { pushJob as qmPushJob } from "../qm/notify.js";
@@ -36,6 +39,48 @@ router.get("/clara/qm/requirements", qmRoute(async (clientId, req, res) => {
 }));
 
 
+// --- Wizards (deterministische Fragebögen: Ja/Nein + Dropdowns) ---
+router.get("/clara/qm/wizards", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, wizards: qmListWizards(), profileWizard: qmGetProfileWizard(), optionLists: qmGetOptionLists() });
+}));
+
+router.get("/clara/qm/wizards/:key", qmRoute(async (clientId, req, res) => {
+  const wizard = qmGetWizard(req.params.key);
+  if (!wizard) return res.status(404).json({ error: "unknown_wizard" });
+  res.json({ ok: true, clientId, wizard, optionLists: qmGetOptionLists() });
+}));
+
+// Vorschau: "So wird gebaut" — PURE, ändert nichts.
+router.post("/clara/qm/wizards/:key/preview", qmRoute(async (clientId, req, res) => {
+  const body = req.body || {};
+  const r = qmPreviewWizard(req.params.key, body.answers || {}, { capabilities: body.capabilities || {} });
+  res.status(r.ok ? 200 : 404).json({ clientId, ...r });
+}));
+
+// --- LLM-gefuehrtes Plan-Interview (Julias "Quiz" gegen den RTX-5090) ---
+// Eine Runde: bookKey + bisherige Nachrichten -> naechste Frage + erfasste
+// Themen ([ERGEBNIS]) + done-Flag. Die Plangenerierung bleibt deterministisch
+// (hygiene/setup); das Interview sammelt nur, was zutrifft.
+router.post("/clara/qm/interview", qmRoute(async (clientId, req, res) => {
+  const b = req.body || {};
+  const r = await qmRunInterviewTurn(clientId, { bookKey: b.bookKey, messages: b.messages || [] });
+  res.status(r.ok ? 200 : (r.reason === "unknown_book" ? 404 : 502)).json({ clientId, ...r });
+}));
+
+// Anwenden: Buch aktivieren, Pläne ablegen, Schedules + erste Jobs erzeugen.
+router.post("/clara/qm/wizards/:key/apply", qmRoute(async (clientId, req, res) => {
+  const body = req.body || {};
+  const r = await qmApplyWizard(clientId, req.params.key, body.answers || {}, {
+    capabilities: body.capabilities || {},
+    responsibleRole: body.responsibleRole || "",
+    responsibleStaffId: body.responsibleStaffId || "",
+    deputyStaffId: body.deputyStaffId || "",
+    createFirstJobs: body.createFirstJobs !== false,
+  });
+  res.status(r.ok ? 201 : 400).json({ clientId, ...r });
+}));
+
+
 // --- Bücher & Nachweise ---
 router.get("/clara/qm/books", qmRoute(async (clientId, req, res) => {
   const activeOnly = String(req.query?.activeOnly || "") === "1";
@@ -56,6 +101,27 @@ router.post("/clara/qm/books/deactivate", qmRoute(async (clientId, req, res) => 
 router.post("/clara/qm/books/:bookKey/responsible", qmRoute(async (clientId, req, res) => {
   const r = await qmSetBookResponsible(clientId, req.params.bookKey, req.body || {});
   res.status(r.ok ? 200 : 404).json({ clientId, ...r });
+}));
+
+// Editierte Pläne speichern: der Nutzer individualisiert die Tabellen (Geräte,
+// Produkte, Zeiten) und speichert sie zurück. Verlängert zugleich die Gültigkeit.
+router.post("/clara/qm/books/:bookKey/plans", qmRoute(async (clientId, req, res) => {
+  const b = req.body || {};
+  const plans = Array.isArray(b.plans) ? b.plans : [];
+  const r = await qmSetBookPlans(clientId, req.params.bookKey, plans, { products: b.products || null });
+  res.status(r.ok ? 200 : 404).json({ clientId, ...r });
+}));
+
+// Plan als überprüft markieren -> Gültigkeit läuft neu, "abgelaufen" verschwindet.
+router.post("/clara/qm/books/:bookKey/reviewed", qmRoute(async (clientId, req, res) => {
+  const r = await qmMarkReviewed(clientId, req.params.bookKey, { by: (req.body || {}).by || "julia" });
+  res.status(r.ok ? 200 : 404).json({ clientId, ...r });
+}));
+
+// Das eine QM-Kontrollbuch: alle Nachweise über alle Bücher, für Suche/Gliederung.
+router.get("/clara/qm/handbook", qmRoute(async (clientId, req, res) => {
+  const limit = Math.max(1, Math.min(3000, Number(req.query?.limit) || 1000));
+  res.json({ ok: true, clientId, documents: await qmListAllDocuments(clientId, { limit }) });
 }));
 
 router.get("/clara/qm/books/:bookKey/documents", qmRoute(async (clientId, req, res) => {
@@ -81,6 +147,21 @@ router.post("/clara/qm/hygiene/preview", qmRoute(async (clientId, req, res) => {
 
 router.post("/clara/qm/hygiene/setup", qmRoute(async (clientId, req, res) => {
   const r = await qmSetupHygiene(clientId, req.body || {});
+  res.status(r.ok ? 201 : 400).json({ clientId, ...r });
+}));
+
+// --- Instrumentenaufbereitung/Sterilisation: Unterpläne + Prüf-Jobs ---------
+router.get("/clara/qm/sterilization/presets", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, tasks: qmSteriTasks });
+}));
+
+router.post("/clara/qm/sterilization/preview", qmRoute(async (clientId, req, res) => {
+  const b = req.body || {};
+  res.json({ ok: true, clientId, plans: qmBuildSteriPlans({ docSystem: b.docSystem }) });
+}));
+
+router.post("/clara/qm/sterilization/setup", qmRoute(async (clientId, req, res) => {
+  const r = await qmSetupSteri(clientId, req.body || {});
   res.status(r.ok ? 201 : 400).json({ clientId, ...r });
 }));
 
