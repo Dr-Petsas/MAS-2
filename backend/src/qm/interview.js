@@ -114,12 +114,18 @@ export async function runInterviewTurn(clientId, opts = {}) {
   const messages = [{ role: "system", content: system }, ...clean, ...kickoff];
 
   const s = strongLlm();
+  // Denken abschalten (qwen3.6 auf vLLM): eine Interview-Frage + ein kurzer
+  // [ERGEBNIS]-Block brauchen kein langes Reasoning — das war der Haupt-Grund
+  // fuer die langen Wartezeiten. chat_template_kwargs.enable_thinking=false ist
+  // der vLLM-Weg, /no_think im Prompt der Fallback.
+  const NO_THINK = { chat_template_kwargs: { enable_thinking: false } };
   const r = await chat(messages, {
     baseUrl: s.base,
     model: s.model,
     temperature: 0.3,
-    maxTokens: 1200,
+    maxTokens: 800,
     timeoutMs: 60000,
+    extraBody: NO_THINK,
   });
 
   if (!r.ok) {
@@ -139,7 +145,7 @@ export async function runInterviewTurn(clientId, opts = {}) {
       { role: "assistant", content: r.text },
       { role: "user", content: "Gib jetzt KEINEN [ERGEBNIS]-Block aus. Stelle nur die naechste Einzelfrage zum naechsten offenen Thema (oder gib [STATUS]interview_abgeschlossen[/STATUS] aus, wenn alle Themen erledigt sind)." },
     ];
-    const r2 = await chat(nudge, { baseUrl: s.base, model: s.model, temperature: 0.3, maxTokens: 600, timeoutMs: 45000 });
+    const r2 = await chat(nudge, { baseUrl: s.base, model: s.model, temperature: 0.3, maxTokens: 500, timeoutMs: 45000, extraBody: NO_THINK });
     if (r2.ok) {
       const parsed2 = parseInterviewReply(r2.text);
       parsed = {

@@ -51,7 +51,7 @@ function looksLikeOllama(base) {
  * @param {{ temperature?: number, maxTokens?: number, timeoutMs?: number }} opts
  * @returns {Promise<{ok:boolean, text:string, reason?:string, model:string}>}
  */
-export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeoutMs = 45000, model: modelOverride, baseUrl: baseOverride } = {}) {
+export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeoutMs = 45000, model: modelOverride, baseUrl: baseOverride, extraBody } = {}) {
   const c = cfg();
   const base = (baseOverride || c.base).replace(/\/+$/, "");
   const apiKey = c.apiKey;
@@ -92,7 +92,7 @@ export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeo
     const resp = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens, stream: false }),
+      body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens, stream: false, ...(extraBody || {}) }),
       signal: ctrl.signal,
     });
     if (!resp.ok) {
