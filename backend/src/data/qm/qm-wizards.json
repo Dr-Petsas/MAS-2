@@ -1,0 +1,559 @@
+{
+  "_meta": {
+    "description": "Deterministische QM-Wizards (Fragebögen) für Julia. Prinzip: Ja/Nein bevorzugt, sonst Dropdown (options oder optionsRef), Freitext nur wo rechtlich unvermeidbar (allowOther/type=text). Jede Antwort erzeugt deterministisch planRow / schedule / requiredField / setCapability / activateBook. STAND: LIVE — von catalog.js geladen und über wizards.js (previewWizard/applyWizard) wirksam. HINWEIS: 'repeat.over' (pro Gerät/Bereich) ist in wizards.js NICHT implementiert; Bereiche/Geräte daher als benannte Sektionen bzw. mit klaren Ja/Nein-Gates ausformulieren, nicht über repeat.",
+    "version": "0.2",
+    "quellen": ["DAHZ/BZÄK Rahmen-Hygieneplan 2026", "KRINKO Flächen-Rili 2022", "G-BA QM-RL 2024", "QS-RL Röntgendiagnostik 2024", "MPBetreibV 2025 + KRINKO/BfArM", "BioStoffV/TRBA 250", "MDR (EU) 2017/745 Anhang XIII"],
+    "cycleExtensions": {
+      "note": "Diese cycle-Werte muss recurrence.js in W-JULIA-1 ergänzen (heute vorhanden: daily/weekly/monthly/quarterly/yearly/fiveYearly/perCharge/onEvent).",
+      "neu": ["workday (arbeitstäglich)", "biweekly (14-tägig)", "halfYearly (halbjährlich)", "twoYearly (alle 2 Jahre)", "perUse (pro Nutzung, anlassbezogen)"]
+    },
+    "newArtifacts": {
+      "note": "Diese artifactKeys muss qm-artifacts.json in W-JULIA-1 ergänzen (referenziert von Wizards unten).",
+      "keys": ["op_checklist", "sedation_log", "op_hygiene_plan", "praxislabor_mdr", "radiation_expert_inspection", "device_stk_log"]
+    },
+    "schema": {
+      "question.type": "boolean | enum | multi | number | text | device",
+      "question.optionsRef": "Verweis auf optionLists (z. B. FREQ, ROLE)",
+      "question.condition": "{ q: <id>, eq: <wert> } — Folgefrage nur zeigen wenn Vorfrage passt (echtes Ja/Nein-Branching)",
+      "produces": "planRow | schedule | requiredField | setPlanField | setCapability | setActivity | activateBook | flag",
+      "schedule.cycleFromAnswer": "true => cycle kommt aus der (FREQ-)Antwort dieser Frage"
+    }
+  },
+
+  "optionLists": {
+    "FREQ": [
+      { "value": "perUse", "label": "pro Nutzung" },
+      { "value": "workday", "label": "arbeitstäglich" },
+      { "value": "daily", "label": "täglich" },
+      { "value": "weekly", "label": "wöchentlich" },
+      { "value": "biweekly", "label": "14-tägig" },
+      { "value": "monthly", "label": "monatlich" },
+      { "value": "quarterly", "label": "vierteljährlich" },
+      { "value": "halfYearly", "label": "halbjährlich" },
+      { "value": "yearly", "label": "jährlich" },
+      { "value": "twoYearly", "label": "alle 2 Jahre" },
+      { "value": "fiveYearly", "label": "alle 5 Jahre" }
+    ],
+    "ROLE": [
+      { "value": "hygienebeauftragte", "label": "Hygienebeauftragte/r" },
+      { "value": "strahlenschutzbeauftragte", "label": "Strahlenschutzbeauftragte/r" },
+      { "value": "sicherheitsbeauftragte", "label": "Sicherheitsbeauftragte/r" },
+      { "value": "qm_beauftragte", "label": "QM-Beauftragte/r" },
+      { "value": "infektionsschutzbeauftragte", "label": "Infektionsschutzbeauftragte/r" },
+      { "value": "ersthelfer", "label": "Ersthelfer/in" },
+      { "value": "sterilgutassistenz", "label": "Sterilgutassistenz" },
+      { "value": "praxisinhaber", "label": "Praxisinhaber/in" },
+      { "value": "behandler", "label": "Behandler/in" },
+      { "value": "offen", "label": "noch offen" }
+    ],
+    "JA_NEIN_NZ": ["ja", "nein", "nicht zutreffend"],
+    "HAND_DES": [
+      { "value": "Sterillium classic pure", "label": "Sterillium classic pure (hygienisch)" },
+      { "value": "Sterillium med", "label": "Sterillium med (auch chirurgisch)" },
+      { "value": "Softa-Man acute", "label": "Softa-Man acute" },
+      { "value": "Desderman pure", "label": "Desderman pure" },
+      { "value": "Spitacid", "label": "Spitacid" },
+      { "value": "AHD 2000", "label": "AHD 2000" }
+    ],
+    "HAUT_SCHUTZ": [
+      { "value": "Stokoderm Protect PURE", "label": "Stokoderm Protect PURE" },
+      { "value": "Baktolin Hautschutz", "label": "Baktolin Hautschutz" },
+      { "value": "Bode Protect Cream", "label": "Bode Protect Cream" }
+    ],
+    "HAUT_PFLEGE": [
+      { "value": "Stokolan Sensitive PURE", "label": "Stokolan Sensitive PURE" },
+      { "value": "Baktolan lotion", "label": "Baktolan lotion" },
+      { "value": "Excipial Repair", "label": "Excipial Repair" }
+    ],
+    "FLAECHE_DES": [
+      { "value": "Bacillol 30 Sensitive", "label": "Bacillol 30 Sensitive (Alkohol, schnell)" },
+      { "value": "Bacillol AF", "label": "Bacillol AF (Alkohol, schnell)" },
+      { "value": "Mikrozid AF", "label": "Mikrozid AF" },
+      { "value": "Kohrsolin FF", "label": "Kohrsolin FF (Aldehyd, Wischen)" },
+      { "value": "Terralin protect", "label": "Terralin protect" },
+      { "value": "Perform", "label": "Perform (Sauerstoffabspalter)" }
+    ],
+    "INSTR_DES": [
+      { "value": "Sekusept aktiv", "label": "Sekusept aktiv" },
+      { "value": "Sekusept Plus", "label": "Sekusept Plus" },
+      { "value": "Gigasept Instru AF", "label": "Gigasept Instru AF" },
+      { "value": "Bomix plus", "label": "Bomix plus" },
+      { "value": "neodisher MediClean", "label": "neodisher MediClean (RDG)" }
+    ],
+    "VAH_LISTE": [
+      { "value": "Sterillium classic pure", "label": "Sterillium classic pure (Hände)" },
+      { "value": "Bacillol 30 Sensitive", "label": "Bacillol 30 Sensitive (Flächen)" },
+      { "value": "Mikrozid AF", "label": "Mikrozid AF (Flächen)" },
+      { "value": "Kohrsolin FF", "label": "Kohrsolin FF (Flächen, Wischen)" },
+      { "value": "Gigasept Instru AF", "label": "Gigasept Instru AF (Instrumente)" }
+    ],
+    "EINWIRK": [
+      { "value": "15 s", "label": "15 Sekunden" },
+      { "value": "30 s", "label": "30 Sekunden" },
+      { "value": "1 min", "label": "1 Minute" },
+      { "value": "5 min", "label": "5 Minuten" },
+      { "value": "15 min", "label": "15 Minuten" },
+      { "value": "laut Etikett", "label": "laut Herstelleretikett" }
+    ],
+    "OBERFLAECHE_TYP": [
+      { "value": "alkoholisch (Schnelldesinfektion)", "label": "Alkoholisch – Schnelldesinfektion" },
+      { "value": "aldehydisch (Wischdesinfektion)", "label": "Aldehydisch – Wischdesinfektion" },
+      { "value": "Sauerstoffabspalter", "label": "Sauerstoffabspalter" }
+    ]
+  },
+
+  "profileWizard": {
+    "wizardKey": "praxisprofil",
+    "title": "Praxisprofil (Onboarding)",
+    "note": "Setzt sector/activities/capabilities. Die Regel-Engine (requirements.js) berechnet daraus die Buch-/Planliste. Vorbelegung kommt aus qm-fachrichtungen.json.",
+    "questions": [
+      { "id": "fachrichtung", "prompt": "Welche Fachrichtung hat die Praxis?", "type": "enum", "optionsRef": "FACHRICHTUNGEN", "produces": { "setSector": "fromFachrichtung" } },
+      { "id": "roentgen", "prompt": "Wird in der Praxis geröntgt?", "type": "boolean", "default": true, "producesOnYes": { "setCapability": "roentgen" } },
+      { "id": "roentgen_modalitaeten", "prompt": "Welche Röntgen-Modalitäten sind vorhanden?", "type": "multi", "options": ["Zahnfilm", "OPG", "FRS", "DVT"], "condition": { "q": "roentgen", "eq": true }, "produces": { "flag": "roentgen_devices" } },
+      { "id": "eigene_sterilisation", "prompt": "Werden Instrumente in der Praxis selbst aufbereitet/sterilisiert?", "type": "boolean", "default": true, "producesOnYes": { "setCapability": "eigene_sterilisation" } },
+      { "id": "ambulant_operieren", "prompt": "Werden ambulante Operationen durchgeführt?", "type": "boolean", "default": false, "producesOnYes": { "setCapability": "ambulant_operieren" } },
+      { "id": "narkose_sedierung", "prompt": "Wird sediert oder Narkose eingesetzt?", "type": "boolean", "default": false, "producesOnYes": { "setCapability": "narkose_sedierung" } },
+      { "id": "labor_eigen", "prompt": "Gibt es ein eigenes Labor?", "type": "boolean", "default": false },
+      { "id": "labor_art", "prompt": "Um welche Art Labor handelt es sich?", "type": "enum", "options": [ { "value": "dental", "label": "Zahntechnisches Eigenlabor / Chairside (CAD-CAM)" }, { "value": "mibi", "label": "Mikrobiologisches / medizinisches Labor" } ], "condition": { "q": "labor_eigen", "eq": true }, "produces": { "setCapability": "labor_eigen" } },
+      { "id": "impfstoff_kuehlschrank", "prompt": "Gibt es einen Impfstoff-/Medikamenten-Kühlschrank?", "type": "boolean", "default": false, "producesOnYes": { "setCapability": "impfstoff_kuehlschrank" } },
+      { "id": "mp_anlage1", "prompt": "Werden Geräte mit STK-/MTK-Pflicht betrieben (Laser, HF-Chirurgie, Defibrillator, Anästhesiegerät)?", "type": "boolean", "default": false, "producesOnYes": { "setCapability": "mp_anlage1" } },
+      { "id": "anzahl_zimmer", "prompt": "Wie viele Behandlungszimmer gibt es?", "type": "number", "default": 1, "produces": { "flag": "bereichszahl" } }
+    ]
+  },
+
+  "wizards": [
+    {
+      "wizardKey": "hygiene_plan",
+      "artifactKey": "hygiene_plan",
+      "title": "Hygieneplan erstellen",
+      "produces": "plan",
+      "sections": [
+        {
+          "key": "haende",
+          "title": "Händehygiene",
+          "questions": [
+            { "id": "waschplatz_beruehrungslos", "prompt": "Sind alle Handwaschplätze berührungslos bedienbar (Armatur, Seifen-/Desinfektionsmittelspender, Handtuchspender)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Handwaschplätze", "wie": "berührungslose Armaturen & Spender", "wann": "dauerhaft" } }, "producesOnNo": { "flag": "abweichung_begruendung" } },
+            { "id": "haende_mittel", "prompt": "Welches Mittel wird für die hygienische Händedesinfektion verwendet?", "type": "enum", "optionsRef": "HAND_DES", "allowOther": true, "produces": { "planRow": { "was": "Hygienische Händedesinfektion", "wie": "Einreiben in trockene Hände", "wann": "vor/nach Patientenkontakt, vor aseptischen Tätigkeiten, nach Kontamination", "setWomitFromAnswer": true } } },
+            { "id": "haende_einwirkzeit", "prompt": "Welche Einwirkzeit gilt für die hygienische Händedesinfektion?", "type": "enum", "optionsRef": "EINWIRK", "default": "30 s", "produces": { "setPlanField": "einwirkzeit" } },
+            { "id": "haende_chirurgisch", "prompt": "Wird eine chirurgische Händedesinfektion durchgeführt (bei invasiven/chirurgischen Eingriffen)?", "type": "boolean", "default": false, "producesOnYes": { "planRow": { "was": "Chirurgische Händedesinfektion", "wie": "verlängerte Einwirkzeit laut Hersteller", "wann": "vor invasiven/chirurgischen Eingriffen" } } },
+            { "id": "haende_vor_vorbereitung", "prompt": "Wird vor jeder Arbeitsplatzvorbereitung eine hygienische Händedesinfektion durchgeführt?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Händedesinfektion vor Arbeitsplatzvorbereitung", "wann": "vor jeder Vorbereitung" } } },
+            { "id": "schmuck_naegel", "prompt": "Ist die Vorgabe „keine Ringe/Uhren, keine künstlichen oder lackierten Nägel, Nägel kurz“ festgelegt?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Hand-/Nagelvorgaben", "wie": "kein Schmuck, kurze naturbelassene Nägel", "wann": "während der Behandlungstätigkeit" } } }
+          ]
+        },
+        {
+          "key": "psa",
+          "title": "Persönliche Schutzausrüstung (PSA)",
+          "questions": [
+            { "id": "psa_definiert", "prompt": "Sind Handschuhe, Mund-Nasen-Schutz, Schutzbrille und Schutzkittel je Tätigkeit festgelegt?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Persönliche Schutzausrüstung (PSA)", "wie": "je Tätigkeit festgelegt", "wann": "tätigkeitsbezogen" } } },
+            { "id": "handschuhwechsel", "prompt": "Ist der Handschuhwechsel geregelt (nach jedem Patienten, bei Perforation, vor aseptischen Tätigkeiten)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Handschuhwechsel", "wie": "nach jedem Patienten / bei Beschädigung", "wann": "patientenbezogen" } } },
+            { "id": "schutzbrille_aerosol", "prompt": "Werden Schutzbrille/Visier bei aerosolbildenden Behandlungen getragen?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Augenschutz bei Aerosolbildung", "wie": "Schutzbrille/Visier", "wann": "bei aerosolbildenden Tätigkeiten" } } },
+            { "id": "psa_ablage", "prompt": "Ist geregelt, wie PSA korrekt abgelegt und entsorgt/aufbereitet wird?", "type": "boolean", "default": true }
+          ]
+        },
+        {
+          "key": "flaechen",
+          "title": "Flächen & Desinfektion",
+          "questions": [
+            { "id": "flaechen_patientennah", "prompt": "Werden patientennahe Flächen nach jeder Behandlung desinfiziert?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Patientennahe Flächen", "wie": "Wischdesinfektion", "wann": "nach jeder Behandlung" } } },
+            { "id": "flaechen_mittel", "prompt": "Welches Flächendesinfektionsmittel wird verwendet?", "type": "enum", "optionsRef": "FLAECHE_DES", "allowOther": true, "condition": { "q": "flaechen_patientennah", "eq": true }, "produces": { "setPlanField": "womit" } },
+            { "id": "flaechen_einwirkzeit", "prompt": "Welche Einwirkzeit gilt laut Herstellerangabe?", "type": "enum", "optionsRef": "EINWIRK", "default": "laut Etikett", "condition": { "q": "flaechen_patientennah", "eq": true }, "produces": { "setPlanField": "einwirkzeit" } },
+            { "id": "flaechen_typ", "prompt": "Welche Art Flächendesinfektion wird überwiegend eingesetzt?", "type": "enum", "optionsRef": "OBERFLAECHE_TYP", "default": "alkoholisch (Schnelldesinfektion)", "condition": { "q": "flaechen_patientennah", "eq": true }, "produces": { "setPlanField": "verfahren" } },
+            { "id": "flaechen_zweistufig", "prompt": "Wird bei sichtbarer Blut-/Sekretkontamination zweistufig vorgegangen (erst mechanisch entfernen, dann desinfizieren)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Sichtbare Kontamination", "wie": "zweistufig (mechanisch + Desinfektion)", "wann": "bei Kontamination" } } },
+            { "id": "abdruck_desinfektion", "prompt": "Werden Abformungen/zahntechnische Werkstücke vor Weitergabe desinfiziert?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Abformungen/Werkstücke", "wie": "Tauch-/Sprühdesinfektion", "wann": "vor Weitergabe an Labor" } } },
+            { "id": "dosierhilfe", "prompt": "Ist eine Dosierhilfe/Dosiertabelle für die Ansatzlösungen vorhanden?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Dosierung Desinfektionsmittel", "wie": "Dosierhilfe/-tabelle", "wann": "bei jedem Ansatz" } } },
+            { "id": "boeden_frequenz", "prompt": "Wie oft werden die Fußböden im Behandlungsbereich gereinigt/desinfiziert?", "type": "enum", "optionsRef": "FREQ", "default": "daily", "produces": { "schedule": { "title": "Bodenreinigung Behandlungsbereich", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } }
+          ]
+        },
+        {
+          "key": "wasser_entsorgung",
+          "title": "Wasserwege & Entsorgung",
+          "questions": [
+            { "id": "morgen_spuelen", "prompt": "Werden die wasserführenden Systeme jeden Morgen vor Behandlungsbeginn ausreichend gespült (und benutzte Entnahmestellen nach jedem Patienten)?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Morgendliches Spülen Wasserwege", "cycle": "workday", "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } },
+            { "id": "einheit_entkeimung", "prompt": "Wie oft werden die Wasserwege der Behandlungseinheit intensiv entkeimt?", "type": "enum", "optionsRef": "FREQ", "default": "weekly", "produces": { "schedule": { "title": "Entkeimung Behandlungseinheit", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 1 } } },
+            { "id": "wasserprobe", "prompt": "In welchem Intervall wird eine mikrobiologische Wasserprobe der Behandlungseinheiten genommen?", "type": "enum", "optionsRef": "FREQ", "default": "yearly", "produces": { "schedule": { "title": "Mikrobiologische Wasserprobe", "cycleFromAnswer": true, "recurrenceMode": "anchor_on_completion", "role": "hygienebeauftragte", "leadDays": 14, "requiredField": [ { "key": "kbe", "label": "KBE/ml", "type": "number", "required": false }, { "key": "bewertung", "label": "Bewertung", "type": "enum", "options": ["unauffällig", "auffällig"], "required": true } ] } } },
+            { "id": "absaugung_desinfektion", "prompt": "Wie oft wird die Absauganlage desinfiziert?", "type": "enum", "optionsRef": "FREQ", "default": "daily", "produces": { "schedule": { "title": "Desinfektion Absauganlage", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } },
+            { "id": "abwurf_spitze", "prompt": "Gibt es einen sicheren, durchstichsicheren Abwurfbehälter für spitze/scharfe Gegenstände?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Kanülen/spitze Gegenstände", "wie": "durchstichsicherer Abwurf am Entstehungsort", "wann": "sofort" } } },
+            { "id": "abfalltrennung", "prompt": "Ist die Abfalltrennung nach Abfallschlüssel geregelt (Hausmüll, kontaminierter Abfall AS 18 01 04, spitz/scharf AS 18 01 01, Amalgam)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Abfalltrennung/-entsorgung", "wie": "nach Abfallschlüssel getrennt", "wann": "laufend" } } },
+            { "id": "amalgamabscheider", "prompt": "Wird der Amalgamabscheider gemäß Herstellerangabe gewartet/entleert?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Wartung/Entleerung Amalgamabscheider", "cycle": "halfYearly", "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 14 } } },
+            { "id": "waesche", "prompt": "Wie wird die Praxiswäsche aufbereitet?", "type": "enum", "options": [ { "value": "intern_desinfizierend", "label": "Intern, desinfizierendes Waschverfahren" }, { "value": "extern", "label": "Externer Dienstleister" } ], "default": "extern", "produces": { "setPlanField": "waesche" } }
+          ]
+        },
+        {
+          "key": "infektionspraevention",
+          "title": "Infektionsprävention & Verletzungen",
+          "questions": [
+            { "id": "risikopatienten", "prompt": "Ist der Umgang mit Patienten mit erhöhtem Infektionsrisiko (z. B. HBV/HCV/HIV, MRSA) geregelt (Terminlegung, zusätzliche Maßnahmen)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Infektiöse/Risikopatienten", "wie": "zusätzliche Schutz-/Aufbereitungsmaßnahmen", "wann": "anlassbezogen" } } },
+            { "id": "nadelstich_sop", "prompt": "Gibt es eine schriftliche Vorgehensweise für Nadelstich-/Schnittverletzungen (Sofortmaßnahmen, D-Arzt, Dokumentation)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Nadelstichverletzung", "wie": "Sofortmaßnahmen + Meldung D-Arzt + Doku", "wann": "im Ereignisfall" } } },
+            { "id": "impfstatus", "prompt": "Wird der Hepatitis-B-Impfschutz des Personals erfasst und angeboten?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Kontrolle Impfstatus/Impfangebot Personal", "cycle": "yearly", "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 30 } } }
+          ]
+        },
+        {
+          "key": "op_hygiene",
+          "title": "OP-Hygiene (nur bei ambulantem Operieren)",
+          "condition": { "capability": "ambulant_operieren", "eq": true },
+          "questions": [
+            { "id": "op_raum_getrennt", "prompt": "Gibt es einen separaten, hygienisch getrennten OP-Bereich?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "op_hygiene_plan" } },
+            { "id": "op_flaechen_frequenz", "prompt": "Wie oft wird der OP-Bereich desinfizierend aufbereitet?", "type": "enum", "optionsRef": "FREQ", "default": "perUse", "produces": { "schedule": { "title": "Aufbereitung OP-Bereich", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0, "bookKey": "op_hygiene_plan" } } }
+          ]
+        },
+        {
+          "key": "unterweisung",
+          "title": "Unterweisung",
+          "questions": [
+            { "id": "unterweisung_jaehrlich", "prompt": "Wird das Personal mindestens jährlich anhand des Hygieneplans unterwiesen?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Hygiene-Unterweisung Team", "cycle": "yearly", "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 14 } } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "cleaning_disinfection_plan",
+      "artifactKey": "cleaning_disinfection_plan",
+      "title": "Reinigungs- und Desinfektionsplan",
+      "produces": "plan",
+      "note": "Nach Bereichen gegliedert (Behandlung, Aufbereitung, Labor, Sanitär, Warte-/Sozialbereich). Jeder Bereich ist einzeln benannt; optionale Bereiche werden ueber eine klare Ja/Nein-Frage ein-/ausgeblendet.",
+      "sections": [
+        {
+          "key": "behandlung",
+          "title": "Behandlungsbereich (Zimmer, Stuhl, Geräte)",
+          "questions": [
+            { "id": "beh_flaeche_frequenz", "prompt": "Wie oft werden patientennahe Flächen (Stuhl, Ablagen, Griffe, Geräteoberflächen) im Behandlungszimmer wischdesinfiziert?", "type": "enum", "optionsRef": "FREQ", "default": "perUse", "produces": { "schedule": { "title": "Flächendesinfektion Behandlungszimmer", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0, "requiredField": [ { "key": "durchgefuehrt", "label": "Durchgeführt", "type": "enum", "options": ["ja", "nein"], "required": true } ] } } },
+            { "id": "beh_mittel", "prompt": "Welches Flächendesinfektionsmittel wird im Behandlungszimmer verwendet?", "type": "enum", "optionsRef": "FLAECHE_DES", "allowOther": true, "produces": { "planRow": { "was": "Flächendesinfektion Behandlungszimmer", "wie": "Wischdesinfektion", "wann": "nach jeder Behandlung", "setWomitFromAnswer": true } } },
+            { "id": "beh_einwirkzeit", "prompt": "Welche Einwirkzeit gilt laut Herstellerangabe für dieses Mittel?", "type": "enum", "optionsRef": "EINWIRK", "default": "laut Etikett", "produces": { "setPlanField": "einwirkzeit" } },
+            { "id": "beh_kontamination", "prompt": "Wird bei sichtbarer Blut-/Sekretkontamination zweistufig vorgegangen (erst mechanisch aufnehmen, dann desinfizieren)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Sichtbare Kontamination", "wie": "zweistufig: mechanisch aufnehmen + Wischdesinfektion", "wann": "sofort bei Kontamination" } } },
+            { "id": "beh_arbeitsflaeche_richten", "prompt": "Werden Ablage-/Arbeitsflächen VOR dem Richten von sterilem Gut/Medikamenten desinfiziert?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Arbeitsflächen-Desinfektion vor dem Richten", "cycle": "perUse", "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } },
+            { "id": "beh_boeden_frequenz", "prompt": "Wie oft werden die Fußböden im Behandlungsbereich feucht gereinigt?", "type": "enum", "optionsRef": "FREQ", "default": "daily", "produces": { "schedule": { "title": "Bodenreinigung Behandlungsbereich", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } }
+          ]
+        },
+        {
+          "key": "aufbereitung",
+          "title": "Aufbereitungsraum",
+          "questions": [
+            { "id": "hat_aufbereitung", "prompt": "Gibt es einen separaten Aufbereitungsraum für Instrumente?", "type": "boolean", "default": true },
+            { "id": "aufb_trennung", "prompt": "Sind reine und unreine Seite räumlich/organisatorisch getrennt?", "type": "boolean", "default": true, "condition": { "q": "hat_aufbereitung", "eq": true }, "producesOnYes": { "planRow": { "was": "Aufbereitungsraum", "wie": "Trennung rein/unrein", "wann": "dauerhaft" } } },
+            { "id": "aufb_flaeche_frequenz", "prompt": "Wie oft werden die Arbeitsflächen im Aufbereitungsraum desinfiziert?", "type": "enum", "optionsRef": "FREQ", "default": "workday", "condition": { "q": "hat_aufbereitung", "eq": true }, "produces": { "schedule": { "title": "Flächendesinfektion Aufbereitungsraum", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } },
+            { "id": "aufb_mittel", "prompt": "Welches Flächendesinfektionsmittel wird im Aufbereitungsraum verwendet?", "type": "enum", "optionsRef": "FLAECHE_DES", "allowOther": true, "condition": { "q": "hat_aufbereitung", "eq": true }, "produces": { "planRow": { "was": "Flächendesinfektion Aufbereitungsraum", "wie": "Wischdesinfektion", "setWomitFromAnswer": true } } }
+          ]
+        },
+        {
+          "key": "labor",
+          "title": "Praxislabor",
+          "questions": [
+            { "id": "hat_labor_bereich", "prompt": "Gibt es einen Laborbereich (auch Chairside/CAD-CAM)?", "type": "boolean", "default": false },
+            { "id": "labor_frequenz", "prompt": "Wie oft werden die Laborflächen gereinigt/desinfiziert?", "type": "enum", "optionsRef": "FREQ", "default": "daily", "condition": { "q": "hat_labor_bereich", "eq": true }, "produces": { "schedule": { "title": "Reinigung Laborflächen", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } },
+            { "id": "labor_abformung", "prompt": "Werden Abformungen/Werkstücke vor der Weitergabe desinfiziert?", "type": "boolean", "default": true, "condition": { "q": "hat_labor_bereich", "eq": true }, "producesOnYes": { "planRow": { "was": "Abformungen/Werkstücke", "wie": "Tauch-/Sprühdesinfektion vor Weitergabe", "wann": "vor Abgabe an Labor" } } }
+          ]
+        },
+        {
+          "key": "sanitaer",
+          "title": "Sanitär / WC",
+          "questions": [
+            { "id": "wc_frequenz", "prompt": "Wie oft werden Sanitärbereich/WC (inkl. Kontaktflächen) gereinigt?", "type": "enum", "optionsRef": "FREQ", "default": "daily", "produces": { "schedule": { "title": "Reinigung Sanitär/WC", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } },
+            { "id": "wc_zustaendig", "prompt": "Wer ist für die Sanitärreinigung zuständig?", "type": "enum", "optionsRef": "ROLE", "default": "hygienebeauftragte", "produces": { "setScheduleRole": true } }
+          ]
+        },
+        {
+          "key": "warte_sozial",
+          "title": "Warte- & Sozialbereich",
+          "questions": [
+            { "id": "warte_frequenz", "prompt": "Wie oft werden Warte-/Sozialbereich und Böden gereinigt?", "type": "enum", "optionsRef": "FREQ", "default": "daily", "produces": { "schedule": { "title": "Reinigung Warte-/Sozialbereich", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0 } } },
+            { "id": "warte_kontaktflaechen", "prompt": "Werden häufige Kontaktflächen (Türgriffe, Anmeldung, Kartenterminal, Spielzeug) mehrmals täglich wischdesinfiziert?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Kontaktflächen Warte-/Anmeldebereich", "wie": "Wischdesinfektion", "wann": "mehrmals täglich" } } }
+          ]
+        },
+        {
+          "key": "grund_doku",
+          "title": "Grundreinigung, Zuständigkeit & Nachweis",
+          "questions": [
+            { "id": "reinigung_traeger", "prompt": "Wer führt die Reinigung überwiegend durch?", "type": "enum", "options": [ { "value": "intern", "label": "Eigenes Personal" }, { "value": "extern", "label": "Externer Reinigungsdienst" }, { "value": "gemischt", "label": "Gemischt" } ], "default": "intern", "produces": { "setPlanField": "traeger" } },
+            { "id": "grundreinigung_intervall", "prompt": "In welchem Intervall erfolgt eine Grundreinigung (inkl. schwer zugänglicher Flächen)?", "type": "enum", "optionsRef": "FREQ", "default": "quarterly", "produces": { "schedule": { "title": "Grundreinigung Praxis", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 7 } } },
+            { "id": "reinigungsnachweis", "prompt": "Wird die Durchführung der Reinigung/Desinfektion schriftlich dokumentiert (Reinigungsnachweis)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Reinigungsnachweis", "wie": "Dokumentation mit Datum/Handzeichen", "wann": "nach jeder Durchführung" } } },
+            { "id": "kontrolle_intervall", "prompt": "In welchem Intervall wird die Reinigungsqualität stichprobenartig kontrolliert?", "type": "enum", "optionsRef": "FREQ", "default": "monthly", "produces": { "schedule": { "title": "Kontrolle Reinigungsqualität", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 3, "requiredField": [ { "key": "beanstandungen", "label": "Beanstandungen", "type": "enum", "options": ["keine", "behoben", "offen"], "required": true } ] } } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "skin_protection_plan",
+      "artifactKey": "skin_protection_plan",
+      "title": "Hautschutz- und Händeplan",
+      "produces": "plan",
+      "sections": [
+        {
+          "key": "hautschutz",
+          "title": "Hautschutz",
+          "questions": [
+            { "id": "handschuhe_definiert", "prompt": "Sind Schutzhandschuhe je Tätigkeit festgelegt (Material, ungepudert, allergenarm)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Schutzhandschuhe", "wie": "je Tätigkeit, ungepudert/allergenarm", "wann": "tätigkeitsbezogen" } } },
+            { "id": "hautschutzmittel", "prompt": "Welches Hautschutzmittel wird VOR der Arbeit / vor dem Handschuhtragen verwendet?", "type": "enum", "optionsRef": "HAUT_SCHUTZ", "allowOther": true, "produces": { "planRow": { "was": "Hautschutz (vor Arbeit)", "wie": "auf trockene Haut auftragen", "wann": "vor Arbeitsbeginn / vor Handschuhen", "setWomitFromAnswer": true } } },
+            { "id": "hautpflegemittel", "prompt": "Welches Hautpflegemittel wird NACH der Arbeit / in Pausen verwendet?", "type": "enum", "optionsRef": "HAUT_PFLEGE", "allowOther": true, "produces": { "planRow": { "was": "Hautpflege (nach Arbeit)", "wie": "einmassieren", "wann": "nach Arbeitsende / in Pausen", "setWomitFromAnswer": true } } },
+            { "id": "hautreinigung", "prompt": "Ist ein hautschonendes Reinigungsmittel für die Hände festgelegt (statt aggressiver Seifen)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Hautschonende Handreinigung", "wie": "mildes Waschsyndet", "wann": "bei Verschmutzung" } } },
+            { "id": "hautschutzplan_aushang", "prompt": "Hängt der Hautschutzplan an den Handwaschplätzen aus?", "type": "boolean", "default": true },
+            { "id": "hautschutz_unterweisung", "prompt": "Wird mindestens jährlich zum Hautschutz unterwiesen?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Unterweisung Hautschutz", "cycle": "yearly", "recurrenceMode": "fixed", "role": "sicherheitsbeauftragte", "leadDays": 14, "requiredField": [ { "key": "teilnehmer", "label": "Teilnehmer dokumentiert", "type": "enum", "options": ["ja", "nein"], "required": true } ] } } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "sterilization_log",
+      "artifactKey": "sterilization_log",
+      "title": "Aufbereitung / Sterilisation einrichten",
+      "requiresCapability": "eigene_sterilisation",
+      "produces": "book_setup",
+      "sections": [
+        {
+          "key": "verfahren",
+          "title": "Verfahren & Freigabe",
+          "questions": [
+            { "id": "sop_vorhanden", "prompt": "Erfolgt die Aufbereitung nach schriftlicher Arbeitsanweisung (SOP) mit Einstufung der Medizinprodukte (unkritisch/semikritisch A+B/kritisch A+B)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Aufbereitungs-SOP", "wie": "schriftlich, mit Risiko-Einstufung der MP", "wann": "gültig/aktuell" } } },
+            { "id": "risikoeinstufung", "prompt": "Werden auch kritisch B Instrumente (z. B. Hohlkörper, chirurgisch) aufbereitet?", "type": "boolean", "default": false, "producesOnYes": { "planRow": { "was": "Kritisch-B-Instrumente", "wie": "maschinelle Aufbereitung + Klasse-B-Sterilisation, dokumentierte Freigabe", "wann": "jede Charge" } } },
+            { "id": "vorreinigung", "prompt": "Ist die manuelle Vorreinigung/Vorbehandlung direkt nach Gebrauch geregelt?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Manuelle Vorreinigung", "wie": "unmittelbar nach Gebrauch, Schutzausrüstung", "wann": "sofort nach Behandlung" } } },
+            { "id": "ultraschall", "prompt": "Wird ein Ultraschallbad eingesetzt (mit regelmäßiger Reinigungsleistungskontrolle)?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Reinigungsleistung Ultraschallbad prüfen", "cycle": "quarterly", "recurrenceMode": "fixed", "role": "sterilgutassistenz", "leadDays": 3 } } },
+            { "id": "instr_des_mittel", "prompt": "Welches Instrumentendesinfektions-/Reinigungsmittel wird verwendet?", "type": "enum", "optionsRef": "INSTR_DES", "allowOther": true, "produces": { "planRow": { "was": "Instrumentendesinfektion", "wie": "Konzentration/Einwirkzeit laut Hersteller", "setWomitFromAnswer": true } } },
+            { "id": "rdg_maschinell", "prompt": "Erfolgt Reinigung/Desinfektion maschinell im RDG (thermisch, mit A0-Wert)?", "type": "boolean", "default": true },
+            { "id": "verpackung_siegel", "prompt": "Werden Instrumente verpackt und die Siegelnaht regelmäßig geprüft (Siegelnahtfestigkeit)?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Siegelnahtprüfung Folienschweißgerät", "cycle": "workday", "recurrenceMode": "fixed", "role": "sterilgutassistenz", "leadDays": 0 } } },
+            { "id": "autoklav_klasse", "prompt": "Welche Autoklav-Klasse wird eingesetzt?", "type": "enum", "options": [ { "value": "B", "label": "Klasse B (auch Hohlkörper/verpackt)" }, { "value": "S", "label": "Klasse S (herstellerdefiniert)" }, { "value": "N", "label": "Klasse N (nur unverpackt, massiv)" } ], "default": "B" },
+            { "id": "bowie_dick", "prompt": "Wird der Bowie-Dick-/Helix-Test arbeitstäglich vor Nutzung durchgeführt?", "type": "boolean", "default": true, "condition": { "q": "autoklav_klasse", "eq": "B" }, "producesOnYes": { "schedule": { "title": "Bowie-Dick-/Helix-Test", "cycle": "workday", "recurrenceMode": "fixed", "role": "sterilgutassistenz", "leadDays": 0, "requiredField": [ { "key": "ergebnis", "label": "Ergebnis", "type": "enum", "options": ["bestanden", "nicht_bestanden"], "required": true } ] } } },
+            { "id": "chargendoku", "prompt": "Wird für jede Charge eine Chargendokumentation geführt?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "charge", "label": "Chargennummer", "type": "text", "required": true }, { "key": "programm", "label": "Programm/Zyklus", "type": "text", "required": true }, { "key": "parameter_ok", "label": "Prozessparameter im Sollbereich", "type": "enum", "options": ["ja", "nein"], "required": true } ] } },
+            { "id": "freigabe_person", "prompt": "Erfolgt die Freigabe durch eine autorisierte, namentlich benannte Person?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "freigegeben_von", "label": "Freigegeben von", "type": "text", "required": true } ] } },
+            { "id": "beladungsmuster", "prompt": "Sind Beladungsmuster für Autoklav und RDG festgelegt?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Beladungsmuster", "wie": "für Autoklav/RDG festgelegt", "wann": "jede Charge" } } },
+            { "id": "lagerung_verfall", "prompt": "Sind Lagerung und Verfallsdatum des Sterilguts geregelt (staubgeschützt, Sichtkontrolle der Verpackung vor Gebrauch)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Sterilgut-Lagerung", "wie": "staubgeschützt, Verfallsdatum/Chargenkennzeichnung, Sichtkontrolle vor Gebrauch", "wann": "laufend" } } }
+          ]
+        },
+        {
+          "key": "validierung",
+          "title": "Validierung & Sachkunde",
+          "questions": [
+            { "id": "reval_rdg", "prompt": "In welchem Intervall wird das RDG/Siegelgerät revalidiert?", "type": "enum", "optionsRef": "FREQ", "default": "yearly", "produces": { "schedule": { "title": "Revalidierung RDG/Siegelgerät", "cycleFromAnswer": true, "recurrenceMode": "anchor_on_completion", "role": "sterilgutassistenz", "leadDays": 30 } } },
+            { "id": "reval_autoklav", "prompt": "In welchem Intervall wird der Autoklav revalidiert?", "type": "enum", "options": [ { "value": "yearly", "label": "jährlich" }, { "value": "twoYearly", "label": "alle 24 Monate" } ], "default": "yearly", "produces": { "schedule": { "title": "Revalidierung Autoklav", "cycleFromAnswer": true, "recurrenceMode": "anchor_on_completion", "role": "sterilgutassistenz", "leadDays": 30 } } },
+            { "id": "sachkunde", "prompt": "Wird die Sachkunde zur Aufbereitung regelmäßig aktualisiert?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Sachkunde-Aktualisierung Aufbereitung", "cycle": "twoYearly", "recurrenceMode": "anchor_on_completion", "role": "sterilgutassistenz", "leadDays": 30 } } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "constancy_book",
+      "artifactKey": "constancy_book",
+      "title": "Röntgen: Konstanzprüfung & Fachkunde",
+      "requiresCapability": "roentgen",
+      "produces": "book_setup",
+      "sections": [
+        {
+          "key": "geraet",
+          "title": "Pro Röntgengerät",
+          "repeat": { "over": "roentgen_devices" },
+          "questions": [
+            { "id": "geraet_typ", "prompt": "Welcher Gerätetyp?", "type": "enum", "options": ["Zahnfilm", "OPG", "FRS", "DVT"], "produces": { "setDeviceRef": true } },
+            { "id": "digital", "prompt": "Arbeitet das Gerät mit digitaler Bildverarbeitung?", "type": "boolean", "default": true },
+            { "id": "konstanz_intervall", "prompt": "In welchem Intervall wird die Konstanzprüfung durchgeführt?", "type": "enum", "options": [ { "value": "monthly", "label": "monatlich" }, { "value": "quarterly", "label": "alle 3 Monate (nur nach 3 fehlerfreien Monaten)" } ], "default": "monthly", "produces": { "schedule": { "title": "Konstanzprüfung Röntgen", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "strahlenschutzbeauftragte", "leadDays": 3, "requiredField": [ { "key": "ergebnis", "label": "Prüfergebnis", "type": "enum", "options": ["bestanden", "nicht_bestanden"], "required": true }, { "key": "pruefwert", "label": "Messwert", "type": "number", "required": false } ] } } },
+            { "id": "sachverstaendigen", "prompt": "Ist die Sachverständigenprüfung (alle 5 Jahre) hinterlegt?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Sachverständigenprüfung Röntgen", "cycle": "fiveYearly", "recurrenceMode": "anchor_on_completion", "role": "strahlenschutzbeauftragte", "leadDays": 60, "bookKey": "radiation_expert_inspection" } } },
+            { "id": "zaest_intervall", "prompt": "Prüfung durch die zahnärztliche Stelle?", "type": "enum", "options": [ { "value": "36m", "label": "alle 36 Monate" }, { "value": "18m", "label": "DVT: erstmals nach 18 Monaten" } ], "default": "36m", "produces": { "schedule": { "title": "Prüfung zahnärztliche Stelle", "cycle": "onEvent", "recurrenceMode": "on_event", "role": "strahlenschutzbeauftragte", "leadDays": 60 } } }
+          ]
+        },
+        {
+          "key": "fachkunde",
+          "title": "Fachkunde",
+          "questions": [
+            { "id": "ssb_benannt", "prompt": "Ist eine Strahlenschutzbeauftragte/ein Strahlenschutzbeauftragter benannt?", "type": "boolean", "default": true, "producesOnYes": { "setStaffRole": "strahlenschutzbeauftragte" } },
+            { "id": "fachkunde_aktualisierung", "prompt": "Wird die Fachkunde im Strahlenschutz (Zahnarzt + ZFA) alle 5 Jahre aktualisiert?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Fachkunde-Aktualisierung Strahlenschutz", "cycle": "fiveYearly", "recurrenceMode": "anchor_on_completion", "role": "strahlenschutzbeauftragte", "leadDays": 90, "bookKey": "radiation_protection_training" } } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "medical_device_book",
+      "artifactKey": "medical_device_book",
+      "title": "Medizinprodukte: Bestand, MP-Buch, STK",
+      "produces": "book_setup",
+      "sections": [
+        {
+          "key": "geraet",
+          "title": "Pro aktivem Medizinprodukt",
+          "repeat": { "over": "active_devices" },
+          "questions": [
+            { "id": "geraet_erfassen", "prompt": "Aktives Medizinprodukt ins Bestandsverzeichnis aufnehmen?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "device_inventory" } },
+            { "id": "anlage_1_2", "prompt": "Fällt das Gerät unter Anlage 1/2 der MPBetreibV (Laser, HF-Chirurgie, Defibrillator, Anästhesiegerät, Pulpentester)?", "type": "boolean", "default": false, "condition": { "q": "geraet_erfassen", "eq": true }, "producesOnYes": { "activateBook": "medical_device_book" } },
+            { "id": "stk_erforderlich", "prompt": "Ist eine sicherheitstechnische Kontrolle (STK) erforderlich?", "type": "boolean", "default": true, "condition": { "q": "anlage_1_2", "eq": true }, "producesOnYes": { "schedule": { "title": "Sicherheitstechnische Kontrolle (STK)", "cycle": "twoYearly", "recurrenceMode": "anchor_on_completion", "role": "praxisinhaber", "leadDays": 30, "bookKey": "device_stk_log" } } },
+            { "id": "ersteinweisung", "prompt": "Ist die Ersteinweisung dokumentiert?", "type": "boolean", "default": true, "condition": { "q": "geraet_erfassen", "eq": true }, "producesOnYes": { "requiredField": [ { "key": "eingewiesen_von", "label": "Eingewiesen von", "type": "text", "required": true }, { "key": "personen", "label": "Eingewiesene Personen", "type": "text", "required": true } ] } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "emergency_checklist",
+      "artifactKey": "emergency_checklist",
+      "title": "Notfallmanagement",
+      "produces": "book_setup",
+      "sections": [
+        {
+          "key": "ausstattung",
+          "title": "Ausstattung",
+          "questions": [
+            { "id": "notfallkoffer", "prompt": "Ist eine Notfallausstattung/ein Notfallkoffer vorhanden und zentral griffbereit?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Notfallausstattung", "wie": "vollständig & zentral griffbereit", "wann": "dauerhaft" } } },
+            { "id": "o2_absaugung_beutel", "prompt": "Sind Sauerstoff, Absaugung und Beatmungsbeutel (mit Masken in mehreren Größen) vorhanden?", "type": "boolean", "default": true },
+            { "id": "notfallmedikamente", "prompt": "Sind Notfallmedikamente vorhanden (z. B. Adrenalin, Antihistaminikum, Kortikoid, Glukose, Bronchodilatator, ggf. Nitro/ASS)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Notfallmedikamente", "wie": "definierte Liste, griffbereit", "wann": "dauerhaft, Verfall überwacht" } } },
+            { "id": "aed", "prompt": "Ist ein AED (Defibrillator) vorhanden?", "type": "boolean", "default": false, "producesOnYes": { "schedule": { "title": "AED Funktions-/Elektroden-Check", "cycle": "monthly", "recurrenceMode": "fixed", "role": "ersthelfer", "leadDays": 2, "requiredField": [ { "key": "aed_bereit", "label": "AED betriebsbereit (Batterie/Elektroden gültig)", "type": "enum", "options": ["ja", "nein"], "required": true } ] } } },
+            { "id": "alarmkette", "prompt": "Sind Alarmierungskette, Rollenverteilung und Notrufnummern dokumentiert und ausgehängt?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "emergency_plan" } },
+            { "id": "notfall_erreichbar", "prompt": "Ist der Zugang für den Rettungsdienst geregelt (Adresse/Etage/Aufzug, Einweiser)?", "type": "boolean", "default": true }
+          ]
+        },
+        {
+          "key": "kontrollen",
+          "title": "Kontrollen & Training",
+          "questions": [
+            { "id": "sichtkontrolle", "prompt": "In welchem Intervall erfolgt die Sichtkontrolle auf Vollständigkeit?", "type": "enum", "optionsRef": "FREQ", "default": "monthly", "produces": { "schedule": { "title": "Sichtkontrolle Notfallausstattung", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "ersthelfer", "leadDays": 2, "requiredField": [ { "key": "vollstaendig", "label": "Vollständig", "type": "enum", "options": ["ja", "nein"], "required": true } ] } } },
+            { "id": "verfall_funktion", "prompt": "In welchem Intervall werden Verfallsdaten und Funktion geprüft?", "type": "enum", "optionsRef": "FREQ", "default": "quarterly", "produces": { "schedule": { "title": "Verfalls-/Funktionsprüfung Notfall", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "ersthelfer", "leadDays": 7, "requiredField": [ { "key": "verfall_ok", "label": "Verfallsdaten ok", "type": "enum", "options": ["ja", "nein"], "required": true }, { "key": "funktion_ok", "label": "Funktion ok", "type": "enum", "options": ["ja", "nein"], "required": true } ] } } },
+            { "id": "notfalltraining", "prompt": "Findet jährlich ein Notfalltraining im Team statt?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Notfalltraining Team", "cycle": "yearly", "recurrenceMode": "fixed", "role": "ersthelfer", "leadDays": 30 } } },
+            { "id": "ersthelfer_auffrischung", "prompt": "Werden Ersthelfer alle 2 Jahre aufgefrischt?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Ersthelfer-Auffrischung", "cycle": "twoYearly", "recurrenceMode": "anchor_on_completion", "role": "ersthelfer", "leadDays": 60 } } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "arbeitsschutz",
+      "artifactKey": "biohazard_register",
+      "title": "Arbeitsschutz: Gefahrstoff, Biostoff, Gefährdungsbeurteilung",
+      "produces": "book_setup",
+      "sections": [
+        {
+          "key": "verzeichnisse",
+          "title": "Verzeichnisse & Unterweisung",
+          "questions": [
+            { "id": "gefahrstoff_aktuell", "prompt": "Ist das Gefahrstoffverzeichnis vorhanden und aktuell?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "hazardous_substances_register", "schedule": { "title": "Prüfung Gefahrstoffverzeichnis", "cycle": "yearly", "recurrenceMode": "fixed", "role": "sicherheitsbeauftragte", "leadDays": 14, "bookKey": "hazardous_substances_register" } } },
+            { "id": "biostoff_vorhanden", "prompt": "Ist ein Biostoffverzeichnis vorhanden?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "biohazard_register" } },
+            { "id": "betriebsanweisung", "prompt": "Ist die Betriebsanweisung (ggf. als Teil des Hygieneplans) vorhanden?", "type": "boolean", "default": true },
+            { "id": "unterweisung_jaehrlich", "prompt": "Werden Beschäftigte mindestens jährlich unterwiesen?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Arbeitsschutz-Unterweisung", "cycle": "yearly", "recurrenceMode": "fixed", "role": "sicherheitsbeauftragte", "leadDays": 14, "requiredField": [ { "key": "unterschrift", "label": "Unterschrift Beschäftigte vorhanden", "type": "enum", "options": ["ja", "nein"], "required": true } ] } } },
+            { "id": "jugendliche", "prompt": "Gibt es Beschäftigte unter 18 Jahren?", "type": "boolean", "default": false, "producesOnYes": { "schedule": { "title": "Unterweisung Jugendliche (halbjährlich)", "cycle": "halfYearly", "recurrenceMode": "fixed", "role": "sicherheitsbeauftragte", "leadDays": 14 } } }
+          ]
+        },
+        {
+          "key": "gbu",
+          "title": "Gefährdungsbeurteilung & Unfalldoku",
+          "questions": [
+            { "id": "gbu_dokumentiert", "prompt": "Ist die Gefährdungsbeurteilung schriftlich dokumentiert?", "type": "boolean", "default": true },
+            { "id": "gbu_review", "prompt": "In welchem Intervall wird die Gefährdungsbeurteilung überprüft?", "type": "enum", "options": [ { "value": "twoYearly", "label": "alle 2 Jahre" }, { "value": "onEvent", "label": "bei Änderungen" } ], "default": "twoYearly", "produces": { "schedule": { "title": "Review Gefährdungsbeurteilung", "cycleFromAnswer": true, "recurrenceMode": "anchor_on_completion", "role": "sicherheitsbeauftragte", "leadDays": 30 } } },
+            { "id": "verbandbuch", "prompt": "Ist ein Verbandbuch vorhanden?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "accident_book" } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "op_checklist",
+      "artifactKey": "op_checklist",
+      "title": "OP-Checkliste (Team-Timeout)",
+      "requiresCapability": "ambulant_operieren",
+      "produces": "book_setup",
+      "note": "artifactKey op_checklist ist NEU (in W-JULIA-1 zu qm-artifacts.json ergänzen). Erzeugt pro OP einen Job mit Pflicht-Checkpunkten.",
+      "sections": [
+        {
+          "key": "timeout",
+          "title": "Vor Schnitt",
+          "questions": [
+            { "id": "identitaet", "prompt": "Sind Patientenidentität, Eingriff und Lokalisation bestätigt?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "timeout_id", "label": "Identität/Eingriff/Lokalisation bestätigt", "type": "enum", "options": ["ja", "nein"], "required": true } ] } },
+            { "id": "einwilligung", "prompt": "Liegt die Einwilligung vor?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "einwilligung", "label": "Einwilligung vorhanden", "type": "enum", "options": ["ja", "nein"], "required": true } ] } },
+            { "id": "anamnese", "prompt": "Sind Allergien, Antikoagulation und Anamnese geprüft?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "anamnese_ok", "label": "Anamnese/Allergien/Antikoagulation geprüft", "type": "enum", "options": ["ja", "nein"], "required": true } ] } },
+            { "id": "sterilgut_freigabe", "prompt": "Ist die Sterilgut-Freigabe (Charge) dokumentiert?", "type": "boolean", "default": true },
+            { "id": "ab_prophylaxe", "prompt": "Ist eine Antibiotikaprophylaxe erforderlich?", "type": "enum", "options": ["ja", "nein", "nicht zutreffend"], "default": "nicht zutreffend", "produces": { "requiredField": [ { "key": "ab_prophylaxe", "label": "Antibiotikaprophylaxe", "type": "enum", "options": ["ja", "nein", "nicht zutreffend"], "required": true } ] } },
+            { "id": "notfall_bereit", "prompt": "Ist die Notfallausstattung einsatzbereit?", "type": "boolean", "default": true },
+            { "id": "zaehlkontrolle", "prompt": "Erfolgt eine Zählkontrolle des Materials vor Wundverschluss?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "zaehlkontrolle", "label": "Zählkontrolle vollständig", "type": "enum", "options": ["ja", "nein"], "required": true } ] } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "sedation_log",
+      "artifactKey": "sedation_log",
+      "title": "Sedierung / Analgosedierung",
+      "requiresCapability": "narkose_sedierung",
+      "produces": "book_setup",
+      "note": "artifactKey sedation_log ist NEU (in W-JULIA-1 ergänzen).",
+      "sections": [
+        {
+          "key": "sedierung",
+          "title": "Pro Eingriff",
+          "questions": [
+            { "id": "sedierungsart", "prompt": "Welche Sedierungsart wird eingesetzt?", "type": "enum", "options": ["Lachgas", "i.v.-Sedierung", "orale Sedierung"], "default": "Lachgas", "produces": { "requiredField": [ { "key": "sedierungsart", "label": "Sedierungsart", "type": "enum", "options": ["Lachgas", "i.v.-Sedierung", "orale Sedierung"], "required": true } ] } },
+            { "id": "monitoring", "prompt": "Wird ein Monitoring (SpO2, RR, Puls) angelegt?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "monitoring", "label": "Monitoring angelegt", "type": "enum", "options": ["ja", "nein"], "required": true } ] } },
+            { "id": "nuechtern", "prompt": "Ist die Nüchternheit bestätigt?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "nuechtern", "label": "Nüchternheit bestätigt", "type": "enum", "options": ["ja", "nein"], "required": true } ] } },
+            { "id": "entlasskriterien", "prompt": "Sind Aufwach-/Entlasskriterien dokumentiert?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "entlasskriterien", "label": "Entlasskriterien erfüllt", "type": "enum", "options": ["ja", "nein"], "required": true } ] } },
+            { "id": "ausstattungscheck", "prompt": "Erfolgt vor jedem Eingriff ein Ausstattungs-/Medikamentencheck?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Ausstattungscheck Sedierung", "cycle": "perUse", "recurrenceMode": "fixed", "role": "behandler", "leadDays": 0 } } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "praxislabor_mdr",
+      "artifactKey": "praxislabor_mdr",
+      "title": "Praxislabor / Eigenlabor (MDR-Sonderanfertigungen)",
+      "requiresCapability": "labor_eigen",
+      "produces": "book_setup",
+      "note": "artifactKey praxislabor_mdr ist NEU (in W-JULIA-1 ergänzen). Gilt für labor_eigen=dental.",
+      "sections": [
+        {
+          "key": "mdr",
+          "title": "MDR-Pflichten",
+          "questions": [
+            { "id": "verantwortliche_person", "prompt": "Ist eine verantwortliche Person nach Art. 15 MDR benannt?", "type": "boolean", "default": true, "producesOnYes": { "setStaffRole": "praxisinhaber" } },
+            { "id": "konformitaetserklaerung", "prompt": "Wird für jede Sonderanfertigung eine Konformitätserklärung erstellt?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "konformitaet", "label": "Konformitätserklärung erstellt", "type": "enum", "options": ["ja", "nein"], "required": true } ] } },
+            { "id": "chargen_rueckverfolgung", "prompt": "Sind die verwendeten Materialchargen rückverfolgbar dokumentiert?", "type": "boolean", "default": true, "producesOnYes": { "requiredField": [ { "key": "material_charge", "label": "Materialcharge dokumentiert", "type": "text", "required": true } ] } },
+            { "id": "risikoklasse", "prompt": "Welche Risikoklasse hat das Produkt?", "type": "enum", "options": [ { "value": "I", "label": "Klasse I (z. B. Provisorium)" }, { "value": "IIa", "label": "Klasse IIa (dauerhafter Zahnersatz)" }, { "value": "IIb", "label": "Klasse IIb (Implantat)" } ], "default": "IIa" },
+            { "id": "aufbewahrung", "prompt": "Wie lange werden die Unterlagen aufbewahrt?", "type": "enum", "options": [ { "value": "10y", "label": "10 Jahre" }, { "value": "15y", "label": "15 Jahre (Implantate)" } ], "default": "10y" }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "organisation",
+      "artifactKey": "qm_handbook",
+      "title": "Organisation & Personal (QM-Handbuch, CIRS, Fortbildung, Team)",
+      "produces": "book_setup",
+      "sections": [
+        {
+          "key": "organisation",
+          "title": "QM-Organisation",
+          "questions": [
+            { "id": "handbuch", "prompt": "Ist das QM-Praxishandbuch angelegt (Aufbau-/Ablauforganisation, Zuständigkeiten, Verweise auf alle Pläne)?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "qm_handbook" } },
+            { "id": "verantwortlichkeiten", "prompt": "Sind alle Beauftragten benannt (QM, Hygiene, Strahlenschutz, Sicherheit, Datenschutz, Ersthelfer) — inkl. Vertretung?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Beauftragte & Vertretung", "wie": "namentlich benannt, dokumentiert", "wann": "aktuell gehalten" } } },
+            { "id": "cirs", "prompt": "Ist ein Fehler-/Beinahefehler-Meldesystem (CIRS) etabliert (niederschwellig, anonym möglich)?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "cirs_log", "schedule": { "title": "CIRS-Auswertung & Maßnahmen", "cycle": "yearly", "recurrenceMode": "fixed", "role": "qm_beauftragte", "leadDays": 14, "bookKey": "cirs_log" } } },
+            { "id": "beschwerde", "prompt": "Gibt es ein Beschwerdemanagement (Erfassung, Bearbeitung, Auswertung von Patientenrückmeldungen)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Beschwerdemanagement", "wie": "Erfassung + Bearbeitung + Auswertung", "wann": "laufend / jährliche Auswertung" } } },
+            { "id": "datenschutz", "prompt": "Sind Datenschutz-Vorgaben umgesetzt (Verarbeitungsverzeichnis, Verschwiegenheit, TOMs) und – falls erforderlich – ein Datenschutzbeauftragter benannt?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Datenschutz/Schweigepflicht", "wie": "Verzeichnis, Verpflichtung, technisch-organisatorische Maßnahmen", "wann": "aktuell gehalten" } } },
+            { "id": "notfallplan_org", "prompt": "Sind organisatorische Notfall-/Ausfallregelungen dokumentiert (z. B. Strom-/IT-Ausfall, Vertretung)?", "type": "boolean", "default": true },
+            { "id": "fortbildung", "prompt": "Wird ein Fortbildungs-/Schulungsverzeichnis je Mitarbeiter geführt?", "type": "boolean", "default": true, "producesOnYes": { "activateBook": "training_register", "schedule": { "title": "Fortbildungsplanung Team (Jahresübersicht)", "cycle": "yearly", "recurrenceMode": "fixed", "role": "qm_beauftragte", "leadDays": 30, "bookKey": "training_register" } } },
+            { "id": "teambesprechung", "prompt": "In welchem Intervall finden dokumentierte Teambesprechungen statt?", "type": "enum", "optionsRef": "FREQ", "default": "monthly", "produces": { "activateBook": "team_meeting_minutes", "schedule": { "title": "Teambesprechung", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "qm_beauftragte", "leadDays": 3, "bookKey": "team_meeting_minutes" } } },
+            { "id": "qm_review", "prompt": "Wird das QM-System jährlich auf Wirksamkeit überprüft (Management-Review, Ziele/Kennzahlen)?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Jährliche QM-Bewertung (Management-Review)", "cycle": "yearly", "recurrenceMode": "fixed", "role": "qm_beauftragte", "leadDays": 30 } } },
+            { "id": "hygienebegehung", "prompt": "Findet jährlich eine interne Hygienebegehung statt?", "type": "boolean", "default": true, "producesOnYes": { "schedule": { "title": "Interne Hygienebegehung", "cycle": "yearly", "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 21 } } }
+          ]
+        }
+      ]
+    },
+
+    {
+      "wizardKey": "temperature_log",
+      "artifactKey": "temperature_log",
+      "title": "Temperaturkontrolle (Kühlschrank)",
+      "requiresCapability": "impfstoff_kuehlschrank",
+      "produces": "book_setup",
+      "sections": [
+        {
+          "key": "temperatur",
+          "title": "Temperaturkontrolle",
+          "questions": [
+            { "id": "temp_frequenz", "prompt": "In welchem Intervall wird die Kühlschranktemperatur dokumentiert?", "type": "enum", "optionsRef": "FREQ", "default": "workday", "produces": { "schedule": { "title": "Temperaturkontrolle Kühlschrank", "cycleFromAnswer": true, "recurrenceMode": "fixed", "role": "hygienebeauftragte", "leadDays": 0, "requiredField": [ { "key": "temperatur", "label": "Temperatur (°C)", "type": "number", "required": true }, { "key": "im_sollbereich", "label": "Im Sollbereich (2–8 °C)", "type": "enum", "options": ["ja", "nein"], "required": true } ] } } },
+            { "id": "min_max", "prompt": "Wird ein Min-/Max-Thermometer verwendet und nach Ablesung zurückgesetzt?", "type": "boolean", "default": true },
+            { "id": "sollbereich", "prompt": "Ist der Sollbereich definiert und am Kühlschrank sichtbar (i. d. R. 2–8 °C)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Sollbereich Medikamenten-/Impfstoffkühlschrank", "wie": "2–8 °C, sichtbar gekennzeichnet", "wann": "dauerhaft" } } },
+            { "id": "abweichung_sop", "prompt": "Ist geregelt, was bei Temperaturabweichung zu tun ist (Ware sichern/quarantänisieren, Hersteller kontaktieren, dokumentieren)?", "type": "boolean", "default": true, "producesOnYes": { "planRow": { "was": "Temperaturabweichung", "wie": "Ware sichern + Bewertung + Dokumentation", "wann": "bei Abweichung" } } },
+            { "id": "nur_medikamente", "prompt": "Ist der Kühlschrank ausschließlich für Medikamente/Impfstoffe reserviert (keine Lebensmittel)?", "type": "boolean", "default": true }
+          ]
+        }
+      ]
+    }
+  ]
+}
