@@ -2,6 +2,7 @@ import { listArtifacts, getArtifact } from "./catalog.js";
 import { nextDue, listHistory, listCalendar, JOB_STATUS } from "./jobs.js";
 import { getStaff } from "./staff.js";
 import { cycleLabel } from "./recurrence.js";
+import { guideForJob } from "./jobGuides.js";
 
 // ============================================================================
 // Clara-Lesemodell für den QM-Kalender (read-only).
@@ -147,8 +148,17 @@ export async function getCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE
     assignedRole: j.assignedRole || null,
     assignedAt: j.assignedAt || null,
     purpose: j.purpose,
-    instructions: Array.isArray(j.instructions) ? j.instructions : [],
-    completionCriteria: j.completionCriteria || null,
+    // Anleitung/Abschluss: gespeicherte Werte bevorzugen, sonst zur Laufzeit aus
+    // dem Guide ableiten — so hat AUCH jeder aeltere Job (vor dem Feature) beim
+    // Anklicken konkrete Schritte + Abschlusskriterium.
+    ...(() => {
+      const hasIv = Array.isArray(j.instructions) && j.instructions.length > 0;
+      const g = hasIv && j.completionCriteria ? null : guideForJob({ title: j.title });
+      return {
+        instructions: hasIv ? j.instructions : g.instructions,
+        completionCriteria: j.completionCriteria || (g ? g.completionCriteria : null),
+      };
+    })(),
     cycle: j.cycle,
     cycleLabel: cycleLabel(j.cycle),
     requiredFields: Array.isArray(j.requiredFields) ? j.requiredFields : [],
