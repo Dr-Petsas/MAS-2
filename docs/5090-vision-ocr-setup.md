@@ -1,5 +1,10 @@
 # 5090-Server: Vision-OCR (Qwen-VL) einrichten — Anleitung für den Server-Admin
 
+> **Aktuell (16.07.2026):** Vision soll **on-demand** laufen, damit das Text-LLM
+> wieder `max_model_len 32768` hat. Siehe **`docs/5090-vision-ocr-ondemand.md`**.
+> Die Abschnitte unten beschreiben die erste Einrichtung; VRAM-Annahmen mit
+> dauerhaftem VL-7B sind durch die Ist-Analyse (3B-AWQ, 16k) überholt.
+
 Adressat: Kollege mit SSH-/Root-Zugang zum 5090 (Tailscale `100.77.30.98`).
 Ziel: Ein kleines Vision-Sprachmodell (VL) auf dem 5090 bereitstellen, damit
 unser Backend (MAS/„Nadine") hochgeladene **Scans/Fotos/PDF-Scans** von
