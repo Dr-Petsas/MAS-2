@@ -9,6 +9,7 @@ import { saveProfile as qmSaveProfile, getProfile as qmGetProfile, computeRequir
 import { listDocuments as qmListDocuments, listAllDocuments as qmListAllDocuments, exportRows as qmExportRows } from "../qm/documents.js";
 import { createJob as qmCreateJob, updateJob as qmUpdateJob, deleteJob as qmDeleteJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, getJob as qmGetJob, listJobsForStaff as qmListJobsForStaff, redistributeOpenJobs as qmRedistribute } from "../qm/jobs.js";
 import { verifyPortalToken as qmVerifyPortalToken } from "../qm/portal.js";
+import { listPraxen as qmListPraxen, createPraxis as qmCreatePraxis, renamePraxis as qmRenamePraxis, deletePraxis as qmDeletePraxis, setActivePraxis as qmSetActivePraxis } from "../qm/praxis.js";
 import { PRODUCT_PRESETS as qmHygienePresets, TASK_TEMPLATES as qmHygieneTasks, defaultProductSelection as qmHygieneDefaults, buildHygienePlans as qmBuildHygienePlans, setupHygienePlan as qmSetupHygiene } from "../qm/hygiene.js";
 import { TASK_TEMPLATES as qmSteriTasks, buildSterilizationPlans as qmBuildSteriPlans, setupSterilizationPlan as qmSetupSteri } from "../qm/sterilization.js";
 import { createSchedule as qmCreateSchedule, listSchedules as qmListSchedules, updateSchedule as qmUpdateSchedule, deleteSchedule as qmDeleteSchedule } from "../qm/schedules.js";
@@ -98,6 +99,24 @@ router.post("/clara/qm/portal/complete", async (req, res) => {
     res.status(400).json({ error: String(e?.message || e) });
   }
 });
+
+
+// --- Praxen (Praxisgemeinschaft: mehrere Praxen unter einem Login) ---
+router.get("/clara/qm/praxen", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, ...(await qmListPraxen(clientId)) });
+}));
+router.post("/clara/qm/praxen", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, ...(await qmCreatePraxis(clientId, { name: (req.body || {}).name })) });
+}));
+router.patch("/clara/qm/praxen/:id", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, ...(await qmRenamePraxis(clientId, req.params.id, { name: (req.body || {}).name })) });
+}));
+router.delete("/clara/qm/praxen/:id", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, ...(await qmDeletePraxis(clientId, req.params.id)) });
+}));
+router.post("/clara/qm/praxen/active", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, ...(await qmSetActivePraxis(clientId, (req.body || {}).praxisId)) });
+}));
 
 
 // --- Profil & Anforderungs-Engine ---
