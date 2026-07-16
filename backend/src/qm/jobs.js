@@ -223,6 +223,7 @@ export async function assignJob(clientId, jobId, { staffId, staffName = "", role
     assignedTo: s(staffId) || null,
     assignedToName: s(staffName) || null,
     assignedRole: s(role) || job.assignedRole || null,
+    assignedAt: new Date().toISOString(),
     status: JOB_STATUS.ASSIGNED,
     ackAt: null,
   };

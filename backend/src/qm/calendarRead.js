@@ -144,10 +144,19 @@ export async function getCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE
     status: j.status,
     assignedTo: j.assignedTo,
     assignedToName: j.assignedToName,
+    assignedRole: j.assignedRole || null,
+    assignedAt: j.assignedAt || null,
     purpose: j.purpose,
     cycle: j.cycle,
     cycleLabel: cycleLabel(j.cycle),
     requiredFields: Array.isArray(j.requiredFields) ? j.requiredFields : [],
+    // Persistierter Bearbeitungszustand fuers Popup: Push-Historie + Quittung,
+    // damit "wann/an wen zugewiesen & gepusht" nach dem Neu-Oeffnen sichtbar bleibt.
+    pushState: j.pushState && typeof j.pushState === "object"
+      ? { sentCount: Number(j.pushState.sentCount || 0), lastSentAt: j.pushState.lastSentAt || null, channel: j.pushState.channel || null }
+      : { sentCount: 0, lastSentAt: null, channel: null },
+    ackAt: j.ackAt || null,
+    startedAt: j.startedAt || null,
   }));
 }
 
