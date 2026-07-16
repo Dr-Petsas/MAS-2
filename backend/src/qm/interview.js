@@ -88,7 +88,30 @@ export async function runInterviewTurn(clientId, opts = {}) {
     return { ok: false, reason: r.reason || "llm_unreachable", model: r.model, topics: interviewTopics(bookKey) };
   }
 
-  const parsed = parseInterviewReply(r.text);
+  let parsed = parseInterviewReply(r.text);
+
+  // Julia liefert manchmal nur den [ERGEBNIS]-Block und KEINE sichtbare Frage.
+  // Dann ist der Chat leer und der Nutzer sieht keine naechste Frage. In dem
+  // Fall genau EINMAL nachfassen: Ergebnis behalten, aber die naechste Frage
+  // nachliefern (billiger Zusatz-Call, kein zweites Erfassen noetig).
+  if (parsed.done !== true && !parsed.reply.trim()) {
+    const nudge = [
+      ...messages,
+      { role: "assistant", content: r.text },
+      { role: "user", content: "Gib jetzt KEINEN [ERGEBNIS]-Block aus. Stelle nur die naechste Einzelfrage zum naechsten offenen Thema (oder gib [STATUS]interview_abgeschlossen[/STATUS] aus, wenn alle Themen erledigt sind)." },
+    ];
+    const r2 = await chat(nudge, { baseUrl: s.base, model: s.model, temperature: 0.3, maxTokens: 600, timeoutMs: 45000 });
+    if (r2.ok) {
+      const parsed2 = parseInterviewReply(r2.text);
+      parsed = {
+        reply: parsed2.reply || parsed.reply,
+        captures: [...parsed.captures, ...parsed2.captures],
+        done: parsed.done || parsed2.done,
+      };
+      log.info("qm.interview_nudge", { clientId, bookKey, recovered: !!parsed2.reply.trim() });
+    }
+  }
+
   log.info("qm.interview_turn", { clientId, bookKey, captures: parsed.captures.length, done: parsed.done });
   return {
     ok: true,
