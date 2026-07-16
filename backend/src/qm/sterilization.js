@@ -2,6 +2,7 @@ import { activateBook, setBookPlans } from "./books.js";
 import { createSchedule } from "./schedules.js";
 import { createJob } from "./jobs.js";
 import { nextDueFrom } from "./recurrence.js";
+import { generateGeraeteJobs } from "./inventory.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -139,6 +140,15 @@ export async function setupSterilizationPlan(clientId, opts = {}) {
     if (job.ok) jobs.push(job.job);
   }
 
-  log.info("qm.sterilization_setup", { clientId, plans: plans.length, schedules, jobs: jobs.length });
-  return { ok: true, bookKey: STERI_BOOK, planCount: plans.length, scheduleCount: schedules, jobCount: jobs.length, jobs };
+  // Aus dem Geraete-Inventar (Aufbereitung) die geraetebezogenen Validierungs-/
+  // Pruef-Jobs ableiten (Autoklav, RDG, DAC, US-Bad, Siegelgeraet …), abhaengig
+  // vom hinterlegten letzten Validierungsdatum. Idempotent.
+  let deviceJobs = 0, deviceOverdue = 0;
+  try {
+    const g = await generateGeraeteJobs(clientId, { praxisId: opts.praxisId, gruppen: ["aufbereitung"] });
+    if (g.ok) { deviceJobs = g.created; deviceOverdue = g.overdue; }
+  } catch (e) { log.warn("qm.sterilization_devicejobs_fail", { clientId, error: String(e?.message || e) }); }
+
+  log.info("qm.sterilization_setup", { clientId, plans: plans.length, schedules, jobs: jobs.length, deviceJobs, deviceOverdue });
+  return { ok: true, bookKey: STERI_BOOK, planCount: plans.length, scheduleCount: schedules, jobCount: jobs.length + deviceJobs, deviceJobCount: deviceJobs, deviceOverdue, jobs };
 }

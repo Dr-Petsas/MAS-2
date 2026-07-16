@@ -10,6 +10,8 @@ import { listDocuments as qmListDocuments, listAllDocuments as qmListAllDocument
 import { createJob as qmCreateJob, updateJob as qmUpdateJob, deleteJob as qmDeleteJob, assignJob as qmAssignJob, ackJob as qmAckJob, startJob as qmStartJob, completeJob as qmCompleteJob, getJob as qmGetJob, listJobsForStaff as qmListJobsForStaff, redistributeOpenJobs as qmRedistribute } from "../qm/jobs.js";
 import { verifyPortalToken as qmVerifyPortalToken } from "../qm/portal.js";
 import { listPraxen as qmListPraxen, createPraxis as qmCreatePraxis, renamePraxis as qmRenamePraxis, deletePraxis as qmDeletePraxis, setActivePraxis as qmSetActivePraxis } from "../qm/praxis.js";
+import { getInventory as qmGetInventory, saveInventory as qmSaveInventory, generateGeraeteJobs as qmGenerateGeraeteJobs, defaultInventoryFor as qmDefaultInventory } from "../qm/inventory.js";
+import { geraeteKatalog as qmGeraeteKatalog, geraeteFuerFachrichtung as qmGeraeteFuerFach, gruppen as qmGeraeteGruppen } from "../qm/geraete.js";
 import { PRODUCT_PRESETS as qmHygienePresets, TASK_TEMPLATES as qmHygieneTasks, defaultProductSelection as qmHygieneDefaults, buildHygienePlans as qmBuildHygienePlans, setupHygienePlan as qmSetupHygiene } from "../qm/hygiene.js";
 import { TASK_TEMPLATES as qmSteriTasks, buildSterilizationPlans as qmBuildSteriPlans, setupSterilizationPlan as qmSetupSteri } from "../qm/sterilization.js";
 import { createSchedule as qmCreateSchedule, listSchedules as qmListSchedules, updateSchedule as qmUpdateSchedule, deleteSchedule as qmDeleteSchedule } from "../qm/schedules.js";
@@ -116,6 +118,36 @@ router.delete("/clara/qm/praxen/:id", qmRoute(async (clientId, req, res) => {
 }));
 router.post("/clara/qm/praxen/active", qmRoute(async (clientId, req, res) => {
   res.json({ ok: true, clientId, ...(await qmSetActivePraxis(clientId, (req.body || {}).praxisId)) });
+}));
+
+// --- Geraete-Inventar pro Praxis (Setup-Schritt) -----------------------------
+// Katalog + Fachrichtungs-Defaults fuer die UI (welche Geraete gibt es, welche
+// sind fuer diese Fachrichtung typisch/optional).
+router.get("/clara/qm/geraete/katalog", qmRoute(async (clientId, req, res) => {
+  const fach = String(req.query?.fachrichtung || "").trim();
+  const prof = fach ? null : (await qmGetProfile(clientId));
+  const fk = fach || (prof && prof.fachrichtung) || "";
+  const f = qmGeraeteFuerFach(fk);
+  res.json({
+    ok: true, clientId, fachrichtung: fk,
+    katalog: qmGeraeteKatalog(), gruppen: qmGeraeteGruppen(),
+    typisch: f.typisch.map((g) => g.key), optional: f.optional.map((g) => g.key),
+  });
+}));
+// Inventar lesen (fehlt eines, kommt ein Vorschlag aus der Fachrichtung).
+router.get("/clara/qm/inventory", qmRoute(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, ...(await qmGetInventory(clientId, req.query?.praxisId)) });
+}));
+// Inventar speichern (ersetzt die Liste der Praxis).
+router.post("/clara/qm/inventory", qmRoute(async (clientId, req, res) => {
+  const b = req.body || {};
+  res.json({ ok: true, clientId, ...(await qmSaveInventory(clientId, b.praxisId, b.items || [])) });
+}));
+// Aus dem Inventar die faelligen Geraete-Jobs erzeugen (optional Gruppen-Filter).
+router.post("/clara/qm/inventory/generate-jobs", qmRoute(async (clientId, req, res) => {
+  const b = req.body || {};
+  const gruppen = Array.isArray(b.gruppen) && b.gruppen.length ? b.gruppen : null;
+  res.json({ ok: true, clientId, ...(await qmGenerateGeraeteJobs(clientId, { praxisId: b.praxisId, gruppen })) });
 }));
 
 

@@ -39,6 +39,24 @@ export function geraeteFuerFachrichtung(fachKey) {
   return { typisch: resolve(entry.typisch), optional: resolve(entry.optional) };
 }
 
+// Pruef-Typ -> QM-Buch, in dem der Job/Schedule gefuehrt wird. Fehlt das Buch
+// im Katalog (qm-artifacts.json), faellt der Aufrufer auf "kein Job" zurueck.
+const BOOK_BY_TYP = {
+  sachverstaendigenpruefung: "radiation_expert_inspection",
+  konstanzpruefung: "constancy_book",
+  validierung: "sterilization_log",
+  leistungspruefung: "sterilization_log",
+  siegelnahtpruefung: "sterilization_log",
+  wasserpruefung: "sterilization_log",
+  stk: "device_stk_log",
+  funktionspruefung: "emergency_checklist",
+  bestandspruefung: "emergency_checklist",
+  temperaturkontrolle: "temperature_log",
+};
+export function bookForPruefung(typ) {
+  return BOOK_BY_TYP[String(typ || "").trim()] || "";
+}
+
 const MONTH_MS = 30.44 * 24 * 3600 * 1000;
 
 /**
