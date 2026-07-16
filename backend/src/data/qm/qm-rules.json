@@ -24,6 +24,13 @@
     { "artifactKey": "medical_device_book", "required": "conditional", "when": { "capability": "medizinprodukte_aktiv", "eq": true }, "reason": "Aktive Medizinprodukte → Medizinproduktebuch (MPBetreibV)." },
     { "artifactKey": "device_inventory", "required": "conditional", "when": { "capability": "medizinprodukte_aktiv", "eq": true }, "reason": "Aktive Medizinprodukte → Bestandsverzeichnis." },
     { "artifactKey": "instruction_records", "required": "conditional", "when": { "capability": "medizinprodukte_aktiv", "eq": true }, "reason": "Aktive Medizinprodukte → Einweisungsprotokolle." },
-    { "artifactKey": "biohazard_register", "required": "conditional", "when": { "any": [ { "capability": "labor_eigen", "eq": true }, { "capability": "infektioes_hoch", "eq": true } ] }, "reason": "Labor/erhöhte Infektionsgefahr → Biostoffverzeichnis (BioStoffV)." }
+    { "artifactKey": "biohazard_register", "required": "conditional", "when": { "any": [ { "capability": "labor_eigen", "eq": true }, { "capability": "infektioes_hoch", "eq": true } ] }, "reason": "Labor/erhöhte Infektionsgefahr → Biostoffverzeichnis (BioStoffV)." },
+
+    { "artifactKey": "radiation_expert_inspection", "required": "conditional", "when": { "capability": "roentgen", "eq": true }, "reason": "Röntgenbetrieb → Sachverständigenprüfung alle 5 Jahre (StrlSchV §88)." },
+    { "artifactKey": "device_stk_log", "required": "conditional", "when": { "capability": "mp_anlage1", "eq": true }, "reason": "Geräte nach Anlage 1/2 MPBetreibV → sicherheitstechnische Kontrolle (STK)." },
+    { "artifactKey": "op_hygiene_plan", "required": "conditional", "when": { "capability": "ambulant_operieren", "eq": true }, "reason": "Ambulantes Operieren → OP-Hygieneplan (KRINKO)." },
+    { "artifactKey": "op_checklist", "required": "conditional", "when": { "capability": "ambulant_operieren", "eq": true }, "reason": "Ambulantes Operieren → OP-Checkliste/Team-Timeout (Patientensicherheit)." },
+    { "artifactKey": "sedation_log", "required": "conditional", "when": { "capability": "narkose_sedierung", "eq": true }, "reason": "Sedierung/Narkose → Sedierungsprotokoll mit Monitoring/Entlasskriterien." },
+    { "artifactKey": "praxislabor_mdr", "required": "conditional", "when": { "capability": "labor_eigen", "eq": true }, "reason": "Eigenlabor/Sonderanfertigungen → Konformitätserklärung + Rückverfolgbarkeit (MDR)." }
   ]
 }

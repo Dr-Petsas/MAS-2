@@ -145,6 +145,7 @@ export async function getCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE
     shared: Array.isArray(j.praxisIds) && j.praxisIds.length > 1,
     dueAt: j.dueAt,
     dueAtMs: j.dueAtMs,
+    scheduledFor: j.scheduledFor || null,
     status: j.status,
     assignedTo: j.assignedTo,
     assignedToName: j.assignedToName,
@@ -172,6 +173,7 @@ export async function getCalendar(clientId, { fromMs = 0, toMs = Number.MAX_SAFE
       : { sentCount: 0, lastSentAt: null, channel: null },
     ackAt: j.ackAt || null,
     startedAt: j.startedAt || null,
+    placed: j.placed === true,
   }));
 }
 

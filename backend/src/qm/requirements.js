@@ -1,4 +1,5 @@
 import { listArtifacts, listRules, getArtifact, defaultProfileFor } from "./catalog.js";
+import { reviewIntervalMonthsFor } from "./reviewPolicy.js";
 
 // ============================================================================
 // Anforderungs-Engine (PURE, kein I/O).
@@ -100,6 +101,7 @@ export function resolveRequirements(input = {}) {
       hasInterview: a.hasInterview === true,
       defaultCycle: a.defaultCycle || null,
       recurrenceMode: a.recurrenceMode || "fixed",
+      reviewIntervalMonths: reviewIntervalMonthsFor(a),
     });
   }
 
@@ -122,6 +124,7 @@ export function allArtifactsWithStatus(input = {}) {
     status: "optional", reasons: [], legalBasis: a.legalBasis || [],
     hasInterview: a.hasInterview === true, defaultCycle: a.defaultCycle || null,
     recurrenceMode: a.recurrenceMode || "fixed",
+    reviewIntervalMonths: reviewIntervalMonthsFor(a),
   });
 }
 

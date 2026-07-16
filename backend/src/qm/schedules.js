@@ -3,7 +3,8 @@ import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { getArtifact } from "./catalog.js";
 import { nextDueFrom, isRecurring, leadStartFrom, cycleLabel } from "./recurrence.js";
-import { createJob, nextDue } from "./jobs.js";
+import { createJob, nextDue, listCalendar } from "./jobs.js";
+import { pickSlot, loadByDayFromJobs } from "./distribution.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -50,6 +51,9 @@ export async function createSchedule(clientId, input = {}) {
     assignedToName: s(input.assignedToName) || null,
     deviceRef: s(input.deviceRef) || null,
     nextDueAt: firstDue,
+    // Vom Nutzer im Kalender platziert -> materialisierte Folgetermine gelten
+    // ebenfalls als „geplant" (ausgegraut, Badge) statt als offene To-dos.
+    placed: input.placed === true,
     active: input.active !== false,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -70,7 +74,7 @@ export async function updateSchedule(clientId, scheduleId, patch = {}) {
   const ref = col(clientId).doc(s(scheduleId));
   if (!(await ref.get()).exists) return { ok: false, reason: "not_found" };
   const allowed = {};
-  for (const k of ["title", "cycle", "mode", "leadDays", "assignedRole", "assignedTo", "assignedToName", "deviceRef", "nextDueAt", "active"]) {
+  for (const k of ["title", "cycle", "mode", "leadDays", "assignedRole", "assignedTo", "assignedToName", "deviceRef", "nextDueAt", "active", "placed"]) {
     if (patch[k] !== undefined) allowed[k] = patch[k];
   }
   if (allowed.cycle !== undefined && !isRecurring(s(allowed.cycle))) return { ok: false, reason: "cycle_not_recurring" };
@@ -95,6 +99,16 @@ export async function materializeDueJobs(clientId, { nowMs = Date.now() } = {}) 
   let created = 0;
   let advanced = 0;
 
+  // Intelligente Verteilung: aktuelle QM-Last je Tag laden (60-Tage-Fenster),
+  // damit neue Jobs auf lastarme Arbeitstage/patientenarme Slots gelegt werden.
+  // Notaus per QM_SMART_DISTRIBUTION=0 (dann exakt wie zuvor: scheduledFor=dueAt).
+  const smart = String(process.env.QM_SMART_DISTRIBUTION || "1") !== "0";
+  let loadByDay = {};
+  if (smart) {
+    const horizon = await listCalendar(clientId, { fromMs: nowMs, toMs: nowMs + 60 * 86400000 }).catch(() => []);
+    loadByDay = loadByDayFromJobs(horizon);
+  }
+
   for (const sched of schedules) {
     if (sched.mode === "anchor_on_completion") continue; // self-scheduling on completion
     if (!isRecurring(sched.cycle)) continue;
@@ -112,11 +126,20 @@ export async function materializeDueJobs(clientId, { nowMs = Date.now() } = {}) 
       const existing = await nextDue(clientId, { bookKey: sched.bookKey, deviceRef: sched.deviceRef || "" });
       const alreadyForThis = existing && existing.recurrenceId === sched.id && s(existing.dueAt) === dueAt;
       if (!alreadyForThis) {
+        // scheduledFor = tatsächlicher Ausführungstag/-slot (im Vorlauf-Fenster);
+        // dueAt bleibt die Frist. So streut Julia die Arbeit lastarm.
+        const scheduledFor = smart
+          ? pickSlot({ dueAtIso: dueAt, leadDays: sched.leadDays, nowMs, loadByDay, jitterKey: sched.id })
+          : dueAt;
+        if (smart) {
+          const d = String(scheduledFor).slice(0, 10);
+          loadByDay[d] = (loadByDay[d] || 0) + 1;
+        }
         const r = await createJob(clientId, {
           bookKey: sched.bookKey,
           title: sched.title,
           deviceRef: sched.deviceRef || "",
-          scheduledFor: dueAt,
+          scheduledFor,
           dueAt,
           leadDays: sched.leadDays,
           assignedRole: sched.assignedRole || "",
@@ -125,6 +148,7 @@ export async function materializeDueJobs(clientId, { nowMs = Date.now() } = {}) 
           recurrenceId: sched.id,
           recurrenceMode: "fixed",
           cycle: sched.cycle,
+          placed: sched.placed === true,
           createdBy: "julia",
         });
         if (r.ok) created++;

@@ -128,6 +128,22 @@ export async function listDocuments(clientId, bookKey, { deviceRef = "", limit =
   return docs.slice(0, Math.max(1, Math.min(1000, limit)));
 }
 
+/**
+ * Das EINE QM-Kontrollbuch: alle Nachweise der Praxis über alle Bücher hinweg,
+ * neueste zuerst, angereichert um Buchtitel + QM-Thema (category) für Suche und
+ * Gliederung. Append-only Quelle für "wer hat was wann erledigt".
+ */
+export async function listAllDocuments(clientId, { limit = 1000 } = {}) {
+  const snap = await col(clientId).limit(3000).get();
+  let docs = snap.docs.map((d) => d.data());
+  docs.sort((a, b) => (b.performedAtMs || 0) - (a.performedAtMs || 0));
+  docs = docs.slice(0, Math.max(1, Math.min(3000, limit)));
+  return docs.map((d) => {
+    const a = getArtifact(d.bookKey) || {};
+    return { ...d, bookTitle: a.title || d.bookKey, category: a.category || "organisation" };
+  });
+}
+
 /** The most recent proof for a book (optionally a specific device). */
 export async function latestDocument(clientId, bookKey, { deviceRef = "" } = {}) {
   const docs = await listDocuments(clientId, bookKey, { deviceRef, limit: 1 });

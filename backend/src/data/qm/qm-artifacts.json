@@ -246,6 +246,99 @@
       "recurrenceMode": "anchor_on_completion",
       "requiredFields": [],
       "exportFormats": ["pdf"]
+    },
+    {
+      "key": "radiation_expert_inspection",
+      "type": "book",
+      "category": "patientensicherheit",
+      "title": "Sachverständigenprüfung Röntgen",
+      "legalBasis": ["StrlSchG", "StrlSchV §88 (Sachverständigenprüfung alle 5 Jahre)"],
+      "hasInterview": false,
+      "defaultCycle": "fiveYearly",
+      "recurrenceMode": "anchor_on_completion",
+      "requiredFields": [
+        { "key": "geraet", "label": "Gerät", "type": "text", "required": true },
+        { "key": "ergebnis", "label": "Prüfergebnis", "type": "enum", "options": ["ohne_maengel", "mit_maengel"], "required": true },
+        { "key": "sachverstaendiger", "label": "Sachverständige/r", "type": "text", "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "device_stk_log",
+      "type": "book",
+      "category": "technik",
+      "title": "Sicherheitstechnische Kontrolle (STK/MTK)",
+      "legalBasis": ["MPBetreibV §11 (STK)", "MPBetreibV §14 (MTK)"],
+      "hasInterview": false,
+      "defaultCycle": "twoYearly",
+      "recurrenceMode": "anchor_on_completion",
+      "requiredFields": [
+        { "key": "geraet", "label": "Gerät", "type": "text", "required": true },
+        { "key": "ergebnis", "label": "Ergebnis", "type": "enum", "options": ["ohne_maengel", "mit_maengel"], "required": true },
+        { "key": "geprueft_von", "label": "Geprüft von", "type": "text", "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "op_hygiene_plan",
+      "type": "plan",
+      "category": "hygiene",
+      "title": "OP-Hygieneplan (ambulantes Operieren)",
+      "legalBasis": ["KRINKO Empfehlung ambulantes Operieren", "IfSG §23"],
+      "hasInterview": true,
+      "defaultCycle": "yearly",
+      "recurrenceMode": "fixed",
+      "requiredFields": [],
+      "exportFormats": ["pdf"]
+    },
+    {
+      "key": "op_checklist",
+      "type": "book",
+      "category": "patientensicherheit",
+      "title": "OP-Checkliste (Team-Timeout)",
+      "legalBasis": ["QM-RL Patientensicherheit", "WHO Surgical Safety Checklist"],
+      "hasInterview": false,
+      "defaultCycle": "perUse",
+      "recurrenceMode": "on_event",
+      "requiredFields": [
+        { "key": "timeout_id", "label": "Identität/Eingriff/Lokalisation bestätigt", "type": "enum", "options": ["ja", "nein"], "required": true },
+        { "key": "einwilligung", "label": "Einwilligung vorhanden", "type": "enum", "options": ["ja", "nein"], "required": true },
+        { "key": "anamnese_ok", "label": "Anamnese/Allergien/Antikoagulation geprüft", "type": "enum", "options": ["ja", "nein"], "required": true },
+        { "key": "zaehlkontrolle", "label": "Zählkontrolle vollständig", "type": "enum", "options": ["ja", "nein"], "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "sedation_log",
+      "type": "book",
+      "category": "patientensicherheit",
+      "title": "Sedierungs-/Analgosedierungsprotokoll",
+      "legalBasis": ["S3-Leitlinie Sedierung", "QM-RL Patientensicherheit"],
+      "hasInterview": false,
+      "defaultCycle": "perUse",
+      "recurrenceMode": "on_event",
+      "requiredFields": [
+        { "key": "sedierungsart", "label": "Sedierungsart", "type": "enum", "options": ["Lachgas", "i.v.-Sedierung", "orale Sedierung"], "required": true },
+        { "key": "monitoring", "label": "Monitoring angelegt", "type": "enum", "options": ["ja", "nein"], "required": true },
+        { "key": "nuechtern", "label": "Nüchternheit bestätigt", "type": "enum", "options": ["ja", "nein"], "required": true },
+        { "key": "entlasskriterien", "label": "Entlasskriterien erfüllt", "type": "enum", "options": ["ja", "nein"], "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
+    },
+    {
+      "key": "praxislabor_mdr",
+      "type": "register",
+      "category": "technik",
+      "title": "Praxislabor / Sonderanfertigungen (MDR)",
+      "legalBasis": ["MDR (EU) 2017/745 Art. 52 Abs. 8 + Anhang XIII"],
+      "hasInterview": false,
+      "defaultCycle": "onEvent",
+      "recurrenceMode": "on_event",
+      "requiredFields": [
+        { "key": "konformitaet", "label": "Konformitätserklärung erstellt", "type": "enum", "options": ["ja", "nein"], "required": true },
+        { "key": "material_charge", "label": "Materialcharge dokumentiert", "type": "text", "required": true }
+      ],
+      "exportFormats": ["pdf", "csv"]
     }
   ]
 }

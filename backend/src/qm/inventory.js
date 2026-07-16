@@ -13,7 +13,7 @@
 
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
-import { getProfile } from "./books.js";
+import { getProfile, listBooks } from "./books.js";
 import { geraetById, geraeteFuerFachrichtung, jobsForGeraet, bookForPruefung } from "./geraete.js";
 import { getArtifact } from "./catalog.js";
 import { createSchedule, listSchedules } from "./schedules.js";
@@ -93,10 +93,19 @@ export async function saveInventory(clientId, praxisId, items = []) {
  * eingrenzen (z. B. ["aufbereitung"] fuer die Sterilisation).
  * @returns {{ ok, created, skipped, overdue, jobs }}
  */
-export async function generateGeraeteJobs(clientId, { praxisId, gruppen = null } = {}) {
+export async function generateGeraeteJobs(clientId, { praxisId, gruppen = null, onlyActiveBooks = true } = {}) {
   const inv = await getInventory(clientId, praxisId);
   const pid = inv.praxisId;
   const wantGroups = Array.isArray(gruppen) && gruppen.length ? new Set(gruppen) : null;
+
+  // Regel „keine Jobs vor aktivem Plan": Geraetejobs nur in Buecher schreiben,
+  // die (fuer diese Praxis) aktiv sind. So entstehen z. B. Roentgen-Jobs erst,
+  // wenn das Konstanz-/Sachverstaendigenbuch aktiviert wurde.
+  let activeSet = null;
+  if (onlyActiveBooks) {
+    const books = await listBooks(clientId, true, pid).catch(() => []);
+    activeSet = new Set((books || []).map((b) => s(b.key)));
+  }
 
   // Bestehende Schedules je Buch cachen (deviceRef-Set) fuer die Idempotenz.
   const existingByBook = new Map();
@@ -120,6 +129,7 @@ export async function generateGeraeteJobs(clientId, { praxisId, gruppen = null }
     for (const j of devJobs) {
       const bookKey = bookForPruefung(j.typ);
       if (!bookKey || !getArtifact(bookKey)) { skipped++; continue; }
+      if (activeSet && !activeSet.has(bookKey)) { skipped++; continue; }
       const deviceRef = `${dev.key}:${j.typ}`;
       const refs = await existingRefs(bookKey);
       if (refs.has(deviceRef)) { skipped++; continue; }

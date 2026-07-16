@@ -251,8 +251,78 @@ export function validateCatalogCodes(system, codes) {
     .map((c) => {
       const cat = byCode.get(c.code);
       const label = cat.label || c.label || "";
-      return c.note ? { code: c.code, label, note: c.note } : { code: c.code, label };
+      const out = { code: c.code, label };
+      if (c.note) out.note = c.note;
+      // evidence = woertliche Textstelle, die die Ziffer belegt (Link im UI).
+      if (typeof c.evidence === "string" && c.evidence.trim()) {
+        out.evidence = c.evidence.trim().slice(0, 240);
+      }
+      // tooth = konkrete Zahn-/Regio-Angabe (z. B. "Regio 36") fuer die Anzeige.
+      if (typeof c.tooth === "string" && c.tooth.trim()) {
+        out.tooth = c.tooth.trim().slice(0, 40);
+      }
+      return out;
     });
+}
+
+/** Doku-Text in einzelne Saetze/Zeilen zerlegen (fuer Beleg-Suche). */
+function splitSentences(text) {
+  return String(text || "")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 4);
+}
+
+/** Anzeige-freundliche Zahn-/Regio-Angabe aus einem Satz ziehen. */
+function toothFromSentence(sentence) {
+  const m = /\b(regio|position|zahn|z(?:ä|ae)hne?)\b\s*\.?\s*(\d{1,2}(?:\s*(?:,|und|bis|-|\/)\s*\d{1,2})*)/i.exec(sentence);
+  if (m) {
+    const label = /regio/i.test(m[1]) ? "Regio" : "Zahn"; // Position/Zahn -> "Zahn"
+    return `${label} ${m[2].replace(/\s+/g, "")}`;
+  }
+  const fdi = extractFdiTeeth(sentence);
+  if (fdi.length) return `Zahn ${fdi.join(", ")}`;
+  return "";
+}
+
+/** Label -> signifikante Such-Staemme (>=5 Zeichen, normalisiert, erste 6). */
+function labelStems(label) {
+  return normalizeText(label)
+    .split(" ")
+    .filter((w) => w.length >= 5)
+    .map((w) => w.slice(0, 6));
+}
+
+/**
+ * Beleg (evidence) + Zahn deterministisch nachtragen (Befund Chef 11.07.:
+ * "hier fehlen die Links zu den Textstellen, ausserdem fehlen Zahnangaben").
+ * Fuer jede Ziffer den Doku-Satz mit dem groessten Label-Stamm-Overlap finden
+ * und die Zahn-/Regio-Angabe daraus ziehen. Vom LLM gelieferte Werte bleiben
+ * unangetastet; nur Luecken werden gefuellt (implizite Anaesthesie o. Aehnl.
+ * ohne Textbeleg bleibt bewusst ohne Link/Zahn).
+ */
+export function enrichCodesWithEvidence(codes, basis) {
+  const sentences = splitSentences(basis);
+  const normSent = sentences.map((s) => ({ raw: s, norm: normalizeText(s) }));
+  return (Array.isArray(codes) ? codes : []).map((c) => {
+    const out = { ...c };
+    if (!out.evidence && normSent.length) {
+      const stems = labelStems(out.label);
+      let best = null;
+      let bestScore = 0;
+      for (const s of normSent) {
+        let score = 0;
+        for (const st of stems) if (st && s.norm.includes(st)) score += 1;
+        if (score > bestScore) { bestScore = score; best = s.raw; }
+      }
+      if (best && bestScore > 0) out.evidence = best.slice(0, 240);
+    }
+    if (!out.tooth) {
+      const t = toothFromSentence(out.evidence || out.note || "");
+      if (t) out.tooth = t;
+    }
+    return out;
+  });
 }
 
 /** Voller Katalog als kompakte Zeilen (LLM-Kontext). */

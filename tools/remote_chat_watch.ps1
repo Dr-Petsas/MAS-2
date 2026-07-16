@@ -7,8 +7,8 @@
 # ausfuehrt, eine kurze Antwort in den Chat schreibt und das Board (Resuemee +
 # Empfehlungen) aktualisiert. Siehe tools/remote_chat_prompt.md.
 #
-# Laeuft bis 15.07.2026, 08:00 — danach traegt sich der Task selbst aus.
-# (Reaktiviert 16.06.2026; Enddatum verlaengert.)
+# Laeuft bis 15.08.2026, 08:00 — danach traegt sich der Task selbst aus.
+# (Reaktiviert 16.06.2026 und erneut 14.07.2026; Enddatum verlaengert.)
 # Token kommt aus backend\.env (REMOTE_CHAT_TOKEN).
 # ============================================================================
 $ErrorActionPreference = 'Continue'
@@ -24,8 +24,8 @@ function Log([string]$Msg) {
     Add-Content -Path $logFile -Value "$(Get-Date -Format 'HH:mm:ss') $Msg"
 }
 
-# Endzeit: 15.07.2026 08:00 — danach Task entfernen und beenden.
-$ende = Get-Date -Year 2026 -Month 7 -Day 15 -Hour 8 -Minute 0 -Second 0
+# Endzeit: 15.08.2026 08:00 — danach Task entfernen und beenden.
+$ende = Get-Date -Year 2026 -Month 8 -Day 15 -Hour 8 -Minute 0 -Second 0
 if ((Get-Date) -gt $ende) {
     Log 'Endzeit erreicht - Task wird ausgetragen.'
     schtasks /Delete /TN "MASFernsteuerung" /F 2>&1 | Out-Null

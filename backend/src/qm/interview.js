@@ -127,10 +127,18 @@ export async function runInterviewTurn(clientId, opts = {}) {
     timeoutMs: 60000,
     extraBody: NO_THINK,
   });
+  const usedCfg = { baseUrl: s.base, model: s.model };
 
   if (!r.ok) {
     log.warn("qm.interview_llm_fail", { clientId, bookKey, reason: r.reason, model: r.model });
-    return { ok: false, reason: r.reason || "llm_unreachable", model: r.model, topics: interviewTopics(bookKey) };
+    return {
+      ok: false,
+      reason: r.reason || "llm_unreachable",
+      // Klartext statt nacktem 502 — der 5090 ist der Julia-KI-Server.
+      error: "Julia-KI (RTX 5090) ist gerade nicht erreichbar. Server prüfen/starten und erneut senden.",
+      model: r.model,
+      topics: interviewTopics(bookKey),
+    };
   }
 
   let parsed = parseInterviewReply(r.text);
@@ -145,7 +153,7 @@ export async function runInterviewTurn(clientId, opts = {}) {
       { role: "assistant", content: r.text },
       { role: "user", content: "Gib jetzt KEINEN [ERGEBNIS]-Block aus. Stelle nur die naechste Einzelfrage zum naechsten offenen Thema (oder gib [STATUS]interview_abgeschlossen[/STATUS] aus, wenn alle Themen erledigt sind)." },
     ];
-    const r2 = await chat(nudge, { baseUrl: s.base, model: s.model, temperature: 0.3, maxTokens: 500, timeoutMs: 45000, extraBody: NO_THINK });
+    const r2 = await chat(nudge, { ...usedCfg, temperature: 0.3, maxTokens: 500, timeoutMs: 45000, extraBody: NO_THINK });
     if (r2.ok) {
       const parsed2 = parseInterviewReply(r2.text);
       parsed = {

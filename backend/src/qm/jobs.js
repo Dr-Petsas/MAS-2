@@ -152,6 +152,10 @@ export async function createJob(clientId, input = {}) {
     cycle: s(input.cycle) || artifact.defaultCycle || null,
     requiredFields: Array.isArray(input.requiredFields) ? input.requiredFields : (artifact.requiredFields || []),
 
+    // „placed": vom Nutzer (oder von einem nutzer-platzierten Schedule) bewusst
+    // im Kalender terminiert -> in der Liste ausgegraut, Badge „geplant".
+    placed: input.placed === true,
+
     pushState: { sentCount: 0, lastSentAt: null, channel: null },
     escalation: { level: 0, escalatedTo: null, escalatedAt: null },
 
@@ -186,6 +190,13 @@ export async function updateJob(clientId, jobId, input = {}) {
     patch.dueAtMs = dueAtMs;
   }
 
+  // „placed": der Job wurde vom Nutzer bewusst im Kalender platziert (per Drag).
+  // Reine Anzeige-/Workflow-Markierung — steuert die Ausgrauung + „geplant"-Badge
+  // in der Job-Liste. Aendert den Status-Lebenszyklus NICHT.
+  if (Object.prototype.hasOwnProperty.call(input, "placed")) {
+    patch.placed = input.placed === true;
+  }
+
   if (Object.prototype.hasOwnProperty.call(input, "assignedTo")) {
     const assignedTo = s(input.assignedTo);
     patch.assignedTo = assignedTo || null;
@@ -202,6 +213,38 @@ export async function updateJob(clientId, jobId, input = {}) {
     patch.status = patch.dueAtMs < startOfToday.getTime()
       ? JOB_STATUS.OVERDUE
       : (assignedTo ? JOB_STATUS.ASSIGNED : JOB_STATUS.PLANNED);
+  }
+
+  // Platzierung im Kalender = Wiederholung scharf schalten: Hat der Job einen
+  // wiederkehrenden Zyklus (täglich/wöchentlich/…), sorgt das Ablegen dafür, dass
+  // Julia die Folgetermine automatisch immer wieder anlegt — verankert an der
+  // gerade gewählten Uhrzeit. Fixed-Zyklen laufen über einen Schedule (Scheduler-
+  // Tick materialisiert sie); anchor_on_completion-Zyklen erneuern sich ohnehin
+  // erst bei Erledigung und brauchen keinen Schedule.
+  if (patch.placed === true && isRecurring(job.cycle) && (job.recurrenceMode || "fixed") === "fixed") {
+    try {
+      const anchorDue = patch.dueAt || job.dueAt;           // dieser platzierte Termin
+      const nextAt = nextDueFrom(job.cycle, anchorDue);      // Folgetermin, gleiche Uhrzeit
+      const assignedTo = Object.prototype.hasOwnProperty.call(patch, "assignedTo") ? patch.assignedTo : job.assignedTo;
+      const assignedToName = Object.prototype.hasOwnProperty.call(patch, "assignedToName") ? patch.assignedToName : job.assignedToName;
+      const { createSchedule, updateSchedule } = await import("./schedules.js");
+      if (job.recurrenceId) {
+        await updateSchedule(clientId, job.recurrenceId, {
+          active: true, mode: "fixed", cycle: job.cycle, nextDueAt: nextAt,
+          assignedTo: assignedTo || null, assignedToName: assignedToName || null,
+          deviceRef: job.deviceRef || null, placed: true,
+        });
+      } else {
+        const sc = await createSchedule(clientId, {
+          bookKey: job.bookKey, title: job.title, cycle: job.cycle, mode: "fixed",
+          firstDueAt: nextAt, assignedTo: assignedTo || "", assignedToName: assignedToName || "",
+          assignedRole: job.assignedRole || "", deviceRef: job.deviceRef || "", placed: true,
+        });
+        if (sc.ok) patch.recurrenceId = sc.schedule.id; // diesen Job an den Schedule binden
+      }
+    } catch (e) {
+      log.warn?.("qm.place_recurrence_fail", { clientId, jobId, error: String(e?.message || e) });
+    }
   }
 
   if (Object.keys(patch).length === 0) return { ok: true, job };

@@ -71,7 +71,29 @@ export const PRODUCT_PRESETS = Object.freeze([
     { name: "Octenidol", dosierung: "Spülung", einwirkzeit: "1 min" },
   ] },
   { key: "handschuheUnsteril", label: "Handschuhe (unsteril)", options: [
-    { name: "Nitril Einmalhandschuhe ungepudert", dosierung: "—", einwirkzeit: "je Patient" },
+    { name: "Nitril Einmalhandschuhe ungepudert", dosierung: "—", einwirkzeit: "—" },
+    { name: "Ansell Micro-Touch Nitrile", dosierung: "—", einwirkzeit: "—" },
+  ] },
+  { key: "handschuheSteril", label: "Handschuhe (steril)", options: [
+    { name: "Ansell Gammex sterile", dosierung: "—", einwirkzeit: "—" },
+    { name: "Sterile OP-Handschuhe latexfrei", dosierung: "—", einwirkzeit: "—" },
+  ] },
+  { key: "handschuheReinigung", label: "Handschuhe (chemikalienbeständig)", options: [
+    { name: "Reinigungsmittelbeständige Haushaltshandschuhe", dosierung: "—", einwirkzeit: "—" },
+  ] },
+  { key: "haendewaschung", label: "Händewaschung (Waschlotion)", options: [
+    { name: "Flüssigwaschprodukt aus Direktspender", dosierung: "—", einwirkzeit: "—" },
+    { name: "Baktolin pure", dosierung: "—", einwirkzeit: "—" },
+  ] },
+  { key: "schutzbrille", label: "Schutzbrille", options: [
+    { name: "Schutzbrille mit Seitenschutz", dosierung: "—", einwirkzeit: "—" },
+  ] },
+  { key: "absaugRDG", label: "Absaugschläuche (RDG/Tauchbad)", options: [
+    { name: "Terralin protect", dosierung: "0,5 %", einwirkzeit: "30 min" },
+    { name: "Instrumentendesinfektion nach Herstellerangabe", dosierung: "nach Hersteller", einwirkzeit: "—" },
+  ] },
+  { key: "praxiswaescheChemothermisch", label: "Praxiswäsche (chemothermisch, VAH)", options: [
+    { name: "Schülke Terralin Wäsche", dosierung: "0,5 %", einwirkzeit: "60 °C, 15 min" },
   ] },
 ]);
 
@@ -120,46 +142,123 @@ function instructionFor(products, key) {
 }
 
 /**
- * Die fertigen Hygieneplan-Tabellen (Was / Womit / Wie / Wer) — auf einen Blick.
- * Werte kommen aus der gewählten Produktliste.
+ * Die fertigen Hygieneplan-Tabellen im LZK-Muster-Schema:
+ *   WAS · WIE · WOMIT · ANWEISUNGEN · WER
+ * (Die Zeitpunkte/Bedingungen stehen als Liste in ANWEISUNGEN.)
+ * Die WOMIT-Spalte übernimmt die in der Praxis gewählten Produkte.
  */
+const HYGIENE_HEADERS = ["Was", "Wie", "Womit", "Anweisungen", "Wer"];
+const WER_ALLE = "alle Beschäftigten";
+const WER_BEREICH = "alle Beschäftigten im Untersuchungs-, Behandlungs- und Wartungsbereich";
+const WER_UB = "alle Beschäftigten im Untersuchungs- und Behandlungsbereich";
+const WER_LABOR = "Beschäftigte im Untersuchungs-, Behandlungs- oder Wartungsbereich, ggf. Labor";
+
 export function buildHygienePlans(products = {}) {
-  const womit = (key) => instructionFor(products, key) || "siehe Praxisstandard";
-  const row = (was, key, wie, wer = "Hygienebeauftragte") => ({ was, womit: key ? womit(key) : "—", wie, wer });
+  // WOMIT-Zelle aus gewähltem Produkt: „Label: Produktname" + Dosierung/EWZ.
+  const womit = (label, key, extra = []) => {
+    const p = chosenProduct(products, key) || {};
+    const lines = [];
+    if (label && p.name) lines.push(`${label}: ${p.name}`);
+    else if (p.name) lines.push(p.name);
+    else if (label) lines.push(label);
+    if (p.dosierung && p.dosierung !== "—") lines.push(`Dosierung: ${p.dosierung}`);
+    if (p.einwirkzeit && p.einwirkzeit !== "—") lines.push(`Einwirkzeit: ${p.einwirkzeit}`);
+    for (const e of extra) if (e) lines.push(e);
+    return lines.join("\n") || "siehe Praxisstandard";
+  };
+  const A = (...items) => items.filter(Boolean).join("\n"); // ANWEISUNGEN als Liste
+  const row = (was, wie, womitStr, anweisungen, wer) => ({ was, wie, womit: womitStr, anweisungen, wer });
+
   return [
-    { key: "haendehygiene", title: "1. Händehygiene & Hautschutz", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Hygienische Händedesinfektion", "haendedesinfektionHygienisch", "Vor/nach Patientenkontakt, Hände vollständig benetzen", "alle"),
-      row("Chirurgische Händedesinfektion", "haendedesinfektionChirurgisch", "Vor operativen Eingriffen", "Behandler/Assistenz"),
-      row("Hautschutz", "hautschutz", "Vor Arbeitsbeginn auftragen", "alle"),
-      row("Hautpflege", "hautpflege", "Nach Arbeitsende auftragen", "alle"),
+    { key: "haendehygiene", title: "1. Händehygiene", headers: HYGIENE_HEADERS, rows: [
+      row("Hände", "Waschen (Reinigen)", womit("", "haendewaschung", ["Trocknen mit Handtuch zum Einmalgebrauch"]),
+        A("vor Arbeitsbeginn", "bei sichtbarer Verschmutzung", "nach Arbeitsende"), WER_ALLE),
+      row("Hände", "Schützen", womit("Hautschutzprodukt", "hautschutz"),
+        A("vor Arbeitsbeginn", "vor längerem Tragen von Handschuhen", "bei Bedarf"), WER_ALLE),
+      row("Hände", "Desinfizieren – hygienische Händedesinfektion", womit("Händedesinfektionsmittel (VAH)", "haendedesinfektionHygienisch"),
+        A("vor Arbeitsvorbereitung", "vor und nach jeder Behandlung bzw. jedem Kontakt", "bei Unterbrechung", "nach Arbeitsplatzwartung", "nach Toilettenbesuch", "vor/nach Handschuhen"), WER_BEREICH),
+      row("Hände", "Desinfizieren – chirurgische Händedesinfektion", womit("Präparat", "haendedesinfektionChirurgisch"),
+        A("vor invasiven/chirurgischen Eingriffen (z. B. mit Wundverschluss)", "vor Eingriffen bei Personen mit erhöhtem Infektionsrisiko", "Nach Behandlung: Handschuhe ablegen, hygienische Händedesinfektion"), WER_BEREICH),
+      row("Hände", "Pflegen", womit("Hautpflegeprodukt", "hautpflege"),
+        A("bei Bedarf", "nach Arbeitsende"), WER_ALLE),
     ] },
-    { key: "flaechen", title: "2. Flächendesinfektion & Reinigung", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Behandlungsflächen", "flaechenDesinfektion", "Nach jedem Patienten wischdesinfizieren", "Assistenz"),
-      row("Fußböden", "reinigungFussboeden", "Täglich nach Praxisschluss", "Reinigung"),
+    { key: "psa", title: "2. Persönliche Schutzausrüstung", headers: HYGIENE_HEADERS, rows: [
+      row("Handschuhe", "nach hygienischer Händedesinfektion auf trockene Haut", womit("Unsterile, ungepuderte medizinische Einmalhandschuhe", "handschuheUnsteril"),
+        A("immer bei Kontakt mit Blut/Körperflüssigkeiten/infektiösen Substanzen", "Wechsel nach jedem Patienten/Klienten bzw. nach jeder Behandlung"), WER_BEREICH),
+      row("Handschuhe", "nach chirurgischer Händedesinfektion", womit("Sterile, ungepuderte Einmalhandschuhe", "handschuheSteril"),
+        A("vor chirurgischen/invasiven Eingriffen (z. B. mit Wundverschluss)", "vor Eingriffen bei Personen mit erhöhtem Infektionsrisiko"), WER_BEREICH),
+      row("Handschuhe", "vor Desinfektions-, Reinigungs-, Entsorgungsarbeiten", womit("Reinigungsmittelbeständige Handschuhe", "handschuheReinigung"),
+        A("wenn Hände mit schädigenden Stoffen in Kontakt kommen können"), "alle Beschäftigten im Wartungsbereich"),
+      row("Mund-Nasen-Schutz", "—", womit("Mund-Nasen-Schutz", "mundNasenSchutz"),
+        A("bei Verspritzen/Versprühen erregerhaltigen Materials", "bei Kontamination oder Durchfeuchtung wechseln"), WER_BEREICH),
+      row("Schutzbrille", "—", womit("Brille, möglichst mit Seitenschutz", "schutzbrille"),
+        A("nach Kontamination mit desinfektionsmittelgetränktem Tuch abwischen"), "—"),
+      row("Schutzkleidung", "—", "z. B. flüssigkeitsdichte Kittel/Schürzen, Haarschutz",
+        A("nur in besonderen Risikosituationen"), "—"),
     ] },
-    { key: "instrumente", title: "3. Instrumentenaufbereitung", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Vordesinfektion/Reinigung", "instrumentenDesinfektion", "Einlegen gemäß Konzentration/EWZ, dann RDG/Sterilisation", "Aufbereitung"),
+    { key: "flaechen", title: "3. Flächen und Einrichtungsgegenstände", headers: HYGIENE_HEADERS, rows: [
+      row("Patienten-/klientennahe Oberflächen (z. B. Griffe, Schränke, Stuhl, Geräte)", "Reinigung und Desinfektion durch Wischen mit getränktem Tuch", womit("Flächendesinfektionsmittel (VAH)", "flaechenDesinfektion"),
+        A("nach jeder Behandlung bzw. jedem Kontakt"), WER_BEREICH),
+      row("Sichtbar mit Blut/Sekreten kontaminierte Flächen", "Aufnahme mit desinfektionsmittelgetränktem Einmaltuch, danach Wischdesinfektion", womit("Flächendesinfektionsmittel", "flaechenDesinfektion"),
+        A("sofort"), WER_BEREICH),
+      row("Schwierig zu reinigende Flächen (z. B. Geräte mit Kontakt)", "Barrieremaßnahmen: Abdecken mit Abdeckmaterialien", "Abdeckmaterial unsteril/steril nach Bedarf",
+        A("nach Behandlung Materialien entsorgen bzw. aufbereiten"), "—"),
+      row("Fußböden", "Feuchtreinigung", womit("Reinigungsmittel ohne Desinfektionszusatz", "reinigungFussboeden"),
+        A("am Ende des Arbeitstages"), "Reinigungspersonal"),
     ] },
-    { key: "absaug", title: "4. Absauganlage & wasserführende Systeme", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Absauganlage durchsaugen", "absaugDesinfektionDurchsaugen", "Täglich nach Behandlungsende", "Assistenz"),
-      row("Wasserführende Systeme spülen", null, "Morgens vor erster Behandlung 2 min spülen", "Assistenz"),
+    { key: "abformung", title: "4. Abformungen und werkstoffliche Hilfsmittel", headers: HYGIENE_HEADERS, rows: [
+      row("Abformungen / kontaminierte Hilfsmittel", "Reinigen durch vorsichtiges Abspülen\nSprüh- oder Tauchdesinfektion", womit("Desinfektionsmittel (VAH Fläche/Instrument)", "abformungDesinfektion"),
+        A("unmittelbar nach Entnahme", "im Anschluss an Abspülen"), WER_LABOR),
+      row("Werkstücke (z. B. Prothesen, Bissnahmen)", "Reinigen durch Abspülen\nTauchdesinfektion (ggf. mit Ultraschall)", womit("Desinfektionsmittel", "abformungDesinfektion"),
+        A("vor Abgabe/Versand", "nach Rückgabe"), WER_LABOR),
     ] },
-    { key: "abformung", title: "5. Abformungen & zahntechnische Werkstücke", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Abformungen desinfizieren", "abformungDesinfektion", "Vor Versand ins Labor", "Assistenz"),
+    { key: "wasser", title: "5. Wasserführende Systeme", headers: HYGIENE_HEADERS, rows: [
+      row("Entnahmestellen für Kühl- und Spülwasser", "Alle Entnahmestellen 2 Min. spülen", "Wasser",
+        A("zu Beginn des Arbeitstages"), WER_UB),
+      row("Benutzte Entnahmestellen", "20 Sekunden spülen", "Wasser",
+        A("nach jedem Patienten/Klienten", "am Ende des Arbeitstages"), WER_UB),
+      row("Dauerentkeimung/Intensiventkeimung", "sofern vorhanden", "Desinfektionsanlage / Desinfektionsmittel nach Herstellerangaben",
+        A("Herstellerangaben beachten, Kontrolle Betriebsparameter"), "—"),
+      row("Externe Spül-/Kühlsysteme", "Spülen/Kühlen mit steriler Lösung", "Sterile Lösung",
+        A("z. B. bei invasiven/chirurgischen Eingriffen", "bei Personen mit erhöhtem Infektionsrisiko"), "—"),
     ] },
-    { key: "waesche", title: "6. Praxiswäsche", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Berufskleidung/Tücher", "praxiswaescheKoch", "Waschgang gemäß Vorgabe", "Reinigung"),
+    { key: "absaug", title: "6. Absauganlage (falls vorhanden)", headers: HYGIENE_HEADERS, rows: [
+      row("Innenflächen inkl. Absaugschläuche", "Durchsaugen: Gemisch aus Luft und Reinigungs-/Desinfektionsmittel", womit("Reinigungs-/Desinfektionsmittel", "absaugDesinfektionDurchsaugen"),
+        A("möglichst nach jeder Behandlung mit Absaugung", "mindestens am Ende des Arbeitstages"), WER_UB),
+      row("Außenflächen festsitzender Absaugschläuche", "Wischdesinfektion (ggf. Sprühdesinfektion)", womit("Flächendesinfektionsmittel", "flaechenDesinfektion"),
+        A("nach jedem Patienten/Klienten"), WER_UB),
+      row("Abnehmbare Absaugschläuche mit Saughandstücken", "Reinigung bzw. Desinfektion im RDG oder Tauchverfahren", womit("RDG oder Instrumentendesinfektionsmittel", "absaugRDG"),
+        A("nach Bedarf"), "—"),
+      row("Spülbecken (z. B. Mundspülbecken)", "Reinigung und Wischdesinfektion außen und innen", womit("Flächendesinfektionsmittel", "flaechenDesinfektion"),
+        A("nach jedem Patienten/Klienten"), "—"),
+      row("Filter", "Filterwechsel bzw. -reinigung nach Herstellerangaben", "Handschuhe benutzen",
+        A("nach Bedarf"), "—"),
+      row("Auffangbehälter / Abscheider (falls vorhanden)", "Wechsel/Entleerung, Entsorgung nach Herstellerangaben", "Handschuhe benutzen, kontaminierte Teile nicht berühren",
+        A("nach Bedarf"), "—"),
     ] },
-    { key: "psa", title: "7. Persönliche Schutzausrüstung (PSA)", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Mund-Nasen-Schutz", "mundNasenSchutz", "Je Patient wechseln", "alle"),
-      row("Handschuhe", "handschuheUnsteril", "Je Patient wechseln", "alle"),
+    { key: "waesche", title: "7. Praxis- bzw. Einrichtungswäsche", headers: HYGIENE_HEADERS, rows: [
+      row("Textilien (Arbeits-/Schutzkleidung)", "Sammeln", "Ausreichend dichte Behälter/Säcke, getrennt nach Waschprogramm",
+        "—", WER_ALLE),
+      row("Textilien für Kochwaschgang", "Thermisches Waschverfahren (Kochwaschgang)", womit("Handelsübliches Waschmittel", "praxiswaescheKoch", ["Temperatur: 90 °C"]),
+        A("Textile Schutzteile nach jedem Gebrauch wechseln", "Kleidung mind. 2× wöchentlich wechseln"), WER_ALLE),
+      row("Textilien nicht für Kochwaschgang geeignet", "Chemothermisches Waschverfahren mit mikrobizidem Waschmittel (VAH)", womit("Mikrobizides Waschmittel", "praxiswaescheChemothermisch"),
+        A("Wie oben; aufbereitete Wäsche kontaminationsgeschützt lagern"), WER_ALLE),
     ] },
-    { key: "mundantisept", title: "8. Mundhöhlenantiseptik / Patientenvorbereitung", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Präoperative Mundspülung", "mundhoehlenantiseptik", "Vor Eingriff spülen lassen", "Assistenz"),
+    { key: "abfall", title: "8. Abfallentsorgung", headers: HYGIENE_HEADERS, rows: [
+      row("Hausmüllähnliche Abfälle", "Sammeln getrennt nach Abfallarten", "Entsorgung mit Siedlungsabfall / Wertstofftonnen",
+        A("nach Abfallaufkommen"), "alle Beschäftigten, Reinigungspersonal"),
+      row("Spitze/scharfe/zerbrechliche Gegenstände (Sharps)", "Sammeln in durchstich- und bruchsicheren Behältnissen", "Entsorgung sicher umschlossen mit Hausmüll (Ausnahmen: Abfallwirtschaftssatzung)",
+        A("nach Abfallaufkommen"), "—"),
+      row("Mit Blut/Sekreten kontaminierte trockene Abfälle", "Sammeln in feuchtigkeitsbeständigen Abfallsäcken", "Entsorgung sicher umschlossen mit Hausmüll",
+        A("nach Abfallaufkommen"), "—"),
+      row("Sonderabfälle (z. B. Röntgenchemikalien)", "Sammeln in geeigneten Behältnissen", "Abgabe gegen Entsorgungsnachweis an Fachbetrieb",
+        A("nach Abfallaufkommen"), "—"),
+      row("Gefahrstoffhaltige Abfälle (z. B. quecksilberhaltig)", "Sammeln in dicht verschließbaren Behältnissen", "Abgabe gegen Entsorgungsnachweis an Fachbetrieb",
+        A("nach Abfallaufkommen"), "—"),
     ] },
-    { key: "abfall", title: "9. Abfallentsorgung", headers: ["Was", "Womit", "Wie", "Wer"], rows: [
-      row("Spitze/scharfe Gegenstände", null, "In durchstichsicheren Behälter", "alle"),
-      row("Kontaminierter Abfall", null, "Getrennt sammeln & entsorgen (AS 18 01 04)", "Assistenz"),
+    { key: "mundantisept", title: "9. Mund-/Schleimhautantiseptik (falls angewendet)", headers: HYGIENE_HEADERS, rows: [
+      row("Schleimhäute (z. B. Mundhöhle)", "Präparategetränkte Tupfer oder Besprühen/Spülen", womit("Präparat", "mundhoehlenantiseptik"),
+        A("z. B. vor Behandlung bei erhöhtem Infektionsrisiko", "vor invasiven/chirurgischen Eingriffen", "als Ergänzung bei eingeschränkter Reinigungsmöglichkeit"), "Patienten/Klienten"),
     ] },
   ];
 }

@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QM-Wissensbasis — Stand 2026-07-15</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #1b1d22; color: #dfe3ea; font: 15px/1.55 -apple-system, Segoe UI, Roboto, sans-serif; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 20px 80px; }
+  header.top { border-bottom: 1px solid #333842; padding-bottom: 18px; margin-bottom: 22px; }
+  header.top h1 { margin: 0 0 6px; font-size: 24px; }
+  .sub { color: #9aa3af; }
+  .disclaimer { background: #2a2d34; border-left: 3px solid #b45309; padding: 10px 14px; border-radius: 6px; margin: 14px 0; color: #e7c98a; font-size: 13.5px; }
+  .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; }
+  .toc a { background: #262a31; color: #cbd2dc; text-decoration: none; padding: 5px 11px; border-radius: 999px; font-size: 13px; border: 1px solid #333842; }
+  .toc a:hover { background: #303640; }
+  section.block { background: #23262d; border: 1px solid #313742; border-radius: 10px; padding: 16px 18px; margin: 16px 0; }
+  section.block h3 { margin: 0 0 10px; font-size: 16px; color: #b9c2cf; }
+  section.block ul { margin: 0; padding-left: 20px; } section.block li { margin: 4px 0; }
+  section.cat { margin: 30px 0 10px; }
+  section.cat > h2 { font-size: 20px; border-bottom: 1px solid #333842; padding-bottom: 8px; }
+  .cat-officer { color: #9aa3af; margin: 2px 0 8px; font-size: 13.5px; }
+  details.src { margin: 4px 0 12px; } details.src summary { cursor: pointer; color: #8fb3ff; font-size: 13.5px; }
+  details.src ul { margin: 8px 0 0; padding-left: 20px; color: #b7bdc7; font-size: 13.5px; }
+  .key { font: 12px ui-monospace, Menlo, monospace; color: #7b8494; background: #1b1d22; padding: 1px 6px; border-radius: 5px; border: 1px solid #313742; }
+  .plan { background: #23262d; border: 1px solid #313742; border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+  .plan-h { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+  .plan-title { font-size: 16px; font-weight: 700; }
+  .zweck { color: #c3cad4; margin: 6px 0 8px; }
+  .meta { display: flex; gap: 18px; flex-wrap: wrap; color: #9aa3af; font-size: 13px; }
+  .hint { color: #e7c98a; font-size: 13px; margin-top: 6px; }
+  .mat { color: #a7b0bc; font-size: 13px; margin-top: 6px; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: #303640; color: #cbd2dc; white-space: nowrap; }
+  .badge.req { background: #3a2323; color: #f4a3a3; } .badge.rec { background: #3a331f; color: #e7c98a; }
+  .badge.cond { background: #243244; color: #93b7e8; } .badge.shared { background: #223a33; color: #86d6b3; }
+  .badge.iv { background: #2e2540; color: #c3a7f0; }
+  table.jobs { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  table.jobs th, table.jobs td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #2c313a; }
+  table.jobs th { color: #8b93a0; font-weight: 600; }
+  .inv { margin-top: 10px; background: #1f2733; border: 1px solid #2f3a49; border-radius: 8px; padding: 10px 12px; }
+  .inv-h { color: #86b7e8; font-size: 13.5px; } .inv-q { color: #a7b0bc; font-size: 13px; margin: 4px 0; }
+  .inv-f { margin: 4px 0 6px; padding-left: 20px; font-size: 13px; color: #c3cad4; } .inv-f li { margin: 2px 0; }
+</style></head>
+<body><div class="wrap">
+  <header class="top">
+    <h1>QM-Wissensbasis (Julia)</h1>
+    <div class="sub">Version 1.1.0 · Stand 2026-07-15 · 6 Kategorien · 25 Plaene</div>
+    <div class="disclaimer">Strukturierte Arbeitshilfe, KEINE Rechtsberatung. Intervalle und Pflichten bilden den Stand der genannten Quellen ab. Die abschliessende fachliche und rechtliche Verantwortung fuer Vollstaendigkeit und Richtigkeit traegt die/der QM-Beauftragte bzw. die aerztliche Leitung der jeweiligen Praxis.</div>
+    <div class="toc"><a href="#cat-hygiene">Hygiene</a><a href="#cat-patientensicherheit">Patientensicherheit</a><a href="#cat-technik">Technik &amp; Geraete</a><a href="#cat-notfall">Notfall</a><a href="#cat-arbeitsschutz">Arbeitsschutz</a><a href="#cat-organisation">Organisation</a></div>
+  </header>
+
+  <section class="block"><h3>Praxisformen</h3><ul><li><b>Einzelpraxis</b> — QM-Einheiten: 1. Eine Praxis wird automatisch angelegt ('Meine Praxis'). Kein Mehraufwand.</li><li><b>Berufsausuebungsgemeinschaft (Gemeinschaftspraxis)</b> — QM-Einheiten: 1. Gemeinsame Berufsausuebung = EIN QM-Buchwerk fuer die BAG, mehrere Behandler teilen es.</li><li><b>Praxisgemeinschaft</b> — QM-Einheiten: n. Jede/r Behandler/in ist eigenstaendig und muss auf Pruefung ein VOLLSTAENDIGES eigenes Buchwerk vorlegen. In Julia je Praxis eine eigene QM-Einheit anlegen (z. B. Dr. Petsas / Dr. Petrikis / Dr. Nikolaou). Geteilte Geraete/Raeume ueber 'teilbar'-Plaene abbilden.</li></ul></section>
+  <section class="block"><h3>Beauftragte</h3><ul><li><b>Hygienebeauftragte/r</b> — hygiene — KRINKO/RKI, Laenderhygieneverordnungen</li><li><b>Strahlenschutzbeauftragte/r</b> — patientensicherheit (Pflicht wenn: roentgen) — StrlSchG §70, StrlSchV</li><li><b>Beauftragte/r fuer Medizinproduktesicherheit (MPSB)</b> — technik (Pflicht wenn: einrichtungMitMehrAls20Beschaeftigten) — MPBetreibV §6</li><li><b>Ersthelfer/in / Notfallbeauftragte/r</b> — notfall — DGUV Vorschrift 1 §26</li><li><b>Sicherheits-/Gefahrstoffbeauftragte/r</b> — arbeitsschutz — SGB VII §22, GefStoffV</li><li><b>QM-Beauftragte/r</b> — organisation — G-BA QM-Richtlinie, §135a SGB V</li><li><b>Datenschutzbeauftragte/r</b> — organisation (Pflicht wenn: mind10PersonenRegelmaessigeVerarbeitung) — DSGVO Art. 37, BDSG §38</li></ul></section>
+  <section class="block"><h3>Reprozessierungs-Klassen (Aufbereitung)</h3><ul><li><b>Keine eigene Aufbereitung</b> — Es werden keine wiederverwendbaren Medizinprodukte selbst aufbereitet (nur Einmalprodukte oder externe Aufbereitung).</li><li><b>Unkritisch</b> — Produkte, die nur mit intakter Haut in Beruehrung kommen (z. B. Blutdruckmanschette, Ablageflaechen). Reinigung/Desinfektion genuegt, keine Sterilisation.</li><li><b>Semikritisch A</b> — Kontakt mit Schleimhaut oder krankhaft veraenderter Haut, glatte Oberflaeche, leicht aufbereitbar (z. B. Mundspiegel, Abformloeffel). Reinigung + Desinfektion, ggf. thermisch.</li><li><b>Semikritisch B</b> — Wie A, aber schwer aufbereitbar (enge/lange Lumen, komplexe Geometrie, z. B. Uebertragungsinstrumente/Winkelstuecke, flexible Endoskope ohne Gewebekontakt). Validierte, dokumentierte Verfahren erforderlich.</li><li><b>Kritisch A</b> — Durchdringen Haut/Schleimhaut, Kontakt mit Blut/Gewebe/inneren Organen, glatt und gut aufbereitbar (z. B. Skalpellgriffe, Pinzetten, Zangen). Reinigung/Desinfektion + Sterilisation (dampfsterilisiert), validiert.</li><li><b>Kritisch B</b> — Wie Kritisch A, aber schwer aufbereitbar (Hohlkoerper/Lumen, z. B. chirurgische Uebertragungsinstrumente, Trepanbohrer, OP-Sauger). Nur mit validierten Verfahren, hoehere Anforderungen an RDG/Autoklav (Klasse B) und Dokumentation. GILT AUCH FUER OPERATIV TAETIGE ZAHNAERZTE ohne Facharzttitel Oralchirurgie.</li></ul></section>
+  <section class="block"><h3>Regelwerk: geteilte Jobs / kein Push-Spam</h3><ul><li>Ein wirklich geteilter Plan (dasselbe Geraet/derselbe Vorgang, z. B. ein Sterilisator, ein Roentgen) traegt teilbar=true und erzeugt EINEN Job mit Liste beteiligter praxisIds. Eine Person, ein Zeitpunkt, EIN Push.</li><li>Beim Erledigen eines geteilten Jobs wird der Nachweis in das Kontrollbuch JEDER beteiligten Praxis geschrieben (Fan-out, append-only, selber Ausfuehrungs-Zeitstempel).</li><li>Rechtlich getrennte, aber identische Aufgaben (z. B. eigene Personalunterweisung je Praxis): getrennte Buch-Eintraege je Praxis, aber Dedup auf der Zustell-Ebene - einmal abhaken -&gt; Fan-out.</li><li>Dedup-Schluessel je (Empfaenger, Tag, Ausfuehrungs-ID) verhindert Doppelzustellung an dieselbe Person.</li><li>Push-Buendelung pro Person UND pro Praxis; jeder Job bleibt einzeln abhakbar (keine Sammelaufgabe, die Einzeljobs verdeckt).</li></ul></section>
+
+  <a id="cat-hygiene"></a>
+    <section class="cat">
+      <h2>Hygiene <span class="key">hygiene</span></h2>
+      <div class="cat-officer">Beauftragte/r: <b>hygienebeauftragte</b></div>
+      <details class="src"><summary>Rechtsgrundlagen (5)</summary><ul><li><b>IfSG §23</b> — Infektionsschutzgesetz §23 (Einrichtungshygiene, Hygieneplan-Pflicht)</li><li><b>KRINKO/RKI</b> — KRINKO-Empfehlungen (Infektionspraevention in der Zahnheilkunde/ambulanten Medizin)</li><li><b>DAHZ Rahmen-Hygieneplan</b> — DAHZ/BZAEK Rahmen-Hygieneplan (jeweils aktuelle Fassung)</li><li><b>BioStoffV / TRBA 250</b> — Biostoffverordnung, TRBA 250 (Biologische Arbeitsstoffe im Gesundheitswesen)</li><li><b>KRINKO/BfArM Aufbereitung</b> — Anforderungen an die Aufbereitung von Medizinprodukten</li></ul></details>
+      
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Hygieneplan <span class="key">hygiene_plan</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span>  <span class="badge iv">Interview</span></div>
+      </div>
+      <div class="zweck">Zentrale schriftliche Festlegung aller Hygienemassnahmen (Haende, Flaechen, Instrumente, Wasser, Entsorgung, PSA). Pflicht fuer jede Praxis.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> hygienebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> VAH-gelistete Haende-/Flaechendesinfektionsmittel, Dosierhilfen, PSA je Taetigkeit.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Hygieneplan pruefen &amp; aktualisieren</td>
+        <td>jaehrlich</td>
+        <td>hygienebeauftragte</td>
+        <td>review</td>
+        <td>30 T</td>
+      </tr>
+      <tr>
+        <td>Hygiene-Unterweisung Team</td>
+        <td>jaehrlich</td>
+        <td>hygienebeauftragte</td>
+        <td>unterweisung</td>
+        <td>14 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Reinigungs- und Desinfektionsplan <span class="key">cleaning_disinfection_plan</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> <span class="badge iv">Interview</span></div>
+      </div>
+      <div class="zweck">Was wird wie, womit, wann, von wem gereinigt/desinfiziert - je Bereich (Behandlungszimmer, Aufbereitung, Labor, WC, Wartezimmer).</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> hygienebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> VAH-Flaechendesinfektion je Bereich, Einwirkzeiten laut Hersteller, Dosiertabelle.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>R+D-Plan pruefen &amp; aktualisieren</td>
+        <td>jaehrlich</td>
+        <td>hygienebeauftragte</td>
+        <td>review</td>
+        <td>30 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Instrumentenaufbereitung — Ablaufkette &amp; Pruefungen <span class="key">sterilization_log</span></div>
+        <div class="badges"><span class="badge cond">wenn eigene_sterilisation</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> <span class="badge iv">Interview</span></div>
+      </div>
+      <div class="zweck">Beschreibt die Aufbereitungs-Ablaufkette (Reinigung/Desinfektion, Verpackung, Sterilisation, Freigabe, Lagerung) und die wiederkehrenden Pruefungen als Jobs. Die einzelne Chargen-/Freigabedokumentation laeuft im Praxis-/Steri-Dokusystem (z. B. Dampsoft, MELAG MELAtrace/MELAdoc) und wird von Julia NICHT dupliziert.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> hygienebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Validierter Autoklav (Klasse B ab semikritisch B/kritisch), RDG, Siegelgeraet, Chargen-Indikatoren, VE-Wasser, Sterilgut-Vorratsschrank.</div>
+      <div class="mat"><b>Dokumentiert mit:</b> „Womit wird die Chargen-/Freigabedokumentation gefuehrt?" — Dampsoft, MELAG MELAtrace/MELAdoc, DIOS, SegoSoft, Papier/manuell, anderes</div>
+      
+      <div class="inv">
+        <div class="inv-h">Individuelle Liste: <b>Aufbereitungs-/Sterilisationsgeraete</b></div>
+        <div class="inv-q">Interview fragt: „Wie viele Aufbereitungsgeraete (Autoklav, RDG, Siegelgeraet) betreibt die Praxis?" → dann pro Objekt:</div>
+        <ul class="inv-f"><li><b>Bezeichnung/Modell</b> <span class="key">text</span> (Pflicht)</li><li><b>Geraetetyp</b> <span class="key">enum</span> (Pflicht) — Autoklav Klasse B, Autoklav Klasse S, RDG (Reinigungs-/Desinfektionsgeraet), Siegelgeraet</li><li><b>Standort/Raum</b> <span class="key">text</span></li><li><b>Seriennummer</b> <span class="key">text</span></li><li><b>Letzte Validierung am</b> <span class="key">date</span> (Pflicht)</li><li><b>Validierungsintervall (Monate)</b> <span class="key">number</span></li></ul>
+        <table class="jobs"><thead><tr><th>Job je Objekt</th><th>Zyklus</th><th>Rolle</th><th>Naechster Termin</th><th>Vorlauf</th></tr></thead><tbody>
+        <tr>
+          <td>Erneute Validierung {bezeichnung}</td>
+          <td>jaehrlich</td>
+          <td>hygienebeauftragte</td>
+          <td><span class="key">Anker: letzteValidierung</span></td>
+          <td>45 T</td>
+        </tr></tbody></table>
+      </div>
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Aufbereitungs-SOP pruefen &amp; aktualisieren</td>
+        <td>jaehrlich</td>
+        <td>hygienebeauftragte</td>
+        <td>review</td>
+        <td>30 T</td>
+      </tr>
+      <tr>
+        <td>Tagesroutine Autoklav (Vakuum-/Bowie-Dick-Test)</td>
+        <td>arbeitstaeglich</td>
+        <td>sterilgutassistenz</td>
+        <td>pruefung</td>
+        <td>0 T</td>
+      </tr>
+      <tr>
+        <td>Tuer-/Staubschutzdichtungen Autoklav &amp; Steri-Schublade pruefen</td>
+        <td>vierteljaehrlich</td>
+        <td>hygienebeauftragte</td>
+        <td>pruefung</td>
+        <td>7 T</td>
+      </tr>
+      <tr>
+        <td>Sterilgutlager/Vorratsschrank pruefen (Verpackung, Lagerdauer, Sauberkeit)</td>
+        <td>monatlich</td>
+        <td>sterilgutassistenz</td>
+        <td>pruefung</td>
+        <td>3 T</td>
+      </tr>
+      <tr>
+        <td>Wasserqualitaet (VE-Wasser) pruefen</td>
+        <td>monatlich</td>
+        <td>hygienebeauftragte</td>
+        <td>pruefung</td>
+        <td>3 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">OP-Hygieneplan (ambulantes Operieren) <span class="key">op_hygiene_plan</span></div>
+        <div class="badges"><span class="badge cond">wenn ambulant_operieren</span> <span class="badge ">Review 12 Mon.</span>  <span class="badge iv">Interview</span></div>
+      </div>
+      <div class="zweck">Erweiterter Hygieneplan fuer den separaten OP-Bereich; nur bei ambulanten Operationen.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> hygienebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> OP-Flaechendesinfektion, sterile Abdeckung, Schleusenregime, Aufbereitung OP-Instrumente (kritisch).</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>OP-Hygieneplan pruefen &amp; aktualisieren</td>
+        <td>jaehrlich</td>
+        <td>hygienebeauftragte</td>
+        <td>review</td>
+        <td>30 T</td>
+      </tr>
+      <tr>
+        <td>Aufbereitung OP-Bereich</td>
+        <td>pro Nutzung</td>
+        <td>hygienebeauftragte</td>
+        <td>doku</td>
+        <td>0 T</td>
+      </tr></tbody></table>
+    </div>
+    </section><a id="cat-patientensicherheit"></a>
+    <section class="cat">
+      <h2>Patientensicherheit <span class="key">patientensicherheit</span></h2>
+      <div class="cat-officer">Beauftragte/r: <b>strahlenschutzbeauftragte</b></div>
+      <details class="src"><summary>Rechtsgrundlagen (5)</summary><ul><li><b>StrlSchG</b> — Strahlenschutzgesetz (Fachkunde, Beauftragte, Pruefungen)</li><li><b>StrlSchV</b> — Strahlenschutzverordnung</li><li><b>QS-RL Roentgen</b> — Richtlinie zur Qualitaetssicherung Roentgeneinrichtungen (Konstanzpruefung)</li><li><b>G-BA QM-RL</b> — Qualitaetsmanagement-Richtlinie (Notfall-, Fehler-, Risikomanagement)</li><li><b>WHO SSC</b> — WHO Surgical Safety Checklist</li></ul></details>
+      
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Konstanzpruefungsbuch (Roentgen) <span class="key">constancy_book</span></div>
+        <div class="badges"><span class="badge cond">wenn roentgen</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Regelmaessige Konstanzpruefung der Roentgeneinrichtung; Nachweis gleichbleibender Bildqualitaet/Dosis.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> strahlenschutzbeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      <div class="hint">Hinweis: Frequenz modalitaetsabhaengig (z. B. arbeitstaeglich/monatlich); genauer Turnus laut QS-RL und Geraetehersteller.</div>
+      <div class="mat"><b>Material:</b> Pruefkoerper/Testphantom je Modalitaet (Zahnfilm/OPG/DVT), Protokollvorlage QS-RL.</div>
+      
+      
+      <div class="inv">
+        <div class="inv-h">Individuelle Liste: <b>Roentgengeraete</b></div>
+        <div class="inv-q">Interview fragt: „Wie viele Roentgengeraete betreibt die Praxis?" → dann pro Objekt:</div>
+        <ul class="inv-f"><li><b>Bezeichnung/Modell</b> <span class="key">text</span> (Pflicht)</li><li><b>Modalitaet</b> <span class="key">enum</span> (Pflicht) — Zahnfilm/Intraoral, OPG (Panorama), FRS (Fernroentgen), DVT, Konventionell/Projektionsradiografie</li><li><b>Standort/Raum</b> <span class="key">text</span></li><li><b>Seriennummer</b> <span class="key">text</span></li><li><b>Konstanzpruefung-Intervall</b> <span class="key">enum</span> — arbeitstaeglich, monatlich</li><li><b>Letzte Sachverstaendigenpruefung am</b> <span class="key">date</span></li></ul>
+        <table class="jobs"><thead><tr><th>Job je Objekt</th><th>Zyklus</th><th>Rolle</th><th>Naechster Termin</th><th>Vorlauf</th></tr></thead><tbody>
+        <tr>
+          <td>Konstanzpruefung {bezeichnung}</td>
+          <td>monatlich <span class="key">aus konstanzIntervall</span></td>
+          <td>strahlenschutzbeauftragte</td>
+          <td>ab Erstellung</td>
+          <td>3 T</td>
+        </tr>
+        <tr>
+          <td>Sachverstaendigenpruefung {bezeichnung}</td>
+          <td>alle 5 Jahre</td>
+          <td>strahlenschutzbeauftragte</td>
+          <td><span class="key">Anker: letztePruefung</span></td>
+          <td>60 T</td>
+        </tr></tbody></table>
+      </div>
+      
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Sachverstaendigenpruefung Roentgen <span class="key">radiation_expert_inspection</span></div>
+        <div class="badges"><span class="badge cond">wenn roentgen</span> <span class="badge ">Review 60 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Wiederkehrende Pruefung der Roentgeneinrichtung durch behoerdlich bestimmte Sachverstaendige.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> strahlenschutzbeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Pruefbericht der/des Sachverstaendigen, Maengelabstellung dokumentieren.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Sachverstaendigenpruefung Roentgen beauftragen</td>
+        <td>alle 5 Jahre</td>
+        <td>strahlenschutzbeauftragte</td>
+        <td>pruefung</td>
+        <td>60 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Strahlenschutz-Fortbildungsnachweis <span class="key">radiation_protection_training</span></div>
+        <div class="badges"><span class="badge cond">wenn roentgen</span> <span class="badge ">Review 60 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Aktualisierung der Fachkunde/Kenntnisse im Strahlenschutz alle 5 Jahre.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> strahlenschutzbeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Teilnahmebescheinigung anerkannter Kurs.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Strahlenschutz-Fachkunde aktualisieren</td>
+        <td>alle 5 Jahre</td>
+        <td>strahlenschutzbeauftragte</td>
+        <td>unterweisung</td>
+        <td>90 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Temperaturkontrollliste (Kuehlschrank) <span class="key">temperature_log</span></div>
+        <div class="badges"><span class="badge cond">wenn impfstoff_kuehlschrank</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Taegliche Temperaturkontrolle von Impfstoff-/Medikamentenkuehlschrank zur Sicherung der Kuehlkette.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> qm_beauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Min/Max-Thermometer oder Datenlogger, Toleranzbereich 2-8 Grad C.</div>
+      
+      
+      <div class="inv">
+        <div class="inv-h">Individuelle Liste: <b>Impfstoff-/Medikamentenkuehlschraenke</b></div>
+        <div class="inv-q">Interview fragt: „Wie viele Impfstoff-/Medikamentenkuehlschraenke gibt es?" → dann pro Objekt:</div>
+        <ul class="inv-f"><li><b>Bezeichnung/Standort</b> <span class="key">text</span> (Pflicht)</li><li><b>Soll min (Grad C)</b> <span class="key">number</span></li><li><b>Soll max (Grad C)</b> <span class="key">number</span></li></ul>
+        <table class="jobs"><thead><tr><th>Job je Objekt</th><th>Zyklus</th><th>Rolle</th><th>Naechster Termin</th><th>Vorlauf</th></tr></thead><tbody>
+        <tr>
+          <td>Temperatur dokumentieren {bezeichnung}</td>
+          <td>taeglich</td>
+          <td>assistenz</td>
+          <td>ab Erstellung</td>
+          <td>0 T</td>
+        </tr></tbody></table>
+      </div>
+      
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">OP-Checkliste (Team-Timeout) <span class="key">op_checklist</span></div>
+        <div class="badges"><span class="badge cond">wenn ambulant_operieren</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Sicherheits-Checkliste vor jedem Eingriff (Identitaet, Eingriff, Lokalisation, Einwilligung, Zaehlkontrolle).</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> qm_beauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Checklistenvorlage (WHO-basiert) je Eingriff.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>OP-Timeout dokumentieren</td>
+        <td>pro Nutzung</td>
+        <td>behandler</td>
+        <td>doku</td>
+        <td>0 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Sedierungs-/Analgosedierungsprotokoll <span class="key">sedation_log</span></div>
+        <div class="badges"><span class="badge cond">wenn narkose_sedierung</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Dokumentation von Sedierung/Narkose inkl. Monitoring, Nuechternheit, Entlasskriterien.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> behandler</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Monitoring (SpO2, RR, EKG), Notfallausstattung, Protokollvorlage laut S3-Leitlinie.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Sedierung dokumentieren</td>
+        <td>pro Nutzung</td>
+        <td>behandler</td>
+        <td>doku</td>
+        <td>0 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Fehler- und Risikoprotokoll (CIRS) <span class="key">cirs_log</span></div>
+        <div class="badges"><span class="badge rec">Empfohlen</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Anlassbezogene Meldung und Auswertung kritischer Ereignisse/Beinahefehler.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> qm_beauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Anonymisiertes Meldeformular, Auswertungsrunde im Team.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>CIRS-Meldungen auswerten</td>
+        <td>vierteljaehrlich</td>
+        <td>qm_beauftragte</td>
+        <td>review</td>
+        <td>7 T</td>
+      </tr></tbody></table>
+    </div>
+    </section><a id="cat-technik"></a>
+    <section class="cat">
+      <h2>Technik &amp; Geraete <span class="key">technik</span></h2>
+      <div class="cat-officer">Beauftragte/r: <b>medizinproduktebeauftragte</b></div>
+      <details class="src"><summary>Rechtsgrundlagen (3)</summary><ul><li><b>MPBetreibV</b> — Medizinprodukte-Betreiberverordnung (Bestandsverzeichnis, Medizinproduktebuch, Einweisung, STK/MTK)</li><li><b>MPDG</b> — Medizinprodukterecht-Durchfuehrungsgesetz</li><li><b>MDR (EU) 2017/745</b> — Medical Device Regulation (u. a. Sonderanfertigungen/Praxislabor)</li></ul></details>
+      
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Medizinproduktebuch <span class="key">medical_device_book</span></div>
+        <div class="badges"><span class="badge cond">wenn medizinprodukte_aktiv</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Geraetebezogene Dokumentation (Funktionspruefungen, Einweisungen, Instandhaltungen) fuer aktive MP.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> medizinproduktebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Geraeteliste, Bedienungsanleitungen, Einweisungsnachweise.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Medizinproduktebuch pflegen</td>
+        <td>anlassbezogen</td>
+        <td>medizinproduktebeauftragte</td>
+        <td>doku</td>
+        <td>0 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Bestandsverzeichnis Medizinprodukte <span class="key">device_inventory</span></div>
+        <div class="badges"><span class="badge cond">wenn medizinprodukte_aktiv</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Vollstaendiges Verzeichnis aller aktiven nicht-implantierbaren Medizinprodukte.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> medizinproduktebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Hersteller, UMDNS/Typ, Seriennummer, Standort.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Bestandsverzeichnis aktualisieren</td>
+        <td>jaehrlich</td>
+        <td>medizinproduktebeauftragte</td>
+        <td>review</td>
+        <td>30 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Einweisungsprotokolle <span class="key">instruction_records</span></div>
+        <div class="badges"><span class="badge cond">wenn medizinprodukte_aktiv</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Nachweis der Einweisung des Personals in aktive Medizinprodukte (vor erster Anwendung).</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> medizinproduktebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Einweisungsvorlage, Unterschrift eingewiesene Person + Einweiser.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Einweisung neues Geraet/neue Person</td>
+        <td>anlassbezogen</td>
+        <td>medizinproduktebeauftragte</td>
+        <td>doku</td>
+        <td>0 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Sicherheitstechnische Kontrolle (STK/MTK) <span class="key">device_stk_log</span></div>
+        <div class="badges"><span class="badge cond">wenn mp_anlage1</span> <span class="badge ">Review 24 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Wiederkehrende sicherheits-/messtechnische Kontrolle von Geraeten mit entsprechender Pflicht.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> medizinproduktebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Pruefprotokolle, Fristen je Geraet (Herstellerangabe beachten).</div>
+      
+      
+      <div class="inv">
+        <div class="inv-h">Individuelle Liste: <b>Geraete mit STK-/MTK-Pflicht</b></div>
+        <div class="inv-q">Interview fragt: „Welche STK-/MTK-pflichtigen Geraete betreibt die Praxis (Laser, HF-Chirurgie, Defibrillator, Anaesthesiegeraet ...)?" → dann pro Objekt:</div>
+        <ul class="inv-f"><li><b>Bezeichnung/Modell</b> <span class="key">text</span> (Pflicht)</li><li><b>Pruefart</b> <span class="key">enum</span> (Pflicht) — STK (sicherheitstechnisch), MTK (messtechnisch), STK + MTK</li><li><b>Standort/Raum</b> <span class="key">text</span></li><li><b>Pruefintervall (Monate)</b> <span class="key">number</span></li><li><b>Letzte Pruefung am</b> <span class="key">date</span> (Pflicht)</li></ul>
+        <table class="jobs"><thead><tr><th>Job je Objekt</th><th>Zyklus</th><th>Rolle</th><th>Naechster Termin</th><th>Vorlauf</th></tr></thead><tbody>
+        <tr>
+          <td>STK/MTK {bezeichnung} beauftragen</td>
+          <td>alle 2 Jahre</td>
+          <td>medizinproduktebeauftragte</td>
+          <td><span class="key">Anker: letztePruefung</span></td>
+          <td>45 T</td>
+        </tr></tbody></table>
+      </div>
+      
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Praxislabor / Sonderanfertigungen (MDR) <span class="key">praxislabor_mdr</span></div>
+        <div class="badges"><span class="badge cond">wenn labor_eigen</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Dokumentation von Eigenherstellung/Sonderanfertigungen inkl. Konformitaetserklaerung und Materialcharge.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> medizinproduktebeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Konformitaetserklaerung MDR Anhang XIII, Materialchargen-Nachweise.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Sonderanfertigung dokumentieren</td>
+        <td>anlassbezogen</td>
+        <td>behandler</td>
+        <td>doku</td>
+        <td>0 T</td>
+      </tr></tbody></table>
+    </div>
+    </section><a id="cat-notfall"></a>
+    <section class="cat">
+      <h2>Notfall <span class="key">notfall</span></h2>
+      <div class="cat-officer">Beauftragte/r: <b>ersthelfer</b></div>
+      <details class="src"><summary>Rechtsgrundlagen (2)</summary><ul><li><b>G-BA QM-RL</b> — QM-Richtlinie §4 (Notfallmanagement)</li><li><b>DGUV Vorschrift 1</b> — Grundsaetze der Praevention (Ersthelfer, Erste Hilfe)</li></ul></details>
+      
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Notfall-Checkliste (Notfallkoffer) <span class="key">emergency_checklist</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Regelmaessige Kontrolle von Vollstaendigkeit und Verfallsdaten des Notfallkoffers/-medikamente.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> ersthelfer</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Notfallmedikamente, Beatmungsbeutel, Sauerstoff, ggf. AED - mit Verfallsdaten-Liste.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Notfallkoffer pruefen (Vollstaendigkeit/Verfall)</td>
+        <td>monatlich</td>
+        <td>ersthelfer</td>
+        <td>pruefung</td>
+        <td>3 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Notfallplan <span class="key">emergency_plan</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Schriftlicher Ablauf fuer medizinische Notfaelle (Rollen, Alarmierung, Ausruestung) + jaehrliches Training.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> ersthelfer</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Notfallplan-Aushang, Notrufnummern, Zustaendigkeiten.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Notfallplan pruefen &amp; Notfalltraining</td>
+        <td>jaehrlich</td>
+        <td>ersthelfer</td>
+        <td>unterweisung</td>
+        <td>30 T</td>
+      </tr>
+      <tr>
+        <td>Ersthelfer-Ausbildung auffrischen</td>
+        <td>alle 2 Jahre</td>
+        <td>ersthelfer</td>
+        <td>unterweisung</td>
+        <td>60 T</td>
+      </tr></tbody></table>
+    </div>
+    </section><a id="cat-arbeitsschutz"></a>
+    <section class="cat">
+      <h2>Arbeitsschutz <span class="key">arbeitsschutz</span></h2>
+      <div class="cat-officer">Beauftragte/r: <b>sicherheitsbeauftragte</b></div>
+      <details class="src"><summary>Rechtsgrundlagen (4)</summary><ul><li><b>ArbSchG</b> — Arbeitsschutzgesetz (Gefaehrdungsbeurteilung, Unterweisung)</li><li><b>GefStoffV / TRGS 401</b> — Gefahrstoffverordnung, TRGS 401 (Hautbelastung)</li><li><b>BioStoffV / TRBA 250</b> — Biostoffverordnung, TRBA 250</li><li><b>DGUV Vorschrift 1</b> — Grundsaetze der Praevention (Verbandbuch, Unterweisung)</li></ul></details>
+      
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Hautschutzplan <span class="key">skin_protection_plan</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> <span class="badge iv">Interview</span></div>
+      </div>
+      <div class="zweck">Festlegung von Hautschutz, -reinigung und -pflege je Taetigkeit; jaehrliche Unterweisung.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> sicherheitsbeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Hautschutz-/Hautpflegemittel, Schutzhandschuhe je Taetigkeit.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Hautschutzplan pruefen &amp; Unterweisung</td>
+        <td>jaehrlich</td>
+        <td>sicherheitsbeauftragte</td>
+        <td>unterweisung</td>
+        <td>14 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Gefahrstoffverzeichnis <span class="key">hazardous_substances_register</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Verzeichnis aller Gefahrstoffe inkl. Sicherheitsdatenblaetter und Einstufung.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> sicherheitsbeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Aktuelle Sicherheitsdatenblaetter, Gefahrstoffkennzeichnung.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Gefahrstoffverzeichnis aktualisieren</td>
+        <td>jaehrlich</td>
+        <td>sicherheitsbeauftragte</td>
+        <td>review</td>
+        <td>30 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Biostoffverzeichnis <span class="key">biohazard_register</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span> <span class="badge shared">teilbar (Praxen)</span> </div>
+      </div>
+      <div class="zweck">Verzeichnis der biologischen Arbeitsstoffe und Schutzmassnahmen (TRBA 250).</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> sicherheitsbeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Gefaehrdungsbeurteilung biologische Arbeitsstoffe, Impfangebot Hepatitis B.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Biostoffverzeichnis &amp; Gefaehrdungsbeurteilung pruefen</td>
+        <td>jaehrlich</td>
+        <td>sicherheitsbeauftragte</td>
+        <td>review</td>
+        <td>30 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Verbandbuch / Unfallbuch <span class="key">accident_book</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Dokumentation von Erste-Hilfe-Leistungen und Arbeitsunfaellen (Aufbewahrung 5 Jahre).</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> sicherheitsbeauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Verbandbuch-Vorlage (datenschutzkonform), Aufbewahrung 5 Jahre.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Erste-Hilfe-/Unfalleintrag</td>
+        <td>anlassbezogen</td>
+        <td>ersthelfer</td>
+        <td>doku</td>
+        <td>0 T</td>
+      </tr></tbody></table>
+    </div>
+    </section><a id="cat-organisation"></a>
+    <section class="cat">
+      <h2>Organisation <span class="key">organisation</span></h2>
+      <div class="cat-officer">Beauftragte/r: <b>qm_beauftragte</b></div>
+      <details class="src"><summary>Rechtsgrundlagen (4)</summary><ul><li><b>§135a SGB V</b> — Verpflichtung zum einrichtungsinternen Qualitaetsmanagement</li><li><b>G-BA QM-RL</b> — Qualitaetsmanagement-Richtlinie</li><li><b>ArbSchG</b> — Arbeitsschutzgesetz (jaehrliche Unterweisung)</li><li><b>DSGVO / BDSG</b> — Datenschutz-Grundverordnung, Bundesdatenschutzgesetz</li></ul></details>
+      
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">QM-Handbuch <span class="key">qm_handbook</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Zentrale Zusammenstellung aller QM-Regelungen, Prozesse und Zustaendigkeiten der Praxis.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> qm_beauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Prozessbeschreibungen, Organigramm, Verantwortlichkeitsmatrix.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>QM-Handbuch/Managementbewertung pruefen</td>
+        <td>jaehrlich</td>
+        <td>qm_beauftragte</td>
+        <td>review</td>
+        <td>30 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Fortbildungs- und Schulungsverzeichnis <span class="key">training_register</span></div>
+        <div class="badges"><span class="badge req">Pflicht</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Nachweis aller Fortbildungen/Unterweisungen des Teams; jaehrliche Pflicht-Unterweisungen.</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> qm_beauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Teilnahmenachweise, Unterweisungsthemen-Liste.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Jaehrliche Arbeitsschutz-Unterweisung</td>
+        <td>jaehrlich</td>
+        <td>sicherheitsbeauftragte</td>
+        <td>unterweisung</td>
+        <td>14 T</td>
+      </tr>
+      <tr>
+        <td>Jaehrliche Datenschutz-Unterweisung</td>
+        <td>jaehrlich</td>
+        <td>datenschutzbeauftragte</td>
+        <td>unterweisung</td>
+        <td>14 T</td>
+      </tr></tbody></table>
+    </div>
+    <div class="plan">
+      <div class="plan-h">
+        <div class="plan-title">Teambesprechungsprotokolle <span class="key">team_meeting_minutes</span></div>
+        <div class="badges"><span class="badge rec">Empfohlen</span> <span class="badge ">Review 12 Mon.</span>  </div>
+      </div>
+      <div class="zweck">Dokumentation regelmaessiger Teambesprechungen (Beschluesse, Massnahmen).</div>
+      <div class="meta">
+        <span><b>Verantwortlich:</b> qm_beauftragte</span>
+        <span><b>Rechtsstand:</b> 2026-07-15</span>
+      </div>
+      
+      <div class="mat"><b>Material:</b> Protokollvorlage, Massnahmenverfolgung.</div>
+      
+      
+      <table class="jobs"><thead><tr><th>Erzeugter Job</th><th>Zyklus</th><th>Rolle</th><th>Typ</th><th>Vorlauf</th></tr></thead><tbody>
+      <tr>
+        <td>Teambesprechung protokollieren</td>
+        <td>vierteljaehrlich</td>
+        <td>qm_beauftragte</td>
+        <td>doku</td>
+        <td>7 T</td>
+      </tr></tbody></table>
+    </div>
+    </section>
+</div></body></html>

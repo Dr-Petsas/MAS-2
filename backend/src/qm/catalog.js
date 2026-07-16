@@ -20,9 +20,14 @@ function load(file) {
 const ARTIFACTS = load("qm-artifacts.json").artifacts || [];
 const RULES = load("qm-rules.json").rules || [];
 const FACHRICHTUNGEN = load("qm-fachrichtungen.json").fachrichtungen || [];
+const WIZARDS_DOC = load("qm-wizards.json");
+const WIZARDS = Array.isArray(WIZARDS_DOC.wizards) ? WIZARDS_DOC.wizards : [];
+const OPTION_LISTS = WIZARDS_DOC.optionLists || {};
+const PROFILE_WIZARD = WIZARDS_DOC.profileWizard || null;
 
 const ARTIFACT_BY_KEY = new Map(ARTIFACTS.map((a) => [a.key, a]));
 const FACHRICHTUNG_BY_KEY = new Map(FACHRICHTUNGEN.map((f) => [f.key, f]));
+const WIZARD_BY_KEY = new Map(WIZARDS.map((w) => [w.wizardKey, w]));
 
 export function listArtifacts() {
   return ARTIFACTS.slice();
@@ -43,6 +48,37 @@ export function listFachrichtungen() {
 
 export function getFachrichtung(key) {
   return FACHRICHTUNG_BY_KEY.get(String(key || "").trim()) || null;
+}
+
+// --- Wizards (deterministische Fragebögen) ---
+export function listWizards() {
+  return WIZARDS.map((w) => ({
+    wizardKey: w.wizardKey,
+    artifactKey: w.artifactKey || null,
+    title: w.title,
+    produces: w.produces || null,
+    requiresCapability: w.requiresCapability || null,
+    sectionCount: Array.isArray(w.sections) ? w.sections.length : 0,
+  }));
+}
+
+export function getWizard(key) {
+  return WIZARD_BY_KEY.get(String(key || "").trim()) || null;
+}
+
+export function getProfileWizard() {
+  return PROFILE_WIZARD;
+}
+
+/** Reusable dropdown options (FREQ/ROLE/…). FACHRICHTUNGEN wird dynamisch ergänzt. */
+export function getOptionList(ref) {
+  const key = String(ref || "").trim();
+  if (key === "FACHRICHTUNGEN") return listFachrichtungen().map((f) => ({ value: f.key, label: f.label }));
+  return OPTION_LISTS[key] || null;
+}
+
+export function getOptionLists() {
+  return { ...OPTION_LISTS, FACHRICHTUNGEN: listFachrichtungen().map((f) => ({ value: f.key, label: f.label })) };
 }
 
 // Default-Profil aus einer Fachrichtung ableiten (Vorbelegung fürs Onboarding).
