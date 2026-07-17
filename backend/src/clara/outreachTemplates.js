@@ -313,9 +313,13 @@ export function composeRecallCallInstruction({
   // Motiv-Block: Kampagnen-Override (Stufe 1) ODER Katalog/Klasse/generisch.
   let motiveBlocks;
   if (s(campaignPrompt)) {
+    // WICHTIG (Vorfall 17.07.2026): KEINE Katalog-Auflösung des Motivnamens in
+    // die Ansprache mischen. "KFO/KB Besprechung" fuzzy-matchte auf einen
+    // fremden Katalog-Eintrag ("Schnarchschienen-Beratung") — Lisa sprach eine
+    // falsche, nie vereinbarte Behandlung aus. Bei Praxis-Vorgaben zählt AUSSCHLIESSLICH
+    // der Kampagnen-Prompt; er definiert vollständig, was Lisa sagt.
     motiveBlocks = [
-      `Anlass laut Praxis-Kampagne: „${topic}“.`,
-      `Vorgaben der Praxis für dieses Gespräch: ${s(campaignPrompt)}`,
+      `Vorgaben der Praxis für dieses Gespräch (halte dich genau an Inhalt und Reihenfolge, erfinde keine Behandlung dazu): ${s(campaignPrompt)}`,
     ];
   } else {
     const anlass =
