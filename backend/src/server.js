@@ -1,4 +1,5 @@
 import "dotenv/config";
+import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -119,6 +120,44 @@ app.get("/m/manifest.webmanifest", (req, res) => {
   res.json(manifest);
 });
 
+// iPad-Arbeitsplatz-Manifest — gleiche iOS-Falle wie beim Handy: die installierte
+// App hat einen eigenen Speicher, der in Safari getippte Code ist darin unsichtbar.
+// Loesung analog: fordert ipad.html das Manifest mit ?code= an, backen wir den
+// Code in die start_url -> die installierte App startet auf ipad.html MIT dem Code
+// (koppelt sich dort push-frei selbst). Ohne Code startet sie direkt in der App.
+app.get("/m/ipad.webmanifest", (req, res) => {
+  const code = String(req.query.code || "").trim();
+  const manifest = {
+    name: "pickadoc – Arbeitsplatz",
+    short_name: "pickadoc",
+    description: "Behandlungszimmer am iPad: Clara Sprechzimmer & Lena Dokumentation.",
+    display: "standalone",
+    orientation: "any",
+    background_color: "#0b0410",
+    theme_color: "#0b0410",
+    scope: "/m/",
+    start_url: code ? `/m/ipad.html?code=${encodeURIComponent(code)}` : "/m/ipad-app.html",
+    icons: [
+      { src: "/m/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/m/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/m/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+  };
+  res.set("Content-Type", "application/manifest+json");
+  res.set("Cache-Control", "no-store");
+  res.json(manifest);
+});
+
+// Companion-Seiten (Handy/iPad) NIE cachen — sonst zeigt eine installierte
+// Home-Bildschirm-App (iOS cached start_url hartnaeckig) veraltete Stände, obwohl
+// der Server längst die neue Oberfläche ausliefert. Muss VOR express.static stehen.
+app.use((req, res, next) => {
+  if (/^\/m\/(ipad|ipad-app|preview|pair|call)\.html$/.test(req.path)) {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 // Authentication: verify the caller (Firebase ID token or service secret) before
@@ -225,9 +264,61 @@ async function syncLisaTools() {
   }
 }
 
-app.listen(PORT, () => {
+// Lena-STT WebSocket-Proxy: iPad holt wss vom Named-Tunnel (mas.pickadoc-tunnel.com)
+// statt fragiler Quick-Tunnel. Pfad /lena-stt → lokal ws://127.0.0.1:8140/stt.
+const LENA_STT_PORT = Number(process.env.LENA_STT_PORT || 8140);
+const server = http.createServer(app);
+server.on("upgrade", (req, socket, head) => {
+  const rawUrl = String(req.url || "");
+  if (!rawUrl.startsWith("/lena-stt")) {
+    socket.destroy();
+    return;
+  }
+  let targetPath = "/stt";
+  try {
+    const u = new URL(rawUrl, "http://127.0.0.1");
+    // /lena-stt  oder  /lena-stt/stt  (+ Query channel/session)
+    targetPath = "/stt" + (u.search || "");
+  } catch {
+    /* keep /stt */
+  }
+  const headers = { ...req.headers, host: `127.0.0.1:${LENA_STT_PORT}` };
+  const proxyReq = http.request({
+    hostname: "127.0.0.1",
+    port: LENA_STT_PORT,
+    path: targetPath,
+    method: "GET",
+    headers,
+  });
+  proxyReq.on("upgrade", (proxyRes, proxySocket, proxyHead) => {
+    const lines = ["HTTP/1.1 101 Switching Protocols"];
+    for (const [k, v] of Object.entries(proxyRes.headers)) {
+      if (v === undefined) continue;
+      if (Array.isArray(v)) v.forEach((x) => lines.push(`${k}: ${x}`));
+      else lines.push(`${k}: ${v}`);
+    }
+    lines.push("", "");
+    socket.write(lines.join("\r\n"));
+    if (proxyHead?.length) socket.write(proxyHead);
+    proxySocket.pipe(socket);
+    socket.pipe(proxySocket);
+  });
+  proxyReq.on("error", (err) => {
+    log.warn("lena-stt proxy upgrade failed", { err: String(err?.message || err) });
+    try { socket.write("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n"); } catch { /* noop */ }
+    try { socket.destroy(); } catch { /* noop */ }
+  });
+  socket.on("error", () => { try { proxyReq.destroy(); } catch { /* noop */ } });
+  proxyReq.end();
+  if (head?.length) {
+    // head already belongs to the client socket stream after upgrade;
+    // http.request('upgrade') handles the handshake without needing head write.
+  }
+});
+
+server.listen(PORT, () => {
   assertLocalLlm();
-  log.info("backend listening", { port: PORT, authEnforced: AUTH_ENFORCED });
+  log.info("backend listening", { port: PORT, authEnforced: AUTH_ENFORCED, lenaSttProxy: LENA_STT_PORT });
   publishRuntimeConfig();
   syncLisaTools();
   startMailScheduler();

@@ -14,7 +14,9 @@
 // validiert; ohne LLM greift die deterministische Jargon/Ketten-Expansion.
 
 import admin from "../firebase.js";
-import { chat } from "../mail/llm.js";
+import { chat, strongLlm } from "../mail/llm.js";
+import { inventsNumbers } from "../clara/summarize.js";
+import { writeTreatmentSummaryEvent } from "../clara/treatmentDoc.js";
 import {
   buildGroundingContext,
   enrichCodesWithEvidence,
@@ -132,10 +134,18 @@ async function loadSegments(clientId, locationId, appointmentId) {
  * Smalltalk-Flag. Antwort-JSON: {"classify":[{"i":1,"section":"befund","smalltalk":false}, ...]}
  * (exportiert fuer Tests — kein Firestore noetig)
  */
+function speakerLabel(source) {
+  const s = String(source || "").toLowerCase();
+  if (s === "raum" || s === "patient") return "Patient";
+  if (s === "arzt") return "Arzt";
+  if (s === "nachdiktat") return "Nachdiktat";
+  return "Praxis";
+}
+
 export async function classifySegments(segs, { timeoutMs = 90000 } = {}) {
   const keyList = TREATMENT_SECTIONS.map((s) => `${s.key} = ${s.title}`).join("; ");
   const numbered = segs
-    .map((s, idx) => `[${idx + 1}] (${s.source === "raum" ? "Patient" : s.source === "arzt" ? "Arzt" : "Praxis"}) ${s.text.slice(0, 400)}`)
+    .map((s, idx) => `[${idx + 1}] (${speakerLabel(s.source)}) ${s.text.slice(0, 400)}`)
     .join("\n");
 
   const messages = [
@@ -145,9 +155,11 @@ export async function classifySegments(segs, { timeoutMs = 90000 } = {}) {
         "Du klassifizierst Gespraechs-Segmente aus einem (zahn)aerztlichen Behandlungsgespraech.",
         "Ordne JEDES Segment (Nummer i) GENAU EINEM Abschnitts-Key zu und markiere Smalltalk.",
         `Erlaubte Keys: ${keyList}.`,
-        "smalltalk=true NUR fuer nicht-behandlungsrelevanten Plausch (Begruessung, Wetter, Urlaub, Termin-Organisation, Verabschiedung).",
-        "Alles Klinische/Abrechnungsrelevante ist NIE smalltalk. Bei Smalltalk trotzdem den plausibelsten Key setzen.",
-        "Du schreibst NICHTS um, du ordnest nur zu.",
+        "Ziel der Zusammenfassung: NUR medizinisch/abrechnungsrelevant. Alles andere = smalltalk=true.",
+        "smalltalk=true fuer: Begruessung, Verabschiedung, Wetter, Urlaub, Familie, Spielzeug/Tiere,",
+        "Sport, Privatplausch, Mikrofon-/Geraetetests, reine Hoerfehler ohne Klinikbezug, Termin-Organisation ohne Behandlung.",
+        "Alles Klinische/Abrechnungsrelevante ist NIE smalltalk (Befund, Schmerzen, Zahne, Material, Ziffern).",
+        "Bei Smalltalk trotzdem den plausibelsten Key setzen. Du schreibst NICHTS um, du ordnest nur zu.",
         'Antworte NUR mit JSON: {"classify":[{"i":1,"section":"befund","smalltalk":false}, ...]} — genau ein Eintrag pro Segment.',
       ].join("\n"),
     },
@@ -182,14 +194,14 @@ export async function classifySegments(segs, { timeoutMs = 90000 } = {}) {
  */
 export async function classifySmalltalk(segs, { timeoutMs = 60000 } = {}) {
   const numbered = segs
-    .map((s, idx) => `[${idx + 1}] (${s.source === "raum" ? "Patient" : s.source === "arzt" ? "Arzt" : "Praxis"}) ${s.text.slice(0, 300)}`)
+    .map((s, idx) => `[${idx + 1}] (${speakerLabel(s.source)}) ${s.text.slice(0, 300)}`)
     .join("\n");
   const messages = [
     {
       role: "system",
       content: [
         "Du pruefst Gespraechs-Segmente aus einem (zahn)aerztlichen Behandlungsgespraech.",
-        "Nenne die Nummern der Segmente, die REINER Smalltalk sind: Begruessung, Verabschiedung, Wetter, Urlaub, Kaffee, Familie, Geraete-/Mikrofontest, Organisatorisches ohne Behandlungsbezug.",
+        "Nenne die Nummern der Segmente, die REINER Smalltalk sind: Begruessung, Verabschiedung, Wetter, Urlaub, Kaffee, Familie, Spielzeug, Sport, Privatplausch, Geraete-/Mikrofontest, Organisatorisches ohne Behandlungsbezug.",
         "NIE Smalltalk: alles Klinische (Befund, Diagnose, Behandlung, Schmerzen, Medikamente, Aufklaerung, Material) und alles Abrechnungsrelevante (Ziffern, Faktor, privat/Kasse).",
         "Im Zweifel: KEIN Smalltalk (lieber zu viel Doku als zu wenig).",
         'Antworte NUR mit JSON: {"smalltalk":[1,4]} — leere Liste, wenn nichts Smalltalk ist.',
@@ -266,12 +278,14 @@ export async function flagSmalltalk(clientId, locationId, appointmentId) {
 
 /**
  * Karteikarte DETERMINISTISCH aus den klassifizierten ECHTEN Segmenten bauen:
- * Abschnitte in fester Reihenfolge, Original-Wortlaut, Smalltalk aussen vor.
+ * Abschnitte in fester Reihenfolge, Original-Wortlaut, Smalltalk/Junk aussen vor.
+ * Nachdiktat wird NICHT klassifiziert — immer wortwoertlich angehaengt.
  */
-function buildKarteikarte(segs, byId) {
+function buildKarteikarte(conversationSegs, byId, nachdiktatSegs = []) {
   const bySection = new Map();
   const unclassified = [];
-  for (const s of segs) {
+  for (const s of conversationSegs) {
+    if (isJunkSegment(s.text)) continue;
     const meta = byId.get(s.id) || { section: s.section, smalltalk: s.smalltalk };
     if (meta.smalltalk) continue;
     const key = meta.section && SECTION_KEYS.has(meta.section) ? meta.section : "";
@@ -297,51 +311,200 @@ function buildKarteikarte(segs, byId) {
     textParts.push("WEITERE ANGABEN");
     for (const s of unclassified) textParts.push(`- ${s.text}`);
   }
+  // Nachdiktat: wortwoertlich, kein Smalltalk-Filter, eigene Sektion.
+  const nd = (nachdiktatSegs || []).filter((s) => String(s.text || "").trim());
+  if (nd.length) {
+    htmlParts.push("<h4>Nachdiktat</h4>");
+    htmlParts.push(`<ul>${nd.map((s) => `<li>${escapeHtml(s.text)}</li>`).join("")}</ul>`);
+    textParts.push("NACHDIKTAT");
+    for (const s of nd) textParts.push(`- ${s.text}`);
+  }
   return {
     structuredHtml: htmlParts.join("\n").slice(0, 40000),
     structuredText: textParts.join("\n").trim().slice(0, 40000),
   };
 }
 
+// ---------------------------------------------------------------------------
+// Dialog-Zusammenfassung (W-LENA-6, 17.07.2026, Chef): Die Anzeige-/PDF-
+// Zusammenfassung behaelt das Arzt-Patient-GESPRAECHSSCHEMA (kein anonymer
+// Fliesstext, keine Klinik-Abschnitte). Smalltalk/Junk faellt raus (wie bei der
+// Karteikarte), der Rest wird als "Arzt:"/"Patient:"-Dialog aufbereitet und
+// vom STARKEN 5090-Modell (qwen3.6) leicht bereinigt (STT-Hoerfehler geglaettet,
+// Fuellsel raus). Nachdiktat bleibt wortwoertlich. § 630f: nur Politur, keine
+// erfundenen Befunde/Zaehne/Ziffern (Zahlen-Waechter + Fallback).
+// ---------------------------------------------------------------------------
+
+/** Sprecher-Praefix fuer die Dialogzeile (Arzt vs Patient/Raum). */
+function dialogueSpeaker(source) {
+  return String(source || "").toLowerCase() === "arzt" ? "Arzt" : "Patient";
+}
+
+/**
+ * Deterministischer Dialog-Entwurf aus den ECHTEN Gespraechs-Segmenten:
+ * Smalltalk/Junk raus, Reihenfolge erhalten, aufeinanderfolgende gleiche
+ * Sprecher zusammengezogen. Das ist zugleich der Fallback, wenn das LLM
+ * ausfaellt. (exportiert fuer Tests)
+ */
+export function buildDialogueDraft(conversationSegs, byId) {
+  const turns = [];
+  for (const s of conversationSegs || []) {
+    const text = String(s.text || "").trim();
+    if (!text) continue;
+    if (isJunkSegment(text)) continue;
+    const meta = (byId && byId.get(s.id)) || { smalltalk: s.smalltalk };
+    if (meta.smalltalk) continue;
+    const speaker = dialogueSpeaker(s.source);
+    const last = turns[turns.length - 1];
+    if (last && last.speaker === speaker) last.text += " " + text;
+    else turns.push({ speaker, text });
+  }
+  return turns.map((t) => `${t.speaker}: ${t.text}`).join("\n");
+}
+
+/** Nachdiktat wortwoertlich als eigener Block. */
+function nachdiktatBlock(nachdiktatSegs) {
+  const nd = (nachdiktatSegs || [])
+    .map((s) => String(s.text || "").trim())
+    .filter(Boolean);
+  if (!nd.length) return "";
+  return "NACHDIKTAT\n" + nd.map((t) => `- ${t}`).join("\n");
+}
+
+/**
+ * Dialog-Politur durch das starke 5090-Modell (qwen3.6). Behaelt das
+ * Arzt-Patient-Schema strikt bei, glaettet nur offensichtliche STT-Fehler und
+ * streicht Fuellsel. Bei jedem Zweifel (LLM aus/leer, erfundene Zahlen) faellt
+ * der Aufrufer auf den deterministischen Draft zurueck. (exportiert fuer Tests)
+ *
+ * @param {string} draft  Deterministischer Arzt/Patient-Dialog (Quelle der Wahrheit).
+ * @returns {Promise<{ok:boolean, text:string, reason?:string, model?:string}>}
+ */
+export async function polishDialogueSummary(draft, { timeoutMs = 90000 } = {}) {
+  const src = String(draft || "").trim();
+  if (src.length < 40) return { ok: false, text: "", reason: "too_short" };
+
+  const s = strongLlm();
+  const messages = [
+    {
+      role: "system",
+      content: [
+        "Du bereinigst das Transkript eines (zahn)aerztlichen Behandlungsgespraechs.",
+        "BEHALTE das Gespraechsschema strikt bei: jede Zeile beginnt mit 'Arzt:' oder 'Patient:'.",
+        "Fasse NICHT zu Fliesstext zusammen und erfinde KEINE Abschnittsueberschriften.",
+        "Erlaubt: offensichtliche Spracherkennungs-Fehler glaetten, Fuellwoerter/Wiederholungen/abgebrochene Silben entfernen, Zeichensetzung korrigieren.",
+        "VERBOTEN: Inhalte erfinden oder hinzufuegen — keine Befunde, Zaehne, Regionen, Mengen, Ziffern, Medikamente oder Diagnosen, die nicht dastehen.",
+        "Aendere KEINE Zahlen, Zahnnummern oder Abrechnungsziffern.",
+        "Streiche Zeilen, die reiner Smalltalk oder Geraetetests sind, nur wenn eindeutig; im Zweifel behalten.",
+        "Antworte NUR mit dem bereinigten Dialog, nichts davor oder danach.",
+      ].join("\n"),
+    },
+    { role: "user", content: src.slice(0, 12000) },
+  ];
+
+  const res = await chat(messages, {
+    temperature: 0.1,
+    maxTokens: 2000,
+    timeoutMs,
+    baseUrl: s.base,
+    model: s.model,
+  });
+  if (!res.ok) return { ok: false, text: "", reason: res.reason || "llm" };
+
+  let text = String(res.text || "").trim();
+  if (text.length < 20) return { ok: false, text: "", reason: "empty" };
+  // Anti-Erfindung: keine Ziffernfolge, die im Quell-Dialog fehlt.
+  if (inventsNumbers(text, src)) return { ok: false, text: "", reason: "guard_numbers" };
+  // Schema-Wache: es muss weiter ein Sprecher-Dialog sein.
+  if (!/^\s*(Arzt|Patient)\s*:/im.test(text)) return { ok: false, text: "", reason: "guard_schema" };
+  return { ok: true, text, model: res.model };
+}
+
 /**
  * Strukturieren: klassifizieren (lokales LLM), Klassifikation auf die
  * Segment-Dokumente schreiben, Karteikarte deterministisch bauen und unter
  * treatment/main ablegen.
+ * Nachdiktat bleibt wortwoertlich; aus dem Arzt-Patient-Gespraech nur Klinik.
  */
 export async function structureTreatment(clientId, locationId, appointmentId, { updatedBy = "mas-lena" } = {}) {
   const segs = await loadSegments(clientId, locationId, appointmentId);
   if (!segs.length) return { ok: false, error: "no_segments" };
 
-  const cls = await classifySegments(segs);
-  if (!cls.ok) return { ok: false, error: cls.reason || "llm" };
+  const nachdiktatSegs = segs.filter((s) => String(s.source || "").toLowerCase() === "nachdiktat");
+  const conversationSegs = segs.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+  if (!conversationSegs.length && !nachdiktatSegs.length) return { ok: false, error: "no_segments" };
 
-  // Klassifikation als Anzeige-Metadaten auf die Segmente schreiben.
+  const byId = new Map();
+  let llmModel = "";
+  if (conversationSegs.length) {
+    const cls = await classifySegments(conversationSegs);
+    if (!cls.ok) return { ok: false, error: cls.reason || "llm" };
+    llmModel = cls.model || "";
+    for (const [id, meta] of cls.byId.entries()) byId.set(id, meta);
+  }
+
+  // Deterministischer Junk immer als Smalltalk — auch wenn das LLM ihn verfehlt.
+  for (const s of conversationSegs) {
+    if (!isJunkSegment(s.text)) continue;
+    const prev = byId.get(s.id) || { section: s.section || "befund", smalltalk: false };
+    byId.set(s.id, { section: prev.section || "befund", smalltalk: true });
+  }
+
   const batch = admin.firestore().batch();
   const segCol = apptRef(clientId, locationId, appointmentId).collection("dictations");
-  for (const [id, meta] of cls.byId.entries()) {
+  for (const [id, meta] of byId.entries()) {
     batch.set(segCol.doc(id), { section: meta.section, smalltalk: meta.smalltalk }, { merge: true });
+  }
+  // Nachdiktat: nie als Smalltalk markieren (wortwoertlich fuer Akte).
+  for (const s of nachdiktatSegs) {
+    batch.set(segCol.doc(s.id), { smalltalk: false, section: "nachdiktat" }, { merge: true });
   }
   await batch.commit();
 
-  const karte = buildKarteikarte(segs, cls.byId);
+  // Abschnitts-HTML bleibt die interne/Desktop-Karteikarte (Bullets aus den
+  // Originalsegmenten, § 630f). Die ANZEIGE-Zusammenfassung (structuredText)
+  // wird der bereinigte Arzt-Patient-Dialog.
+  const karte = buildKarteikarte(conversationSegs, byId, nachdiktatSegs);
+
+  const dialogueDraft = buildDialogueDraft(conversationSegs, byId);
+  let dialogueBody = dialogueDraft;
+  let strongModel = "";
+  if (dialogueDraft) {
+    const polished = await polishDialogueSummary(dialogueDraft);
+    if (polished.ok) {
+      dialogueBody = polished.text;
+      strongModel = polished.model || "";
+    } else {
+      console.log(`[lena/structure] appt=${appointmentId} Dialog-Politur uebersprungen (${polished.reason}) -> Fallback-Draft`);
+    }
+  }
+  const ndBlock = nachdiktatBlock(nachdiktatSegs);
+  const structuredText = [dialogueBody, ndBlock].filter(Boolean).join("\n\n").trim().slice(0, 40000)
+    || karte.structuredText;
+
   const treatmentRef = apptRef(clientId, locationId, appointmentId).collection("treatment").doc("main");
   await treatmentRef.set({
     structuredHtml: karte.structuredHtml,
-    structuredText: karte.structuredText,
+    structuredText,
     segmentsCount: segs.length,
     sectionsMeta: TREATMENT_SECTIONS,
-    classifiedCount: cls.byId.size,
-    model: `local:${cls.model || "qwen"}`,
+    classifiedCount: byId.size,
+    model: `local:${llmModel || "qwen"}${strongModel ? `+strong:${strongModel}` : ""}`,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedBy,
   }, { merge: true });
 
+  // Zusammenfassung ins geteilte Praxisgedaechtnis (lena_doc) — auffindbar in
+  // der MAS-Suche + im Patienten-Dossier fuer alle (Nadine/Lisa/Bianca lesen aus
+  // demselben Speicher). Best-effort, blockiert die Antwort nicht bei Fehler.
+  await writeTreatmentSummaryEvent(clientId, { locationId, appointmentId, structuredText });
+
   return {
     ok: true,
     structuredHtml: karte.structuredHtml,
-    structuredText: karte.structuredText,
+    structuredText,
     segmentsCount: segs.length,
-    classifiedCount: cls.byId.size,
+    classifiedCount: byId.size,
   };
 }
 

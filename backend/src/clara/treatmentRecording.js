@@ -92,6 +92,85 @@ export function pickCurrentAppointment(appts, nowMs, opts = {}) {
   return { appointment: null, reason: "none", candidates: [] };
 }
 
+/**
+ * Raum→Termin fuer das gekoppelte iPad (Paket 2b): zuerst eine laufende
+ * Aufnahme (activeRecording), sonst "wer sitzt im Stuhl?" aus der Tagesliste.
+ * Rein / unit-testbar — kein Firestore.
+ *
+ * @param {{appointmentId?:string, locationId?:string, patientId?:string, patientName?:string}|null} active
+ * @param {Array} appts   Tagesliste (bereits auf den Behandler gefiltert, falls noetig)
+ * @param {number} nowMs
+ * @param {string} [locationId] Standort der Tagesliste (Fallback, wenn active keins traegt)
+ * @returns {{ok:boolean, reason:string, appointmentId:string|null, locationId:string|null,
+ *            patientId:string, patientName:string, startMs:number, visitMotive:string,
+ *            doctorName:string, candidates:Array}}
+ */
+export function resolveChairAppointment(active, appts, nowMs, locationId = "") {
+  const a = active && typeof active === "object" ? active : null;
+  if (a?.appointmentId && a?.locationId) {
+    return {
+      ok: true,
+      reason: "recording",
+      appointmentId: String(a.appointmentId),
+      locationId: String(a.locationId),
+      patientId: String(a.patientId || ""),
+      patientName: String(a.patientName || ""),
+      startMs: Number(a.startedAtMs) || 0,
+      visitMotive: "",
+      doctorName: "",
+      candidates: [],
+    };
+  }
+  const pick = pickCurrentAppointment(appts, nowMs);
+  if (pick.appointment) {
+    const p = pick.appointment;
+    return {
+      ok: true,
+      reason: pick.reason,
+      appointmentId: String(p.id || ""),
+      locationId: String(locationId || p.locationId || ""),
+      patientId: String(p.patientId || ""),
+      patientName: String(p.patientName || ""),
+      startMs: Number(p.startMs) || 0,
+      visitMotive: String(p.visitMotive || ""),
+      doctorName: String(p.calendarName || p.doctorName || ""),
+      candidates: [],
+    };
+  }
+  return {
+    ok: false,
+    reason: pick.reason || "none",
+    appointmentId: null,
+    locationId: String(locationId || "") || null,
+    patientId: "",
+    patientName: "",
+    startMs: 0,
+    visitMotive: "",
+    doctorName: "",
+    candidates: Array.isArray(pick.candidates) ? pick.candidates : [],
+  };
+}
+
+/** Kalender-ID zum Geraete-Behandler finden (exakter Name, sonst Token-Overlap). */
+export function matchCalendarId(calendars, doctorName) {
+  const q = String(doctorName || "").trim().toLowerCase();
+  if (!q) return "";
+  const cals = Array.isArray(calendars) ? calendars : [];
+  const exact = cals.find((c) => String(c?.name || "").trim().toLowerCase() === q);
+  if (exact?.id) return String(exact.id);
+  const tokens = q.split(/\s+/).filter((t) => t.length >= 3);
+  if (!tokens.length) return "";
+  let best = null;
+  let bestScore = 0;
+  for (const c of cals) {
+    const name = String(c?.name || "").trim().toLowerCase();
+    if (!name || !c?.id) continue;
+    const score = tokens.filter((t) => name.includes(t)).length;
+    if (score > bestScore) { best = c; bestScore = score; }
+  }
+  return bestScore > 0 && best?.id ? String(best.id) : "";
+}
+
 function recorderRef(clientId, locationId, appointmentId) {
   return admin.firestore()
     .collection("clients").doc(clientId)
@@ -117,6 +196,27 @@ export async function getArztSource(clientId, locationId) {
     return snap.exists && snap.data()?.arztSource === "headset" ? "headset" : "lavalier";
   } catch {
     return "lavalier";
+  }
+}
+
+/**
+ * Raum-/Patienten-Quelle des Standorts (Kanal-Vertrag Diarisierung):
+ * "pc-stereo" (Default), "pc-mono" oder "ipad". Gespeichert unter
+ * clients/{c}/locations/{l}/settings/lenaRecorder.raumSource — dieselbe Stelle,
+ * die das Frontend schreibt/liest. Steht der Standort auf "ipad", ist das
+ * gekoppelte iPad das Raummikro (channel=raum) und der PC nimmt nichts auf.
+ */
+export async function getRaumSource(clientId, locationId) {
+  if (!clientId || !locationId) return "pc-stereo";
+  try {
+    const snap = await admin.firestore()
+      .collection("clients").doc(clientId)
+      .collection("locations").doc(locationId)
+      .collection("settings").doc("lenaRecorder").get();
+    const v = snap.exists ? snap.data()?.raumSource : "";
+    return v === "ipad" || v === "pc-mono" || v === "pc-stereo" ? v : "pc-stereo";
+  } catch {
+    return "pc-stereo";
   }
 }
 
@@ -163,8 +263,14 @@ export async function startRecordingSession(clientId, { locationId, appointmentI
   // W-LENA-7: Beim reinen Sprach-DIKTAT spricht der Arzt IN Clara (Headset/
   // Telefon) — die Stimme kommt IMMER aus der LiveKit-Session. Deshalb wird der
   // Tee dort erzwungen (forceTee), unabhaengig von der Ansteckmikro-Einstellung.
-  const arztSource = await getArztSource(clientId, locationId);
-  const teeActive = forceTee === true || arztSource === "headset";
+  // Kanal-Vertrag: Ist das iPad das Raummikro (raumSource="ipad"), nimmt der PC
+  // nichts auf — die Arzt-Stimme MUSS dann über den Clara-Tee kommen, sonst gibt
+  // es keinen arzt-Kanal. Deshalb den Tee auch in diesem Modus erzwingen.
+  const [arztSource, raumSource] = await Promise.all([
+    getArztSource(clientId, locationId),
+    getRaumSource(clientId, locationId),
+  ]);
+  const teeActive = forceTee === true || arztSource === "headset" || raumSource === "ipad";
   const lenaTee = teeActive
     ? { active: true, clientId, locationId, appointmentId, channel: "arzt", lang: "de-DE" }
     : { active: false };
@@ -175,6 +281,7 @@ export async function startRecordingSession(clientId, { locationId, appointmentI
     appointmentId,
     patientName: patientName || "",
     arztSource,
+    raumSource,
     lenaTee,
     mode: isDictation ? "dictation" : "recording",
     message: isDictation

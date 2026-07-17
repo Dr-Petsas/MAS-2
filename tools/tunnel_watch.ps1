@@ -88,58 +88,55 @@ if (-not $tsProc.WaitForExit(300000)) {
 Get-Content $tsOut -ErrorAction SilentlyContinue |
     ForEach-Object { Add-Content -Path $WatchLog -Value "  [tunnel-start] $_" }
 
+# Der benannte Tunnel hat eine FESTE Adresse - die URL aendert sich NICHT.
+# Nach dem Neustart nur pruefen, ob die feste URL wieder erreichbar ist.
 $newUrl = (Get-Content $UrlFile -ErrorAction SilentlyContinue | Select-Object -First 1)
 if ($newUrl) { $newUrl = $newUrl.Trim() }
 # Backend wird vom Start-Skript neu gestartet - warten bis es lokal antwortet.
 for ($i = 0; $i -lt 25 -and -not (Test-Health $MasLocal 5); $i++) { Start-Sleep -Seconds 2 }
-# Frische Quick-Tunnel brauchen z. T. mehrere Minuten, bis die QUIC-Verbindung
-# registriert ist (beobachtet: ~3 min) - bis zu 5 min auf Erreichbarkeit warten.
+# Benannten Tunnel bis zu 3 min auf Erreichbarkeit prüfen.
 $newOk = $false
-if ($newUrl -and $newUrl -ne $oldUrl) {
-    for ($i = 0; $i -lt 30; $i++) {
+if ($newUrl) {
+    for ($i = 0; $i -lt 18; $i++) {
         if (Test-Health $newUrl 15) { $newOk = $true; break }
         Start-Sleep -Seconds 10
     }
 }
-if ($newOk) { Log "tunnel: NEU und erreichbar ($newUrl)" }
-else        { Log "tunnel: Wiederherstellung unsicher (url=$newUrl) - melde trotzdem" }
+if ($newOk) {
+    Log "tunnel: wiederhergestellt und erreichbar ($newUrl) - feste Adresse, kein Neu-Koppeln noetig"
+} else {
+    # --- 4) NUR wenn die feste Adresse NICHT wiederhergestellt werden konnte:
+    #        echtes Problem -> per E-Mail (Fallback SMS) alarmieren. ---
+    Log "tunnel: feste Adresse NICHT erreichbar ($newUrl) - alarmiere"
+    $body = @"
+ACHTUNG: Der MAS-Tunnel ($newUrl) ist gefallen und konnte NICHT automatisch
+wiederhergestellt werden. Der Link selbst bleibt gleich (fester Named-Tunnel) -
+bitte pruefen, ob cloudflared/das Backend auf dem Praxis-PC laufen.
 
-# --- 4) Link aufs Handy: E-Mail, bei Mail-Fehler SMS ---
-$status = if ($newOk) { 'Der neue Tunnel steht und ist getestet.' }
-          else { 'ACHTUNG: Wiederherstellung unsicher - bitte Link pruefen.' }
-$body = @"
-Der Cloudflare-Tunnel zum MAS-Backend war gefallen. $status
-
-Neuer Link (Handy-Lesezeichen aktualisieren):
-$newUrl
-
-Die Web-App findet das Backend automatisch wieder (masRuntime in Firestore).
-Alter Link (ungueltig): $oldUrl
-
--- Tunnel-Waechter, automatischer Lauf alle 6 Stunden
+-- Tunnel-Waechter, automatischer Lauf
 "@
-
-$mailOk = $false
-try {
-    $acc = (Invoke-RestMethod -Uri "$MasLocal/mail/accounts?clientId=$ClientId" -TimeoutSec 30).accounts | Select-Object -First 1
-    if ($acc) {
-        $payload = @{ accountId = $acc.id; to = @($MailTo); logToBrain = $false
-                      subject = "Neuer MAS-Tunnel-Link: $newUrl"; text = $body } | ConvertTo-Json
-        $res = Invoke-RestMethod -Uri "$MasLocal/mail/send?clientId=$ClientId" -Method Post `
-            -ContentType 'application/json; charset=utf-8' -Body $payload -TimeoutSec 120
-        $mailOk = [bool]$res.ok
-    } else { Log "mail: kein Konto konfiguriert" }
-} catch { Log "mail: FEHLER $($_.Exception.Message)" }
-Log "mail: $(if ($mailOk) { 'verschickt an ' + $MailTo } else { 'NICHT verschickt' })"
-
-if (-not $mailOk) {
+    $mailOk = $false
     try {
-        $payload = @{ phone = $SmsTo; recipientName = 'Dr. Petsas'
-                      message = "Neuer MAS-Tunnel-Link: $newUrl (Mail-Versand ging nicht)" } | ConvertTo-Json
-        $res = Invoke-RestMethod -Uri "$MasLocal/tools/send-sms?clientId=$ClientId" -Method Post `
-            -ContentType 'application/json; charset=utf-8' -Body $payload -TimeoutSec 120
-        Log "sms-fallback: $(if ($res.ok) { 'verschickt' } else { 'FEHLER' })"
-    } catch { Log "sms-fallback: FEHLER $($_.Exception.Message)" }
+        $acc = (Invoke-RestMethod -Uri "$MasLocal/mail/accounts?clientId=$ClientId" -TimeoutSec 30).accounts | Select-Object -First 1
+        if ($acc) {
+            $payload = @{ accountId = $acc.id; to = @($MailTo); logToBrain = $false
+                          subject = "MAS-Tunnel gefallen (feste Adresse nicht erreichbar)"; text = $body } | ConvertTo-Json
+            $res = Invoke-RestMethod -Uri "$MasLocal/mail/send?clientId=$ClientId" -Method Post `
+                -ContentType 'application/json; charset=utf-8' -Body $payload -TimeoutSec 120
+            $mailOk = [bool]$res.ok
+        } else { Log "mail: kein Konto konfiguriert" }
+    } catch { Log "mail: FEHLER $($_.Exception.Message)" }
+    Log "mail: $(if ($mailOk) { 'verschickt an ' + $MailTo } else { 'NICHT verschickt' })"
+
+    if (-not $mailOk) {
+        try {
+            $payload = @{ phone = $SmsTo; recipientName = 'Dr. Petsas'
+                          message = "MAS-Tunnel gefallen und nicht automatisch wiederhergestellt - bitte Praxis-PC pruefen." } | ConvertTo-Json
+            $res = Invoke-RestMethod -Uri "$MasLocal/tools/send-sms?clientId=$ClientId" -Method Post `
+                -ContentType 'application/json; charset=utf-8' -Body $payload -TimeoutSec 120
+            Log "sms-fallback: $(if ($res.ok) { 'verschickt' } else { 'FEHLER' })"
+        } catch { Log "sms-fallback: FEHLER $($_.Exception.Message)" }
+    }
 }
 } # Ende Tunnel-Reparatur
 

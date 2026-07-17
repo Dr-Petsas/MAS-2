@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import { assertAppEnabled } from "../entitlements.js";
 import { listOperators, normalizeRole } from "../clara/operators.js";
-import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured } from "../clara/devices.js";
+import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, updateDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured } from "../clara/devices.js";
 import { log } from "../log.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 
@@ -34,7 +34,10 @@ router.post("/clara/devices/pairing-token", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
-    if (!pushConfigured()) return res.status(503).json({ ok: false, error: "push_not_configured" });
+    // Konsolen-Geräte (iPad-Arbeitsplatz) brauchen KEIN Web-Push — nur Handys,
+    // die Clara anrufen soll. Push-Check daher nur für Nicht-Konsolen.
+    const deviceTypeReq = String(req.body?.deviceType || "").toLowerCase();
+    if (deviceTypeReq !== "ipad" && !pushConfigured()) return res.status(503).json({ ok: false, error: "push_not_configured" });
     // The person can be an existing team/PIN operator (operatorId) OR any
     // practice member by name — pairing must not require a separate team setup.
     const operatorId = (req.body?.operatorId || "").trim();
@@ -50,11 +53,25 @@ router.post("/clara/devices/pairing-token", async (req, res) => {
       };
     }
     if (!op) return res.status(400).json({ ok: false, error: "operator_unknown" });
-    const t = await createPairingToken(clientId, op, { createdBy: req.auth?.userId || "" });
-    const url = `${PUBLIC_BASE_URL}/m/pair.html?c=${encodeURIComponent(clientId)}&t=${encodeURIComponent(t.token)}`;
+    // Arbeitsplatz: Gerätetyp (Handy/iPad) + erlaubte Apps kommen aus der
+    // Einrichtungsstelle. Fehlen sie, greifen sinnvolle Defaults (phone/["clara"]).
+    const t = await createPairingToken(clientId, op, {
+      createdBy: req.auth?.userId || "",
+      deviceType: req.body?.deviceType || "",
+      apps: Array.isArray(req.body?.apps) ? req.body.apps : null,
+      userId: (req.body?.userId || "").trim(),
+    });
+    // Wie beim Handy wird die Kopplungsseite vom Backend ueber den oeffentlichen
+    // Tunnel ausgeliefert — dadurch ist der QR von ueberall erreichbar (kein
+    // LAN/Firewall/localhost-Problem). iPad-Arbeitsplatz: eigene Launcher-Seite
+    // (push-frei); Handy: die bestehende pair.html (Web-Push).
+    const enc = encodeURIComponent;
+    const url = t.deviceType === "ipad"
+      ? `${PUBLIC_BASE_URL}/m/ipad.html?c=${enc(clientId)}&t=${enc(t.token)}&code=${enc(t.code)}`
+      : `${PUBLIC_BASE_URL}/m/pair.html?c=${enc(clientId)}&t=${enc(t.token)}`;
     let qrDataUrl = "";
     try { qrDataUrl = await QRCode.toDataURL(url, { width: 280, margin: 1 }); } catch { qrDataUrl = ""; }
-    res.json({ ok: true, token: t.token, code: t.code, url, qrDataUrl, expiresAtMs: t.expiresAtMs, operator: { id: op.id, name: op.name, role: op.role } });
+    res.json({ ok: true, token: t.token, code: t.code, url, qrDataUrl, expiresAtMs: t.expiresAtMs, deviceType: t.deviceType, apps: t.apps, operator: { id: op.id, name: op.name, role: op.role } });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -160,6 +177,26 @@ router.delete("/clara/devices/:id", async (req, res) => {
     const clientId = resolveClientId(req);
     const r = await removeDevice(clientId, req.params.id);
     log.info("device removed", { requestId: req.requestId, clientId, deviceId: req.params.id });
+    res.json(r);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Authenticated (settings UI): update a device's workplace metadata — the apps
+// it may show (clara/lena/sophie), its type (phone/ipad) and its label. Purely
+// additive; never touches the push subscription or secret.
+router.patch("/clara/devices/:id", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const patch = {};
+    if (req.body?.label !== undefined) patch.label = req.body.label;
+    if (req.body?.deviceType !== undefined) patch.deviceType = req.body.deviceType;
+    if (req.body?.apps !== undefined) patch.apps = req.body.apps;
+    const r = await updateDevice(clientId, req.params.id, patch);
+    if (!r.ok) return res.status(r.reason === "device_unknown" ? 404 : 400).json(r);
+    log.info("device updated", { requestId: req.requestId, clientId, deviceId: req.params.id });
     res.json(r);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

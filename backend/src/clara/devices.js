@@ -75,6 +75,27 @@ function safeEq(a, b) {
 
 function s(v) { return String(v ?? "").trim(); }
 
+// ── Arbeitsplatz-Felder (Gerätetyp + erlaubte Apps) ─────────────────────────
+// Additiv zum bestehenden Handy-Pairing: ein Gerät traegt jetzt optional einen
+// Typ (Handy/iPad) und die Apps, die es zeigen darf. Bestandsgeraete OHNE diese
+// Felder gelten als "phone"/["clara"] — byte-identisch zum Alt-Verhalten.
+export const WORKPLACE_APPS = ["clara", "lena", "sophie"];
+
+function normalizeDeviceType(v) {
+  return s(v).toLowerCase() === "ipad" ? "ipad" : "phone";
+}
+
+/** Erlaubte Apps saeubern; leere/ungueltige Eingabe -> sinnvoller Default je Typ. */
+function normalizeApps(apps, deviceType = "phone") {
+  if (Array.isArray(apps)) {
+    const clean = Array.from(new Set(
+      apps.map((a) => s(a).toLowerCase()).filter((a) => WORKPLACE_APPS.includes(a)),
+    ));
+    if (clean.length) return clean;
+  }
+  return deviceType === "ipad" ? ["clara", "lena", "sophie"] : ["clara"];
+}
+
 /** Coarse platform from a User-Agent — for the device list UI only. */
 export function platformFromUserAgent(ua = "") {
   const u = String(ua).toLowerCase();
@@ -139,7 +160,7 @@ async function reserveCode() {
  * the TTL becomes that operator's phone. Additionally carries a short, typeable
  * ``code`` for the iOS-safe manual pairing path.
  */
-export async function createPairingToken(clientId, operator, { createdBy = "" } = {}) {
+export async function createPairingToken(clientId, operator, { createdBy = "", deviceType = "", apps = null, userId = "" } = {}) {
   if (!s(clientId)) throw new Error("client_id_required");
   const opId = s(operator?.id);
   const opName = s(operator?.name);
@@ -149,6 +170,7 @@ export async function createPairingToken(clientId, operator, { createdBy = "" } 
   const code = await reserveCode();
   const now = Date.now();
   const expiresAtMs = now + PAIRING_TOKEN_TTL_MS;
+  const dtype = normalizeDeviceType(deviceType);
   const doc = {
     token,
     code,
@@ -156,6 +178,10 @@ export async function createPairingToken(clientId, operator, { createdBy = "" } 
     operatorName: opName,
     role: s(operator?.role) || "frontdesk",
     doctorName: s(operator?.doctorName) || null,
+    // Arbeitsplatz: Gerätetyp + erlaubte Apps + verknuepfter Plattform-User.
+    deviceType: dtype,
+    apps: normalizeApps(apps, dtype),
+    userId: s(userId) || s(operator?.userId) || null,
     createdBy: s(createdBy) || null,
     createdAtMs: now,
     expiresAtMs,
@@ -197,15 +223,27 @@ export async function redeemPairingCode(codeRaw, { subscription, userAgent = "",
  */
 export async function redeemPairingToken(clientId, token, { subscription, userAgent = "", label = "" } = {}) {
   if (!s(clientId) || !s(token)) return { ok: false, reason: "token_missing" };
-  const v = validateSubscription(subscription);
-  if (!v.ok) return { ok: false, reason: v.reason };
+
+  const db = admin.firestore();
+  const tokenRef = tokensCol(clientId).doc(s(token));
+
+  // Peek at the token to learn the device type. Console devices (iPad launcher)
+  // may pair WITHOUT a web-push subscription — they are a display, not something
+  // Clara rings. Phones (and any device that DOES send a subscription) keep the
+  // strict validation, so the "Clara ruft aufs Handy"-path is byte-identical.
+  const peek = await tokenRef.get().catch(() => null);
+  const isConsole = peek?.exists && normalizeDeviceType(peek.data()?.deviceType) === "ipad";
+  let sub = null;
+  if (subscription || !isConsole) {
+    const v = validateSubscription(subscription);
+    if (!v.ok) return { ok: false, reason: v.reason };
+    sub = v.subscription;
+  }
 
   const deviceId = `dev_${randomUUID().slice(0, 12)}`;
   const deviceKey = randomBytes(24).toString("base64url");
   const now = Date.now();
 
-  const db = admin.firestore();
-  const tokenRef = tokensCol(clientId).doc(s(token));
   const deviceRef = devicesCol(clientId).doc(deviceId);
 
   try {
@@ -217,16 +255,22 @@ export async function redeemPairingToken(clientId, token, { subscription, userAg
       if (now > (t.expiresAtMs || 0)) throw Object.assign(new Error("token_expired"), { code: "token_expired" });
 
       tx.update(tokenRef, { usedAtMs: now, usedByDeviceId: deviceId });
+      const dtype = normalizeDeviceType(t.deviceType);
       tx.set(deviceRef, {
         id: deviceId,
         operatorId: t.operatorId,
         operatorName: t.operatorName,
         role: t.role,
         doctorName: t.doctorName || null,
+        // Arbeitsplatz-Felder aus dem Token uebernehmen (Bestand ohne Token-
+        // Felder => "phone"/["clara"], byte-identisch zum Alt-Verhalten).
+        deviceType: dtype,
+        apps: normalizeApps(t.apps, dtype),
+        userId: t.userId || null,
         label: s(label).slice(0, 80) || null,
         platform: platformFromUserAgent(userAgent),
         userAgent: s(userAgent).slice(0, 240) || null,
-        subscription: v.subscription,
+        subscription: sub,
         secretHash: hashSecret(clientId, deviceKey),
         createdAtMs: now,
         lastSeenAtMs: now,
@@ -234,7 +278,7 @@ export async function redeemPairingToken(clientId, token, { subscription, userAg
         lastPushOk: null,
         createdAt: FieldValue.serverTimestamp(),
       });
-      return { id: t.operatorId, name: t.operatorName, role: t.role, doctorName: t.doctorName || null };
+      return { id: t.operatorId, name: t.operatorName, role: t.role, doctorName: t.doctorName || null, apps: normalizeApps(t.apps, dtype), deviceType: dtype, userId: t.userId || null };
     });
     // Same phone, fresh pairing: now that the NEW registration is committed,
     // drop any earlier docs that used this exact push endpoint. Each redeem
@@ -242,8 +286,9 @@ export async function redeemPairingToken(clientId, token, { subscription, userAg
     // duplicates of ONE device — and removing "the" device in the UI left
     // older duplicates that kept ringing. Runs AFTER the transaction so a
     // failed re-redeem (token_used/expired) never deletes the good device.
-    await deleteDevicesByEndpoint(clientId, v.subscription.endpoint, { exceptId: deviceId }).catch(() => {});
-    return { ok: true, deviceId, deviceKey, operator };
+    // Only relevant for push devices (an endpoint identifies one physical phone).
+    if (sub?.endpoint) await deleteDevicesByEndpoint(clientId, sub.endpoint, { exceptId: deviceId }).catch(() => {});
+    return { ok: true, deviceId, deviceKey, operator, apps: operator.apps, deviceType: operator.deviceType };
   } catch (e) {
     return { ok: false, reason: e?.code || String(e?.message || e) };
   }
@@ -283,6 +328,28 @@ async function deleteDevicesByEndpoint(clientId, endpoint, { exceptId = "" } = {
     return d.ref.delete().catch(() => {});
   }));
   return removed;
+}
+
+/**
+ * Update the workplace metadata of a paired device (label, device type, allowed
+ * apps) from the settings UI. Never touches the push subscription or secret.
+ */
+export async function updateDevice(clientId, deviceId, { label, apps, deviceType } = {}) {
+  if (!s(deviceId)) return { ok: false, reason: "device_id_required" };
+  const ref = devicesCol(clientId).doc(s(deviceId));
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "device_unknown" };
+  const cur = snap.data() || {};
+  const patch = {};
+  if (label !== undefined) patch.label = s(label).slice(0, 80) || null;
+  if (deviceType !== undefined) patch.deviceType = normalizeDeviceType(deviceType);
+  if (apps !== undefined) {
+    patch.apps = normalizeApps(apps, patch.deviceType || cur.deviceType || "phone");
+  }
+  if (Object.keys(patch).length === 0) return { ok: true, unchanged: true };
+  patch.updatedAtMs = Date.now();
+  await ref.update(patch);
+  return { ok: true, device: publicDevice({ ...cur, ...patch }) };
 }
 
 export async function removeDevice(clientId, deviceId) {

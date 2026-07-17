@@ -1,0 +1,2821 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>pickadoc – Arbeitsplatz</title>
+  <link rel="manifest" href="/m/ipad.webmanifest" />
+  <link rel="apple-touch-icon" href="/m/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="pickadoc" />
+  <meta name="theme-color" content="#060b16" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <script>
+    // Browser-TTS hart aus — Clara spricht nur über LiveKit/ElevenLabs.
+    (function () {
+      try {
+        const synth = window.speechSynthesis;
+        if (!synth) return;
+        synth.cancel();
+        synth.speak = function () { try { synth.cancel(); } catch (_) {} };
+      } catch (_) {}
+    })();
+  </script>
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════
+       iPad-Arbeitsplatz. Basiert 1:1 auf der Handy-App (call.html):
+         • HOCHKANT: verhält sich exakt wie das Handy — Flip Sprache <-> Karten.
+         • QUERFORMAT: Split nebeneinander wie die Preview — links Clara
+           (Sprechzimmer), rechts Lena (Behandlungs-Doku).
+       Clara-Sprachlogik (LiveKit + clara-chat.js) ist unverändert übernommen.
+       ══════════════════════════════════════════════════════════════════════ */
+    :root {
+      color-scheme: dark;
+      --bg-1: #13203a; --bg-2: #0a1322; --bg-3: #060b16;
+      --ink: #e6edf6; --ink-soft: #8fa3bd;
+      --turq: #2ee6c8; --amber: #f5c518; --red: #ff4d6d;
+      --pink: #ff4ddb; --purple: #b84dff; --green: #34d399;
+      --lena: #0f766e; --lena-soft: #7ec9c1;
+      --accent: var(--purple);
+      /* ── Preview-Tokens (Lena-Doku-Wizard + Besonderheiten) ── */
+      --card: rgba(255,255,255,.045); --card-strong: rgba(255,255,255,.07);
+      --line: rgba(255,255,255,.10); --mute: #b3a6bf; --mute2: #7a6d86;
+      --voice: #34d399; --magenta: #d862c8; --magenta-hot: #e072d1; --magenta-deep: #b13fa0;
+      --pink-light: #e89fdd; --cyan: #7fd6ff; --orange: #e9a24a; --yellow: #e9c46a; --blue: #94bfe2;
+      --st-think: #f5c518; --st-speak: #34d399; --st-listen: #b84dff;
+      --glow-mag: 0 8px 22px rgba(216,98,200,.45), 0 0 34px rgba(216,98,200,.35);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      font-family: system-ui, "Segoe UI", Roboto, sans-serif; margin: 0; color: var(--ink);
+      background: radial-gradient(130% 95% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
+      min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
+      padding: calc(env(safe-area-inset-top) + 14px) 18px calc(env(safe-area-inset-bottom) + 18px);
+      user-select: none; -webkit-user-select: none;
+      transition: background .55s ease; overflow: hidden;
+    }
+    body.st-idle       { --accent: var(--pink);   background: radial-gradient(120% 90% at 50% 0%, #2a1030 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-ringing    { --accent: var(--turq);   background: radial-gradient(120% 90% at 50% 0%, #0f2a28 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-connecting { --accent: var(--amber);  background: radial-gradient(120% 90% at 50% 0%, #2a2410 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-listening  { --accent: var(--purple); background: radial-gradient(120% 90% at 50% 0%, #1a1230 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-user       { --accent: var(--turq);   background: radial-gradient(120% 90% at 50% 0%, #0f2a28 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-thinking   { --accent: var(--amber);  background: radial-gradient(120% 90% at 50% 0%, #2a2410 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-clara      { --accent: var(--green);  background: radial-gradient(120% 90% at 50% 0%, #0f2a24 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-standby    { --accent: var(--amber);  background: radial-gradient(120% 90% at 50% 0%, #2a2410 0%, var(--bg-2) 55%, var(--bg-3) 100%); }
+    body.st-ended      { --accent: var(--ink-soft); }
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background: radial-gradient(circle at 50% 26%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 58%);
+      transition: background .55s ease;
+    }
+    body > * { position: relative; z-index: 1; }
+
+    /* ── Kopf-Chrome: Marke · Clara|Dokumentation · Uhr ──────────────────────
+       Der Umschalter oben wechselt zwischen Clara-Modus (Sprechzimmer) und
+       Dokumentation-Modus (Lena-Wizard). Die Audio/Chat-Leiste in der
+       Clara-Spalte bleibt davon unberührt. */
+    .chrome {
+      flex: none; display: flex; align-items: center; gap: 12px;
+      padding: 2px 2px 10px; position: relative;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-orb {
+      width: 34px; height: 34px; border-radius: 50%; flex: none;
+      --eq: var(--magenta); --eq-rgb: 216,98,200;
+      background: radial-gradient(circle at 35% 30%, #fff 0%, transparent 35%),
+                  radial-gradient(circle at 50% 55%, var(--magenta-hot), var(--magenta-deep));
+      box-shadow: 0 0 0 3px rgba(216,98,200,.18), var(--glow-mag);
+      transition: box-shadow .3s ease, transform .3s ease;
+    }
+    .brand-orb.is-listen {
+      background: radial-gradient(circle at 35% 30%, #fff 0%, transparent 35%),
+                  radial-gradient(circle at 50% 55%, var(--st-listen), rgba(184,77,255,.65));
+      box-shadow: 0 0 0 3px rgba(184,77,255,.22), 0 0 24px rgba(184,77,255,.6);
+      animation: orbPulse 1.6s ease-in-out infinite;
+    }
+    @keyframes orbPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+    .brand-name { font-weight: 900; font-size: 1.15rem; letter-spacing: -.03em; line-height: 1; }
+    .brand-sub { font-size: .66rem; font-weight: 800; color: var(--cyan); letter-spacing: .06em; text-transform: uppercase; margin-top: 3px; }
+    .brand[data-mode="lena"] .brand-orb {
+      background: radial-gradient(circle at 35% 30%, #fff 0%, transparent 35%),
+                  radial-gradient(circle at 50% 55%, var(--lena-soft), var(--lena));
+      box-shadow: 0 0 0 3px rgba(15,118,110,.2), 0 0 22px rgba(15,118,110,.35); animation: none;
+    }
+    .brand[data-mode="lena"] .brand-sub { color: var(--lena-soft); }
+    .mode-switch {
+      margin-left: auto; display: grid; grid-template-columns: 1fr 1fr;
+      background: rgba(255,255,255,.05); border: 1px solid var(--line);
+      border-radius: 999px; padding: 3px; width: min(300px, 46%);
+    }
+    .mode-switch button {
+      border: 0; background: transparent; font: inherit; font-weight: 700; font-size: .8rem;
+      color: var(--mute); padding: 9px 10px; border-radius: 999px; cursor: pointer;
+    }
+    .mode-switch button.is-on {
+      background: linear-gradient(135deg, var(--magenta), var(--magenta-deep)); color: #fff; box-shadow: var(--glow-mag);
+    }
+    .mode-switch[data-active="doku"] button.is-on {
+      background: linear-gradient(135deg, #1a9b8e, var(--lena)); box-shadow: 0 0 22px rgba(15,118,110,.45);
+    }
+    .clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .82rem; color: var(--mute); min-width: 42px; text-align: right; }
+    .gear { color: var(--ink-soft); text-decoration: none; font-size: 18px; padding: 6px; opacity: .65; flex: none; }
+
+    /* ── Panes (Clara-Modus ↔ Dokumentation-Modus) ─────────────────────────── */
+    .app-body { flex: 1; min-height: 0; position: relative; }
+    .pane { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .25s ease; display: flex; flex-direction: column; }
+    .pane.is-active { opacity: 1; pointer-events: auto; }
+
+    /* ── Clara-Split-Gerüst ───────────────────────────────────────────────── */
+    .split { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .clara-col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .clara-right { display: none; }
+
+    .mode-bar {
+      display: flex; justify-content: center; margin: 8px auto 0; gap: 4px;
+      padding: 3px; border-radius: 999px; background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.08); width: fit-content; flex: none;
+    }
+    .mode-bar button {
+      border: 0; background: transparent; color: var(--ink-soft); font-size: 12px;
+      font-weight: 700; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+    }
+    .mode-bar button.active { background: rgba(46,230,200,.18); color: var(--turq); }
+
+    body.clara-mode-audio [data-clara-chat-pane] { display: none !important; }
+    body.clara-mode-chat [data-clara-audio-pane],
+    body.clara-mode-chat [data-clara-bottom-bar],
+    body.clara-mode-chat [data-clara-flip-labels] { display: none !important; }
+
+    /* ══ FLIP: Sprachseite <-> Kartenseite ══ */
+    [data-clara-audio-pane] { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .flip { flex: 1; min-height: 0; perspective: 1400px; }
+    .flip-inner {
+      position: relative; width: 100%; height: 100%;
+      transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+      transition: transform .75s cubic-bezier(.35,.1,.25,1); will-change: transform;
+    }
+    .flip.is-flipped .flip-inner { transform: rotateY(180deg); }
+    .flip-face {
+      position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0;
+      backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    }
+    .flip-face--voice { transform: rotateY(0deg) translateZ(1px); }
+    .flip-face--cards { transform: rotateY(180deg) translateZ(1px); }
+    .flip:not(.is-flipped) .flip-face--cards { opacity: 0; pointer-events: none; transition: opacity .3s .1s; }
+    .flip.is-flipped .flip-face--cards { opacity: 1; pointer-events: auto; transition: opacity .3s .35s; }
+    .flip.is-flipped .flip-face--voice { opacity: 0; pointer-events: none; transition: opacity .3s .1s; }
+    .flip:not(.is-flipped) .flip-face--voice { opacity: 1; pointer-events: auto; transition: opacity .3s .35s; }
+    @media (prefers-reduced-motion: reduce) { .flip-inner { transition: none; } .flip-face { transition: none !important; } }
+
+    .flip-labels {
+      display: flex; justify-content: center; gap: 16px; margin-top: 10px; flex: none;
+      font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+    }
+    .flip-labels span { color: rgba(255,255,255,.35); transition: color .35s; cursor: pointer; padding: 4px 6px; }
+    .flip-labels span.on { color: var(--turq); }
+    .flip-labels .badge {
+      display: inline-grid; place-items: center; min-width: 15px; height: 15px; margin-left: 4px;
+      padding: 0 4px; border-radius: 999px; background: var(--pink); color: #fff;
+      font-size: 9px; font-weight: 900; vertical-align: 1px;
+    }
+    .flip-labels .badge:empty { display: none; }
+
+    .top { text-align: center; margin-top: 14px; flex: none; }
+    .calling { color: var(--ink-soft); font-size: 14px; letter-spacing: .4px; min-height: 19px; }
+    .name { font-size: 30px; font-weight: 700; margin: 5px 0 0; letter-spacing: -.02em; }
+    .reason { color: var(--turq); font-size: 15px; margin-top: 4px; min-height: 21px; opacity: .85; }
+
+    .mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; min-height: 0; }
+    .orb-wrap { position: relative; width: 176px; height: 176px; }
+    .orb {
+      position: relative; z-index: 2; width: 176px; height: 176px; border-radius: 50%;
+      border: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+      background:
+        radial-gradient(100% 100% at 30% 25%, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 60%),
+        radial-gradient(120% 120% at 50% 50%, #101b30 0%, #0a1424 70%);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+      box-shadow: 0 0 42px color-mix(in srgb, var(--accent) 28%, transparent),
+                  inset 0 0 30px color-mix(in srgb, var(--accent) 10%, transparent);
+      transition: border-color .45s ease, box-shadow .45s ease; touch-action: manipulation;
+    }
+    .orb:active { transform: scale(.97); }
+    .wave { display: flex; align-items: center; gap: 9px; height: 60px; pointer-events: none; }
+    .wave span { width: 10px; border-radius: 7px; background: var(--accent);
+                 box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
+                 transition: background .45s ease, box-shadow .45s ease; animation: wob 1.6s ease-in-out infinite; }
+    .wave span:nth-child(1) { height: 28px; }
+    .wave span:nth-child(2) { height: 54px; animation-delay: .2s; }
+    .wave span:nth-child(3) { height: 28px; animation-delay: .4s; }
+    @keyframes wob { 0%, 100% { transform: scaleY(.72); } 50% { transform: scaleY(1.08); } }
+    body.st-ended .wave span { animation-play-state: paused; }
+
+    .ring { position: absolute; inset: -4px; border-radius: 50%; z-index: 1;
+            border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); opacity: 0; pointer-events: none; }
+    @keyframes rip { 0% { transform: scale(.96); opacity: .75; } 100% { transform: scale(1.5); opacity: 0; } }
+    @keyframes ripSoft { 0% { transform: scale(.98); opacity: .4; } 100% { transform: scale(1.28); opacity: 0; } }
+    @keyframes breathe {
+      0%, 100% { box-shadow: 0 0 34px color-mix(in srgb, var(--accent) 20%, transparent), inset 0 0 26px color-mix(in srgb, var(--accent) 8%, transparent); }
+      50%      { box-shadow: 0 0 58px color-mix(in srgb, var(--accent) 42%, transparent), inset 0 0 34px color-mix(in srgb, var(--accent) 14%, transparent); }
+    }
+    @keyframes thinkPulse {
+      0%, 100% { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+      50%      { border-color: color-mix(in srgb, var(--accent) 90%, transparent); }
+    }
+    body.st-idle .orb { animation: breathe 3s ease-in-out infinite; }
+    body.st-idle .ring.r1 { animation: rip 1.8s ease-out infinite; }
+    body.st-idle .ring.r2 { animation: rip 1.8s ease-out .9s infinite; }
+    body.st-connecting .orb { animation: breathe 1.1s ease-in-out infinite; }
+    body.st-listening .orb { animation: breathe 3.2s ease-in-out infinite; }
+    body.st-listening .ring.r1 { animation: ripSoft 1.8s ease-out infinite; }
+    body.st-user .ring.r1 { animation: ripSoft 1s ease-out infinite; }
+    body.st-user .orb { animation: breathe 1.4s ease-in-out infinite; }
+    body.st-thinking .orb { animation: thinkPulse 1s ease-in-out infinite; }
+    body.st-thinking .ring.r1 { animation: ripSoft 1.6s ease-out infinite; }
+    body.st-clara .orb { animation: breathe 1.3s ease-in-out infinite; }
+    body.st-clara .ring.r1 { animation: rip 1.6s ease-out infinite; }
+    body.st-clara .ring.r2 { animation: rip 1.6s ease-out .8s infinite; }
+    body.st-standby .orb { animation: breathe 5s ease-in-out infinite; opacity: .82; }
+    body.st-standby .wave span { animation-play-state: paused; opacity: .5; }
+
+    .state-label { font-size: 15px; font-weight: 700; letter-spacing: .3px; min-height: 22px;
+                   color: var(--accent); transition: color .45s ease; text-align: center; }
+    .hint { color: var(--ink-soft); font-size: 13px; min-height: 18px; text-align: center; }
+
+    .agents { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 0 8px; }
+    .agents span {
+      padding: 4px 9px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .02em;
+      color: rgba(255,255,255,.82); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+      opacity: .45; transform: translateY(4px);
+      transition: opacity .35s ease, transform .35s ease, color .35s ease, background .35s ease, border-color .35s ease, box-shadow .35s ease;
+    }
+    body.st-thinking .agents span, body.st-clara .agents span { opacity: .85; transform: none; }
+    .agents span.is-asking { opacity: 1 !important; transform: translateY(0) scale(1.06); color: var(--amber);
+      background: rgba(245,197,24,.16); border-color: rgba(245,197,24,.6); animation: chipRipple 1.4s ease-out infinite; }
+    .agents span.is-answered { opacity: 1 !important; transform: translateY(0) scale(1.06); color: var(--green);
+      background: rgba(52,211,153,.18); border-color: rgba(52,211,153,.65); box-shadow: 0 0 14px rgba(52,211,153,.32); }
+    @keyframes chipRipple { 0% { box-shadow: 0 0 0 0 rgba(245,197,24,.55); } 70% { box-shadow: 0 0 0 9px rgba(245,197,24,0); } 100% { box-shadow: 0 0 0 0 rgba(245,197,24,0); } }
+
+    .bottom { display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 56px; flex: none; }
+    .decline-link { background: none; border: 0; color: var(--red); opacity: .8; font-size: 15px; font-weight: 600; cursor: pointer; padding: 10px 18px; }
+    .enable { display: none; margin: 0 auto; background: var(--amber); color: #131a26; border: 0; border-radius: 12px;
+              padding: 12px 20px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .enable.show { display: block; }
+    .status { text-align: center; color: var(--ink-soft); font-size: 13px; min-height: 18px; }
+    .hidden { display: none !important; }
+
+    /* ══ KARTENSEITE ══ */
+    .cards-face-head { text-align: center; margin: 12px 0 10px; flex: none; }
+    .cards-face-head b { display: block; color: #fff; font-size: 20px; font-weight: 900; letter-spacing: -.01em; }
+    .cards-face-head small { display: block; color: var(--turq); font-size: 10.5px; font-weight: 800; letter-spacing: .06em; margin-top: 2px; }
+    .cards-face-state { display: inline-flex; align-items: center; gap: 6px; margin-top: 7px;
+      font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+    .cards-face-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); transition: background .45s ease; }
+    .cards-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 2px 2px 14px; -webkit-overflow-scrolling: touch; }
+    .cards-empty { color: var(--ink-soft); font-size: 13.5px; text-align: center; line-height: 1.55; padding: 26px 18px; }
+    .cards-empty b { color: var(--ink); }
+
+    .card {
+      background: radial-gradient(130% 80% at 50% 0%, #181430 0%, #0b1020 52%, #060a14 100%);
+      border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 13px 13px 12px; box-shadow: 0 14px 34px rgba(0,0,0,.45);
+    }
+    .card-next { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 11px 12px; }
+    .card-tag { font-size: 9.5px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: #cfa3ff; }
+    .card-name { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 4px; }
+    .card-name b { color: #fff; font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
+    .card-time { font-size: 12.5px; font-weight: 800; color: var(--turq); white-space: nowrap; }
+    .card-why { margin-top: 3px; font-size: 11.5px; color: rgba(255,255,255,.62); }
+    .card-key { margin-top: 10px; }
+    .card-key-h { font-size: 9.5px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.45); margin: 0 2px 7px; }
+    .card-key ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+    .card-key li { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #e7edf6;
+      padding: 6px 8px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.06); line-height: 1.35; }
+    .card-key li i { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; flex: none; }
+    .card-key li i svg { width: 12px; height: 12px; display: block; }
+    .card-key li.is-alert i { background: rgba(255,111,97,.18); color: #ff9b90; }
+    .card-key li.is-warn  i { background: rgba(245,197,24,.16); color: var(--amber); }
+    .card-key li.is-info  i { background: rgba(46,230,200,.14); color: var(--turq); }
+    .card-key li.is-ok    i { background: rgba(52,211,153,.16); color: var(--green); }
+    .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; padding: 0 2px; }
+    .card-foot .fnote { font-size: 10.5px; font-weight: 800; color: var(--ink-soft); }
+    .card-foot .fwhen { font-size: 10px; color: rgba(255,255,255,.35); }
+    .card.is-new { animation: cardIn .5s cubic-bezier(.2,.9,.3,1.2); }
+    @keyframes cardIn { 0% { opacity: 0; transform: translateY(14px) scale(.97); } 100% { opacity: 1; transform: none; } }
+
+    /* ── Chat-Vollbild ── */
+    .chat-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 8px; }
+    .chat-scroll { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 2px 12px; -webkit-overflow-scrolling: touch; }
+    .chat-scroll .card { align-self: stretch; }
+    .clara-bubble { max-width: 88%; padding: 11px 14px; border-radius: 16px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+    .clara-bubble-user { align-self: flex-end; background: rgba(255,179,71,.16); border: 1px solid rgba(255,179,71,.35); border-bottom-right-radius: 4px; }
+    .clara-bubble-assistant { align-self: flex-start; background: rgba(46,230,200,.12); border: 1px solid rgba(46,230,200,.28); border-bottom-left-radius: 4px; }
+    .clara-bubble.partial { opacity: .65; font-style: italic; }
+    .chat-compose { display: flex; gap: 8px; align-items: flex-end; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); flex: none; }
+    .chat-compose textarea { flex: 1; min-height: 42px; max-height: 120px; resize: none; border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.22); color: var(--ink); padding: 10px 12px; font: inherit; }
+    .chat-compose button { border: 0; border-radius: 12px; background: var(--turq); color: #0a1322; font-weight: 700; padding: 10px 14px; cursor: pointer; }
+    .clara-proof-card { align-self: stretch; background: rgba(15,23,42,.72); border: 1px solid rgba(52,211,153,.35); border-radius: 14px; padding: 12px 14px; font-size: 14px; }
+    .clara-proof-head { color: #34d399; font-weight: 700; margin-bottom: 8px; }
+    .clara-proof-line { display: flex; justify-content: space-between; gap: 10px; margin: 4px 0; }
+    .clara-proof-line span { color: var(--ink-soft); }
+    .clara-proof-img { width: 100%; margin-top: 10px; border-radius: 10px; background: #fff; }
+    .proof-strip { margin-top: 10px; }
+
+    .chat-mid { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px 0 10px; min-height: 148px; }
+    .chat-connect-btn { border: 0; border-radius: 999px; padding: 14px 34px; font-size: 16px; font-weight: 700; cursor: pointer; color: #0a1322; background: var(--green);
+      box-shadow: 0 0 28px color-mix(in srgb, var(--green) 45%, transparent); touch-action: manipulation; }
+    .chat-connect-btn:active { transform: scale(.97); }
+    .chat-orb-wrap { position: relative; width: 132px; height: 132px; }
+    .chat-orb { position: relative; z-index: 2; width: 132px; height: 132px; border-radius: 50%;
+      border: 2px solid color-mix(in srgb, var(--chat-accent, var(--green)) 65%, transparent);
+      background: radial-gradient(100% 100% at 30% 25%, color-mix(in srgb, var(--chat-accent, var(--green)) 16%, transparent) 0%, transparent 60%),
+        radial-gradient(120% 120% at 50% 50%, #101b30 0%, #0a1424 70%);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 34px color-mix(in srgb, var(--chat-accent, var(--green)) 28%, transparent), inset 0 0 22px color-mix(in srgb, var(--chat-accent, var(--green)) 10%, transparent);
+      transition: border-color .45s ease, box-shadow .45s ease; }
+    .chat-orb .wave span { background: var(--chat-accent, var(--green)); box-shadow: 0 0 12px color-mix(in srgb, var(--chat-accent, var(--green)) 60%, transparent); }
+    .chat-ring { position: absolute; inset: -3px; border-radius: 50%; z-index: 1; border: 2px solid color-mix(in srgb, var(--chat-accent, var(--green)) 55%, transparent); opacity: 0; pointer-events: none; }
+    .chat-state-label { font-size: 14px; font-weight: 600; letter-spacing: .2px; min-height: 20px; color: var(--chat-accent, var(--green)); text-align: center; transition: color .45s ease; padding: 0 12px; line-height: 1.35; }
+    .chat-state-label.has-status { color: var(--ink-soft); font-weight: 500; }
+    .chat-enable { border: 0; border-radius: 12px; background: #f59e0b; color: #0a1322; font-weight: 700; padding: 10px 16px; cursor: pointer; display: none; }
+    .chat-enable.show { display: block; }
+    .chat-st-connecting { --chat-accent: var(--amber); }
+    .chat-st-connecting .chat-orb { animation: breathe 1.1s ease-in-out infinite; }
+    .chat-st-listening { --chat-accent: var(--green); }
+    .chat-st-listening .chat-orb { animation: breathe 3s ease-in-out infinite; }
+    .chat-st-listening .chat-ring.r1 { animation: ripSoft 1.8s ease-out infinite; }
+    .chat-st-listening .chat-orb .wave, .chat-st-idle .chat-orb .wave { display: none; }
+    .chat-st-thinking { --chat-accent: var(--purple); }
+    .chat-st-thinking .chat-orb { animation: thinkPulse 1s ease-in-out infinite; }
+    .chat-st-thinking .chat-ring.r1 { animation: ripSoft 1.6s ease-out infinite; }
+    .chat-st-writing { --chat-accent: var(--amber); }
+    .chat-st-writing .chat-orb { animation: breathe 1.3s ease-in-out infinite; }
+    .chat-st-writing .chat-ring.r1 { animation: rip 1.5s ease-out infinite; }
+    .chat-st-writing .chat-ring.r2 { animation: rip 1.5s ease-out .75s infinite; }
+
+    /* ── Rechte Clara-Spalte (Querformat): Patient + Heads-up-Karten ──
+       Hochkant: Karten hinter dem Flip. Quer: dieselbe Deck-Quelle hier. */
+    .clara-right { min-height: 0; flex-direction: column; padding: 2px 4px 6px 16px; overflow: hidden; }
+    .right-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex: none; }
+    .right-h h2 { margin: 0; font-size: .95rem; font-weight: 900; letter-spacing: -.02em; }
+    .right-h .demo-tag {
+      font-size: .58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--amber); background: rgba(245,197,24,.14); border: 1px solid rgba(245,197,24,.3);
+      padding: 3px 8px; border-radius: 999px;
+    }
+    .patient-card {
+      width: 100%; text-align: left; margin: 0 0 8px; padding: 10px 12px; border-radius: 14px; flex: none;
+      background: radial-gradient(120% 100% at 0% 0%, rgba(216,98,200,.14) 0%, transparent 60%), rgba(255,255,255,.045);
+      border: 1px solid var(--line);
+    }
+    .patient-label { font-size: .6rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--mute2); margin-bottom: 3px; }
+    .patient-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .patient-name { font-size: clamp(1.15rem, 2.2vh, 1.45rem); font-weight: 900; letter-spacing: -.03em; color: #fff; line-height: 1.05; }
+    .patient-time { font-size: .9rem; font-weight: 800; color: var(--pink-light); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .patient-treat { font-size: .78rem; color: var(--mute); font-weight: 600; margin-top: 2px; }
+    /* Termin-Hinweise (ohne Heads-up-Karte) */
+    .feat-list {
+      display: none; flex-direction: column; gap: 6px; flex: 1; min-height: 0;
+      overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .feat-list.is-show { display: flex; }
+    .feat {
+      display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start;
+      padding: 8px 11px; border-radius: 12px; background: var(--card-strong); border: 1px solid var(--line);
+      flex: none;
+    }
+    /* Clara Heads-up (gleiche renderOverviewCard wie Hochkant-Flip) */
+    .clara-right-cards {
+      display: none; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto;
+      flex-direction: column; gap: 10px; padding: 0 0 6px;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+    }
+    .clara-right-cards.is-show { display: flex; }
+    .clara-right-cards .card { flex: none; }
+    .clara-right-cards .cards-empty {
+      color: var(--mute); font-size: .78rem; text-align: left; line-height: 1.45;
+      padding: 10px 4px; font-weight: 600;
+    }
+    .clara-right-cards .cards-empty b { color: var(--ink); }
+    .feat-ico { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; font-size: .85rem; }
+    .feat-ico.red { background: rgba(255,91,110,.15); color: var(--red); }
+    .feat-ico.orange { background: rgba(255,154,74,.15); color: var(--orange); }
+    .feat-ico.yellow { background: rgba(245,200,76,.15); color: var(--yellow); }
+    .feat-ico.green { background: rgba(52,211,153,.12); color: var(--voice); }
+    .feat-ico.blue { background: rgba(106,168,255,.15); color: var(--blue); }
+    .feat-ico.cyan { background: rgba(110,216,255,.15); color: var(--cyan); }
+    .feat-title { font-weight: 800; font-size: .84rem; line-height: 1.15; }
+    .feat-desc { display: block; font-size: .7rem; color: var(--mute); font-weight: 500; line-height: 1.25; margin-top: 2px; }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       LENA-DOKU-WIZARD (Dokumentation-Modus) — Preview-Layout.
+       Raum→Termin: POST /treatment/current · STT: Canary via lena-stt-capture.
+       ══════════════════════════════════════════════════════════════════════ */
+    .pane-doku { --pink: #d862c8; }
+    .lena-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 2px 4px 4px; gap: 8px; overflow: hidden; }
+    .steps { display: flex; gap: 5px; flex: none; overflow: hidden; }
+    .step-chip {
+      flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 6px; border-radius: 12px; background: var(--card); border: 1px solid var(--line);
+      font-size: .7rem; font-weight: 700; color: var(--mute2); white-space: nowrap; cursor: pointer;
+    }
+    .step-chip .n { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: .65rem; background: rgba(255,255,255,.08); }
+    .step-chip.is-now { color: #b8fff0; background: rgba(15,118,110,.28); border-color: rgba(126,201,193,.35); }
+    .step-chip.is-now .n { background: var(--lena); color: #fff; }
+    .step-chip.is-done { color: var(--green); border-color: rgba(52,211,153,.25); }
+    .step-chip.is-done .n { background: rgba(52,211,153,.25); color: var(--green); }
+    .wiz { display: none; flex: 1; min-height: 0; gap: 10px; overflow: hidden; }
+    .wiz.is-show { display: grid; }
+    .wiz-arzt { grid-template-columns: 1.2fr .8fr; }
+    .wiz-termin { grid-template-columns: minmax(200px, 240px) 1fr; }
+    .wiz-rec, .wiz-dict, .wiz-sum, .wiz-sophie { grid-template-columns: 1fr; }
+    .panel { background: var(--card-strong); border: 1px solid var(--line); border-radius: 16px; padding: 12px; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .panel h2 { margin: 0 0 2px; font-size: 1.05rem; font-weight: 900; letter-spacing: -.02em; }
+    .panel .lead { margin: 0 0 8px; color: var(--mute); font-size: .78rem; font-weight: 500; }
+    .doc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1; align-content: start; }
+    .doc-card { border: 1px solid var(--line); background: rgba(0,0,0,.22); border-radius: 14px; padding: 14px; text-align: left; cursor: pointer; font: inherit; color: inherit; transition: border-color .15s, box-shadow .15s; }
+    .doc-card.is-sel { border-color: rgba(126,201,193,.5); box-shadow: 0 0 0 3px rgba(15,118,110,.2); }
+    .doc-av { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; color: #fff; margin-bottom: 10px; background: linear-gradient(145deg, #3d8f88, #0f766e); }
+    .doc-card:nth-child(2) .doc-av { background: linear-gradient(145deg, #c45c3e, #8f3d28); }
+    .doc-card:nth-child(3) .doc-av { background: linear-gradient(145deg, #6a8fad, #3a6ea5); }
+    .doc-card:nth-child(4) .doc-av { background: linear-gradient(145deg, #8a9a6e, #5f7048); }
+    .doc-name { font-weight: 800; font-size: .95rem; }
+    .doc-role { font-size: .74rem; color: var(--mute); font-weight: 600; margin-top: 2px; }
+    .side-note { border-radius: 18px; padding: 18px; background: radial-gradient(80% 60% at 100% 0%, rgba(216,98,200,.22), transparent 50%), linear-gradient(160deg, #1a1230, #0d0a16); border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: end; gap: 8px; }
+    .side-note .kicker { font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); }
+    .side-note h3 { margin: 0; font-size: 1.35rem; font-weight: 900; line-height: 1.15; }
+    .side-note p { margin: 0; color: var(--mute); font-size: .85rem; line-height: 1.4; }
+    .day-rail { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    .picker { background: rgba(0,0,0,.28); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+    .picker-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+    .picker-head button { width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 1rem; cursor: pointer; display: grid; place-items: center; line-height: 1; }
+    .picker-head button:hover { border-color: rgba(216,98,200,.4); color: var(--pink-light); }
+    .picker-title { font-weight: 800; font-size: .84rem; letter-spacing: .01em; }
+    .picker-dow, .picker-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+    .picker-dow span { text-align: center; font-size: .62rem; font-weight: 800; color: var(--mute2); text-transform: uppercase; padding: 2px 0; }
+    .picker-grid { margin-top: 3px; grid-auto-rows: clamp(22px, 3.1vh, 30px); }
+    .picker-day { border: 1px solid transparent; background: transparent; color: var(--ink); font: inherit; font-size: .76rem; font-weight: 700; border-radius: 9px; cursor: pointer; position: relative; display: grid; place-items: center; min-width: 0; }
+    .picker-day:hover { background: rgba(255,255,255,.06); }
+    .picker-day.other { color: var(--mute2); opacity: .5; }
+    .picker-day.is-today { border-color: rgba(216,98,200,.5); }
+    .picker-day.is-sel { background: linear-gradient(135deg, var(--pink), var(--magenta-deep)); color: #fff; box-shadow: var(--glow-mag); }
+    .picker-day.has-appt::after { content: ""; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: var(--voice); box-shadow: 0 0 6px rgba(52,211,153,.7); }
+    .picker-day.is-sel.has-appt::after { background: #fff; box-shadow: none; }
+    .picker-quick { display: flex; gap: 6px; margin-top: 10px; }
+    .picker-quick button { flex: 1; border: 1px solid var(--line); background: var(--card); color: var(--mute); font: inherit; font-size: .72rem; font-weight: 700; padding: 7px 4px; border-radius: 9px; cursor: pointer; }
+    .picker-quick button:hover { color: var(--ink); border-color: rgba(216,98,200,.4); }
+    .appt-list { display: flex; flex-direction: column; gap: 5px; overflow: hidden; min-height: 0; }
+    .appt { display: grid; grid-template-columns: 58px 1fr auto; gap: 10px; align-items: center; padding: 12px; border-radius: 14px; border: 1px solid transparent; background: rgba(0,0,0,.22); color: inherit; font: inherit; cursor: pointer; text-align: left; }
+    .appt.is-sel { border-color: rgba(216,98,200,.4); background: rgba(216,98,200,.12); }
+    .appt-time { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--mute); }
+    .appt-name { font-weight: 800; font-size: .92rem; }
+    .appt-treat { font-size: .74rem; color: var(--mute); font-weight: 600; margin-top: 2px; }
+    .appt-tag { font-size: .65rem; font-weight: 800; padding: 4px 9px; border-radius: 999px; background: rgba(52,211,153,.15); color: var(--green); }
+    .appt-tag.wait { background: rgba(245,200,76,.12); color: var(--yellow); }
+    .actions { display: flex; justify-content: space-between; gap: 8px; flex: none; margin-top: auto; padding-top: 10px; }
+    .btn { border: 0; font: inherit; font-weight: 750; font-size: .86rem; border-radius: 12px; padding: 11px 16px; cursor: pointer; color: #fff; }
+    .btn-ghost { background: rgba(255,255,255,.07); color: var(--mute); }
+    .btn-primary { background: linear-gradient(135deg, #1a9b8e, var(--lena)); box-shadow: 0 8px 20px rgba(15,118,110,.35); }
+    .btn-mag { background: linear-gradient(135deg, var(--magenta-hot), var(--magenta-deep)); box-shadow: var(--glow-mag); }
+    .btn-rec { background: var(--red); min-width: 130px; box-shadow: 0 8px 20px rgba(255,91,110,.35); }
+    .btn-rec.is-live { background: transparent; color: var(--red); box-shadow: inset 0 0 0 2px var(--red); }
+    .btn:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
+    /* Aufnahme: Gespräch dominant · Pegel feste Höhe, Mitte→rechts */
+    .wiz-rec .rec-panel {
+      gap: 8px; flex: 1; min-height: 0; height: 100%;
+      display: flex; flex-direction: column;
+    }
+    .rec-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: stretch;
+      gap: 10px;
+      flex: none;
+      height: 108px; /* fest — Chat springt nicht bei Pegel/Label */
+      min-height: 108px;
+      max-height: 108px;
+      overflow: hidden;
+    }
+    .rec-head {
+      display: flex; align-items: center; gap: 8px; min-width: 0;
+      padding: 2px 0;
+    }
+    .rec-av {
+      width: 36px; height: 36px; border-radius: 50%; flex: none;
+      background: linear-gradient(145deg, #d08a72, #c45c3e);
+      display: grid; place-items: center; font-weight: 800; font-size: .72rem;
+    }
+    .rec-head-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .rec-name { font-weight: 900; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rec-meta { font-size: .7rem; color: var(--mute); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rec-meta b { color: #b8fff0; }
+    .rec-live {
+      display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
+      font-size: .62rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--mute); background: rgba(255,255,255,.06); padding: 5px 8px; border-radius: 999px;
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .rec-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--mute2); display: block; flex: none; }
+    .rec-live.is-on { color: var(--red); background: rgba(255,91,110,.12); }
+    .rec-live.is-on i { background: var(--red); animation: orbPulse 1.1s ease infinite; }
+    .meters {
+      min-width: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; justify-content: flex-start;
+      gap: 5px; padding: 8px 10px; border-radius: 12px;
+      background: rgba(0,0,0,.32); border: 1px solid var(--line);
+      box-sizing: border-box; overflow: hidden;
+    }
+    .meter-row {
+      display: grid; grid-template-columns: 52px minmax(0, 1fr) 48px;
+      gap: 8px; align-items: center;
+      height: 18px; min-height: 18px; max-height: 18px;
+      flex: none; overflow: hidden;
+    }
+    .meter-label { display: flex; align-items: center; gap: 5px; font-weight: 800; font-size: .7rem; min-width: 0; }
+    .meter-label span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .dot-a { background: var(--voice); box-shadow: 0 0 0 2px rgba(52,211,153,.15); }
+    .dot-p { background: var(--magenta); box-shadow: 0 0 0 2px rgba(216,98,200,.15); }
+    /* Track: feste Box; Fill nur per scaleX (kein Layout-Reflow) */
+    .meter-track {
+      position: relative; height: 11px; min-height: 11px; max-height: 11px;
+      border-radius: 999px; background: rgba(255,255,255,.07);
+      overflow: hidden; min-width: 0;
+    }
+    .meter-fill {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 100%; transform: scaleX(0.08); transform-origin: left center;
+      border-radius: 999px; transition: transform .08s linear;
+      will-change: transform; pointer-events: none;
+    }
+    .meter-fill.a { background: linear-gradient(90deg, #7ec9c1, var(--lena)); }
+    .meter-fill.p { background: linear-gradient(90deg, #ff8ad8, var(--magenta-deep)); }
+    .meter-db {
+      font-variant-numeric: tabular-nums; font-weight: 800; font-size: .65rem;
+      color: var(--mute); text-align: right; white-space: nowrap;
+      overflow: hidden; line-height: 18px; height: 18px;
+    }
+    .meter-note { display: none; }
+    .mic-toggle {
+      display: flex; gap: 4px; padding: 3px; border-radius: 9px; flex: none;
+      height: 28px; min-height: 28px; max-height: 28px; box-sizing: border-box;
+      background: rgba(255,255,255,.05); border: 1px solid var(--line);
+    }
+    .mic-toggle button {
+      flex: 1; border: 0; border-radius: 7px; padding: 5px 6px; cursor: pointer;
+      font-size: .68rem; font-weight: 800; color: var(--mute); background: transparent;
+      line-height: 1.15;
+    }
+    .mic-toggle button.is-on {
+      background: rgba(126,201,193,.22); color: #c8fff4;
+      box-shadow: inset 0 0 0 1px rgba(126,201,193,.45);
+    }
+    .mic-swap {
+      margin: 0; padding: 3px 6px; border-radius: 7px; border: 1px solid var(--line);
+      background: rgba(255,255,255,.04); color: var(--mute); font-size: .62rem; font-weight: 700;
+      cursor: pointer; -webkit-tap-highlight-color: transparent; text-align: left;
+      min-height: 22px; /* Platz bleibt auch wenn unsichtbar */
+    }
+    .mic-swap[hidden] { display: block !important; visibility: hidden; pointer-events: none; }
+    .mic-swap:disabled { opacity: .45; cursor: default; }
+    .mic-toggle[data-mode="usb"] button.is-on {
+      background: rgba(216,98,200,.2); color: #ffd6f5;
+      box-shadow: inset 0 0 0 1px rgba(216,98,200,.45);
+    }
+    .mic-active {
+      margin: 0; font-size: .6rem; font-weight: 700; color: var(--mute2);
+      line-height: 16px; height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      flex: none;
+    }
+    .mic-active.is-warn { color: #ffb4a8; }
+    .line-canvas { display: none; }
+    .dialog {
+      flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 7px; padding: 4px 2px 8px;
+      justify-content: flex-start;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+      background: rgba(0,0,0,.16); border: 1px solid var(--line); border-radius: 14px;
+    }
+    .bubble { position: relative; max-width: 86%; padding: 9px 12px; border-radius: 14px; font-size: .9rem; line-height: 1.35; font-weight: 500; }
+    .bubble.a { align-self: flex-end; background: rgba(15,118,110,.28); color: #c8fff4; border-bottom-right-radius: 5px; }
+    .bubble.p { align-self: flex-start; background: rgba(255,255,255,.06); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+    .bubble .who { display: block; font-size: .66rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; opacity: .65; margin-bottom: 3px; }
+    .bubble .bubble-text { display: block; }
+    .bubble .bubble-ops { display: flex; gap: 4px; margin-top: 5px; opacity: .55; }
+    .bubble:hover .bubble-ops, .bubble:focus-within .bubble-ops { opacity: 1; }
+    .bubble .bubble-ops button {
+      border: 0; background: rgba(255,255,255,.08); color: inherit; font-size: .68rem; font-weight: 700;
+      padding: 2px 7px; border-radius: 6px; cursor: pointer;
+    }
+    .bubble .bubble-ops button:active { transform: scale(.96); }
+    .rec-bar { display: flex; align-items: center; gap: 6px; flex: none; padding-top: 2px; }
+    .rec-bar .btn { padding: 9px 12px; font-size: .8rem; }
+    .timer { font-variant-numeric: tabular-nums; font-weight: 800; font-size: .95rem; min-width: 56px; }
+    .spacer { flex: 1; }
+    .nd-page { display: grid; grid-template-rows: auto 1fr auto; gap: 8px; flex: 1; min-height: 0; overflow: hidden; }
+    .nd-head { display: flex; align-items: center; gap: 12px; flex: none; }
+    .nd-head h2 { margin: 0; font-size: 1.1rem; font-weight: 900; letter-spacing: -.02em; }
+    .nd-head .lead { margin: 2px 0 0; color: var(--mute); font-size: .76rem; font-weight: 500; }
+    .nd-badge { margin-left: auto; font-size: .68rem; font-weight: 800; padding: 6px 11px; border-radius: 999px; background: rgba(52,211,153,.12); color: var(--voice); border: 1px solid rgba(52,211,153,.28); }
+    .nd-grid { display: grid; grid-template-columns: 1fr 1fr 1.1fr; gap: 8px; flex: 1; min-height: 0; overflow: hidden; }
+    .nd-col { background: rgba(0,0,0,.28); border: 1px solid var(--line); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .nd-col h3 { margin: 0 0 6px; font-size: .7rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--mute); flex: none; display: flex; align-items: center; gap: 6px; }
+    .nd-col h3 .tag { font-size: .6rem; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--mute2); letter-spacing: 0; text-transform: none; font-weight: 700; }
+    .nd-col--rec h3 { color: var(--voice); }
+    .nd-col--dict h3 { color: var(--pink-light); }
+    .nd-col--merge h3 { color: var(--st-think); }
+    .nd-rec {
+      flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 5px; justify-content: flex-start;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+    }
+    .nd-rec .bubble { max-width: 100%; font-size: .74rem; padding: 6px 9px; }
+    .nd-col textarea { flex: 1; min-height: 0; resize: none; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: .82rem; line-height: 1.4; }
+    .nd-mic { flex: none; display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .nd-mic button { border: 0; cursor: pointer; font: inherit; font-weight: 800; font-size: .78rem; border-radius: 11px; padding: 8px 12px; color: #fff; background: linear-gradient(135deg, var(--pink), var(--magenta-deep)); box-shadow: var(--glow-mag); }
+    .nd-mic button.is-live { background: transparent; color: var(--red); box-shadow: inset 0 0 0 2px var(--red); }
+    .nd-mic span { font-size: .68rem; font-weight: 700; color: var(--mute); }
+    .nd-merge {
+      flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto;
+      font-size: .8rem; line-height: 1.4; color: var(--ink);
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+    }
+    .nd-merge .sec { margin: 0 0 8px; padding: 8px 9px; border-radius: 10px; background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+    .nd-merge .sec strong { display: block; font-size: .64rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 3px; }
+    .nd-merge .sec--rec strong { color: var(--voice); }
+    .nd-merge .sec--dict strong { color: var(--pink-light); }
+    .nd-merge .sec p { margin: 0; color: var(--mute); font-size: .76rem; }
+    .nd-actions { display: flex; justify-content: flex-end; gap: 8px; flex: none; }
+    /* Zusammenfassung — dunkles Lena-Layout, ein Kopf + Doku | Export */
+    .wiz-sum .sum-panel {
+      gap: 10px; flex: 1; min-height: 0; height: 100%;
+      display: flex; flex-direction: column;
+    }
+    .sum-head {
+      flex: none; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(160px, .9fr);
+      gap: 12px; align-items: end;
+    }
+    .sum-head h2 { margin: 0 0 2px; font-size: 1.1rem; font-weight: 900; letter-spacing: -.02em; }
+    .sum-head .lead { margin: 0 0 6px; }
+    .sum-patient {
+      font-size: .82rem; font-weight: 700; color: #e8dff0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sum-share {
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 5px;
+      padding: 8px 10px; border-radius: 12px;
+      background: rgba(0,0,0,.28); border: 1px solid var(--line);
+      min-height: 0;
+    }
+    .sum-share-label {
+      margin: 0; font-size: .58rem; font-weight: 800; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--mute2);
+    }
+    .sum-share .meter-row {
+      height: 14px; min-height: 14px; max-height: 14px;
+      grid-template-columns: 48px minmax(0, 1fr) 36px; gap: 6px;
+    }
+    .sum-share .meter-track { height: 8px; min-height: 8px; max-height: 8px; }
+    .sum-share .meter-db { font-size: .62rem; line-height: 14px; height: 14px; color: #d6cce0; }
+    .sum-share-hint {
+      margin: 0; font-size: .58rem; font-weight: 600; color: var(--mute2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sum-grid { display: grid; grid-template-columns: 1.35fr .75fr; gap: 10px; flex: 1; min-height: 0; overflow: hidden; }
+    .sum-block {
+      background: rgba(0,0,0,.22); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+      min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 8px;
+    }
+    .sum-block-h {
+      flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .sum-block-h h3 { margin: 0; }
+    .sum-block-h .btn { padding: 7px 10px; font-size: .72rem; }
+    .sum-block h3 {
+      margin: 0; font-size: .7rem; font-weight: 800; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--mute);
+    }
+    #sumText {
+      flex: 1; min-height: 0; margin: 0;
+      overflow-x: hidden; overflow-y: auto; white-space: pre-wrap;
+      font-family: inherit; font-size: .86rem; line-height: 1.45; font-weight: 500;
+      color: #f0e8f6;
+      background: rgba(255,255,255,.04); border: 1px solid var(--line);
+      border-radius: 12px; padding: 12px 14px;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+    }
+    .sum-block ul { margin: 0; padding: 0 0 0 16px; color: var(--ink); font-size: .88rem; line-height: 1.55; }
+    .sum-block li + li { margin-top: 4px; }
+    .export-stack { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; overflow-y: auto; }
+    .export-btn {
+      display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 12px;
+      border: 1px solid var(--line); background: rgba(255,255,255,.04); color: inherit;
+      font: inherit; font-weight: 700; font-size: .82rem; cursor: pointer; text-align: left; flex: none;
+    }
+    .export-btn:hover { background: rgba(216,98,200,.12); border-color: rgba(216,98,200,.35); }
+    .export-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .export-btn .ico {
+      width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+      font-size: .85rem; background: rgba(216,98,200,.16); color: var(--magenta-hot); flex: none;
+    }
+    .export-btn small { display: block; font-size: .66rem; color: var(--mute); font-weight: 600; margin-top: 1px; }
+    .sophie-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; min-height: 0; }
+    .bill-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 12px; background: rgba(0,0,0,.22); border: 1px solid var(--line); margin-bottom: 7px; }
+    .bill-row strong { font-size: .9rem; }
+    .bill-row span { font-size: .74rem; color: var(--mute); display: block; margin-top: 2px; }
+    .bill-code { font-size: .72rem; font-weight: 800; padding: 5px 9px; border-radius: 8px; background: rgba(110,216,255,.12); color: var(--cyan); white-space: nowrap; }
+    .bill-flag { font-size: .68rem; font-weight: 800; padding: 4px 8px; border-radius: 999px; background: rgba(245,200,76,.14); color: var(--yellow); }
+    .bill-flag.ok { background: rgba(52,211,153,.14); color: var(--green); }
+    .hint-box { margin-top: 8px; padding: 12px; border-radius: 12px; background: rgba(216,98,200,.1); border: 1px solid rgba(216,98,200,.25); font-size: .82rem; line-height: 1.4; color: #ffd0f0; }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       QUERFORMAT: Clara-Split (Orb links · Besonderheiten rechts).
+       ══════════════════════════════════════════════════════════════════════ */
+    @media (orientation: landscape) {
+      body { padding-left: 10px; padding-right: 10px; }
+      .split { flex-direction: row; gap: 0; }
+      .clara-col { flex: 1 1 50%; min-width: 0; border-right: 1px solid rgba(255,255,255,.1); padding: 0 14px; }
+      .clara-right { display: flex; flex: 1 1 50%; min-width: 0; }
+      /* Im Split kein Umblättern: die Karten-Rückseite entfällt, Clara zeigt
+         die Sprachseite; die Besonderheiten sitzen fest rechts. */
+      .flip-labels { display: none !important; }
+      .flip.is-flipped .flip-inner { transform: none; }
+      .flip-face--cards { display: none; }
+      .orb-wrap, .orb { width: 148px; height: 148px; }
+    }
+    @media (max-width: 860px) {
+      .wiz-arzt, .wiz-termin, .sum-grid, .sophie-grid, .nd-grid, .sum-head { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body class="st-idle clara-mode-audio" data-clara-root data-app-mode="clara">
+  <!-- ══ KOPF: Marke · Clara|Dokumentation · Uhr ══ -->
+  <header class="chrome">
+    <div class="brand" id="brand" data-mode="clara">
+      <div class="brand-orb is-listen" id="brandOrb"></div>
+      <div>
+        <div class="brand-name" id="brandName">Clara</div>
+        <div class="brand-sub" id="brandSub">Vollinformiert in 10 Sekunden</div>
+      </div>
+    </div>
+    <div class="mode-switch" id="modeSwitch" data-active="clara" role="tablist">
+      <button type="button" class="is-on" data-mode="clara">Clara</button>
+      <button type="button" data-mode="doku">Dokumentation</button>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+    <a class="gear" href="/m/ipad.html?manage=1" aria-label="Einstellungen">&#9881;</a>
+  </header>
+
+  <div class="app-body">
+    <!-- ══ CLARA-MODUS: Orb links (live) · Besonderheiten rechts (Querformat) ══ -->
+    <section class="pane pane-clara is-active" id="paneClara">
+      <div class="split">
+        <!-- ══ CLARA-SPALTE (Sprechzimmer, live LiveKit) ══ -->
+        <section class="clara-col">
+      <div class="mode-bar" data-clara-mode-bar>
+        <button type="button" class="active" data-clara-mode-audio aria-pressed="true">🎙 Audio</button>
+        <button type="button" data-clara-mode-chat aria-pressed="false">💬 Chat</button>
+      </div>
+
+      <div data-clara-audio-pane>
+        <div class="flip" data-clara-flip>
+          <div class="flip-inner">
+            <div class="flip-face flip-face--voice" data-clara-face-voice>
+              <div class="top">
+                <div class="calling" id="calling">Sprechzimmer</div>
+                <div class="name">Clara</div>
+                <div class="reason" id="reason"></div>
+              </div>
+              <div class="mid">
+                <div class="orb-wrap">
+                  <div class="ring r1"></div><div class="ring r2"></div>
+                  <button class="orb" id="orb" aria-label="Clara">
+                    <div class="wave"><span></span><span></span><span></span></div>
+                  </button>
+                </div>
+                <div>
+                  <div class="state-label" id="stateLabel"></div>
+                  <div class="hint" id="hint"></div>
+                </div>
+                <div class="agents" id="agents" aria-hidden="true">
+                  <span>Bianca</span><span>Lisa</span><span>Nadine</span><span>Marie</span><span>Sophie</span><span>Julia</span><span>Lena</span>
+                </div>
+              </div>
+              <div class="proof-strip hidden" data-clara-proof-strip></div>
+            </div>
+
+            <div class="flip-face flip-face--cards" data-clara-face-cards>
+              <div class="cards-face-head">
+                <b>Clara</b>
+                <small>VOLLINFORMIERT IN 10 SEKUNDEN</small>
+                <div class="cards-face-state"><i></i><span id="cardsStateLabel">Bereit</span></div>
+              </div>
+              <div class="cards-scroll" data-clara-cards>
+                <div class="cards-empty" data-clara-cards-empty>
+                  Noch keine Karten.<br/>
+                  Frag mich z.&nbsp;B. <b>„Heads up zum nächsten Patienten"</b> — die Notizen erscheinen hier.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flip-labels" data-clara-flip-labels aria-hidden="true">
+          <span class="on" data-clara-lbl-voice>🎙 Sprache</span>
+          <span data-clara-lbl-cards>🗂 Karten<b class="badge" data-clara-card-badge></b></span>
+        </div>
+
+        <div class="bottom" data-clara-bottom-bar>
+          <button class="enable" id="enableBtn">&#128266; Ton aktivieren (tippen)</button>
+          <button class="decline-link hidden" id="btnDecline">Ablehnen</button>
+          <div class="status" id="status"></div>
+        </div>
+      </div>
+
+      <section class="chat-pane hidden" data-clara-chat-pane>
+        <div class="chat-scroll" data-clara-chat-scroll></div>
+        <div class="chat-mid chat-st-idle" data-clara-chat-mid>
+          <button type="button" class="chat-connect-btn" data-clara-chat-connect>Verbinden</button>
+          <div class="chat-orb-wrap hidden" data-clara-chat-orb-wrap>
+            <div class="chat-ring r1"></div><div class="chat-ring r2"></div>
+            <div class="chat-orb" data-clara-chat-orb aria-hidden="true">
+              <div class="wave"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+          <div class="chat-state-label" data-clara-chat-state></div>
+          <button type="button" class="chat-enable" data-clara-chat-enable>&#128266; Ton aktivieren (tippen)</button>
+        </div>
+        <div class="chat-compose">
+          <textarea rows="1" placeholder="Nachricht an Clara …" data-clara-chat-input></textarea>
+          <button type="button" data-clara-chat-send>Senden</button>
+        </div>
+      </section>
+        </section>
+
+        <!-- ══ RECHTS (Querformat): Patient + Heads-up-Karten (wie Flip hochkant) ══ -->
+        <aside class="clara-right">
+          <div class="patient-card" id="featPatientCard">
+            <div class="patient-label" id="featPatientLabel">Aktueller Termin</div>
+            <div class="patient-row">
+              <div class="patient-name" id="featPatientName">—</div>
+              <div class="patient-time" id="featPatientTime"></div>
+            </div>
+            <div class="patient-treat" id="featPatientTreat">Lade Termine …</div>
+          </div>
+          <div class="right-h">
+            <h2 id="rightPanelTitle">Das Wichtigste</h2>
+            <span class="demo-tag" id="featTag">live</span>
+          </div>
+          <div class="clara-right-cards" id="claraRightCards" aria-live="polite"></div>
+          <div class="feat-list is-show" id="featList">
+            <div class="feat">
+              <div class="feat-ico cyan">…</div>
+              <div>
+                <div class="feat-title">Wird geladen</div>
+                <div class="feat-desc">Raum→Termin vom Server.</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ══ DOKUMENTATION-MODUS: Lena-Wizard (Raum→Termin live) ══ -->
+    <section class="pane pane-doku" id="paneDoku">
+      <div class="lena-wrap">
+        <div class="steps" id="steps">
+          <div class="step-chip is-now" data-step="1"><span class="n">1</span>Arzt</div>
+          <div class="step-chip" data-step="2"><span class="n">2</span>Termin</div>
+          <div class="step-chip" data-step="3"><span class="n">3</span>Aufnahme</div>
+          <div class="step-chip" data-step="4"><span class="n">4</span>Nachdiktat</div>
+          <div class="step-chip" data-step="5"><span class="n">5</span>Summary</div>
+          <div class="step-chip" data-step="6"><span class="n">6</span>Sophie</div>
+        </div>
+
+        <!-- 1 Arzt -->
+        <div class="wiz wiz-arzt is-show" id="wiz1">
+          <div class="panel">
+            <h2>Wer behandelt?</h2>
+            <p class="lead" id="arztLead">Behandler vom gekoppelten Arbeitsplatz.</p>
+            <div class="doc-grid" id="doctors"></div>
+            <div class="actions"><span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span><button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button></div>
+          </div>
+          <aside class="side-note">
+            <div class="kicker">STT · Canary</div>
+            <h3>Headset = Arzt<br>iPad = Raum</h3>
+            <p>Deutsch fest gepinnt (Canary). Fachbegriffe nachkorrigiert. Modell tauschbar per <code>LENA_STT_PRIMARY</code>.</p>
+          </aside>
+        </div>
+
+        <!-- 2 Termin -->
+        <div class="wiz wiz-termin" id="wiz2">
+          <div class="day-rail">
+            <div class="picker" id="picker">
+              <div class="picker-head">
+                <button type="button" id="pickPrev" aria-label="Vorheriger Monat">‹</button>
+                <span class="picker-title" id="pickTitle">Juli 2026</span>
+                <button type="button" id="pickNext" aria-label="Nächster Monat">›</button>
+              </div>
+              <div class="picker-dow">
+                <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
+              </div>
+              <div class="picker-grid" id="pickGrid"></div>
+              <div class="picker-quick">
+                <button type="button" data-jump="today">Heute</button>
+                <button type="button" data-jump="-1">Gestern</button>
+                <button type="button" data-jump="-7">−7 Tage</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>Termin wählen</h2>
+            <p class="lead" id="terminLead">Termine für Dr. Petsas · <span id="terminDate">Heute</span></p>
+            <div class="appt-list" id="appts"></div>
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" data-back="1">Zurück</button>
+              <button type="button" class="btn btn-primary" data-next="3">Aufnahme starten</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 Aufnahme — Gespräch füllt die Fläche, Pegel klein oben rechts -->
+        <div class="wiz wiz-rec" id="wiz3">
+          <div class="panel rec-panel">
+            <div class="rec-top">
+              <div class="rec-head">
+                <div class="rec-av" id="recAv">GJ</div>
+                <div class="rec-head-main">
+                  <div class="rec-name" id="recName">—</div>
+                  <div class="rec-meta"><b id="recDoc">—</b> · <span id="recTreat"></span></div>
+                  <div class="rec-live" id="recLive"><i></i><span>bereit</span></div>
+                </div>
+              </div>
+              <div class="meters" aria-label="Pegel">
+                <div class="mic-toggle" id="micToggle" data-mode="ipad" role="group" aria-label="Mikrofonquelle">
+                  <button type="button" data-mic="ipad" class="is-on">iPad</button>
+                  <button type="button" data-mic="usb">DJI</button>
+                </div>
+                <div class="meter-row">
+                  <div class="meter-label"><span class="dot dot-a"></span><span id="meterLabelArzt">Arzt</span></div>
+                  <div class="meter-track"><div class="meter-fill a" id="fillArzt"></div></div>
+                  <div class="meter-db" id="dbArzt">−∞</div>
+                </div>
+                <div class="meter-row">
+                  <div class="meter-label"><span class="dot dot-p"></span><span id="meterLabelPat">Patient</span></div>
+                  <div class="meter-track"><div class="meter-fill p" id="fillPat"></div></div>
+                  <div class="meter-db" id="dbPat">−∞</div>
+                </div>
+                <button type="button" class="mic-swap" id="btnStereoSwap" hidden>L/R tauschen</button>
+                <p class="mic-active" id="micActiveLabel">Quelle · Pegel live</p>
+                <p class="meter-note" id="meterMonoNote" hidden></p>
+                <canvas class="line-canvas" id="lineCanvas" width="960" height="112" hidden aria-hidden="true"></canvas>
+              </div>
+            </div>
+            <div class="dialog" id="dialog">
+              <div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — das Gespräch erscheint hier.</div>
+            </div>
+            <div class="rec-bar">
+              <button type="button" class="btn btn-ghost" data-back="2">Termin</button>
+              <div class="timer" id="timer">00:00</div>
+              <div class="spacer"></div>
+              <button type="button" class="btn btn-ghost" id="btnPause" disabled>Pause</button>
+              <button type="button" class="btn btn-rec" id="btnRec">● Aufnehmen</button>
+              <button type="button" class="btn btn-primary" data-next="4">Weiter</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 Nachdiktat -->
+        <div class="wiz wiz-dict" id="wiz4">
+          <div class="panel nd-page">
+            <div class="nd-head">
+              <div>
+                <h2>Nachdiktat</h2>
+                <p class="lead" id="ndLead">Aufnahme bleibt, Nachdiktat wird ergänzt</p>
+              </div>
+              <span class="nd-badge">eigene Seite · Merge</span>
+            </div>
+            <div class="nd-grid">
+              <div class="nd-col nd-col--rec">
+                <h3>Aufnahme <span class="tag">fix</span></h3>
+                <div class="nd-rec" id="ndRec">
+                  <div class="bubble a" style="opacity:.65"><span class="who">Hinweis</span>Noch keine Aufnahme.</div>
+                </div>
+              </div>
+              <div class="nd-col nd-col--dict">
+                <h3>Nachdiktat <span class="tag">neu</span></h3>
+                <textarea id="dictFree" placeholder="Nach der Behandlung diktieren …"></textarea>
+                <div class="nd-mic">
+                  <button type="button" id="ndMic">● Diktieren</button>
+                  <span id="ndMicHint">Kanal · Arzt · Canary-STT</span>
+                </div>
+              </div>
+              <div class="nd-col nd-col--merge">
+                <h3>Merge <span class="tag">Aufnahme + Nachdiktat</span></h3>
+                <div class="nd-merge" id="ndMerge"></div>
+              </div>
+            </div>
+            <div class="nd-actions">
+              <button type="button" class="btn btn-primary" id="ndToSum">Merge übernehmen · Zusammenfassung</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 Summary + Export -->
+        <div class="wiz wiz-sum" id="wiz5">
+          <div class="panel sum-panel">
+            <header class="sum-head">
+              <div>
+                <h2>Zusammenfassung</h2>
+                <p class="lead">Klinik aus dem Gespräch · Nachdiktat wortwörtlich</p>
+                <div class="sum-patient" id="sumPatient">—</div>
+              </div>
+              <div class="sum-share" id="sumMeters" aria-label="Kanalanteil">
+                <p class="sum-share-label">Kanalanteil</p>
+                <div class="meter-row">
+                  <div class="meter-label"><span class="dot dot-a"></span><span>Arzt</span></div>
+                  <div class="meter-track"><div class="meter-fill a" id="sumFillArzt"></div></div>
+                  <div class="meter-db" id="sumDbArzt">—</div>
+                </div>
+                <div class="meter-row">
+                  <div class="meter-label"><span class="dot dot-p"></span><span>Patient</span></div>
+                  <div class="meter-track"><div class="meter-fill p" id="sumFillPat"></div></div>
+                  <div class="meter-db" id="sumDbPat">—</div>
+                </div>
+                <p class="sum-share-hint" id="sumMetersHint">aus Diarisierung</p>
+              </div>
+            </header>
+            <div class="sum-grid">
+              <div class="sum-block sum-block--doc">
+                <div class="sum-block-h">
+                  <h3>Dokumentation</h3>
+                  <button type="button" class="btn btn-ghost" id="btnStructure">Neu strukturieren</button>
+                </div>
+                <pre id="sumText">—</pre>
+              </div>
+              <div class="sum-block sum-block--export">
+                <h3>Weiter</h3>
+                <div class="export-stack">
+                  <button type="button" class="export-btn" id="btnExportPdf"><span class="ico">📄</span><span>PDF Akte<small>Druck / Ablage</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportPms" disabled title="folgt Dens"><span class="ico">↗</span><span>An PMS<small>Charly</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportNadine" disabled title="Folgt"><span class="ico">✉</span><span>An Nadine<small>Mail-Entwurf</small></span></button>
+                  <button type="button" class="export-btn" id="btnToSophie"><span class="ico">💶</span><span>An Sophie<small>Abrechnung</small></span></button>
+                </div>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" data-back="4">Nachdiktat</button>
+              <button type="button" class="btn btn-mag" id="btnToSophieNav" data-next="6">Sophie · Abrechnung</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6 Sophie -->
+        <div class="wiz wiz-sophie" id="wiz6">
+          <div class="panel" style="gap:10px;">
+            <h2>Sophie · Abrechnungsanalyse</h2>
+            <p class="lead">Vorschläge aus Doku — Codes prüfen, Lücken markieren, freigeben.</p>
+            <div class="sophie-grid">
+              <div class="sum-block">
+                <h3>Erkannte Positionen</h3>
+                <div id="billList"></div>
+                <div class="hint-box" id="billHint" style="margin-top:12px;display:none;"></div>
+              </div>
+              <div class="sum-block">
+                <h3>Prüfliste</h3>
+                <p style="font-size:12.5px;color:#7c879a;line-height:1.45;margin:0 0 12px;">Vorschläge aus der Doku — vor Freigabe klinisch prüfen.</p>
+                <div class="actions" style="margin-top:14px;">
+                  <button type="button" class="btn btn-ghost" id="btnBillBack" data-back="5">Summary</button>
+                  <button type="button" class="btn btn-primary" id="btnBill">Ziffern vorschlagen</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <audio id="agentAudio" autoplay playsinline></audio>
+
+  <script>
+    // Nicht gekoppelt -> zur Kopplungsseite (wie beim Handy: pair -> app).
+    try {
+      var ipadDev = JSON.parse(localStorage.getItem("pickadoc.ipad.v1") || "null");
+      if (!ipadDev || !ipadDev.clientId) location.replace("/m/ipad.html");
+    } catch (e) { location.replace("/m/ipad.html"); }
+  </script>
+
+  <script type="module">
+    import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
+    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-1";
+
+    const qs = new URLSearchParams(location.search);
+    const STORE_KEY = "pickadoc.ipad.v1";
+    let device = null;
+    try { device = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch {}
+    const clientId = (device?.clientId || qs.get("c") || "").trim();
+
+    if (!clientId) { location.replace("/m/ipad.html"); throw new Error("not paired"); }
+
+    // Querformat-Erkennung: im Split NICHT automatisch auf die Kartenseite umblättern.
+    const isLandscape = () => window.matchMedia("(orientation: landscape)").matches;
+
+    let room = null;
+    let connected = false;
+    let connecting = false;
+    let audioAttached = false;
+    let chatPipeline = false;
+    let phase = "idle";
+    let voice = "listening";
+    let wakeStandby = false;
+
+    const chatUi = mountClaraChat(document.body, {
+      async onSend(text) {
+        if (!room?.localParticipant) {
+          setStatus("Bitte zuerst verbinden.");
+          chatUi.setConnectVisible(true);
+          chatUi.setChatVisual("idle");
+          return;
+        }
+        chatUi.setStatusLine("");
+        chatUi.setChatVisual("thinking");
+        const data = new TextEncoder().encode(JSON.stringify({ type: "chat", text }));
+        await room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true });
+      },
+      onConnect() {
+        if (phase === "connecting") return;
+        chatUi.setStatusLine("");
+        connect({ textOnly: chatUi.getMode() === "chat" });
+      },
+      onModeChange(mode) {
+        syncMicForMode(mode);
+        if (connected && room?.localParticipant) {
+          const wantText = mode === "chat";
+          if (wantText !== chatPipeline) {
+            chatPipeline = wantText;
+            const data = new TextEncoder().encode(JSON.stringify({ type: "set_pipeline", mode: wantText ? "text" : "audio" }));
+            room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true }).catch(() => {});
+          }
+        }
+      },
+      onCard(card) { addCardToDeck(card); },
+    });
+
+    const els = {
+      calling: document.getElementById("calling"),
+      reason: document.getElementById("reason"),
+      status: document.getElementById("status"),
+      stateLabel: document.getElementById("stateLabel"),
+      hint: document.getElementById("hint"),
+      orb: document.getElementById("orb"),
+      btnDecline: document.getElementById("btnDecline"),
+      enableBtn: document.getElementById("enableBtn"),
+      chatEnableBtn: document.querySelector("[data-clara-chat-enable]"),
+      audio: document.getElementById("agentAudio"),
+      flip: document.querySelector("[data-clara-flip]"),
+      cardsScroll: document.querySelector("[data-clara-cards]"),
+      cardsEmpty: document.querySelector("[data-clara-cards-empty]"),
+      cardBadge: document.querySelector("[data-clara-card-badge]"),
+      lblVoice: document.querySelector("[data-clara-lbl-voice]"),
+      lblCards: document.querySelector("[data-clara-lbl-cards]"),
+      cardsStateLabel: document.getElementById("cardsStateLabel"),
+      agents: document.getElementById("agents"),
+    };
+
+    function setStatus(s) {
+      els.status.textContent = s;
+      if (chatUi.getMode() === "chat") chatUi.setStatusLine(s);
+    }
+    function showEnable(on) {
+      els.enableBtn.classList.toggle("show", !!on);
+      els.chatEnableBtn?.classList.toggle("show", !!on);
+    }
+
+    // ── Flip (nur Hochkant sinnvoll) ──
+    let flipped = false;
+    let unseenCards = 0;
+    function setFlipped(on) {
+      flipped = !!on;
+      els.flip?.classList.toggle("is-flipped", flipped);
+      els.lblVoice?.classList.toggle("on", !flipped);
+      els.lblCards?.classList.toggle("on", flipped);
+      if (flipped) { unseenCards = 0; updateBadge(); }
+    }
+    function updateBadge() { if (els.cardBadge) els.cardBadge.textContent = unseenCards > 0 ? String(unseenCards) : ""; }
+    els.lblVoice?.addEventListener("click", () => setFlipped(false));
+    els.lblCards?.addEventListener("click", () => setFlipped(true));
+    els.flip?.addEventListener("click", (e) => {
+      if (isLandscape()) return; // im Split kein Umblättern
+      if (e.target.closest("button, a, textarea, .card")) return;
+      setFlipped(!flipped);
+    });
+    let touchX = 0, touchY = 0, touchAt = 0;
+    els.flip?.addEventListener("touchstart", (e) => { const t = e.touches[0]; touchX = t.clientX; touchY = t.clientY; touchAt = Date.now(); }, { passive: true });
+    els.flip?.addEventListener("touchend", (e) => {
+      if (isLandscape()) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchX; const dy = t.clientY - touchY;
+      if (Date.now() - touchAt < 600 && Math.abs(dx) > 60 && Math.abs(dy) < 50) setFlipped(!flipped);
+    }, { passive: true });
+
+    const CARDS_KEY = "pickadoc.ipad.cards.v1";
+    let deck = [];
+    try { deck = JSON.parse(sessionStorage.getItem(CARDS_KEY) || "[]"); } catch {}
+    if (!Array.isArray(deck)) deck = [];
+
+    /** Querformat-Split: dieselbe Deck-Quelle wie der Hochkant-Karten-Flip. */
+    function renderRightDeck() {
+      const host = document.getElementById("claraRightCards");
+      const feats = document.getElementById("featList");
+      const title = document.getElementById("rightPanelTitle");
+      const tag = document.getElementById("featTag");
+      if (!host) return;
+      host.querySelectorAll(".card, .cards-empty").forEach((n) => n.remove());
+      const hasCards = deck.length > 0;
+      host.classList.toggle("is-show", hasCards);
+      if (feats) feats.classList.toggle("is-show", !hasCards);
+      if (title) title.textContent = hasCards ? "Heads-up" : "Das Wichtigste";
+      if (tag) tag.textContent = hasCards ? "Clara" : (tag.dataset.fallback || tag.textContent || "live");
+      if (!hasCards) return;
+      for (const entry of deck) {
+        host.appendChild(renderOverviewCard(entry.card, { when: entry.when }));
+      }
+      const first = host.querySelector(".card");
+      if (first) {
+        first.classList.add("is-new");
+        host.scrollTop = 0;
+      }
+    }
+
+    function renderDeck() {
+      if (els.cardsScroll) {
+        els.cardsScroll.querySelectorAll(".card").forEach((n) => n.remove());
+        if (els.cardsEmpty) els.cardsEmpty.classList.toggle("hidden", deck.length > 0);
+        for (const entry of deck) {
+          els.cardsScroll.appendChild(renderOverviewCard(entry.card, { when: entry.when }));
+        }
+      }
+      renderRightDeck();
+    }
+    function addCardToDeck(card) {
+      const when = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+      deck = deck.filter((e) => !(e.card?.kind === card.kind && e.card?.title === card.title));
+      deck.unshift({ card, when });
+      deck = deck.slice(0, 12);
+      try { sessionStorage.setItem(CARDS_KEY, JSON.stringify(deck)); } catch {}
+      renderDeck();
+      const first = els.cardsScroll?.querySelector(".card");
+      if (first) { first.classList.add("is-new"); els.cardsScroll.scrollTop = 0; }
+      // Hochkant: zur Karten-Seite umblättern. Quer: Karten sitzen schon rechts.
+      if (chatUi.getMode() === "audio" && !isLandscape()) setFlipped(true);
+      else if (!isLandscape()) { unseenCards += 1; updateBadge(); }
+    }
+    renderDeck();
+    window.__claraRenderRightDeck = renderRightDeck;
+    window.addEventListener("orientationchange", () => setTimeout(renderRightDeck, 80));
+    window.matchMedia("(orientation: landscape)").addEventListener?.("change", () => renderRightDeck());
+
+    const agentEls = Array.from(els.agents?.querySelectorAll("span") || []);
+    let agentPtr = 0, agentCurrent = -1;
+    function agentsThinking() {
+      if (!agentEls.length) return;
+      agentEls.forEach((el) => el.classList.remove("is-asking", "is-answered"));
+      agentCurrent = agentPtr % agentEls.length; agentPtr += 1;
+      agentEls[agentCurrent].classList.add("is-asking");
+    }
+    function agentsAnswered() {
+      if (agentCurrent < 0 || !agentEls[agentCurrent]) return;
+      agentEls[agentCurrent].classList.remove("is-asking");
+      agentEls[agentCurrent].classList.add("is-answered");
+    }
+    function agentsClear() { agentEls.forEach((el) => el.classList.remove("is-asking", "is-answered")); agentCurrent = -1; }
+
+    const ALL_ST = ["st-idle","st-ringing","st-connecting","st-listening","st-user","st-thinking","st-clara","st-standby","st-ended"];
+    const LABELS = {
+      idle:       ["", "Tippen zum Sprechen"],
+      connecting: ["Verbinde …", ""],
+      listening:  ["Ich höre zu", "Tippen zum Beenden"],
+      user:       ["Du sprichst", ""],
+      thinking:   ["Clara denkt nach …", ""],
+      clara:      ["Clara spricht", ""],
+      standby:    ["Pausiert", "Sag „Clara Start“"],
+      ended:      ["Beendet", "Tippen für neue Verbindung"],
+    };
+
+    function syncChatVisual() {
+      if (chatUi.getMode() !== "chat") return;
+      if (!connected && !connecting) { chatUi.setConnectVisible(true); chatUi.setChatVisual("idle"); return; }
+      chatUi.setConnectVisible(false);
+      if (connecting || phase === "connecting") chatUi.setChatVisual("connecting");
+      else if (phase === "live" && voice === "thinking") chatUi.setChatVisual("thinking");
+      else if (phase === "live" && voice === "clara") chatUi.setChatVisual("writing");
+      else if (connected) { chatUi.setStatusLine(""); chatUi.setChatVisual("listening"); }
+    }
+
+    let lastAgentState = "";
+    function render() {
+      const live = phase === "live";
+      const overlayStandby = live && wakeStandby && (voice === "listening" || voice === "user");
+      const st = overlayStandby ? "standby" : (live ? voice : phase);
+      document.body.classList.remove(...ALL_ST);
+      document.body.classList.add("st-" + st);
+      const [label, hint] = LABELS[st] || ["", ""];
+      els.stateLabel.textContent = label;
+      els.hint.textContent = hint;
+      els.btnDecline.classList.add("hidden");
+      if (els.cardsStateLabel) els.cardsStateLabel.textContent = label || "Bereit";
+      if (st !== lastAgentState) {
+        lastAgentState = st;
+        if (st === "thinking") agentsThinking();
+        else if (st === "clara") agentsAnswered();
+        else if (st === "ended") agentsClear();
+      }
+      syncChatVisual();
+    }
+
+    els.calling.textContent = device?.operatorName ? `Hallo ${device.operatorName}` : "Sprechzimmer";
+    render();
+
+    async function tryPlayAudio() {
+      try {
+        els.audio.muted = false; els.audio.volume = 1;
+        if (room && typeof room.startAudio === "function" && room.canPlaybackAudio === false) await room.startAudio();
+        await els.audio.play();
+        showEnable(false);
+        return true;
+      } catch { showEnable(true); return false; }
+    }
+    function attachRouteRecovery() {
+      if (!navigator.mediaDevices || attachRouteRecovery._wired) return;
+      attachRouteRecovery._wired = true;
+      navigator.mediaDevices.addEventListener("devicechange", () => { if (connected) setTimeout(tryPlayAudio, 300); });
+    }
+
+    let micCtx = null, micRaf = 0, userQuietSince = 0;
+    function watchMicLevel() {
+      try {
+        const pubs = room?.localParticipant?.audioTrackPublications;
+        const pub = pubs ? [...pubs.values()][0] : null;
+        const mst = pub?.track?.mediaStreamTrack;
+        if (!mst) { setTimeout(watchMicLevel, 500); return; }
+        micCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const srcNode = micCtx.createMediaStreamSource(new MediaStream([mst]));
+        const analyser = micCtx.createAnalyser();
+        analyser.fftSize = 512; srcNode.connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          micRaf = requestAnimationFrame(tick);
+          if (phase !== "live") return;
+          analyser.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+          const rms = Math.sqrt(sum / buf.length);
+          const now = performance.now();
+          if (voice === "clara" || voice === "thinking") return;
+          if (rms > 0.045) { userQuietSince = 0; if (voice !== "user") { voice = "user"; render(); } }
+          else if (voice === "user") { if (!userQuietSince) userQuietSince = now; if (now - userQuietSince > 700) { voice = "listening"; render(); } }
+        };
+        tick();
+      } catch {}
+    }
+    function stopMicWatch() { if (micRaf) { cancelAnimationFrame(micRaf); micRaf = 0; } if (micCtx) { try { micCtx.close(); } catch {} micCtx = null; } }
+    async function syncMicForMode(mode) {
+      if (!room?.localParticipant || !connected) return;
+      try { await room.localParticipant.setMicrophoneEnabled(mode === "audio"); if (mode === "audio") watchMicLevel(); else stopMicWatch(); } catch {}
+    }
+
+    let wakeLock = null;
+    async function requestWakeLock() {
+      try { if (!("wakeLock" in navigator) || wakeLock) return; wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } catch { wakeLock = null; }
+    }
+    async function releaseWakeLock() { try { if (wakeLock) await wakeLock.release(); } catch {} wakeLock = null; }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible" || !connected) return;
+      requestWakeLock();
+      try { if (micCtx && micCtx.state === "suspended") micCtx.resume(); } catch {}
+      if (!chatPipeline) tryPlayAudio();
+    });
+
+    async function connect({ textOnly = false } = {}) {
+      if (connecting || connected) return;
+      if (!clientId) { setStatus("iPad ist nicht gekoppelt."); location.replace("/m/ipad.html"); return; }
+      const forChat = textOnly || chatUi.getMode() === "chat";
+      chatPipeline = forChat;
+      connecting = true;
+      phase = forChat ? "live" : "connecting";
+      wakeStandby = false;
+      render();
+      setStatus(forChat ? "Chat-Verbindung …" : "");
+      try {
+        const body = { clientId };
+        if (forChat) body.pipeline = "text";
+        if (device?.deviceId && device?.deviceKey && device.clientId === clientId) {
+          body.deviceId = device.deviceId; body.deviceKey = device.deviceKey;
+        }
+        const resp = await fetch("/clara/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
+        const cfg = await resp.json();
+        if (cfg.operator?.name) els.calling.textContent = `Verbunden · ${cfg.operator.name}`;
+
+        room = new Room({ adaptiveStream: true, dynacast: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        room.on(RoomEvent.TrackSubscribed, (track) => {
+          if (chatPipeline || track.kind !== Track.Kind.Audio || audioAttached) return;
+          track.attach(els.audio); audioAttached = true; tryPlayAudio();
+        });
+        room.on(RoomEvent.AudioPlaybackStatusChanged, () => { showEnable(room && room.canPlaybackAudio === false); });
+        room.on(RoomEvent.Disconnected, () => { connected = false; audioAttached = false; showEnable(false); teardownUI(); });
+
+        let claraLive = false;
+        const markClaraLive = () => { if (claraLive || !connected) return; claraLive = true; if (phase === "connecting") { phase = "live"; voice = "listening"; render(); } };
+        room.on(RoomEvent.DataReceived, (payload, _p, _k, topic) => {
+          if (topic && topic !== "pickadoc.evt") return;
+          try {
+            const obj = JSON.parse(new TextDecoder().decode(payload));
+            if (!obj || !obj.type) return;
+            chatUi.handleEvent(obj);
+            if (obj.type === "audio_state") {
+              if (obj.state === "speaking") { markClaraLive(); phase = "live"; voice = "clara"; render(); }
+              else if (phase === "live" && voice === "clara") { voice = "listening"; render(); }
+            } else if (obj.type === "final_transcript" && phase === "live" && !wakeStandby) {
+              voice = "thinking"; render();
+            } else if (obj.type === "wake_state") {
+              const standby = obj.state === "standby";
+              if (standby !== wakeStandby) { wakeStandby = standby; if (phase === "live" && voice === "thinking" && standby) voice = "listening"; render(); }
+            }
+          } catch {}
+        });
+
+        await room.connect(cfg.url, cfg.token, { autoSubscribe: true });
+        await room.localParticipant.setMicrophoneEnabled(!forChat);
+        connected = true; connecting = false;
+        requestWakeLock();
+        if (forChat) { voice = "listening"; setStatus("verbunden – tippe deine Nachricht"); }
+        else setStatus("Clara meldet sich gleich …");
+        render();
+        if (!forChat) setTimeout(markClaraLive, 30000);
+        attachRouteRecovery();
+        if (!forChat && chatUi.getMode() === "audio") watchMicLevel();
+        if (!forChat) await tryPlayAudio();
+        try {
+          if (forChat) {
+            const pipe = new TextEncoder().encode(JSON.stringify({ type: "set_pipeline", mode: "text" }));
+            await room.localParticipant.publishData(pipe, { topic: "pickadoc.cmd", reliable: true });
+          }
+          const data = new TextEncoder().encode(JSON.stringify({ type: "set_profile", profile_id: cfg.profileId, ...(forChat ? { pipeline: "text" } : {}) }));
+          await room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true });
+        } catch {}
+      } catch (e) {
+        connecting = false;
+        setStatus("Verbindung fehlgeschlagen: " + String(e.message || e));
+        phase = "idle";
+        render();
+        if (chatUi.getMode() === "chat") { chatUi.setConnectVisible(true); chatUi.setChatVisual("idle"); }
+      }
+    }
+
+    function teardownUI() {
+      stopMicWatch(); releaseWakeLock();
+      chatPipeline = false; phase = "ended"; voice = "listening"; wakeStandby = false;
+      els.calling.textContent = "Beendet"; setStatus(""); render();
+    }
+    async function hangup() { if (room) { try { await room.disconnect(); } catch {} room = null; } connected = false; teardownUI(); }
+
+    els.orb.addEventListener("click", () => {
+      if (phase === "connecting") return;
+      if (phase === "live") { hangup(); return; }
+      connect();
+    });
+    els.enableBtn.addEventListener("click", tryPlayAudio);
+    els.chatEnableBtn?.addEventListener("click", tryPlayAudio);
+
+    // Bridge fuer den Lena-Modus (klassischer Script-Block darunter):
+    // Clara sauber stoppen / wieder begruessen, ohne den LiveKit-Stack zu kreuzen.
+    window.__claraIpad = {
+      async stopForLena() {
+        try { if (els.audio) els.audio.muted = true; } catch (_) {}
+        if (room || connected || connecting) {
+          try { await hangup(); } catch (_) {}
+        }
+      },
+      async resumeFromLena() {
+        try { if (els.audio) els.audio.muted = false; } catch (_) {}
+        try { window.speechSynthesis?.cancel?.(); } catch (_) {}
+        // Keine Browser-Begruessung — nur LiveKit-Session wieder aufbauen.
+        if (!connected && !connecting) {
+          try { await connect(); } catch (_) {}
+        }
+      },
+      isLive: () => !!connected,
+    };
+  </script>
+
+  <script src="/m/lena-stt-capture.js?v=20260717e"></script>
+  <script>
+    // ══════════════════════════════════════════════════════════════════════
+    //  Kopf-Umschalter Clara ↔ Dokumentation + Lena-Wizard (Preview-Vorlage).
+    //  Aufnahme/Nachdiktat → Canary via lena_stt (WS /stt). Clara unangetastet
+    //  ausser Stop beim Umschalten (keine Browser-Stimme).
+    // ══════════════════════════════════════════════════════════════════════
+    (function () {
+      const $ = (id) => document.getElementById(id);
+
+      /* Uhr */
+      const clock = $("clock");
+      const tickClock = () => {
+        clock.textContent = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+      };
+      tickClock();
+      setInterval(tickClock, 15000);
+
+      /* ── Akustik: nur Stop-Signal (keine Browser-Begrüßung) ── */
+      let audioCtx = null;
+      function ensureAudio() {
+        if (!audioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) audioCtx = new AC();
+        }
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+        return audioCtx;
+      }
+      function playClaraStop() {
+        try {
+          const ctx = ensureAudio();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          [{ f: 880, t0: 0, dur: 0.12 }, { f: 554, t0: 0.14, dur: 0.22 }].forEach(({ f, t0, dur }) => {
+            const o = ctx.createOscillator();
+            const g = ctx.createGain();
+            o.type = "sine";
+            o.frequency.value = f;
+            g.gain.setValueAtTime(0.0001, now + t0);
+            g.gain.exponentialRampToValueAtTime(0.18, now + t0 + 0.02);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + t0 + dur);
+            o.connect(g); g.connect(ctx.destination);
+            o.start(now + t0); o.stop(now + t0 + dur + 0.02);
+          });
+        } catch (_) {}
+        try { window.speechSynthesis.cancel(); } catch (_) {}
+      }
+
+      /* ── Modus-Umschalter Clara | Dokumentation ── */
+      const brand = $("brand");
+      const brandName = $("brandName");
+      const brandSub = $("brandSub");
+      const brandOrb = $("brandOrb");
+      const modeSwitch = $("modeSwitch");
+      const paneClara = $("paneClara");
+      const paneDoku = $("paneDoku");
+      const agentAudio = $("agentAudio");
+      let activeMode = "clara";
+
+      modeSwitch.querySelectorAll("button").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const mode = btn.dataset.mode;
+          if (mode === activeMode) return;
+          modeSwitch.querySelectorAll("button").forEach((b) => b.classList.remove("is-on"));
+          btn.classList.add("is-on");
+          modeSwitch.dataset.active = mode;
+          const isClara = mode === "clara";
+          paneClara.classList.toggle("is-active", isClara);
+          paneDoku.classList.toggle("is-active", !isClara);
+          document.body.dataset.appMode = mode;
+          brand.dataset.mode = isClara ? "clara" : "lena";
+          brandName.textContent = isClara ? "Clara" : "Lena";
+          brandSub.textContent = isClara ? "Vollinformiert in 10 Sekunden" : "Behandlungs-Doku";
+
+          if (!isClara) {
+            // Clara → Dokumentation: akustisch „gestoppt" + LiveKit-Hangup.
+            playClaraStop();
+            brandOrb.className = "brand-orb";
+            Promise.resolve(window.__claraIpad?.stopForLena?.()).catch(() => {});
+            // Pegel-Preview startet sobald Aufnahme-Schritt aktiv (Hook unten setzt Flag).
+            try { window.__lenaWantPreview?.(true); } catch (_) {}
+          } else {
+            try { window.__lenaWantPreview?.(false); } catch (_) {}
+            // Dokumentation → Clara: nur LiveKit wieder verbinden.
+            // Keine Browser-speechSynthesis — echte Stimme kommt nur über Clara/LiveKit.
+            try { window.speechSynthesis.cancel(); } catch (_) {}
+            brandOrb.className = "brand-orb is-listen";
+            Promise.resolve(window.__claraIpad?.resumeFromLena?.()).catch(() => {});
+          }
+          activeMode = mode;
+        });
+      });
+
+      /* ══════════════ Lena-Wizard (Raum→Termin live) ══════════════ */
+      let deviceCreds = null;
+      try { deviceCreds = JSON.parse(localStorage.getItem("pickadoc.ipad.v1") || "null"); } catch (_) {}
+      let selectedDoc = deviceCreds?.doctorName || deviceCreds?.operatorName || "";
+      let selectedCalId = "";
+      let selectedAppt = { name: "—", treat: "", appointmentId: "", locationId: "", patientId: "", startMs: 0, comments: "", docsStatus: "", newPatient: false };
+      let dayAppointments = [];
+      let dayCalendars = [];
+      let dayLocationId = "";
+      let chairCurrent = null;
+      let savedSegments = [];
+      let serverSummary = "";
+      let dialogCleared = false;
+      let structuredText = "";
+      let structureBusy = false;
+      let billingBusy = false;
+      const wiz = [null, $("wiz1"), $("wiz2"), $("wiz3"), $("wiz4"), $("wiz5"), $("wiz6")];
+      const chips = [...document.querySelectorAll(".step-chip")];
+
+      function treatmentIds() {
+        const locationId = selectedAppt.locationId || chairCurrent?.locationId || dayLocationId || "";
+        const appointmentId = selectedAppt.appointmentId || chairCurrent?.appointmentId || "";
+        if (!deviceCreds?.clientId || !locationId || !appointmentId) return null;
+        return {
+          clientId: deviceCreds.clientId,
+          locationId,
+          appointmentId,
+          deviceId: deviceCreds.deviceId || "",
+          deviceKey: deviceCreds.deviceKey || "",
+        };
+      }
+      async function masPost(path, body) {
+        const ids = treatmentIds();
+        if (!ids || !ids.deviceKey) throw new Error("no_ids");
+        const resp = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ ...ids, ...(body || {}) }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.error || String(resp.status));
+        return data;
+      }
+      async function postLenaSegment(text, source) {
+        const ids = treatmentIds();
+        const t = String(text || "").trim();
+        if (!ids || !t || !ids.deviceKey) return null;
+        try {
+          const resp = await fetch("/treatment/lena-segment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: ids.clientId,
+              locationId: ids.locationId,
+              appointmentId: ids.appointmentId,
+              deviceId: ids.deviceId,
+              deviceKey: ids.deviceKey,
+              text: t,
+              lang: "de-DE",
+              source: source || "raum",
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) {
+            console.warn("lena-segment", data.error || resp.status);
+            return null;
+          }
+          return data.dictationId || true;
+        } catch (e) {
+          console.warn("lena-segment", e);
+          return null;
+        }
+      }
+      async function updateLenaSegment(dictationId, text) {
+        const ids = treatmentIds();
+        const t = String(text || "").trim();
+        if (!ids || !dictationId || !t || !ids.deviceKey) return false;
+        try {
+          const data = await masPost("/treatment/lena-segment-update", { dictationId, text: t });
+          return !!(data && data.ok);
+        } catch (e) {
+          console.warn("lena-segment-update", e);
+          return false;
+        }
+      }
+      async function deleteLenaSegment(dictationId) {
+        const ids = treatmentIds();
+        if (!ids || !dictationId || !ids.deviceKey) return false;
+        try {
+          const data = await masPost("/treatment/lena-segment-delete", { dictationId });
+          return !!(data && data.ok);
+        } catch (e) {
+          console.warn("lena-segment-delete", e);
+          return false;
+        }
+      }
+      async function patchRecorder(status, extra) {
+        const ids = treatmentIds();
+        if (!ids || !ids.deviceKey) return;
+        const patch = {
+          status: status || "idle",
+          deviceId: ids.deviceId,
+          deviceLabel: "iPad",
+          by: selectedDoc || deviceCreds?.operatorName || "iPad",
+          ...(extra || {}),
+        };
+        try {
+          await fetch("/treatment/recorder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: ids.clientId,
+              locationId: ids.locationId,
+              appointmentId: ids.appointmentId,
+              patch,
+            }),
+          });
+        } catch (_) {}
+      }
+      async function loadSavedSegments() {
+        const ids = treatmentIds();
+        if (!ids) { savedSegments = []; return []; }
+        try {
+          const resp = await fetch("/treatment/heartbeat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: ids.clientId,
+              locationId: ids.locationId,
+              appointmentId: ids.appointmentId,
+              deviceLabel: "iPad",
+              presence: false,
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) return savedSegments;
+          savedSegments = Array.isArray(data.segments) ? data.segments.filter((s) => s && !s.struck && s.text) : [];
+          if (typeof data.structuredText === "string") serverSummary = data.structuredText;
+          return savedSegments;
+        } catch (_) {
+          return savedSegments;
+        }
+      }
+      function bubbleHtml(who, text, segId) {
+        const ops = segId
+          ? '<div class="bubble-ops"><button type="button" class="bubble-edit" title="Bearbeiten">✎</button>' +
+            '<button type="button" class="bubble-del" title="Löschen">×</button></div>'
+          : "";
+        return '<span class="who">' + who + '</span><span class="bubble-text">' +
+          String(text || "").replace(/</g, "&lt;") + "</span>" + ops;
+      }
+      function renderDialogFromSegments(segs) {
+        const box = $("dialog");
+        if (!box) return;
+        box.innerHTML = "";
+        dialogCleared = true;
+        (segs || []).forEach((s) => {
+          const src = String(s.source || "raum").toLowerCase();
+          const who = (src === "patient" || src === "raum") ? "Patient" : "Arzt";
+          const div = document.createElement("div");
+          div.className = "bubble " + (who === "Patient" ? "p" : "a");
+          if (s.id) div.dataset.segId = s.id;
+          div.innerHTML = bubbleHtml(who, s.text, s.id || "");
+          box.appendChild(div);
+        });
+        box.scrollTop = box.scrollHeight;
+      }
+      async function onBubbleEdit(btn) {
+        const bubble = btn.closest(".bubble");
+        const id = bubble?.dataset?.segId || "";
+        const textEl = bubble?.querySelector(".bubble-text");
+        if (!id || !textEl) return;
+        const next = window.prompt("Text bearbeiten:", textEl.textContent || "");
+        if (next == null) return;
+        const t = String(next).trim();
+        if (!t || t === textEl.textContent) return;
+        const ok = await updateLenaSegment(id, t);
+        if (!ok) { window.alert("Speichern fehlgeschlagen."); return; }
+        textEl.textContent = t;
+        const seg = savedSegments.find((s) => s.id === id);
+        if (seg) seg.text = t;
+        structuredText = "";
+        updateMerge();
+      }
+      async function onBubbleDelete(btn) {
+        const bubble = btn.closest(".bubble");
+        const id = bubble?.dataset?.segId || "";
+        if (!id) return;
+        if (!window.confirm("Diesen Abschnitt löschen?")) return;
+        const ok = await deleteLenaSegment(id);
+        if (!ok) { window.alert("Löschen fehlgeschlagen."); return; }
+        savedSegments = savedSegments.filter((s) => s.id !== id);
+        bubble.remove();
+        structuredText = "";
+        updateMerge();
+      }
+      document.addEventListener("click", (ev) => {
+        const t = ev.target;
+        if (!(t instanceof Element)) return;
+        if (t.classList.contains("bubble-edit")) { void onBubbleEdit(t); return; }
+        if (t.classList.contains("bubble-del")) { void onBubbleDelete(t); }
+      });
+      function fillNachdiktatFromSegments(segs) {
+        const ta = $("dictFree");
+        if (!ta) return;
+        const nd = (segs || []).filter((s) => String(s.source || "").toLowerCase() === "nachdiktat");
+        if (!nd.length) return;
+        ta.value = nd.map((s) => s.text).join(" ");
+      }
+
+      function showStep(n) {
+        wiz.forEach((w, i) => { if (w) w.classList.toggle("is-show", i === n); });
+        chips.forEach((c) => {
+          const s = Number(c.dataset.step);
+          c.classList.toggle("is-now", s === n);
+          c.classList.toggle("is-done", s < n);
+        });
+        if (n === 3) {
+          $("recName").textContent = selectedAppt.name || "—";
+          $("recTreat").textContent = selectedAppt.treat || "";
+          $("recDoc").textContent = selectedDoc ? ("Dr. " + selectedDoc.replace(/^Dr\.?\s*/i, "")) : "—";
+          $("recAv").textContent = (selectedAppt.name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+          loadSavedSegments().then((segs) => {
+            if (segs.length) renderDialogFromSegments(segs.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
+          });
+        }
+        if (n === 4) {
+          $("ndLead").textContent = (selectedAppt.name || "—") + " · " + (selectedDoc || "—") + " — Aufnahme bleibt, Nachdiktat wird ergänzt";
+          const src = $("dialog");
+          const dst = $("ndRec");
+          if (src && dst) dst.innerHTML = src.innerHTML;
+          loadSavedSegments().then((segs) => {
+            fillNachdiktatFromSegments(segs);
+            updateMerge();
+          });
+          updateMerge();
+        }
+        if (n === 5) {
+          loadSavedSegments().then(() => {
+            fillSummary();
+            void runStructure();
+          });
+        }
+        if (n === 6) {
+          void runBilling();
+        }
+      }
+
+      function ndDraft() {
+        return ($("dictFree")?.value || "").trim();
+      }
+      function medicalDraftFromSegments() {
+        // Fallback ohne LLM: nur Segmente mit klinischem Anschein + Nachdiktat wortwörtlich.
+        const clinicish = /(zahn|regio|implant|krone|br(ü|ue)cke|f(ü|ue)llung|extrakt|wurzel|endo|karies|an(ä|ae)sth|befund|diagnos|r(ö|oe)ntgen|paro|pzr|augment|naht|schmerz|goz|bema|okklusion|kontrolle)/i;
+        const lines = [];
+        (savedSegments || []).forEach((s) => {
+          const src = String(s.source || "").toLowerCase();
+          const t = String(s.text || "").trim();
+          if (!t) return;
+          if (src === "nachdiktat") return;
+          if (clinicish.test(t)) lines.push("- " + t);
+        });
+        const nd = ndDraft();
+        if (nd) {
+          if (lines.length) lines.push("");
+          lines.push("NACHDIKTAT");
+          lines.push("- " + nd);
+        }
+        return lines.join("\n").trim();
+      }
+      function channelShareFromSegments() {
+        let a = 0, p = 0, na = 0, np = 0;
+        (savedSegments || []).forEach((s) => {
+          const src = String(s.source || "").toLowerCase();
+          const n = String(s.text || "").trim().length;
+          if (!n) return;
+          if (src === "nachdiktat") return;
+          if (src === "arzt") { a += n; na += 1; }
+          else { p += n; np += 1; }
+        });
+        const t = a + p;
+        return {
+          a: t ? a / t : 0,
+          p: t ? p / t : 0,
+          na, np,
+          has: t > 0,
+        };
+      }
+      function fillSummary() {
+        const docLabel = selectedDoc ? ("Dr. " + selectedDoc.replace(/^Dr\.?\s*/i, "")) : "—";
+        if ($("sumPatient")) {
+          $("sumPatient").textContent = (selectedAppt.name || "—") +
+            (selectedAppt.treat ? " · " + selectedAppt.treat : "") +
+            (docLabel !== "—" ? " · " + docLabel : "");
+        }
+        if ($("sumText")) {
+          $("sumText").textContent = structuredText || medicalDraftFromSegments() || "Noch keine medizinische Zusammenfassung.";
+        }
+        // Redeanteil aus Diarisierung (Arzt vs Patient) — kompakt im Kopf.
+        const share = channelShareFromSegments();
+        const hint = $("sumMetersHint");
+        if (hint) {
+          hint.textContent = share.has
+            ? (share.na + " / " + share.np + " Segmente")
+            : "keine Segmente";
+        }
+        if (typeof window.__lenaPaintSumMeters === "function") {
+          window.__lenaPaintSumMeters(share);
+        } else {
+          const fa = $("sumFillArzt"), fp = $("sumFillPat");
+          const da = $("sumDbArzt"), dp = $("sumDbPat");
+          if (fa) fa.style.transform = "scaleX(" + Math.max(0.02, share.a).toFixed(3) + ")";
+          if (fp) fp.style.transform = "scaleX(" + Math.max(0.02, share.p).toFixed(3) + ")";
+          if (da) da.textContent = share.has ? (Math.round(share.a * 100) + "%") : "—";
+          if (dp) dp.textContent = share.has ? (Math.round(share.p * 100) + "%") : "—";
+        }
+      }
+      async function runStructure() {
+        if (structureBusy) return;
+        const btn = $("btnStructure");
+        structureBusy = true;
+        if (btn) { btn.disabled = true; btn.textContent = "Strukturiert …"; }
+        try {
+          await loadSavedSegments();
+          const data = await masPost("/treatment/structure");
+          structuredText = String(data.structuredText || "").trim();
+          fillSummary();
+        } catch (e) {
+          console.warn("structure", e);
+          if ($("sumText")) $("sumText").textContent = medicalDraftFromSegments() || "Strukturierung fehlgeschlagen.";
+        } finally {
+          structureBusy = false;
+          if (btn) { btn.disabled = false; btn.textContent = "Neu strukturieren"; }
+        }
+      }
+      function renderBillingCodes(billing) {
+        const box = $("billList");
+        const hint = $("billHint");
+        if (!box) return;
+        box.innerHTML = "";
+        const rows = [];
+        const push = (sys, arr) => {
+          (arr || []).forEach((c) => {
+            const code = String(c.code || "").trim();
+            const label = String(c.label || "").trim() || code;
+            const sub = [c.tooth, c.note, c.evidence].filter(Boolean).map(String).join(" · ");
+            rows.push(
+              '<div class="bill-row"><div><strong>' + label.replace(/</g, "&lt;") + "</strong>" +
+              (sub ? "<span>" + sub.replace(/</g, "&lt;") + "</span>" : "") +
+              '</div><span class="bill-code">' + sys + " " + code.replace(/</g, "&lt;") + "</span></div>",
+            );
+          });
+        };
+        push("BEMA", billing?.bema);
+        push("BEMA+", billing?.bemaPlus);
+        push("GOZ", billing?.goz);
+        if (!rows.length) {
+          box.innerHTML = '<div class="hint-box">Noch keine Ziffern — „Ziffern vorschlagen" ausführen.</div>';
+        } else {
+          box.innerHTML = rows.join("");
+        }
+        if (hint) {
+          const parts = [];
+          if (billing?.suggestions) parts.push(String(billing.suggestions));
+          if (Array.isArray(billing?.completeness) && billing.completeness.length) {
+            parts.push("Offen: " + billing.completeness.join(" · "));
+          }
+          if (billing?.disclaimer) parts.push(String(billing.disclaimer));
+          if (parts.length) {
+            hint.style.display = "";
+            hint.textContent = parts.join("\n\n");
+          } else {
+            hint.style.display = "none";
+            hint.textContent = "";
+          }
+        }
+      }
+      async function runBilling() {
+        if (billingBusy) return;
+        const btn = $("btnBill");
+        billingBusy = true;
+        if (btn) { btn.disabled = true; btn.textContent = "Analysiert …"; }
+        try {
+          await loadSavedSegments();
+          const data = await masPost("/treatment/billing");
+          renderBillingCodes(data.billing || null);
+        } catch (e) {
+          console.warn("billing", e);
+          renderBillingCodes(null);
+          if ($("billHint")) {
+            $("billHint").style.display = "";
+            $("billHint").textContent = "Abrechnungsanalyse fehlgeschlagen: " + String(e?.message || e);
+          }
+        } finally {
+          billingBusy = false;
+          if (btn) { btn.disabled = false; btn.textContent = "Ziffern vorschlagen"; }
+        }
+      }
+      function exportPdf() {
+        const patient = selectedAppt.name || "Patient";
+        const text = structuredText || medicalDraftFromSegments() || "";
+        const w = window.open("", "_blank");
+        if (!w) return;
+        const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        w.document.write(
+          "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Behandlungsdoku " + esc(patient) +
+          "</title><style>body{font-family:system-ui,sans-serif;padding:24px;line-height:1.5;}h1{font-size:18px;}</style></head><body>" +
+          "<h1>Behandlungsdokumentation · " + esc(patient) + "</h1><pre style=\"white-space:pre-wrap;font:inherit\">" +
+          esc(text) + "</pre><script>window.onload=function(){window.print();};<\/script></body></html>",
+        );
+        w.document.close();
+      }
+
+      function AufnahmePlain() {
+        return [...$("ndRec").querySelectorAll(".bubble")].map((b) => {
+          const who = (b.querySelector(".who")?.textContent || "").trim();
+          const text = (b.querySelector(".bubble-text")?.textContent || b.textContent.replace(who, "")).trim();
+          return who + ": " + text;
+        }).join("\n");
+      }
+      function updateMerge() {
+        const auf = AufnahmePlain();
+        const dict = ($("dictFree")?.value || "").trim();
+        const box = $("ndMerge");
+        if (!box) return;
+        box.innerHTML =
+          '<div class="sec sec--rec"><strong>Aus der Aufnahme</strong><p>' + (auf || "—").replace(/\n/g, "<br>") + "</p></div>" +
+          '<div class="sec sec--dict"><strong>Aus dem Nachdiktat</strong><p>' + (dict || "Noch nichts diktiert …").replace(/\n/g, "<br>") + "</p></div>";
+      }
+      $("dictFree")?.addEventListener("input", updateMerge);
+      $("btnStructure")?.addEventListener("click", () => void runStructure());
+      $("btnExportPdf")?.addEventListener("click", exportPdf);
+      $("btnToSophie")?.addEventListener("click", () => showStep(6));
+      $("btnBill")?.addEventListener("click", () => void runBilling());
+      let ndCapture = null;
+      let ndLive = false;
+      async function stopNdDictation() {
+        ndLive = false;
+        const btn = $("ndMic");
+        if (btn) {
+          btn.classList.remove("is-live");
+          btn.textContent = "● Diktieren";
+        }
+        if ($("ndMicHint")) $("ndMicHint").textContent = "Kanal · Arzt · Canary-STT";
+        if (ndCapture) {
+          const c = ndCapture; ndCapture = null;
+          try { await c.stop(); } catch (_) {}
+        }
+      }
+      $("ndMic")?.addEventListener("click", async () => {
+        if (ndLive) { await stopNdDictation(); return; }
+        if (typeof LenaSttCapture !== "function") {
+          $("ndMicHint").textContent = "STT-Client fehlt";
+          return;
+        }
+        ndLive = true;
+        const btn = $("ndMic");
+        btn.classList.add("is-live");
+        btn.textContent = "■ Stop";
+        $("ndMicHint").textContent = "verbindet Canary …";
+        ndCapture = new LenaSttCapture();
+        const ok = await ndCapture.start(
+          { channel: "arzt", session: "ipad-nd-" + Date.now() },
+          {
+            onReady: (m) => {
+              $("ndMicHint").textContent = "live · " + (m?.primary || m?.model || "canary");
+            },
+            onPartial: (t) => {
+              if (t) $("ndMicHint").textContent = t.slice(0, 48) + (t.length > 48 ? "…" : "");
+            },
+            onFinal: (t) => {
+              if (!t) return;
+              const ta = $("dictFree");
+              ta.value = (ta.value || "") + ((ta.value.trim() ? " " : "") + t);
+              updateMerge();
+              postLenaSegment(t, "nachdiktat").then((id) => {
+                if (id) savedSegments.push({ id: id === true ? "" : id, text: t, source: "nachdiktat" });
+                $("ndMicHint").textContent = id ? "gespeichert" : "lokal (nicht gespeichert)";
+              });
+            },
+            onError: (msg) => {
+              $("ndMicHint").textContent = String(msg || "STT-Fehler");
+              stopNdDictation();
+            },
+            onClose: () => { if (ndLive) stopNdDictation(); },
+          },
+        );
+        if (!ok) { ndLive = false; btn.classList.remove("is-live"); btn.textContent = "● Diktieren"; }
+      });
+      $("ndToSum")?.addEventListener("click", async () => {
+        await stopNdDictation();
+        await loadSavedSegments();
+        updateMerge();
+        showStep(5);
+      });
+
+      $("doctors").addEventListener("click", (e) => {
+        const card = e.target.closest(".doc-card");
+        if (!card) return;
+        document.querySelectorAll(".doc-card").forEach((c) => c.classList.remove("is-sel"));
+        card.classList.add("is-sel");
+        selectedDoc = card.dataset.doc || "";
+        selectedCalId = card.dataset.cal || "";
+        updateTerminLead();
+        loadDay(iso(selectedDate));
+      });
+      document.querySelectorAll("[data-next]").forEach((b) => b.addEventListener("click", () => showStep(Number(b.dataset.next))));
+      document.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("click", () => showStep(Number(b.dataset.back))));
+      chips.forEach((c) => c.addEventListener("click", () => showStep(Number(c.dataset.step))));
+
+      /* Datepicker + echte Termine via POST /treatment/current */
+      const TODAY = new Date();
+      const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      const MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+      const DOW = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+      let pickerMonth = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
+      let selectedDate = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+      let daysWithAppts = new Set();
+
+      function hhmm(ms) {
+        if (!ms) return "";
+        return new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+      }
+      function initials(name) {
+        return String(name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+      }
+      function apptTag(a) {
+        if (a.patientStatus === 2) return { tag: "fertig", tc: "" };
+        if (chairCurrent?.appointmentId && a.appointmentId === chairCurrent.appointmentId) return { tag: "jetzt", tc: "wait" };
+        if (a.startMs && a.startMs <= Date.now()) return { tag: "läuft", tc: "wait" };
+        return { tag: "offen", tc: "wait" };
+      }
+      function pickApptFrom(a) {
+        if (!a) {
+          selectedAppt = { name: "—", treat: "", appointmentId: "", locationId: "", patientId: "", startMs: 0, comments: "", docsStatus: "", newPatient: false };
+          return;
+        }
+        const dur = a.endMs && a.startMs ? Math.max(5, Math.round((a.endMs - a.startMs) / 60000)) : 0;
+        selectedAppt = {
+          name: a.patientName || "—",
+          treat: (a.visitMotive || "Termin") + (dur ? (" · " + dur + " min") : ""),
+          appointmentId: a.appointmentId || "",
+          locationId: a.locationId || chairCurrent?.locationId || "",
+          patientId: a.patientId || "",
+          startMs: a.startMs || 0,
+          comments: a.comments || "",
+          docsStatus: a.docsStatus || "",
+          newPatient: a.newPatient === true,
+        };
+        if (a.doctorName) selectedDoc = a.doctorName;
+      }
+      function renderFeats(a) {
+        const list = $("featList");
+        if (!list) return;
+        const name = a?.patientName || a?.name || "";
+        const treat = a?.visitMotive || a?.treat || "";
+        const time = a?.startMs ? hhmm(a.startMs) + " Uhr" : "";
+        if ($("featPatientName")) $("featPatientName").textContent = name || "—";
+        if ($("featPatientTime")) $("featPatientTime").textContent = time;
+        if ($("featPatientTreat")) $("featPatientTreat").textContent = treat || (name ? "" : "Kein Termin am Stuhl");
+        if ($("featPatientLabel")) $("featPatientLabel").textContent = name ? "Aktueller Termin" : "Kein Termin";
+        if ($("featTag")) {
+          $("featTag").dataset.fallback = name ? "live" : "—";
+          // Heads-up-Karten (Modul) haben Vorrang — Tag nicht überschreiben.
+          if (!$("claraRightCards")?.classList.contains("is-show")) {
+            $("featTag").textContent = $("featTag").dataset.fallback;
+          }
+        }
+        const serverHints = Array.isArray(a?.patientHints) ? a.patientHints.filter((h) => h && h.title) : [];
+        let feats = [];
+        if (serverHints.length) {
+          feats = serverHints.map((h) => ({
+            ico: h.ico || "cyan",
+            title: h.title,
+            desc: h.desc || "",
+          }));
+        } else {
+          if (a?.newPatient) feats.push({ ico: "green", title: "Neupatient", desc: "Erster Besuch — Anamnese / Formulare prüfen." });
+          const docs = String(a?.docsStatus || "").toLowerCase();
+          if (docs === "none" || docs === "red") feats.push({ ico: "red", title: "Unterschriften fehlen", desc: "Pflicht-Dokumente noch nicht unterschrieben (SignR)." });
+          else if (docs === "sent" || docs === "yellow") feats.push({ ico: "yellow", title: "Dokumente ausstehend", desc: "Verschickt, noch nicht unterschrieben." });
+          else if (docs === "ok" || docs === "green" || docs === "signed") feats.push({ ico: "green", title: "Dokumente ok", desc: "Unterschriften vorhanden." });
+          const comments = String(a?.comments || "").trim();
+          if (comments) feats.push({ ico: "yellow", title: "Termin-Notiz", desc: comments });
+          if (treat) feats.push({ ico: "cyan", title: "Besuchsgrund", desc: treat });
+        }
+        if (!feats.length) {
+          feats.push({ ico: "cyan", title: name ? "Keine besonderen Hinweise" : "Warte auf Termin", desc: name ? "Keine Notiz / Ampel am Termin." : "Gerät koppeln und Kalender prüfen." });
+        }
+        list.innerHTML = feats.map((f) =>
+          '<div class="feat"><div class="feat-ico ' + f.ico + '">' + (f.ico === "red" ? "⚠" : f.ico === "yellow" ? "✎" : f.ico === "green" ? "✓" : "•") +
+          '</div><div><div class="feat-title">' + f.title + '</div><div class="feat-desc">' + f.desc.replace(/</g, "&lt;") + "</div></div></div>"
+        ).join("");
+        // Sichtbarkeit featList vs. Heads-up-Karten vom Clara-Modul steuern lassen.
+        try { window.__claraRenderRightDeck?.(); } catch (_) {}
+      }
+      function dateLabel(d) {
+        const s = iso(d), st = iso(TODAY);
+        const y = new Date(TODAY); y.setDate(y.getDate() - 1);
+        const tm = new Date(TODAY); tm.setDate(tm.getDate() + 1);
+        if (s === st) return "Heute";
+        if (s === iso(y)) return "Gestern";
+        if (s === iso(tm)) return "Morgen";
+        return DOW[d.getDay()] + ", " + String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0") + ".";
+      }
+      function updateTerminLead() {
+        const doc = selectedDoc ? ("Dr. " + selectedDoc.replace(/^Dr\.?\s*/i, "")) : "Behandler";
+        $("terminLead").innerHTML = "Termine für " + doc + " · <span id=\"terminDate\">" + dateLabel(selectedDate) + "</span>";
+      }
+      function renderDoctors(cals, doctorName) {
+        const grid = $("doctors");
+        if (!grid) return;
+        grid.innerHTML = "";
+        const list = (cals && cals.length) ? cals : (doctorName ? [{ id: "", name: doctorName }] : []);
+        if (!list.length) {
+          grid.innerHTML = '<div style="padding:18px;color:var(--mute);font-weight:600;">Kein Behandler am Gerät hinterlegt.</div>';
+          if ($("arztLead")) $("arztLead").textContent = "Arbeitsplatz ohne Kalender-Zuordnung.";
+          return;
+        }
+        if ($("arztLead")) {
+          $("arztLead").textContent = list.length === 1
+            ? "Behandler dieses Arbeitsplatzes."
+            : "Behandler wählen — Termine werden gefiltert.";
+        }
+        list.forEach((c, i) => {
+          const name = c.name || "Behandler";
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "doc-card" + (i === 0 ? " is-sel" : "");
+          btn.dataset.doc = name;
+          btn.dataset.cal = c.id || "";
+          btn.innerHTML =
+            '<div class="doc-av">' + initials(name) + '</div>' +
+            '<div class="doc-name">' + (name.match(/^Dr\.?\s/i) ? name : ("Dr. " + name)) + '</div>' +
+            '<div class="doc-role">Kalender</div>';
+          grid.appendChild(btn);
+        });
+        selectedDoc = list[0].name || doctorName || "";
+        selectedCalId = list[0].id || "";
+      }
+      function renderAppts() {
+        const list = $("appts");
+        list.innerHTML = "";
+        const items = dayAppointments.slice();
+        if (!items.length) {
+          list.innerHTML = '<div style="padding:22px 12px;text-align:center;color:var(--mute);font-weight:600;font-size:.85rem;">Keine Termine an diesem Tag.</div>';
+          pickApptFrom(null);
+          return;
+        }
+        let selIdx = 0;
+        if (chairCurrent?.appointmentId) {
+          const i = items.findIndex((a) => a.appointmentId === chairCurrent.appointmentId);
+          if (i >= 0) selIdx = i;
+        }
+        items.forEach((a, i) => {
+          const { tag, tc } = apptTag(a);
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "appt" + (i === selIdx ? " is-sel" : "");
+          btn.dataset.idx = String(i);
+          btn.innerHTML =
+            '<div class="appt-time">' + hhmm(a.startMs) + '</div>' +
+            '<div><div class="appt-name">' + (a.patientName || "—") + '</div><div class="appt-treat">' + (a.visitMotive || "Termin") + '</div></div>' +
+            '<span class="appt-tag ' + tc + '">' + tag + "</span>";
+          list.appendChild(btn);
+        });
+        pickApptFrom({ ...items[selIdx], locationId: chairCurrent?.locationId || dayLocationId || selectedAppt.locationId });
+      }
+      function renderPicker() {
+        $("pickTitle").textContent = MONTHS[pickerMonth.getMonth()] + " " + pickerMonth.getFullYear();
+        const grid = $("pickGrid");
+        grid.innerHTML = "";
+        const first = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth(), 1);
+        const offset = (first.getDay() + 6) % 7;
+        const start = new Date(first); start.setDate(first.getDate() - offset);
+        for (let i = 0; i < 42; i++) {
+          const d = new Date(start); d.setDate(start.getDate() + i);
+          const b = document.createElement("button");
+          b.type = "button"; b.className = "picker-day"; b.textContent = d.getDate();
+          if (d.getMonth() !== pickerMonth.getMonth()) b.classList.add("other");
+          if (iso(d) === iso(TODAY)) b.classList.add("is-today");
+          if (iso(d) === iso(selectedDate)) b.classList.add("is-sel");
+          if (daysWithAppts.has(iso(d))) b.classList.add("has-appt");
+          b.addEventListener("click", () => {
+            selectedDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            if (d.getMonth() !== pickerMonth.getMonth()) pickerMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+            renderPicker();
+            updateTerminLead();
+            loadDay(iso(selectedDate));
+          });
+          grid.appendChild(b);
+        }
+      }
+      async function loadDay(dateStr) {
+        if (!deviceCreds?.clientId || !deviceCreds?.deviceId || !deviceCreds?.deviceKey) {
+          if ($("arztStatus")) $("arztStatus").textContent = "Nicht gekoppelt";
+          dayAppointments = [];
+          renderAppts();
+          renderFeats(null);
+          return null;
+        }
+        if ($("arztStatus")) $("arztStatus").textContent = "Lade …";
+        try {
+          const resp = await fetch("/treatment/current", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: deviceCreds.clientId,
+              deviceId: deviceCreds.deviceId,
+              deviceKey: deviceCreds.deviceKey,
+              date: dateStr,
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) {
+            if ($("arztStatus")) $("arztStatus").textContent = data.error || ("HTTP " + resp.status);
+            return null;
+          }
+          dayCalendars = Array.isArray(data.calendars) ? data.calendars : [];
+          dayAppointments = Array.isArray(data.appointments) ? data.appointments : [];
+          if (data.locationId) dayLocationId = data.locationId;
+          if (dayAppointments.length) daysWithAppts.add(dateStr);
+          else daysWithAppts.delete(dateStr);
+          if (data.found) {
+            chairCurrent = {
+              appointmentId: data.appointmentId,
+              locationId: data.locationId,
+              patientId: data.patientId,
+              patientName: data.patientName,
+              visitMotive: data.visitMotive,
+              startMs: data.startMs,
+              comments: data.comments || "",
+              docsStatus: data.docsStatus || "",
+              newPatient: data.newPatient === true,
+              patientHints: Array.isArray(data.patientHints) ? data.patientHints : [],
+              doctorName: data.doctorName || "",
+            };
+          } else if (iso(selectedDate) === iso(TODAY)) {
+            chairCurrent = null;
+          }
+          if (data.doctorName && !selectedDoc) selectedDoc = data.doctorName;
+          if (data.calendarId) selectedCalId = data.calendarId;
+          if ($("arztStatus")) {
+            $("arztStatus").textContent = data.found
+              ? ("Stuhl: " + (data.patientName || "Termin"))
+              : (data.reason === "none" ? "Kein Termin jetzt" : ("Hinweis: " + data.reason));
+          }
+          if (!$("doctors")?.querySelector(".doc-card") || dayCalendars.length) {
+            renderDoctors(dayCalendars, data.doctorName || selectedDoc);
+          }
+          renderAppts();
+          renderPicker();
+          updateTerminLead();
+          // Besonderheiten: aktueller Stuhl-Termin (heute) oder Auswahl
+          const featSrc = (iso(selectedDate) === iso(TODAY) && chairCurrent)
+            ? chairCurrent
+            : (selectedAppt.appointmentId ? selectedAppt : null);
+          renderFeats(featSrc);
+          return data;
+        } catch (e) {
+          if ($("arztStatus")) $("arztStatus").textContent = String(e.message || e);
+          return null;
+        }
+      }
+      $("pickPrev").addEventListener("click", () => { pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1); renderPicker(); });
+      $("pickNext").addEventListener("click", () => { pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1); renderPicker(); });
+      document.querySelectorAll(".picker-quick button").forEach((b) => {
+        b.addEventListener("click", () => {
+          const j = b.dataset.jump;
+          const d = new Date(TODAY);
+          if (j !== "today") d.setDate(d.getDate() + Number(j));
+          selectedDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+          pickerMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+          renderPicker(); updateTerminLead(); loadDay(iso(selectedDate));
+        });
+      });
+      $("appts").addEventListener("click", (e) => {
+        const btn = e.target.closest(".appt");
+        if (!btn) return;
+        $("appts").querySelectorAll(".appt").forEach((x) => x.classList.remove("is-sel"));
+        btn.classList.add("is-sel");
+        const a = dayAppointments[Number(btn.dataset.idx)];
+        pickApptFrom({ ...a, locationId: chairCurrent?.locationId || dayLocationId || selectedAppt.locationId });
+        renderFeats(selectedAppt);
+      });
+      renderPicker();
+      updateTerminLead();
+      loadDay(iso(TODAY)).then((data) => {
+        // Wenn Stuhl-Termin klar: Wizard direkt auf Termin-Schritt (Schritt 2).
+        if (data?.found && data.appointmentId) showStep(2);
+      });
+      // Leichtes Polling, damit ein neuer „wer sitzt?“ nachzieht.
+      setInterval(() => {
+        if (document.hidden) return;
+        if (iso(selectedDate) === iso(TODAY)) loadDay(iso(TODAY));
+      }, 20000);
+
+      // W-LENA-7: Doku live halten OHNE Reload — zieht Segmente + Zusammenfassung
+      // nach, wenn z. B. Clara am iPhone ein Nachdiktat zum selben Termin spricht.
+      // Nur wenn die Doku sichtbar ist und wir nicht selbst aufnehmen/diktieren/
+      // strukturieren (sonst wuerden lokale Eingaben ueberschrieben). Der
+      // Nachdiktat-Schritt (4) bleibt bewusst aussen vor (Texteingabe schuetzen).
+      setInterval(() => {
+        if (document.hidden) return;
+        if (!paneDoku.classList.contains("is-active")) return;
+        if (recording || ndLive || structureBusy) return;
+        const onRec = $("wiz3")?.classList.contains("is-show");
+        const onSum = $("wiz5")?.classList.contains("is-show");
+        if (!onRec && !onSum) return;
+        loadSavedSegments().then((segs) => {
+          if (onRec) {
+            renderDialogFromSegments((segs || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
+          } else if (onSum) {
+            if (serverSummary && serverSummary !== structuredText) structuredText = serverSummary;
+            fillSummary();
+          }
+        }).catch(() => {});
+      }, 6000);
+
+      /* Pegel + Aufnahme → Canary. Mic: iPad Built-in oder USB/DJI (Toggle). */
+      const fillArzt = $("fillArzt"), fillPat = $("fillPat"), dbArzt = $("dbArzt"), dbPat = $("dbPat");
+      const canvas = $("lineCanvas"), ctx = canvas.getContext("2d");
+      const histA = new Array(120).fill(0), histP = new Array(120).fill(0);
+      let recording = false, paused = false, seconds = 0, timerId = null, t0 = performance.now();
+      let recCapture = null;
+      let micPreview = null;
+      let previewGen = 0;
+      let recStartedAtMs = 0;
+      let micMode = (typeof lenaLoadMicMode === "function") ? lenaLoadMicMode() : "ipad";
+
+      function setMicActiveLabel(text, warn) {
+        const el = $("micActiveLabel");
+        if (!el) return;
+        const t = String(text || "").replace(/\s+/g, " ").trim();
+        el.textContent = t.length > 64 ? t.slice(0, 63) + "…" : t;
+        el.title = t;
+        el.classList.toggle("is-warn", !!warn);
+      }
+      function stereoSwap() {
+        return (typeof lenaLoadStereoSwap === "function") ? !!lenaLoadStereoSwap() : false;
+      }
+      function onRecStep() {
+        // Nur Aufnahme-Schritt: Live-Pegel-Preview (Zusammenfassung = fester Anteil).
+        return !!$("wiz3")?.classList.contains("is-show")
+          && paneDoku.classList.contains("is-active");
+      }
+      async function stopMicPreview() {
+        if (!micPreview) return;
+        const p = micPreview;
+        micPreview = null;
+        try { await p.stop(); } catch (_) {}
+      }
+      async function startMicPreview() {
+        if (recording || typeof LenaMicPreview !== "function") return;
+        if (!onRecStep()) {
+          await stopMicPreview();
+          return;
+        }
+        const gen = ++previewGen;
+        await stopMicPreview();
+        if (gen !== previewGen || recording || !onRecStep()) return;
+        const prev = new LenaMicPreview();
+        const ok = await prev.start({ micMode, swapLR: stereoSwap() });
+        if (gen !== previewGen || recording || !onRecStep()) {
+          try { await prev.stop(); } catch (_) {}
+          return;
+        }
+        if (!ok) {
+          const w = prev.activeMic?.warning || "Pegel-Preview fehlgeschlagen";
+          setMicActiveLabel(w, true);
+          return;
+        }
+        micPreview = prev;
+        const mic = prev.activeMic;
+        if (mic?.warning) {
+          setMicActiveLabel(mic.warning + (mic.label ? " · " + mic.label : ""), true);
+        } else if (mic?.label) {
+          const ch = mic.channelCount ? (" · " + mic.channelCount + "ch") : "";
+          setMicActiveLabel(
+            "Pegel live · " + mic.label + (micMode === "usb" ? " (Stereo)" : " (iPad)") + ch
+              + " — in TX sprechen zum Zuordnen",
+            false,
+          );
+        } else {
+          setMicActiveLabel("Pegel live — in die Mikros sprechen zum Zuordnen", false);
+        }
+      }
+      function applyMicToggleUi() {
+        const box = $("micToggle");
+        if (!box) return;
+        box.dataset.mode = micMode;
+        box.querySelectorAll("button").forEach((b) => {
+          b.classList.toggle("is-on", b.dataset.mic === micMode);
+          b.disabled = recording;
+        });
+        const note = $("meterMonoNote");
+        const swapBtn = $("btnStereoSwap");
+        const swap = stereoSwap();
+        if (swapBtn) {
+          swapBtn.hidden = micMode !== "usb";
+          swapBtn.disabled = recording;
+          swapBtn.textContent = swap ? "L↔R · Arzt=Links" : "L/R tauschen";
+          swapBtn.title = swap
+            ? "Getauscht: Links=Arzt, Rechts=Patient"
+            : "Standard: Links=Patient, Rechts=Arzt";
+        }
+        if (micMode === "usb") {
+          if (!recording && !micPreview) {
+            setMicActiveLabel("DJI Stereo · in TXs sprechen zum Zuordnen", false);
+          }
+          if (note) {
+            note.textContent = swap
+              ? "Links=Arzt · Rechts=Patient"
+              : "Links=Patient · Rechts=Arzt";
+          }
+          if ($("meterLabelArzt")) $("meterLabelArzt").textContent = "Arzt";
+          if ($("meterLabelPat")) $("meterLabelPat").textContent = "Patient";
+        } else {
+          if (!recording && !micPreview) setMicActiveLabel("iPad-Mikro · Pegel live", false);
+          if (note) note.textContent = "iPad = Raum";
+          if ($("meterLabelArzt")) $("meterLabelArzt").textContent = "Arzt";
+          if ($("meterLabelPat")) $("meterLabelPat").textContent = "Raum";
+        }
+      }
+      $("micToggle")?.querySelectorAll("button").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (recording) return;
+          const next = btn.dataset.mic === "usb" ? "usb" : "ipad";
+          micMode = next;
+          if (typeof lenaSaveMicMode === "function") lenaSaveMicMode(micMode);
+          applyMicToggleUi();
+          void startMicPreview();
+        });
+      });
+      $("btnStereoSwap")?.addEventListener("click", () => {
+        if (recording) return;
+        const next = !stereoSwap();
+        if (typeof lenaSaveStereoSwap === "function") lenaSaveStereoSwap(next);
+        if (micPreview && typeof micPreview.setSwap === "function") micPreview.setSwap(next);
+        applyMicToggleUi();
+      });
+      applyMicToggleUi();
+      // Geräteliste vorwärmen (Labels nach Permission).
+      if (typeof lenaListAudioInputs === "function") {
+        void lenaListAudioInputs().then((list) => {
+          const usbN = (list || []).filter((d) => d.usb).length;
+          if (micMode === "usb" && !usbN) {
+            setMicActiveLabel("USB/DJI gewählt — noch kein externes Mic erkannt", true);
+          } else if (usbN && micMode === "ipad" && !micPreview) {
+            setMicActiveLabel("Quelle: iPad-Mikro · USB/DJI erkannt (" + usbN + ")", false);
+          }
+        }).catch(() => {});
+      }
+      const sumFillArzt = $("sumFillArzt"), sumFillPat = $("sumFillPat");
+      const sumDbArzt = $("sumDbArzt"), sumDbPat = $("sumDbPat");
+      let lastSumShare = { a: 0, p: 0, has: false };
+      window.__lenaPaintSumMeters = (share) => {
+        lastSumShare = share && typeof share === "object" ? share : lastSumShare;
+        const a = lastSumShare.a || 0;
+        const p = lastSumShare.p || 0;
+        setMeterFill(sumFillArzt, a);
+        setMeterFill(sumFillPat, p);
+        if (sumDbArzt) sumDbArzt.textContent = lastSumShare.has ? (Math.round(a * 100) + "%") : "—";
+        if (sumDbPat) sumDbPat.textContent = lastSumShare.has ? (Math.round(p * 100) + "%") : "—";
+      };
+
+      // Preview nur auf Aufnahme-Schritt; Zusammenfassung zeigt festen Kanalanteil.
+      const _showStepMeters = showStep;
+      showStep = function (n) {
+        _showStepMeters(n);
+        if (n === 3) void startMicPreview();
+        else void stopMicPreview();
+        if (n === 5 && typeof channelShareFromSegments === "function") {
+          lastSumShare = channelShareFromSegments();
+          window.__lenaPaintSumMeters(lastSumShare);
+        }
+      };
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) void stopMicPreview();
+        else if (onRecStep() && !recording) void startMicPreview();
+      });
+      window.__lenaWantPreview = (want) => {
+        if (want && onRecStep() && !recording) void startMicPreview();
+        else void stopMicPreview();
+      };
+      // Falls schon auf Aufnahme-Schritt (nach Reload).
+      if (onRecStep()) void startMicPreview();
+      const fmt = (s) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+      function toDb(v) {
+        // Feste Zeichenbreite → Spalte springt nicht (−∞ / −12 dB).
+        if (v < 0.02) return "−∞  ";
+        const db = 20 * Math.log10(v);
+        const n = db > -1 ? -1 : Math.round(db);
+        const s = String(n);
+        return (s.length >= 3 ? s : ("  " + s).slice(-3)) + " dB";
+      }
+      function setMeterFill(el, v) {
+        if (!el) return;
+        const x = Math.max(0.02, Math.min(1, Number(v) || 0));
+        el.style.transform = "scaleX(" + x.toFixed(3) + ")";
+      }
+      function appendBubble(who, text, segId) {
+        const box = $("dialog");
+        if (!box || !text) return;
+        if (!dialogCleared) { box.innerHTML = ""; dialogCleared = true; }
+        const div = document.createElement("div");
+        div.className = "bubble " + (who === "Patient" ? "p" : "a");
+        if (segId) div.dataset.segId = segId;
+        div.innerHTML = bubbleHtml(who, text, segId || "");
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+        return div;
+      }
+      function levels() {
+        if (recording && paused) return { a: 0, p: 0 };
+        const src = recording ? recCapture : micPreview;
+        if (!src) return { a: 0, p: 0 };
+        if (typeof src.levelsAp === "function") {
+          const lv = src.levelsAp();
+          return { a: Math.min(1, lv.a || 0), p: Math.min(1, lv.p || 0) };
+        }
+        return { a: 0, p: Math.min(1, src.level()) };
+      }
+      function draw() {
+        const w = canvas.width, h = canvas.height;
+        ctx.fillStyle = "#050308"; ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        for (let y = 1; y < 4; y++) { ctx.beginPath(); ctx.moveTo(0, (h / 4) * y); ctx.lineTo(w, (h / 4) * y); ctx.stroke(); }
+        const stroke = (hist, color, alpha) => {
+          const mid = h / 2;
+          ctx.beginPath();
+          hist.forEach((v, i) => { const x = (i / (hist.length - 1)) * w; const y = mid - v * h * 0.42; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+          for (let i = hist.length - 1; i >= 0; i--) { const x = (i / (hist.length - 1)) * w; ctx.lineTo(x, mid + hist[i] * h * 0.28); }
+          ctx.closePath(); ctx.fillStyle = color.replace("1)", alpha + ")"); ctx.fill();
+          ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+          hist.forEach((v, i) => { const x = (i / (hist.length - 1)) * w; const y = mid - v * h * 0.42; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+          ctx.stroke();
+        };
+        stroke(histP, "rgba(216,98,200,1)", 0.16);
+        stroke(histA, "rgba(52,211,153,1)", 0.2);
+      }
+      function loop() {
+        // Nur Meter, wenn Doku sichtbar (Akku). Wellenform-Canvas ist ausgeblendet.
+        if (!paneDoku.classList.contains("is-active")) {
+          requestAnimationFrame(loop);
+          return;
+        }
+        const onRec = !!$("wiz3")?.classList.contains("is-show");
+        if (onRec) {
+          const { a, p } = levels();
+          setMeterFill(fillArzt, a);
+          setMeterFill(fillPat, p);
+          dbArzt.textContent = toDb(a);
+          dbPat.textContent = toDb(p);
+          histA.push(a); histA.shift(); histP.push(p); histP.shift();
+        }
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+
+      async function stopRecording() {
+        recording = false; paused = false;
+        clearInterval(timerId); timerId = null;
+        const btn = $("btnRec");
+        btn.textContent = "● Aufnehmen"; btn.classList.remove("is-live");
+        $("btnPause").disabled = true; $("btnPause").textContent = "Pause";
+        $("recLive").classList.remove("is-on");
+        $("recLive").querySelector("span").textContent = "bereit";
+        if (recCapture) {
+          const c = recCapture; recCapture = null;
+          try { await c.stop(); } catch (_) {}
+        }
+        const accumMs = recStartedAtMs ? Math.max(0, Date.now() - recStartedAtMs) : seconds * 1000;
+        await patchRecorder("idle", { command: "stop", commandAtMs: Date.now(), accumMs, startedAtMs: recStartedAtMs || 0 });
+        applyMicToggleUi();
+        void startMicPreview();
+      }
+
+      $("btnRec").addEventListener("click", async () => {
+        const btn = $("btnRec");
+        if (recording) { await stopRecording(); return; }
+        if (typeof LenaSttCapture !== "function") {
+          $("recLive").querySelector("span").textContent = "STT fehlt";
+          return;
+        }
+        if (micMode === "usb" && typeof LenaStereoSplitCapture !== "function") {
+          $("recLive").querySelector("span").textContent = "Stereo-STT fehlt";
+          return;
+        }
+        if (!treatmentIds()) {
+          $("recLive").querySelector("span").textContent = "kein Termin";
+          return;
+        }
+        // Preview-Mic freigeben, bevor die Aufnahme getUserMedia holt.
+        await stopMicPreview();
+        // Bestehende Segmente behalten (Nachaufnahme), Shell leeren erst wenn leer.
+        const existing = await loadSavedSegments();
+        if (existing.length) {
+          renderDialogFromSegments(existing.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
+        } else {
+          dialogCleared = false;
+        }
+        recording = true; paused = false; seconds = 0; t0 = performance.now();
+        recStartedAtMs = Date.now();
+        $("timer").textContent = "00:00";
+        btn.textContent = "■ Stop"; btn.classList.add("is-live");
+        $("btnPause").disabled = false;
+        $("recLive").classList.add("is-on");
+        $("recLive").querySelector("span").textContent = "verbindet…";
+        timerId = setInterval(() => { if (!paused) { seconds++; $("timer").textContent = fmt(seconds); } }, 1000);
+        patchRecorder("recording", { command: "", startedAtMs: recStartedAtMs, accumMs: 0 });
+
+        const useStereo = micMode === "usb";
+        recCapture = useStereo ? new LenaStereoSplitCapture() : new LenaSttCapture();
+
+        const handleFinal = (source, text) => {
+          if (!text || paused) return;
+          const src = source === "arzt" ? "arzt" : "raum";
+          const who = src === "arzt" ? "Arzt" : "Patient";
+          const bubble = appendBubble(who, text, "");
+          $("recLive").querySelector("span").textContent = "speichert…";
+          postLenaSegment(text, src).then((id) => {
+            const segId = id && id !== true ? String(id) : "";
+            if (segId) {
+              savedSegments.push({ id: segId, text, source: src });
+              if (bubble) {
+                bubble.dataset.segId = segId;
+                bubble.innerHTML = bubbleHtml(who, text, segId);
+              }
+            }
+            if (recording && !paused) {
+              $("recLive").querySelector("span").textContent = id ? "live · gespeichert" : "live · lokal";
+            }
+          });
+        };
+
+        const ok = await recCapture.start(
+          useStereo
+            ? { session: "ipad-rec-" + Date.now(), swapLR: stereoSwap(), lang: "de-DE" }
+            : { channel: "raum", session: "ipad-rec-" + Date.now(), micMode },
+          {
+            onReady: (m) => {
+              const mic = recCapture?.activeMic;
+              const short = useStereo
+                ? ("Stereo" + ((mic?.channelCount || 0) < 2 ? "⚠" : ""))
+                : "iPad";
+              $("recLive").querySelector("span").textContent =
+                "live · " + short + " · " + (m?.primary || m?.model || "canary");
+              applyMicToggleUi();
+              if (mic?.warning) {
+                setMicActiveLabel(mic.warning + " · " + (mic.label || ""), true);
+              } else if (mic?.label) {
+                const ch = mic.channelCount ? (" · " + mic.channelCount + "ch") : "";
+                setMicActiveLabel(
+                  "Aktiv: " + mic.label + (useStereo ? " (DJI Stereo)" : " (iPad)") + ch,
+                  false,
+                );
+              }
+            },
+            onWarn: (msg) => {
+              if (msg) setMicActiveLabel(String(msg), true);
+            },
+            onPartial: (a, b) => {
+              // Stereo: (ch, text) · Mono: (text)
+              const t = useStereo ? b : a;
+              if (!t || paused) return;
+              $("recLive").querySelector("span").textContent = "… " + String(t).slice(0, 28);
+            },
+            onFinal: (a, b) => {
+              if (useStereo) handleFinal(a, b);
+              else handleFinal("raum", a);
+            },
+            onError: (msg) => {
+              $("recLive").querySelector("span").textContent = String(msg || "Fehler").slice(0, 40);
+              setMicActiveLabel(String(msg || "Mikrofon-Fehler"), true);
+              stopRecording();
+            },
+            onClose: () => { if (recording) stopRecording(); },
+          },
+        );
+        if (!ok) await stopRecording();
+        else applyMicToggleUi();
+      });
+      $("btnPause").addEventListener("click", () => {
+        if (!recording) return;
+        paused = !paused;
+        $("btnPause").textContent = paused ? "Weiter" : "Pause";
+        $("recLive").querySelector("span").textContent = paused ? "pause" : "live";
+        patchRecorder(paused ? "paused" : "recording", {
+          command: paused ? "pause" : "",
+          commandAtMs: paused ? Date.now() : 0,
+          startedAtMs: recStartedAtMs || 0,
+          accumMs: seconds * 1000,
+        });
+        // Pause = Segment flushen, Stream laeuft weiter (Server segmentiert neu).
+        try {
+          if (paused && typeof recCapture?.flush === "function") recCapture.flush();
+          else if (paused && recCapture?.ws?.readyState === 1) {
+            recCapture.ws.send(JSON.stringify({ type: "flush" }));
+          }
+        } catch (_) {}
+      });
+    })();
+  </script>
+</body>
+</html>

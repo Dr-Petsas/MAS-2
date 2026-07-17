@@ -174,8 +174,11 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
 
   let appts = snap.docs.map((d) => normalizeAppointment(d.id, d.data())).filter(Boolean);
   // Mirror the platform calendar: drop temporary holds (no patient & not an
-  // absence block) and multi-day items, so counts match what the team sees.
-  appts = appts.filter((a) => (a.patientId || a.isAbsence) && !a.isMultiDay);
+  // absence block) and multi-day NON-absence items, so counts match what the
+  // team sees. Mehrtaegige ABWESENHEITEN (Urlaub/Fortbildung ueber mehrere
+  // Tage) bleiben aber erhalten — sonst wertet die Lueckenberechnung einen
+  // Urlaubstag als frei (17.07.2026).
+  appts = appts.filter((a) => (a.patientId || a.isAbsence) && (!a.isMultiDay || a.isAbsence));
   // VIRTUELLE Termine genauso ausblenden wie der Plattform-Kalender
   // (calendarCtrl.tsx): Recall-/Nachfolger-Platzhalter stehen mit Status
   // "needsConfirmation" in der Collection, sind fuer das Team aber unsichtbar,

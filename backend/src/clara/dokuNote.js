@@ -1,5 +1,6 @@
 import admin from "../firebase.js";
 import { chat } from "../mail/llm.js";
+import { writeTreatmentSummaryEvent } from "./treatmentDoc.js";
 
 // ============================================================================
 // Auto-Karteikarte (04.07.2026): Nach jedem Diktat / Streichen baut MAS aus
@@ -79,6 +80,8 @@ export async function strukturiereKarteikarte(clientId, { locationId, appointmen
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedBy: "clara-auto",
       }, { merge: true });
+      // Leere Kartei -> Summary-Event aus dem Shared Memory entfernen.
+      await writeTreatmentSummaryEvent(clientId, { locationId, appointmentId, structuredText: "" });
       return { ok: true };
     } catch (e) {
       return { ok: false, reason: String(e?.message || e) };
@@ -137,6 +140,9 @@ export async function strukturiereKarteikarte(clientId, { locationId, appointmen
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedBy: "clara-auto",
     }, { merge: true });
+    // Zusammenfassung ins geteilte Praxisgedaechtnis (auffindbar in MAS-Suche +
+    // Patienten-Dossier). Best-effort — Karteikarte oben ist die fuehrende Quelle.
+    await writeTreatmentSummaryEvent(clientId, { locationId, appointmentId, structuredText });
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: String(e?.message || e) };

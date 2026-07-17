@@ -159,8 +159,15 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       bei Nichterreichbarkeit sauber auf Web-Speech zurueck (kein Regressions-
       risiko). Segmente werden pro Sprechpause sofort als Dialog geschrieben.
       MAS-Route `POST /treatment/lena-stt-url` (Launcher meldet die Tunnel-URL)
-      veroeffentlicht `settings/lenaStt`. OFFEN: reale WER-Messung mit echtem
+      veroeffentlicht `settings/lenaStt`.       OFFEN: reale WER-Messung mit echtem
       Praxis-Audio, GPU-Umzug 5090, ggf. Named Tunnel statt Quick-Tunnel.
+      TEIL 5 (Voice-Enhance vor STT, 16.07.): `lena_stt/enhance.py` —
+      DeepFilterNet3 (CPU/ONNX via `deepfilter-stream`) + Noise-Gate + leichte
+      Kompression/Limiter, eingehaengt in `server.py` **vor** Segmenter.
+      Flag `LENA_STT_ENHANCE` (Launcher default an, Notaus=0). Zweck: Bohrer/
+      Absauger/Stille-Halluzinationen drosseln — ASR-Qualitaet, kein Podcast-
+      Studio. DSP-Fallback ohne DFN. DoD offen: Praxis-Clips WER + „sprach auf
+      Stille?“ messbar besser.
       TEIL 4 (Arzt-Quelle umschaltbar, beschlossen 11.07. abends) IN ARBEIT:
       Einsteller "Arzt-Mikro: Ansteckmikrofon (Funkempfaenger) / Headset
       (ueber Clara)" pro Standort. Motiv: Traegt der Chef das Shokz-Headset,
@@ -264,8 +271,17 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       `billTreatment`/`/treatment/billing` bleiben im Backend erhalten (dormant,
       kein Rueckbau), werden von Lena nicht mehr aufgerufen. Frontend live-faehig,
       `lenaWorkspace.tsx` tsc-sauber.
-- [ ] **W-LENA-6 Zusammenfassung + Uebergabe.** Nach dem Gespraech kompakte
+- [~] **W-LENA-6 Zusammenfassung + Uebergabe.** Nach dem Gespraech kompakte
       Abrechnungs-Zusammenfassung; Sophie/Clara nehmen Ergaenzungen auf.
+      TEILWEISE (17.07.): iPad-Zusammenfassung + PDF-Druck + Struktur-
+      Uebergabe im Wizard (wiz5/wiz6) stehen; PMS-Anbindung und Nadine-Mail
+      noch offen. Zusammenfassung behaelt das Arzt-Patient-GESPRAECHSSCHEMA
+      und wird vom starken 5090-Modell (`strongLlm()`, qwen3.6) bereinigt
+      (`buildDialogueDraft`/`polishDialogueSummary` in `lena/lenaDoc.js`):
+      Smalltalk/Junk raus, STT-Hoerfehler geglaettet, KEINE erfundenen
+      Befunde/Ziffern (Zahlen-Waechter `inventsNumbers` + Schema-Wache),
+      Nachdiktat wortwoertlich. LLM aus -> deterministischer Dialog-Fallback.
+      Abschnitts-HTML (`structuredHtml`) bleibt die interne Karteikarte.
 - [~] **W-LENA-7 Clara als Sprach-Doku-Assistent (beschlossen 12.07., Chef).**
       Clara nimmt per Sprache patienten-/termingebundene Doku/Nachtraege auf,
       quittiert, liest vor, ergaenzt/loescht/findet. GESTAFFELT (jedes Teil FERTIG
@@ -312,6 +328,15 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
         liest den `sophiePlan.terminGrund` vor. Ergaenzen/Loeschen bewusst ueber
         Diktat (7c), NICHT durch serverseitiges Verbiegen von `sophiePlan`
         (Konzept-Katalog liegt im Frontend; Sophie erkennt neu).
+      - [x] **7e Nachdiktat = wortwoertlich + Doku im Shared Memory (FERTIG 17.07.).**
+        Clara-Diktat (Text `saveTreatmentDictation` UND getee'tes Live-Diktat bei
+        `recorder.mode=dictation`) wird als `source=nachdiktat` abgelegt -> eigener,
+        ungefilterter Abschnitt (wie iPad-Nachdiktat), erscheint LIVE in der
+        Web-Lena (Firestore-Listener). Die Zusammenfassung geht nun ebenfalls ins
+        geteilte Gedaechtnis (`writeTreatmentSummaryEvent` -> `lena-summary:{apptId}`,
+        Kanal `lena_doc`, upsert/45 Tage) und ist damit in MAS-Suche + Dossier
+        fuer alle Agenten sichtbar. iPad aktualisiert Segmente + Summary per
+        Heartbeat-Poll (kein Reload).
       - [x] **7d+ Label-ERSTELLUNG per Sprache — FERTIG 12.07.** Ein gesprochenes
         „Fuellung an 35" wird jetzt SERVERSEITIG in ein strukturiertes Sophie-Label
         (`Leistungsabsicht`: Konzept + Attribute, KEINE Ziffer) umgewandelt und
@@ -966,10 +991,74 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Stopp je laufendem Termin). Grundlage existiert: treatment/recorder-Dokument
   + RecordingControls; fehlt nur eine schlanke iPad-Oberflaeche. QR je Termin
   (Handy-Diktat) bleibt daneben bestehen.
+  → TEILWEISE ERLEDIGT 16.07.: `/m/ipad.html` + `/m/ipad-app.html` (Clara
+  LiveKit voll, Querformat-Split Clara|Lena) + `POST /treatment/current`
+  (Raum→Termin, deviceKey-gated). Backend neu gestartet (Route antwortet).
+  OFFEN: Hosting-Deploy fuer `?embedded=1` auf dictationPage, Live-Abnahme
+  am Stuhl.
 - (frei)
 
 ## Aenderungslog
 
+- 17.07.2026: **Lueckenerkennung + Recall-Freigabe korrigiert (Chef)** — Zwei
+  Vorfaelle: (1) Clara meldete ZU VIELE freie Luecken, weil `runGapFill()`
+  ueber ALLE Behandler-Kalender scannte (leerer Kollegen-Kalender =
+  ganzer Tag frei) und mehrtaegige Abwesenheiten durch den `isMultiDay`-Filter
+  fielen. Fix (MAS-2): `runGapFill(..., {calendarId})` scopt auf EINEN Kalender;
+  die Aufrufer `gap-briefing` (`resolveDayCalendarScope`), `morningBriefing`
+  (Operator-Behandler) und `recallCoach.dailyInitiativeScan` (identifizierter
+  Operator) uebergeben den Kalender des angemeldeten Behandlers — ohne Operator
+  bleibt es praxisweit (kein Regress). `getDayAppointments` behaelt jetzt
+  mehrtaegige ABWESENHEITEN (blockieren Luecken), und `runGapFill` wertet
+  praxisweite (kalenderlose) Absenzen fuer jeden Kalender als belegt.
+  (2) Die Freigabe-Frage lautet nicht mehr "Soll ich die Anruflisten
+  freigeben?", sondern "Soll ich versuchen, die Luecken zu schliessen und
+  Recall-Patienten anrufen zu lassen?" (recallCoach.js: spoken/instruction/
+  Push-reason/initiativeSuffix). Damit "Nein"/"Ja" weiter greifen: Clara-Voice
+  `openai_compat_llm._freigabe_offer_pending` erkennt zusaetzlich den Luecken-
+  Wortlaut; `tool_subsetting` erzwingt die recall-Gruppe (approve_recall/
+  recall_snooze), solange Claras letzte Antwort eine Freigabe anbietet — sonst
+  fiel `recall_snooze` aus dem Subset und ein schlichtes "Nein" lief ins Leere.
+  Abgesichert per `testsuite/test_recall_yes_no_guard.py` (jetzt im Release-Gate).
+- 17.07.2026: **Clara-Nachdiktat + Doku im Shared Memory (Chef)** — Claras
+  Sprach-Diktat ist jetzt ein WORTWOERTLICHER Nachtrag: Text-Diktat
+  (`saveTreatmentDictation`) schreibt `source=nachdiktat` statt `clara`; das
+  getee'te Live-Diktat (`start_patient_dictation`, `recorder.mode=dictation`)
+  wird in `/treatment/lena-segment` von `arzt` auf `nachdiktat` umgesetzt
+  (normale Aufnahme bleibt `arzt`). Damit landet Clara-Diktat im eigenen,
+  ungefilterten Nachdiktat-Abschnitt. NEU: die fertige ZUSAMMENFASSUNG geht ins
+  geteilte Praxisgedaechtnis — `writeTreatmentSummaryEvent()` (treatmentDoc.js)
+  schreibt/aktualisiert `lena-summary:{apptId}` (Kanal `lena_doc`, 45 Tage,
+  `upsertEvent` in eventStore.js) aus `structureTreatment` (Button/iPad) UND
+  `strukturiereKarteikarte` (Clara-Auto). Damit sind Zusammenfassung + Nachdiktate
+  in der MAS-Suche (`/brain/search`) und im Patienten-Dossier auffindbar; alle
+  Agenten (Nadine/Lisa/Bianca) lesen aus demselben Speicher. LIVE ohne Reload:
+  Web-Lena via Firestore-Listener (unveraendert); iPad zieht Segmente +
+  Zusammenfassung per Heartbeat-Poll nach (`/treatment/heartbeat` liefert
+  jetzt `structuredText`/`structuredHtml`).
+- 17.07.2026: **Dialog-Zusammenfassung via qwen3.6 (Chef)** — `/treatment/structure`
+  baut aus den gefilterten Segmenten einen Arzt-Patient-Dialog
+  (`buildDialogueDraft`) und laesst ihn vom starken 5090-Modell bereinigen
+  (`polishDialogueSummary` -> `strongLlm()`): Gespraechsschema bleibt,
+  STT-Fehler geglaettet, nichts erfunden (Zahlen-Waechter + Schema-Wache),
+  Nachdiktat wortwoertlich angehaengt. 5090 aus -> deterministischer Fallback.
+  `structuredText` = Dialog (iPad/Desktop-Anzeige + PDF), `structuredHtml` =
+  interne Abschnitts-Karteikarte unveraendert.
+- 17.07.2026: **Lena UX-Korrekturen (Chef)** — Zusammenfassung filtert
+  Non-Klinik aus dem Arzt-Patient-Gespraech; Nachdiktat wortwoertlich.
+  iPad-Aufnahme = Kanal `raum` (Patient), Arzt vom Headset. Segment
+  Edit/Delete (`/treatment/lena-segment-update|delete` + Desktop).
+  STT-Phrase: Tennisbaer→Teddybaer; keine Tech-Meta in Summary-UI.
+- 17.07.2026: **Overnight-Paket Lena/iPad** — MAS: `POST /treatment/current`
+  liefert `patientHints` (Termin + Patientenakte + Anamnese-Befunde);
+  iPad `ipad-app.html` nutzt Server-Hints fuer Besonderheiten. MAS: Lena-STT-Proxy
+  (`GET /treatment/lena-stt-url` via Named-Tunnel `/lena-stt`). iPad-Struktur/
+  Billing + deviceKey-Auth (falsche deviceKey -> 403, kein Dev-Bypass).
+  Desktop-Lena: Summary/Strukturieren/PDF. Clara-Voice:
+  `lena_stt/eval_enhance.py` (18 Stress-WAVs, Gate->Stille 5/18; UTF-8-safe).
+  Browser-Speech-Greeting auf iPad entfernt (Clara LiveKit uebernimmt).
+  Bewusst OFFEN (Warteliste): PMS/Nadine-Export, Stereo/Headset-Tee parallel,
+  W-LENA-4 Korrekturmodell, W-LENA-5 volle Sophie-Bruecke.
 - 04.07.2026: Plan erstellt (Phasen 0-7 + W-LENA), beschlossen mit Chef.
 - 04.07.2026: Phase 0 abgeschlossen (Commits, Tags, Voll-Gate, Bundles).
 - 04.07.2026: W-LENA gebaut und getestet (siehe Status im Abschnitt W-LENA).
@@ -1080,6 +1169,11 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   100/100 Bloecke stumm; Doppel-Sprechen: 50/50 offen; Stille: 50/50 offen).
   Typecheck sauber, Hosting deployed (fremde QM-WIP wieder per Stash
   umgangen).
+- 16.07.2026: **W-LENA-2 TEIL 5 Voice-Enhance LIVE** — `lena_stt/enhance.py`:
+  DeepFilterNet3 (CPU/ONNX, `deepfilter-stream`) + Noise-Gate (inkl. HF-
+  Bohrer-Erkennung) + leichte Kompression/Limiter, vor Segmenter in
+  `server.py`. Flag `LENA_STT_ENHANCE` (Launcher default an). Health zeigt
+  `enhance.backend=dfn3`. Tests `test_enhance.py` 10/10. DoD Praxis-WER offen.
 - 11.07.2026: **W-LENA-3 (Live-UI + 9 Abschnitte + Smalltalk-Filter) LIVE** —
   lenaWorkspace hat rechts jetzt den Umschalter Dialog<->Struktur. Dialog =
   chronologischer Verlauf (Patient links / Arzt rechts ueber `source`) mit

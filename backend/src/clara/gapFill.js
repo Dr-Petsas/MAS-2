@@ -445,11 +445,17 @@ async function upsertCallListCase(clientId, { date, calendar, gap, candidates, b
  * Behandler, gate+rank candidates, upsert one approval-pending call-list case
  * per gap. Returns everything the voice/UI layer needs.
  */
-export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false } = {}) {
+export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false, calendarId = null } = {}) {
   const startDate = s(date) || todayBerlin();
   const booking = await loadBooking(clientId).catch(() => null);
   if (!booking?.locationId) return { ok: false, reason: "no_booking_config", gaps: [], callLists: [] };
   const locationId = booking.locationId;
+  // Persoenlicher Assistent (17.07.2026): Ist ein Kalender vorgegeben (der des
+  // angemeldeten Behandlers), werden NUR dessen Luecken gescannt. Ohne Vorgabe
+  // bleibt das Verhalten praxisweit (alle Kalender). Vorfall: Clara meldete zu
+  // viele freie Luecken, weil sie ueber ALLE Behandler-Kalender scannte (leerer
+  // Kollegen-Kalender = ganzer Tag "frei").
+  const onlyCalId = s(calendarId) || null;
 
   const [allCandidates, throttled, prompt] = await Promise.all([
     Promise.all([
@@ -471,13 +477,17 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
     const dayData = await getDayAppointments(clientId, { date: day });
     if (!dayData.ok) continue;
 
-    for (const calendar of booking.calendars || []) {
+    const scopedCalendars = (booking.calendars || []).filter((c) => !onlyCalId || c.id === onlyCalId);
+    for (const calendar of scopedCalendars) {
       const hours = await loadOpeningHoursForCalendar(clientId, locationId, calendar.id);
       const wd = workingDayOf(hours, weekday);
       if (!wd) continue;
 
       const busy = dayData.appointments
-        .filter((a) => a.calendarId === calendar.id)
+        // Belegt = Termine dieses Kalenders PLUS praxisweite (kalenderlose)
+        // Abwesenheiten (Feiertag/Praxis-Sperre gelten fuer jeden Kalender).
+        // Ohne Letzteres wertete Clara eine praxisweite Abwesenheit als frei.
+        .filter((a) => a.calendarId === calendar.id || (a.isAbsence && !a.calendarId))
         .filter((a) => a.isAbsence || (a.status !== "needsConfirmation" && a.status !== "declined"))
         .map((a) => ({ startMin: berlinMinutesOf(a.startMs), endMin: berlinMinutesOf(a.endMs || a.startMs) }));
 

@@ -45,6 +45,25 @@ export async function appendEvent(clientId, input) {
   }
 }
 
+/**
+ * Upsert an event with a STABLE id — im Gegensatz zu appendEvent (create-only)
+ * darf der Eintrag hier aktualisiert werden. Gedacht fuer abgeleitete, sich
+ * fortschreibende Eintraege wie die Behandlungs-ZUSAMMENFASSUNG eines Termins
+ * (`lena-summary:{apptId}`): jede Neu-Strukturierung ueberschreibt Summary +
+ * Zeitstempel (ts), damit die Suche stets den aktuellen Stand findet. Ein
+ * evtl. vorhandenes `humanReview`-Overlay bleibt via merge erhalten.
+ *
+ * @param {string} clientId
+ * @param {object} input raw event input (MUSS ein stabiles `id` tragen)
+ * @returns {Promise<{event: object}>}
+ */
+export async function upsertEvent(clientId, input) {
+  const event = buildEvent({ ...input, clientId });
+  const ref = col(clientId).doc(event.id);
+  await ref.set({ ...event, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { event };
+}
+
 /** Fetch a single event by id, or null. */
 export async function getEvent(clientId, eventId) {
   const snap = await col(clientId).doc((eventId || "").trim()).get();

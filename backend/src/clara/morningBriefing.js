@@ -1,5 +1,6 @@
 import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, todayBerlin } from "./daySchedule.js";
 import { runGapFill } from "./gapFill.js";
+import { loadBooking, resolveCalendar } from "./booking.js";
 import { queryRecent } from "../brain/eventStore.js";
 import { buildBriefing } from "../brain/briefing.js";
 import { buildRedList, spokenRedList } from "../brain/redList.js";
@@ -147,11 +148,21 @@ function closingLine() {
 export async function spokenMorningBriefing(clientId, opts = {}) {
   const date = todayBerlin();
 
+  // Freie Luecken nur im Kalender des angemeldeten Behandlers zaehlen (sonst
+  // meldet Clara leere Kollegen-Kalender als frei, 17.07.2026). Ohne bekannten
+  // Behandler bleibt es praxisweit.
+  let gapCalId = null;
+  if (opts.operatorDoctorName) {
+    const booking = await loadBooking(clientId).catch(() => null);
+    const cal = booking ? resolveCalendar(booking, opts.operatorDoctorName) : null;
+    if (cal) gapCalId = cal.id;
+  }
+
   const [day, events, mail, gapRun, redList, ratingsLine] = await Promise.all([
     getDayAppointments(clientId, { date }).catch(() => null),
     queryRecent(clientId, Date.now() - OPEN_LOOKBACK_MS, 600).catch(() => []),
     buildMailBriefing(clientId, { sinceMinutes: 960, accountIds: opts.mailAccountIds }).catch(() => null),
-    runGapFill(clientId, { date, horizonDays: 1 }).catch(() => null),
+    runGapFill(clientId, { date, horizonDays: 1, calendarId: gapCalId }).catch(() => null),
     buildRedList(clientId).catch(() => ({ critical: [], deadlines: [] })),
     ratingsBriefingLine(clientId).catch(() => ""),
   ]);

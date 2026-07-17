@@ -48,7 +48,10 @@ function isPublic(req) {
   if (p === "/clara/session" || p === "/clara/identify") return true;
   // Phone pairing + push (device is not logged in): register is gated by the
   // single-use QR token, refresh by the deviceKey, vapid-key is a public key.
-  if (p === "/clara/devices/register" || p === "/clara/devices/refresh") return true;
+  // register-code = iOS-sicherer Kurzcode (ohne Link/Manifest); unpair = Geraet
+  // entkoppelt sich selbst per deviceKey.
+  if (p === "/clara/devices/register" || p === "/clara/devices/register-code") return true;
+  if (p === "/clara/devices/refresh" || p === "/clara/devices/unpair") return true;
   if (p === "/clara/devices/vapid-key" || p === "/clara/devices/self-test") return true;
   // Voice-Worker holt beim Verbinden den Anlass eines proaktiven Clara-Anrufs
   // ab (kurzer, PII-freier Sprechtext; einmalig konsumiert, 2h TTL).
@@ -76,7 +79,16 @@ function isPublic(req) {
   // (clientId+locationId+appointmentId, nicht erratbar) ist das Ticket —
   // gleiches Modell wie die oeffentliche submitTreatmentDictation-Function
   // der Plattform. Routen geben nur den Kontext EINES Termins preis.
-  if (p === "/treatment/heartbeat" || p === "/treatment/recorder") return true;
+  // /treatment/current = Raum→Termin fuer das gekoppelte iPad (deviceKey-gated).
+  // /treatment/lena-stt-url GET = oeffentliche wss-Adresse (kein Secret).
+  // lena-segment: iPad speichert Finals (deviceKey) ODER Worker (Publish-Token).
+  if (
+    p === "/treatment/heartbeat" || p === "/treatment/recorder"
+    || p === "/treatment/current" || p === "/treatment/lena-segment"
+    || p === "/treatment/lena-segment-update" || p === "/treatment/lena-segment-delete"
+    || p === "/treatment/structure" || p === "/treatment/billing"
+  ) return true;
+  if (p === "/treatment/lena-stt-url" && req.method === "GET") return true;
   return false;
 }
 

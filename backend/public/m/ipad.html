@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>pickadoc – iPad koppeln</title>
+  <link rel="manifest" href="/m/ipad.webmanifest" />
+  <link rel="apple-touch-icon" href="/m/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="pickadoc" />
+  <meta name="theme-color" content="#0b0410" />
+  <style>
+    :root { color-scheme: dark;
+      --bg-1:#1a0d26; --bg-2:#0b0410; --bg-3:#0f0616;
+      --ink:#f2e9f6; --ink-soft:#b3a6bf; --pink:#e072d1; --pink-deep:#b13fa0; --red:#ff4d6d; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, "Segoe UI", Roboto, sans-serif; color:var(--ink);
+           background: radial-gradient(120% 90% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
+           margin:0; min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center;
+           padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom); }
+    .card { width:min(520px,100%); text-align:center; padding:8px 4px 24px; }
+    .brand { display:flex; align-items:center; justify-content:center; gap:9px; margin-bottom:14px; }
+    .brand img { height:22px; width:auto; opacity:.95; }
+    .brand .word { font-size:19px; font-weight:700; letter-spacing:.3px; }
+    .ava { width:96px; height:96px; border-radius:26px; margin:14px auto; display:block;
+           box-shadow:0 0 44px rgba(224,114,209,.35); }
+    h1 { margin:0 0 6px; font-size:25px; }
+    .sub { color:var(--ink-soft); font-size:14.5px; margin:0 0 22px; line-height:1.5; }
+    .who { color:var(--pink); font-weight:700; }
+    .step { display:flex; gap:12px; align-items:flex-start; text-align:left; background:rgba(255,255,255,.05);
+            border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px; margin:10px 0; }
+    .step .n { background:var(--pink); color:#1a0d26; min-width:26px; height:26px; border-radius:50%;
+               display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; }
+    .step p { margin:2px 0 0; font-size:14px; color:#e7d9ee; line-height:1.45; }
+    button, .btn { width:100%; padding:16px; border:0; border-radius:14px; font-size:17px; font-weight:800;
+             cursor:pointer; display:block; text-decoration:none; text-align:center; }
+    .primary { background:linear-gradient(135deg, var(--pink), var(--pink-deep)); color:#fff; margin-top:14px;
+               box-shadow:0 10px 26px rgba(224,114,209,.4); }
+    .primary:disabled { opacity:.55; box-shadow:none; }
+    .danger-link { background:none; color:var(--red); opacity:.75; font-size:13px; margin-top:18px; font-weight:600; }
+    .ok-badge { font-size:56px; margin:8px 0 2px; }
+    .err { color:#ff9db2; font-size:14px; margin-top:12px; min-height:18px; }
+    .note { color:#8a7d96; font-size:12.5px; margin-top:16px; line-height:1.5; }
+    .hidden { display:none !important; }
+    .sharehint { display:inline-block; background:rgba(0,0,0,.35); border-radius:8px; padding:2px 8px; }
+    .codebox { font-variant-numeric:tabular-nums; font-size:30px; font-weight:900; letter-spacing:8px;
+               background:rgba(255,255,255,.06); border:1px solid rgba(224,114,209,.4); border-radius:14px;
+               padding:14px; margin:10px 0 2px; color:#fff; }
+    input.code { width:100%; padding:16px; border-radius:14px; border:1px solid rgba(224,114,209,.35);
+      background:rgba(0,0,0,.28); color:#fff; font-size:26px; letter-spacing:6px; text-align:center;
+      text-transform:uppercase; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><img src="/m/logo-mark.png" alt="" /><span class="word">pickadoc</span></div>
+    <img class="ava" src="/m/icon-192.png" alt="pickadoc" />
+    <h1 id="title">Arbeitsplatz koppeln</h1>
+    <p class="sub" id="subtitle">Dieses iPad wird fest mit deiner Praxis verbunden – Clara &amp; Lena am Behandlungsstuhl.</p>
+
+    <!-- iOS: erst als App auf den Home-Bildschirm (wie beim Handy) -->
+    <div id="viewInstall" class="hidden">
+      <div id="codeReveal" class="hidden">
+        <div class="note" style="margin-top:0">Dein Kopplungscode (gleich in der App eingeben):</div>
+        <div class="codebox" id="codeRevealVal">––––––</div>
+      </div>
+      <div class="step"><div class="n">1</div><p>Tippe oben/unten in Safari auf das <b>Teilen-Symbol</b> <span class="sharehint">⬆︎</span>.</p></div>
+      <div class="step"><div class="n">2</div><p>Wähle <b>„Zum Home-Bildschirm"</b> → <b>„Hinzufügen"</b>.</p></div>
+      <div class="step"><div class="n">3</div><p>Öffne die neue <b>pickadoc-App</b> vom Home-Bildschirm und gib dort den Code ein.</p></div>
+      <p class="note">Kein Push, keine Mitteilungen – nur die Praxis-Oberfläche. Das Gerät bleibt danach dauerhaft angemeldet.</p>
+    </div>
+
+    <!-- Code-Eingabe: push-frei, läuft in der installierten App -->
+    <div id="viewCode" class="hidden">
+      <div class="step"><div class="n">1</div><p>Gib den <b>Kopplungscode</b> aus <b>MAS · Einstellungen · Arbeitsplätze</b> ein.</p></div>
+      <input id="codeInput" class="code" type="text" inputmode="latin" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="8" placeholder="z. B. K7P2QW" />
+      <button class="primary" id="btnCode">Koppeln</button>
+      <p class="note">Einmalig – danach kein täglicher Login. Das iPad bleibt angemeldet.</p>
+    </div>
+
+    <!-- Gekoppelt -->
+    <div id="viewHome" class="hidden">
+      <div class="ok-badge">✅</div>
+      <p class="sub" id="homeText">Verbunden.</p>
+      <a class="btn primary" id="btnOpen" href="/m/ipad-app.html">Arbeitsplatz öffnen</a>
+      <button class="danger-link" id="btnUnpair">Dieses iPad entkoppeln</button>
+    </div>
+
+    <!-- Token/Code-Problem -->
+    <div id="viewDead" class="hidden">
+      <div class="ok-badge">⌛️</div>
+      <p class="sub">Dieser Code ist abgelaufen oder wurde schon benutzt.<br/>Bitte in den Einstellungen einen neuen erzeugen.</p>
+      <button class="primary" id="btnRetry">Code eingeben</button>
+    </div>
+
+    <div class="err" id="err"></div>
+    <p class="note" id="diag"></p>
+  </div>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const urlCode = (qs.get("code") || "").trim().toUpperCase();
+    const manage = qs.get("manage") === "1";
+    const STORE_KEY = "pickadoc.ipad.v1";
+    const PENDING_KEY = "pickadoc.ipad.pending.v1";
+
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS meldet sich als Mac
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+    // Frischer Scan mit Code: Manifest mit dem Code versehen, damit die als App
+    // hinzugefügte Seite den Code trägt (iOS speichert die start_url dauerhaft).
+    if (urlCode && !isStandalone) {
+      const mlink = document.querySelector('link[rel="manifest"]');
+      if (mlink) mlink.href = "/m/ipad.webmanifest?code=" + encodeURIComponent(urlCode);
+    }
+
+    const els = Object.fromEntries(["title","subtitle","viewInstall","viewCode","viewHome","viewDead",
+      "btnCode","codeInput","btnOpen","btnUnpair","btnRetry","homeText","err","codeReveal","codeRevealVal","diag"]
+      .map((id) => [id, document.getElementById(id)]));
+
+    function loadDevice() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { return null; } }
+    function saveDevice(d) { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {} }
+    function clearDevice() { try { localStorage.removeItem(STORE_KEY); } catch {} }
+    function savePendingCode(code) { try { localStorage.setItem(PENDING_KEY, JSON.stringify({ code, ts: Date.now() })); } catch {} }
+    function loadPendingCode() {
+      try {
+        const p = JSON.parse(localStorage.getItem(PENDING_KEY) || "null");
+        if (!p || !p.code) return "";
+        if (Date.now() - (p.ts || 0) > 30 * 60 * 1000) { localStorage.removeItem(PENDING_KEY); return ""; }
+        return String(p.code).toUpperCase();
+      } catch { return ""; }
+    }
+    function clearPendingCode() { try { localStorage.removeItem(PENDING_KEY); } catch {} }
+
+    function show(view) {
+      for (const v of ["viewInstall","viewCode","viewHome","viewDead"]) els[v].classList.add("hidden");
+      if (view) els[view].classList.remove("hidden");
+    }
+    function setErr(m) { els.err.textContent = m || ""; }
+
+    async function redeem(code) {
+      setErr("");
+      const c = String(code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (c.length < 4) { setErr("Bitte den Code aus den Einstellungen eingeben."); return; }
+      els.btnCode.disabled = true; els.btnCode.textContent = "Wird verbunden …";
+      try {
+        // Push-frei: iPad-Konsole braucht keine Web-Push-Subscription.
+        const resp = await fetch("/clara/devices/register-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: c, label: "iPad" }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          if (["token_unknown","token_used","token_expired","code_missing"].includes(data.error)) { clearPendingCode(); show("viewDead"); }
+          else setErr(data.error || "Kopplung fehlgeschlagen.");
+          els.btnCode.disabled = false; els.btnCode.textContent = "Koppeln";
+          return;
+        }
+        clearPendingCode();
+        saveDevice({
+          clientId: data.clientId,
+          deviceId: data.deviceId,
+          deviceKey: data.deviceKey,
+          operatorName: data.operator?.name || "",
+          doctorName: data.operator?.doctorName || "",
+          role: data.operator?.role || "",
+          apps: Array.isArray(data.apps) ? data.apps : ["clara","lena","sophie"],
+          deviceType: data.deviceType || "ipad",
+        });
+        // Direkt in die Arbeitsplatz-App.
+        location.replace("/m/ipad-app.html?c=" + encodeURIComponent(data.clientId));
+      } catch (e) {
+        setErr(String(e.message || e));
+        els.btnCode.disabled = false; els.btnCode.textContent = "Koppeln";
+      }
+    }
+
+    function renderHome() {
+      const d = loadDevice();
+      if (!d) { renderEntry(); return; }
+      els.title.textContent = "Arbeitsplatz";
+      els.subtitle.textContent = "";
+      els.homeText.innerHTML = `Dieses iPad ist verbunden als <span class="who">${d.operatorName || "Team"}</span>.`;
+      els.btnOpen.href = "/m/ipad-app.html?c=" + encodeURIComponent(d.clientId || "");
+      show("viewHome");
+    }
+
+    function renderEntry() {
+      const pending = loadPendingCode();
+      // iOS Safari-Tab (noch nicht als App installiert): erst Home-Bildschirm.
+      if (isIOS && !isStandalone) {
+        if (urlCode) { savePendingCode(urlCode); els.codeReveal.classList.remove("hidden"); els.codeRevealVal.textContent = urlCode; }
+        show("viewInstall");
+        return;
+      }
+      // Installierte App oder Nicht-iOS: Code eingeben (Autostart, wenn vorhanden).
+      els.title.textContent = "Arbeitsplatz koppeln";
+      els.subtitle.textContent = "Gib den Kopplungscode aus MAS · Einstellungen · Arbeitsplätze ein.";
+      const pre = urlCode || pending;
+      if (pre) els.codeInput.value = pre;
+      show("viewCode");
+      if (pre) redeem(pre);
+    }
+
+    els.btnCode.addEventListener("click", () => redeem(els.codeInput.value));
+    els.codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); redeem(els.codeInput.value); } });
+    els.btnRetry.addEventListener("click", () => renderEntry());
+    els.btnUnpair.addEventListener("click", async () => {
+      els.btnUnpair.disabled = true; els.btnUnpair.textContent = "Wird entkoppelt …";
+      const d = loadDevice();
+      try {
+        if (d?.clientId && d?.deviceId && d?.deviceKey) {
+          await fetch("/clara/devices/unpair", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId: d.clientId, deviceId: d.deviceId, deviceKey: d.deviceKey }),
+          });
+        }
+      } catch {}
+      clearDevice();
+      location.reload();
+    });
+
+    // Boot: gekoppelt -> App (außer ?manage=1). Frischer Code -> koppeln.
+    const device = loadDevice();
+    if (device && !manage && !urlCode) {
+      location.replace("/m/ipad-app.html?c=" + encodeURIComponent(device.clientId || ""));
+    } else if (device && manage) {
+      renderHome();
+    } else {
+      renderEntry();
+    }
+  </script>
+</body>
+</html>

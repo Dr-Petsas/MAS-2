@@ -2287,10 +2287,14 @@ router.post("/tools/gap-briefing", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const demoOnly = req.body?.demoOnly === true || req.body?.demoOnly === "true";
+    // Wie day-briefing: ohne explizite Behandler-Angabe nur der Kalender des
+    // angemeldeten Behandlers (sonst zaehlt Clara fremde/leere Kalender als frei).
+    const { calendarId: gapCalId } = await resolveDayCalendarScope(clientId, req.body);
     const run = await runGapFill(clientId, {
       date: req.body?.date,
       horizonDays: Number(req.body?.horizonDays) || 1,
       demoOnly,
+      calendarId: gapCalId,
     });
     const op = await getOperator(clientId);
     let message = buildSpokenGapBriefing(run, { operatorName: op?.name });

@@ -1,6 +1,6 @@
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
-import { loadBooking, ensureBerlinTz } from "./booking.js";
+import { loadBooking, ensureBerlinTz, resolveCalendar } from "./booking.js";
 import { commitBooking } from "./agentBooking.js";
 import { runGapFill, approveCallList } from "./gapFill.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
@@ -513,7 +513,21 @@ function addDaysIso(isoDate, days) {
  */
 export async function dailyInitiativeScan(clientId, { targetDate, publicBaseUrl } = {}) {
   const date = s(targetDate) || addDaysIso(todayBerlin(), 1);
-  const run = await runGapFill(clientId, { date, horizonDays: 1 });
+  // Nur die Luecken des gekoppelten Behandlers zaehlen — ist ein Operator
+  // identifiziert, gilt sein Kalender. Ohne Operator bleibt es praxisweit
+  // (kein Regress). Vorfall 17.07.2026: praxisweiter Scan meldete zu viele
+  // freie Luecken (leere Kollegen-Kalender).
+  let scopeCalId = null;
+  try {
+    const scanOp = await getOperator(clientId).catch(() => null);
+    const scanOpName = String(scanOp?.doctorName || scanOp?.name || "").trim();
+    if (scanOpName) {
+      const scanBooking = await loadBooking(clientId).catch(() => null);
+      const scanCal = scanBooking ? resolveCalendar(scanBooking, scanOpName) : null;
+      if (scanCal) scopeCalId = scanCal.id;
+    }
+  } catch { /* Operator-Lookup darf den Scan nie blockieren */ }
+  const run = await runGapFill(clientId, { date, horizonDays: 1, calendarId: scopeCalId });
   if (!run.ok) return { ok: false, reason: run.reason || "scan_failed" };
 
   const gapsWithCands = run.gaps.filter((g) => g.candidateCount > 0);
@@ -557,7 +571,7 @@ export async function dailyInitiativeScan(clientId, { targetDate, publicBaseUrl 
       operatorId = ops?.[0]?.id || "";
     }
     if (operatorId) {
-      const reason = `${summary} Verbinden Sie sich und sagen Sie: Recall freigeben.`;
+      const reason = `${summary} Verbinden Sie sich, wenn ich versuchen soll, die Lücken zu schließen und Recall-Patienten anrufen zu lassen.`;
       const r = await callOperator(clientId, operatorId, { reason, publicBaseUrl: s(publicBaseUrl) }).catch(() => ({ ok: false }));
       pushed = !!r.ok;
       if (pushed) {
@@ -568,12 +582,14 @@ export async function dailyInitiativeScan(clientId, { targetDate, publicBaseUrl 
           kind: "recall_initiative",
           reason,
           date,
-          spoken: `Ich habe dich angerufen: ${summary} Soll ich die Anruflisten freigeben?`,
+          spoken: `Ich habe dich angerufen: ${summary} Soll ich versuchen, die Lücken zu schließen und Recall-Patienten anrufen zu lassen?`,
           instruction:
             `KONTEXT: Du (Clara) hast den Chef soeben aktiv per Push angerufen. Anlass: ${summary} ` +
-            `Die Anruflisten warten auf Freigabe. Stimmt der Chef zu ('ja', 'mach das', 'gib frei', 'leg los'), ` +
-            `rufe SOFORT das Tool approve_recall mit date=${date} auf. ` +
-            `Lehnt er ab ('heute nicht', 'kein Recall'), rufe recall_snooze auf. ` +
+            `Du hast gefragt, ob du versuchen sollst, die Lücken zu schließen und Recall-Patienten anrufen zu lassen. ` +
+            `Stimmt der Chef zu ('ja', 'ja bitte', 'ok', 'mach das', 'gib frei', 'leg los'), ` +
+            `rufe SOFORT das Tool approve_recall mit date=${date} auf — auch bei einem einzelnen 'Ja'. ` +
+            `Lehnt er ab ('nein', 'nee', 'heute nicht', 'nicht jetzt', 'kein Recall'), ` +
+            `rufe SOFORT recall_snooze auf — auch bei einem einzelnen 'Nein'. Nicht nachfragen, nicht 'nicht verstanden' sagen. ` +
             `Fragt er nach Details, nutze gap_briefing mit date=${date}.`,
         }).catch(() => {});
         // Ticket-Spur im Praxisgedächtnis: Clara hat von sich aus angerufen.
@@ -621,7 +637,7 @@ export async function initiativeSuffix(clientId) {
     return "";
   }
   await ref.set({ lastMentionAt: now }, { merge: true }).catch(() => {});
-  return ` Übrigens: ${cfg.summary} Soll ich die Anruflisten freigeben? Sage einfach: Recall freigeben.`;
+  return ` Übrigens: ${cfg.summary} Soll ich versuchen, die Lücken zu schließen und Recall-Patienten anrufen zu lassen? Sag einfach ja, dann leg ich los.`;
 }
 
 // ----------------------------------------------------------------------------

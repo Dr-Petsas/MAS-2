@@ -1,7 +1,7 @@
 import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
 import { getDayAppointments, getPatientAppointments, todayBerlin } from "./daySchedule.js";
-import { appendEvent } from "../brain/eventStore.js";
+import { appendEvent, upsertEvent, deleteEventsByIdPrefix } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { masCollection } from "../tenant.js";
 
@@ -13,7 +13,7 @@ import { masCollection } from "../tenant.js";
  * dem Termin — DIESELBE Stelle, die die Lena-Seite und der Termintab live
  * mitlesen:
  *   clients/{clientId}/locations/{locationId}/appointments/{appointmentId}/dictations/{id}
- *   { text, source: "clara", lang, createdAt }
+ *   { text, source: "nachdiktat", lang, createdAt }  (wortwoertlicher Nachtrag)
  *
  * So erscheint diktierter Text sofort in Lena + im Termintab (datiert).
  *
@@ -273,6 +273,67 @@ export function combineActiveSegments(segs) {
 }
 
 /**
+ * Schreibt die fertige Behandlungs-ZUSAMMENFASSUNG eines Termins ins geteilte
+ * Praxisgedaechtnis (Kanal `lena_doc`, 45 Tage), damit sie in der MAS-Suche und
+ * im Patienten-Dossier auffindbar ist — genauso wie die Einzel-Diktate. Stabile
+ * Event-ID pro Termin (`lena-summary:{apptId}`), per upsert aktualisierbar: jede
+ * Neu-Strukturierung ueberschreibt den Stand. Leerer Text (alles gestrichen)
+ * entfernt das Event wieder. Best-effort — die fuehrende Quelle bleibt
+ * `treatment/main` in Firestore.
+ *
+ * @param {string} clientId
+ * @param {{locationId:string, appointmentId:string, structuredText:string}} args
+ * @returns {Promise<{ok:boolean, cleared?:boolean, reason?:string}>}
+ */
+export async function writeTreatmentSummaryEvent(clientId, { locationId, appointmentId, structuredText } = {}) {
+    const cid = String(clientId || "").trim();
+    const lid = String(locationId || "").trim();
+    const aid = String(appointmentId || "").trim();
+    if (!cid || !lid || !aid) return { ok: false, reason: "missing_ids" };
+    const eventId = `lena-summary:${aid}`;
+    const summaryText = String(structuredText || "").trim();
+    try {
+        if (!summaryText) {
+            await deleteEventsByIdPrefix(cid, eventId);
+            return { ok: true, cleared: true };
+        }
+        let subjId = "";
+        let subjName = "";
+        try {
+            const apptSnap = await admin.firestore()
+                .collection("clients").doc(cid)
+                .collection("locations").doc(lid)
+                .collection("appointments").doc(aid).get();
+            const ap = apptSnap.exists ? (apptSnap.data() || {}) : {};
+            subjId = String(ap?.patient?.id || ap?.patientId || "").trim();
+            subjName = `${ap?.patient?.firstName || ""} ${ap?.patient?.lastName || ""}`.trim();
+        } catch { /* Subject ist Komfort */ }
+        // Voller Text (bis 12k) in die Summary — die Suche matcht auf event.summary.
+        const kurz = summaryText.length > 12000 ? summaryText.slice(0, 11997) + "..." : summaryText;
+        await upsertEvent(cid, {
+            id: eventId,
+            channel: CHANNELS.LENA_DOC,
+            type: EVENT_TYPES.NOTE,
+            direction: DIRECTIONS.INTERNAL,
+            counterparty: { kind: "system", name: "Lena", ref: null },
+            subject: subjId
+                ? { patientId: subjId, name: subjName, matchStatus: "matched", matchMethod: "name" }
+                : { name: subjName, matchStatus: "unmatched" },
+            status: "none",
+            summary: `Behandlungszusammenfassung (Lena): ${kurz}`,
+            payloadRef: { kind: "treatment_summary", id: aid },
+            extractor: "lena@summary",
+            tags: ["lena", "dokumentation", "behandlung", "zusammenfassung"],
+            expiresAtMs: Date.now() + DOKU_MEMORY_TAGE * 86400000,
+        });
+        return { ok: true };
+    } catch (e) {
+        console.warn("writeTreatmentSummaryEvent failed:", e?.message || e);
+        return { ok: false, reason: String(e?.message || e) };
+    }
+}
+
+/**
  * Speichert ein Dokumentationsdiktat als Segment unter dem Termin.
  * Liefert zusaetzlich Besuchsgrund + Patient des Termins sowie den KUMULIERTEN
  * Text aller aktiven Segmente (combinedText) zurueck — der Doku-Check prueft
@@ -317,9 +378,13 @@ export async function saveTreatmentDictation(clientId, { text, appointmentId, pa
             apptStartMs = _tsToMs(ap?.start);
         } catch { /* Metadaten sind Komfort */ }
 
+        // source=nachdiktat: Clara-Diktate sind ein WORTWOERTLICHER Nachtrag zum
+        // Termin (wie das iPad-Nachdiktat) — sie landen im eigenen, ungefilterten
+        // Nachdiktat-Abschnitt der Zusammenfassung, nicht im smalltalk-gefilterten
+        // Gespraechsteil.
         const doc = await apptRef.collection("dictations").add({
             text: body,
-            source: "clara",
+            source: "nachdiktat",
             lang,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });

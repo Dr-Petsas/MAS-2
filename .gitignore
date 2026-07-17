@@ -51,3 +51,6 @@ AlbumArtSmall.jpg
 Folder.jpg
 .idea/
 .run/
+
+# OCR-Sprachdaten (Tesseract, binaer, per Download holen - nie committen)
+*.traineddata

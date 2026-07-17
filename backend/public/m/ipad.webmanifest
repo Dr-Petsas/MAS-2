@@ -1,0 +1,16 @@
+{
+  "name": "pickadoc – Arbeitsplatz",
+  "short_name": "pickadoc",
+  "description": "Behandlungszimmer am iPad: Clara Sprechzimmer & Lena Dokumentation.",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0410",
+  "theme_color": "#0b0410",
+  "scope": "/m/",
+  "start_url": "/m/ipad-app.html",
+  "icons": [
+    { "src": "/m/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/m/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/m/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,6 +1,11 @@
 // Pure Unit-Tests fuer die halluzinationsfreie Patientenbindung der Lena-
 // Aufnahme (W-LENA-1). Kein Firestore, kein LLM. Aufruf: node scripts/test-lena-recording.mjs
-import { pickCurrentAppointment, spokenApptWhen } from "../src/clara/treatmentRecording.js";
+import {
+  pickCurrentAppointment,
+  spokenApptWhen,
+  resolveChairAppointment,
+  matchCalendarId,
+} from "../src/clara/treatmentRecording.js";
 
 let fails = 0;
 function check(name, cond, detail = "") {
@@ -71,6 +76,34 @@ check("nur Abwesenheit -> none",
 // 9) spokenApptWhen
 check("spokenApptWhen(0) leer", spokenApptWhen(0) === "");
 check("spokenApptWhen enthaelt 'Uhr'", /Uhr/.test(spokenApptWhen(now)));
+
+// 10) resolveChairAppointment: activeRecording gewinnt
+{
+  const r = resolveChairAppointment(
+    { appointmentId: "rec1", locationId: "locA", patientName: "Mueller" },
+    [P("a", -5 * MIN)],
+    now,
+    "locB",
+  );
+  check("activeRecording gewinnt", r.ok && r.reason === "recording" && r.appointmentId === "rec1" && r.locationId === "locA");
+}
+
+// 11) resolveChairAppointment: ohne active -> Stuhl-Termin
+{
+  const r = resolveChairAppointment(null, [P("a", -5 * MIN)], now, "locA");
+  check("ohne active -> in_progress", r.ok && r.reason === "in_progress" && r.appointmentId === "a" && r.locationId === "locA");
+}
+
+// 12) resolveChairAppointment: keiner -> none
+{
+  const r = resolveChairAppointment(null, [], now, "locA");
+  check("leer -> found=false", !r.ok && r.reason === "none");
+}
+
+// 13) matchCalendarId
+check("matchCalendarId exakt", matchCalendarId([{ id: "c1", name: "Dr. Petsas" }], "Dr. Petsas") === "c1");
+check("matchCalendarId Token", matchCalendarId([{ id: "c1", name: "Dr. med. Petsas" }], "Petsas") === "c1");
+check("matchCalendarId leer", matchCalendarId([{ id: "c1", name: "Dr. Petsas" }], "") === "");
 
 console.log();
 if (fails) { console.log(`${fails} CHECK(S) FEHLGESCHLAGEN`); process.exit(1); }
