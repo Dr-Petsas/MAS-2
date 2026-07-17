@@ -1000,6 +1000,50 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 17.07.2026: **Lena-STT Halluzinations-Abwehr (Chef)** — Testaufnahmen (Overlap,
+  Nuschelsaetze) zeigten "Unmengen an Halluzinationen": Canary (DE-Lock, kein
+  Sprach-Jump) erfindet bei undeutlicher/ueberlappender Sprache selbstsichere
+  DEUTSCHE Fehl-Woerter ("Lepon", "Zoe auf dem Stier"), plus viele Mikro-Segmente
+  aus dem reinen Energie-VAD. Drei additive, flag-gated Stufen mit Notaus/Tests
+  (Clara-Voice): (1) **Silero neuronales Sprach-Gate** `lena_stt/vad_silero.py`
+  vor Canary — verwirft Segmente ohne echte Sprache (Bohrer/Rascheln), die das
+  Energie-Gate durchlaesst (konservativ, `LENA_STT_SILERO_MIN_RATIO=0.05`,
+  Notaus `LENA_STT_SILERO_GATE=0`; Deps `silero-vad`+`torchaudio` nur im Lena-GPU-
+  venv, `--no-deps`). (2) **Halluzinations-Loop-Waechter** `hallucination_guard.py`
+  — deutsche Loop-/Spam-Muster raus, kurze echte Antworten bleiben (Test
+  `test_hallucination_guard.py` im Release-Gate, Notaus `LENA_STT_HALLU_GUARD=0`).
+  (3) **Confidence** pro Segment immer geloggt + im `final`-JSON als `conf`; Gate
+  (`LENA_STT_MIN_CONF>0`) erst nach Kalibrieren scharf. Dazu **Debug-Capture**
+  `LENA_STT_CAPTURE_DIR` (WAV+JSONL je Segment) fuer echtes A/B-Tuning. `/health`
+  zeigt `sileroVad`/`halluGuard`/`logConf`/`capture`.
+- 17.07.2026: **Lena-STT: echte Aufnahme ausgewertet + Doppelungs-Filter (Chef)** —
+  Capture einer echten Behandlung (89 Segmente) zeigte: Halluzinationen weitgehend
+  geloest (Silero+Waechter verwarfen nur 4 Segmente, alle korrekt Nicht-Sprache;
+  keine echte Doku verloren). ZWEI echte Restprobleme: (1) **Zwei-Mikro-Doppelung**
+  — Ansteck- (`arzt`) und Raummikro (`raum`) hoeren beide den Behandler, jeder Satz
+  kam DOPPELT (0,5–2 s versetzt, "…Zahn 37,8."/"…Zahn 378."). Neu: `dedup_guard.py`
+  (prozessweiter Kurzzeit-Puffer, Text-Aehnlichkeit + enges Zeitfenster fuer
+  divergente Zwillinge) -> 85->71 Segmente; Notaus `LENA_STT_DEDUP=0`, Test im
+  Gate. GRENZE: <45%-aehnliche Zwillinge bleiben (Cross-Channel-Merge an der
+  Speicherstelle mit source+Zeit = separates Paket). (2) **Confidence bei Canary
+  unbrauchbar** (konstant 1.0) -> conf-Gate bleibt AUS. (3) **Fachbegriffe** teils
+  falsch ("kariös"->"karriös", "Veneer"->"Venier") -> erledigt (siehe naechster
+  Eintrag "Lena-Fachvokabular"). OFFEN bleibt: `startMs/endMs` kommen als 0 in Firestore
+  (separater Bug, blockiert den sauberen Cross-Channel-Merge).
+- 17.07.2026: **Lena-Fachvokabular + umgangssprachliche Deutung (Chef)** — Drei
+  Teile: (1) `lena_stt/data/medical_terms_de.txt` von ~150 auf 281 Begriffe
+  erweitert (Adjektiv-/Befundformen kariös/insuffizient/gelockert/klopfempfindlich …,
+  Plurale/Fehlformen Veneers, Schlifffacette, KFO-Begriffe); Fuzzy faengt jetzt
+  "karriöse"->"kariöse", "Veniers"->"Veneers". (2) **ASCII-Umlaut-Bug behoben:**
+  die alte Liste (ae/oe/ue) zog Canarys korrektes "Füllung"->"Fuellung",
+  "Anästhesie"->"Anaesthesie" — jetzt echte Umlaute (nicht zurueckbauen). Gegenprobe:
+  "seriöse" wird NICHT zu "kariöse". (3) **Umgangssprache->Fachsprache in der
+  ANZEIGE-Zusammenfassung** (`lena/lenaDoc.js`, qwen3.6-Politik): 'Loch'->'kariöse
+  Stelle', 'kaputt/abgebrochen'->'defekt/frakturiert', 'wackelt'->'gelockert',
+  'Nerv'->'Pulpa' — nur bei eindeutigem Sinn, keine neue Diagnose/Gewissheit; die
+  WOERTLICHE Akte (§ 630f Original-Segmente) bleibt unangetastet. Zusaetzlich in der
+  Klassifikation abgesichert: umgangssprachliche Befunde ('Loch','kaputt','tut weh' …)
+  gelten als klinisch und werden NIE als Smalltalk verworfen.
 - 17.07.2026: **Lueckenerkennung + Recall-Freigabe korrigiert (Chef)** — Zwei
   Vorfaelle: (1) Clara meldete ZU VIELE freie Luecken, weil `runGapFill()`
   ueber ALLE Behandler-Kalender scannte (leerer Kollegen-Kalender =
