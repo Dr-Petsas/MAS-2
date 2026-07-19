@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lena · Knochenverlauf (auf Basis deines SVG)</title>
   <meta name="theme-color" content="#0b0e13" />
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260720h" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260721a" />
 </head>
 <body>
   <header>
@@ -22,6 +22,26 @@
   <main>
     <section class="stage-wrap">
       <div id="stage"></div>
+
+      <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten">
+        <button type="button" data-tab="Pro" class="on">Pro</button>
+        <button type="button" data-tab="Kons" disabled>Kons</button>
+        <button type="button" data-tab="Chir" disabled>Chir</button>
+        <button type="button" data-tab="ZE" disabled>ZE</button>
+        <button type="button" data-tab="Par" disabled>Par</button>
+        <button type="button" data-tab="KB" disabled>KB</button>
+        <button type="button" data-tab="IMP" disabled>IMP</button>
+        <button type="button" data-tab="KFO" disabled>KFO</button>
+        <button type="button" data-tab="SH" disabled>Schleimhäute</button>
+      </nav>
+
+      <section class="legend" id="legendPro">
+        <div class="legend-head">
+          <h3>Prophylaxe</h3>
+          <p>Befund wählen, dann Zähne im Schema anklicken. Nochmal klicken entfernt ihn.</p>
+        </div>
+        <div class="legend-items" id="legendItems"></div>
+      </section>
     </section>
 
     <aside class="zoom-pane">
@@ -52,10 +72,10 @@
         <button type="button" id="presetReset">Gesund</button>
       </div>
 
-      <p class="note"><b>Zähne</b> mit den originalen SVG-Wurzelformen, Studio-Warm-Plastik für Kronen und Wurzeln; Zweit-/Palatinalwurzeln (14/24/25, 16&ndash;18/26&ndash;28) betont. <b>Knochen</b> endet gesund ~1,8&nbsp;mm unter der Grenzlinie und sinkt <b>bogenförmig</b> pro Zahn ab – die Nachbar-Punkte bleiben fixiert.</p>
+      <p class="note"><b>Zähne</b> mit den originalen SVG-Wurzelformen, Studio-Warm-Plastik für Kronen und Wurzeln; Zweit-/Palatinalwurzeln (14/24/25, 16&ndash;18/26&ndash;28) betont. <b>Knochen</b> endet gesund ~1,8&nbsp;mm unter der Grenzlinie und sinkt <b>bogenförmig</b> pro Zahn ab – die Nachbar-Punkte bleiben fixiert. <b>Prophylaxe-Befunde</b> (Tab „Pro“) werden direkt an der echten Zahngeometrie gezeichnet: Plaque als Biofilm-Schleier, Zahnstein als Kruste am Saum, Konkremente subgingival, Verfärbungen auf der Krone.</p>
     </aside>
   </main>
 
-  <script src="/m/lena-01/perio.js?v=20260720h"></script>
+  <script src="/m/lena-01/perio.js?v=20260721a"></script>
 </body>
 </html>

@@ -32,6 +32,26 @@
   const state = {};
   let selected = 46;
   let boneOpacity = 0.75;   // Knochen-Deckkraft, live per Regler einstellbar
+  let armedFinding = null;  // aktives Legenden-Item (Pro-Tab); null = nur Zahn waehlen
+
+  // Prophylaxe-Legende (Konzept wie struktur01, Grafik = unser Studio-Warm-Stil)
+  const PRO_ITEMS = [
+    { id: "plaque", label: "Plaque" },
+    { id: "zahnstein", label: "Zahnstein" },
+    { id: "konkremente", label: "Konkremente" },
+    { id: "verfaerbung", label: "Verf\u00e4rbungen" },
+  ];
+
+  // deterministischer Zufall je Zahn -> Overlays wackeln nicht bei jedem Render
+  function rng(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
   const st = (fdi) => state[fdi];
   const upperCols = () => COLS.cols.filter((c) => c.upper);
   const lowerCols = () => COLS.cols.filter((c) => !c.upper);
@@ -551,6 +571,176 @@
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Prophylaxe-Overlays (Konzept aus struktur01 NACHGEBAUT, nicht kopiert):
+  // jede Markierung wird an der ECHTEN Geometrie verankert (CEJ-Linie,
+  // Silhouetten- und Kronen-/Wurzelband-Clips) und im Studio-Warm-Stil
+  // gezeichnet. Reihenfolge: ueber Knochen + Zahnfleisch, unter den Hits.
+  // ---------------------------------------------------------------------
+
+  function befGroup(c, toCrown) {
+    const outer = document.createElementNS(SVGNS, "g");
+    outer.setAttribute("clip-path", "url(#st-sil-" + c.fdi + ")");
+    const inner = document.createElementNS(SVGNS, "g");
+    inner.setAttribute("clip-path", "url(#st-" + (toCrown ? "cr" : "rt") + "-" + c.fdi + ")");
+    outer.appendChild(inner);
+    return { outer, inner };
+  }
+
+  function mkPath(d, cls, fill) {
+    const p = document.createElementNS(SVGNS, "path");
+    p.setAttribute("d", d);
+    if (cls) p.setAttribute("class", cls);
+    if (fill) p.setAttribute("fill", fill);
+    return p;
+  }
+
+  // geschlossene, weiche Fleckform um (cx, cy) mit Radius rad
+  function blobD(cx, cy, rad, rx, squash) {
+    const n = 8, pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const rr = rad * (0.72 + 0.55 * rx());
+      pts.push({ x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr * (squash || 0.8) });
+    }
+    let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+      d += ` C ${(p1.x + (p2.x - p0.x) / 6).toFixed(1)} ${(p1.y + (p2.y - p0.y) / 6).toFixed(1)} ` +
+        `${(p2.x - (p3.x - p1.x) / 6).toFixed(1)} ${(p2.y - (p3.y - p1.y) / 6).toFixed(1)} ` +
+        `${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    }
+    return d + " Z";
+  }
+
+  // Plaque: weicher Biofilm-Schleier im Zahnhals-Drittel, Oberkante wolkig
+  function drawPlaque(c, seg) {
+    const { outer, inner } = befGroup(c, true);
+    const cw = c.upper ? 1 : -1;
+    const r = rng(c.fdi * 101 + 7);
+    const ph1 = r() * 6, ph2 = r() * 6;
+    const x0 = seg.x0 + 1, x1 = seg.x0 + seg.ys.length - 2;
+    const edgeY = (x) =>
+      cejYAt(seg, x) + cw * (8.5 + 3.2 * Math.sin(x * 0.21 + ph1) + 2.1 * Math.sin(x * 0.47 + ph2));
+    let d = "", back = "";
+    for (let x = x0; x <= x1; x += 3) {
+      d += (d ? " L " : "M ") + x + " " + (cejYAt(seg, x) + cw * 0.8).toFixed(1);
+    }
+    for (let x = x1; x >= x0; x -= 3) back += ` L ${x} ${edgeY(x).toFixed(1)}`;
+    inner.appendChild(mkPath(d + back + " Z", "bef-plaque"));
+    let fr = "";
+    for (let x = x0; x <= x1; x += 3) fr += (fr ? " L " : "M ") + x + " " + edgeY(x).toFixed(1);
+    inner.appendChild(mkPath(fr, "bef-plaque-fringe"));
+    for (let i = 0; i < 7; i++) {
+      const px = x0 + (x1 - x0) * r();
+      const py = cejYAt(seg, px) + cw * (2.5 + 5.5 * r());
+      const dot = document.createElementNS(SVGNS, "circle");
+      dot.setAttribute("cx", px.toFixed(1));
+      dot.setAttribute("cy", py.toFixed(1));
+      dot.setAttribute("r", (0.9 + 1.1 * r()).toFixed(2));
+      dot.setAttribute("class", "bef-plaque-dot");
+      inner.appendChild(dot);
+    }
+    return outer;
+  }
+
+  // Zahnstein: harte, krustige Auflagerung direkt am Zahnfleischsaum
+  function drawZahnstein(c, seg, defs) {
+    const { outer, inner } = befGroup(c, true);
+    const cw = c.upper ? 1 : -1;
+    const r = rng(c.fdi * 131 + 3);
+    const x0 = seg.x0 + 1, x1 = seg.x0 + seg.ys.length - 2;
+    let mid = 0;
+    for (let x = x0; x <= x1; x += 4) mid += cejYAt(seg, x);
+    mid /= Math.ceil((x1 - x0) / 4) + 1;
+    ensureGrad(defs, "bef-zs-" + c.fdi, "linearGradient",
+      { x1: 0, y1: mid + cw * 9, x2: 0, y2: mid - cw * 2 },
+      [[0, "#f4d795"], [0.55, "#d3a35b"], [1, "#a06f33"]]);
+    // Unterkante minimal ueber den Saum (rootward), Oberkante klumpig
+    let d = "";
+    for (let x = x0; x <= x1; x += 3) {
+      d += (d ? " L " : "M ") + x + " " + (cejYAt(seg, x) - cw * 2.4).toFixed(1);
+    }
+    for (let x = x1; x >= x0; x -= 3) {
+      const lump = Math.abs(Math.sin(x * 0.55 + r() * 0.9)) * (3.4 + 3.6 * r());
+      d += ` L ${x} ${(cejYAt(seg, x) + cw * (2.2 + lump)).toFixed(1)}`;
+    }
+    inner.appendChild(mkPath(d + " Z", "bef-zs", "url(#bef-zs-" + c.fdi + ")"));
+    // einzelne Krusten-Nubben an den Interdental-Ecken
+    [x0 + 3, x1 - 3].forEach((px) => {
+      inner.appendChild(mkPath(
+        blobD(px, cejYAt(seg, px) + cw * 2.2, 3.4 + 1.8 * r(), r, 0.7),
+        "bef-zs", "url(#bef-zs-" + c.fdi + ")"));
+    });
+    return outer;
+  }
+
+  // Konkremente: dunkle, harte Knoten subgingival an den Wurzelflanken
+  function drawKonkremente(c, seg) {
+    const { outer, inner } = befGroup(c, false);
+    const rootward = c.upper ? -1 : 1;
+    const r = rng(c.fdi * 173 + 11);
+    const w = c.x1 - c.x0;
+    const molar = c.fdi % 10 >= 6;
+    const edges = molar ? [0.16, 0.84] : [0.24, 0.76];
+    edges.forEach((fx) => {
+      const baseX = c.x0 + w * fx;
+      const n = 3 + Math.floor(r() * 2);
+      for (let i = 0; i < n; i++) {
+        const depth = 7 + i * (9 + 3 * r());
+        const cx = baseX + (fx < 0.5 ? 1 : -1) * depth * 0.16 + (r() - 0.5) * 2.5;
+        const cy = cejYAt(seg, baseX) + rootward * depth;
+        const g = document.createElementNS(SVGNS, "g");
+        g.appendChild(mkPath(blobD(cx, cy, 2.6 + 2.2 * r(), r, 0.9), "bef-konk"));
+        g.appendChild(mkPath(
+          blobD(cx - 0.8, cy - rootward * 0.9, 1.1 + 0.8 * r(), r, 0.9), "bef-konk-hi"));
+        inner.appendChild(g);
+      }
+    });
+    return outer;
+  }
+
+  // Verfaerbungen: braune, halbtransparente Flecken auf der Kronenflaeche
+  function drawVerf(c, seg) {
+    const { outer, inner } = befGroup(c, true);
+    const cw = c.upper ? 1 : -1;
+    const r = rng(c.fdi * 211 + 5);
+    const w = c.x1 - c.x0;
+    const n = 3 + Math.floor(r() * 2);
+    const tones = ["rgba(122,74,34,.42)", "rgba(96,54,22,.46)", "rgba(70,38,15,.5)"];
+    for (let i = 0; i < n; i++) {
+      const cx = c.x0 + w * (0.22 + 0.56 * r());
+      const cy = cejYAt(seg, cx) + cw * (5 + 17 * r());
+      const rad = 3.2 + 4.6 * r();
+      inner.appendChild(mkPath(blobD(cx, cy, rad, r, 0.85), "bef-verf", tones[i % tones.length]));
+      if (r() > 0.45) {
+        inner.appendChild(mkPath(
+          blobD(cx + (r() - 0.5) * 3, cy + cw * 1.2, rad * 0.42, r, 0.85),
+          "bef-verf", "rgba(52,27,10,.5)"));
+      }
+    }
+    return outer;
+  }
+
+  function buildBefundLayer(defs) {
+    const old = svgEl.querySelector("#befundLayer");
+    if (old) old.remove();
+    const layer = document.createElementNS(SVGNS, "g");
+    layer.setAttribute("id", "befundLayer");
+    layer.setAttribute("class", "befund-layer");
+    COLS.cols.forEach((c) => {
+      const s = st(c.fdi);
+      if (!s || s.missing || !s.pro) return;
+      const seg = SOURCE_CEJ_ARR[c.fdi];
+      if (!seg) return;
+      if (s.pro.plaque) layer.appendChild(drawPlaque(c, seg));
+      if (s.pro.verfaerbung) layer.appendChild(drawVerf(c, seg));
+      if (s.pro.zahnstein) layer.appendChild(drawZahnstein(c, seg, defs));
+      if (s.pro.konkremente) layer.appendChild(drawKonkremente(c, seg));
+    });
+    svgEl.appendChild(layer);
+  }
+
   // gleitender Mittelwert (Fenster win) -> glatter Bogen ohne alten Scallop
   function smoothArr(arr, win) {
     const n = arr.length, h = win >> 1, ps = new Array(n + 1);
@@ -718,8 +908,10 @@
     });
     svgEl.insertBefore(miss, boneLayer);
 
+    buildBefundLayer(defs);
     buildHits();
     updateZoom();
+    updateLegendCounts();
     syncPanel();
   }
 
@@ -788,7 +980,16 @@
       r.setAttribute("y", c.upper ? 0 : SPLIT);
       r.setAttribute("height", c.upper ? SPLIT : CH - SPLIT);
       r.setAttribute("class", "hit");
-      r.addEventListener("click", () => { selected = c.fdi; render(); });
+      r.addEventListener("click", () => {
+        selected = c.fdi;
+        const s = st(c.fdi);
+        // armiertes Legenden-Item: Klick setzt/entfernt den Befund am Zahn
+        if (armedFinding && s && !s.missing) {
+          if (!s.pro) s.pro = {};
+          s.pro[armedFinding] = !s.pro[armedFinding];
+        }
+        render();
+      });
       front.appendChild(r);
       const t = document.createElementNS(SVGNS, "text");
       t.setAttribute("x", APEXX[c.fdi] != null ? APEXX[c.fdi] : c.cx);
@@ -816,15 +1017,112 @@
   }
 
   function preset(kind) {
-    COLS.cols.forEach((c) => { state[c.fdi] = { rec: 0, loss: 0, missing: false }; });
+    COLS.cols.forEach((c) => { state[c.fdi] = { rec: 0, loss: 0, missing: false, pro: {} }; });
     if (kind === "demo") {
-      const set = (f, l) => { if (state[f]) state[f] = { rec: 0, loss: l, missing: false }; };
+      const set = (f, l) => { if (state[f]) state[f].loss = l; };
       set(46, 7); set(36, 5); set(16, 4); set(11, 3); set(41, 5); set(31, 4); set(26, 6);
+      const pro = (f, k) => { if (state[f]) state[f].pro[k] = true; };
+      pro(16, "zahnstein"); pro(26, "zahnstein");
+      pro(31, "zahnstein"); pro(41, "zahnstein"); pro(32, "zahnstein"); pro(42, "zahnstein");
+      pro(11, "plaque"); pro(21, "plaque"); pro(36, "plaque"); pro(46, "plaque");
+      pro(46, "konkremente"); pro(36, "konkremente"); pro(16, "konkremente");
+      pro(13, "verfaerbung"); pro(23, "verfaerbung"); pro(33, "verfaerbung"); pro(43, "verfaerbung");
     }
     if (kind === "gen") {
-      COLS.cols.forEach((c) => { state[c.fdi] = { rec: 0, loss: 4, missing: false }; });
+      COLS.cols.forEach((c) => { state[c.fdi].loss = 4; });
     }
     render();
+  }
+
+  // ---------------------------------------------------------------------
+  // Legenden-UI (Tab "Pro"): eigene Icons im Studio-Warm-Stil, 64x64.
+  // Icon = Miniatur der ECHTEN Overlay-Zeichnung, nicht die struktur01-Grafik.
+  // ---------------------------------------------------------------------
+  const ICON_TOOTH =
+    "M20 10 C27 5 37 5 44 10 C50 14 52 21 50 29 C48 38 44 47 39 53 " +
+    "C35 57 29 57 25 53 C20 47 16 38 14 29 C12 21 14 14 20 10 Z";
+
+  function iconSvg(kind) {
+    const uid = "lg-" + kind;
+    const defs = {
+      crown: `<linearGradient id="${uid}-c" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fffdf4"/><stop offset=".55" stop-color="#efd9b8"/>
+        <stop offset="1" stop-color="#c99a68"/></linearGradient>`,
+      zs: `<linearGradient id="${uid}-z" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stop-color="#f4d795"/><stop offset=".55" stop-color="#d3a35b"/>
+        <stop offset="1" stop-color="#a06f33"/></linearGradient>`,
+    };
+    const tooth = `<path d="${ICON_TOOTH}" fill="url(#${uid}-c)" stroke="rgba(62,36,22,.65)" stroke-width="1.6"/>`;
+    const shine = `<ellipse cx="26" cy="20" rx="7" ry="10" fill="rgba(255,255,255,.5)" transform="rotate(-18 26 20)"/>`;
+    let body = "";
+    if (kind === "plaque") {
+      body = `${tooth}${shine}
+        <path d="M14 30 C20 26 26 34 32 30 S44 26 50 31 L50 40 C43 45 36 41 30 44 S18 44 14 39 Z"
+          fill="rgba(196,214,133,.55)" stroke="rgba(150,170,90,.8)" stroke-width="1.2"/>
+        <circle cx="22" cy="36" r="1.6" fill="rgba(150,170,90,.9)"/>
+        <circle cx="33" cy="38" r="1.3" fill="rgba(150,170,90,.9)"/>
+        <circle cx="42" cy="35" r="1.5" fill="rgba(150,170,90,.9)"/>`;
+    } else if (kind === "zahnstein") {
+      body = `${tooth}${shine}
+        <path d="M13 34 C18 30 24 36 30 33 S43 30 51 34 L50 41 C44 47 36 42 30 45 S19 45 14 40 Z"
+          fill="url(#${uid}-z)" stroke="rgba(120,80,30,.85)" stroke-width="1.3"/>
+        <path d="M16 34 l3 4 M25 33 l2.6 4.4 M35 33 l2.6 4 M44 34 l2.6 3.6"
+          stroke="rgba(120,80,30,.55)" stroke-width="1.1" stroke-linecap="round"/>`;
+    } else if (kind === "konkremente") {
+      body = `${tooth}${shine}
+        <path d="M20 40 C19 47 20 53 23 58 M44 40 C45 47 44 53 41 58"
+          fill="none" stroke="rgba(62,36,22,.5)" stroke-width="1.4" stroke-linecap="round"/>
+        <ellipse cx="19.5" cy="44" rx="3.4" ry="2.7" fill="#5c3b23" stroke="#2f1c0c" stroke-width="1.1"/>
+        <ellipse cx="21.5" cy="51" rx="2.8" ry="2.3" fill="#4a2e18" stroke="#2f1c0c" stroke-width="1.1"/>
+        <ellipse cx="44.5" cy="45" rx="3.1" ry="2.5" fill="#5c3b23" stroke="#2f1c0c" stroke-width="1.1"/>
+        <ellipse cx="42.5" cy="52" rx="2.6" ry="2.2" fill="#4a2e18" stroke="#2f1c0c" stroke-width="1.1"/>
+        <ellipse cx="18.6" cy="43.2" rx="1.1" ry=".8" fill="rgba(233,196,158,.75)"/>
+        <ellipse cx="43.6" cy="44.2" rx="1" ry=".8" fill="rgba(233,196,158,.75)"/>`;
+    } else if (kind === "verfaerbung") {
+      body = `${tooth}${shine}
+        <path d="M23 22 C26 19 31 20 32 24 C33 28 29 31 25 30 C21 29 20 25 23 22 Z" fill="rgba(122,74,34,.55)"/>
+        <path d="M36 30 C39 28 43 30 43 33 C43 37 39 39 36 37 C33 35 33 32 36 30 Z" fill="rgba(96,54,22,.6)"/>
+        <path d="M27 38 C30 36 33 38 33 41 C32 44 28 45 26 43 C24 41 25 39 27 38 Z" fill="rgba(70,38,15,.62)"/>
+        <circle cx="29" cy="25" r="1.4" fill="rgba(52,27,10,.6)"/>
+        <circle cx="39" cy="33" r="1.2" fill="rgba(52,27,10,.6)"/>`;
+    }
+    return `<svg viewBox="0 0 64 64" aria-hidden="true">${
+      defs.crown}${kind === "zahnstein" ? defs.zs : ""}${body}</svg>`;
+  }
+
+  function buildLegend() {
+    const host = document.getElementById("legendItems");
+    if (!host) return;
+    host.textContent = "";
+    PRO_ITEMS.forEach((it) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "legend-item";
+      b.dataset.finding = it.id;
+      b.innerHTML =
+        `<span class="li-icon">${iconSvg(it.id)}</span>` +
+        `<span class="li-text"><span class="li-label">${it.label}</span>` +
+        `<span class="li-teeth" data-count="${it.id}">&ndash;</span></span>`;
+      b.addEventListener("click", () => {
+        armedFinding = armedFinding === it.id ? null : it.id;
+        host.querySelectorAll(".legend-item").forEach((el) =>
+          el.classList.toggle("armed", el.dataset.finding === armedFinding));
+        document.body.classList.toggle("finding-armed", !!armedFinding);
+      });
+      host.appendChild(b);
+    });
+  }
+
+  function updateLegendCounts() {
+    PRO_ITEMS.forEach((it) => {
+      const el = document.querySelector(`[data-count="${it.id}"]`);
+      if (!el) return;
+      const teeth = COLS.cols
+        .filter((c) => { const s = st(c.fdi); return s && !s.missing && s.pro && s.pro[it.id]; })
+        .map((c) => c.fdi);
+      el.textContent = teeth.length ? teeth.join(" ") : "\u2013";
+      el.classList.toggle("has", !!teeth.length);
+    });
   }
 
   async function boot() {
@@ -854,7 +1152,8 @@
     svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
     svgEl.classList.add("perio-svg");
 
-    COLS.cols.forEach((c) => { state[c.fdi] = { rec: 0, loss: 0, missing: false }; });
+    COLS.cols.forEach((c) => { state[c.fdi] = { rec: 0, loss: 0, missing: false, pro: {} }; });
+    buildLegend();
     document.getElementById("loss").addEventListener("input", (e) => { st(selected).loss = +e.target.value; render(); });
     document.getElementById("miss").addEventListener("change", (e) => { st(selected).missing = e.target.checked; render(); });
     const boEl = document.getElementById("boneOp");
