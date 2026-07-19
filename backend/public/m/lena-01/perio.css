@@ -89,36 +89,85 @@ main { max-width: 1680px; margin: 18px auto 60px; padding: 0 18px; display: grid
   stroke-linecap: round;
   pointer-events: none;
 }
+.gum-seam-ap {
+  stroke: rgba(140, 52, 58, .38);
+  stroke-width: 1.35;
+}
 
 /* Prophylaxe-Overlays auf dem Schema (Studio-Warm-Stil) */
 .befund-layer { pointer-events: none; }
 .bef-plaque {
-  fill: rgba(199, 217, 140, .42);
+  fill: rgba(20, 95, 220, .62);
   stroke: none;
-  mix-blend-mode: hard-light;
+  mix-blend-mode: multiply;
 }
 .bef-plaque-fringe {
   fill: none;
-  stroke: rgba(168, 189, 105, .75);
-  stroke-width: 1.6;
+  stroke: rgba(15, 80, 200, .9);
+  stroke-width: 1.7;
   stroke-linecap: round;
 }
-.bef-plaque-dot { fill: rgba(150, 172, 88, .8); }
+.bef-plaque-dot { fill: rgba(25, 100, 230, .95); }
 .bef-zs {
-  stroke: rgba(110, 72, 26, .9);
-  stroke-width: 1.1;
+  fill: #ffe24a !important;
+  stroke: rgba(210, 160, 30, .8);
+  stroke-width: 1.05;
   stroke-linejoin: round;
-  filter: drop-shadow(0 1px 1px rgba(40, 22, 6, .45));
+  filter: drop-shadow(0 1px 1.2px rgba(90, 50, 8, .35));
+  mix-blend-mode: normal;
 }
 .bef-konk {
-  fill: #53341d;
-  stroke: #2f1c0c;
-  stroke-width: 1.2;
+  fill: #1c120a !important;
+  stroke: rgba(10, 6, 2, .85);
+  stroke-width: 0.9;
   stroke-linejoin: round;
-  filter: drop-shadow(0 1px 1px rgba(20, 10, 2, .5));
+  filter: drop-shadow(0 0.6px 0.6px rgba(0, 0, 0, .35));
+  mix-blend-mode: normal;
 }
-.bef-konk-hi { fill: rgba(233, 196, 158, .65); stroke: none; }
-.bef-verf { stroke: none; mix-blend-mode: multiply; }
+.bef-konk-inflam {
+  stroke: none;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+.bef-verf {
+  stroke: none;
+  mix-blend-mode: multiply;
+}
+.bef-verf-spark {
+  fill: rgba(255, 230, 180, .85);
+  stroke: none;
+  mix-blend-mode: screen;
+}
+.bef-crown, .bef-pontic-tooth { pointer-events: none; }
+.porc-body { pointer-events: none; }
+.porc-rim { mix-blend-mode: soft-light; pointer-events: none; }
+.porc-shine { mix-blend-mode: screen; pointer-events: none; }
+.porc-edge { pointer-events: none; }
+.porc-pontic-lab {
+  fill: rgba(140, 160, 185, .55);
+  font-size: 13px;
+  font-weight: 800;
+  font-family: Georgia, "Times New Roman", serif;
+  pointer-events: none;
+}
+.bef-implant, .bef-implant-screw, .bef-implant-loose { pointer-events: none; }
+.bef-surfaces, .bef-rootcanal, .bef-pontic { pointer-events: none; }
+.bef-surface-lab {
+  fill: rgba(240, 220, 180, .85);
+  font-size: 8px;
+  font-weight: 700;
+  font-family: inherit;
+  pointer-events: none;
+}
+.bef-surface.filled + .bef-surface-lab,
+.bef-surfaces .bef-surface-lab { fill: rgba(30, 24, 18, .72); }
+.bef-badge { pointer-events: none; }
+.bef-badge-txt {
+  fill: #f4efe6;
+  font-size: 9px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-weight: 600;
+}
 
 /* Tab-Leiste unter dem Schema (Konzept struktur01, Design von uns) */
 .befund-tabs {
@@ -175,11 +224,32 @@ main { max-width: 1680px; margin: 18px auto 60px; padding: 0 18px; display: grid
 .li-teeth { font-size: .64rem; color: #66727d; letter-spacing: .04em; }
 .li-teeth.has { color: #dda66e; font-weight: 700; }
 body.finding-armed .hit { cursor: crosshair; }
+body.surface-armed .hit { cursor: default; }
+body.surface-armed .surface-hit { cursor: crosshair; }
 
-.hit { fill: transparent; cursor: pointer; }
+/* Grafik-Ebenen nie Hits abfangen */
+#plasticLayer, #boneLayer, #gumLayer, #missLayer, #extraRootEcho, #befundLayer {
+  pointer-events: none;
+}
+.hit { fill: rgba(0, 0, 0, 0.001); cursor: pointer; }
+.surface-hit { pointer-events: all; }
+.hit-lab { pointer-events: none; fill: #6fe0d4; font-size: 9px; font-weight: 800; }
+.flab, .flab-find { pointer-events: none; }
+.flab-find {
+  fill: #d8c4a0;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
 .selout { fill: rgba(88,199,189,.14); stroke: #6fe0d4; stroke-width: 3; stroke-linejoin: round; pointer-events: none; filter: drop-shadow(0 0 6px rgba(111,224,212,.55)); }
 .flab { fill: #cdb59c; font-size: 14px; font-weight: 800; font-family: inherit; }
 .flab.on { fill: #7fe9dd; }
+#parPocketBox label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+#parPocketBox input[type="number"] {
+  width: 64px; padding: 4px 6px; border-radius: 8px;
+  border: 1px solid #2c3540; background: #0f141c; color: #e8e2d6;
+}
 
 .panel { position: sticky; top: 16px; border: 1px solid #2c3540; border-radius: 18px; background: #121820; padding: 16px; }
 .panel h2 { margin: 0 0 2px; font-size: 1.05rem; }

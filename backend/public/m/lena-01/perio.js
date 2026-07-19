@@ -502,6 +502,39 @@
     return r;
   }
 
+  /**
+   * Milchzahn (Chef 19.07.2026): kleiner dargestellt als der bleibende Zahn.
+   * - 1er-3er: derselbe Zahn, Skalierung 0.8 um die CEJ-Mitte (Krone kuerzer,
+   *   Wurzel kuerzer, Girlande passt weiter).
+   * - 4er/5er: es gibt KEINE Milch-Praemolaren — an ihrer Stelle steht ein
+   *   MILCHMOLAR (Form des 6ers im selben Quadranten, auf Spaltbreite skaliert).
+   * - 6er-8er haben keinen Milchzahn-Vorgaenger (applyFindingToTooth blockt).
+   * Liefert Geometrie-Quelle + transform (Quellraum -> Anzeige).
+   */
+  function milkInfo(c) {
+    const s = st(c.fdi);
+    if (!s || s.missing || !hasMark(s, "milchzahn")) return null;
+    const n = (+c.fdi) % 10;
+    if (n >= 6) return null;
+    let src = c;
+    if (n >= 4) {
+      const molar = COLS.cols.find((cc) => cc.fdi === (((+c.fdi) / 10) | 0) * 10 + 6);
+      if (molar) src = molar;
+    }
+    const k = src === c
+      ? 0.8
+      : Math.min(0.9, (0.85 * (c.x1 - c.x0)) / Math.max(1, src.x1 - src.x0));
+    const cSeg = SOURCE_CEJ_ARR[c.fdi], sSeg = SOURCE_CEJ_ARR[src.fdi];
+    const cMid = (c.x0 + c.x1) / 2, sMid = (src.x0 + src.x1) / 2;
+    const cCej = cSeg ? cejYAt(cSeg, cMid) : (c.upper ? SPLIT * 0.75 : SPLIT * 1.25);
+    const sCej = sSeg ? cejYAt(sSeg, sMid) : cCej;
+    const tx = cMid - k * sMid, ty = cCej - k * sCej;
+    return {
+      src, k,
+      transform: `translate(${tx.toFixed(1)} ${ty.toFixed(1)}) scale(${k.toFixed(4)})`,
+    };
+  }
+
   // Studio-Warm-Plastik (Stil aus der Zeichenstil-Studie, Karte 04):
   // Kronen: diagonaler Schmelzverlauf #fffdf4->#efd9b8->#c99a68 + Original-
   // Anatomie als Multiply + Glanzlicht. Wurzeln: Zylinderverlauf
@@ -514,7 +547,11 @@
     layer.setAttribute("id", "plasticLayer");
     COLS.cols.forEach((c) => {
       if (st(c.fdi).missing) return;
-      const fdi = c.fdi;
+      // Milchzahn: Original abdecken, Quellzahn (ggf. 6er statt Praemolar)
+      // verkleinert an dieselbe CEJ-Position zeichnen (milkInfo)
+      const milk = milkInfo(c);
+      const gc = milk ? milk.src : c;
+      const fdi = gc.fdi;
       const seg = SOURCE_CEJ_ARR[fdi];
       const silD = SIL[fdi];
       const sb = silD ? pathBounds(silD) : null;
@@ -522,24 +559,24 @@
       let cerv = 0;
       seg.ys.forEach((y) => { cerv += y; });
       cerv /= seg.ys.length;
-      const incY = c.upper ? sb.y1 : sb.y0;
-      const apexY = c.upper ? sb.y0 : sb.y1;
-      const w = c.x1 - c.x0;
+      const incY = gc.upper ? sb.y1 : sb.y0;
+      const apexY = gc.upper ? sb.y0 : sb.y1;
+      const w = gc.x1 - gc.x0;
 
       ensureClip(defs, "st-sil-" + fdi, silD);
-      ensureClip(defs, "st-cr-" + fdi, bandD(c, true));
-      ensureClip(defs, "st-rt-" + fdi, bandD(c, false));
+      ensureClip(defs, "st-cr-" + fdi, bandD(gc, true));
+      ensureClip(defs, "st-rt-" + fdi, bandD(gc, false));
       ensureGrad(defs, "st-cg-" + fdi, "linearGradient",
-        { x1: c.x0, y1: incY, x2: c.x1, y2: cerv },
+        { x1: gc.x0, y1: incY, x2: gc.x1, y2: cerv },
         [[0, "#fffdf4"], [0.55, "#efd9b8"], [1, "#c99a68"]]);
       ensureGrad(defs, "st-cs-" + fdi, "radialGradient",
-        { cx: c.cx - w * 0.14, cy: incY + (cerv - incY) * 0.42, r: Math.max(20, w * 0.5) },
+        { cx: gc.cx - w * 0.14, cy: incY + (cerv - incY) * 0.42, r: Math.max(20, w * 0.5) },
         [[0, "rgba(255,255,255,.95)"], [0.5, "rgba(255,255,255,.28)"], [1, "rgba(255,255,255,0)"]]);
       ensureGrad(defs, "st-rx-" + fdi, "linearGradient",
-        { x1: c.x0, y1: 0, x2: c.x1, y2: 0 },
+        { x1: gc.x0, y1: 0, x2: gc.x1, y2: 0 },
         [[0, "#a97e5f"], [0.5, "#e4bb94"], [1, "#a97e5f"]]);
       ensureGrad(defs, "st-rc-" + fdi, "linearGradient",
-        { x1: c.x0, y1: 0, x2: c.x1, y2: 0 },
+        { x1: gc.x0, y1: 0, x2: gc.x1, y2: 0 },
         [[0, "rgba(70,40,25,.34)"], [0.3, "rgba(70,40,25,0)"],
          [0.7, "rgba(70,40,25,0)"], [1, "rgba(70,40,25,.34)"]]);
       ensureGrad(defs, "st-ry-" + fdi, "linearGradient",
@@ -568,9 +605,9 @@
       const root = document.createElementNS(SVGNS, "g");
       root.setAttribute("clip-path", "url(#st-rt-" + fdi + ")");
       root.appendChild(mkImg("studio-root-base"));
-      root.appendChild(bandRect(c, "st-rx-" + fdi, "studio-root-tone"));
-      root.appendChild(bandRect(c, "st-rc-" + fdi, "studio-root-cyl"));
-      root.appendChild(bandRect(c, "st-ry-" + fdi, "studio-root-depth"));
+      root.appendChild(bandRect(gc, "st-rx-" + fdi, "studio-root-tone"));
+      root.appendChild(bandRect(gc, "st-rc-" + fdi, "studio-root-cyl"));
+      root.appendChild(bandRect(gc, "st-ry-" + fdi, "studio-root-depth"));
       (EXTRA_ROOTS[fdi] || []).forEach((d, i) => {
         const rb = pathBounds(d);
         if (!rb) return;
@@ -589,11 +626,16 @@
 
       const crown = document.createElementNS(SVGNS, "g");
       crown.setAttribute("clip-path", "url(#st-cr-" + fdi + ")");
-      crown.appendChild(bandRect(c, "st-cg-" + fdi, "studio-crown-fill"));
+      crown.appendChild(bandRect(gc, "st-cg-" + fdi, "studio-crown-fill"));
       crown.appendChild(mkImg("studio-crown-anat"));
-      crown.appendChild(bandRect(c, "st-cs-" + fdi, "studio-crown-shine"));
+      crown.appendChild(bandRect(gc, "st-cs-" + fdi, "studio-crown-shine"));
       silG.appendChild(crown);
 
+      if (milk) {
+        // Original-Zahn (voller Groesse) unter dem Milchzahn wegdecken
+        appendMissCover(layer, c, defs);
+        tooth.setAttribute("transform", milk.transform);
+      }
       layer.appendChild(tooth);
     });
     svgEl.insertBefore(layer, svgEl.querySelector("#boneLayer"));
@@ -699,6 +741,33 @@
         }
       }
       prev = x;
+    }
+
+    // Girlanden flachen an Extraktionsluecken ab (Chef 19.07.2026): die
+    // Papille des Nachbarzahns zur Luecke hin wird weich auf den Kieferkamm
+    // gesenkt statt als Spitze neben der Luecke stehen zu bleiben.
+    if (extractMask) {
+      const FLAT = 26;                       // Einflusszone im Nachbarzahn (px)
+      const easeT = (t) => t * t * (3 - 2 * t);
+      const nearExtract = (edge, dirOut) => {
+        for (let k = 1; k <= 14; k++) {
+          const x = edge + dirOut * k;
+          if (x < 0 || x >= CW) return false;
+          if (extractMask[x]) return true;
+        }
+        return false;
+      };
+      segs.forEach((sg) => {
+        [[sg.x0, -1], [sg.x1, 1]].forEach(([edge, dirOut]) => {
+          if (!nearExtract(edge, dirOut)) return;
+          for (let k = 0; k <= FLAT; k++) {
+            const x = edge - dirOut * k;
+            if (x < sg.x0 || x > sg.x1 || x < 0 || x >= CW) break;
+            const w = easeT(1 - k / FLAT);
+            arr[x] = arr[x] * (1 - w) + ridgeAt(x) * w;
+          }
+        });
+      });
     }
     const FADE = 40;
     const ease = (t) => t * t * (3 - 2 * t);
@@ -1143,13 +1212,186 @@
     return PerioChart.crownBox(c, sb, cej, SPLIT);
   }
 
+  // Live-Knochenkante (inkl. Abbau) an der Zahnmitte — Anker fuer Implantate
+  function liveCrestY(c) {
+    const base = c.upper ? BONE_UP : BONE_LO;
+    const loss = LOSS_PX[c.upper ? "up" : "lo"];
+    const x = Math.max(0, Math.min(CW - 1, Math.round((c.x0 + c.x1) / 2)));
+    const apical = c.upper ? -1 : 1;
+    const h = base ? base[x] : SPLIT;
+    return h + apical * ((loss && loss[x]) || 0);
+  }
+
   function drawImplant(c, seg) {
     const s = st(c.fdi);
     const m = markOf(s);
     return PerioChart.drawImplantScrew(c, seg, cejYAt, {
       fracture: !!m.imp_fraktur,
       loosening: !!m.imp_lockerung,
+      crestY: liveCrestY(c),
     });
+  }
+
+  /**
+   * Suprakonstruktion auf Implantat (Krone-Befund am Implantat-Zahn):
+   * Die Supra ERSETZT die Krone und sieht GENAU wie eine Zahnkrone aus
+   * (Chef 19.07.2026) — also dieselbe Porzellan-Krone in echter Zahnform
+   * wie drawCrown. Darunter ein Hals in Kronenfarbe, der von der
+   * Zervikalkante buendig auf die Implantat-Plattform (38 px) zulaeuft —
+   * Krone und Implantat schliessen in einer Form ab, nichts schwebt.
+   */
+  function drawImplantSupra(c, defs) {
+    const fdi = c.fdi;
+    const seg = SOURCE_CEJ_ARR[fdi];
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "bef-supra");
+
+    // Krone zuerst bauen: legt auch die porc-Gradienten an
+    const crown = drawCrown(c, defs);
+
+    const midX = (c.x0 + c.x1) / 2;
+    const crest = liveCrestY(c);
+    const cw = c.upper ? 1 : -1; // Richtung Okklusal/SPLIT
+    const cejY = seg ? cejYAt(seg, midX) : crest - cw * 10;
+    const pw = 19;               // Plattform-Halbbreite = drawImplantScrew
+    const halfTop = Math.max(pw + 2, Math.min(27, (c.x1 - c.x0) * 0.33));
+    const topY = cejY + cw * 6;  // in die Krone hinein -> Krone deckt die Naht
+    const f = (v) => v.toFixed(1);
+
+    // Abutment-Hals: Zervikalkante -> Plattform, in Kronen-Porzellan
+    const neck = mkPath(
+      `M ${f(midX - halfTop)} ${f(topY)} L ${f(midX + halfTop)} ${f(topY)} ` +
+      `L ${f(midX + pw)} ${f(crest)} L ${f(midX - pw)} ${f(crest)} Z`,
+      "bef-supra-neck",
+      crown ? "url(#porc-g-" + fdi + ")" : "#f5f2ec");
+    neck.setAttribute("stroke", "rgba(170,195,220,.9)");
+    neck.setAttribute("stroke-width", "1.4");
+    neck.setAttribute("stroke-linejoin", "round");
+    g.appendChild(neck);
+
+    // buendige Fuge: Ellipse in Plattform-Breite direkt auf dem Schraubenkopf
+    const joint = document.createElementNS(SVGNS, "ellipse");
+    joint.setAttribute("cx", f(midX));
+    joint.setAttribute("cy", f(crest));
+    joint.setAttribute("rx", String(pw));
+    joint.setAttribute("ry", "3.4");
+    joint.setAttribute("fill", "#f1f5f9");
+    joint.setAttribute("stroke", "#64748b");
+    joint.setAttribute("stroke-width", "1.3");
+    g.appendChild(joint);
+
+    if (crown) g.appendChild(crown);
+    return g;
+  }
+
+  // Zahn zerstoert: deutliches rotes X ueber der Zahnkrone
+  function drawDestroyedX(c, box) {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "bef-destroyed");
+    const x0 = box.x0 + 2, x1 = box.x1 - 2;
+    const y0 = box.y0 + 2, y1 = box.y1 - 2;
+    [["M", x0, y0, x1, y1], ["M", x1, y0, x0, y1]].forEach(([, ax, ay, bx, by]) => {
+      const halo = document.createElementNS(SVGNS, "line");
+      halo.setAttribute("x1", ax); halo.setAttribute("y1", ay);
+      halo.setAttribute("x2", bx); halo.setAttribute("y2", by);
+      halo.setAttribute("stroke", "rgba(90,8,14,.75)");
+      halo.setAttribute("stroke-width", "6.5");
+      halo.setAttribute("stroke-linecap", "round");
+      g.appendChild(halo);
+      const l = document.createElementNS(SVGNS, "line");
+      l.setAttribute("x1", ax); l.setAttribute("y1", ay);
+      l.setAttribute("x2", bx); l.setAttribute("y2", by);
+      l.setAttribute("stroke", "#e11d2e");
+      l.setAttribute("stroke-width", "4");
+      l.setAttribute("stroke-linecap", "round");
+      g.appendChild(l);
+    });
+    return g;
+  }
+
+  // Perkussionsempfindlichkeit: rotes Warndreieck in der Zahnkrone
+  function drawPerkTriangle(c, box) {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "bef-perk");
+    const cx = box.cx, cy = box.cy;
+    const tri = document.createElementNS(SVGNS, "path");
+    tri.setAttribute("d",
+      `M ${cx.toFixed(1)} ${(cy - 10).toFixed(1)} ` +
+      `L ${(cx + 10.5).toFixed(1)} ${(cy + 8).toFixed(1)} ` +
+      `L ${(cx - 10.5).toFixed(1)} ${(cy + 8).toFixed(1)} Z`);
+    tri.setAttribute("fill", "#d43a2f");
+    tri.setAttribute("stroke", "#8f1d14");
+    tri.setAttribute("stroke-width", "2");
+    tri.setAttribute("stroke-linejoin", "round");
+    g.appendChild(tri);
+    const bar = document.createElementNS(SVGNS, "rect");
+    bar.setAttribute("x", (cx - 1.2).toFixed(1));
+    bar.setAttribute("y", (cy - 4.5).toFixed(1));
+    bar.setAttribute("width", "2.4");
+    bar.setAttribute("height", "7");
+    bar.setAttribute("rx", "1.2");
+    bar.setAttribute("fill", "#fff");
+    g.appendChild(bar);
+    const dot = document.createElementNS(SVGNS, "circle");
+    dot.setAttribute("cx", cx.toFixed(1));
+    dot.setAttribute("cy", (cy + 5.4).toFixed(1));
+    dot.setAttribute("r", "1.5");
+    dot.setAttribute("fill", "#fff");
+    g.appendChild(dot);
+    return g;
+  }
+
+  // Sensibilitaet: gruenes Plus ("+") bzw. rotes Minus ("−") okklusal der
+  // Krone — UK: UEBER der Krone, OK: UNTER der Krone (jeweils Richtung SPLIT)
+  function drawSensMark(c, value) {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "bef-sens");
+    const sb = pathBounds(SIL[c.fdi] || "");
+    const tipY = c.upper ? (sb ? sb.y1 : SPLIT - 12) : (sb ? sb.y0 : SPLIT + 12);
+    const y = tipY + (c.upper ? 12 : -12);
+    const x = silMidX(c);
+    const neg = value === "−" || value === "-";
+    const col = neg ? "#e2483d" : "#2eb85c";
+    const mkLine = (x1, y1, x2, y2, w, color) => {
+      const l = document.createElementNS(SVGNS, "line");
+      l.setAttribute("x1", x1.toFixed(1)); l.setAttribute("y1", y1.toFixed(1));
+      l.setAttribute("x2", x2.toFixed(1)); l.setAttribute("y2", y2.toFixed(1));
+      l.setAttribute("stroke", color);
+      l.setAttribute("stroke-width", String(w));
+      l.setAttribute("stroke-linecap", "round");
+      return l;
+    };
+    // dunkler Halo fuer Lesbarkeit auf hellen Kronen
+    g.appendChild(mkLine(x - 6.5, y, x + 6.5, y, 6.4, "rgba(10,22,16,.66)"));
+    if (!neg) g.appendChild(mkLine(x, y - 6.5, x, y + 6.5, 6.4, "rgba(10,22,16,.66)"));
+    g.appendChild(mkLine(x - 6.5, y, x + 6.5, y, 3.4, col));
+    if (!neg) g.appendChild(mkLine(x, y - 6.5, x, y + 6.5, 3.4, col));
+    return g;
+  }
+
+  function silMidX(c) {
+    const sb = pathBounds(SIL[c.fdi] || "");
+    return sb ? (sb.x0 + sb.x1) / 2 : (c.x0 + c.x1) / 2;
+  }
+
+  // Lueckenschluss: ")(" an Stelle der (entfernten) Krone
+  function drawSpaceClosure(c, box) {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "bef-ls");
+    const t = document.createElementNS(SVGNS, "text");
+    t.setAttribute("x", box.cx.toFixed(1));
+    t.setAttribute("y", (box.cy + box.h * 0.18).toFixed(1));
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("font-family", "Georgia, 'Times New Roman', serif");
+    t.setAttribute("font-size", Math.min(40, Math.max(24, box.h * 0.62)).toFixed(0));
+    t.setAttribute("font-weight", "700");
+    t.setAttribute("fill", "#c3cfdd");
+    t.setAttribute("stroke", "#0d1822");
+    t.setAttribute("stroke-width", "3");
+    t.setAttribute("paint-order", "stroke");
+    t.textContent = ")(";
+    g.appendChild(t);
+    return g;
   }
 
   // generischer Marker (Kurz-Badge) fuer Befunde ohne Spezial-Overlay
@@ -1206,6 +1448,7 @@
     "brueckenglied", "imp_lockerung", "imp_fraktur",
     "fuellung", "karies", "goldinlay", "keramikinlay", "versiegelung",
     "wurzelfuellung", "i_wurzelfuellung", "wurzelstift",
+    "zahn_zerstoert", "lueckenschluss", "milchzahn", "sensibilitaet", "perk_plus",
   ]);
 
   function buildBefundLayer(defs) {
@@ -1214,14 +1457,23 @@
     const layer = document.createElementNS(SVGNS, "g");
     layer.setAttribute("id", "befundLayer");
     layer.setAttribute("class", "befund-layer");
-    const showSurfGuides = !!(armedFinding && PerioChart.isSurfacePaint(armedFinding));
+    const showSurfGuides = needsSurfacePick(armedFinding);
     COLS.cols.forEach((c) => {
       const s = st(c.fdi);
       if (!s) return;
       PerioChart.ensureChart(s);
       const m = markOf(s);
-      const seg = SOURCE_CEJ_ARR[c.fdi];
-      const box = crownBoxOf(c);
+      // Milchzahn: Overlays auf der Quell-Geometrie zeichnen und mit dem
+      // milkInfo-Transform auf den verkleinerten Zahn abbilden
+      const milk = milkInfo(c);
+      const geo = milk ? milk.src : c;
+      let host = layer;
+      if (milk) {
+        host = document.createElementNS(SVGNS, "g");
+        host.setAttribute("transform", milk.transform);
+      }
+      const seg = SOURCE_CEJ_ARR[geo.fdi];
+      const box = crownBoxOf(geo);
 
       if (m.brueckenglied && vis("brueckenglied")) {
         const pt = drawPonticTooth(c, defs);
@@ -1230,32 +1482,48 @@
 
       if (seg) {
         if (!s.missing && !m.brueckenglied) {
-          if (m.plaque && vis("plaque")) layer.appendChild(drawPlaque(c, seg));
-          if (m.verfaerbung && vis("verfaerbung")) layer.appendChild(drawVerf(c, seg));
-          if (m.zahnstein && vis("zahnstein")) layer.appendChild(drawZahnstein(c, seg));
-          if (m.konkremente && vis("konkremente")) layer.appendChild(drawKonkremente(c, seg));
+          if (m.plaque && vis("plaque")) host.appendChild(drawPlaque(geo, seg));
+          if (m.verfaerbung && vis("verfaerbung")) host.appendChild(drawVerf(geo, seg));
+          if (m.zahnstein && vis("zahnstein")) host.appendChild(drawZahnstein(geo, seg));
+          if (m.konkremente && vis("konkremente")) host.appendChild(drawKonkremente(geo, seg));
           if (m.krone && vis("krone")) {
-            const cr = drawCrown(c, defs);
-            if (cr) layer.appendChild(cr);
+            const cr = drawCrown(geo, defs);
+            if (cr) host.appendChild(cr);
           }
           // Flaechen fest in die Zahnkrone (Silhouette + Kronenband)
-          const surfG = PerioChart.drawSurfaces(c, s, box, showSurfGuides);
+          const surfG = PerioChart.drawSurfaces(geo, s, box, showSurfGuides);
           if (surfG) {
-            const { outer, inner } = befGroup(c, true);
+            const { outer, inner } = befGroup(geo, true);
             inner.appendChild(surfG);
-            layer.appendChild(outer);
+            host.appendChild(outer);
           }
           // Wurzelfuellung entlang Wurzelkontur, geclippt auf Wurzelband
           const rootG = PerioChart.drawRootCanal(
-            c, s, seg, cejYAt, pathBounds, SIL[c.fdi], EXTRA_ROOTS[c.fdi]);
+            geo, s, seg, cejYAt, pathBounds, SIL[geo.fdi], EXTRA_ROOTS[geo.fdi]);
           if (rootG) {
-            const { outer, inner } = befGroup(c, false);
+            const { outer, inner } = befGroup(geo, false);
             inner.appendChild(rootG);
-            layer.appendChild(outer);
+            host.appendChild(outer);
+          }
+          // Kronen-verankerte Marker: rotes X (zerstoert), Warndreieck (perk),
+          // Sensibilitaets-Plus/Minus okklusal
+          if (m.zahn_zerstoert && vis("zahn_zerstoert")) host.appendChild(drawDestroyedX(geo, box));
+          if (m.perk_plus && vis("perk_plus")) host.appendChild(drawPerkTriangle(geo, box));
+          if (m.sensibilitaet && vis("sensibilitaet")) {
+            host.appendChild(drawSensMark(geo, m.sensibilitaet));
           }
         }
-        if (m.implantat && vis("implantat")) layer.appendChild(drawImplant(c, seg));
+        if (m.implantat && vis("implantat")) {
+          layer.appendChild(drawImplant(c, seg));
+          // Suprakonstruktion (Krone auf Implantat): EINE buendige Form
+          if (m.krone && vis("krone")) layer.appendChild(drawImplantSupra(c, defs));
+        }
       }
+      // Lueckenschluss: ")(" an Stelle der entfernten Krone
+      if (m.lueckenschluss && vis("lueckenschluss")) {
+        layer.appendChild(drawSpaceClosure(c, crownBoxOf(c)));
+      }
+      if (milk && host.childNodes.length) layer.appendChild(host);
 
       Object.keys(m).forEach((id) => {
         if (!m[id] || !vis(id) || NO_BADGE.has(id)) return;
@@ -1524,6 +1792,8 @@
     echo.setAttribute("class", "extra-root-echo");
     COLS.cols.forEach((c) => {
       if (st(c.fdi).missing || !EXTRA_ROOTS[c.fdi]) return;
+      // Milchzahn: Echo der Original-Wurzeln wuerde ueber der Abdeckung stehen
+      if (milkInfo(c)) return;
       const g = document.createElementNS(SVGNS, "g");
       g.setAttribute("clip-path", "url(#st-rt-" + c.fdi + ")");
       EXTRA_ROOTS[c.fdi].forEach((d) => {
@@ -1656,7 +1926,7 @@
       front.appendChild(sp);
     }
 
-    const surfArmed = !!(armedFinding && window.PerioChart && PerioChart.isSurfacePaint(armedFinding));
+    const surfArmed = needsSurfacePick(armedFinding);
 
     COLS.cols.forEach((c) => {
       const b = missCoverBounds(c);
@@ -1746,7 +2016,12 @@
 
   const LOCK_CYCLE = [true, "I", "II", "III"];
   const VERL_CYCLE = ["nach distal", "koronal", "mesial", "apikal"];
-  const SENS_CYCLE = [true, "−", "+"];
+
+  // Flaechen-Befunde, die der Nutzer per Flaechen-Hit platziert.
+  // Versiegelung NICHT: die gilt immer okklusal und wird direkt gesetzt.
+  function needsSurfacePick(id) {
+    return !!(id && window.PerioChart && PerioChart.isSurfacePaint(id) && id !== "versiegelung");
+  }
 
   function applyArchFinding(id) {
     const wantOk = id.endsWith("_ok");
@@ -1785,6 +2060,15 @@
       return;
     }
 
+    // Versiegelung: faerbt IMMER die Okklusalflaeche, nur Molaren/Praemolaren
+    if (id === "versiegelung") {
+      if (s.missing) return;
+      if (((+fdi) % 10) < 4) return;
+      PerioChart.toggleSurfaceMarker(s, "okklusal", "versiegelung",
+        mode === "set" ? "set" : mode);
+      return;
+    }
+
     // Flaechen nur ueber Flaechen-Hit (applySurfaceFinding)
     if (PerioChart.isSurfacePaint(id)) return;
     if (PerioChart.isRootPaint(id)) {
@@ -1793,7 +2077,25 @@
       return;
     }
 
-    if (s.missing && id !== "brueckenglied" && id !== "prothesenzahn" && id !== "implantat") return;
+    // Milchzahn: 6er/7er/8er haben keinen Milchzahn-Vorgaenger
+    if (id === "milchzahn" && ((+fdi) % 10) >= 6) return;
+
+    // Lueckenschluss: Zahn entfernen (sofern er nicht schon fehlt) + ")("
+    // an Stelle der Krone; Gingiva flacht ueber der Luecke ab (missing-Pfad).
+    if (id === "lueckenschluss") {
+      const mm = markOf(s);
+      if (mode === "remove" || (mode === "toggle" && mm.lueckenschluss)) {
+        delete mm.lueckenschluss;
+        if (s.lsAuto) { s.missing = false; delete mm.zahn_fehlt; delete s.lsAuto; }
+        return;
+      }
+      mm.lueckenschluss = true;
+      if (!s.missing) { s.missing = true; mm.zahn_fehlt = true; s.lsAuto = true; }
+      return;
+    }
+
+    if (s.missing && id !== "brueckenglied" && id !== "prothesenzahn" && id !== "implantat"
+        && !(id === "krone" && markOf(s).implantat)) return;
 
     const m = markOf(s);
     if (mode === "remove") {
@@ -1822,12 +2124,12 @@
       return;
     }
     if (id === "sensibilitaet") {
-      if (mode === "set") { m.sensibilitaet = "−"; return; }
+      // 1. Klick: gruenes Plus (positiv), 2. Klick: rotes Minus (negativ),
+      // 3. Klick: weg (Chef 19.07.2026)
       const cur = m.sensibilitaet;
-      const i = SENS_CYCLE.indexOf(cur);
-      if (i < 0) m.sensibilitaet = "−";
-      else if (i >= SENS_CYCLE.length - 1) delete m.sensibilitaet;
-      else m.sensibilitaet = SENS_CYCLE[i + 1];
+      if (!cur) m.sensibilitaet = "+";
+      else if (cur === "+" || cur === true) m.sensibilitaet = "−";
+      else delete m.sensibilitaet;
       return;
     }
     if (id === "retiniert" || id === "impaktiert") {
@@ -1927,7 +2229,7 @@
     if (sub) {
       sub.textContent = activeTab === "Par"
         ? "Par: Taschen mesial/distal im Panel → Knochenabbau. Weitere Befunde wählen und auf Zähne übertragen."
-        : "Icon klicken = setzen. Füllung/Karies/Inlay/Versiegelung: danach Fläche O·M·D·B·P/L anklicken. Icon nochmal = abwählen. Rechtsklick = löschen.";
+        : "Icon klicken = setzen. Füllung/Karies/Inlay: danach Fläche O·M·D·B·P/L anklicken. Versiegelung färbt direkt okklusal. Icon nochmal = abwählen. Rechtsklick = löschen.";
     }
     host.textContent = "";
     PerioLegend.itemsForTab(activeTab).forEach((it) => {
@@ -1958,14 +2260,14 @@
         }
         armedFinding = it.id;
         // Flaechen-Befunde nur armieren (Flaeche waehlen); sonst sofort setzen
-        if (!(window.PerioChart && PerioChart.isSurfacePaint(it.id))) {
+        // (Versiegelung setzt direkt okklusal, ohne Flaechenwahl)
+        if (!needsSurfacePick(it.id)) {
           applyFindingToTooth(selected, it.id, "set");
         }
         host.querySelectorAll(".legend-item").forEach((el) =>
           el.classList.toggle("armed", el.dataset.finding === armedFinding));
         document.body.classList.toggle("finding-armed", !!armedFinding);
-        document.body.classList.toggle("surface-armed",
-          !!(window.PerioChart && PerioChart.isSurfacePaint(armedFinding)));
+        document.body.classList.toggle("surface-armed", needsSurfacePick(armedFinding));
         render();
       });
       host.appendChild(b);
