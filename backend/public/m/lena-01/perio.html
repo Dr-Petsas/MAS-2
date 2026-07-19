@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lena · Knochenverlauf (auf Basis deines SVG)</title>
   <meta name="theme-color" content="#0b0e13" />
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260721b" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260721z6" />
 </head>
 <body>
   <header>
@@ -23,17 +23,7 @@
     <section class="stage-wrap">
       <div id="stage"></div>
 
-      <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten">
-        <button type="button" data-tab="Pro" class="on">Pro</button>
-        <button type="button" data-tab="Kons" disabled>Kons</button>
-        <button type="button" data-tab="Chir" disabled>Chir</button>
-        <button type="button" data-tab="ZE" disabled>ZE</button>
-        <button type="button" data-tab="Par" disabled>Par</button>
-        <button type="button" data-tab="KB" disabled>KB</button>
-        <button type="button" data-tab="IMP" disabled>IMP</button>
-        <button type="button" data-tab="KFO" disabled>KFO</button>
-        <button type="button" data-tab="SH" disabled>Schleimhäute</button>
-      </nav>
+      <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten"></nav>
 
       <section class="legend" id="legendPro">
         <div class="legend-head">
@@ -56,6 +46,11 @@
         <label>Knochenabbau <span id="lossVal">0 mm</span></label>
         <input type="range" id="loss" min="0" max="12" step="1" value="0" />
       </div>
+      <div class="ctrl" id="parPocketBox" hidden>
+        <label>Tasche mesial <input type="number" id="pocketM" min="0" max="15" step="1" value="1" /> mm</label>
+        <label>Tasche distal <input type="number" id="pocketD" min="0" max="15" step="1" value="1" /> mm</label>
+        <p class="hint">Knochenabbau je Seite = max(0, Tasche − 3). Werte steuern den Knochenbogen mesial/distal.</p>
+      </div>
       <label class="row"><input type="checkbox" id="miss" /> Zahn fehlt</label>
 
       <div class="cal" id="calVal">Knochenabbau 0 mm</div>
@@ -72,10 +67,12 @@
         <button type="button" id="presetReset">Gesund</button>
       </div>
 
-      <p class="note"><b>Zähne</b> mit den originalen SVG-Wurzelformen, Studio-Warm-Plastik für Kronen und Wurzeln; Zweit-/Palatinalwurzeln (14/24/25, 16&ndash;18/26&ndash;28) betont. <b>Knochen</b> in natürlichem Rot-Gelb-Weiß, endet gesund ~1,8&nbsp;mm unter der Krone/Wurzel-Grenze und sinkt <b>bogenförmig</b> pro Zahn ab. <b>Gingiva</b> als homogene Girlande konstanter Bandbreite, distal auf der Knochenkante auslaufend. <b>Prophylaxe-Befunde</b> (Tab „Pro“) direkt an der echten Zahngeometrie: Plaque als Biofilm-Schleier, Zahnstein als Kruste am Saum, Konkremente subgingival, Verfärbungen auf der Krone.</p>
+      <p class="note"><b>Zähne</b> Studio-Warm mit CEJ-treuer Gingiva. <b>Kons/ZE</b> Flächen O·M·D·B·P/L; Kronen und Brückenglieder plastisch weiß in Zahnform; Implantat wie struktur01. Jedes Legenden-Icon überträgt sichtbar.</p>
     </aside>
   </main>
 
-  <script src="/m/lena-01/perio.js?v=20260721c"></script>
+  <script src="/m/lena-01/perio-legend.js?v=20260721z6"></script>
+  <script src="/m/lena-01/perio-chart.js?v=20260721z6"></script>
+  <script src="/m/lena-01/perio.js?v=20260721z6"></script>
 </body>
 </html>
