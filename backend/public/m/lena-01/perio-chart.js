@@ -9,15 +9,18 @@
   const SURFACE_KEYS = ["okklusal", "mesial", "distal", "vestibulaer", "lingual_palatinal"];
   const SURFACE_PAINT = {
     fuellung: { fill: "rgba(147,197,253,.78)", stroke: "#3b6fa8" },
-    karies: { fill: "rgba(252,165,165,.78)", stroke: "#a04838" },
+    // insuffiziente Fuellung = Fuellung mit ROTEN Raendern (Chef 19.07.2026)
+    insuffizient: { fill: "rgba(147,197,253,.66)", stroke: "#dc2626", sw: 2.4 },
+    // Kariesflaechen sind ROT (Chef 19.07.2026)
+    karies: { fill: "rgba(220,38,38,.68)", stroke: "#7f1d1d" },
     goldinlay: { fill: "rgba(232,192,64,.82)", stroke: "#b89020" },
     keramikinlay: { fill: "rgba(232,216,200,.82)", stroke: "#8b5e34" },
     versiegelung: { fill: "rgba(255,255,255,.88)", stroke: "#94a3b8" },
   };
   const ROOT_PAINT = {
-    wurzelfuellung: { fill: "#5b8fd4", stroke: "#3b6fa8" },
-    i_wurzelfuellung: { fill: "#c45a4a", stroke: "#a04838" },
-    wurzelstift: { fill: "#9aa3ad", stroke: "#6a7078" },
+    wurzelfuellung: { fill: "rgba(91,143,212,.85)", stroke: "#3b6fa8" },
+    i_wurzelfuellung: { fill: "rgba(196,74,58,.85)", stroke: "#a04838" },
+    wurzelstift: { fill: "#b8c0c8", stroke: "#6a7078" },
   };
 
   function emptySurfaces() {
@@ -39,8 +42,10 @@
   function isRootPaint(id) { return !!ROOT_PAINT[id]; }
 
   function mesialIsRight(fdi) {
+    // Frontalansicht: Q1 (OK rechts) und Q4 (UK rechts) liegen im Bild links,
+    // ihre Mesialflaeche zeigt zur Mittellinie = nach rechts
     const q = Math.floor((+fdi) / 10);
-    return q === 1 || q === 3;
+    return q === 1 || q === 4;
   }
 
   function usesIncisal(fdi) {
@@ -74,48 +79,65 @@
     return { x0, x1, y0, y1, w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
   }
 
-  function surfaceSegments(c, box) {
-    const { x0, x1, y0, y1, cx, cy } = box;
-    const ox = Math.max(3, box.w * 0.08);
-    const oy = Math.max(3, box.h * 0.1);
-    const ix = Math.max(8, box.w * 0.28);
-    const iy = Math.max(8, box.h * 0.28);
-    const ol = x0 + ox, or_ = x1 - ox, ot = y0 + oy, ob = y1 - oy;
-    const il = x0 + ix, ir = x1 - ix, it = y0 + iy, ib = y1 - iy;
+  /**
+   * Anatomisch angepasste Flaechenregionen (Chef 19.07.2026):
+   * Regionen werden grosszuegig UEBER die Kronenkontur hinaus definiert und
+   * per Silhouetten-/Kronenband-Clip exakt auf die Aussenlinien des Zahns
+   * beschnitten — keine geometrischen Vielecke mehr. Nur die "Rueckseite"
+   * (palatinal/lingual), die in der Ansicht unsichtbar ist, steht als
+   * schematisches Oval UEBER dem Zahn im Bissspalt (clip: false).
+   */
+  function surfaceRegions(c, box) {
+    const dir = c.upper ? 1 : -1;            // Richtung Okklusal/Bissspalt
+    const tipY = c.upper ? box.y1 : box.y0;
+    const O = 12;                            // Ueberstand, Clip schneidet zu
+    const yLo = Math.min(box.y0, box.y1) - O;
+    const yHi = Math.max(box.y0, box.y1) + O;
     const mRight = mesialIsRight(c.fdi);
-    const topKey = c.upper ? "vestibulaer" : "lingual_palatinal";
-    const topLab = c.upper ? "B" : "L";
-    const botKey = c.upper ? "lingual_palatinal" : "vestibulaer";
-    const botLab = c.upper ? "P" : "B";
-    const leftKey = mRight ? "distal" : "mesial";
-    const leftLab = mRight ? "D" : "M";
-    const rightKey = mRight ? "mesial" : "distal";
-    const rightLab = mRight ? "M" : "D";
+    const sideW = box.w * 0.30;
+    const okklH = Math.max(14, box.h * 0.34);
+    const rect = (x0, y0, x1, y1) =>
+      `M ${x0.toFixed(1)} ${y0.toFixed(1)} L ${x1.toFixed(1)} ${y0.toFixed(1)} ` +
+      `L ${x1.toFixed(1)} ${y1.toFixed(1)} L ${x0.toFixed(1)} ${y1.toFixed(1)} Z`;
+    const ell = (cx, cy, rx, ry) =>
+      `M ${(cx - rx).toFixed(1)} ${cy.toFixed(1)} ` +
+      `A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 1 0 ${(cx + rx).toFixed(1)} ${cy.toFixed(1)} ` +
+      `A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 1 0 ${(cx - rx).toFixed(1)} ${cy.toFixed(1)} Z`;
+
+    const okkl = c.upper
+      ? rect(box.x0 - O, tipY - okklH, box.x1 + O, tipY + O)
+      : rect(box.x0 - O, tipY - O, box.x1 + O, tipY + okklH);
+    const leftD = rect(box.x0 - O, yLo, box.x0 + sideW, yHi);
+    const rightD = rect(box.x1 - sideW, yLo, box.x1 + O, yHi);
+    const bCy = c.upper ? box.y0 + box.h * 0.46 : box.y1 - box.h * 0.46;
+    // Bukkal-Oval kompakt halten: bei schmalen Praemolaren nicht hochkant
+    const bRx = Math.max(5, box.w * 0.30);
+    const bRy = Math.min(Math.max(6, box.h * 0.26), bRx * 1.4);
+    const bukk = ell(box.cx, bCy, bRx, bRy);
+    const backCy = tipY + dir * 16;
+    const backRx = Math.max(9, Math.min(16, box.w * 0.30));
+    const back = ell(box.cx, backCy, backRx, 6.5);
+    // Klickflaeche des Rueckseiten-Ovals grosszuegiger als die Optik —
+    // das Oval ist auf der Gesamtbuehne nur wenige Pixel gross
+    const backHit = ell(box.cx, backCy, backRx + 7, 13);
+
     return [
       {
-        key: topKey, label: topLab,
-        points: [[ol, ot], [or_, ot], [ir, it], [il, it]],
-        lx: cx, ly: (ot + it) / 2,
+        key: "okklusal", label: usesIncisal(c.fdi) ? "I" : "O", d: okkl, clip: true,
+        lx: box.cx, ly: tipY - dir * okklH * 0.42,
       },
       {
-        key: "okklusal", label: usesIncisal(c.fdi) ? "I" : "O",
-        points: [[il, it], [ir, it], [ir, ib], [il, ib]],
-        lx: cx, ly: cy,
+        key: mRight ? "distal" : "mesial", label: mRight ? "D" : "M", d: leftD, clip: true,
+        lx: box.x0 + sideW * 0.42, ly: box.cy,
       },
       {
-        key: leftKey, label: leftLab,
-        points: [[ol, ot], [il, it], [il, ib], [ol, ob]],
-        lx: (ol + il) / 2, ly: cy,
+        key: mRight ? "mesial" : "distal", label: mRight ? "M" : "D", d: rightD, clip: true,
+        lx: box.x1 - sideW * 0.42, ly: box.cy,
       },
+      { key: "vestibulaer", label: "B", d: bukk, clip: true, lx: box.cx, ly: bCy },
       {
-        key: rightKey, label: rightLab,
-        points: [[or_, ot], [or_, ob], [ir, ib], [ir, it]],
-        lx: (ir + or_) / 2, ly: cy,
-      },
-      {
-        key: botKey, label: botLab,
-        points: [[ol, ob], [il, ib], [ir, ib], [or_, ob]],
-        lx: cx, ly: (ib + ob) / 2,
+        key: "lingual_palatinal", label: c.upper ? "P" : "L", d: back, clip: false,
+        lx: box.cx, ly: backCy, schematic: true, hitD: backHit,
       },
     ];
   }
@@ -148,12 +170,27 @@
   function toggleRootMarker(s, markerId, mode) {
     ensureChart(s);
     const has = s.rootMarkers.includes(markerId);
+    const isWF = markerId === "wurzelfuellung" || markerId === "i_wurzelfuellung";
     if (mode === "remove" || (mode === "toggle" && has)) {
       s.rootMarkers = s.rootMarkers.filter((x) => x !== markerId);
+      // WF weg -> Wurzelstift verliert seine Voraussetzung
+      if (isWF && !s.rootMarkers.includes("wurzelfuellung")
+          && !s.rootMarkers.includes("i_wurzelfuellung")) {
+        s.rootMarkers = s.rootMarkers.filter((x) => x !== "wurzelstift");
+      }
       return;
     }
-    const rivals = Object.keys(ROOT_PAINT);
-    s.rootMarkers = s.rootMarkers.filter((x) => !rivals.includes(x) || x === markerId);
+    // WF-Varianten ersetzen einander; der Stift ist additiv dazu
+    if (isWF) {
+      s.rootMarkers = s.rootMarkers.filter(
+        (x) => x !== "wurzelfuellung" && x !== "i_wurzelfuellung");
+    }
+    // Wurzelstift setzt eine Wurzelfuellung voraus (Chef 19.07.2026)
+    if (markerId === "wurzelstift"
+        && !s.rootMarkers.includes("wurzelfuellung")
+        && !s.rootMarkers.includes("i_wurzelfuellung")) {
+      s.rootMarkers.push("wurzelfuellung");
+    }
     if (!s.rootMarkers.includes(markerId)) s.rootMarkers.push(markerId);
   }
 
@@ -166,32 +203,46 @@
     return !!(s && s.rootMarkers && s.rootMarkers.includes(markerId));
   }
 
+  /**
+   * Flaechen zeichnen. Die Gruppe clippt sich selbst: die vier anatomischen
+   * Regionen auf Silhouette + Kronenband (Farbe endet exakt an der
+   * Zahnaussenlinie), das schematische Rueckseiten-Oval bleibt ungeclippt.
+   * Buchstaben-Labels liegen ungeclippt obenauf.
+   */
   function drawSurfaces(c, s, box, showGuides) {
-    const g = mk("g", { class: "bef-surfaces", "data-fdi": String(c.fdi) });
     ensureChart(s);
-    surfaceSegments(c, box).forEach((seg) => {
+    const g = mk("g", { class: "bef-surfaces", "data-fdi": String(c.fdi) });
+    const clipWrap = mk("g", { "clip-path": "url(#st-sil-" + c.fdi + ")" });
+    const clipIn = mk("g", { "clip-path": "url(#st-cr-" + c.fdi + ")" });
+    clipWrap.appendChild(clipIn);
+    g.appendChild(clipWrap);
+    const labels = mk("g", { class: "bef-surf-labels" });
+    let any = false;
+    surfaceRegions(c, box).forEach((seg) => {
       const markers = s.surfaces[seg.key] || [];
       const paintIds = markers.filter((id) => SURFACE_PAINT[id]);
       const primary = paintIds.includes("karies") ? "karies" : paintIds[0];
       const style = primary ? SURFACE_PAINT[primary] : null;
+      if (!style && !showGuides) return;
+      any = true;
       const p = mk("path", {
-        d: polyD(seg.points),
+        d: seg.d,
         class: "bef-surface" + (style ? " filled" : ""),
-        fill: style ? style.fill : (showGuides ? "rgba(255,255,255,.04)" : "transparent"),
-        stroke: style ? style.stroke : (showGuides ? "rgba(220,200,160,.35)" : "none"),
-        "stroke-width": style ? "1.2" : "0.8",
+        fill: style ? style.fill : "rgba(255,255,255,.05)",
+        stroke: style ? style.stroke : "rgba(220,200,160,.4)",
+        "stroke-width": style ? String(style.sw || 1.4) : "0.9",
       });
-      g.appendChild(p);
-      if (showGuides || style) {
-        const t = mk("text", {
-          x: seg.lx.toFixed(1), y: (seg.ly + 3).toFixed(1),
-          "text-anchor": "middle", class: "bef-surface-lab",
-        });
-        t.textContent = seg.label;
-        g.appendChild(t);
-      }
+      if (seg.schematic && !style) p.setAttribute("stroke-dasharray", "3 2");
+      (seg.clip ? clipIn : g).appendChild(p);
+      const t = mk("text", {
+        x: seg.lx.toFixed(1), y: (seg.ly + 3).toFixed(1),
+        "text-anchor": "middle", class: "bef-surface-lab",
+      });
+      t.textContent = seg.label;
+      labels.appendChild(t);
     });
-    return g;
+    g.appendChild(labels);
+    return any ? g : null;
   }
 
   /** Pfad dicht abtasten (Browser-SVG-Geometrie). */
@@ -251,25 +302,39 @@
   }
 
   /**
-   * Kanalbaender entlang der Wurzelkontur(en).
-   * Start erst unterhalb CEJ (kein Furkations-T in der Krone); Spans werden
-   * ueber y hinweg per naechstem Mid verfolgt, damit der Kanal der Wurzel folgt.
+   * Baender entlang der Wurzelkontur(en).
+   * Default (Kanal): schmales Band, Start erst unterhalb CEJ (kein
+   * Furkations-T in der Krone). Mit opts.full: VOLLE Wurzelbreite je Wurzel
+   * (fuer die anatomische Wurzelfuellung) — die Furkations-Bucht zwischen
+   * den Wurzeln bleibt frei, weil je y nur die echten Spans gefuellt werden.
+   * Spans werden ueber y per naechstem Mid verfolgt, damit das Band der
+   * Wurzel folgt.
    */
-  function canalRibbons(pts, cejY, apexY, upper) {
+  function canalRibbons(pts, cejY, apexY, upper, opts) {
     if (!pts.length) return [];
+    const full = !!(opts && opts.full);
     const dir = upper ? -1 : 1;
-    // ~2–3 mm apikal der CEJ starten (Pulpakammer / Furkation ueberspringen)
-    const yStart = cejY + dir * 14;
-    const yEnd = apexY - dir * 5;
+    // Kanal: ~2–3 mm apikal der CEJ starten; volle Fuellung: knapp
+    // kronenseitig starten (das Wurzelband-Clip schneidet an der CEJ)
+    const yStart = cejY + dir * (full ? -6 : 14);
+    const yEnd = apexY - dir * (full ? 1 : 5);
     if (upper ? yEnd >= yStart : yEnd <= yStart) return [];
     const spanLen = Math.abs(yEnd - yStart);
     const steps = Math.max(20, Math.round(spanLen / 1.5));
+    const minW = full ? 3 : 4;
+    const maxW = full ? 160 : 90;
+    const maxJump = full ? 34 : 28;
+    const halfOf = (w, t) => {
+      if (full) return Math.max(1.2, w * 0.5 - 0.6);
+      const frac = 0.30 * (1 - 0.7 * t * t);
+      return Math.max(1.1, Math.min(w * 0.36, w * frac * 0.5));
+    };
     // tracks: { mid, left:[], right:[], mids:[] }
     const tracks = [];
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const y = yStart + (yEnd - yStart) * t;
-      const spans = silSpansAtY(pts, y).filter((e) => (e.x1 - e.x0) >= 4 && (e.x1 - e.x0) < 90);
+      const spans = silSpansAtY(pts, y).filter((e) => (e.x1 - e.x0) >= minW && (e.x1 - e.x0) < maxW);
       if (!spans.length) continue;
       const used = new Set();
       // bestehende Tracks fortsetzen
@@ -281,12 +346,11 @@
           const d = Math.abs(mid - tr.mid);
           if (d < bestD) { bestD = d; best = si; }
         });
-        if (best < 0 || bestD > 28) return;
+        if (best < 0 || bestD > maxJump) return;
         used.add(best);
         const e = spans[best];
         const w = e.x1 - e.x0;
-        const frac = 0.30 * (1 - 0.7 * t * t);
-        const half = Math.max(1.1, Math.min(w * 0.36, w * frac * 0.5));
+        const half = halfOf(w, t);
         const mid = (e.x0 + e.x1) / 2;
         tr.mid = mid;
         tr.left.push([mid - half, y]);
@@ -297,8 +361,7 @@
       spans.forEach((e, si) => {
         if (used.has(si)) return;
         const w = e.x1 - e.x0;
-        const frac = 0.30 * (1 - 0.7 * t * t);
-        const half = Math.max(1.1, Math.min(w * 0.36, w * frac * 0.5));
+        const half = halfOf(w, t);
         const mid = (e.x0 + e.x1) / 2;
         tracks.push({
           mid,
@@ -328,58 +391,137 @@
     });
   }
 
-  function drawRootCanal(c, s, seg, cejYAt, pathBounds, sil, extraRoots) {
-    ensureChart(s);
-    if (!s.rootMarkers.length || !seg) return null;
-    const marker = s.rootMarkers.includes("i_wurzelfuellung")
-      ? "i_wurzelfuellung"
-      : (s.rootMarkers.includes("wurzelstift") ? "wurzelstift" : s.rootMarkers[0]);
-    const style = ROOT_PAINT[marker];
-    if (!style) return null;
+  function ensureClipEl(defs, id, d) {
+    if (!defs || !d) return false;
+    if (defs.querySelector("#" + CSS.escape(id))) return true;
+    const cp = mk("clipPath", { id });
+    cp.appendChild(mk("path", { d }));
+    defs.appendChild(cp);
+    return true;
+  }
 
-    // Hauptkontur + ggf. extra gezeichnete Wurzeln (Palatinal etc.)
-    const paths = [];
-    if (sil) paths.push(sil);
-    if (Array.isArray(extraRoots)) {
-      extraRoots.forEach((d) => { if (d && d !== sil) paths.push(d); });
-    }
-    if (!paths.length) return null;
+  /**
+   * Wurzel-Befunde (Chef 19.07.2026):
+   * - Wurzelfuellung: BLAU und folgt anatomisch der Wurzelform — die ganze
+   *   Wurzelregion (Silhouette + Extra-Wurzeln apikal der CEJ) wird gefuellt.
+   * - insuffiziente WF: ROT und KUERZER, endet deutlich VOR dem Apex.
+   * - Wurzelstift: sitzt mittig in der Wurzelfuellung und reicht bis in die
+   *   Zahnkrone (Voraussetzung WF erzwingt toggleRootMarker).
+   * Die Gruppe clippt sich selbst; der Stift liegt nur im Silhouetten-Clip,
+   * damit er ueber die CEJ hinaus in die Krone ragen darf.
+   */
+  function drawRootCanal(c, s, seg, cejYAt, pathBounds, sil, extraRoots, defs) {
+    ensureChart(s);
+    if (!s.rootMarkers.length || !seg || !sil) return null;
+    const hasWF = s.rootMarkers.includes("wurzelfuellung");
+    const hasIWF = s.rootMarkers.includes("i_wurzelfuellung");
+    const hasPost = s.rootMarkers.includes("wurzelstift");
+    if (!hasWF && !hasIWF && !hasPost) return null;
+
+    const sb = pathBounds(sil);
+    if (!sb) return null;
+    const midX = (sb.x0 + sb.x1) / 2;
+    const cej = cejYAt(seg, midX);
+    const apexY = c.upper ? sb.y0 : sb.y1;
+    const dirApex = c.upper ? -1 : 1;          // von CEJ Richtung Apex
+    // insuffiziente WF endet bei ~58 % der Wurzellaenge (nicht bis zum Apex)
+    const fillEndY = hasIWF ? cej + (apexY - cej) * 0.58 : apexY + dirApex * 6;
+    const style = ROOT_PAINT[hasIWF ? "i_wurzelfuellung" : "wurzelfuellung"];
 
     const g = mk("g", { class: "bef-rootcanal" });
-    let drew = false;
-    const seen = new Set();
-    paths.forEach((dPath, pi) => {
+    const silWrap = mk("g", { "clip-path": "url(#st-sil-" + c.fdi + ")" });
+    g.appendChild(silWrap);
+    const rootWrap = mk("g", { "clip-path": "url(#st-rt-" + c.fdi + ")" });
+    silWrap.appendChild(rootWrap);
+
+    // Fuellband je Wurzel in VOLLER Wurzelbreite (folgt der Kontur; die
+    // Furkations-Bucht zwischen den Wurzeln bleibt frei), bei insuffizienter
+    // WF vor fillEndY abgeschnitten (zusaetzlicher Band-Clip in defs)
+    const drawFullRoots = (host, dPath) => {
       const pts = samplePathPts(dPath, 220);
-      if (!pts.length) return;
-      const sb = pathBounds(dPath);
-      const midX = sb ? (sb.x0 + sb.x1) / 2 : (c.x0 + c.x1) / 2;
-      const cej = cejYAt(seg, midX);
-      const apex = c.upper
-        ? (sb ? sb.y0 + 5 : cej - 80)
-        : (sb ? sb.y1 - 5 : cej + 80);
-      // Extra-Wurzel-Pfade: nur eigener Span; SIL: alle Spans (Mehrwurzel)
-      const ribs = canalRibbons(pts, cej, apex, c.upper);
-      ribs.forEach((rib) => {
-        // Dedup: SIL + EXTRA_ROOTS koennen dieselbe Wurzel doppelt liefern
-        const key = Math.round(rib.mids[0][0] / 6) + ":" + Math.round(rib.mids[0][1] / 8);
-        if (seen.has(key)) return;
-        seen.add(key);
+      if (!pts.length) return false;
+      const pb = pathBounds(dPath) || sb;
+      const rootApex = c.upper ? pb.y0 : pb.y1;
+      let drew = false;
+      canalRibbons(pts, cej, rootApex, c.upper, { full: true }).forEach((rib) => {
         drew = true;
-        g.appendChild(mk("path", {
+        host.appendChild(mk("path", {
           d: rib.d, fill: style.fill, stroke: style.stroke,
-          "stroke-width": "0.85", class: "bef-root-fill",
+          "stroke-width": "0.9", "stroke-linejoin": "round", class: "bef-root-fill",
         }));
-        if (marker === "wurzelstift" && rib.mids.length > 1) {
-          const a = rib.mids[0], b = rib.mids[rib.mids.length - 1];
-          g.appendChild(mk("line", {
-            x1: a[0].toFixed(1), y1: a[1].toFixed(1),
-            x2: b[0].toFixed(1), y2: b[1].toFixed(1),
-            stroke: "#c5ccd4", "stroke-width": "2", "stroke-linecap": "round",
-          }));
-        }
       });
-    });
-    return drew ? g : null;
+      return drew;
+    };
+
+    if (hasWF || hasIWF) {
+      let fillHost = rootWrap;
+      if (hasIWF && defs) {
+        // Kuerzungs-Clip: Band von CEJ-Seite bis fillEndY
+        const id = "rf-cut-" + c.fdi;
+        const y0 = Math.min(cej - dirApex * 20, fillEndY);
+        const y1 = Math.max(cej - dirApex * 20, fillEndY);
+        const dCut = `M ${(sb.x0 - 8).toFixed(1)} ${y0.toFixed(1)} ` +
+          `L ${(sb.x1 + 8).toFixed(1)} ${y0.toFixed(1)} ` +
+          `L ${(sb.x1 + 8).toFixed(1)} ${y1.toFixed(1)} ` +
+          `L ${(sb.x0 - 8).toFixed(1)} ${y1.toFixed(1)} Z`;
+        const old = defs.querySelector("#" + CSS.escape(id));
+        if (old) old.remove();
+        if (ensureClipEl(defs, id, dCut)) {
+          fillHost = mk("g", { "clip-path": "url(#" + id + ")" });
+          rootWrap.appendChild(fillHost);
+        }
+      }
+      const drewMain = drawFullRoots(fillHost, sil);
+      // Extra gezeichnete Wurzeln (z. B. palatinal) mitfuellen
+      if (Array.isArray(extraRoots)) {
+        extraRoots.forEach((d) => {
+          if (d && d !== sil) drawFullRoots(fillHost, d);
+        });
+      }
+      if (!drewMain) {
+        // Fallback: Rechteck (Clip formt die Wurzel), falls Sampling scheitert
+        fillHost.appendChild(mk("rect", {
+          x: (sb.x0 - 4).toFixed(1),
+          y: Math.min(cej - dirApex * 8, fillEndY).toFixed(1),
+          width: (sb.x1 - sb.x0 + 8).toFixed(1),
+          height: Math.max(1, Math.abs(fillEndY - (cej - dirApex * 8))).toFixed(1),
+          fill: style.fill, stroke: "none", class: "bef-root-fill",
+        }));
+      }
+    }
+
+    if (hasPost) {
+      // Stift mittig in der Wurzelfuellung, bis in die Krone (Chef 19.07.2026).
+      // Zentralen Kanal ueber die Wurzelkontur suchen (naechster an der Mitte).
+      let bx = midX, by = cej + (apexY - cej) * 0.66;
+      const ribs = canalRibbons(samplePathPts(sil, 220), cej, apexY + dirApex * -5, c.upper);
+      if (ribs.length) {
+        let best = null, bestD = 1e9;
+        ribs.forEach((rib) => {
+          const m = rib.mids[Math.min(rib.mids.length - 1, Math.floor(rib.mids.length * 0.68))];
+          const d0 = Math.abs(rib.mids[0][0] - midX);
+          if (d0 < bestD) { bestD = d0; best = m; }
+        });
+        if (best) { bx = best[0]; by = best[1]; }
+      }
+      const topY = cej - dirApex * 24;         // reicht in die Krone hinein
+      const topW = 3.6, botW = 1.9;
+      const post = `M ${(bx - botW).toFixed(1)} ${by.toFixed(1)} ` +
+        `L ${(midX - topW).toFixed(1)} ${topY.toFixed(1)} ` +
+        `L ${(midX + topW).toFixed(1)} ${topY.toFixed(1)} ` +
+        `L ${(bx + botW).toFixed(1)} ${by.toFixed(1)} Z`;
+      silWrap.appendChild(mk("path", {
+        d: post, fill: ROOT_PAINT.wurzelstift.fill,
+        stroke: ROOT_PAINT.wurzelstift.stroke, "stroke-width": "1",
+        "stroke-linejoin": "round", class: "bef-root-post",
+      }));
+      silWrap.appendChild(mk("line", {
+        x1: ((bx + midX) / 2 - 0.6).toFixed(1), y1: (by - dirApex * 2).toFixed(1),
+        x2: (midX - 0.6).toFixed(1), y2: (topY + dirApex * 2).toFixed(1),
+        stroke: "#eef2f6", "stroke-width": "1.1", "stroke-linecap": "round", opacity: "0.85",
+      }));
+    }
+    return g;
   }
 
   function drawPontic(c, box) {
@@ -480,26 +622,42 @@
 
   function buildSurfaceHits(c, box, onSurface) {
     const g = mk("g", { class: "surface-hits", "data-fdi": String(c.fdi) });
-    surfaceSegments(c, box).forEach((seg) => {
+    const clipWrap = mk("g", { "clip-path": "url(#st-sil-" + c.fdi + ")" });
+    const clipIn = mk("g", { "clip-path": "url(#st-cr-" + c.fdi + ")" });
+    clipWrap.appendChild(clipIn);
+    g.appendChild(clipWrap);
+    surfaceRegions(c, box).forEach((seg) => {
       const p = mk("path", {
-        d: polyD(seg.points),
+        d: seg.d,
         class: "surface-hit",
         fill: "rgba(111,224,212,.08)",
         stroke: "rgba(111,224,212,.55)",
         "stroke-width": "1",
       });
-      p.style.cursor = "crosshair";
-      p.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        onSurface(c.fdi, seg.key, "toggle");
-      });
-      p.addEventListener("contextmenu", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        onSurface(c.fdi, seg.key, "remove");
-      });
-      g.appendChild(p);
+      if (seg.schematic) p.setAttribute("stroke-dasharray", "3 2");
+      const wireEvents = (el) => {
+        el.style.cursor = "crosshair";
+        el.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          onSurface(c.fdi, seg.key, "toggle");
+        });
+        el.addEventListener("contextmenu", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          onSurface(c.fdi, seg.key, "remove");
+        });
+      };
+      (seg.clip ? clipIn : g).appendChild(p);
+      if (seg.hitD) {
+        // sichtbares Oval nur Optik; die (groessere) unsichtbare Flaeche klickt
+        p.setAttribute("pointer-events", "none");
+        const hp = mk("path", { d: seg.hitD, fill: "transparent", stroke: "none" });
+        wireEvents(hp);
+        g.appendChild(hp);
+      } else {
+        wireEvents(p);
+      }
       const t = mk("text", {
         x: seg.lx.toFixed(1), y: (seg.ly + 3).toFixed(1),
         "text-anchor": "middle", class: "bef-surface-lab hit-lab",
@@ -514,7 +672,7 @@
     SURFACE_KEYS, SURFACE_PAINT, ROOT_PAINT,
     emptySurfaces, ensureChart,
     isSurfacePaint, isRootPaint,
-    crownBox, surfaceSegments,
+    crownBox, surfaceRegions,
     toggleSurfaceMarker, toggleRootMarker,
     hasSurfaceMarker, hasRootMarker,
     drawSurfaces, drawRootCanal, drawPontic, drawImplantScrew,

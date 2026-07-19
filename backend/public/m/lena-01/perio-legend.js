@@ -39,7 +39,7 @@
     ],
     Kons: [
       { id: "fuellung", label: "Füllung", icon: "filling" },
-      { id: "insuffizient", label: "insuffizient", icon: "insufficient" },
+      { id: "insuffizient", label: "insuffiziente Füllung", icon: "insufficient-filling" },
       { id: "karies", label: "Karies", icon: "caries" },
       { id: "wurzelfuellung", label: "Wurzelfüllung", icon: "root-filling" },
       { id: "i_wurzelfuellung", label: "insuffiziente Wurzelfüllung", icon: "root-insufficient" },
@@ -179,12 +179,14 @@
         <ellipse cx="32" cy="46" rx="11" ry="3.2" fill="none" stroke="#64748b" stroke-width="1.5"/>
         <ellipse cx="32" cy="16" rx="6" ry="2.4" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>`,
       filling: `${base}<rect x="24" y="22" width="16" height="12" rx="3" fill="#7eb6f0" stroke="#3b6fa8" stroke-width="1.2"/>`,
-      caries: `${base}<ellipse cx="34" cy="28" rx="7" ry="5" fill="#c45a4a" stroke="#8b2e22" stroke-width="1.1"/>`,
+      caries: `${base}<ellipse cx="34" cy="28" rx="7" ry="5" fill="#dc2626" stroke="#7f1d1d" stroke-width="1.2"/>`,
+      "insufficient-filling": `${base}<rect x="24" y="22" width="16" height="12" rx="3" fill="#7eb6f0" stroke="#dc2626" stroke-width="2.2"/>`,
       insufficient: `${base}<path d="M22 24 L42 40 M42 24 L22 40" stroke="#e07a30" stroke-width="2.4" stroke-linecap="round"/>`,
-      "root-filling": `${base}<path d="M32 34 V54" stroke="#5b8fd4" stroke-width="3.2" stroke-linecap="round"/>`,
-      "root-insufficient": `${base}<path d="M32 34 V54" stroke="#c45a4a" stroke-width="3.2" stroke-linecap="round"/><path d="M26 42 L38 50" stroke="#e07a30" stroke-width="1.6"/>`,
-      "root-post": `${base}<path d="M32 30 V52" stroke="#8a9099" stroke-width="2.6"/><rect x="28" y="28" width="8" height="5" rx="1" fill="#b8bec6"/>`,
-      "wedge-defect": `${base}<path d="M18 36 L32 28 L32 44 Z" fill="#c45a4a" opacity=".75"/>`,
+      "root-filling": `${base}<path d="M26 38 C27 47 30 56 32 56 C34 56 37 47 38 38 C36 40 28 40 26 38 Z" fill="#5b8fd4" stroke="#3b6fa8" stroke-width="1"/>`,
+      "root-insufficient": `${base}<path d="M26 38 C26.6 43 28 48 29 50 L35 50 C36 48 37.4 43 38 38 C36 40 28 40 26 38 Z" fill="#c45a4a" stroke="#a04838" stroke-width="1"/>`,
+      "root-post": `${base}<path d="M26 38 C27 47 30 56 32 56 C34 56 37 47 38 38 C36 40 28 40 26 38 Z" fill="#5b8fd4" stroke="#3b6fa8" stroke-width="1"/>
+        <path d="M31 48 L29.5 26 L34.5 26 L33 48 Z" fill="#b8c0c8" stroke="#6a7078" stroke-width="1"/>`,
+      "wedge-defect": `${base}<ellipse cx="32" cy="40" rx="9" ry="3.6" fill="#70563c" stroke="#3f2f20" stroke-width="1.2"/>`,
       "enamel-fracture": `${base}<path d="M28 14 L36 22 L30 26 Z" fill="none" stroke="#c45a4a" stroke-width="1.8"/>`,
       "apical-lesion": `${base}<circle cx="32" cy="52" r="5" fill="rgba(196,90,74,.55)" stroke="#a04838" stroke-width="1.2"/>`,
       apicoectomy: `${base}<path d="M26 48 H38" stroke="#6b7fd4" stroke-width="2.2" stroke-linecap="round"/><path d="M32 34 V48" stroke="#c9a07a" stroke-width="2"/>`,

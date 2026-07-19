@@ -1374,6 +1374,43 @@
     return sb ? (sb.x0 + sb.x1) / 2 : (c.x0 + c.x1) / 2;
   }
 
+  /**
+   * Keilfoermiger Defekt (Chef 19.07.2026): IMMER eine bukkale OVALE Flaeche
+   * direkt OBERHALB des Zahnfleischs, am Uebergang Schmelz/Zement (bzw. nur
+   * im Schmelz) — also zervikal knapp koronal der CEJ, mittig auf dem Zahn.
+   * Geclippt auf die Silhouette, damit das Oval den Zahn nicht verlaesst.
+   */
+  function drawKeilDefekt(c, seg) {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "bef-keil");
+    g.setAttribute("clip-path", "url(#st-sil-" + c.fdi + ")");
+    const cw = c.upper ? 1 : -1;              // koronal = Richtung SPLIT
+    const x = silMidX(c);
+    const y = cejYAt(seg, x) + cw * 5;        // knapp oberhalb der Gingiva
+    const sb = pathBounds(SIL[c.fdi] || "");
+    const rx = Math.min(10, Math.max(6.5, (sb ? sb.x1 - sb.x0 : c.x1 - c.x0) * 0.17));
+    const el = document.createElementNS(SVGNS, "ellipse");
+    el.setAttribute("cx", x.toFixed(1));
+    el.setAttribute("cy", y.toFixed(1));
+    el.setAttribute("rx", rx.toFixed(1));
+    el.setAttribute("ry", "3.8");
+    el.setAttribute("fill", "rgba(112,86,60,.9)");
+    el.setAttribute("stroke", "#3f2f20");
+    el.setAttribute("stroke-width", "1.2");
+    g.appendChild(el);
+    // dunkler Kerbschatten am koronalen Rand (Keil wirkt eingesunken)
+    const sh = document.createElementNS(SVGNS, "path");
+    sh.setAttribute("d",
+      `M ${(x - rx * 0.8).toFixed(1)} ${(y + cw * 1.4).toFixed(1)} ` +
+      `Q ${x.toFixed(1)} ${(y + cw * 3.4).toFixed(1)} ${(x + rx * 0.8).toFixed(1)} ${(y + cw * 1.4).toFixed(1)}`);
+    sh.setAttribute("fill", "none");
+    sh.setAttribute("stroke", "rgba(35,22,12,.75)");
+    sh.setAttribute("stroke-width", "1.4");
+    sh.setAttribute("stroke-linecap", "round");
+    g.appendChild(sh);
+    return g;
+  }
+
   // Lueckenschluss: ")(" an Stelle der (entfernten) Krone
   function drawSpaceClosure(c, box) {
     const g = document.createElementNS(SVGNS, "g");
@@ -1446,8 +1483,8 @@
   const NO_BADGE = new Set([
     "plaque", "zahnstein", "konkremente", "verfaerbung", "krone", "implantat", "zahn_fehlt",
     "brueckenglied", "imp_lockerung", "imp_fraktur",
-    "fuellung", "karies", "goldinlay", "keramikinlay", "versiegelung",
-    "wurzelfuellung", "i_wurzelfuellung", "wurzelstift",
+    "fuellung", "karies", "goldinlay", "keramikinlay", "versiegelung", "insuffizient",
+    "wurzelfuellung", "i_wurzelfuellung", "wurzelstift", "keildefekt",
     "zahn_zerstoert", "lueckenschluss", "milchzahn", "sensibilitaet", "perk_plus",
   ]);
 
@@ -1490,20 +1527,20 @@
             const cr = drawCrown(geo, defs);
             if (cr) host.appendChild(cr);
           }
-          // Flaechen fest in die Zahnkrone (Silhouette + Kronenband)
+          // Flaechen anatomisch an der Aussenlinie (Clips setzt drawSurfaces
+          // selbst; das Rueckseiten-Oval steht ungeclippt ueber dem Zahn)
           const surfG = PerioChart.drawSurfaces(geo, s, box, showSurfGuides);
-          if (surfG) {
-            const { outer, inner } = befGroup(geo, true);
-            inner.appendChild(surfG);
-            host.appendChild(outer);
-          }
-          // Wurzelfuellung entlang Wurzelkontur, geclippt auf Wurzelband
+          if (surfG) host.appendChild(surfG);
+          // Wurzelfuellung anatomisch in der Wurzelform; Stift bis in die
+          // Krone (drawRootCanal clippt selbst: Fuellung Wurzelband, Stift Sil)
           const rootG = PerioChart.drawRootCanal(
-            geo, s, seg, cejYAt, pathBounds, SIL[geo.fdi], EXTRA_ROOTS[geo.fdi]);
-          if (rootG) {
-            const { outer, inner } = befGroup(geo, false);
-            inner.appendChild(rootG);
-            host.appendChild(outer);
+            geo, s, seg, cejYAt, pathBounds, SIL[geo.fdi], EXTRA_ROOTS[geo.fdi], defs);
+          if (rootG) host.appendChild(rootG);
+          // Keilfoermiger Defekt: bukkales Oval direkt oberhalb des
+          // Zahnfleischs am Schmelz-/Zement-Uebergang
+          if (m.keildefekt && vis("keildefekt")) {
+            const kd = drawKeilDefekt(geo, seg);
+            if (kd) host.appendChild(kd);
           }
           // Kronen-verankerte Marker: rotes X (zerstoert), Warndreieck (perk),
           // Sensibilitaets-Plus/Minus okklusal
@@ -1946,17 +1983,6 @@
       hit.addEventListener("contextmenu", (ev) => { ev.preventDefault(); applyClick("remove"); });
       front.appendChild(hit);
 
-      if (surfArmed && !st(c.fdi).missing) {
-        // Hits in derselben Kronen-Clip-Region wie die Flaechen-Zeichnung
-        const hitWrap = document.createElementNS(SVGNS, "g");
-        hitWrap.setAttribute("clip-path", "url(#st-sil-" + c.fdi + ")");
-        const hitInner = document.createElementNS(SVGNS, "g");
-        hitInner.setAttribute("clip-path", "url(#st-cr-" + c.fdi + ")");
-        hitInner.appendChild(PerioChart.buildSurfaceHits(c, crownBoxOf(c), applySurfaceFinding));
-        hitWrap.appendChild(hitInner);
-        front.appendChild(hitWrap);
-      }
-
       const x = APEXX[c.fdi] != null ? APEXX[c.fdi] : c.cx;
       const t = document.createElementNS(SVGNS, "text");
       t.setAttribute("x", x);
@@ -1977,6 +2003,17 @@
         front.appendChild(ft);
       }
     });
+    // Flaechen-Hits in einem ZWEITEN Durchlauf, damit sie ueber ALLEN
+    // Spalten-Rechtecken liegen (sonst deckt der Spalten-Hit des
+    // Nachbarzahns das schwebende Rueckseiten-Oval ab und frisst den Klick)
+    if (surfArmed) {
+      COLS.cols.forEach((c) => {
+        if (st(c.fdi).missing) return;
+        // Hits clippen sich selbst (anatomische Regionen); das schematische
+        // Rueckseiten-Oval liegt bewusst UNGECLIPPT ueber dem Zahn
+        front.appendChild(PerioChart.buildSurfaceHits(c, crownBoxOf(c), applySurfaceFinding));
+      });
+    }
     svgEl.appendChild(front);
   }
 
