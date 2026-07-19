@@ -15,7 +15,7 @@
   const STEP = 3, EPS = 2, BAND = 26;
   const OVERLAP = 6;             // Knochen-Overlap der alten Saumkanten-Naeherung (Fallback)
   const CEJ_BONE_GAP_MM = 1.8;   // gesunder Knochen endet ~1,5-2 mm apikal der Grenzlinie
-  const GUM_H = 12;              // Bandhoehe der freien Gingiva (px, ~2 mm)
+  const GUM_H = 24;              // Bandhoehe der freien Gingiva (px, ~4 mm, Wunsch: doppelt)
   const GUM_X = { up: [73, 1303], lo: [63, 1313] };  // Fallback: Knochen-Ausdehnung
   let BONE_EDGE = null;          // koronale Knochenkante je Spalte (bone-edge.json)
 
