@@ -223,22 +223,6 @@
     return d;
   }
 
-  function buildCejSourceLayer(parent) {
-    const layer = document.createElementNS(SVGNS, "g");
-    layer.setAttribute("id", "cejSourceLayer");
-    COLS.cols.forEach((c) => {
-      if (st(c.fdi).missing) return;
-      if (!(c.fdi in SOURCE_CEJ_D)) SOURCE_CEJ_D[c.fdi] = cejFromRaster(c);
-      const d = SOURCE_CEJ_D[c.fdi];
-      if (!d) return;
-      const p = document.createElementNS(SVGNS, "path");
-      p.setAttribute("d", d);
-      p.setAttribute("class", "cej-source-line");
-      layer.appendChild(p);
-    });
-    parent.appendChild(layer);
-  }
-
   // Zweit-/Palatinalwurzeln direkt aus den Originalpfaden von teethSVG:
   // 14 zeichnet die zweite Wurzel mit Gradient-Fuellung, 25 und die palatinalen
   // Wurzeln von 16/17/26/27 als #BCAE95-Form mittig im Wurzelfeld.
@@ -448,7 +432,8 @@
       if (gap < 4 || gap > 60) continue;   // nur echte Interdentalraeume
       const yL = L.seg.ys[L.seg.ys.length - 1];
       const yR = R.seg.ys[0];
-      const amp = Math.min(13, gap * 0.5);
+      // einheitliche Papillenhoehe -> homogener Girlanden-Rhythmus
+      const amp = Math.min(10, gap * 0.55);
       for (let x = L.x1 + 1; x < R.x0; x++) {
         const t = (x - L.x1) / gap;
         arr[x] = yL + (yR - yL) * t + crownward * amp * Math.sin(Math.PI * t);
@@ -469,15 +454,17 @@
       }
       prev = x;
     }
-    // distal: weich auf die koronale Knochenkante ueberblenden und ihr
-    // bis zum Ende des Kieferknochens folgen (retromolar)
-    const FADE = 70;
+    // distal: zuegig auf die koronale Knochenkante ueberblenden (smoothstep)
+    // und ihr bis zum Ende des Kieferknochens folgen -> das Band LIEGT auf
+    // dem Knochen, auch hinter 18/28/38/48
+    const FADE = 40;
+    const ease = (t) => t * t * (3 - 2 * t);
     for (let x = gx0; x < first; x++) {
-      const t = Math.min(1, (first - x) / FADE);
+      const t = ease(Math.min(1, (first - x) / FADE));
       arr[x] = (1 - t) * arr[first] + t * target(x);
     }
     for (let x = last + 1; x <= gx1; x++) {
-      const t = Math.min(1, (x - last) / FADE);
+      const t = ease(Math.min(1, (x - last) / FADE));
       arr[x] = (1 - t) * arr[last] + t * target(x);
     }
     return arr;
@@ -518,13 +505,25 @@
       for (let x = 0; x < gx0; x++) raw[x] = raw[gx0];
       for (let x = gx1 + 1; x < CW; x++) raw[x] = raw[gx1];
       const margin = smoothArr(raw, 5);
-      const broad = smoothArr(raw, 101);
+      // apikale Kante = PARALLELE Girlande im konstanten Abstand GUM_H
+      // (etwas staerker geglaettet -> weiche Bogen statt Zacken); nur die
+      // aeussersten Pixel runden als Endkappe ab -> ueberall gleiche Bandbreite
+      const marginSoft = smoothArr(raw, 13);
       const apical = new Array(CW);
-      const TAPER = 46;   // Band laeuft an den distalen Enden weich aus
+      const CAP = 12;
       for (let x = 0; x < CW; x++) {
-        const edge = Math.min(x - gx0, gx1 - x);
-        const h = GUM_H * (edge < TAPER ? Math.max(0.22, edge / TAPER) : 1);
-        const a = broad[x] - crownward * h;
+        const edge = Math.max(0, Math.min(x - gx0, gx1 - x));
+        let h = GUM_H;
+        // an steilen Distal-Flanken vertikal nachlegen, damit die SICHTBARE
+        // (senkrechte) Bandbreite konstant bleibt
+        const xl = Math.max(0, x - 3), xr = Math.min(CW - 1, x + 3);
+        const slope = (marginSoft[xr] - marginSoft[xl]) / Math.max(1, xr - xl);
+        h *= Math.min(1.6, Math.sqrt(1 + slope * slope));
+        if (edge < CAP) {
+          const t = edge / CAP;
+          h *= Math.max(0.18, Math.sqrt(t * (2 - t)));
+        }
+        const a = marginSoft[x] - crownward * h;
         apical[x] = upper
           ? Math.min(a, margin[x] - 2.5)
           : Math.max(a, margin[x] + 2.5);
@@ -837,9 +836,10 @@
     cp.firstChild.setAttribute("d", d);
   }
 
-  function clippedImg(href, clipId) {
+  function clippedImg(href, clipId, cls) {
     const g = document.createElementNS(SVGNS, "g");
     g.setAttribute("clip-path", "url(#" + clipId + ")");
+    if (cls) g.setAttribute("class", cls);
     const im = document.createElementNS(SVGNS, "image");
     im.setAttribute("x", 0); im.setAttribute("y", 0);
     im.setAttribute("width", CW); im.setAttribute("height", CH);
@@ -865,8 +865,8 @@
     const boneLayer = svgEl.querySelector("#boneLayer");
     boneLayer.textContent = "";
     boneLayer.setAttribute("opacity", boneOpacity.toFixed(2));
-    boneLayer.appendChild(clippedImg("/m/lena-01/bone-k.png?v=7", "cb-up"));
-    boneLayer.appendChild(clippedImg("/m/lena-01/bone-k.png?v=7", "cb-lo"));
+    boneLayer.appendChild(clippedImg("/m/lena-01/bone-k.png?v=7", "cb-up", "bone-part"));
+    boneLayer.appendChild(clippedImg("/m/lena-01/bone-k.png?v=7", "cb-lo", "bone-part"));
     buildGumLayer(defs);
 
     // Zweit-/Palatinalwurzeln: leichtes Echo UEBER dem Knochen, sonst
@@ -969,10 +969,6 @@
       sp.setAttribute("class", "selout");
       front.appendChild(sp);
     }
-
-    // Pink: ausschliesslich Originalkonturen aus teethSVG. Ein schmaler
-    // CEJ-Clip blendet nur die gemeinsame Grenze von Kronen- und Wurzelpfad ein.
-    buildCejSourceLayer(front);
 
     COLS.cols.forEach((c) => {
       const r = document.createElementNS(SVGNS, "rect");

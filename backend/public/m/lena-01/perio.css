@@ -39,14 +39,10 @@ main { max-width: 1680px; margin: 18px auto 60px; padding: 0 18px; display: grid
 #zoomStage { flex: 1; min-height: 0; display: flex; }
 .zoom-svg { width: 100%; height: 100%; display: block; }
 
-.cej-source-line {
-  fill: none;
-  stroke: #ff2aa6;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-  pointer-events: none;
+/* Knochen: Rot-Gelb-Weiss wie echter Knochen + mehr Kontrast zum Zahn
+   (Klasse statt id -> wirkt auch im geklonten Lupen-SVG) */
+.bone-part image {
+  filter: saturate(1.55) hue-rotate(-14deg) contrast(1.3) brightness(1.05);
 }
 
 /* Studio-Warm-Plastik (Zeichenstil-Studie Karte 04 "Warm Studio 3D") */
