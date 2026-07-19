@@ -401,6 +401,43 @@
   }
 
   /**
+   * Wurzelspitzen eines Zahns (Chef 19.07.2026, fuer CAP-Punkte und
+   * WSR-Schnittstriche): lokale Extrema der Silhouette Richtung Apex plus
+   * die Spitzen der extra gezeichneten Wurzeln. Max. 3 Punkte {x, y}.
+   */
+  function rootApexPoints(c, sil, extraRoots) {
+    if (!sil) return [];
+    const pts = samplePathPts(sil, 240);
+    if (!pts.length) return [];
+    let y0 = Infinity, y1 = -Infinity;
+    pts.forEach((p) => { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); });
+    const h = Math.max(1, y1 - y0);
+    // nur die apikalen 22 % zaehlen als "Spitzenzone" (keine Hoecker/Kronen)
+    const nearApex = (y) => (c.upper ? (y - y0) / h : (y1 - y) / h) <= 0.22;
+    const n = pts.length;
+    const cand = [];
+    for (let i = 0; i < n; i++) {
+      const p = pts[i];
+      if (!nearApex(p[1])) continue;
+      const a = pts[(i - 4 + n) % n], b = pts[(i + 4) % n];
+      const isTip = c.upper ? (p[1] <= a[1] && p[1] <= b[1]) : (p[1] >= a[1] && p[1] >= b[1]);
+      if (isTip) cand.push(p);
+    }
+    cand.sort((p, q) => (c.upper ? p[1] - q[1] : q[1] - p[1]));
+    const out = [];
+    cand.forEach((p) => {
+      if (!out.some((o) => Math.abs(o.x - p[0]) < 15)) out.push({ x: p[0], y: p[1] });
+    });
+    (extraRoots || []).forEach((d) => {
+      const ep = samplePathPts(d, 90);
+      if (!ep.length) return;
+      const tip = ep.reduce((m, p) => ((c.upper ? p[1] < m[1] : p[1] > m[1]) ? p : m));
+      if (!out.some((o) => Math.abs(o.x - tip[0]) < 12)) out.push({ x: tip[0], y: tip[1] });
+    });
+    return out.slice(0, 3);
+  }
+
+  /**
    * Wurzel-Befunde (Chef 19.07.2026):
    * - Wurzelfuellung: BLAU und folgt anatomisch der Wurzelform — die ganze
    *   Wurzelregion (Silhouette + Extra-Wurzeln apikal der CEJ) wird gefuellt.
@@ -676,6 +713,6 @@
     toggleSurfaceMarker, toggleRootMarker,
     hasSurfaceMarker, hasRootMarker,
     drawSurfaces, drawRootCanal, drawPontic, drawImplantScrew,
-    buildSurfaceHits,
+    buildSurfaceHits, rootApexPoints,
   };
 })(typeof window !== "undefined" ? window : globalThis);

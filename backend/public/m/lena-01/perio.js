@@ -535,6 +535,64 @@
     };
   }
 
+  /**
+   * Chirurgische Lage-Befunde (Chef 19.07.2026): Verschiebung/Drehung des
+   * ganzen Zahns fuer retiniert / impaktiert / verlagert / Luxation.
+   * - retiniert: deutlich tiefer — die Kaukante steht etwa auf Hoehe des
+   *   Kieferkamms statt in der Zahnreihe.
+   * - impaktiert: komplett im Knochen (Kaukante apikal der Knochenkante);
+   *   die Wurzel ist nur rudimentaer (~halbe Laenge, Clip st-impk-<fdi>).
+   * - verlagert: Drehung GEGEN den Uhrzeigersinn in 60-Grad-Schritten
+   *   (m.verlagert traegt den Winkel in Grad).
+   * - Luxation: etwas nach koronal heraus; den schwarzen Alveolen-Spalt
+   *   um die Wurzel zeichnet buildPlasticLayer.
+   */
+  function chirDisplacement(c) {
+    const s = st(c.fdi);
+    if (!s || s.missing) return null;
+    const m = markOf(s);
+    const rot = +m.verlagert || 0;
+    if (!m.retiniert && !m.impaktiert && !m.luxation && !rot) return null;
+    const sb = pathBounds(SIL[c.fdi] || "");
+    if (!sb) return null;
+    const dirAp = c.upper ? -1 : 1;              // y-Richtung nach apikal
+    const incY = c.upper ? sb.y1 : sb.y0;        // Kaukante/Schneidekante
+    let dy = 0;
+    if (m.retiniert || m.impaktiert) {
+      const crest = liveCrestY(c);
+      const target = m.impaktiert ? crest + dirAp * 12 : crest - dirAp * 8;
+      dy = target - incY;
+      // nur einsenken, nie herausheben
+      dy = dirAp > 0 ? Math.max(0, dy) : Math.min(0, dy);
+    } else if (m.luxation) {
+      dy = -dirAp * 10;                          // etwas aus der Alveole heraus
+    }
+    const parts = [];
+    if (dy) parts.push(`translate(0 ${dy.toFixed(1)})`);
+    if (rot) {
+      const cx = (sb.x0 + sb.x1) / 2, cy = (sb.y0 + sb.y1) / 2;
+      parts.push(`rotate(${-rot} ${cx.toFixed(1)} ${cy.toFixed(1)})`);
+    }
+    return { str: parts.join(" "), impk: !!m.impaktiert, lux: !!m.luxation, rot };
+  }
+
+  // Gezackte Bruchkante fuer den Wurzelrest: Zickzack apikal der CEJ —
+  // tief genug, dass das Gingiva-Band die Kante nicht verdeckt.
+  // clipD haelt nur die Wurzel unterhalb der Kante, edgeD ist die Kante selbst.
+  function breakEdge(c, cerv) {
+    const [x0, x1] = toothSpanX(c);
+    const dirAp = c.upper ? -1 : 1;
+    const yFar = c.upper ? -20 : CH + 20;
+    let edge = "";
+    let i = 0;
+    for (let x = x0; x <= x1; x += 9, i++) {
+      const y = cerv + dirAp * (i % 2 ? 15 : 7);
+      edge += (edge ? " L " : "M ") + x + " " + y.toFixed(1);
+    }
+    edge += ` L ${x1} ${(cerv + dirAp * 10).toFixed(1)}`;
+    return { clipD: edge + ` L ${x1} ${yFar} L ${x0} ${yFar} Z`, edgeD: edge };
+  }
+
   // Studio-Warm-Plastik (Stil aus der Zeichenstil-Studie, Karte 04):
   // Kronen: diagonaler Schmelzverlauf #fffdf4->#efd9b8->#c99a68 + Original-
   // Anatomie als Multiply + Glanzlicht. Wurzeln: Zylinderverlauf
@@ -622,20 +680,92 @@
         p.setAttribute("class", "studio-extra-root");
         root.appendChild(p);
       });
-      silG.appendChild(root);
 
-      const crown = document.createElementNS(SVGNS, "g");
-      crown.setAttribute("clip-path", "url(#st-cr-" + fdi + ")");
-      crown.appendChild(bandRect(gc, "st-cg-" + fdi, "studio-crown-fill"));
-      crown.appendChild(mkImg("studio-crown-anat"));
-      crown.appendChild(bandRect(gc, "st-cs-" + fdi, "studio-crown-shine"));
-      silG.appendChild(crown);
-
-      if (milk) {
-        // Original-Zahn (voller Groesse) unter dem Milchzahn wegdecken
-        appendMissCover(layer, c, defs);
-        tooth.setAttribute("transform", milk.transform);
+      const m = markOf(st(c.fdi));
+      if (m.wurzelrest) {
+        // Wurzelrest (Chef 19.07.2026): Krone entfernt, die Wurzel endet
+        // knapp apikal der CEJ in einer gezackten "abgebrochenen" Kante
+        const jag = breakEdge(gc, cerv);
+        ensureClip(defs, "st-wr-" + fdi, jag.clipD);
+        const wr = document.createElementNS(SVGNS, "g");
+        wr.setAttribute("clip-path", "url(#st-wr-" + fdi + ")");
+        wr.appendChild(root);
+        silG.appendChild(wr);
+        const edge = mkPath(jag.edgeD, "wr-edge", "none");
+        edge.setAttribute("stroke", "rgba(58,38,24,.9)");
+        edge.setAttribute("stroke-width", "1.6");
+        edge.setAttribute("stroke-linejoin", "round");
+        silG.appendChild(edge);
+      } else {
+        silG.appendChild(root);
+        const crown = document.createElementNS(SVGNS, "g");
+        crown.setAttribute("clip-path", "url(#st-cr-" + fdi + ")");
+        crown.appendChild(bandRect(gc, "st-cg-" + fdi, "studio-crown-fill"));
+        crown.appendChild(mkImg("studio-crown-anat"));
+        crown.appendChild(bandRect(gc, "st-cs-" + fdi, "studio-crown-shine"));
+        silG.appendChild(crown);
       }
+
+      if (m.fraktur) {
+        // frakturierter Zahn: diagonale Trennung von oben links nach unten
+        // rechts durch Krone UND Wurzel, mit sichtbarem Spalt (Hintergrund-
+        // Farbe) und dunklem Randschatten — an die Silhouette geclippt
+        const d = `M ${(sb.x0 - 3).toFixed(1)} ${(sb.y0 - 3).toFixed(1)} ` +
+          `L ${(sb.x1 + 3).toFixed(1)} ${(sb.y1 + 3).toFixed(1)}`;
+        const shade = mkPath(d, "frx-shade", "none");
+        shade.setAttribute("stroke", "rgba(30,18,10,.55)");
+        shade.setAttribute("stroke-width", "7");
+        silG.appendChild(shade);
+        const gapP = mkPath(d, "frx-gap", "none");
+        gapP.setAttribute("stroke", MISS_BG);
+        gapP.setAttribute("stroke-width", "4");
+        silG.appendChild(gapP);
+      }
+
+      if (m.luxation) {
+        // Zahnluxation: deutlicher SCHWARZER Spalt rund um die Wurzel
+        // (verbreiterter Parodontalspalt der herausgehobenen Alveole).
+        // Liegt VOR silG im tooth-g -> wandert mit der Verschiebung mit;
+        // die Zahn-Malerei deckt den inneren Stroke-Anteil wieder ab.
+        const halo = document.createElementNS(SVGNS, "g");
+        halo.setAttribute("clip-path", "url(#st-rt-" + fdi + ")");
+        const hp = (d) => {
+          const p = mkPath(d, "lux-halo", "rgba(8,6,4,.85)");
+          p.setAttribute("stroke", "rgba(8,6,4,.85)");
+          p.setAttribute("stroke-width", "9");
+          p.setAttribute("stroke-linejoin", "round");
+          halo.appendChild(p);
+        };
+        hp(silD);
+        (EXTRA_ROOTS[fdi] || []).forEach((d) => hp(d));
+        tooth.insertBefore(halo, silG);
+      }
+
+      if (m.impaktiert) {
+        // impaktierter Zahn: Wurzel nicht ausgeformt — nur ~halbe Laenge
+        const rootLen = Math.abs(apexY - cerv);
+        const cutY = cerv + (gc.upper ? -1 : 1) * rootLen * 0.5;
+        const [ix0, ix1] = toothSpanX(gc);
+        const yTop = gc.upper ? cutY : SPLIT - 20;
+        const yBot = gc.upper ? SPLIT + 20 : cutY;
+        ensureClip(defs, "st-impk-" + fdi,
+          `M ${ix0 - 24} ${yTop.toFixed(1)} L ${ix1 + 24} ${yTop.toFixed(1)} ` +
+          `L ${ix1 + 24} ${yBot.toFixed(1)} L ${ix0 - 24} ${yBot.toFixed(1)} Z`);
+        const iw = document.createElementNS(SVGNS, "g");
+        iw.setAttribute("clip-path", "url(#st-impk-" + fdi + ")");
+        tooth.removeChild(silG);
+        iw.appendChild(silG);
+        tooth.appendChild(iw);
+      }
+
+      const disp = chirDisplacement(c);
+      const tf = [disp && disp.str, milk && milk.transform].filter(Boolean).join(" ");
+      if (milk || (disp && disp.str) || m.wurzelrest) {
+        // Original-Zahn der Basiszeichnung unter dem verkleinerten/
+        // verschobenen/kronenlosen Zahn wegdecken
+        appendMissCover(layer, c, defs);
+      }
+      if (tf) tooth.setAttribute("transform", tf);
       layer.appendChild(tooth);
     });
     svgEl.insertBefore(layer, svgEl.querySelector("#boneLayer"));
@@ -686,6 +816,17 @@
         return;
       }
       if (s && s.missing) return; // Implantat: kein CEJ-Saum
+      // retiniert/impaktiert: Zahn liegt (fast) im Knochen — die Gingiva
+      // laeuft flach ueber die Stelle wie ueber eine Zahnluecke
+      if (s && (hasMark(s, "retiniert") || hasMark(s, "impaktiert"))) {
+        for (let i = 0; i < seg.ys.length; i++) {
+          const x = seg.x0 + i;
+          if (x < 0 || x >= CW) continue;
+          arr[x] = ridgeAt(x);
+          if (extractMask) extractMask[x] = 1;
+        }
+        return;
+      }
       segs.push({ x0: seg.x0, x1: seg.x0 + seg.ys.length - 1, seg });
       for (let i = 0; i < seg.ys.length; i++) arr[seg.x0 + i] = seg.ys[i];
     });
@@ -1486,7 +1627,50 @@
     "fuellung", "karies", "goldinlay", "keramikinlay", "versiegelung", "insuffizient",
     "wurzelfuellung", "i_wurzelfuellung", "wurzelstift", "keildefekt",
     "zahn_zerstoert", "lueckenschluss", "milchzahn", "sensibilitaet", "perk_plus",
+    "cap", "wsr", "wurzelrest", "fraktur", "retiniert", "impaktiert",
+    "verlagert", "luxation",
   ]);
+
+  // CAP: schwarzer Punkt (Aufhellung) rund um jede Wurzelspitze
+  function drawApexLesion(c, pts) {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "bef-cap");
+    pts.forEach((p) => {
+      const halo = document.createElementNS(SVGNS, "circle");
+      halo.setAttribute("cx", p.x.toFixed(1));
+      halo.setAttribute("cy", p.y.toFixed(1));
+      halo.setAttribute("r", "8");
+      halo.setAttribute("fill", "rgba(10,7,5,.35)");
+      g.appendChild(halo);
+      const dot = document.createElementNS(SVGNS, "circle");
+      dot.setAttribute("cx", p.x.toFixed(1));
+      dot.setAttribute("cy", p.y.toFixed(1));
+      dot.setAttribute("r", "4.6");
+      dot.setAttribute("fill", "#0b0806");
+      g.appendChild(dot);
+    });
+    return g;
+  }
+
+  // WSR: horizontaler Schnitt-Strich DURCH die Wurzelspitze(n)
+  function drawWsrCut(c, pts) {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "bef-wsr");
+    const dirAp = c.upper ? -1 : 1;
+    pts.forEach((p) => {
+      const y = p.y - dirAp * 5;
+      const ln = document.createElementNS(SVGNS, "line");
+      ln.setAttribute("x1", (p.x - 10).toFixed(1));
+      ln.setAttribute("x2", (p.x + 10).toFixed(1));
+      ln.setAttribute("y1", y.toFixed(1));
+      ln.setAttribute("y2", y.toFixed(1));
+      ln.setAttribute("stroke", "#3d4db8");
+      ln.setAttribute("stroke-width", "2.6");
+      ln.setAttribute("stroke-linecap", "round");
+      g.appendChild(ln);
+    });
+    return g;
+  }
 
   function buildBefundLayer(defs) {
     const old = svgEl.querySelector("#befundLayer");
@@ -1501,13 +1685,17 @@
       PerioChart.ensureChart(s);
       const m = markOf(s);
       // Milchzahn: Overlays auf der Quell-Geometrie zeichnen und mit dem
-      // milkInfo-Transform auf den verkleinerten Zahn abbilden
+      // milkInfo-Transform auf den verkleinerten Zahn abbilden.
+      // Chirurgische Lage (retiniert/impaktiert/verlagert/Luxation):
+      // Overlays wandern mit derselben Verschiebung/Drehung mit.
       const milk = milkInfo(c);
       const geo = milk ? milk.src : c;
+      const disp = chirDisplacement(c);
+      const hostTf = [disp && disp.str, milk && milk.transform].filter(Boolean).join(" ");
       let host = layer;
-      if (milk) {
+      if (hostTf) {
         host = document.createElementNS(SVGNS, "g");
-        host.setAttribute("transform", milk.transform);
+        host.setAttribute("transform", hostTf);
       }
       const seg = SOURCE_CEJ_ARR[geo.fdi];
       const box = crownBoxOf(geo);
@@ -1542,6 +1730,15 @@
             const kd = drawKeilDefekt(geo, seg);
             if (kd) host.appendChild(kd);
           }
+          // CAP (apikale Aufhellung): schwarzer Punkt um jede Wurzelspitze;
+          // WSR: horizontaler Schnitt-Strich durch die Wurzelspitze(n)
+          if ((m.cap && vis("cap")) || (m.wsr && vis("wsr"))) {
+            const ap = PerioChart.rootApexPoints(geo, SIL[geo.fdi], EXTRA_ROOTS[geo.fdi]);
+            if (ap.length) {
+              if (m.cap && vis("cap")) host.appendChild(drawApexLesion(geo, ap));
+              if (m.wsr && vis("wsr")) host.appendChild(drawWsrCut(geo, ap));
+            }
+          }
           // Kronen-verankerte Marker: rotes X (zerstoert), Warndreieck (perk),
           // Sensibilitaets-Plus/Minus okklusal
           if (m.zahn_zerstoert && vis("zahn_zerstoert")) host.appendChild(drawDestroyedX(geo, box));
@@ -1560,7 +1757,7 @@
       if (m.lueckenschluss && vis("lueckenschluss")) {
         layer.appendChild(drawSpaceClosure(c, crownBoxOf(c)));
       }
-      if (milk && host.childNodes.length) layer.appendChild(host);
+      if (host !== layer && host.childNodes.length) layer.appendChild(host);
 
       Object.keys(m).forEach((id) => {
         if (!m[id] || !vis(id) || NO_BADGE.has(id)) return;
@@ -1831,12 +2028,55 @@
       if (st(c.fdi).missing || !EXTRA_ROOTS[c.fdi]) return;
       // Milchzahn: Echo der Original-Wurzeln wuerde ueber der Abdeckung stehen
       if (milkInfo(c)) return;
+      const disp = chirDisplacement(c);
       const g = document.createElementNS(SVGNS, "g");
       g.setAttribute("clip-path", "url(#st-rt-" + c.fdi + ")");
+      // verschobene/gedrehte Zaehne: Echo wandert mit (Clip dreht sich mit)
+      if (disp && disp.str) g.setAttribute("transform", disp.str);
+      let hostG = g;
+      if (disp && disp.impk) {
+        // impaktiert: auch das Echo nur bis zur rudimentaeren Wurzelhaelfte
+        hostG = document.createElementNS(SVGNS, "g");
+        hostG.setAttribute("clip-path", "url(#st-impk-" + c.fdi + ")");
+        g.appendChild(hostG);
+      }
       EXTRA_ROOTS[c.fdi].forEach((d) => {
         const p = document.createElementNS(SVGNS, "path");
         p.setAttribute("d", d);
-        g.appendChild(p);
+        hostG.appendChild(p);
+      });
+      echo.appendChild(g);
+    });
+
+    // Chirurgische Befunde: verschobene/gedrehte Zaehne, Wurzelrest-Stuempfe
+    // und der Luxations-Spalt liegen im/unterm Knochen — eine Kontur UEBER
+    // dem Knochen haelt sie bei hoher Knochen-Deckkraft lesbar (wie das
+    // Wurzel-Echo). Luxation: dunkler Ring = deutlicher schwarzer Spalt.
+    COLS.cols.forEach((c) => {
+      const s2 = st(c.fdi);
+      if (!s2 || s2.missing) return;
+      const m2 = markOf(s2);
+      const disp = chirDisplacement(c);
+      if (!(disp && disp.str) && !m2.wurzelrest) return;
+      const g = document.createElementNS(SVGNS, "g");
+      if (disp && disp.str) g.setAttribute("transform", disp.str);
+      let hostG = g;
+      const nest = (clipId) => {
+        const w = document.createElementNS(SVGNS, "g");
+        w.setAttribute("clip-path", "url(#" + clipId + ")");
+        hostG.appendChild(w);
+        hostG = w;
+      };
+      if (m2.wurzelrest) { nest("st-rt-" + c.fdi); nest("st-wr-" + c.fdi); }
+      if (disp && disp.lux) nest("st-rt-" + c.fdi);
+      if (disp && disp.impk) nest("st-impk-" + c.fdi);
+      const luxStyle = "fill:none;stroke:rgba(10,8,6,.62);stroke-width:6.5;stroke-linejoin:round";
+      [SIL[c.fdi]].concat(EXTRA_ROOTS[c.fdi] || []).forEach((d) => {
+        if (!d) return;
+        const p = document.createElementNS(SVGNS, "path");
+        p.setAttribute("d", d);
+        if (disp && disp.lux) p.setAttribute("style", luxStyle);
+        hostG.appendChild(p);
       });
       echo.appendChild(g);
     });
@@ -1955,11 +2195,19 @@
     front = document.createElementNS(SVGNS, "g");
     front.setAttribute("id", "hitLayer");
 
-    const selD = SIL[selected];
+    // Auswahl-Kontur: bei Milchzahn/chirurgischer Lage (retiniert/impaktiert/
+    // verlagert/Luxation) derselbe Transform wie der gezeichnete Zahn
+    const selC = COLS.cols.find((cc) => cc.fdi === selected);
+    const selMilk = selC ? milkInfo(selC) : null;
+    const selD = SIL[selMilk ? selMilk.src.fdi : selected];
     if (selD) {
       const sp = document.createElementNS(SVGNS, "path");
       sp.setAttribute("d", selD);
       sp.setAttribute("class", "selout");
+      const selDisp = selC ? chirDisplacement(selC) : null;
+      const tf = [selDisp && selDisp.str, selMilk && selMilk.transform]
+        .filter(Boolean).join(" ");
+      if (tf) sp.setAttribute("transform", tf);
       front.appendChild(sp);
     }
 
@@ -2052,7 +2300,6 @@
   }
 
   const LOCK_CYCLE = [true, "I", "II", "III"];
-  const VERL_CYCLE = ["nach distal", "koronal", "mesial", "apikal"];
 
   // Flaechen-Befunde, die der Nutzer per Flaechen-Hit platziert.
   // Versiegelung NICHT: die gilt immer okklusal und wird direkt gesetzt.
@@ -2152,12 +2399,15 @@
       return;
     }
     if (id === "verlagert") {
-      if (mode === "set") { m.verlagert = VERL_CYCLE[0]; return; }
-      const cur = m.verlagert;
-      const i = VERL_CYCLE.indexOf(cur);
-      if (i < 0) m.verlagert = VERL_CYCLE[0];
-      else if (i >= VERL_CYCLE.length - 1) delete m.verlagert;
-      else m.verlagert = VERL_CYCLE[i + 1];
+      // verlagert: der Zahn steht in einem anderen Winkel — jeder Klick
+      // dreht ihn 60 Grad GEGEN den Uhrzeigersinn, nach 300 Grad ist er
+      // wieder gerade (Befund weg). m.verlagert traegt den Winkel in Grad.
+      if (mode === "remove") { delete m.verlagert; return; }
+      const cur = +m.verlagert || 0;
+      if (mode === "set") { m.verlagert = cur || 60; return; }
+      const next = cur + 60;
+      if (next >= 360) delete m.verlagert;
+      else m.verlagert = next;
       return;
     }
     if (id === "sensibilitaet") {
