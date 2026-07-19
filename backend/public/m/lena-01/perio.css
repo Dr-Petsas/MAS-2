@@ -1,0 +1,125 @@
+:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: #0b0e13; color: #eef2f4; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 14px 24px; border-bottom: 1px solid #29313a; background: #10151c;
+}
+.eyebrow { color: #dda66e; font-size: .63rem; font-weight: 900; letter-spacing: .14em; }
+header h1 { margin: 3px 0 2px; font-size: 1.22rem; }
+header p { margin: 0; color: #91a0ab; font-size: .76rem; }
+header a { border: 1px solid #3a4653; border-radius: 999px; padding: 8px 13px; color: #e7edef; font-size: .72rem; font-weight: 800; text-decoration: none; }
+
+main { max-width: 1680px; margin: 18px auto 60px; padding: 0 18px; display: grid; grid-template-columns: minmax(0, 1fr) 210px 300px; gap: 18px; align-items: start; }
+
+.stage-wrap { border-radius: 20px; overflow: hidden; box-shadow: 0 26px 60px rgba(0,0,0,.45); background: linear-gradient(135deg, #2a1e18, #17110d); }
+#stage { width: 100%; }
+.perio-svg { width: 100%; height: auto; display: block; }
+
+/* Lupe: gewaehlter Zahn ueber die gesamte Hoehe beider Kiefer */
+.zoom-pane {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #2c3540;
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #241a15, #140f0c);
+  box-shadow: 0 26px 60px rgba(0,0,0,.45);
+}
+.zoom-head {
+  padding: 10px 14px;
+  font-size: .8rem;
+  font-weight: 800;
+  color: #f0d3ac;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  background: rgba(0,0,0,.25);
+}
+#zoomStage { flex: 1; min-height: 0; display: flex; }
+.zoom-svg { width: 100%; height: 100%; display: block; }
+
+.cej-source-line {
+  fill: none;
+  stroke: #ff2aa6;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+/* Studio-Warm-Plastik (Zeichenstil-Studie Karte 04 "Warm Studio 3D") */
+.studio-tooth {
+  isolation: isolate;
+  filter: drop-shadow(1.5px 2.5px 1.5px rgba(60, 35, 20, .3));
+}
+.studio-crown-fill { opacity: .96; }
+.studio-crown-anat { mix-blend-mode: multiply; opacity: .88; }
+.studio-crown-shine { mix-blend-mode: screen; }
+.studio-root-tone { mix-blend-mode: multiply; opacity: .5; }
+.studio-root-cyl { mix-blend-mode: multiply; }
+.studio-root-depth { mix-blend-mode: multiply; }
+.studio-extra-root {
+  opacity: .92;
+  stroke: rgba(62, 36, 22, .85);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+/* zarte Wiederholung ueber dem Knochen, damit die Zweit-/Palatinalwurzel
+   auch bei hoher Knochen-Deckkraft lesbar bleibt */
+.extra-root-echo path {
+  fill: rgba(96, 58, 38, .15);
+  stroke: rgba(62, 36, 22, .55);
+  stroke-width: 1.9;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+/* Gingiva: Girlande mit Papillen im Studio-Warm-Stil */
+.gum-group { filter: drop-shadow(0 1.6px 1.2px rgba(70, 25, 22, .35)); }
+.gum-body { stroke: none; }
+.gum-gloss {
+  fill: none;
+  stroke: rgba(255, 226, 222, .5);
+  stroke-width: 3.6;
+  stroke-linecap: round;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+.gum-seam {
+  fill: none;
+  stroke: rgba(140, 52, 58, .5);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.hit { fill: transparent; cursor: pointer; }
+.selout { fill: rgba(88,199,189,.14); stroke: #6fe0d4; stroke-width: 3; stroke-linejoin: round; pointer-events: none; filter: drop-shadow(0 0 6px rgba(111,224,212,.55)); }
+.flab { fill: #cdb59c; font-size: 14px; font-weight: 800; font-family: inherit; }
+.flab.on { fill: #7fe9dd; }
+
+.panel { position: sticky; top: 16px; border: 1px solid #2c3540; border-radius: 18px; background: #121820; padding: 16px; }
+.panel h2 { margin: 0 0 2px; font-size: 1.05rem; }
+.panel .sub { margin: 0 0 14px; color: #8f9eaa; font-size: .74rem; line-height: 1.5; }
+.ctrl { margin: 12px 0; }
+.ctrl label { display: flex; justify-content: space-between; font-size: .76rem; font-weight: 700; margin-bottom: 6px; }
+.ctrl label span { color: #efbd8d; }
+.ctrl input[type=range] { width: 100%; accent-color: #c98a4f; }
+.ctrl-bone { margin-top: 16px; padding-top: 14px; border-top: 1px solid #26303a; }
+.ctrl-bone label span { color: #f0d3ac; }
+.ctrl-bone input[type=range] { accent-color: #d8b98a; }
+.ctrl .hint { margin: 8px 0 0; font-size: .66rem; color: #7f8b95; line-height: 1.5; }
+.row { display: flex; align-items: center; gap: 8px; font-size: .8rem; margin: 14px 0; }
+.cal { margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: #0e141b; color: #cdd8df; font-size: .74rem; line-height: 1.5; }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.presets button { flex: 1 1 auto; border: 1px solid #3a4653; border-radius: 999px; background: transparent; color: #e2e8ea; padding: 8px 10px; font: inherit; font-size: .7rem; font-weight: 800; cursor: pointer; }
+.presets button:hover { border-color: #dda66e; color: #f5cfaa; }
+.note { margin-top: 14px; font-size: .68rem; color: #7f8b95; line-height: 1.5; }
+
+@media (max-width: 1040px) {
+  main { grid-template-columns: minmax(0, 1fr) 170px; }
+  .stage-wrap { grid-column: 1; grid-row: 1; }
+  .zoom-pane { grid-column: 2; grid-row: 1; }
+  .panel { grid-column: 1 / -1; grid-row: 2; position: static; }
+}

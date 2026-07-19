@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lena · Knochenverlauf (auf Basis deines SVG)</title>
+  <meta name="theme-color" content="#0b0e13" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260720h" />
+</head>
+<body>
+  <header>
+    <div>
+      <span class="eyebrow">LENA · 01-MODUS · KNOCHENVERLAUF</span>
+      <h1>Knochenverlauf an deinem Odontogramm</h1>
+      <p>teethSVG aus dem Odont-Original, plastisch im Studio-Warm-Stil (Kronen + Wurzeln) bis zur exakten Krone/Wurzel-Grenze. Zahn anklicken und Knochenabbau setzen.</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <a href="/m/lena-01/index.html">← zurück</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="stage-wrap">
+      <div id="stage"></div>
+    </section>
+
+    <aside class="zoom-pane">
+      <div class="zoom-head" id="zoomLabel">Zahn 46</div>
+      <div id="zoomStage"></div>
+    </aside>
+
+    <aside class="panel">
+      <h2 id="selLabel">Zahn 46</h2>
+      <p class="sub">Ausgewählter Zahn – der Knochen wird krönchenseitig zurückgenommen und gibt die original gezeichneten Einzelwurzeln frei.</p>
+      <div class="ctrl">
+        <label>Knochenabbau <span id="lossVal">0 mm</span></label>
+        <input type="range" id="loss" min="0" max="12" step="1" value="0" />
+      </div>
+      <label class="row"><input type="checkbox" id="miss" /> Zahn fehlt</label>
+
+      <div class="cal" id="calVal">Knochenabbau 0 mm</div>
+
+      <div class="ctrl ctrl-bone">
+        <label>Knochen-Deckkraft <span id="boneOpVal">75 %</span></label>
+        <input type="range" id="boneOp" min="0" max="100" step="1" value="75" />
+        <p class="hint">Gilt fuer alle Zaehne. 0 % = Knochen transparent (Wurzeln voll sichtbar), 100 % = deckend.</p>
+      </div>
+
+      <div class="presets">
+        <button type="button" id="presetDemo">Demo-Befund</button>
+        <button type="button" id="presetGen">Generalisiert</button>
+        <button type="button" id="presetReset">Gesund</button>
+      </div>
+
+      <p class="note"><b>Zähne</b> mit den originalen SVG-Wurzelformen, Studio-Warm-Plastik für Kronen und Wurzeln; Zweit-/Palatinalwurzeln (14/24/25, 16&ndash;18/26&ndash;28) betont. <b>Knochen</b> endet gesund ~1,8&nbsp;mm unter der Grenzlinie und sinkt <b>bogenförmig</b> pro Zahn ab – die Nachbar-Punkte bleiben fixiert.</p>
+    </aside>
+  </main>
+
+  <script src="/m/lena-01/perio.js?v=20260720h"></script>
+</body>
+</html>
