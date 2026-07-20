@@ -285,6 +285,8 @@ body.surface-armed .surface-hit { cursor: crosshair; }
   letter-spacing: 0.02em;
 }
 .selout { fill: rgba(88,199,189,.14); stroke: #6fe0d4; stroke-width: 3; stroke-linejoin: round; pointer-events: none; filter: drop-shadow(0 0 6px rgba(111,224,212,.55)); }
+/* fehlender Zahn ausgewaehlt: nur zarte gestrichelte Positionsmarke */
+.selout.selout-miss { fill: none; stroke: rgba(111,224,212,.55); stroke-width: 1.6; stroke-dasharray: 7 6; filter: none; }
 .flab { fill: #cdb59c; font-size: 14px; font-weight: 800; font-family: inherit; }
 .flab.on { fill: #7fe9dd; }
 #parPocketBox label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }

@@ -121,8 +121,6 @@
   // SVG-Rect-Ton #241a15 — sonst steht ein sichtbar braunes Band in der Luecke.
   const MISS_BG = "#122432";
   // Nur Anti-Alias-Saum (~1 px je Seite). Stroke 10 blutet sichtbar in Nachbarn.
-  const MISS_STROKE = 2;
-  const MISS_STROKE_ROOT = 1.5;
 
   // Hit-Targets / Lupe: Spaltenbreite (+ SIL/Extra, ohne Distal-Flare).
   // NICHT fuer die visuelle Abdeckung verwenden — Rechtecke schneiden Nachbarn.
@@ -146,37 +144,91 @@
     return { x0, x1, y0, y1 };
   }
 
-  function paintMissPath(host, d, sw) {
-    if (!d) return;
-    const p = document.createElementNS(SVGNS, "path");
-    p.setAttribute("d", d);
-    p.setAttribute("fill", MISS_BG);
-    p.setAttribute("stroke", MISS_BG);
-    p.setAttribute("stroke-width", String(sw));
-    p.setAttribute("stroke-linejoin", "round");
-    host.appendChild(p);
-  }
-
-  function appendMissCover(host, c, defs) {
-    // Brueckenglied: nur Wurzel abdecken, Krone bleibt fuer Porzellan-Zahnform frei
-    const pontic = !!(st(c.fdi) && markOf(st(c.fdi)).brueckenglied);
-    if (pontic && defs && SOURCE_CEJ_ARR[c.fdi] && SIL[c.fdi]) {
-      ensureClip(defs, "st-sil-" + c.fdi, SIL[c.fdi]);
-      ensureClip(defs, "st-rt-" + c.fdi, bandD(c, false));
-      const wrap = document.createElementNS(SVGNS, "g");
-      wrap.setAttribute("clip-path", "url(#st-sil-" + c.fdi + ")");
-      const root = document.createElementNS(SVGNS, "g");
-      root.setAttribute("clip-path", "url(#st-rt-" + c.fdi + ")");
-      paintMissPath(root, SIL[c.fdi], MISS_STROKE);
-      (EXTRA_ROOTS[c.fdi] || []).forEach((d) => paintMissPath(root, d, MISS_STROKE_ROOT));
-      wrap.appendChild(root);
-      host.appendChild(wrap);
-      return;
-    }
-    // Silhouette-exakt: Watershed-Zelle (+ Extra-Wurzeln). Kein Spalt-Rechteck,
-    // kein Distal-Flare, kein UK-Trapez — die schneiden Nachbarkonturen ab.
-    paintMissPath(host, SIL[c.fdi], MISS_STROKE);
-    (EXTRA_ROOTS[c.fdi] || []).forEach((d) => paintMissPath(host, d, MISS_STROKE_ROOT));
+  // Original-Artwork eines Zahns AUSBLENDEN geht nur per Maske auf #teethImg.
+  // Der alte Ansatz (Silhouette in MISS_BG UEBERMALEN) liess die hellen
+  // Aussenlinien der Zeichnung stehen (sie liegen ausserhalb der Watershed-
+  // Silhouette) und toente den halbtransparenten Knochen dunkel — sichtbare
+  // "Zahn-Geister" bei jedem entfernten Zahn.
+  function rebuildTeethMask(defs) {
+    const teethImg = svgEl.querySelector("#teethImg") || svgEl.querySelector("image");
+    if (!teethImg) return;
+    const old = defs.querySelector("#missMask");
+    if (old) old.remove();
+    // Alle Zaehne, deren Original verschwinden muss: fehlend, Milchzahn-
+    // Ersatz, chirurgisch verschoben/gedreht, Wurzelrest (Neuzeichnung
+    // uebernimmt die Darstellung in derselben Zelle)
+    const hide = COLS.cols.filter((c) => {
+      const s = st(c.fdi);
+      if (!s) return false;
+      if (s.missing) return true;
+      const m = markOf(s);
+      return !!(milkInfo(c) || (chirDisplacement(c) || {}).str || m.wurzelrest);
+    });
+    if (!hide.length) { teethImg.removeAttribute("mask"); return; }
+    const mm = document.createElementNS(SVGNS, "mask");
+    mm.setAttribute("id", "missMask");
+    mm.setAttribute("maskUnits", "userSpaceOnUse");
+    mm.setAttribute("x", 0); mm.setAttribute("y", 0);
+    mm.setAttribute("width", CW); mm.setAttribute("height", CH);
+    const bg = document.createElementNS(SVGNS, "rect");
+    bg.setAttribute("x", 0); bg.setAttribute("y", 0);
+    bg.setAttribute("width", CW); bg.setAttribute("height", CH);
+    bg.setAttribute("fill", "#fff");
+    mm.appendChild(bg);
+    hide.forEach((c) => {
+      const pontic = !!(st(c.fdi).missing && markOf(st(c.fdi)).brueckenglied);
+      if (pontic && SOURCE_CEJ_ARR[c.fdi] && SIL[c.fdi]) {
+        // Brueckenglied: nur die Wurzel ausstanzen — die Porzellan-Krone
+        // wird deckend UEBER die Original-Krone gemalt
+        ensureClip(defs, "st-rt-" + c.fdi, bandD(c, false));
+        const g = document.createElementNS(SVGNS, "g");
+        g.setAttribute("clip-path", "url(#st-rt-" + c.fdi + ")");
+        [SIL[c.fdi]].concat(EXTRA_ROOTS[c.fdi] || []).forEach((d) => {
+          if (!d) return;
+          const p = document.createElementNS(SVGNS, "path");
+          p.setAttribute("d", d);
+          p.setAttribute("fill", "#000");
+          p.setAttribute("stroke", "#000");
+          p.setAttribute("stroke-width", "4");
+          p.setAttribute("stroke-linejoin", "round");
+          g.appendChild(p);
+        });
+        mm.appendChild(g);
+        return;
+      }
+      // Silhouette + breiter Rand: die gemalte AUSSENLINIE des Zahns liegt
+      // knapp AUSSERHALB der Watershed-Silhouette — der Stroke stanzt sie mit
+      [SIL[c.fdi]].concat(EXTRA_ROOTS[c.fdi] || []).forEach((d) => {
+        if (!d) return;
+        const p = document.createElementNS(SVGNS, "path");
+        p.setAttribute("d", d);
+        p.setAttribute("fill", "#000");
+        p.setAttribute("stroke", "#000");
+        p.setAttribute("stroke-width", "5");
+        p.setAttribute("stroke-linejoin", "round");
+        mm.appendChild(p);
+      });
+    });
+    // Nachbarzaehne (und deren Aussenlinien) wieder freistellen — die
+    // Rechtecke duerfen NIE Nachbarkonturen wegschneiden (Vorfall 19.07.)
+    COLS.cols.forEach((n) => {
+      const s = st(n.fdi);
+      if (s && s.missing) return;
+      if (milkInfo(n) || (chirDisplacement(n) || {}).str || markOf(s || {}).wurzelrest) return;
+      if (!SIL[n.fdi]) return;
+      [SIL[n.fdi]].concat(EXTRA_ROOTS[n.fdi] || []).forEach((d) => {
+        if (!d) return;
+        const p = document.createElementNS(SVGNS, "path");
+        p.setAttribute("d", d);
+        p.setAttribute("fill", "#fff");
+        p.setAttribute("stroke", "#fff");
+        p.setAttribute("stroke-width", "2.4");
+        p.setAttribute("stroke-linejoin", "round");
+        mm.appendChild(p);
+      });
+    });
+    defs.appendChild(mm);
+    teethImg.setAttribute("mask", "url(#missMask)");
   }
 
   // teethSVG einmal unsichtbar rastern: die Grenze wird aus den tatsaechlich
@@ -706,11 +758,8 @@
 
       const disp = chirDisplacement(c);
       const tf = [disp && disp.str, milk && milk.transform].filter(Boolean).join(" ");
-      if (milk || (disp && disp.str) || m.wurzelrest) {
-        // Original-Zahn der Basiszeichnung unter dem verkleinerten/
-        // verschobenen/kronenlosen Zahn wegdecken
-        appendMissCover(layer, c, defs);
-      }
+      // Original-Zahn der Basiszeichnung wird per missMask auf #teethImg
+      // ausgeblendet (rebuildTeethMask) — kein Uebermalen mehr
       if (tf) tooth.setAttribute("transform", tf);
       layer.appendChild(tooth);
     });
@@ -750,7 +799,7 @@
    * Gingiva-Margin. liveCrest = Knochenkante inkl. Abbau/Extraktion.
    * extractMask[x]=1: Margin liegt bereits auf dem Live-Kamm (kein zweites LOSS).
    */
-  function gumMarginArr(cols, base, upper, liveCrest, extractMask, papMask) {
+  function gumMarginArr(cols, base, upper, liveCrest, extractMask, papMask, sagArr) {
     const crownward = upper ? 1 : -1;
     const [gx0, gx1] = gumRangeX(upper);
     const boneEdge = BONE_EDGE && BONE_EDGE[upper ? "up" : "lo"];
@@ -783,8 +832,13 @@
         for (let i = 0; i < seg.ys.length; i++) {
           const x = seg.x0 + i;
           if (x < 0 || x >= CW) continue;
-          arr[x] = ridgeAt(x);
+          // seichte Welle statt Brett: der zahnlose Kamm sackt pro Zahn
+          // leicht ein (Chef 20.07.: "deutlich flacher, wie eine seichte Welle")
+          const t = seg.ys.length > 1 ? i / (seg.ys.length - 1) : 0.5;
+          const sag = 2.2 * Math.sin(Math.PI * t);
+          arr[x] = ridgeAt(x) - crownward * sag;
           if (extractMask) extractMask[x] = 1;
+          if (sagArr) sagArr[x] = sag;
         }
         return;
       }
@@ -864,9 +918,10 @@
 
     // Girlanden flachen an Extraktionsluecken ab (Chef 19.07.2026): die
     // Papille des Nachbarzahns zur Luecke hin wird weich auf den Kieferkamm
-    // gesenkt statt als Spitze neben der Luecke stehen zu bleiben.
+    // gesenkt. DEUTLICH flach (Chef 20.07.: "seichte Welle"): breite Zone,
+    // Gewicht zum Kamm hin verstaerkt und Rest-Hoecker zusaetzlich gedeckelt.
     if (extractMask) {
-      const FLAT = 26;                       // Einflusszone im Nachbarzahn (px)
+      const FLAT = 38;                       // Einflusszone im Nachbarzahn (px)
       const easeT = (t) => t * t * (3 - 2 * t);
       const nearExtract = (edge, dirOut) => {
         for (let k = 1; k <= 14; k++) {
@@ -882,8 +937,14 @@
           for (let k = 0; k <= FLAT; k++) {
             const x = edge - dirOut * k;
             if (x < sg.x0 || x > sg.x1 || x < 0 || x >= CW) break;
-            const w = easeT(1 - k / FLAT);
+            let w = easeT(1 - k / FLAT);
+            w = 1 - (1 - w) * (1 - w);       // frueh Richtung Kamm ziehen
             arr[x] = arr[x] * (1 - w) + ridgeAt(x) * w;
+            // Deckel: koronaler Rest-Hoecker waechst nur langsam mit dem
+            // Abstand zur Luecke — kein spitzer Papillen-Zipfel am Rand
+            const lim = 1.2 + (k / FLAT) * 6.5;
+            const dev = (arr[x] - ridgeAt(x)) * crownward;
+            if (dev > lim) arr[x] = ridgeAt(x) + crownward * lim;
           }
         });
       });
@@ -964,7 +1025,8 @@
       const [gx0, gx1] = gumRangeX(upper);
       const extractMask = new Array(CW).fill(0);
       const papMask = new Array(CW).fill(0);
-      const raw = gumMarginArr(cols, base, upper, live, extractMask, papMask);
+      const sagArr = new Array(CW).fill(0);
+      const raw = gumMarginArr(cols, base, upper, live, extractMask, papMask, sagArr);
       // Par-Abbau nur an vorhandenen Zaehnen; Extraktionskamm ist schon live
       const lossArr = LOSS_PX[key] || new Array(CW).fill(0);
       for (let x = 0; x < CW; x++) {
@@ -1049,7 +1111,8 @@
       for (let x = gx0; x <= gx1; x++) {
         const ridge = crestY(x) + crownward * 2.5;
         if (extractMask[x] && x >= tooth0 && x <= tooth1) {
-          margin[x] = ridge;
+          // seichte Welle ueber der Luecke erhalten (sagArr), kein Brett
+          margin[x] = ridge - crownward * (sagArr[x] || 0);
           continue;
         }
         if (x < tooth0) {
@@ -1409,7 +1472,7 @@
   /**
    * Krone / Brueckenglied: plastisch schneeweisse Zahnkrone in echter Zahnform
    * (Silhouette + Kronenband-Clip). kind: "crown" | "pontic"
-   * Pontic = dieselbe Krone, Wurzel ist bereits ausgeblendet (appendMissCover).
+   * Pontic = dieselbe Krone, Wurzel ist bereits ausgeblendet (missMask).
    */
   function drawPorcelainUnit(c, defs, kind, opts) {
     const g = porcelainGeom(c);
@@ -2417,17 +2480,9 @@
     });
     svgEl.insertBefore(echo, boneLayer.nextSibling);
 
-    // fehlende Zaehne: Watershed-Silhouette + Extra-Wurzeln abdecken
-    // (kein Spalt-Rechteck/Flare — schneidet sonst Nachbarn). Knochen/Gum bleiben.
-    let miss = svgEl.querySelector("#missLayer");
-    if (miss) miss.remove();
-    miss = document.createElementNS(SVGNS, "g");
-    miss.setAttribute("id", "missLayer");
-    COLS.cols.forEach((c) => {
-      if (!st(c.fdi).missing) return;
-      appendMissCover(miss, c, defs);
-    });
-    svgEl.insertBefore(miss, boneLayer);
+    // fehlende/ersetzte Zaehne: Original-Artwork per Maske ausblenden
+    // (kein Uebermalen — das liess Aussenlinien stehen und toente den Knochen)
+    rebuildTeethMask(defs);
 
     buildBefundLayer(defs);
     buildHits();
@@ -2612,7 +2667,9 @@
     if (selD) {
       const sp = document.createElementNS(SVGNS, "path");
       sp.setAttribute("d", selD);
-      sp.setAttribute("class", "selout");
+      // fehlender Zahn: nur zarte gestrichelte Position, kein voller Umriss
+      sp.setAttribute("class", "selout"
+        + (st(selected) && st(selected).missing ? " selout-miss" : ""));
       const selDisp = selC ? chirDisplacement(selC) : null;
       const tf = [selDisp && selDisp.str, selMilk && selMilk.transform]
         .filter(Boolean).join(" ");
@@ -2996,7 +3053,7 @@
     applyPageTitle();
     const host = document.getElementById("stage");
     const [svgTxt, cols, teethTxt, boneEdge] = await Promise.all([
-      fetch("/m/lena-01/perio-layers.svg?v=13").then((r) => r.text()),
+      fetch("/m/lena-01/perio-layers.svg?v=14").then((r) => r.text()),
       fetch("/m/lena-01/perio-cols.json?v=12").then((r) => r.json()),
       fetch(TEETH_SRC).then((r) => r.text()),
       fetch("/m/lena-01/bone-edge.json?v=1").then((r) => r.json()).catch(() => null),
