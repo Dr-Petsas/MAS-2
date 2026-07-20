@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lena · 01-Modus</title>
+  <meta name="theme-color" content="#0c1220" />
+  <link rel="stylesheet" href="/m/lena-01/odontogram.css?v=20260718g" />
+</head>
+<body>
+  <header class="top">
+    <div class="orb" aria-hidden="true"></div>
+    <div>
+      <div class="brand-name">pickadoc</div>
+      <div class="brand-sub">Lena · 01-Modus · Neupatient</div>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn" href="/m/ipad-app.html">← Arbeitsplatz</a>
+    <a class="btn btn-main" href="/m/lena-01/perio.html?v=20260720k">Knochenverlauf</a>
+    <button type="button" class="btn" id="btnNeed" disabled title="folgt">Bedarf ableiten</button>
+  </header>
+
+  <main class="style-page">
+    <div class="style-intro">
+      <div>
+        <h1>Anatomische Warm-Studio-Farbvarianten</h1>
+        <p>Neue Kronensilhouetten mit Höckern und Fissuren — plastische Warm-Studio-Basis, kombiniert mit Blueprint und Monochrome Pro.</p>
+      </div>
+      <div class="legend">
+        <span><i style="background:#c62828"></i>Karies</span>
+        <span><i style="background:#1565c0"></i>Füllung</span>
+        <span><i style="background:#6d4c41"></i>Belag</span>
+        <span><i style="background:#f9a8d4"></i>Krone</span>
+        <span><i style="background:#6a1b9a"></i>WF</span>
+      </div>
+    </div>
+    <div class="style-gallery" id="styleGallery"></div>
+  </main>
+
+  <script src="/m/lena-01/odontogram.js?v=20260718g"></script>
+  <script>
+    const styles = [
+      ["warm", "01 · Warm Studio Original", "Terrakotta, Elfenbein und plastische Modellierung"],
+      ["warm-blueprint", "02 · Warm Blueprint", "Warme Zähne auf technischem Nachtblau — der gewünschte Merge"],
+      ["blueprint-volume", "03 · Blueprint Volume", "Kühles Blau mit Volumen statt reiner Strichzeichnung"],
+      ["mono", "04 · Monochrome Pro", "Graphit und Stahl; Befunde bleiben klar getrennt"],
+      ["mono-ivory", "05 · Monochrome Ivory", "Ruhiges Elfenbein mit dunklen anatomischen Konturen"],
+      ["mono-blue", "06 · Monochrome Slate", "Blaugraue professionelle PVS-Variante"],
+      ["warm-sage", "07 · Warm Sage", "Gedämpftes Salbeigrün mit warmer Zahnsubstanz"],
+      ["warm-plum", "08 · Warm Plum", "Aubergine, Kupfer und keramische Kronen"],
+      ["warm-night", "09 · Warm Night", "Sehr dunkler Behandlungsraum mit kupfernem Relief"],
+      ["porcelain", "10 · Porcelain Blue", "Helle Keramik auf kühlem medizinischem Grund"],
+    ];
+
+    const gallery = document.getElementById("styleGallery");
+    const teeth = Lena01Odontogram.demoState();
+    const selected = Number(new URLSearchParams(location.search).get("tooth")) || 16;
+
+    styles.forEach(([theme, title, description], index) => {
+      const article = document.createElement("article");
+      article.className = "style-card theme-" + theme;
+      article.innerHTML =
+        '<div class="style-head"><div><span class="style-number">' + String(index + 1).padStart(2, "0") +
+        '</span><h2>' + title + '</h2><p>' + description + '</p></div>' +
+        '<button type="button" class="style-pick">Diesen Stil wählen</button></div>' +
+        '<div class="chart-paper style-chart">' +
+        '<div class="jaw-label">Oberkiefer · 18 → 28</div><div data-arch="ok"></div>' +
+        '<div class="jaw-label">Unterkiefer · 48 → 38</div><div data-arch="uk"></div></div>';
+      gallery.appendChild(article);
+      const state = { teeth, selected };
+      Lena01Odontogram.render(article, state);
+      Lena01Odontogram.bind(article, state);
+      article.querySelector(".style-pick").addEventListener("click", () => {
+        document.querySelectorAll(".style-card.is-picked").forEach((el) => el.classList.remove("is-picked"));
+        article.classList.add("is-picked");
+        article.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+  </script>
+</body>
+</html>

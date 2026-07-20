@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -24,13 +24,13 @@
     })();
   </script>
   <style>
-    /* ══════════════════════════════════════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        iPad-Arbeitsplatz. Basiert 1:1 auf der Handy-App (call.html):
          • HOCHKANT: verhält sich exakt wie das Handy — Flip Sprache <-> Karten.
          • QUERFORMAT: Split nebeneinander wie die Preview — links Clara
            (Sprechzimmer), rechts Lena (Behandlungs-Doku).
        Clara-Sprachlogik (LiveKit + clara-chat.js) ist unverändert übernommen.
-       ══════════════════════════════════════════════════════════════════════ */
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     :root {
       color-scheme: dark;
       --bg-1: #13203a; --bg-2: #0a1322; --bg-3: #060b16;
@@ -39,7 +39,7 @@
       --pink: #ff4ddb; --purple: #b84dff; --green: #34d399;
       --lena: #0f766e; --lena-soft: #7ec9c1;
       --accent: var(--purple);
-      /* ── Preview-Tokens (Lena-Doku-Wizard + Besonderheiten) ── */
+      /* â”€â”€ Preview-Tokens (Lena-Doku-Wizard + Besonderheiten) â”€â”€ */
       --card: rgba(255,255,255,.045); --card-strong: rgba(255,255,255,.07);
       --line: rgba(255,255,255,.10); --mute: #b3a6bf; --mute2: #7a6d86;
       --voice: #34d399; --magenta: #d862c8; --magenta-hot: #e072d1; --magenta-deep: #b13fa0;
@@ -73,7 +73,7 @@
     }
     body > * { position: relative; z-index: 1; }
 
-    /* ── Kopf-Chrome: Marke · Clara|Dokumentation · Uhr ──────────────────────
+    /* â”€â”€ Kopf-Chrome: Marke · Clara|Dokumentation · Uhr â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
        Der Umschalter oben wechselt zwischen Clara-Modus (Sprechzimmer) und
        Dokumentation-Modus (Lena-Wizard). Die Audio/Chat-Leiste in der
        Clara-Spalte bleibt davon unberührt. */
@@ -126,12 +126,12 @@
     .clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .82rem; color: var(--mute); min-width: 42px; text-align: right; }
     .gear { color: var(--ink-soft); text-decoration: none; font-size: 18px; padding: 6px; opacity: .65; flex: none; }
 
-    /* ── Panes (Clara-Modus ↔ Dokumentation-Modus) ─────────────────────────── */
+    /* â”€â”€ Panes (Clara-Modus â†” Dokumentation-Modus) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     .app-body { flex: 1; min-height: 0; position: relative; }
     .pane { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .25s ease; display: flex; flex-direction: column; }
     .pane.is-active { opacity: 1; pointer-events: auto; }
 
-    /* ── Clara-Split-Gerüst ───────────────────────────────────────────────── */
+    /* â”€â”€ Clara-Split-Gerüst â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     .split { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .clara-col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .clara-right { display: none; }
@@ -152,7 +152,7 @@
     body.clara-mode-chat [data-clara-bottom-bar],
     body.clara-mode-chat [data-clara-flip-labels] { display: none !important; }
 
-    /* ══ FLIP: Sprachseite <-> Kartenseite ══ */
+    /* â•â• FLIP: Sprachseite <-> Kartenseite â•â• */
     [data-clara-audio-pane] { flex: 1; display: flex; flex-direction: column; min-height: 0; }
     .flip { flex: 1; min-height: 0; perspective: 1400px; }
     .flip-inner {
@@ -269,7 +269,7 @@
     .status { text-align: center; color: var(--ink-soft); font-size: 13px; min-height: 18px; }
     .hidden { display: none !important; }
 
-    /* ══ KARTENSEITE ══ */
+    /* â•â• KARTENSEITE â•â• */
     .cards-face-head { text-align: center; margin: 12px 0 10px; flex: none; }
     .cards-face-head b { display: block; color: #fff; font-size: 20px; font-weight: 900; letter-spacing: -.01em; }
     .cards-face-head small { display: block; color: var(--turq); font-size: 10.5px; font-weight: 800; letter-spacing: .06em; margin-top: 2px; }
@@ -307,7 +307,7 @@
     .card.is-new { animation: cardIn .5s cubic-bezier(.2,.9,.3,1.2); }
     @keyframes cardIn { 0% { opacity: 0; transform: translateY(14px) scale(.97); } 100% { opacity: 1; transform: none; } }
 
-    /* ── Chat-Vollbild ── */
+    /* â”€â”€ Chat-Vollbild â”€â”€ */
     .chat-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 8px; }
     .chat-scroll { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 2px 12px; -webkit-overflow-scrolling: touch; }
     .chat-scroll .card { align-self: stretch; }
@@ -358,7 +358,7 @@
     .chat-st-writing .chat-ring.r1 { animation: rip 1.5s ease-out infinite; }
     .chat-st-writing .chat-ring.r2 { animation: rip 1.5s ease-out .75s infinite; }
 
-    /* ── Rechte Clara-Spalte (Querformat): Patient + Heads-up-Karten ──
+    /* â”€â”€ Rechte Clara-Spalte (Querformat): Patient + Heads-up-Karten â”€â”€
        Hochkant: Karten hinter dem Flip. Quer: dieselbe Deck-Quelle hier. */
     .clara-right { min-height: 0; flex-direction: column; padding: 2px 4px 6px 16px; overflow: hidden; }
     .right-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex: none; }
@@ -412,10 +412,10 @@
     .feat-title { font-weight: 800; font-size: .84rem; line-height: 1.15; }
     .feat-desc { display: block; font-size: .7rem; color: var(--mute); font-weight: 500; line-height: 1.25; margin-top: 2px; }
 
-    /* ══════════════════════════════════════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        LENA-DOKU-WIZARD (Dokumentation-Modus) — Preview-Layout.
        Raum→Termin: POST /treatment/current · STT: Canary via lena-stt-capture.
-       ══════════════════════════════════════════════════════════════════════ */
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .pane-doku { --pink: #d862c8; }
     .lena-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 2px 4px 4px; gap: 8px; overflow: hidden; }
     .steps { display: flex; gap: 5px; flex: none; overflow: hidden; }
@@ -594,22 +594,106 @@
     }
     .mic-active.is-warn { color: #ffb4a8; }
     .line-canvas { display: none; }
-    .dialog {
+
+    /* Doku-Template Hero (W-LENA-8) — Rohdialog nur Accordion */
+    .doku-wrap {
+      flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px;
+      overflow: hidden;
+    }
+    .doku-tpl {
       flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
-      display: flex; flex-direction: column; gap: 7px; padding: 4px 2px 8px;
+      display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 4px;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+    }
+    .tpl-title {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+      flex: none; padding: 0 2px;
+    }
+    .tpl-title h2 {
+      margin: 0; font-size: .72rem; font-weight: 900; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--lena-soft);
+    }
+    .tpl-gaps {
+      font-size: .68rem; font-weight: 800; color: var(--amber);
+      background: rgba(245,197,24,.12); border: 1px solid rgba(245,197,24,.35);
+      padding: 4px 9px; border-radius: 999px;
+    }
+    .tpl-field {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 12px; padding: 9px 11px; flex: none;
+    }
+    .tpl-field.is-gap { border-color: rgba(245,197,24,.45); background: rgba(245,197,24,.06); }
+    .tpl-field.is-pre { border-color: rgba(126,201,193,.25); }
+    .tpl-field.is-filled { border-color: rgba(52,211,153,.35); }
+    .tpl-lab {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      font-size: .62rem; font-weight: 800; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--mute); margin-bottom: 4px;
+    }
+    .tpl-badge {
+      font-size: .56rem; padding: 2px 6px; border-radius: 999px;
+      background: rgba(255,255,255,.06); color: var(--mute2); font-weight: 700;
+      letter-spacing: .02em; text-transform: none;
+    }
+    .tpl-badge.pre { color: var(--lena-soft); background: rgba(15,118,110,.2); }
+    .tpl-badge.live { color: var(--green); background: rgba(52,211,153,.12); }
+    .tpl-badge.gap { color: var(--amber); background: rgba(245,197,24,.12); }
+    .tpl-val { font-size: .86rem; font-weight: 600; line-height: 1.35; min-height: 1.15em; }
+    .tpl-val.empty { color: var(--mute2); font-weight: 500; font-style: italic; }
+    .teeth { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
+    .tooth {
+      aspect-ratio: 1; border-radius: 4px; font-size: .5rem; font-weight: 800;
+      display: grid; place-items: center; background: rgba(255,255,255,.04);
+      border: 1px solid var(--line); color: var(--mute2);
+    }
+    .tooth.on {
+      background: rgba(15,118,110,.45); border-color: var(--lena-soft);
+      color: #fff; box-shadow: 0 0 8px rgba(15,118,110,.35);
+    }
+    .tpl-block {
+      border: 1px solid rgba(126,201,193,.35); border-radius: 14px; overflow: hidden;
+      background: rgba(15,118,110,.08); flex: none;
+    }
+    .tpl-block-head {
+      display: flex; align-items: center; gap: 8px; padding: 7px 11px;
+      background: rgba(15,118,110,.18); font-size: .68rem; font-weight: 900;
+      letter-spacing: .04em; text-transform: uppercase; color: var(--lena-soft);
+    }
+    .tpl-block-head em {
+      font-style: normal; margin-left: auto; font-size: .58rem; color: var(--cyan);
+      font-weight: 700; letter-spacing: 0; text-transform: none;
+    }
+    .tpl-block-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; }
+    details.raw-dialog {
+      flex: none; border: 1px solid var(--line); border-radius: 12px;
+      background: rgba(0,0,0,.2); max-height: 38%;
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    details.raw-dialog[open] { flex: 0 1 38%; }
+    details.raw-dialog summary {
+      cursor: pointer; padding: 9px 12px; font-size: .7rem; font-weight: 800;
+      color: var(--mute); letter-spacing: .03em; list-style: none;
+      display: flex; align-items: center; gap: 8px; flex: none;
+    }
+    details.raw-dialog summary::-webkit-details-marker { display: none; }
+    details.raw-dialog summary::before { content: "â–¸"; color: var(--mute2); }
+    details.raw-dialog[open] summary::before { content: "â–¾"; }
+    .dialog {
+      flex: 1 1 auto; min-height: 0; max-height: 220px; overflow-x: hidden; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px;
       justify-content: flex-start;
       -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
-      background: rgba(0,0,0,.16); border: 1px solid var(--line); border-radius: 14px;
     }
-    .bubble { position: relative; max-width: 86%; padding: 9px 12px; border-radius: 14px; font-size: .9rem; line-height: 1.35; font-weight: 500; }
+    .meters.is-mono .meter-row-arzt { display: none; }
+    .bubble { position: relative; max-width: 92%; padding: 7px 10px; border-radius: 12px; font-size: .78rem; line-height: 1.3; font-weight: 500; }
     .bubble.a { align-self: flex-end; background: rgba(15,118,110,.28); color: #c8fff4; border-bottom-right-radius: 5px; }
     .bubble.p { align-self: flex-start; background: rgba(255,255,255,.06); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
-    .bubble .who { display: block; font-size: .66rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; opacity: .65; margin-bottom: 3px; }
+    .bubble .who { display: block; font-size: .6rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; opacity: .65; margin-bottom: 2px; }
     .bubble .bubble-text { display: block; }
-    .bubble .bubble-ops { display: flex; gap: 4px; margin-top: 5px; opacity: .55; }
+    .bubble .bubble-ops { display: flex; gap: 4px; margin-top: 4px; opacity: .55; }
     .bubble:hover .bubble-ops, .bubble:focus-within .bubble-ops { opacity: 1; }
     .bubble .bubble-ops button {
-      border: 0; background: rgba(255,255,255,.08); color: inherit; font-size: .68rem; font-weight: 700;
+      border: 0; background: rgba(255,255,255,.08); color: inherit; font-size: .65rem; font-weight: 700;
       padding: 2px 7px; border-radius: 6px; cursor: pointer;
     }
     .bubble .bubble-ops button:active { transform: scale(.96); }
@@ -733,9 +817,9 @@
     .bill-flag.ok { background: rgba(52,211,153,.14); color: var(--green); }
     .hint-box { margin-top: 8px; padding: 12px; border-radius: 12px; background: rgba(216,98,200,.1); border: 1px solid rgba(216,98,200,.25); font-size: .82rem; line-height: 1.4; color: #ffd0f0; }
 
-    /* ══════════════════════════════════════════════════════════════════════
+    /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        QUERFORMAT: Clara-Split (Orb links · Besonderheiten rechts).
-       ══════════════════════════════════════════════════════════════════════ */
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     @media (orientation: landscape) {
       body { padding-left: 10px; padding-right: 10px; }
       .split { flex-direction: row; gap: 0; }
@@ -754,7 +838,7 @@
   </style>
 </head>
 <body class="st-idle clara-mode-audio" data-clara-root data-app-mode="clara">
-  <!-- ══ KOPF: Marke · Clara|Dokumentation · Uhr ══ -->
+  <!-- â•â• KOPF: Marke · Clara|Dokumentation · Uhr â•â• -->
   <header class="chrome">
     <div class="brand" id="brand" data-mode="clara">
       <div class="brand-orb is-listen" id="brandOrb"></div>
@@ -772,14 +856,14 @@
   </header>
 
   <div class="app-body">
-    <!-- ══ CLARA-MODUS: Orb links (live) · Besonderheiten rechts (Querformat) ══ -->
+    <!-- â•â• CLARA-MODUS: Orb links (live) · Besonderheiten rechts (Querformat) â•â• -->
     <section class="pane pane-clara is-active" id="paneClara">
       <div class="split">
-        <!-- ══ CLARA-SPALTE (Sprechzimmer, live LiveKit) ══ -->
+        <!-- â•â• CLARA-SPALTE (Sprechzimmer, live LiveKit) â•â• -->
         <section class="clara-col">
       <div class="mode-bar" data-clara-mode-bar>
-        <button type="button" class="active" data-clara-mode-audio aria-pressed="true">🎙 Audio</button>
-        <button type="button" data-clara-mode-chat aria-pressed="false">💬 Chat</button>
+        <button type="button" class="active" data-clara-mode-audio aria-pressed="true">ðŸŽ™ Audio</button>
+        <button type="button" data-clara-mode-chat aria-pressed="false">ðŸ’¬ Chat</button>
       </div>
 
       <div data-clara-audio-pane>
@@ -826,8 +910,8 @@
         </div>
 
         <div class="flip-labels" data-clara-flip-labels aria-hidden="true">
-          <span class="on" data-clara-lbl-voice>🎙 Sprache</span>
-          <span data-clara-lbl-cards>🗂 Karten<b class="badge" data-clara-card-badge></b></span>
+          <span class="on" data-clara-lbl-voice>ðŸŽ™ Sprache</span>
+          <span data-clara-lbl-cards>ðŸ—‚ Karten<b class="badge" data-clara-card-badge></b></span>
         </div>
 
         <div class="bottom" data-clara-bottom-bar>
@@ -857,7 +941,7 @@
       </section>
         </section>
 
-        <!-- ══ RECHTS (Querformat): Patient + Heads-up-Karten (wie Flip hochkant) ══ -->
+        <!-- â•â• RECHTS (Querformat): Patient + Heads-up-Karten (wie Flip hochkant) â•â• -->
         <aside class="clara-right">
           <div class="patient-card" id="featPatientCard">
             <div class="patient-label" id="featPatientLabel">Aktueller Termin</div>
@@ -885,7 +969,7 @@
       </div>
     </section>
 
-    <!-- ══ DOKUMENTATION-MODUS: Lena-Wizard (Raum→Termin live) ══ -->
+    <!-- â•â• DOKUMENTATION-MODUS: Lena-Wizard (Raum→Termin live) â•â• -->
     <section class="pane pane-doku" id="paneDoku">
       <div class="lena-wrap">
         <div class="steps" id="steps">
@@ -895,6 +979,9 @@
           <div class="step-chip" data-step="4"><span class="n">4</span>Nachdiktat</div>
           <div class="step-chip" data-step="5"><span class="n">5</span>Summary</div>
           <div class="step-chip" data-step="6"><span class="n">6</span>Sophie</div>
+          <a class="step-chip" id="btnLena01" href="/m/lena-01/perio.html?v=20260720k" title="01-Modus" style="text-decoration:none;margin-left:auto">
+            <span class="n">01</span>01-Modus
+          </a>
         </div>
 
         <!-- 1 Arzt -->
@@ -903,12 +990,16 @@
             <h2>Wer behandelt?</h2>
             <p class="lead" id="arztLead">Behandler vom gekoppelten Arbeitsplatz.</p>
             <div class="doc-grid" id="doctors"></div>
-            <div class="actions"><span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span><button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button></div>
+            <div class="actions">
+              <span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span>
+              <a class="btn btn-ghost" id="btnLena01Panel" href="/m/lena-01/perio.html?v=20260720k" style="text-decoration:none">01-Modus</a>
+              <button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button>
+            </div>
           </div>
           <aside class="side-note">
-            <div class="kicker">STT · Canary</div>
-            <h3>Headset = Arzt<br>iPad = Raum</h3>
-            <p>Deutsch fest gepinnt (Canary). Fachbegriffe nachkorrigiert. Modell tauschbar per <code>LENA_STT_PRIMARY</code>.</p>
+            <div class="kicker">01 · Neupatient</div>
+            <h3>Knochenverlauf<br>am Odontogramm</h3>
+            <p>Zahn anklicken, Knochenabbau und Befunde setzen. Kons/ZE/Paro-Legende am Schema. Bedarf→Termine folgt.</p>
           </aside>
         </div>
 
@@ -928,7 +1019,7 @@
               <div class="picker-quick">
                 <button type="button" data-jump="today">Heute</button>
                 <button type="button" data-jump="-1">Gestern</button>
-                <button type="button" data-jump="-7">−7 Tage</button>
+                <button type="button" data-jump="-7">âˆ’7 Tage</button>
               </div>
             </div>
           </div>
@@ -943,7 +1034,7 @@
           </div>
         </div>
 
-        <!-- 3 Aufnahme — Gespräch füllt die Fläche, Pegel klein oben rechts -->
+        <!-- 3 Aufnahme — Doku-Template Hero, Rohdialog eingeklappt -->
         <div class="wiz wiz-rec" id="wiz3">
           <div class="panel rec-panel">
             <div class="rec-top">
@@ -955,36 +1046,42 @@
                   <div class="rec-live" id="recLive"><i></i><span>bereit</span></div>
                 </div>
               </div>
-              <div class="meters" aria-label="Pegel">
+              <div class="meters is-mono" id="metersBox" aria-label="Pegel">
                 <div class="mic-toggle" id="micToggle" data-mode="ipad" role="group" aria-label="Mikrofonquelle">
-                  <button type="button" data-mic="ipad" class="is-on">iPad</button>
-                  <button type="button" data-mic="usb">DJI</button>
+                  <button type="button" data-mic="ipad" class="is-on">1 Mic</button>
+                  <button type="button" data-mic="usb">Stereo</button>
                 </div>
-                <div class="meter-row">
+                <div class="meter-row meter-row-arzt">
                   <div class="meter-label"><span class="dot dot-a"></span><span id="meterLabelArzt">Arzt</span></div>
                   <div class="meter-track"><div class="meter-fill a" id="fillArzt"></div></div>
-                  <div class="meter-db" id="dbArzt">−∞</div>
+                  <div class="meter-db" id="dbArzt">âˆ’âˆž</div>
                 </div>
-                <div class="meter-row">
-                  <div class="meter-label"><span class="dot dot-p"></span><span id="meterLabelPat">Patient</span></div>
+                <div class="meter-row meter-row-mic">
+                  <div class="meter-label"><span class="dot dot-p"></span><span id="meterLabelPat">Mikrofon</span></div>
                   <div class="meter-track"><div class="meter-fill p" id="fillPat"></div></div>
-                  <div class="meter-db" id="dbPat">−∞</div>
+                  <div class="meter-db" id="dbPat">âˆ’âˆž</div>
                 </div>
                 <button type="button" class="mic-swap" id="btnStereoSwap" hidden>L/R tauschen</button>
-                <p class="mic-active" id="micActiveLabel">Quelle · Pegel live</p>
+                <p class="mic-active" id="micActiveLabel">1 Mikrofon · Pegel live</p>
                 <p class="meter-note" id="meterMonoNote" hidden></p>
                 <canvas class="line-canvas" id="lineCanvas" width="960" height="112" hidden aria-hidden="true"></canvas>
               </div>
             </div>
-            <div class="dialog" id="dialog">
-              <div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — das Gespräch erscheint hier.</div>
+            <div class="doku-wrap">
+              <div class="doku-tpl" id="dokuTpl"></div>
+              <details class="raw-dialog" id="rawDialog">
+                <summary>Rohdialog <span class="tpl-badge">Â§ 630f · Archiv</span></summary>
+                <div class="dialog" id="dialog">
+                  <div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Rohtext erscheint hier im Archiv.</div>
+                </div>
+              </details>
             </div>
             <div class="rec-bar">
               <button type="button" class="btn btn-ghost" data-back="2">Termin</button>
               <div class="timer" id="timer">00:00</div>
               <div class="spacer"></div>
               <button type="button" class="btn btn-ghost" id="btnPause" disabled>Pause</button>
-              <button type="button" class="btn btn-rec" id="btnRec">● Aufnehmen</button>
+              <button type="button" class="btn btn-rec" id="btnRec">â— Aufnehmen</button>
               <button type="button" class="btn btn-primary" data-next="4">Weiter</button>
             </div>
           </div>
@@ -1011,7 +1108,7 @@
                 <h3>Nachdiktat <span class="tag">neu</span></h3>
                 <textarea id="dictFree" placeholder="Nach der Behandlung diktieren …"></textarea>
                 <div class="nd-mic">
-                  <button type="button" id="ndMic">● Diktieren</button>
+                  <button type="button" id="ndMic">â— Diktieren</button>
                   <span id="ndMicHint">Kanal · Arzt · Canary-STT</span>
                 </div>
               </div>
@@ -1061,10 +1158,10 @@
               <div class="sum-block sum-block--export">
                 <h3>Weiter</h3>
                 <div class="export-stack">
-                  <button type="button" class="export-btn" id="btnExportPdf"><span class="ico">📄</span><span>PDF Akte<small>Druck / Ablage</small></span></button>
-                  <button type="button" class="export-btn" id="btnExportPms" disabled title="folgt Dens"><span class="ico">↗</span><span>An PMS<small>Charly</small></span></button>
-                  <button type="button" class="export-btn" id="btnExportNadine" disabled title="Folgt"><span class="ico">✉</span><span>An Nadine<small>Mail-Entwurf</small></span></button>
-                  <button type="button" class="export-btn" id="btnToSophie"><span class="ico">💶</span><span>An Sophie<small>Abrechnung</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportPdf"><span class="ico">ðŸ“„</span><span>PDF Akte<small>Druck / Ablage</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportPms" disabled title="folgt Dens"><span class="ico">â†—</span><span>An PMS<small>Charly</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportNadine" disabled title="Folgt"><span class="ico">âœ‰</span><span>An Nadine<small>Mail-Entwurf</small></span></button>
+                  <button type="button" class="export-btn" id="btnToSophie"><span class="ico">ðŸ’¶</span><span>An Sophie<small>Abrechnung</small></span></button>
                 </div>
               </div>
             </div>
@@ -1197,7 +1294,7 @@
       els.chatEnableBtn?.classList.toggle("show", !!on);
     }
 
-    // ── Flip (nur Hochkant sinnvoll) ──
+    // â”€â”€ Flip (nur Hochkant sinnvoll) â”€â”€
     let flipped = false;
     let unseenCards = 0;
     function setFlipped(on) {
@@ -1515,13 +1612,14 @@
     };
   </script>
 
-  <script src="/m/lena-stt-capture.js?v=20260717e"></script>
+  <script src="/m/lena-stt-capture.js?v=20260718c"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260718a"></script>
   <script>
-    // ══════════════════════════════════════════════════════════════════════
-    //  Kopf-Umschalter Clara ↔ Dokumentation + Lena-Wizard (Preview-Vorlage).
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard (Preview-Vorlage).
     //  Aufnahme/Nachdiktat → Canary via lena_stt (WS /stt). Clara unangetastet
     //  ausser Stop beim Umschalten (keine Browser-Stimme).
-    // ══════════════════════════════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     (function () {
       const $ = (id) => document.getElementById(id);
 
@@ -1533,7 +1631,7 @@
       tickClock();
       setInterval(tickClock, 15000);
 
-      /* ── Akustik: nur Stop-Signal (keine Browser-Begrüßung) ── */
+      /* â”€â”€ Akustik: nur Stop-Signal (keine Browser-Begrüßung) â”€â”€ */
       let audioCtx = null;
       function ensureAudio() {
         if (!audioCtx) {
@@ -1563,7 +1661,7 @@
         try { window.speechSynthesis.cancel(); } catch (_) {}
       }
 
-      /* ── Modus-Umschalter Clara | Dokumentation ── */
+      /* â”€â”€ Modus-Umschalter Clara | Dokumentation â”€â”€ */
       const brand = $("brand");
       const brandName = $("brandName");
       const brandSub = $("brandSub");
@@ -1608,7 +1706,7 @@
         });
       });
 
-      /* ══════════════ Lena-Wizard (Raum→Termin live) ══════════════ */
+      /* â•â•â•â•â•â•â•â•â•â•â•â•â•â• Lena-Wizard (Raum→Termin live) â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
       let deviceCreds = null;
       try { deviceCreds = JSON.parse(localStorage.getItem("pickadoc.ipad.v1") || "null"); } catch (_) {}
       let selectedDoc = deviceCreds?.doctorName || deviceCreds?.operatorName || "";
@@ -1621,6 +1719,20 @@
       let savedSegments = [];
       let serverSummary = "";
       let dialogCleared = false;
+      let dokuState = null;
+      function refreshDokuTemplate(segs) {
+        const Zahn = window.LenaDokuZahn;
+        const box = $("dokuTpl");
+        if (!Zahn || !box) return;
+        const anlass = selectedAppt?.treat || "";
+        if (!dokuState || dokuState.anlass !== String(anlass || "").trim()) {
+          dokuState = Zahn.emptyState(anlass);
+        }
+        const list = Array.isArray(segs) ? segs : savedSegments;
+        const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        Zahn.applySegments(dokuState, clinical);
+        Zahn.render(box, dokuState);
+      }
       let structuredText = "";
       let structureBusy = false;
       let billingBusy = false;
@@ -1652,10 +1764,15 @@
         if (!resp.ok || !data.ok) throw new Error(data.error || String(resp.status));
         return data;
       }
-      async function postLenaSegment(text, source) {
+      async function postLenaSegment(text, source, timing) {
         const ids = treatmentIds();
         const t = String(text || "").trim();
         if (!ids || !t || !ids.deviceKey) return null;
+        // startMs/endMs sind ABSOLUTE Wall-Clock-ms (Basis + Lena-Stream-Offset),
+        // vom Aufrufer berechnet. Beide Stereo-Kanaele teilen dieselbe Basis, damit
+        // der Cross-Channel-Merge (MAS) sie zeitlich vergleichen kann.
+        const startMs = Math.round(Number(timing?.startMs) || 0);
+        const endMs = Math.round(Number(timing?.endMs) || 0);
         try {
           const resp = await fetch("/treatment/lena-segment", {
             method: "POST",
@@ -1670,6 +1787,8 @@
               text: t,
               lang: "de-DE",
               source: source || "raum",
+              startMs,
+              endMs,
             }),
           });
           const data = await resp.json().catch(() => ({}));
@@ -1757,7 +1876,7 @@
       }
       function bubbleHtml(who, text, segId) {
         const ops = segId
-          ? '<div class="bubble-ops"><button type="button" class="bubble-edit" title="Bearbeiten">✎</button>' +
+          ? '<div class="bubble-ops"><button type="button" class="bubble-edit" title="Bearbeiten">âœŽ</button>' +
             '<button type="button" class="bubble-del" title="Löschen">×</button></div>'
           : "";
         return '<span class="who">' + who + '</span><span class="bubble-text">' +
@@ -1768,12 +1887,24 @@
         if (!box) return;
         box.innerHTML = "";
         dialogCleared = true;
-        (segs || []).forEach((s) => {
+        // Nach Sprech-Zeit (startMs, Wall-Clock) sortieren — echte Chronologie
+        // ueber beide Kanaele. Ohne startMs (Alt-Segmente) ans Ende, Reihenfolge
+        // bleibt stabil.
+        const ordered = (segs || []).slice().sort((a, b) => {
+          const sa = Number(a.startMs) || 0;
+          const sb = Number(b.startMs) || 0;
+          if (sa && sb) return sa - sb;
+          if (sa) return -1;
+          if (sb) return 1;
+          return 0;
+        });
+        ordered.forEach((s) => {
           const src = String(s.source || "raum").toLowerCase();
-          const who = (src === "patient" || src === "raum") ? "Patient" : "Arzt";
+          const who = (src === "arzt") ? "Arzt" : "Gespräch";
           const div = document.createElement("div");
-          div.className = "bubble " + (who === "Patient" ? "p" : "a");
+          div.className = "bubble " + (who === "Arzt" ? "a" : "p");
           if (s.id) div.dataset.segId = s.id;
+          if (Number(s.startMs)) div.dataset.start = String(Number(s.startMs));
           div.innerHTML = bubbleHtml(who, s.text, s.id || "");
           box.appendChild(div);
         });
@@ -1794,6 +1925,8 @@
         const seg = savedSegments.find((s) => s.id === id);
         if (seg) seg.text = t;
         structuredText = "";
+        dokuState = null;
+        refreshDokuTemplate(savedSegments);
         updateMerge();
       }
       async function onBubbleDelete(btn) {
@@ -1806,6 +1939,8 @@
         savedSegments = savedSegments.filter((s) => s.id !== id);
         bubble.remove();
         structuredText = "";
+        dokuState = null;
+        refreshDokuTemplate(savedSegments);
         updateMerge();
       }
       document.addEventListener("click", (ev) => {
@@ -1834,8 +1969,12 @@
           $("recTreat").textContent = selectedAppt.treat || "";
           $("recDoc").textContent = selectedDoc ? ("Dr. " + selectedDoc.replace(/^Dr\.?\s*/i, "")) : "—";
           $("recAv").textContent = (selectedAppt.name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+          dokuState = null;
+          refreshDokuTemplate([]);
           loadSavedSegments().then((segs) => {
-            if (segs.length) renderDialogFromSegments(segs.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
+            const main = segs.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+            if (main.length) renderDialogFromSegments(main);
+            refreshDokuTemplate(main);
           });
         }
         if (n === 4) {
@@ -1908,7 +2047,12 @@
             (docLabel !== "—" ? " · " + docLabel : "");
         }
         if ($("sumText")) {
-          $("sumText").textContent = structuredText || medicalDraftFromSegments() || "Noch keine medizinische Zusammenfassung.";
+          const Zahn = window.LenaDokuZahn;
+          if (Zahn && dokuState) {
+            Zahn.applySegments(dokuState, savedSegments.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
+          }
+          const tplText = (Zahn && dokuState) ? Zahn.toStructuredText(dokuState) : "";
+          $("sumText").textContent = structuredText || tplText || medicalDraftFromSegments() || "Noch keine medizinische Zusammenfassung.";
         }
         // Redeanteil aus Diarisierung (Arzt vs Patient) — kompakt im Kopf.
         const share = channelShareFromSegments();
@@ -1947,7 +2091,7 @@
           if (btn) { btn.disabled = false; btn.textContent = "Neu strukturieren"; }
         }
       }
-      function renderBillingCodes(billing) {
+      function renderBillingCodes(billing, billingHints) {
         const box = $("billList");
         const hint = $("billHint");
         if (!box) return;
@@ -1976,6 +2120,10 @@
         if (hint) {
           const parts = [];
           if (billing?.suggestions) parts.push(String(billing.suggestions));
+          // W-LENA-8c: Richtungs-Hinweise aus dem Doku-Template (keine Ziffern).
+          if (Array.isArray(billingHints) && billingHints.length) {
+            parts.push("Aus der Doku (Sophie prüft Ziffern):\n" + billingHints.map((h) => "• " + h).join("\n"));
+          }
           if (Array.isArray(billing?.completeness) && billing.completeness.length) {
             parts.push("Offen: " + billing.completeness.join(" · "));
           }
@@ -1997,10 +2145,10 @@
         try {
           await loadSavedSegments();
           const data = await masPost("/treatment/billing");
-          renderBillingCodes(data.billing || null);
+          renderBillingCodes(data.billing || null, data.billingHints || []);
         } catch (e) {
           console.warn("billing", e);
-          renderBillingCodes(null);
+          renderBillingCodes(null, []);
           if ($("billHint")) {
             $("billHint").style.display = "";
             $("billHint").textContent = "Abrechnungsanalyse fehlgeschlagen: " + String(e?.message || e);
@@ -2053,7 +2201,7 @@
         const btn = $("ndMic");
         if (btn) {
           btn.classList.remove("is-live");
-          btn.textContent = "● Diktieren";
+          btn.textContent = "â— Diktieren";
         }
         if ($("ndMicHint")) $("ndMicHint").textContent = "Kanal · Arzt · Canary-STT";
         if (ndCapture) {
@@ -2070,9 +2218,10 @@
         ndLive = true;
         const btn = $("ndMic");
         btn.classList.add("is-live");
-        btn.textContent = "■ Stop";
+        btn.textContent = "â–  Stop";
         $("ndMicHint").textContent = "verbindet Canary …";
         ndCapture = new LenaSttCapture();
+        const ndBase = Date.now();
         const ok = await ndCapture.start(
           { channel: "arzt", session: "ipad-nd-" + Date.now() },
           {
@@ -2082,12 +2231,15 @@
             onPartial: (t) => {
               if (t) $("ndMicHint").textContent = t.slice(0, 48) + (t.length > 48 ? "…" : "");
             },
-            onFinal: (t) => {
+            onFinal: (t, raw, corr, timing) => {
               if (!t) return;
               const ta = $("dictFree");
               ta.value = (ta.value || "") + ((ta.value.trim() ? " " : "") + t);
               updateMerge();
-              postLenaSegment(t, "nachdiktat").then((id) => {
+              const abs = (timing && (timing.startMs || timing.endMs))
+                ? { startMs: ndBase + Number(timing.startMs || 0), endMs: ndBase + Number(timing.endMs || 0) }
+                : undefined;
+              postLenaSegment(t, "nachdiktat", abs).then((id) => {
                 if (id) savedSegments.push({ id: id === true ? "" : id, text: t, source: "nachdiktat" });
                 $("ndMicHint").textContent = id ? "gespeichert" : "lokal (nicht gespeichert)";
               });
@@ -2099,7 +2251,7 @@
             onClose: () => { if (ndLive) stopNdDictation(); },
           },
         );
-        if (!ok) { ndLive = false; btn.classList.remove("is-live"); btn.textContent = "● Diktieren"; }
+        if (!ok) { ndLive = false; btn.classList.remove("is-live"); btn.textContent = "â— Diktieren"; }
       });
       $("ndToSum")?.addEventListener("click", async () => {
         await stopNdDictation();
@@ -2163,6 +2315,17 @@
         };
         if (a.doctorName) selectedDoc = a.doctorName;
       }
+      function syncLena01Links() {
+        const name = (selectedAppt && selectedAppt.name && selectedAppt.name !== "—")
+          ? selectedAppt.name
+          : "";
+        const href = "/m/lena-01/perio.html?v=20260720k"
+          + (name ? ("&patient=" + encodeURIComponent(name)) : "");
+        ["btnLena01", "btnLena01Panel"].forEach((id) => {
+          const a = $(id);
+          if (a) a.href = href;
+        });
+      }
       function renderFeats(a) {
         const list = $("featList");
         if (!list) return;
@@ -2173,6 +2336,7 @@
         if ($("featPatientTime")) $("featPatientTime").textContent = time;
         if ($("featPatientTreat")) $("featPatientTreat").textContent = treat || (name ? "" : "Kein Termin am Stuhl");
         if ($("featPatientLabel")) $("featPatientLabel").textContent = name ? "Aktueller Termin" : "Kein Termin";
+        syncLena01Links();
         if ($("featTag")) {
           $("featTag").dataset.fallback = name ? "live" : "—";
           // Heads-up-Karten (Modul) haben Vorrang — Tag nicht überschreiben.
@@ -2202,7 +2366,7 @@
           feats.push({ ico: "cyan", title: name ? "Keine besonderen Hinweise" : "Warte auf Termin", desc: name ? "Keine Notiz / Ampel am Termin." : "Gerät koppeln und Kalender prüfen." });
         }
         list.innerHTML = feats.map((f) =>
-          '<div class="feat"><div class="feat-ico ' + f.ico + '">' + (f.ico === "red" ? "⚠" : f.ico === "yellow" ? "✎" : f.ico === "green" ? "✓" : "•") +
+          '<div class="feat"><div class="feat-ico ' + f.ico + '">' + (f.ico === "red" ? "âš " : f.ico === "yellow" ? "âœŽ" : f.ico === "green" ? "âœ“" : "•") +
           '</div><div><div class="feat-title">' + f.title + '</div><div class="feat-desc">' + f.desc.replace(/</g, "&lt;") + "</div></div></div>"
         ).join("");
         // Sichtbarkeit featList vs. Heads-up-Karten vom Clara-Modul steuern lassen.
@@ -2424,7 +2588,9 @@
         if (!onRec && !onSum) return;
         loadSavedSegments().then((segs) => {
           if (onRec) {
-            renderDialogFromSegments((segs || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
+            const main = (segs || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+            renderDialogFromSegments(main);
+            refreshDokuTemplate(main);
           } else if (onSum) {
             if (serverSummary && serverSummary !== structuredText) structuredText = serverSummary;
             fillSummary();
@@ -2442,6 +2608,21 @@
       let previewGen = 0;
       let recStartedAtMs = 0;
       let micMode = (typeof lenaLoadMicMode === "function") ? lenaLoadMicMode() : "ipad";
+
+      // Eigenstaendiger Screen-Wake-Lock fuer die Doku-Aufnahme (dieses <script>
+      // ist ein anderer Scope als der Clara-Call-Wake-Lock im Modul-Skript).
+      let docWakeLock = null;
+      async function docRequestWakeLock() {
+        try {
+          if (!("wakeLock" in navigator) || docWakeLock) return;
+          docWakeLock = await navigator.wakeLock.request("screen");
+          docWakeLock.addEventListener("release", () => { docWakeLock = null; });
+        } catch (_) { docWakeLock = null; }
+      }
+      async function docReleaseWakeLock() {
+        try { if (docWakeLock) await docWakeLock.release(); } catch (_) {}
+        docWakeLock = null;
+      }
 
       function setMicActiveLabel(text, warn) {
         const el = $("micActiveLabel");
@@ -2510,18 +2691,20 @@
         });
         const note = $("meterMonoNote");
         const swapBtn = $("btnStereoSwap");
+        const meters = $("metersBox");
         const swap = stereoSwap();
+        if (meters) meters.classList.toggle("is-mono", micMode !== "usb");
         if (swapBtn) {
           swapBtn.hidden = micMode !== "usb";
           swapBtn.disabled = recording;
-          swapBtn.textContent = swap ? "L↔R · Arzt=Links" : "L/R tauschen";
+          swapBtn.textContent = swap ? "Lâ†”R · Arzt=Links" : "L/R tauschen";
           swapBtn.title = swap
             ? "Getauscht: Links=Arzt, Rechts=Patient"
             : "Standard: Links=Patient, Rechts=Arzt";
         }
         if (micMode === "usb") {
           if (!recording && !micPreview) {
-            setMicActiveLabel("DJI Stereo · in TXs sprechen zum Zuordnen", false);
+            setMicActiveLabel("Stereo · optional · in TXs sprechen", false);
           }
           if (note) {
             note.textContent = swap
@@ -2531,10 +2714,9 @@
           if ($("meterLabelArzt")) $("meterLabelArzt").textContent = "Arzt";
           if ($("meterLabelPat")) $("meterLabelPat").textContent = "Patient";
         } else {
-          if (!recording && !micPreview) setMicActiveLabel("iPad-Mikro · Pegel live", false);
-          if (note) note.textContent = "iPad = Raum";
-          if ($("meterLabelArzt")) $("meterLabelArzt").textContent = "Arzt";
-          if ($("meterLabelPat")) $("meterLabelPat").textContent = "Raum";
+          if (!recording && !micPreview) setMicActiveLabel("1 Mikrofon · Pegel live", false);
+          if (note) note.textContent = "Ein Kanal — Diarisierung nicht nötig";
+          if ($("meterLabelPat")) $("meterLabelPat").textContent = "Mikrofon";
         }
       }
       $("micToggle")?.querySelectorAll("button").forEach((btn) => {
@@ -2602,8 +2784,8 @@
       if (onRecStep()) void startMicPreview();
       const fmt = (s) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
       function toDb(v) {
-        // Feste Zeichenbreite → Spalte springt nicht (−∞ / −12 dB).
-        if (v < 0.02) return "−∞  ";
+        // Feste Zeichenbreite → Spalte springt nicht (âˆ’âˆž / âˆ’12 dB).
+        if (v < 0.02) return "âˆ’âˆž  ";
         const db = 20 * Math.log10(v);
         const n = db > -1 ? -1 : Math.round(db);
         const s = String(n);
@@ -2614,15 +2796,27 @@
         const x = Math.max(0.02, Math.min(1, Number(v) || 0));
         el.style.transform = "scaleX(" + x.toFixed(3) + ")";
       }
-      function appendBubble(who, text, segId) {
+      function appendBubble(who, text, segId, startMs) {
         const box = $("dialog");
         if (!box || !text) return;
         if (!dialogCleared) { box.innerHTML = ""; dialogCleared = true; }
         const div = document.createElement("div");
-        div.className = "bubble " + (who === "Patient" ? "p" : "a");
+        div.className = "bubble " + (who === "Arzt" ? "a" : "p");
         if (segId) div.dataset.segId = segId;
+        const st = Number(startMs) || 0;
+        if (st) div.dataset.start = String(st);
         div.innerHTML = bubbleHtml(who, text, segId || "");
-        box.appendChild(div);
+        // Nach Sprech-Zeit (startMs) einsortieren statt stur unten anhaengen: zwei
+        // Kanaele (Arzt/Patient) + unterschiedliche Whisper-Decode-Latenz ergeben
+        // sonst falsche Chronologie (spaeter gesprochener Satz erscheint frueher).
+        let inserted = false;
+        if (st) {
+          const nodes = box.querySelectorAll(".bubble[data-start]");
+          for (const n of nodes) {
+            if (Number(n.dataset.start) > st) { box.insertBefore(div, n); inserted = true; break; }
+          }
+        }
+        if (!inserted) box.appendChild(div);
         box.scrollTop = box.scrollHeight;
         return div;
       }
@@ -2675,9 +2869,10 @@
 
       async function stopRecording() {
         recording = false; paused = false;
+        docReleaseWakeLock();
         clearInterval(timerId); timerId = null;
         const btn = $("btnRec");
-        btn.textContent = "● Aufnehmen"; btn.classList.remove("is-live");
+        btn.textContent = "â— Aufnehmen"; btn.classList.remove("is-live");
         $("btnPause").disabled = true; $("btnPause").textContent = "Pause";
         $("recLive").classList.remove("is-on");
         $("recLive").querySelector("span").textContent = "bereit";
@@ -2690,6 +2885,15 @@
         applyMicToggleUi();
         void startMicPreview();
       }
+
+      // Kehrt das iPad waehrend der Aufnahme aus dem Standby/Hintergrund zurueck,
+      // gibt iOS den Screen-Wake-Lock frei -> hier neu anfordern und einen ggf.
+      // suspendierten Capture-AudioContext wieder anwerfen.
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible" || !recording) return;
+        docRequestWakeLock();
+        try { recCapture?.resume?.(); } catch (_) {}
+      });
 
       $("btnRec").addEventListener("click", async () => {
         const btn = $("btnRec");
@@ -2717,8 +2921,12 @@
         }
         recording = true; paused = false; seconds = 0; t0 = performance.now();
         recStartedAtMs = Date.now();
+        // Bildschirm wachhalten: schlaeft das Display waehrend der Aufnahme ein,
+        // drosselt iOS/Safari den Tab und der Mikro-Stream bricht weg -> leise/
+        // abgehackte Segmente gehen verloren (Vorfall 17.07.2026).
+        docRequestWakeLock();
         $("timer").textContent = "00:00";
-        btn.textContent = "■ Stop"; btn.classList.add("is-live");
+        btn.textContent = "â–  Stop"; btn.classList.add("is-live");
         $("btnPause").disabled = false;
         $("recLive").classList.add("is-on");
         $("recLive").querySelector("span").textContent = "verbindet…";
@@ -2728,23 +2936,33 @@
         const useStereo = micMode === "usb";
         recCapture = useStereo ? new LenaStereoSplitCapture() : new LenaSttCapture();
 
-        const handleFinal = (source, text) => {
+        const handleFinal = (source, text, timing) => {
           if (!text || paused) return;
-          const src = source === "arzt" ? "arzt" : "raum";
-          const who = src === "arzt" ? "Arzt" : "Patient";
-          const bubble = appendBubble(who, text, "");
+          // Ein-Mic-Default: alles als raum; Stereo behält arzt/raum.
+          const src = (useStereo && source === "arzt") ? "arzt" : "raum";
+          const who = src === "arzt" ? "Arzt" : "Gespräch";
+          // Lena liefert Stream-relative ms; Basis recStartedAtMs macht beide
+          // Kanaele wall-clock-vergleichbar (fuer den Cross-Channel-Merge).
+          const base = recStartedAtMs || 0;
+          const abs = (timing && Number(timing.startMs) >= 0 && (timing.startMs || timing.endMs))
+            ? { startMs: base + Number(timing.startMs || 0), endMs: base + Number(timing.endMs || 0) }
+            : undefined;
+          const bubble = appendBubble(who, text, "", abs?.startMs || 0);
           $("recLive").querySelector("span").textContent = "speichert…";
-          postLenaSegment(text, src).then((id) => {
+          postLenaSegment(text, src, abs).then((id) => {
             const segId = id && id !== true ? String(id) : "";
             if (segId) {
-              savedSegments.push({ id: segId, text, source: src });
+              savedSegments.push({ id: segId, text, source: src, startMs: abs?.startMs || 0 });
               if (bubble) {
                 bubble.dataset.segId = segId;
                 bubble.innerHTML = bubbleHtml(who, text, segId);
               }
+            } else {
+              savedSegments.push({ id: "", text, source: src, startMs: abs?.startMs || 0 });
             }
+            refreshDokuTemplate(savedSegments);
             if (recording && !paused) {
-              $("recLive").querySelector("span").textContent = id ? "live · gespeichert" : "live · lokal";
+              $("recLive").querySelector("span").textContent = id ? "live · Doku" : "live · lokal";
             }
           });
         };
@@ -2757,7 +2975,7 @@
             onReady: (m) => {
               const mic = recCapture?.activeMic;
               const short = useStereo
-                ? ("Stereo" + ((mic?.channelCount || 0) < 2 ? "⚠" : ""))
+                ? ("Stereo" + ((mic?.channelCount || 0) < 2 ? "âš " : ""))
                 : "iPad";
               $("recLive").querySelector("span").textContent =
                 "live · " + short + " · " + (m?.primary || m?.model || "canary");
@@ -2781,9 +2999,10 @@
               if (!t || paused) return;
               $("recLive").querySelector("span").textContent = "… " + String(t).slice(0, 28);
             },
-            onFinal: (a, b) => {
-              if (useStereo) handleFinal(a, b);
-              else handleFinal("raum", a);
+            onFinal: (a, b, c, d) => {
+              // Stereo: (ch, text, timing) · Mono: (text, raw, corrections, timing)
+              if (useStereo) handleFinal(a, b, c);
+              else handleFinal("raum", a, d);
             },
             onError: (msg) => {
               $("recLive").querySelector("span").textContent = String(msg || "Fehler").slice(0, 40);

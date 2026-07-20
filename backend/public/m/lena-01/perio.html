@@ -1,18 +1,17 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lena · Knochenverlauf (auf Basis deines SVG)</title>
+  <title>Lena · Knochenverlauf</title>
   <meta name="theme-color" content="#0b0e13" />
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260721z12" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260720k" />
 </head>
 <body>
   <header>
     <div>
-      <span class="eyebrow">LENA · 01-MODUS · KNOCHENVERLAUF</span>
-      <h1>Knochenverlauf an deinem Odontogramm</h1>
-      <p>teethSVG aus dem Odont-Original, plastisch im Studio-Warm-Stil (Kronen + Wurzeln) bis zur exakten Krone/Wurzel-Grenze. Zahn anklicken und Knochenabbau setzen.</p>
+      <span class="eyebrow">LENA · 01-MODUS</span>
+      <h1 id="pageTitle">01 - Patientenname</h1>
     </div>
     <div style="display:flex;gap:8px;">
       <a href="/m/lena-01/index.html">← zurück</a>
@@ -20,59 +19,29 @@
   </header>
 
   <main>
-    <section class="stage-wrap">
-      <div id="stage"></div>
-
-      <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten"></nav>
-
-      <section class="legend" id="legendPro">
-        <div class="legend-head">
-          <h3>Prophylaxe</h3>
-          <p>Befund wählen, dann Zähne im Schema anklicken. Nochmal klicken entfernt ihn.</p>
-        </div>
-        <div class="legend-items" id="legendItems"></div>
+    <div class="schema-row">
+      <section class="stage-wrap">
+        <div id="stage"></div>
       </section>
+      <aside class="zoom-pane">
+        <div class="zoom-head" id="zoomLabel">Zahn 46</div>
+        <div id="zoomStage"></div>
+      </aside>
+    </div>
+
+    <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten"></nav>
+
+    <section class="legend" id="legendPro">
+      <div class="legend-head">
+        <h3>Prophylaxe</h3>
+        <p>Befund wählen, dann Zähne im Schema anklicken. Nochmal klicken entfernt ihn.</p>
+      </div>
+      <div class="legend-items" id="legendItems"></div>
     </section>
-
-    <aside class="zoom-pane">
-      <div class="zoom-head" id="zoomLabel">Zahn 46</div>
-      <div id="zoomStage"></div>
-    </aside>
-
-    <aside class="panel">
-      <h2 id="selLabel">Zahn 46</h2>
-      <p class="sub">Ausgewählter Zahn – der Knochen wird krönchenseitig zurückgenommen und gibt die original gezeichneten Einzelwurzeln frei.</p>
-      <div class="ctrl">
-        <label>Knochenabbau <span id="lossVal">0 mm</span></label>
-        <input type="range" id="loss" min="0" max="12" step="1" value="0" />
-      </div>
-      <div class="ctrl" id="parPocketBox" hidden>
-        <label>Tasche mesial <input type="number" id="pocketM" min="0" max="15" step="1" value="1" /> mm</label>
-        <label>Tasche distal <input type="number" id="pocketD" min="0" max="15" step="1" value="1" /> mm</label>
-        <p class="hint">Knochenabbau je Seite = max(0, Tasche − 3). Werte steuern den Knochenbogen mesial/distal.</p>
-      </div>
-      <label class="row"><input type="checkbox" id="miss" /> Zahn fehlt</label>
-
-      <div class="cal" id="calVal">Knochenabbau 0 mm</div>
-
-      <div class="ctrl ctrl-bone">
-        <label>Knochen-Deckkraft <span id="boneOpVal">75 %</span></label>
-        <input type="range" id="boneOp" min="0" max="100" step="1" value="75" />
-        <p class="hint">Gilt fuer alle Zaehne. 0 % = Knochen transparent (Wurzeln voll sichtbar), 100 % = deckend.</p>
-      </div>
-
-      <div class="presets">
-        <button type="button" id="presetDemo">Demo-Befund</button>
-        <button type="button" id="presetGen">Generalisiert</button>
-        <button type="button" id="presetReset">Gesund</button>
-      </div>
-
-      <p class="note"><b>Zähne</b> Studio-Warm mit CEJ-treuer Gingiva. <b>Kons/ZE</b> Flächen O·M·D·B·P/L; Kronen und Brückenglieder plastisch weiß in Zahnform; Implantat wie struktur01. Jedes Legenden-Icon überträgt sichtbar.</p>
-    </aside>
   </main>
 
-  <script src="/m/lena-01/perio-legend.js?v=20260721z12"></script>
-  <script src="/m/lena-01/perio-chart.js?v=20260721z12"></script>
-  <script src="/m/lena-01/perio.js?v=20260721z12"></script>
+  <script src="/m/lena-01/perio-legend.js?v=20260720k"></script>
+  <script src="/m/lena-01/perio-chart.js?v=20260720k"></script>
+  <script src="/m/lena-01/perio.js?v=20260720k"></script>
 </body>
 </html>

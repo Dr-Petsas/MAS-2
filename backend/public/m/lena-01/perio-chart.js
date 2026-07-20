@@ -18,8 +18,9 @@
     versiegelung: { fill: "rgba(255,255,255,.88)", stroke: "#94a3b8" },
   };
   const ROOT_PAINT = {
-    wurzelfuellung: { fill: "rgba(91,143,212,.85)", stroke: "#3b6fa8" },
-    i_wurzelfuellung: { fill: "rgba(196,74,58,.85)", stroke: "#a04838" },
+    // etwas fester/deckender — vorher .85 war zu transparent (Chef 20.07.2026)
+    wurzelfuellung: { fill: "rgba(70,130,210,.96)", stroke: "#2f5f9a" },
+    i_wurzelfuellung: { fill: "rgba(196,74,58,.96)", stroke: "#8f3a2e" },
     wurzelstift: { fill: "#b8c0c8", stroke: "#6a7078" },
   };
 
@@ -302,74 +303,137 @@
   }
 
   /**
-   * Baender entlang der Wurzelkontur(en).
-   * Default (Kanal): schmales Band, Start erst unterhalb CEJ (kein
-   * Furkations-T in der Krone). Mit opts.full: VOLLE Wurzelbreite je Wurzel
-   * (fuer die anatomische Wurzelfuellung) — die Furkations-Bucht zwischen
-   * den Wurzeln bleibt frei, weil je y nur die echten Spans gefuellt werden.
-   * Spans werden ueber y per naechstem Mid verfolgt, damit das Band der
-   * Wurzel folgt.
+   * Lokale Apex-x einer Kontur (apikale 24 %). Mehrere Treffer = mehrwurzelig.
    */
-  function canalRibbons(pts, cejY, apexY, upper, opts) {
+  function pathApexTipXs(pts, upper) {
     if (!pts.length) return [];
-    const full = !!(opts && opts.full);
+    let y0 = Infinity, y1 = -Infinity;
+    pts.forEach((p) => { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); });
+    const h = Math.max(1, y1 - y0);
+    const nearApex = (y) => (upper ? (y - y0) / h : (y1 - y) / h) <= 0.24;
+    const n = pts.length;
+    const cand = [];
+    for (let i = 0; i < n; i++) {
+      const p = pts[i];
+      if (!nearApex(p[1])) continue;
+      const a = pts[(i - 4 + n) % n], b = pts[(i + 4) % n];
+      const isTip = upper ? (p[1] <= a[1] && p[1] <= b[1]) : (p[1] >= a[1] && p[1] >= b[1]);
+      if (isTip) cand.push(p);
+    }
+    cand.sort((p, q) => (upper ? p[1] - q[1] : q[1] - p[1]));
+    const out = [];
+    cand.forEach((p) => {
+      if (!out.some((x) => Math.abs(x - p[0]) < 12)) out.push(p[0]);
+    });
+    return out.slice(0, 3);
+  }
+
+  /**
+   * Schmales Kanalband entlang der Wurzelmitte(n) — NICHT die ganze Wurzel.
+   * seedTips (optional): feste Apex-x-Seeds (OK-Molaren/14/24).
+   * Mehrwurzel OK: Apex→CEJ; im gemeinsamen Stamm bleiben Kanäle lateral
+   * getrennt (Teilung weiter koronal, Chef 20.07.2026).
+   */
+  function canalRibbons(pts, cejY, apexY, upper, seedTips) {
+    if (!pts.length) return [];
     const dir = upper ? -1 : 1;
-    // Kanal: ~2–3 mm apikal der CEJ starten; volle Fuellung: knapp
-    // kronenseitig starten (das Wurzelband-Clip schneidet an der CEJ)
-    const yStart = cejY + dir * (full ? -6 : 14);
-    const yEnd = apexY - dir * (full ? 1 : 5);
-    if (upper ? yEnd >= yStart : yEnd <= yStart) return [];
+    // Kanal bis nahe an die CEJ (vorher +14 → Teilung wirkte zu apikal)
+    const yCej = cejY + dir * 5;
+    const yApex = apexY - dir * 4;
+    if (upper ? yApex >= yCej : yApex <= yCej) return [];
+    let tips = (seedTips && seedTips.length)
+      ? seedTips.filter((x) => Number.isFinite(x)).slice(0, 3)
+      : pathApexTipXs(pts, upper);
+    if (!tips.length) tips = pathApexTipXs(pts, upper);
+    const multi = upper && tips.length >= 2;
+    const yStart = multi ? yApex : yCej;
+    const yEnd = multi ? yCej : yApex;
     const spanLen = Math.abs(yEnd - yStart);
-    const steps = Math.max(20, Math.round(spanLen / 1.5));
-    const minW = full ? 3 : 4;
-    const maxW = full ? 160 : 90;
-    const maxJump = full ? 34 : 28;
-    const halfOf = (w, t) => {
-      if (full) return Math.max(1.2, w * 0.5 - 0.6);
-      const frac = 0.30 * (1 - 0.7 * t * t);
-      return Math.max(1.1, Math.min(w * 0.36, w * frac * 0.5));
+    const steps = Math.max(22, Math.round(spanLen / 1.4));
+    const halfOf = (w, tApex) => {
+      // etwas dicker als zuvor (palatinale 14/24 waren schon gut, +bisschen)
+      const frac = 0.36 * (1 - 0.62 * tApex * tApex);
+      return Math.max(1.45, Math.min(w * 0.44, w * frac * 0.5));
     };
-    // tracks: { mid, left:[], right:[], mids:[] }
-    const tracks = [];
+    const tipSorted = tips.slice().sort((a, b) => a - b);
+    const tracks = multi
+      ? tips.map((tx) => ({ mid: tx, tipX: tx, left: [], right: [], mids: [] }))
+      : [];
     for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const y = yStart + (yEnd - yStart) * t;
-      const spans = silSpansAtY(pts, y).filter((e) => (e.x1 - e.x0) >= minW && (e.x1 - e.x0) < maxW);
+      const y = yStart + (yEnd - yStart) * (i / steps);
+      // tApex = 0 an der CEJ, 1 am Apex
+      const tApex = Math.min(1, Math.abs(y - yCej) / Math.max(1, spanLen));
+      const spans = silSpansAtY(pts, y).filter((e) => (e.x1 - e.x0) >= 4 && (e.x1 - e.x0) < 90);
       if (!spans.length) continue;
+      if (!tracks.length) {
+        spans.forEach((e) => {
+          const w = e.x1 - e.x0;
+          const half = halfOf(w, tApex);
+          const mid = (e.x0 + e.x1) / 2;
+          tracks.push({
+            mid, tipX: mid,
+            left: [[mid - half, y]],
+            right: [[mid + half, y]],
+            mids: [[mid, y]],
+          });
+        });
+        continue;
+      }
       const used = new Set();
-      // bestehende Tracks fortsetzen
+      const sharedTrunk = multi && spans.length === 1 && tracks.length >= 2;
       tracks.forEach((tr) => {
         let best = -1, bestD = 1e9;
         spans.forEach((e, si) => {
-          if (used.has(si)) return;
-          const mid = (e.x0 + e.x1) / 2;
-          const d = Math.abs(mid - tr.mid);
+          const spanMid = (e.x0 + e.x1) / 2;
+          const inside = tr.mid >= e.x0 - 2 && tr.mid <= e.x1 + 2;
+          if (!multi && used.has(si)) return;
+          // an Tip-x anbinden (bukkal = mesial bei 14/24)
+          const dTip = Math.abs(spanMid - tr.tipX);
+          const d = inside ? dTip * 0.15 : Math.min(Math.abs(spanMid - tr.mid), dTip);
           if (d < bestD) { bestD = d; best = si; }
         });
-        if (best < 0 || bestD > maxJump) return;
+        if (best < 0 || bestD > (multi ? 48 : 28)) return;
         used.add(best);
         const e = spans[best];
         const w = e.x1 - e.x0;
-        const half = halfOf(w, t);
-        const mid = (e.x0 + e.x1) / 2;
+        const spanMid = (e.x0 + e.x1) / 2;
+        // Einzelwurzel → Mitte; Stamm → Tip-Lage halten
+        const snap = multi ? (w < 22 ? 0.55 : (w < 40 ? 0.18 : 0.06)) : 1;
+        let mid = tr.mid * (1 - snap) + spanMid * snap;
+        // Gemeinsamer Stamm: Kanäle koronal stark lateral halten →
+        // Teilungsstelle der WF wandert nach koronal (nicht erst am Apex)
+        if (sharedTrunk) {
+          const rank = Math.max(0, tipSorted.indexOf(tr.tipX));
+          const n = Math.max(1, tipSorted.length - 1);
+          const targetX = e.x0 + (e.x1 - e.x0) * (0.20 + 0.60 * (rank / n));
+          const sep = 0.72 * (1 - tApex * 0.85);
+          mid = mid * (1 - sep) + targetX * sep;
+        }
+        mid = Math.max(e.x0 + 1.8, Math.min(e.x1 - 1.8, mid));
+        const widthForCanal = multi ? Math.min(w, 28) : w;
+        let half = halfOf(widthForCanal, tApex);
+        if (multi) half = Math.min(half, 4.8);
+        half = Math.min(half, mid - e.x0 - 0.35, e.x1 - mid - 0.35);
+        half = Math.max(1.25, half);
         tr.mid = mid;
         tr.left.push([mid - half, y]);
         tr.right.push([mid + half, y]);
         tr.mids.push([mid, y]);
       });
-      // neue Spans = neue Wurzeln
-      spans.forEach((e, si) => {
-        if (used.has(si)) return;
-        const w = e.x1 - e.x0;
-        const half = halfOf(w, t);
-        const mid = (e.x0 + e.x1) / 2;
-        tracks.push({
-          mid,
-          left: [[mid - half, y]],
-          right: [[mid + half, y]],
-          mids: [[mid, y]],
+      if (!multi) {
+        spans.forEach((e, si) => {
+          if (used.has(si)) return;
+          const w = e.x1 - e.x0;
+          const half = halfOf(w, tApex);
+          const mid = (e.x0 + e.x1) / 2;
+          tracks.push({
+            mid, tipX: mid,
+            left: [[mid - half, y]],
+            right: [[mid + half, y]],
+            mids: [[mid, y]],
+          });
         });
-      });
+      }
     }
     return tracks.filter((b) => b.left.length >= 5).map((b) => {
       const sm = (arr) => {
@@ -389,15 +453,6 @@
         mids: b.mids,
       };
     });
-  }
-
-  function ensureClipEl(defs, id, d) {
-    if (!defs || !d) return false;
-    if (defs.querySelector("#" + CSS.escape(id))) return true;
-    const cp = mk("clipPath", { id });
-    cp.appendChild(mk("path", { d }));
-    defs.appendChild(cp);
-    return true;
   }
 
   /**
@@ -439,8 +494,8 @@
 
   /**
    * Wurzel-Befunde (Chef 19.07.2026):
-   * - Wurzelfuellung: BLAU und folgt anatomisch der Wurzelform — die ganze
-   *   Wurzelregion (Silhouette + Extra-Wurzeln apikal der CEJ) wird gefuellt.
+   * - Wurzelfuellung: BLAU als schmales Kanalband entlang der Wurzelmitte
+   *   (Silhouette + Extra-Wurzeln); OK-Molaren/14/24 apex-geseedet.
    * - insuffiziente WF: ROT und KUERZER, endet deutlich VOR dem Apex.
    * - Wurzelstift: sitzt mittig in der Wurzelfuellung und reicht bis in die
    *   Zahnkrone (Voraussetzung WF erzwingt toggleRootMarker).
@@ -460,9 +515,9 @@
     const midX = (sb.x0 + sb.x1) / 2;
     const cej = cejYAt(seg, midX);
     const apexY = c.upper ? sb.y0 : sb.y1;
-    const dirApex = c.upper ? -1 : 1;          // von CEJ Richtung Apex
+    const dirApex = c.upper ? -1 : 1;
     // insuffiziente WF endet bei ~58 % der Wurzellaenge (nicht bis zum Apex)
-    const fillEndY = hasIWF ? cej + (apexY - cej) * 0.58 : apexY + dirApex * 6;
+    const fillEndY = hasIWF ? cej + (apexY - cej) * 0.58 : apexY;
     const style = ROOT_PAINT[hasIWF ? "i_wurzelfuellung" : "wurzelfuellung"];
 
     const g = mk("g", { class: "bef-rootcanal" });
@@ -471,77 +526,88 @@
     const rootWrap = mk("g", { "clip-path": "url(#st-rt-" + c.fdi + ")" });
     silWrap.appendChild(rootWrap);
 
-    // Fuellband je Wurzel in VOLLER Wurzelbreite (folgt der Kontur; die
-    // Furkations-Bucht zwischen den Wurzeln bleibt frei), bei insuffizienter
-    // WF vor fillEndY abgeschnitten (zusaetzlicher Band-Clip in defs)
-    const drawFullRoots = (host, dPath) => {
-      const pts = samplePathPts(dPath, 220);
-      if (!pts.length) return false;
-      const pb = pathBounds(dPath) || sb;
-      const rootApex = c.upper ? pb.y0 : pb.y1;
-      let drew = false;
-      canalRibbons(pts, cej, rootApex, c.upper, { full: true }).forEach((rib) => {
-        drew = true;
-        host.appendChild(mk("path", {
-          d: rib.d, fill: style.fill, stroke: style.stroke,
-          "stroke-width": "0.9", "stroke-linejoin": "round", class: "bef-root-fill",
-        }));
+    const paths = [sil];
+    if (Array.isArray(extraRoots)) {
+      extraRoots.forEach((d) => { if (d && d !== sil) paths.push(d); });
+    }
+    const allTips = rootApexPoints(c, sil, extraRoots);
+    const toothN = (+c.fdi) % 10;
+    const mesialRight = mesialIsRight(c.fdi);
+    const collectRibs = (apexForFill) => {
+      const out = [];
+      const seen = new Set();
+      paths.forEach((dPath, pi) => {
+        const pts = samplePathPts(dPath, 220);
+        if (!pts.length) return;
+        const pb = pathBounds(dPath) || sb;
+        const pathMid = (pb.x0 + pb.x1) / 2;
+        const pathCej = cejYAt(seg, pathMid);
+        const rootApex = apexForFill != null
+          ? apexForFill
+          : (c.upper ? pb.y0 : pb.y1);
+        // Tip-Seeds: welche Apex-Punkte gehoeren zu diesem Pfad?
+        let seedXs = allTips
+          .filter((t) => t.x >= pb.x0 - 10 && t.x <= pb.x1 + 10)
+          .map((t) => t.x);
+        if (c.upper && allTips.length) {
+          const sorted = allTips.slice().sort((a, b) => a.x - b.x);
+          // 14/24: palatinale Wurzel = EXTRA (schon gut); bukkale = mesialere
+          // auf der Hauptsilhouette — explizit mesialen Tip auf SIL seedern
+          if ((toothN === 4) && pi === 0) {
+            const mes = mesialRight ? sorted[sorted.length - 1] : sorted[0];
+            seedXs = mes ? [mes.x] : seedXs.slice(0, 1);
+          } else if ((toothN === 4) && pi > 0) {
+            // Extra-Pfad = palatinal = distalere Spitze
+            const pal = mesialRight ? sorted[0] : sorted[sorted.length - 1];
+            seedXs = pal ? [pal.x] : seedXs.slice(0, 1);
+          } else if (toothN >= 6 && pi === 0) {
+            // Molar-SIL: alle Tips im SIL-Band (MB/DB); Palatinal kommt als EXTRA
+            seedXs = allTips
+              .filter((t) => t.x >= pb.x0 - 6 && t.x <= pb.x1 + 6)
+              .map((t) => t.x);
+            if (seedXs.length < 2) seedXs = pathApexTipXs(pts, c.upper);
+          }
+        }
+        if (!seedXs.length) seedXs = pathApexTipXs(pts, c.upper);
+        canalRibbons(pts, pathCej, rootApex, c.upper, seedXs).forEach((rib) => {
+          if (!rib.mids.length) return;
+          const key = Math.round(rib.mids[0][0] / 6) + ":" + Math.round(rib.mids[0][1] / 8);
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push(rib);
+        });
       });
-      return drew;
+      return out;
     };
 
+    const fillRibs = (hasWF || hasIWF || hasPost)
+      ? collectRibs(hasIWF ? fillEndY : null)
+      : [];
     if (hasWF || hasIWF) {
-      let fillHost = rootWrap;
-      if (hasIWF && defs) {
-        // Kuerzungs-Clip: Band von CEJ-Seite bis fillEndY
-        const id = "rf-cut-" + c.fdi;
-        const y0 = Math.min(cej - dirApex * 20, fillEndY);
-        const y1 = Math.max(cej - dirApex * 20, fillEndY);
-        const dCut = `M ${(sb.x0 - 8).toFixed(1)} ${y0.toFixed(1)} ` +
-          `L ${(sb.x1 + 8).toFixed(1)} ${y0.toFixed(1)} ` +
-          `L ${(sb.x1 + 8).toFixed(1)} ${y1.toFixed(1)} ` +
-          `L ${(sb.x0 - 8).toFixed(1)} ${y1.toFixed(1)} Z`;
-        const old = defs.querySelector("#" + CSS.escape(id));
-        if (old) old.remove();
-        if (ensureClipEl(defs, id, dCut)) {
-          fillHost = mk("g", { "clip-path": "url(#" + id + ")" });
-          rootWrap.appendChild(fillHost);
-        }
-      }
-      const drewMain = drawFullRoots(fillHost, sil);
-      // Extra gezeichnete Wurzeln (z. B. palatinal) mitfuellen
-      if (Array.isArray(extraRoots)) {
-        extraRoots.forEach((d) => {
-          if (d && d !== sil) drawFullRoots(fillHost, d);
-        });
-      }
-      if (!drewMain) {
-        // Fallback: Rechteck (Clip formt die Wurzel), falls Sampling scheitert
-        fillHost.appendChild(mk("rect", {
-          x: (sb.x0 - 4).toFixed(1),
-          y: Math.min(cej - dirApex * 8, fillEndY).toFixed(1),
-          width: (sb.x1 - sb.x0 + 8).toFixed(1),
-          height: Math.max(1, Math.abs(fillEndY - (cej - dirApex * 8))).toFixed(1),
-          fill: style.fill, stroke: "none", class: "bef-root-fill",
+      fillRibs.forEach((rib) => {
+        rootWrap.appendChild(mk("path", {
+          d: rib.d, fill: style.fill, stroke: style.stroke,
+          "stroke-width": "1.15", "stroke-linejoin": "round", class: "bef-root-fill",
         }));
-      }
+      });
     }
 
     if (hasPost) {
-      // Stift mittig in der Wurzelfuellung, bis in die Krone (Chef 19.07.2026).
-      // Zentralen Kanal ueber die Wurzelkontur suchen (naechster an der Mitte).
+      // Stift mittig im Kanal, bis in die Krone (Chef 19.07.2026).
       let bx = midX, by = cej + (apexY - cej) * 0.66;
-      const ribs = canalRibbons(samplePathPts(sil, 220), cej, apexY + dirApex * -5, c.upper);
+      const ribs = fillRibs.length ? fillRibs : collectRibs(null);
       if (ribs.length) {
         let best = null, bestD = 1e9;
         ribs.forEach((rib) => {
-          const m = rib.mids[Math.min(rib.mids.length - 1, Math.floor(rib.mids.length * 0.68))];
-          const d0 = Math.abs(rib.mids[0][0] - midX);
+          // mids[0] liegt je nach Laufrichtung an CEJ oder Apex — Mitte nehmen
+          const idx = Math.floor(rib.mids.length * 0.5);
+          const m = rib.mids[idx];
+          const d0 = Math.abs(m[0] - midX);
           if (d0 < bestD) { bestD = d0; best = m; }
         });
         if (best) { bx = best[0]; by = best[1]; }
       }
-      const topY = cej - dirApex * 24;         // reicht in die Krone hinein
+      const topY = cej - dirApex * 24;
       const topW = 3.6, botW = 1.9;
       const post = `M ${(bx - botW).toFixed(1)} ${by.toFixed(1)} ` +
         `L ${(midX - topW).toFixed(1)} ${topY.toFixed(1)} ` +

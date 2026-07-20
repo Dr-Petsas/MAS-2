@@ -67,7 +67,7 @@
     ZE: [
       { id: "krone", label: "Krone", icon: "crown" },
       { id: "brueckenglied", label: "Brückenglied", icon: "pontic" },
-      { id: "veneer", label: "Veneer", icon: "partial-crown" },
+      { id: "veneer", label: "Veneer", icon: "veneer" },
       { id: "teilkrone", label: "Teilkrone", icon: "partial-crown" },
       { id: "teleskop", label: "Teleskopkrone", icon: "telescopic-crown" },
       { id: "ze_insuffizient", label: "insuffizient", icon: "insufficient" },
@@ -212,9 +212,12 @@
         <path d="${ICON_TOOTH}" fill="url(#${uid}-pp)" stroke="rgba(170,195,220,.8)" stroke-width="1.6"/>
         <ellipse cx="26" cy="20" rx="7" ry="10" fill="rgba(255,255,255,.8)" transform="rotate(-14 26 20)"/>
         <text x="32" y="38" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(140,160,185,.7)" font-family="Georgia,serif">B</text>`,
-      "partial-crown": `${base}<path d="M18 18 C28 12 40 12 46 20 L44 34 C36 28 28 28 20 34 Z" fill="url(#${uid}-cw)" stroke="rgba(160,150,130,.6)" stroke-width="1.2"/>`,
-      "telescopic-crown": `${base}<path d="${ICON_TOOTH}" fill="url(#${uid}-cw)" stroke="#b8a070" stroke-width="2"/>
-        <path d="${ICON_TOOTH}" fill="none" stroke="#8a7848" stroke-width="1" transform="scale(.86) translate(5.2 5)"/>`,
+      veneer: `${base}<path d="${ICON_TOOTH}" fill="url(#${uid}-c)" opacity=".55"/>
+        <ellipse cx="30" cy="26" rx="10" ry="14" fill="url(#${uid}-cw)" stroke="rgba(200,215,230,.85)" stroke-width="1.2"/>`,
+      "partial-crown": `${base}<path d="${ICON_TOOTH}" fill="url(#${uid}-c)" opacity=".45"/>
+        <path d="M18 14 C28 8 40 8 46 16 L44 30 C36 24 28 24 20 30 Z" fill="url(#${uid}-cw)" stroke="rgba(185,205,225,.9)" stroke-width="1.2"/>`,
+      "telescopic-crown": `${base}<path d="${ICON_TOOTH}" fill="#e8dfd0" stroke="#8a7848" stroke-width="1.4" transform="scale(.78) translate(9 9)"/>
+        <path d="${ICON_TOOTH}" fill="url(#${uid}-cw)" fill-opacity=".45" stroke="rgba(185,205,225,.85)" stroke-width="2"/>`,
       "tooth-replaced": `${base}<path d="${ICON_TOOTH}" fill="rgba(240,230,220,.7)" stroke="#c090a0" stroke-width="1.4"/>
         <text x="32" y="34" text-anchor="middle" font-size="11" fill="#a06070">P</text>`,
       clasp: `${base}<path d="M14 28 C8 36 12 48 22 50" fill="none" stroke="#c090a0" stroke-width="2.2"/>`,
