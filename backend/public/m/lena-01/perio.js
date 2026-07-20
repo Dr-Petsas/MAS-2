@@ -926,7 +926,7 @@
         }
         return;
       }
-      segs.push({ x0: seg.x0, x1: seg.x0 + seg.ys.length - 1, seg });
+      segs.push({ x0: seg.x0, x1: seg.x0 + seg.ys.length - 1, seg, fdi: c.fdi });
       for (let i = 0; i < seg.ys.length; i++) arr[seg.x0 + i] = seg.ys[i];
     });
     segs.sort((a, b) => a.x0 - b.x0);
@@ -954,6 +954,36 @@
         const t = (x - L.x1) / gap;
         const prof = Math.pow(Math.sin(Math.PI * t), 1.5);
         arr[x] = yL + (yR - yL) * t + crownward * amp * prof;
+        if (papMask) papMask[x] = Math.max(papMask[x] || 0, prof);
+      }
+    }
+
+    // 22/23 + 34/35: dort stossen die CEJ-Segmente fast aneinander (gap < 4)
+    // — die Schleife oben erzeugt KEINE Papille, der Saum lief flach ueber
+    // die Fuge und sah im gesunden Zustand entzuendet/abgebaut aus (Chef
+    // 20.07.). Kuenstliche Papillen-Spitze ueber der Fuge, weich in die
+    // Flanken beider Nachbarzaehne ausgeblendet.
+    for (let i = 0; i + 1 < segs.length; i++) {
+      const L = segs[i], R = segs[i + 1];
+      if (R.x0 - L.x1 >= 4) continue;
+      const key = Math.min(L.fdi, R.fdi) + "-" + Math.max(L.fdi, R.fdi);
+      if (key !== "22-23" && key !== "34-35") continue;
+      const xm = Math.round((L.x1 + R.x0) / 2);
+      const HALF = 9, AMP = 5.6;
+      const xa = Math.max(0, xm - HALF), xb = Math.min(CW - 1, xm + HALF);
+      if (!Number.isFinite(arr[xa]) || !Number.isFinite(arr[xb])) continue;
+      // Profil auf LINEARER Basis zwischen den Fenster-Raendern aufbauen —
+      // die CEJ selbst hat an der Fuge eine Delle, additiv entstand eine
+      // Doppel-Spitze ("M") statt einer Papille.
+      const ya = arr[xa], yb = arr[xb];
+      for (let x = xa; x <= xb; x++) {
+        const t = (x - xa) / (xb - xa);
+        const prof = Math.pow(Math.sin(Math.PI * t), 1.35);
+        const target = ya + (yb - ya) * t + crownward * AMP * prof;
+        // Fenster-Mitte komplett ERSETZEN (nicht min/max): die CEJ-Delle an
+        // der Fuge erzeugte sonst eine Doppel-Spitze ("M") statt EINER Papille
+        const wB = Math.pow(Math.sin(Math.PI * t), 0.6);
+        arr[x] = arr[x] * (1 - wB) + target * wB;
         if (papMask) papMask[x] = Math.max(papMask[x] || 0, prof);
       }
     }
@@ -1155,8 +1185,12 @@
           const t = (x - x0) / w;
           const arc = yL + (yR - yL) * t
             + apicalDir * A * Math.sin(Math.PI * t);
-          // Randzonen (Papillenflanken) original lassen, Mitte runden
-          const w2 = wgt * easeW(Math.min(t, 1 - t));
+          // Randzonen (Papillenflanken) original lassen, Mitte runden.
+          // papMask zusaetzlich beruecksichtigen: die kuenstliche Papille
+          // 34|35 ragt bis ~9 px in den Zahn — ohne den Schutz zog der
+          // Bogen-Blend ihre Flanken platt (Papille blieb zu kurz).
+          const w2 = wgt * easeW(Math.min(t, 1 - t))
+            * (1 - Math.min(1, (papMask[x] || 0) * 1.2));
           margin[x] = margin[x] * (1 - w2) + arc * w2;
         }
       });
@@ -1170,6 +1204,27 @@
             tmp[x + 1] * 2 + tmp[x + 2]) / 9;
         }
       }
+      // Konkremente: Gingiva am Zahn MINIMAL zurueckziehen (Rezession), damit
+      // der schwarze Konkrement-Saum (befundApex, sonst komplett unter dem
+      // Zahnfleisch) knapp unterm Rand hervorschaut (Chef 20.07.). MUSS NACH
+      // dem Bogen-Blend passieren — der zieht die Margin sonst wieder auf die
+      // Standard-Bogentiefe (minA) zurueck und frisst die Rezession auf.
+      cols.forEach((c) => {
+        const s = st(c.fdi);
+        if (!s || s.missing || !hasMark(s, "konkremente")) return;
+        if (hasMark(s, "retiniert") || hasMark(s, "impaktiert")) return;
+        const seg = SOURCE_CEJ_ARR[c.fdi];
+        if (!seg) return;
+        const n = seg.ys.length;
+        const REZ = 4.5;
+        for (let i = 0; i < n; i++) {
+          const x = seg.x0 + i;
+          if (x < gx0 || x > gx1) continue;
+          const t = n > 1 ? i / (n - 1) : 0.5;
+          const fade = Math.min(1, Math.min(t, 1 - t) * 5);
+          margin[x] += apicalDir * REZ * fade;
+        }
+      });
       const crestY = (x) => {
         const cx = Math.max(0, Math.min(CW - 1, x));
         if (live && Number.isFinite(live[cx])) return live[cx];
@@ -1327,6 +1382,31 @@
           ]);
         inflamHost.appendChild(
           mkPath(dInf + " Z", "bef-konk-inflam", "url(#bef-inflam-" + c.fdi + ")"));
+        // Schwarzer Konkrement-Saum SICHTBAR am Zahnfleischrand (Chef 20.07.:
+        // "den schwarzen Saum sichtbar machen minimal"): duenne dunkle Linie
+        // knapp innerhalb der (rezedierten) Margin, im Gingiva-Clip — der
+        // Band-Befund unter dem Zahnfleisch bleibt davon unberuehrt.
+        const seg = SOURCE_CEJ_ARR[c.fdi];
+        if (seg) {
+          const sx0 = Math.max(gx0, seg.x0 + 2);
+          const sx1 = Math.min(gx1, seg.x0 + seg.ys.length - 3);
+          let dK = "";
+          for (let x = sx0; x <= sx1; x += 2) {
+            dK += (dK ? " L " : "M ") + x + " " +
+              (margin[x] + apicalDir * 1.0).toFixed(1);
+          }
+          ensureGrad(defs, "bef-konkline-" + c.fdi, "linearGradient",
+            { x1: sx0, y1: 0, x2: sx1, y2: 0 },
+            [
+              [0, "#140c06", 0],
+              [0.14, "#140c06", 0.75],
+              [0.86, "#140c06", 0.75],
+              [1, "#140c06", 0],
+            ]);
+          const ln = mkPath(dK, "bef-konk-line", "none");
+          ln.setAttribute("stroke", "url(#bef-konkline-" + c.fdi + ")");
+          inflamHost.appendChild(ln);
+        }
       });
       if (inflamHost.childNodes.length) g.appendChild(inflamHost);
 
@@ -1445,9 +1525,11 @@
     const x0 = seg.x0 + 1, x1 = seg.x0 + seg.ys.length - 2;
     const KONK = "#1c120a";
     let d = "";
-    // Oberkante knapp apikal der Schmelz-Zement-Grenze
+    // Oberkante DIREKT an der Schmelz-Zement-Grenze: durch die minimale
+    // Gingiva-Rezession (gumMarginArr) lugt der Saum knapp unter dem
+    // Zahnfleischrand hervor (Chef 20.07.: Konkremente waren unsichtbar)
     for (let x = x0; x <= x1; x += 3) {
-      d += (d ? " L " : "M ") + x + " " + (cejYAt(seg, x) + rootward * 1.4).toFixed(1);
+      d += (d ? " L " : "M ") + x + " " + (cejYAt(seg, x) + rootward * 0.3).toFixed(1);
     }
     // Girlanden-Linie unter CEJ, etwas laenger in der Hoehe
     for (let x = x1; x >= x0; x -= 3) {

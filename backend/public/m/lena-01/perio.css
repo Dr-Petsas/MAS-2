@@ -156,6 +156,13 @@ main {
   mix-blend-mode: multiply;
   pointer-events: none;
 }
+
+.bef-konk-line {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  pointer-events: none;
+}
 .bef-verf {
   stroke: none;
   mix-blend-mode: multiply;
