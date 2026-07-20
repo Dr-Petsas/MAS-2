@@ -918,10 +918,14 @@
       let c1y = p1.y + (p2.y - p0.y) / 6;
       let c2x = p2.x - (p3.x - p1.x) / 6;
       let c2y = p2.y - (p3.y - p1.y) / 6;
-      // y-Controls zwischen Nachbarn klemmen → keine Spike-Loops
+      // y-Controls mit TOLERANZ klemmen: harte Klemmung [p1.y,p2.y] machte
+      // aus runden Molaren-Boegen eckige Polygonzuege (jeder Flanken-
+      // Uebergang wurde plattgedrueckt). Etwas Ueberschwingen ist noetig
+      // fuer runde Boegen; die Schranke verhindert weiterhin Spike-Loops.
       const yLo = Math.min(p1.y, p2.y), yHi = Math.max(p1.y, p2.y);
-      c1y = Math.max(yLo, Math.min(yHi, c1y));
-      c2y = Math.max(yLo, Math.min(yHi, c2y));
+      const pad = 0.35 * (yHi - yLo) + 0.6;
+      c1y = Math.max(yLo - pad, Math.min(yHi + pad, c1y));
+      c2y = Math.max(yLo - pad, Math.min(yHi + pad, c2y));
       d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(2)} ` +
         `${c2x.toFixed(1)} ${c2y.toFixed(2)} ` +
         `${p2.x.toFixed(1)} ${p2.y.toFixed(2)}`;
@@ -930,14 +934,16 @@
   }
 
   function marginPoints(margin, gx0, gx1) {
-    // 3-px-Raster PLUS lokale Extrema: sonst verfehlt das Raster die
+    // 2-px-Raster PLUS lokale Extrema: sonst verfehlt das Raster die
     // Papillenspitze um 1-2 px und die Catmull-Kurve stumpft sie ab
     const pts = [];
     let lastX = -Infinity;
     for (let x = gx0; x <= gx1; x++) {
       const isPeak = x > gx0 && x < gx1
-        && (margin[x] - margin[x - 1]) * (margin[x + 1] - margin[x]) < 0;
-      if (x === gx0 || x === gx1 || isPeak || x - lastX >= 3) {
+        && (margin[x] - margin[x - 1]) * (margin[x + 1] - margin[x]) < 0
+        && Math.abs(margin[x + 1] - margin[x - 1]) +
+           Math.abs(margin[x] - margin[x - 1]) > 0.08;
+      if (x === gx0 || x === gx1 || isPeak || x - lastX >= 2) {
         pts.push({ x, y: margin[x] });
         lastX = x;
       }
@@ -975,6 +981,54 @@
       for (let x = gx0; x <= gx1; x++) {
         const w = papMask[x] * 0.9;
         if (w > 0) margin[x] = margin[x] * (1 - w) + raw[x] * w;
+      }
+      // Molaren/Praemolaren: Girlande aktiv rund formen. Die CEJ-Quelllinie
+      // ist dort flach + wellig (Ecken statt Bogen, Feedback 20.07.). Pro
+      // Zahn wird die Margin gegen einen idealen Bogen geblendet: Endpunkte
+      // (Papillen-Anschluss) bleiben exakt, der Zenit liegt mittig apikal.
+      cols.forEach((c) => {
+        const digit = c.fdi % 10;
+        if (digit < 4) return;                 // Front behaelt CEJ-Form
+        const s = st(c.fdi);
+        if (s && (s.missing || hasMark(s, "retiniert") || hasMark(s, "impaktiert"))) return;
+        const seg = SOURCE_CEJ_ARR[c.fdi];
+        if (!seg) return;
+        const x0 = Math.max(gx0, seg.x0);
+        const x1 = Math.min(gx1, seg.x0 + seg.ys.length - 1);
+        const w = x1 - x0;
+        if (w < 14) return;
+        let wgt = digit >= 6 ? 0.85 : 0.5;
+        for (let x = x0; x <= x1; x++) {
+          if (extractMask[x]) { wgt *= 0.5; break; } // neben Luecke sanfter
+        }
+        const yL = margin[x0], yR = margin[x1];
+        // Amplitude = ECHTE Zenit-Tiefe der bestehenden Margin (sonst
+        // schiebt ein zu flacher Ideal-Bogen die Gingiva auf die Krone)
+        let D = 0;
+        for (let x = x0 + 1; x < x1; x++) {
+          const t = (x - x0) / w;
+          D = Math.max(D, apicalDir * (margin[x] - (yL + (yR - yL) * t)));
+        }
+        const A = Math.max(digit >= 6 ? 3.8 : 2.5, Math.min(9, D));
+        const easeW = (t) => { const u = Math.min(1, t / 0.22); return u * u * (3 - 2 * u); };
+        for (let x = x0 + 1; x < x1; x++) {
+          const t = (x - x0) / w;
+          const arc = yL + (yR - yL) * t
+            + apicalDir * A * Math.pow(Math.sin(Math.PI * t), 0.85);
+          // Randzonen (Papillenflanken) original lassen, Mitte runden
+          const w2 = wgt * easeW(Math.min(t, 1 - t));
+          margin[x] = margin[x] * (1 - w2) + arc * w2;
+        }
+      });
+      // Zenit-Boegen extra runden — NUR ausserhalb der Papillen, damit
+      // deren Spitzen stehen bleiben
+      {
+        const tmp = margin.slice();
+        for (let x = gx0 + 2; x <= gx1 - 2; x++) {
+          if (papMask[x] > 0.12) continue;
+          margin[x] = (tmp[x - 2] + tmp[x - 1] * 2 + tmp[x] * 3 +
+            tmp[x + 1] * 2 + tmp[x + 2]) / 9;
+        }
       }
       const crestY = (x) => {
         const cx = Math.max(0, Math.min(CW - 1, x));
