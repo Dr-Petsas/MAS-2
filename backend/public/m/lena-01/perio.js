@@ -109,7 +109,7 @@
     return Number.isFinite(mn) ? (mn + mx) / 2 : null;
   }
 
-  const TEETH_SRC = "/m/lena-01/teeth-source.svg?v=1";
+  const TEETH_SRC = "/m/lena-01/teeth-source.svg?v=4";
 
   // Abdeckung beim Loeschen: NUR die Watershed-Silhouette (+ Extra-Wurzeln).
   // Fruehere Ansaetze (Spalt-Rechteck, Distal-Flare 12-22px, UK-Trapez,
@@ -175,7 +175,7 @@
     bg.setAttribute("width", CW); bg.setAttribute("height", CH);
     bg.setAttribute("fill", "#fff");
     mm.appendChild(bg);
-    hide.forEach((c) => {
+    const appendCut = (c, strokeW) => {
       const pontic = !!(st(c.fdi).missing && markOf(st(c.fdi)).brueckenglied);
       if (pontic && SOURCE_CEJ_ARR[c.fdi] && SIL[c.fdi]) {
         // Brueckenglied: nur die Wurzel ausstanzen — die Porzellan-Krone
@@ -189,7 +189,7 @@
           p.setAttribute("d", d);
           p.setAttribute("fill", "#000");
           p.setAttribute("stroke", "#000");
-          p.setAttribute("stroke-width", "4");
+          p.setAttribute("stroke-width", String(Math.min(strokeW, 4)));
           p.setAttribute("stroke-linejoin", "round");
           g.appendChild(p);
         });
@@ -204,13 +204,44 @@
         p.setAttribute("d", d);
         p.setAttribute("fill", "#000");
         p.setAttribute("stroke", "#000");
-        p.setAttribute("stroke-width", "5");
+        p.setAttribute("stroke-width", String(strokeW));
         p.setAttribute("stroke-linejoin", "round");
         mm.appendChild(p);
       });
-    });
+      // Mesialer Kontakt-Zipfel: nach dem Nachbar-Restore bleibt oft ein
+      // helles Dreieck vom distalen Nachbar-Rand in der Luecke (34 distal
+      // bei fehlendem 35). Kleiner Kreis NUR im Zweit-Cut (nach Restore)
+      // knabbert genau diesen Zipfel weg, ohne die Nachbarflanke flaechig
+      // zu beschneiden.
+      if (strokeW >= 9) {
+        const sb = pathBounds(SIL[c.fdi] || "");
+        const seg = SOURCE_CEJ_ARR[c.fdi];
+        if (sb && seg) {
+          const q = Math.floor(c.fdi / 10);
+          const mesialLeft = (q === 2 || q === 3);
+          const edgeX = mesialLeft ? sb.x0 - 5 : sb.x1 + 5;
+          let cejY = 0;
+          seg.ys.forEach((y) => { cejY += y; });
+          cejY /= seg.ys.length;
+          const ocY = c.upper ? sb.y1 : sb.y0;
+          // zwei Punkte: Okklusal-Kontakt + CEJ-Kontakt
+          [[edgeX, ocY + (c.upper ? -2 : 2)], [edgeX, cejY]].forEach(([cx, cy]) => {
+            const circ = document.createElementNS(SVGNS, "circle");
+            circ.setAttribute("cx", cx.toFixed(1));
+            circ.setAttribute("cy", cy.toFixed(1));
+            circ.setAttribute("r", "5");
+            circ.setAttribute("fill", "#000");
+            mm.appendChild(circ);
+          });
+        }
+      }
+    };
+    hide.forEach((c) => appendCut(c, 6));
     // Nachbarzaehne (und deren Aussenlinien) wieder freistellen — die
     // Rechtecke duerfen NIE Nachbarkonturen wegschneiden (Vorfall 19.07.)
+    // Stroke klein halten: SIL 34 reicht tief in die 35-Spalte (Overlap
+    // ~40 px) — ein breiter weisser Stroke holt den mesialen Kronen-Zipfel
+    // von 35 zurueck (Chef 20.07.: Zipfel an 35 mesial-okklusal).
     COLS.cols.forEach((n) => {
       const s = st(n.fdi);
       if (s && s.missing) return;
@@ -222,11 +253,15 @@
         p.setAttribute("d", d);
         p.setAttribute("fill", "#fff");
         p.setAttribute("stroke", "#fff");
-        p.setAttribute("stroke-width", "2.4");
+        p.setAttribute("stroke-width", "1.2");
         p.setAttribute("stroke-linejoin", "round");
         mm.appendChild(p);
       });
     });
+    // Zweiter Cut NACH der Freistellung: ueberlappende Nachbar-SIL (34↔35)
+    // hat Teile des entfernten Zahns wieder freigelegt — breiterer Stroke
+    // erwischt auch Kronenspitzen knapp ausserhalb der Watershed-Silhouette.
+    hide.forEach((c) => appendCut(c, 9));
     defs.appendChild(mm);
     teethImg.setAttribute("mask", "url(#missMask)");
   }
@@ -3215,8 +3250,8 @@
     applyPageTitle();
     const host = document.getElementById("stage");
     const [svgTxt, cols, teethTxt, boneEdge] = await Promise.all([
-      fetch("/m/lena-01/perio-layers.svg?v=14").then((r) => r.text()),
-      fetch("/m/lena-01/perio-cols.json?v=12").then((r) => r.json()),
+      fetch("/m/lena-01/perio-layers.svg?v=15").then((r) => r.text()),
+      fetch("/m/lena-01/perio-cols.json?v=13").then((r) => r.json()),
       fetch(TEETH_SRC).then((r) => r.text()),
       fetch("/m/lena-01/bone-edge.json?v=1").then((r) => r.json()).catch(() => null),
     ]);
