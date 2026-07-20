@@ -1087,6 +1087,11 @@
         env[x] = m;
       }
       const envSm = smoothArr(env, 21);
+      // Apikale Kante: wellig und LEICHT kongruent zur CEJ-Girlande —
+      // Basis ist die Zenit-Huellkurve + GUM_H, darauf 45 Prozent der
+      // Margin-Form. Unter den Papillen bleibt so ein breiter Saum
+      // (55 Prozent der Papillenhoehe), aber die Welle schwingt sichtbar mit.
+      const CONG = 0.45;
       const apical = new Array(CW);
       const CAP = 8;
       for (let x = 0; x < CW; x++) {
@@ -1096,11 +1101,12 @@
           const t = edge / CAP;
           h *= Math.max(0.2, Math.sqrt(t * (2 - t)));
         }
-        // Banddicke = GUM_H am Zenit + Papillenhoehe (gedeckelt, z.B. neben
-        // Extraktionskaemmen), so bleibt die Naht glatt und kippt nie um.
-        const papilla = Math.max(0, (envSm[x] - margin[x]) * apicalDir);
-        const th = Math.max(2.5, h + Math.min(papilla, GUM_H * 0.9));
-        apical[x] = margin[x] + apicalDir * th;
+        const devCor = Math.max(0, (margin[x] - envSm[x]) * crownward);
+        const y = envSm[x] + apicalDir * h
+          + crownward * Math.min(devCor, GUM_H * 1.4) * CONG;
+        apical[x] = upper
+          ? Math.min(y, margin[x] - 2.5)
+          : Math.max(y, margin[x] + 2.5);
       }
 
       // beide Raender mit derselben Catmull-Rom-Kurve -> kongruente Girlanden
