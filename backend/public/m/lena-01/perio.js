@@ -996,8 +996,22 @@
         }
       }
 
-      // Apikale Kante = kongruente Girlande. Endkappen kurz halten —
+      // Apikale Kante: folgt NICHT den Papillen nach koronal, sondern einer
+      // geglaetteten Zenit-Huellkurve (erodiertes Margin-Profil). Unter den
+      // Papillen bleibt so ein deutlich breiterer Saum stehen; an den
+      // Zahnhaelsen misst das Band weiterhin GUM_H. Endkappen kurz halten —
       // lange CAP + steiler Ast = Nadelspitze.
+      const ERO = 35;   // halbe Fensterbreite ~ Zahnteilung/2 (Papille erfasst)
+      const env = new Array(CW);
+      for (let x = 0; x < CW; x++) {
+        const a = Math.max(gx0, x - ERO), b = Math.min(gx1, x + ERO);
+        let m = margin[Math.max(gx0, Math.min(gx1, x))];
+        for (let i = a; i <= b; i++) {
+          m = upper ? Math.min(m, margin[i]) : Math.max(m, margin[i]);
+        }
+        env[x] = m;
+      }
+      const envSm = smoothArr(env, 21);
       const apical = new Array(CW);
       const CAP = 8;
       for (let x = 0; x < CW; x++) {
@@ -1007,10 +1021,11 @@
           const t = edge / CAP;
           h *= Math.max(0.2, Math.sqrt(t * (2 - t)));
         }
-        const y = margin[x] - crownward * h;
-        apical[x] = upper
-          ? Math.min(y, margin[x] - 2.5)
-          : Math.max(y, margin[x] + 2.5);
+        // Banddicke = GUM_H am Zenit + Papillenhoehe (gedeckelt, z.B. neben
+        // Extraktionskaemmen), so bleibt die Naht glatt und kippt nie um.
+        const papilla = Math.max(0, (envSm[x] - margin[x]) * apicalDir);
+        const th = Math.max(2.5, h + Math.min(papilla, GUM_H * 0.9));
+        apical[x] = margin[x] + apicalDir * th;
       }
 
       // beide Raender mit derselben Catmull-Rom-Kurve -> kongruente Girlanden
