@@ -750,7 +750,7 @@
    * Gingiva-Margin. liveCrest = Knochenkante inkl. Abbau/Extraktion.
    * extractMask[x]=1: Margin liegt bereits auf dem Live-Kamm (kein zweites LOSS).
    */
-  function gumMarginArr(cols, base, upper, liveCrest, extractMask) {
+  function gumMarginArr(cols, base, upper, liveCrest, extractMask, papMask) {
     const crownward = upper ? 1 : -1;
     const [gx0, gx1] = gumRangeX(upper);
     const boneEdge = BONE_EDGE && BONE_EDGE[upper ? "up" : "lo"];
@@ -819,11 +819,16 @@
       }
       const yL = L.seg.ys[L.seg.ys.length - 1];
       const yR = R.seg.ys[0];
-      const amp = Math.min(2.8, gap * 0.18);
+      // Papille laenger + spitzer (Feedback 22 distal: zu rund/kurz →
+      // schwarzes Dreieck im Interdentalraum). Geschaerftes Sinus-Profil;
+      // papMask merkt die Spitze fuer die Re-Injektion nach der Glaettung.
+      const amp = Math.min(6.5, gap * 0.42);
       for (let x = L.x1 + 1; x < R.x0; x++) {
         if (Number.isFinite(arr[x])) continue;
         const t = (x - L.x1) / gap;
-        arr[x] = yL + (yR - yL) * t + crownward * amp * Math.sin(Math.PI * t);
+        const prof = Math.pow(Math.sin(Math.PI * t), 1.5);
+        arr[x] = yL + (yR - yL) * t + crownward * amp * prof;
+        if (papMask) papMask[x] = Math.max(papMask[x] || 0, prof);
       }
     }
 
@@ -925,9 +930,18 @@
   }
 
   function marginPoints(margin, gx0, gx1) {
+    // 3-px-Raster PLUS lokale Extrema: sonst verfehlt das Raster die
+    // Papillenspitze um 1-2 px und die Catmull-Kurve stumpft sie ab
     const pts = [];
-    for (let x = gx0; x <= gx1; x += 3) pts.push({ x, y: margin[x] });
-    if (pts[pts.length - 1].x !== gx1) pts.push({ x: gx1, y: margin[gx1] });
+    let lastX = -Infinity;
+    for (let x = gx0; x <= gx1; x++) {
+      const isPeak = x > gx0 && x < gx1
+        && (margin[x] - margin[x - 1]) * (margin[x + 1] - margin[x]) < 0;
+      if (x === gx0 || x === gx1 || isPeak || x - lastX >= 3) {
+        pts.push({ x, y: margin[x] });
+        lastX = x;
+      }
+    }
     return pts;
   }
 
@@ -943,7 +957,8 @@
       const apicalDir = upper ? -1 : 1;
       const [gx0, gx1] = gumRangeX(upper);
       const extractMask = new Array(CW).fill(0);
-      const raw = gumMarginArr(cols, base, upper, live, extractMask);
+      const papMask = new Array(CW).fill(0);
+      const raw = gumMarginArr(cols, base, upper, live, extractMask, papMask);
       // Par-Abbau nur an vorhandenen Zaehnen; Extraktionskamm ist schon live
       const lossArr = LOSS_PX[key] || new Array(CW).fill(0);
       for (let x = 0; x < CW; x++) {
@@ -955,6 +970,12 @@
       for (let x = gx1 + 1; x < CW; x++) raw[x] = raw[gx1];
       // weich glaetten; Extraktionskamm + retromolar danach sanft auf Kamm
       const margin = smoothArr(smoothArr(raw, 9), 7);
+      // Papillenspitzen re-injizieren: die Glaettung buegelt sie sonst rund
+      // und kurz (schwarzes Dreieck interdental, Feedback 22 distal)
+      for (let x = gx0; x <= gx1; x++) {
+        const w = papMask[x] * 0.9;
+        if (w > 0) margin[x] = margin[x] * (1 - w) + raw[x] * w;
+      }
       const crestY = (x) => {
         const cx = Math.max(0, Math.min(CW - 1, x));
         if (live && Number.isFinite(live[cx])) return live[cx];
