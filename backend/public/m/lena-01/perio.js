@@ -369,7 +369,11 @@
   // Aussenkontur eines Pfads glaetten: gleichmaessig abtasten, zyklisch
   // mitteln, als geschlossene Catmull-Rom-Kurve neu aufbauen. Entfernt die
   // zackeligen Vertex-Ketten der Original-Wurzelpfade (14/16-18/24-28).
-  function smoothPathD(d, samples) {
+  // Geschlossenen Pfad resampeln, mehrfach glaetten und optional nach AUSSEN
+  // versetzen. offsetPx > 0 schiebt die Kontur entlang der Normalen vom
+  // Schwerpunkt weg — der dunkle Umriss liegt dann AUSSEN um die gezeichnete
+  // Wurzel statt auf ihrer Innenseite (Chef 20.07.).
+  function smoothPathD(d, samples, passes, offsetPx) {
     const tmp = document.createElementNS(SVGNS, "svg");
     tmp.setAttribute("width", "0");
     tmp.setAttribute("height", "0");
@@ -384,15 +388,33 @@
       const L = p.getTotalLength();
       const m = samples || 44;
       if (L > 40) {
-        const pts = [];
+        let pts = [];
         for (let i = 0; i < m; i++) {
           const q = p.getPointAtLength((L * i) / m);
           pts.push({ x: q.x, y: q.y });
         }
-        const sm = pts.map((_, i) => {
-          const a = pts[(i - 1 + m) % m], b = pts[i], c = pts[(i + 1) % m];
-          return { x: (a.x + 2 * b.x + c.x) / 4, y: (a.y + 2 * b.y + c.y) / 4 };
-        });
+        const rounds = Math.max(1, passes || 1);
+        for (let r = 0; r < rounds; r++) {
+          pts = pts.map((_, i) => {
+            const a = pts[(i - 1 + m) % m], b = pts[i], c = pts[(i + 1) % m];
+            return { x: (a.x + 2 * b.x + c.x) / 4, y: (a.y + 2 * b.y + c.y) / 4 };
+          });
+        }
+        if (offsetPx) {
+          let cx = 0, cy = 0;
+          pts.forEach((q) => { cx += q.x; cy += q.y; });
+          cx /= m; cy /= m;
+          pts = pts.map((q, i) => {
+            const a = pts[(i - 1 + m) % m], c = pts[(i + 1) % m];
+            let nx = -(c.y - a.y), ny = c.x - a.x;
+            const nl = Math.hypot(nx, ny) || 1;
+            nx /= nl; ny /= nl;
+            // Normale vom Schwerpunkt weg orientieren
+            if (nx * (q.x - cx) + ny * (q.y - cy) < 0) { nx = -nx; ny = -ny; }
+            return { x: q.x + nx * offsetPx, y: q.y + ny * offsetPx };
+          });
+        }
+        const sm = pts;
         let dd = `M ${sm[0].x.toFixed(1)} ${sm[0].y.toFixed(1)}`;
         for (let i = 0; i < m; i++) {
           const p0 = sm[(i - 1 + m) % m], p1 = sm[i];
@@ -434,8 +456,58 @@
       hits.sort((a, b) =>
         (b.b.x1 - b.b.x0) * (b.b.y1 - b.b.y0) - (a.b.x1 - a.b.x0) * (a.b.y1 - a.b.y0));
       // alle gezeichneten Wurzel-Formen uebernehmen (max. 3), nicht nur die
-      // groesste -- Konturen dabei glaetten (weiche Linie statt Zacken)
-      EXTRA_ROOTS[fdi] = hits.slice(0, 3).map((p) => smoothPathD(p.d, 44));
+      // groesste. Kraeftig glaetten (3 Passes, 72 Samples — Zacken weg) und
+      // 2 px nach aussen versetzen: der Umriss sitzt AUSSEN um die Wurzel,
+      // nicht auf der Innenseite der Zeichnung (Chef 20.07.).
+      EXTRA_ROOTS[fdi] = hits.slice(0, 3).map((p) => smoothPathD(p.d, 72, 3, 2));
+    });
+    // Obere 6er/7er: die erkannten #BCAE95-Formen sind nur Dentin-Zungen/
+    // Innenflaechen — als umrandete Formen wirkten sie wie haessliche
+    // Schlaufen ueber den bukkalen Wurzeln. Ersetzt durch eine sauber
+    // konstruierte Palatinalwurzel (buildPalatalRoots, nach CEJ-Abtastung).
+    [16, 17, 26, 27].forEach((fdi) => { delete EXTRA_ROOTS[fdi]; });
+  }
+
+  // Palatinalwurzel der oberen Molaren neu zeichnen: breite, weich
+  // zulaufende Wurzel mittig HINTER den bukkalen Wurzeln, Apex leicht nach
+  // distal geneigt, etwas kuerzer als die bukkalen Apizes. Basis liegt 6 px
+  // in der Kronenzone — das Wurzelband-Clip (st-rt) schneidet sie an der
+  // CEJ ab, sichtbar sind nur Flanken und Apex.
+  function buildPalatalRoots() {
+    [16, 17, 26, 27].forEach((fdi) => {
+      const silD = SIL[fdi];
+      const seg = SOURCE_CEJ_ARR[fdi];
+      if (!silD || !seg) return;
+      const sb = pathBounds(silD);
+      if (!sb) return;
+      let cerv = 0;
+      seg.ys.forEach((y) => { cerv += y; });
+      cerv /= seg.ys.length;
+      const w = sb.x1 - sb.x0;
+      const cx = (sb.x0 + sb.x1) / 2;
+      const rootLen = cerv - sb.y0;          // Oberkiefer: Apex oben
+      if (rootLen < 40 || w < 30) return;
+      const dxAp = (fdi < 20 ? -1 : 1) * w * 0.05;
+      const bw = w * 0.30;                   // halbe Basisbreite
+      const aw = w * 0.10;                   // halbe Apexbreite
+      const yB = cerv + 6;
+      const yA = sb.y0 + rootLen * 0.08;
+      const pts = [
+        [cx - bw, yB],
+        [cx - bw * 0.98, yB - rootLen * 0.30],
+        [cx - bw * 0.82, yB - rootLen * 0.56],
+        [cx + dxAp - aw * 1.7, yB - rootLen * 0.78],
+        [cx + dxAp - aw, yA + rootLen * 0.05],
+        [cx + dxAp, yA],
+        [cx + dxAp + aw, yA + rootLen * 0.05],
+        [cx + dxAp + aw * 1.7, yB - rootLen * 0.78],
+        [cx + bw * 0.82, yB - rootLen * 0.56],
+        [cx + bw * 0.98, yB - rootLen * 0.30],
+        [cx + bw, yB],
+        [cx, yB + 4],
+      ];
+      const d = "M " + pts.map(([x, y]) => x.toFixed(1) + " " + y.toFixed(1)).join(" L ") + " Z";
+      EXTRA_ROOTS[fdi] = [smoothPathD(d, 72, 2, 0)];
     });
   }
 
@@ -3072,6 +3144,7 @@
     await rasterizeTeethSource();
     readExtraRoots(teethTxt);
     COLS.cols.forEach((c) => { SOURCE_CEJ_D[c.fdi] = cejFromRaster(c); });
+    buildPalatalRoots();
     APEXX = {};
     COLS.cols.forEach((c) => { APEXX[c.fdi] = apexCenterX(c.fdi, c.upper); });
     BASE_UP = smoothArr(EDGES.gumUp, 111);
