@@ -429,6 +429,25 @@
     .step-chip.is-now .n { background: var(--lena); color: #fff; }
     .step-chip.is-done { color: var(--green); border-color: rgba(52,211,153,.25); }
     .step-chip.is-done .n { background: rgba(52,211,153,.25); color: var(--green); }
+    /* 01-Modus: bewusst betont (erscheint erst nach Patientenauswahl) */
+    .step-chip.chip-01 {
+      flex: 0 0 auto; padding: 8px 14px; color: #ffe9fb;
+      background: linear-gradient(135deg, rgba(216,98,200,.32), rgba(122,44,138,.38));
+      border-color: rgba(240,140,222,.55);
+      box-shadow: 0 0 14px rgba(216,98,200,.35);
+      animation: pulse01 2.6s ease-in-out infinite;
+    }
+    .step-chip.chip-01 .n { background: #d862c8; color: #fff; box-shadow: 0 0 8px rgba(216,98,200,.7); }
+    .btn.btn-01 {
+      background: linear-gradient(135deg, #d862c8, #8b2f9e);
+      box-shadow: 0 8px 20px rgba(216,98,200,.4);
+      animation: pulse01 2.6s ease-in-out infinite;
+    }
+    @keyframes pulse01 {
+      0%, 100% { box-shadow: 0 0 10px rgba(216,98,200,.28); }
+      50% { box-shadow: 0 0 20px rgba(216,98,200,.55); }
+    }
+    [hidden] { display: none !important; }
     .wiz { display: none; flex: 1; min-height: 0; gap: 10px; overflow: hidden; }
     .wiz.is-show { display: grid; }
     .wiz-arzt { grid-template-columns: 1.2fr .8fr; }
@@ -979,7 +998,7 @@
           <div class="step-chip" data-step="4"><span class="n">4</span>Nachdiktat</div>
           <div class="step-chip" data-step="5"><span class="n">5</span>Summary</div>
           <div class="step-chip" data-step="6"><span class="n">6</span>Sophie</div>
-          <a class="step-chip" id="btnLena01" href="/m/lena-01/perio.html?v=20260720k" title="01-Modus" style="text-decoration:none;margin-left:auto">
+          <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/perio.html?v=20260720l" title="01-Modus" style="text-decoration:none;margin-left:auto" hidden>
             <span class="n">01</span>01-Modus
           </a>
         </div>
@@ -992,7 +1011,7 @@
             <div class="doc-grid" id="doctors"></div>
             <div class="actions">
               <span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span>
-              <a class="btn btn-ghost" id="btnLena01Panel" href="/m/lena-01/perio.html?v=20260720k" style="text-decoration:none">01-Modus</a>
+              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/perio.html?v=20260720l" style="text-decoration:none" hidden>01-Modus</a>
               <button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button>
             </div>
           </div>
@@ -2316,14 +2335,18 @@
         if (a.doctorName) selectedDoc = a.doctorName;
       }
       function syncLena01Links() {
+        // 01-Modus erst anbieten, wenn ein Patient/Termin ausgewaehlt ist —
+        // der Patientenname wandert mit in den Seitentitel des 01-Schemas.
         const name = (selectedAppt && selectedAppt.name && selectedAppt.name !== "—")
           ? selectedAppt.name
           : "";
-        const href = "/m/lena-01/perio.html?v=20260720k"
+        const href = "/m/lena-01/perio.html?v=20260720l"
           + (name ? ("&patient=" + encodeURIComponent(name)) : "");
         ["btnLena01", "btnLena01Panel"].forEach((id) => {
           const a = $(id);
-          if (a) a.href = href;
+          if (!a) return;
+          a.href = href;
+          a.hidden = !name;
         });
       }
       function renderFeats(a) {

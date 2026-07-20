@@ -2892,7 +2892,8 @@
     if (!el) return;
     const q = new URLSearchParams(location.search);
     const name = (q.get("patient") || q.get("name") || "").trim();
-    el.textContent = name ? ("01 - " + name) : "01 - Patientenname";
+    el.textContent = name ? ("01 - " + name) : "01-Modus";
+    if (name) document.title = "Lena · 01 · " + name;
   }
 
   async function boot() {
