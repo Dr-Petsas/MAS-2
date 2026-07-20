@@ -1064,19 +1064,25 @@
           if (extractMask[x]) { wgt *= 0.5; break; } // neben Luecke sanfter
         }
         const yL = margin[x0], yR = margin[x1];
-        // Amplitude = ECHTE Zenit-Tiefe der bestehenden Margin (sonst
-        // schiebt ein zu flacher Ideal-Bogen die Gingiva auf die Krone)
+        // Amplitude: NIE unter der anatomischen Mindest-Bogentiefe und NIE
+        // flacher als der Bestand. Molaren liefern aus dem Raster eine fast
+        // flache CEJ, und die Interdental-Papillen sind dort winzig — die
+        // Sehne (yL->yR) liegt quasi AUF dem Zenit, der Bogen wurde
+        // horizontal (Chef 20.07.: "verliert die Bogenform"). Mindesttiefe
+        // deshalb kraeftig und breitenskaliert; apikal ist sicher (nie auf
+        // die Krone). Bestehende tiefe Boegen (Praemolaren) nicht deckeln.
         let D = 0;
         for (let x = x0 + 1; x < x1; x++) {
           const t = (x - x0) / w;
           D = Math.max(D, apicalDir * (margin[x] - (yL + (yR - yL) * t)));
         }
-        const A = Math.max(digit >= 6 ? 3.8 : 2.5, Math.min(9, D));
-        const easeW = (t) => { const u = Math.min(1, t / 0.22); return u * u * (3 - 2 * u); };
+        const minA = digit >= 6 ? Math.max(12, w * 0.2) : 6;
+        const A = Math.min(18, Math.max(minA, D));
+        const easeW = (t) => { const u = Math.min(1, t / 0.26); return u * u * (3 - 2 * u); };
         for (let x = x0 + 1; x < x1; x++) {
           const t = (x - x0) / w;
           const arc = yL + (yR - yL) * t
-            + apicalDir * A * Math.pow(Math.sin(Math.PI * t), 0.85);
+            + apicalDir * A * Math.sin(Math.PI * t);
           // Randzonen (Papillenflanken) original lassen, Mitte runden
           const w2 = wgt * easeW(Math.min(t, 1 - t));
           margin[x] = margin[x] * (1 - w2) + arc * w2;
@@ -1150,11 +1156,13 @@
         env[x] = m;
       }
       const envSm = smoothArr(env, 21);
-      // Apikale Kante: wellig und LEICHT kongruent zur CEJ-Girlande —
-      // Basis ist die Zenit-Huellkurve + GUM_H, darauf 45 Prozent der
-      // Margin-Form. Unter den Papillen bleibt so ein breiter Saum
-      // (55 Prozent der Papillenhoehe), aber die Welle schwingt sichtbar mit.
-      const CONG = 0.45;
+      // Apikale Kante: BOGENFOERMIG kongruent zur CEJ-Girlande (Chef 20.07.:
+      // auch die apikale Seite muss die Bogenform zeigen, nicht horizontal).
+      // Die Zenit-Boegen werden stark mitgefahren (Rate ~0.85), die Papillen-
+      // Spitzen laufen aber in eine Saettigung — unter den Papillen bleibt
+      // der breite Saum erhalten (Anforderung 20.07. frueher am Tag).
+      const SAT = GUM_H * 0.55;   // maximale Anhebung unter Papillen (px)
+      const RATE = 0.85;          // Kongruenz an den Bogen-Flanken
       const apical = new Array(CW);
       const CAP = 8;
       for (let x = 0; x < CW; x++) {
@@ -1165,8 +1173,8 @@
           h *= Math.max(0.2, Math.sqrt(t * (2 - t)));
         }
         const devCor = Math.max(0, (margin[x] - envSm[x]) * crownward);
-        const y = envSm[x] + apicalDir * h
-          + crownward * Math.min(devCor, GUM_H * 1.4) * CONG;
+        const rise = SAT * (1 - Math.exp(-(RATE * devCor) / SAT));
+        const y = envSm[x] + apicalDir * h + crownward * rise;
         apical[x] = upper
           ? Math.min(y, margin[x] - 2.5)
           : Math.max(y, margin[x] + 2.5);
