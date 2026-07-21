@@ -184,6 +184,11 @@
     "(?!\\s*" + UNIT_AFTER + ")",
     "gi",
   );
+  // Schema-Diktat: "1 2" / "1  5" (ohne Komma) — haeufig bei schnellem Ansagen.
+  const RE_PAIR_SPACE = new RegExp(
+    "(^|[^\\d,.])([1-4])\\s+([1-8])(?!\\d)(?!\\s*" + UNIT_AFTER + ")",
+    "gi",
+  );
   // Kompakt-Diktat "16x14x" / "46x": x direkt an der Zahl, ohne Wortgrenze.
   const RE_COMPACT_X = /([1-4][1-8])\s*([xX])(?=$|[\s.,;:]|[1-4])/g;
 
@@ -197,8 +202,39 @@
       const fdi = a + b;
       return ALL_FDI.has(Number(fdi)) ? (pre + fdi) : m;
     });
+    // Mehrfach: "1 6 1 4" -> "16 14"
+    for (let i = 0; i < 8; i++) {
+      const next = s.replace(RE_PAIR_SPACE, (m, pre, a, b) => {
+        const fdi = a + b;
+        return ALL_FDI.has(Number(fdi)) ? (pre + fdi) : m;
+      });
+      if (next === s) break;
+      s = next;
+    }
     s = s.replace(RE_COMPACT_X, "$1 x ");
     return s;
+  }
+
+  /* ── Schema-Diktat: Garble-Aliasse (Live-Diktate 21.07. abends) ──────────
+     Parakeet/Whisper verhoeren einzelne Zahl-Woerter systematisch, wenn der
+     Anlaut fehlt: "vier" -> "hier/wir/fear", "drei" -> "right/frei/bei",
+     "zwei" -> "zeit/why". NUR im Schema-Schritt anwenden (dort werden
+     ausschliesslich Ziffern + Befunde erwartet) — in den Text-Boxen sind
+     "hier"/"bei" normale Woerter. */
+  const SCHEMA_DIGIT_ALIAS = {
+    hier: "vier", hia: "vier", wir: "vier", wier: "vier", fear: "vier", via: "vier",
+    bei: "drei", by: "drei", right: "drei", frei: "drei",
+    zeit: "zwei", why: "zwei", wei: "zwei", zwo: "zwei",
+    sex: "sechs", sechse: "sechs",
+  };
+  const RE_ALIAS_TOKEN = /[a-zA-ZäöüßÄÖÜ]+/g;
+  function schemaDigitAlias(text) {
+    return String(text || "").replace(RE_ALIAS_TOKEN, (w) => {
+      const k = w.toLowerCase();
+      return Object.prototype.hasOwnProperty.call(SCHEMA_DIGIT_ALIAS, k)
+        ? SCHEMA_DIGIT_ALIAS[k]
+        : w;
+    });
   }
 
   function isKzbv(code) {
@@ -239,6 +275,8 @@
     LAYER_OF,
     markForLayer,
     normalizeToothText,
+    schemaDigitAlias,
+    DIGIT_WORD,
     isKzbv,
     labelOf,
     TO_PERIO,

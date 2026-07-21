@@ -105,7 +105,175 @@
       gapCount: 0,
       lastTouchedKey: "",
       dictMode: null, // null = auto | "befund" = Befund-Diktat (Trigger-Wort)
+      page: "doku", // "schema" = nur Zahnschema | "doku" = Text-Boxen
     };
+  }
+
+  /* Schema-Diktat: Segment besteht NUR aus einer Einzelziffer ("Vier.",
+     "6", "und drei")? Dann Quadrant+Zahn ueber Segmentgrenzen paaren —
+     der Arzt diktiert Ziffer fuer Ziffer, das VAD trennt die Woerter. */
+  const SINGLE_DIGIT_RE = new RegExp(
+    "^(?:so|und|dann|jetzt|zahn|der|die|das)?[\\s,.:;!?-]*" +
+    "([1-8]|eins|zwei|zwo|drei|vier|f(?:ue|ü)nf|fuenf|sechs|sieben|acht)" +
+    "[\\s,.!?;:]*$",
+    "i",
+  );
+  const DIGIT_WORD_LOCAL = {
+    eins: "1", zwei: "2", zwo: "2", drei: "3", vier: "4",
+    fuenf: "5", "fünf": "5", sechs: "6", sieben: "7", acht: "8",
+  };
+  function singleDigitOf(text) {
+    const m = SINGLE_DIGIT_RE.exec(String(text || "").trim());
+    if (!m) return null;
+    const t = m[1].toLowerCase();
+    if (/^[1-8]$/.test(t)) return t;
+    return DIGIT_WORD_LOCAL[t] || null;
+  }
+
+  /**
+   * Schema-Seite: Chart aus Segmenten NEU aufbauen (idempotent).
+   * Keine Text-Boxen — Lena erwartet hier nur Ziffern + Marks.
+   * Vorverarbeitung: Garble-Aliasse (hier->vier) + Einzelziffern-Paarung.
+   */
+  function applySchemaSegments(state, segments) {
+    if (!state) return state;
+    state.page = "schema";
+    state.teeth = new Set();
+    state.lastChartFdi = null;
+    state.chart = global.LenaVoiceChart ? global.LenaVoiceChart.emptyChart() : null;
+    const KAT = global.LenaZahnstatusKatalog;
+    const alias = KAT && KAT.schemaDigitAlias ? KAT.schemaDigitAlias : (t) => t;
+    const allFdi = KAT && KAT.ALL_FDI ? KAT.ALL_FDI : null;
+    const PAIR_WINDOW_MS = 8000;
+    const items = (segments || [])
+      .map((s) => ({
+        text: alias(String(s.text || s.textCorrected || "").trim()),
+        at: Number(s.startMs) || 0,
+      }))
+      .filter((x) => x.text);
+    const texts = [];
+    let pend = null; // { d: "1".."4", at: ms }
+    for (const it of items) {
+      const d = singleDigitOf(it.text);
+      if (d != null) {
+        if (pend && (!pend.at || !it.at || it.at - pend.at <= PAIR_WINDOW_MS)) {
+          const fdi = pend.d + d;
+          if (!allFdi || allFdi.has(Number(fdi))) {
+            texts.push(fdi);
+            pend = null;
+            continue;
+          }
+        }
+        pend = /^[1-4]$/.test(d) ? { d, at: it.at } : null;
+        continue;
+      }
+      texts.push(it.text);
+    }
+    state.pendingDigit = pend ? pend.d : "";
+    state.pendingDigitAt = pend ? pend.at : 0;
+    if (!texts.length) {
+      state.values.zaehne = "";
+      state.status.zaehne = "empty";
+      return state;
+    }
+    for (const t of texts) {
+      for (const z of extractTeeth(t)) state.teeth.add(z);
+    }
+    if (state.chart && global.LenaVoiceChart) {
+      const last = global.LenaVoiceChart.applySegments(
+        state.chart,
+        texts.map((t) => ({ text: t })),
+      );
+      if (last) {
+        state.lastChartFdi = last;
+        state.teeth.add(last);
+      }
+      const lines = global.LenaVoiceChart.summaryLines
+        ? global.LenaVoiceChart.summaryLines(state.chart)
+        : [];
+      const marked = new Set(lines.map((l) => parseInt(l, 10)));
+      const namedOnly = [...state.teeth]
+        .filter((z) => !marked.has(z))
+        .sort((a, b) => a - b);
+      const zparts = lines.slice();
+      if (namedOnly.length) zparts.push("genannt: " + namedOnly.join(", "));
+      state.values.zaehne = zparts.join(" · ");
+      state.status.zaehne = zparts.length ? "live" : "empty";
+    } else if (state.teeth.size) {
+      state.values.zaehne = "Zahn " + [...state.teeth].sort((a, b) => a - b).join(", ");
+      state.status.zaehne = "live";
+    }
+    return state;
+  }
+
+  /** Grosse Schema-Ansicht (ohne Befund-/Therapie-Boxen). */
+  function renderSchemaOnly(container, state) {
+    if (!container || !state) return;
+    const named = state.teeth || new Set();
+    const list = [...named].sort((a, b) => a - b);
+    const chartHtml = global.LenaVoiceChart && state.chart
+      ? global.LenaVoiceChart.renderSchemaHtml(state.chart, state.lastChartFdi || null, state.teeth)
+      : "";
+    // Halbe Ansage ("Vier ...") sichtbar machen — nur wenn frisch (<10 s).
+    const pendFresh = state.pendingDigit
+      && (!state.pendingDigitAt || Date.now() - state.pendingDigitAt < 10000);
+    const pendHtml = pendFresh
+      ? ' <span class="zs-pend">' + escapeHtml(state.pendingDigit) + "&hellip;</span>"
+      : "";
+    const live = list.length || pendFresh
+      ? '<div class="zs-live-line">Aktiv: <b>' + escapeHtml(list.join(" · ")) + "</b>" + pendHtml + "</div>"
+      : '<div class="zs-live-line zs-live-line--empty">Sag eine Zahnnummer — z.&nbsp;B. <b>12</b>, <b>15</b>, <b>34</b></div>';
+    container.innerHTML = (
+      '<div class="tpl-title tpl-title--schema">' +
+      "<h2>Zahnschema</h2>" +
+      '<span class="tpl-mode" id="tplMode">● nur Ziffern + Befund/Therapie</span>' +
+      "</div>" +
+      '<p class="zs-schema-lead">Hier landet nur das Schema. Text-Boxen folgen auf der nächsten Seite.</p>' +
+      live +
+      chartHtml +
+      (state.values.zaehne
+        ? '<div class="tpl-val zs-schema-sum">' + escapeHtml(state.values.zaehne) + "</div>"
+        : "")
+    );
+  }
+
+  /** Box-Doku ohne grosses Schema (Schema war eigene Seite). */
+  function renderBoxesOnly(container, state) {
+    if (!container || !state) return;
+    state.page = "doku";
+    const parts = [];
+    parts.push(
+      '<div class="tpl-title"><h2>Dokumentation</h2>' +
+      '<span class="tpl-gaps" id="tplGaps">Lücken: ' + (state.gapCount || 0) + "</span></div>"
+    );
+    if (state.values.zaehne) {
+      parts.push(
+        '<div class="tpl-field is-pre tpl-field--wide" data-key="zaehne">' +
+        '<div class="tpl-lab">Zähne / Status <span class="tpl-badge pre">aus Schema</span></div>' +
+        '<div class="tpl-val">' + escapeHtml(state.values.zaehne) + "</div></div>"
+      );
+    }
+    parts.push(fieldHtml("Anlass", "anlass", state));
+    parts.push(fieldHtml("Anamnese-Risiken", "anamnese", state));
+    parts.push(fieldHtml("Befund", "befund", state));
+    parts.push(fieldHtml("Diagnose", "diagnose", state));
+    parts.push(fieldHtml("Therapie", "therapie", state));
+    for (const b of TEMPLATE.blocks) {
+      if (!state.openBlocks.has(b.id)) continue;
+      parts.push('<div class="tpl-block" data-block="' + b.id + '">');
+      parts.push(
+        '<div class="tpl-block-head">' + escapeHtml(b.title) +
+        (b.hint ? "<em>" + escapeHtml(b.hint) + "</em>" : "") +
+        '</div><div class="tpl-block-body">'
+      );
+      for (const f of b.fields) parts.push(fieldHtml(f.label, f.key, state));
+      parts.push("</div></div>");
+    }
+    parts.push(fieldHtml("Aufklärung", "aufklaerung", state));
+    parts.push(fieldHtml("Komplikationen", "komplikationen", state));
+    parts.push(fieldHtml("Procedere", "procedere", state));
+    container.innerHTML = parts.join("");
+    focusLastTouched(container, state);
   }
 
   /**
@@ -393,6 +561,10 @@
    */
   function applySegments(state, segments) {
     if (!state) return state;
+    // Schema-Seite hat eigenen Pfad (keine Boxen).
+    if (state.page === "schema") {
+      return applySchemaSegments(state, segments);
+    }
     const texts = (segments || [])
       .map((s) => String(s.text || s.textCorrected || "").trim())
       .filter(Boolean);
@@ -405,10 +577,16 @@
     // im Befund-Diktat ist Bestand und darf keinen Fuellung-Block oeffnen.
     const all = routed.filter((r) => !r.forced).map((r) => r.text).join("\n");
 
+    // Chart idempotent neu aufbauen (volle Segmentliste), dann Text-Boxen.
+    // UI der Doku-Seite zeigt das Schema nicht — Stand bleibt in state.chart
+    // fuer Summary / "aus Schema"-Zeile.
+    state.teeth = new Set();
+    state.lastChartFdi = null;
     for (const r of routed) {
       for (const z of extractTeeth(r.text)) state.teeth.add(z);
     }
-    if (state.chart && global.LenaVoiceChart) {
+    if (global.LenaVoiceChart) {
+      state.chart = global.LenaVoiceChart.emptyChart();
       const chartSegs = routed.map((r) => ({
         text: r.text,
         forceLayer: r.forced ? "befund" : "",
@@ -421,8 +599,6 @@
       const lines = global.LenaVoiceChart.summaryLines
         ? global.LenaVoiceChart.summaryLines(state.chart)
         : [];
-      // Genannte Zaehne OHNE Kuerzel trotzdem anzeigen (Erkennungs-Feedback:
-      // "12, 15, 34 ..." soll sofort sichtbar sein, Chef 21.07.).
       const marked = new Set(lines.map((l) => parseInt(l, 10)));
       const namedOnly = [...state.teeth]
         .filter((z) => !marked.has(z))
@@ -430,14 +606,9 @@
       const zparts = lines.slice();
       if (namedOnly.length) zparts.push("genannt: " + namedOnly.join(", "));
       if (zparts.length) {
-        // Berechnete Zusammenfassung: immer ERSETZEN, nie anhaengen —
-        // setField wuerde beim Wechsel genannt->markiert Altstaende stapeln.
         state.values.zaehne = zparts.join(" · ");
         state.status.zaehne = "live";
       }
-    } else if (state.teeth.size) {
-      const list = [...state.teeth].sort((a, b) => a - b).join(", ");
-      setField(state, "zaehne", "Zahn " + list, "live");
     }
 
     // Befund / Therapie / Diagnose
@@ -679,8 +850,11 @@
     nextSouffleHint,
     openGapPrompts,
     applySegments,
+    applySchemaSegments,
     routeSegments,
     render,
+    renderSchemaOnly,
+    renderBoxesOnly,
     focusLastTouched,
     toStructuredText,
     corpus,

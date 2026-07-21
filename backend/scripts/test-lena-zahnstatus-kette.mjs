@@ -242,5 +242,88 @@ check("Ansage->Befund: 34 raus aus 'genannt'", !/genannt:[^·]*34/.test(stN.valu
 const htmlN2 = W.LenaVoiceChart.renderSchemaHtml(stN.chart, 34, stN.teeth);
 check("Ansage->Befund: 34 hat has-mark statt is-named", /class="zs-cell zs-num[^"]*has-mark[^"]*" data-fdi="34"/.test(htmlN2) && !/is-named[^"]*" data-fdi="34"/.test(htmlN2), "");
 
+// 12) Schema-Seite getrennt von Boxen: nur Chart, keine Text-Boxen.
+const stSch = W.LenaDokuZahn.emptyState("Kontrolle");
+stSch.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stSch, [
+  { text: "1 2" },
+  { text: "15" },
+  { text: "drei vier Karies okklusal" },
+]);
+check("Schema: 12 aus '1 2'", stSch.teeth.has(12), [...stSch.teeth].join(","));
+check("Schema: 15", stSch.teeth.has(15), [...stSch.teeth].join(","));
+check("Schema: 34 + co", (stSch.chart?.[34]?.befund || "").includes("co"), JSON.stringify(stSch.chart?.[34]));
+check("Schema: Befund-Box bleibt leer", !(stSch.values.befund || "").trim(), stSch.values.befund || "(leer)");
+check("Schema: Therapie-Box bleibt leer", !(stSch.values.therapie || "").trim(), stSch.values.therapie || "(leer)");
+// Box-Seite: volle Segmentliste (Schema + Doku) — Chart bleibt aus Schema-Zeilen,
+// neue Klinik-Saetze fuellen die Boxen.
+stSch.page = "doku";
+W.LenaDokuZahn.applySegments(stSch, [
+  { text: "1 2" },
+  { text: "15" },
+  { text: "drei vier Karies okklusal" },
+  { text: "Perkussion negativ, keine Komplikationen." },
+]);
+check("Doku: Chart 34 bleibt co", (stSch.chart?.[34]?.befund || "").includes("co"), JSON.stringify(stSch.chart?.[34]));
+check("Doku: Befund-Box gefuellt", /perkussion/i.test(stSch.values.befund || ""), stSch.values.befund);
+
+// 13) ECHTE Garbles vom Zahlen-Diktat 21.07. abends (Session 21:15/21:23/21:37):
+//     "Hier sechs" = "vier sechs" (Anlaut weg), "Bei fünf" = "drei fünf",
+//     "Zeit" = "zwei". Aliasse gelten NUR auf der Schema-Seite.
+const K2 = W.LenaZahnstatusKatalog;
+check("Alias: 'Hier sechs.' -> vier sechs", /vier sechs/i.test(K2.schemaDigitAlias("Hier sechs.")), K2.schemaDigitAlias("Hier sechs."));
+check("Alias: 'Bei fünf.' -> drei fünf", /drei fünf/i.test(K2.schemaDigitAlias("Bei fünf.")), K2.schemaDigitAlias("Bei fünf."));
+const stG = W.LenaDokuZahn.emptyState("");
+stG.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stG, [
+  { text: "Hier sechs." },   // -> 46
+  { text: "Hier, fünf." },   // -> 45
+  { text: "Bei fünf." },     // -> 35
+  { text: "Hier sieben." },  // -> 47
+]);
+check("Garble: 46 aus 'Hier sechs'", stG.teeth.has(46), [...stG.teeth].join(","));
+check("Garble: 45 aus 'Hier, fünf'", stG.teeth.has(45), [...stG.teeth].join(","));
+check("Garble: 35 aus 'Bei fünf'", stG.teeth.has(35), [...stG.teeth].join(","));
+check("Garble: 47 aus 'Hier sieben'", stG.teeth.has(47), [...stG.teeth].join(","));
+
+// Doku-Seite: "hier"/"bei" bleiben normale Woerter (KEIN Alias in Boxen)
+const stG2 = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stG2, [{ text: "Druckdolenz hier bei Perkussion" }]);
+check("Doku: 'hier bei' unveraendert in Box", /hier bei/i.test(stG2.values.befund || ""), stG2.values.befund);
+check("Doku: kein Geister-Zahn aus 'hier bei'", stG2.teeth.size === 0, [...stG2.teeth].join(","));
+
+// 14) Einzelziffern-Paarung (VAD trennt "Vier." / "Sechs." in zwei Segmente)
+const stP = W.LenaDokuZahn.emptyState("");
+stP.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stP, [
+  { text: "Vier.", startMs: 1000 },
+  { text: "Sechs.", startMs: 1900 },   // -> 46
+  { text: "Eins.", startMs: 6000 },
+  { text: "Eins.", startMs: 6800 },    // -> 11
+  { text: "Zwei.", startMs: 9000 },    // pending (frisch)
+]);
+check("Paarung: 4+6 -> 46", stP.teeth.has(46), [...stP.teeth].join(","));
+check("Paarung: 1+1 -> 11", stP.teeth.has(11), [...stP.teeth].join(","));
+check("Paarung: '2' haengt als pending", stP.pendingDigit === "2", String(stP.pendingDigit));
+check("Paarung: keine Geister-Zaehne", stP.teeth.size === 2, [...stP.teeth].join(","));
+
+// Zeitfenster: weit auseinanderliegende Einzelziffern paaren NICHT
+const stP2 = W.LenaDokuZahn.emptyState("");
+stP2.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stP2, [
+  { text: "Vier.", startMs: 1000 },
+  { text: "Sechs.", startMs: 60000 },  // 59 s spaeter -> kein Paar
+]);
+check("Paarung: 59s Abstand -> kein 46", !stP2.teeth.has(46), [...stP2.teeth].join(","));
+
+// Garble-Alias + Paarung kombiniert: "Hier?" (=vier) + "Sieben." -> 47
+const stP3 = W.LenaDokuZahn.emptyState("");
+stP3.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stP3, [
+  { text: "Hier?", startMs: 1000 },
+  { text: "Sieben.", startMs: 1800 },
+]);
+check("Alias+Paarung: 'Hier?'+'Sieben.' -> 47", stP3.teeth.has(47), [...stP3.teeth].join(","));
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

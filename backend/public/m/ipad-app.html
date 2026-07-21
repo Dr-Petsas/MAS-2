@@ -746,6 +746,27 @@
       background: #fff8e1; border-color: #d4a017; color: #7a5500;
     }
     .zs-hint { margin: 2px 0 0; font-size: .58rem; color: #6b6560; font-weight: 600; }
+    .doku-wrap--schema { flex: 1; min-height: 0; }
+    /* Schema-Seite: KEIN 2-Spalten-Grid — Zahnschema volle Breite (Chef 21.07.) */
+    .doku-tpl--schema { padding: 4px 2px; display: block; }
+    .doku-tpl--schema .zs-cell { min-height: 30px; font-size: .6rem; }
+    .doku-tpl--schema .zs-row-nums .zs-cell { min-height: 38px; }
+    .doku-tpl--schema .zs-fdi { font-size: .78rem; }
+    .doku-tpl--schema .zs-row { grid-template-columns: 24px 1fr; }
+    .zs-schema-lead {
+      margin: 0 0 8px; font-size: .72rem; font-weight: 600; color: #5c564e; line-height: 1.35;
+    }
+    .zs-live-line {
+      margin: 0 0 8px; padding: 7px 10px; border-radius: 10px;
+      background: #e8f6f4; border: 1px solid rgba(15,118,110,.35);
+      font-size: .78rem; font-weight: 700; color: #0a5c56;
+    }
+    .zs-live-line--empty { background: #f7f4ee; border-color: #d4cdc0; color: #6b6560; font-weight: 600; }
+    .zs-pend { color: #b45309; font-weight: 900; margin-left: 6px; }
+    .zs-schema-sum { margin-top: 8px; font-size: .72rem; }
+    .tpl-title--schema { margin-bottom: 6px; }
+    .rec-top--slim { margin-bottom: 4px; }
+    .wiz-boxes .doku-wrap { flex: 1; min-height: 0; overflow: auto; }
     .tpl-lab {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
       font-size: .72rem; font-weight: 900; letter-spacing: .04em;
@@ -1188,10 +1209,11 @@
         <div class="steps" id="steps">
           <div class="step-chip is-now" data-step="1"><span class="n">1</span>Arzt</div>
           <div class="step-chip" data-step="2"><span class="n">2</span>Termin</div>
-          <div class="step-chip" data-step="3"><span class="n">3</span>Aufnahme</div>
-          <div class="step-chip" data-step="4"><span class="n">4</span>Nachdiktat</div>
-          <div class="step-chip" data-step="5"><span class="n">5</span>Summary</div>
-          <div class="step-chip" data-step="6"><span class="n">6</span>Gespeichert</div>
+          <div class="step-chip" data-step="3"><span class="n">3</span>Schema</div>
+          <div class="step-chip" data-step="4"><span class="n">4</span>Doku</div>
+          <div class="step-chip" data-step="5"><span class="n">5</span>Nachdiktat</div>
+          <div class="step-chip" data-step="6"><span class="n">6</span>Summary</div>
+          <div class="step-chip" data-step="7"><span class="n">7</span>OK</div>
           <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/perio.html?v=20260721b" title="01-Modus" style="text-decoration:none;margin-left:auto" hidden>
             <span class="n">01</span>01-Modus
           </a>
@@ -1242,13 +1264,13 @@
             <div class="appt-list" id="appts"></div>
             <div class="actions">
               <button type="button" class="btn btn-ghost" data-back="1">Zurück</button>
-              <button type="button" class="btn btn-primary" data-next="3">Aufnahme starten</button>
+              <button type="button" class="btn btn-primary" data-next="3">Schema starten</button>
             </div>
           </div>
         </div>
 
-        <!-- 3 Aufnahme — Doku-Template Hero, Rohdialog eingeklappt -->
-        <div class="wiz wiz-rec" id="wiz3">
+        <!-- 3 Zahnschema — NUR Ziffern + Marks (getrennt von Box-Doku) -->
+        <div class="wiz wiz-rec wiz-schema" id="wiz3">
           <div class="panel rec-panel">
             <div class="rec-top">
               <div class="rec-card rec-card-patient">
@@ -1287,12 +1309,12 @@
                 </div>
               </div>
             </div>
-            <div class="doku-wrap">
-              <div class="doku-tpl" id="dokuTpl"></div>
+            <div class="doku-wrap doku-wrap--schema">
+              <div class="doku-tpl doku-tpl--schema" id="schemaTpl"></div>
               <details class="raw-dialog" id="rawDialog">
-                <summary>Rohdialog <span class="tpl-badge">Â§ 630f · Archiv</span></summary>
+                <summary>Rohdialog <span class="tpl-badge">§ 630f · Archiv</span></summary>
                 <div class="dialog" id="dialog">
-                  <div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Rohtext erscheint hier im Archiv.</div>
+                  <div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Zahnnummern erscheinen im Schema.</div>
                 </div>
               </details>
             </div>
@@ -1301,14 +1323,44 @@
               <div class="timer" id="timer">00:00</div>
               <div class="spacer"></div>
               <button type="button" class="btn btn-ghost" id="btnPause" disabled>Pause</button>
-              <button type="button" class="btn btn-rec" id="btnRec">â— Aufnehmen</button>
-              <button type="button" class="btn btn-primary" data-next="4">Weiter</button>
+              <button type="button" class="btn btn-rec" id="btnRec">● Aufnehmen</button>
+              <button type="button" class="btn btn-primary" data-next="4">Weiter · Doku</button>
             </div>
           </div>
         </div>
 
-        <!-- 4 Nachdiktat -->
-        <div class="wiz wiz-dict" id="wiz4">
+        <!-- 4 Box-Doku — Textfelder, Schema kommt von Seite 3 -->
+        <div class="wiz wiz-rec wiz-boxes" id="wiz4">
+          <div class="panel rec-panel">
+            <div class="rec-top rec-top--slim">
+              <div class="rec-card rec-card-patient">
+                <div class="rec-head">
+                  <div class="rec-av" id="recAv2">—</div>
+                  <div class="rec-head-main">
+                    <div class="rec-name" id="recName2">—</div>
+                    <div class="rec-meta"><span id="recTreat2"></span></div>
+                  </div>
+                </div>
+                <div class="rec-live" id="recLive2"><i></i><span>Schema → Doku</span></div>
+              </div>
+              <p class="mic-active" id="micActiveLabel2">Weiter diktieren füllt die Boxen. Schema bleibt unverändert.</p>
+            </div>
+            <div class="doku-wrap">
+              <div class="doku-tpl" id="dokuTpl"></div>
+            </div>
+            <div class="rec-bar">
+              <button type="button" class="btn btn-ghost" data-back="3">Schema</button>
+              <div class="timer" id="timer2">00:00</div>
+              <div class="spacer"></div>
+              <button type="button" class="btn btn-ghost" id="btnPause2">Pause</button>
+              <button type="button" class="btn btn-rec" id="btnRec2">● Aufnehmen</button>
+              <button type="button" class="btn btn-primary" data-next="5">Weiter · Nachdiktat</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 Nachdiktat -->
+        <div class="wiz wiz-dict" id="wiz5">
           <div class="panel nd-page">
             <div class="nd-head">
               <div>
@@ -1341,8 +1393,8 @@
           </div>
         </div>
 
-        <!-- 5 Summary + Export -->
-        <div class="wiz wiz-sum" id="wiz5">
+        <!-- 6 Summary + Export -->
+        <div class="wiz wiz-sum" id="wiz6">
           <div class="panel sum-panel">
             <header class="sum-head">
               <div>
@@ -1385,27 +1437,27 @@
               </div>
             </div>
             <div class="actions">
-              <button type="button" class="btn btn-ghost" data-back="4">Nachdiktat</button>
+              <button type="button" class="btn btn-ghost" data-back="5">Nachdiktat</button>
               <button type="button" class="btn btn-mag" id="btnSaveDocNav">Speichern</button>
             </div>
           </div>
         </div>
 
-        <!-- 6 Bestätigung nach Speichern (Sophie-Abrechnung folgt später) -->
-        <div class="wiz wiz-sophie" id="wiz6">
+        <!-- 7 Bestätigung nach Speichern (Sophie-Abrechnung folgt später) -->
+        <div class="wiz wiz-sophie" id="wiz7">
           <div class="panel" style="gap:14px;">
             <h2>Gespeichert</h2>
             <p class="lead" id="saveDoneLead">Die Dokumentation liegt im Praxisgedächtnis — Clara kann sie vorlesen.</p>
             <div class="hint-box" id="saveDoneHint" style="display:none;"></div>
             <div class="actions">
-              <button type="button" class="btn btn-ghost" data-back="5">Summary</button>
+              <button type="button" class="btn btn-ghost" data-back="6">Summary</button>
               <button type="button" class="btn btn-mag" id="btnSaveDoneClara">Zurück zu Clara</button>
             </div>
             <!-- Alt-IDs für Billing-JS behalten (Sophie später) -->
             <div id="billList" hidden></div>
             <div id="billHint" hidden></div>
             <button type="button" id="btnBill" hidden></button>
-            <button type="button" id="btnBillBack" hidden data-back="5"></button>
+            <button type="button" id="btnBillBack" hidden data-back="6"></button>
           </div>
         </div>
       </div>
@@ -1767,6 +1819,12 @@
               try {
                 document.dispatchEvent(new CustomEvent("lena-tee-ack", { detail: obj }));
               } catch (_) {}
+            } else if (obj.type === "lena_doku_segment") {
+              // Sofort-Pfad: Worker pusht Final per LiveKit — kein Warten auf
+              // Firestore-Heartbeat (sonst 1–2 s tot nach jeder Zahnzahl).
+              try { window.__ingestLenaDokuSegment?.(obj); } catch (_) {}
+            } else if (obj.type === "partial_transcript") {
+              try { window.__ingestLenaDokuPartial?.(obj.text || ""); } catch (_) {}
             }
           } catch {}
         });
@@ -1891,9 +1949,9 @@
   </script>
 
   <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
-  <script src="/m/lena-zahnstatus-katalog.js?v=20260721h"></script>
-  <script src="/m/lena-voice-chart.js?v=20260721h"></script>
-  <script src="/m/lena-doku-template-zahn.js?v=20260721h"></script>
+  <script src="/m/lena-zahnstatus-katalog.js?v=20260721k"></script>
+  <script src="/m/lena-voice-chart.js?v=20260721k"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260721k"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard.
@@ -2010,6 +2068,9 @@
       let dialogCleared = false;
       let dokuState = null;
       let structuredText = "";
+      // Live-Preview des aktuellen Parakeet-Partials (nur Anzeige, nicht speichern).
+      let liveDokuPartial = "";
+      let livePartialTimer = 0;
 
       function anamnesePrefillSource() {
         const chair = chairCurrent || {};
@@ -2024,17 +2085,19 @@
           docsStatus: appt.docsStatus || chair.docsStatus || "",
         };
       }
-      function refreshDokuTemplate(segs) {
+      function isSchemaStep() { return !!$("wiz3")?.classList.contains("is-show"); }
+      function isDokuBoxesStep() { return !!$("wiz4")?.classList.contains("is-show"); }
+      function isRecLiveStep() { return isSchemaStep() || isDokuBoxesStep(); }
+
+      function ensureDokuState() {
         const Zahn = window.LenaDokuZahn;
-        const box = $("dokuTpl");
-        if (!Zahn || !box) return;
+        if (!Zahn) return null;
         const anlass = selectedAppt?.treat || chairCurrent?.visitMotive || "";
         const apptId = String(selectedAppt?.appointmentId || "");
-        // Fremde Segmente (noch alter Patient im Speicher) nie auf neuen State mappen.
         if (apptId && segmentsForApptId && segmentsForApptId !== apptId) {
           savedSegments = [];
           segmentsForApptId = apptId;
-          segs = [];
+          liveDokuPartial = "";
         }
         if (
           !dokuState ||
@@ -2045,24 +2108,151 @@
           dokuState.appointmentId = apptId;
           Zahn.applySignrPrefill(dokuState, anamnesePrefillSource());
         }
+        return dokuState;
+      }
+
+      /** Seite 3: nur Zahnschema. */
+      function refreshSchemaTemplate(segs, livePartial) {
+        const Zahn = window.LenaDokuZahn;
+        const box = $("schemaTpl");
+        if (!Zahn || !box) return;
+        if (!ensureDokuState()) return;
+        dokuState.page = "schema";
+        const list = Array.isArray(segs) ? segs : savedSegments;
+        const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        Zahn.applySchemaSegments(dokuState, clinical);
+        const partial = String(livePartial != null ? livePartial : liveDokuPartial || "").trim();
+        if (partial && window.LenaVoiceChart?.extractFdi) {
+          const fdis = window.LenaVoiceChart.extractFdi(partial) || [];
+          for (const z of fdis) dokuState.teeth.add(z);
+          if (fdis.length) dokuState.lastChartFdi = fdis[fdis.length - 1];
+        }
+        Zahn.renderSchemaOnly(box, dokuState);
+        if (recording && !paused) {
+          const liveSpan = $("recLive")?.querySelector("span");
+          const cur = liveSpan?.textContent || "";
+          if (liveSpan && (cur === "live · Parakeet" || cur === "Schema" || cur === "Befund-Diktat")) {
+            liveSpan.textContent = "Schema";
+          }
+        }
+      }
+
+      /** Seite 4: Text-Boxen (Schema unverändert). */
+      function refreshDokuTemplate(segs) {
+        const Zahn = window.LenaDokuZahn;
+        const box = $("dokuTpl");
+        if (!Zahn || !box) return;
+        if (!ensureDokuState()) return;
+        dokuState.page = "doku";
         const list = Array.isArray(segs) ? segs : savedSegments;
         const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
         Zahn.applySegments(dokuState, clinical);
         Zahn.ensureGaps?.(dokuState);
-        Zahn.render(box, dokuState);
-        // Befund-Diktat (Trigger "Befund") auch im Live-Badge zeigen —
-        // aber nur den Normal-Status tauschen, nie Warnungen ("Tee fehlt")
-        // oder Souffleusen-Hinweise ueberschreiben.
+        Zahn.renderBoxesOnly(box, dokuState);
         if (recording && !paused) {
-          const liveSpan = $("recLive")?.querySelector("span");
-          const cur = liveSpan?.textContent || "";
-          if (liveSpan && (cur === "live · Parakeet" || cur === "Befund-Diktat")) {
-            liveSpan.textContent = dokuState.dictMode === "befund"
-              ? "Befund-Diktat"
-              : "live · Parakeet";
+          const liveSpan = $("recLive2")?.querySelector("span");
+          if (liveSpan) {
+            liveSpan.textContent = dokuState.dictMode === "befund" ? "Befund-Diktat" : "live · Boxen";
           }
         }
       }
+
+      function refreshLivePage(segs, livePartial) {
+        if (isSchemaStep()) refreshSchemaTemplate(segs, livePartial);
+        else if (isDokuBoxesStep()) refreshDokuTemplate(segs);
+      }
+      /** LiveKit-Push vom Worker: Final sofort (vor Firestore). */
+      function ingestLenaDokuSegment(obj) {
+        if (!recording || paused) return;
+        if (!isRecLiveStep()) return;
+        const text = String(obj?.text || "").trim();
+        if (!text) return;
+        const wantAppt = String(selectedAppt?.appointmentId || "");
+        const gotAppt = String(obj?.appointmentId || "");
+        if (wantAppt && gotAppt && wantAppt !== gotAppt) return;
+        const src = String(obj?.source || "arzt").toLowerCase() || "arzt";
+        if (src !== "arzt" && src !== "nachdiktat") return;
+        const norm = text.toLowerCase();
+        const recent = savedSegments.slice(-8);
+        if (recent.some((s) => String(s.text || "").trim().toLowerCase() === norm)) {
+          liveDokuPartial = "";
+          return;
+        }
+        const id = "live-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
+        savedSegments.push({
+          id,
+          text,
+          source: src,
+          startMs: Number(obj?.startMs) || Date.now(),
+          livePush: true,
+        });
+        if (wantAppt) segmentsForApptId = wantAppt;
+        liveDokuPartial = "";
+        if (src === "arzt") {
+          try { appendBubble("Arzt", text, id, Number(obj?.startMs) || Date.now()); } catch (_) {}
+          refreshLivePage(savedSegments, "");
+          if (isSchemaStep()) {
+            const fdis = window.LenaVoiceChart?.extractFdi?.(text) || [];
+            if (fdis.length) paintToothPreview(dokuState?.teeth || fdis, fdis[fdis.length - 1]);
+          }
+        }
+      }
+      /** Nur Ziffernzeile patchen — kein Full-Render (sonst ruckelt jede Partial). */
+      function paintToothPreview(fdis, selectedFdi) {
+        const root = $("schemaTpl") || $("dokuTpl");
+        if (!root) return false;
+        const nums = root.querySelectorAll(".zs-num[data-fdi]");
+        if (!nums.length) return false;
+        const named = fdis instanceof Set ? fdis : new Set(fdis || []);
+        const base = dokuState?.teeth instanceof Set ? dokuState.teeth : null;
+        nums.forEach((el) => {
+          const fdi = Number(el.dataset.fdi);
+          const marked = el.classList.contains("has-mark") || el.classList.contains("is-miss");
+          const isNamed = !marked && (named.has(fdi) || (base && base.has(fdi)));
+          el.classList.toggle("is-named", isNamed && selectedFdi !== fdi);
+          el.classList.toggle("is-sel", selectedFdi === fdi);
+        });
+        return true;
+      }
+      /** Kurze fertige Schema-Ansage? (spiegel Worker _SCHEMA_SNAP_RE) */
+      function isSchemaSnap(text) {
+        const t = String(text || "").trim();
+        if (!t || t.length > 48) return false;
+        return /^(?:so|gut|okay|ok|ja|zahn)?[,.\s]*(?:[1-4][1-8]|[1-4]\s*[,.\s]\s*[1-8]|(?:eins|zwei|zwo|drei|vier)\s*[,.]?\s*(?:eins|zwei|zwo|drei|vier|f(?:ue|ü)?nf|sechs|sieben|acht)|zwoelf|zwolf|dreizehn|vierzehn|fuenfzehn|funfzehn|sechzehn|siebzehn|achtzehn)(?:\s*(?:x|fehlt|fehlend|karies|kari[oö]s|fuellung|füllung))?[!?.]?\s*$/i.test(t);
+      }
+      /** Partial: Schema sofort aufleuchten; fertige Snap = sofort Segment. */
+      function ingestLenaDokuPartial(text) {
+        if (!recording || paused) return;
+        if (!isSchemaStep()) return;
+        if (!paneDoku?.classList.contains("is-active")) return;
+        let t = String(text || "").trim();
+        if (!t) return;
+        // Schema-Schritt: Garble-Aliasse frueh anwenden (hier->vier etc.),
+        // damit Partial-Paint + Snap-Commit die korrigierte Form sehen.
+        try { t = window.LenaZahnstatusKatalog?.schemaDigitAlias?.(t) || t; } catch (_) {}
+        liveDokuPartial = t;
+        const fdis = window.LenaVoiceChart?.extractFdi?.(t) || [];
+        if (!fdis.length) return;
+        const sel = fdis[fdis.length - 1];
+        if (dokuState) {
+          for (const z of fdis) dokuState.teeth.add(z);
+          dokuState.lastChartFdi = sel;
+        }
+        if (!paintToothPreview(fdis, sel)) {
+          refreshSchemaTemplate(savedSegments, liveDokuPartial);
+        }
+        // Lightspeed: fertige Ansage nicht auf Final warten.
+        if (isSchemaSnap(t)) {
+          ingestLenaDokuSegment({
+            text: t,
+            source: "arzt",
+            appointmentId: selectedAppt?.appointmentId || "",
+            startMs: Date.now(),
+          });
+        }
+      }
+      window.__ingestLenaDokuSegment = ingestLenaDokuSegment;
+      window.__ingestLenaDokuPartial = ingestLenaDokuPartial;
       let souffleSpoken = new Set();
       let souffleLastAt = 0;
       let souffleRecStartedAt = 0;
@@ -2083,13 +2273,16 @@
         dokuState = null;
         savedSegments = [];
         segmentsForApptId = "";
+        liveDokuPartial = "";
+        if (livePartialTimer) { clearTimeout(livePartialTimer); livePartialTimer = 0; }
         structuredText = "";
         serverSummary = "";
         dialogCleared = false;
         resetSouffle();
         const wipe = (id, html) => { const el = $(id); if (el) el.innerHTML = html || ""; };
+        wipe("schemaTpl");
         wipe("dokuTpl");
-        wipe("dialog", '<div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Rohtext erscheint hier im Archiv.</div>');
+        wipe("dialog", '<div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Zahnnummern erscheinen im Schema.</div>');
         wipe("ndRec");
         wipe("ndGaps");
         wipe("sumBoxes");
@@ -2099,7 +2292,8 @@
       }
       function maybeSoufflePrompt() {
         if (!recording || paused) return;
-        if (!$("wiz3")?.classList.contains("is-show")) return;
+        // Souffleuse nur auf Box-Doku, nie im Schema-Diktat.
+        if (!isDokuBoxesStep()) return;
         if (!paneDoku?.classList.contains("is-active")) return;
         if (document.hidden) return;
         const now = Date.now();
@@ -2158,8 +2352,8 @@
       }
       let structureBusy = false;
       let billingBusy = false;
-      const wiz = [null, $("wiz1"), $("wiz2"), $("wiz3"), $("wiz4"), $("wiz5"), $("wiz6")];
-      const chips = [...document.querySelectorAll(".step-chip")];
+      const wiz = [null, $("wiz1"), $("wiz2"), $("wiz3"), $("wiz4"), $("wiz5"), $("wiz6"), $("wiz7")];
+      const chips = [...document.querySelectorAll(".step-chip[data-step]")];
 
       function treatmentIds() {
         const locationId = selectedAppt.locationId || chairCurrent?.locationId || dayLocationId || "";
@@ -2374,7 +2568,7 @@
         if (seg) seg.text = t;
         structuredText = "";
         dokuState = null;
-        refreshDokuTemplate(savedSegments);
+        refreshLivePage(savedSegments);
         updateMerge();
       }
       async function onBubbleDelete(btn) {
@@ -2388,7 +2582,7 @@
         bubble.remove();
         structuredText = "";
         dokuState = null;
-        refreshDokuTemplate(savedSegments);
+        refreshLivePage(savedSegments);
         updateMerge();
       }
       document.addEventListener("click", (ev) => {
@@ -2423,21 +2617,33 @@
             segmentsForApptId = apptId;
             structuredText = "";
             serverSummary = "";
+            dokuState = null;
           }
-          dokuState = null;
-          refreshDokuTemplate([]);
+          if (dokuState) dokuState.page = "schema";
+          refreshSchemaTemplate(savedSegments);
           loadSavedSegments().then((segs) => {
             if (String(selectedAppt.appointmentId || "") !== apptId) return;
             const main = segs.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
             if (main.length) renderDialogFromSegments(main);
             else {
               const d = $("dialog");
-              if (d) d.innerHTML = '<div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Rohtext erscheint hier im Archiv.</div>';
+              if (d) d.innerHTML = '<div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Zahnnummern erscheinen im Schema.</div>';
             }
-            refreshDokuTemplate(main);
+            refreshSchemaTemplate(main);
           });
+          syncRecChrome();
         }
         if (n === 4) {
+          const av = (selectedAppt.name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+          if ($("recName2")) $("recName2").textContent = selectedAppt.name || "—";
+          if ($("recTreat2")) $("recTreat2").textContent = selectedAppt.treat || "";
+          if ($("recAv2")) $("recAv2").textContent = av;
+          if (dokuState) dokuState.page = "doku";
+          else ensureDokuState();
+          refreshDokuTemplate(savedSegments);
+          syncRecChrome();
+        }
+        if (n === 5) {
           $("ndLead").textContent = (selectedAppt.name || "—") + " · " + (selectedDoc || "—") + " — Lücken gezielt ergänzen";
           const src = $("dialog");
           const dst = $("ndRec");
@@ -2450,14 +2656,33 @@
           refreshNdGaps();
           updateMerge();
         }
-        if (n === 5) {
+        if (n === 6) {
           loadSavedSegments().then(() => {
             fillSummary();
             void runStructure();
           });
         }
-        if (n === 6) {
+        if (n === 7) {
           void runBilling();
+        }
+      }
+
+      function syncRecChrome() {
+        const t = $("timer")?.textContent || "00:00";
+        if ($("timer2")) $("timer2").textContent = t;
+        const live = $("recLive")?.querySelector("span")?.textContent || "bereit";
+        const live2 = $("recLive2")?.querySelector("span");
+        if (live2 && recording) live2.textContent = paused ? "pause" : "live · Boxen";
+        else if (live2 && !recording) live2.textContent = "Schema → Doku";
+        const b1 = $("btnRec"); const b2 = $("btnRec2");
+        if (b1 && b2) {
+          b2.textContent = b1.textContent;
+          b2.classList.toggle("is-live", b1.classList.contains("is-live"));
+        }
+        const p1 = $("btnPause"); const p2 = $("btnPause2");
+        if (p1 && p2) {
+          p2.disabled = p1.disabled;
+          p2.textContent = p1.textContent;
         }
       }
 
@@ -2716,7 +2941,7 @@
             $("saveDoneHint").textContent =
               (data.segmentsCount || 0) + " Segmente · Praxisgedächtnis aktualisiert";
           }
-          showStep(6);
+          showStep(7);
         } catch (e) {
           console.warn("finalize", e);
           if ($("sumText")) {
@@ -2826,7 +3051,7 @@
         await stopNdDictation();
         await loadSavedSegments();
         updateMerge();
-        showStep(5);
+        showStep(6);
       });
 
       $("doctors")?.addEventListener("click", (e) => {
@@ -2894,7 +3119,8 @@
         if (prevId !== nextId) {
           clearPatientDocState();
           // Leeres Template sofort zeigen, falls Aufnahme-Schritt offen ist.
-          if ($("wiz3")?.classList.contains("is-show")) refreshDokuTemplate([]);
+          if (isSchemaStep()) refreshSchemaTemplate([]);
+          else if (isDokuBoxesStep()) refreshDokuTemplate([]);
         }
         syncRecHeader();
         syncLena01Links();
@@ -3045,15 +3271,17 @@
         pickApptFrom({ ...items[selIdx], locationId: chairCurrent?.locationId || dayLocationId || selectedAppt.locationId });
       }
       function syncRecHeader() {
-        if (!$("wiz3")?.classList.contains("is-show")) return;
+        if (!isRecLiveStep()) return;
+        const av = (selectedAppt.name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
         if ($("recName")) $("recName").textContent = selectedAppt.name || "—";
         if ($("recTreat")) $("recTreat").textContent = selectedAppt.treat || "";
         if ($("recDoc")) {
           $("recDoc").textContent = selectedDoc ? ("Dr. " + selectedDoc.replace(/^Dr\.?\s*/i, "")) : "—";
         }
-        if ($("recAv")) {
-          $("recAv").textContent = (selectedAppt.name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
-        }
+        if ($("recAv")) $("recAv").textContent = av;
+        if ($("recName2")) $("recName2").textContent = selectedAppt.name || "—";
+        if ($("recTreat2")) $("recTreat2").textContent = selectedAppt.treat || "";
+        if ($("recAv2")) $("recAv2").textContent = av;
       }
       function renderPicker() {
         $("pickTitle").textContent = MONTHS[pickerMonth.getMonth()] + " " + pickerMonth.getFullYear();
@@ -3133,7 +3361,7 @@
                 findings: chairCurrent.anamneseFindings,
                 docsStatus: chairCurrent.docsStatus,
               });
-              if ($("wiz3")?.classList.contains("is-show")) refreshDokuTemplate(savedSegments);
+              refreshLivePage(savedSegments);
             }
           } else if (iso(selectedDate) === iso(TODAY)) {
             chairCurrent = null;
@@ -3199,21 +3427,22 @@
       // nach, wenn z. B. Clara am iPhone ein Nachdiktat zum selben Termin spricht.
       // Nur wenn die Doku sichtbar ist und wir nicht selbst aufnehmen/diktieren/
       // strukturieren (sonst wuerden lokale Eingaben ueberschrieben). Der
-      // Nachdiktat-Schritt (4) bleibt bewusst aussen vor (Texteingabe schuetzen).
+      // Nachdiktat-Schritt bleibt bewusst aussen vor (Texteingabe schuetzen).
       setInterval(() => {
         if (document.hidden) return;
         if (!paneDoku.classList.contains("is-active")) return;
         if (recording || ndLive || structureBusy) return;
-        const onRec = $("wiz3")?.classList.contains("is-show");
-        const onSum = $("wiz5")?.classList.contains("is-show");
-        if (!onRec && !onSum) return;
+        const onSchema = isSchemaStep();
+        const onBoxes = isDokuBoxesStep();
+        const onSum = $("wiz6")?.classList.contains("is-show");
+        if (!onSchema && !onBoxes && !onSum) return;
         loadSavedSegments().then((segs) => {
-          if (!$("wiz3")?.classList.contains("is-show") && !$("wiz5")?.classList.contains("is-show")) return;
+          if (!isSchemaStep() && !isDokuBoxesStep() && !$("wiz6")?.classList.contains("is-show")) return;
           if (String(selectedAppt?.appointmentId || "") !== String(segmentsForApptId || "")) return;
-          if (onRec) {
+          if (onSchema || onBoxes) {
             const main = (segs || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
             renderDialogFromSegments(main);
-            refreshDokuTemplate(main);
+            refreshLivePage(main);
           } else if (onSum) {
             if (serverSummary && serverSummary !== structuredText) structuredText = serverSummary;
             fillSummary();
@@ -3244,11 +3473,35 @@
           if (data.appointmentId && String(data.appointmentId) !== String(ids.appointmentId)) return;
           if (String(selectedAppt?.appointmentId || "") !== String(ids.appointmentId)) return;
           const known = new Set(savedSegments.map((s) => s.id).filter(Boolean));
+          const knownText = new Set(
+            savedSegments
+              .filter((s) => String(s.source || "").toLowerCase() === "arzt")
+              .map((s) => String(s.text || "").trim().toLowerCase())
+              .filter(Boolean),
+          );
           let added = false;
           for (const s of data.segments) {
             if (!s || s.struck || !s.text || !s.id) continue;
             if (String(s.source || "").toLowerCase() !== "arzt") continue;
             if (known.has(s.id)) continue;
+            const norm = String(s.text).trim().toLowerCase();
+            // Live-Push hatte denselben Text schon — Firestore-ID uebernehmen,
+            // kein zweites Bubble / kein Doppel-Refresh.
+            const liveIdx = savedSegments.findIndex(
+              (x) => x.livePush && String(x.text || "").trim().toLowerCase() === norm,
+            );
+            if (liveIdx >= 0) {
+              const oldId = savedSegments[liveIdx].id;
+              savedSegments[liveIdx].id = s.id;
+              savedSegments[liveIdx].livePush = false;
+              savedSegments[liveIdx].startMs = Number(s.startMs) || savedSegments[liveIdx].startMs;
+              known.add(s.id);
+              knownText.add(norm);
+              const bub = document.querySelector('.bubble[data-seg-id="' + oldId + '"]');
+              if (bub) bub.dataset.segId = s.id;
+              continue;
+            }
+            if (knownText.has(norm)) continue;
             savedSegments.push({
               id: s.id, text: s.text, source: "arzt",
               startMs: Number(s.startMs) || 0,
@@ -3256,17 +3509,19 @@
             segmentsForApptId = String(ids.appointmentId);
             appendBubble("Arzt", s.text, s.id, Number(s.startMs) || 0);
             known.add(s.id);
+            knownText.add(norm);
             added = true;
           }
-          if (added) refreshDokuTemplate(savedSegments);
+          if (added) refreshLivePage(savedSegments);
         } catch (_) {}
       }
       setInterval(() => {
         if (document.hidden) return;
         if (!recording || !usesParakeetDoc()) return;
         if (!paneDoku.classList.contains("is-active")) return;
+        if (!isRecLiveStep()) return;
         pullTeeArztSegments().catch(() => {});
-      }, 1200);
+      }, 400);
 
       /* Pegel + Aufnahme: alle Modi = Parakeet über Clara. */
       const fillArzt = $("fillArzt"), fillPat = $("fillPat"), dbArzt = $("dbArzt"), dbPat = $("dbPat");
@@ -3328,9 +3583,8 @@
         return (typeof lenaLoadStereoSwap === "function") ? !!lenaLoadStereoSwap() : false;
       }
       function onRecStep() {
-        // Nur Aufnahme-Schritt: Live-Pegel-Preview (Zusammenfassung = fester Anteil).
-        return !!$("wiz3")?.classList.contains("is-show")
-          && paneDoku.classList.contains("is-active");
+        // Schema-Seite: Live-Pegel-Preview (Box-Doku teilt dasselbe Mikro).
+        return isSchemaStep() && paneDoku.classList.contains("is-active");
       }
       async function stopMicPreview() {
         if (!micPreview) return;
@@ -3456,7 +3710,7 @@
         _showStepMeters(n);
         if (n === 3) void startMicPreview();
         else void stopMicPreview();
-        if (n === 5 && typeof channelShareFromSegments === "function") {
+        if (n === 6 && typeof channelShareFromSegments === "function") {
           lastSumShare = channelShareFromSegments();
           window.__lenaPaintSumMeters(lastSumShare);
         }
@@ -3544,7 +3798,7 @@
           requestAnimationFrame(loop);
           return;
         }
-        const onRec = !!$("wiz3")?.classList.contains("is-show");
+        const onRec = isSchemaStep();
         if (onRec) {
           const { a, p } = levels();
           if (fillArzt) setMeterFill(fillArzt, a);
@@ -3685,8 +3939,19 @@
           const liveEl = $("recLive")?.querySelector("span");
           if (liveEl) liveEl.textContent = "live · Parakeet";
         }
-        timerId = setInterval(() => { if (!paused) { seconds++; if ($("timer")) $("timer").textContent = fmt(seconds); } }, 1000);
+        timerId = setInterval(() => {
+          if (!paused) {
+            seconds++;
+            const t = fmt(seconds);
+            if ($("timer")) $("timer").textContent = t;
+            if ($("timer2")) $("timer2").textContent = t;
+          }
+        }, 1000);
+        syncRecChrome();
         patchRecorder("recording", { command: "", startedAtMs: recStartedAtMs, accumMs: 0 });
+        // Doku-Schnellpfad im Worker erzwingen (kurzes Hang + Preview-Final).
+        try { window.__claraIpad?.publishCmd?.({ type: "set_app_mode", mode: "doku" }); } catch (_) {}
+        try { window.__claraIpad?.stopForLena?.(); } catch (_) {}
         const teeSent = publishLenaTee(true);
         const idsNow = treatmentIds();
         const teeOk = teeSent
@@ -3734,7 +3999,11 @@
             recCapture.ws.send(JSON.stringify({ type: "flush" }));
           }
         } catch (_) {}
+        syncRecChrome();
       });
+      // Doku-Seite: dieselben Aufnahme-Controls (ohne doppelte Logik).
+      $("btnRec2")?.addEventListener("click", () => $("btnRec")?.click());
+      $("btnPause2")?.addEventListener("click", () => $("btnPause")?.click());
     })();
   </script>
 </body>
