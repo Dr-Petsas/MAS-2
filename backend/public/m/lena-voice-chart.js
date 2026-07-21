@@ -21,6 +21,13 @@
       .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue");
   }
 
+  /** Diktat-Formate ("1,6", "vier sechs", "16x14x") vereinheitlichen. */
+  function normTeeth(text) {
+    const K = kat();
+    if (K?.normalizeToothText) return K.normalizeToothText(text);
+    return String(text || "");
+  }
+
   function extractFdi(text) {
     const K = kat();
     if (!K) return [];
@@ -32,7 +39,7 @@
       seen.add(fdi);
       out.push(fdi);
     };
-    const raw = String(text || "");
+    const raw = normTeeth(text);
     let m;
     const reDigit = /\b([1-4][1-8])\b/g;
     while ((m = reDigit.exec(raw))) push(m[1]);
@@ -53,7 +60,7 @@
       seen.add(c);
       codes.push(c);
     };
-    const low = String(text || "").toLowerCase();
+    const low = normTeeth(text).toLowerCase();
     const tokenRe = /\b(abw|pkw|skw|stw|sbw|sew|sow|t2w|ix|kw|bw|pw|ww|sk|st|tw|ur|ab|aw|sb|se|so|ew|rw)\b/gi;
     let m;
     while ((m = tokenRe.exec(low))) add(m[1].toLowerCase());
@@ -76,6 +83,10 @@
     return codes;
   }
 
+  // Deutsche Woerter, die NUR aus Flaechenbuchstaben bestehen — nie als
+  // Flaechenblock lesen ("im rechten" wurde live zu Flaechen i+m).
+  const SURFACE_STOPWORDS = new Set(["im", "ob", "obi", "bio", "mild", "doll", "dom", "mob", "lob", "oma", "omi"]);
+
   function extractSurfaces(text) {
     const K = kat();
     if (!K) return [];
@@ -86,11 +97,15 @@
       seen.add(c);
       out.push(c);
     };
-    const block = String(text || "").match(/\b([modiblvz]{2,6})\b/i);
-    if (block) {
-      block[1].toLowerCase().split("").forEach((ch) => {
+    const re = /\b([modiblvz]{2,6})\b/gi;
+    let block;
+    while ((block = re.exec(String(text || "")))) {
+      const tok = block[1].toLowerCase();
+      if (SURFACE_STOPWORDS.has(tok)) continue;
+      tok.split("").forEach((ch) => {
         if (K.SURFACES[ch]) add(ch);
       });
+      break; // wie bisher: nur der erste echte Block zaehlt
     }
     K.SURFACE_SPEECH.forEach((rule) => {
       if (rule.re.test(text)) add(rule.code);
@@ -104,6 +119,11 @@
     return "befund";
   }
 
+  // Blosse Nomen (Implantat/Krone/Bruecke/Teleskop) OHNE Zahnnummer nie per
+  // Carry-over auf den zuletzt genannten Zahn uebertragen — "Entzuendung der
+  // Implantate im rechten Unterkiefer" haengte live ein sk an Zahn 14.
+  const BARE_NOUN_CODES = new Set(["sk", "k", "b", "t", "pkw"]);
+
   function parseUtterance(text) {
     const t = String(text || "").trim();
     if (!t) return [];
@@ -112,7 +132,9 @@
     const surfaces = extractSurfaces(t);
     if (!fdis.length && !codes.length && !surfaces.length) return [];
     if (!fdis.length) {
-      return [{ fdi: null, codes, surfaces, text: t }];
+      const strong = codes.filter((c) => !BARE_NOUN_CODES.has(c));
+      if (!strong.length && !surfaces.length) return [];
+      return [{ fdi: null, codes: strong, surfaces, text: t }];
     }
     return fdis.map((fdi) => ({ fdi, codes: codes.slice(), surfaces: surfaces.slice(), text: t }));
   }

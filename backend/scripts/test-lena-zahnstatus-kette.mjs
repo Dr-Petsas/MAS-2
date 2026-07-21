@@ -130,5 +130,59 @@ check(
   st5.values.befund,
 );
 
+// 9) ECHTE Transkript-Zeilen (Live-Behandlung 21.07., Patientin N.):
+//    FDI einzeln gesprochen ("1,6" / "vier, sechs"), Kompakt "16x14x",
+//    Soll-Form "muss extrahiert werden" (= Befund x, NICHT Therapie-Ende),
+//    Kommando "Schreib in den Befund ein ...".
+const K = W.LenaZahnstatusKatalog;
+check("norm '1,6' -> 16", K.normalizeToothText("Und dann muss 1,6 und 1,4 auch extrahiert werden.").includes("16"), K.normalizeToothText("Und dann muss 1,6 und 1,4 auch extrahiert werden."));
+check("norm 'vier, sechs' -> 46", K.normalizeToothText("Sagen, vier, sechs.").includes("46"), K.normalizeToothText("Sagen, vier, sechs."));
+check("norm '16x14x' -> '16 x 14 x'", /16 x\s+14 x/.test(K.normalizeToothText("Schreib in den Befund ein 16x14x.")), K.normalizeToothText("Schreib in den Befund ein 16x14x."));
+check("norm '3,5 Millimeter' bleibt Messwert", !/\b35\b/.test(K.normalizeToothText("Sondierungstiefe 3,5 Millimeter")), K.normalizeToothText("Sondierungstiefe 3,5 Millimeter"));
+check("norm 'zwei, drei Wochen' bleibt Zeitraum", !/\b23\b/.test(K.normalizeToothText("Kontrolle in zwei, drei Wochen")), K.normalizeToothText("Kontrolle in zwei, drei Wochen"));
+
+const stLive = W.LenaDokuZahn.emptyState("Schmerzbehandlung");
+W.LenaDokuZahn.applySegments(stLive, [
+  { text: "Sagen, vier, sechs." },
+  { text: "muss extrahiert werden, x." },
+  { text: "dass er nur Befund eines x bei 46." },
+  { text: "Und dann muss 1,6 und 1,4 auch extrahiert werden." },
+  { text: "weitrige Entzündung der Implantat im rechten" },
+  { text: "fakte Diagnose ein, eitrige Entzündung des rechten Oberkiefers und rechten Unterkiefers an den Implantat." },
+  { text: "Schreib in den Befund ein 16x14x." },
+  { text: "Befund 16x." },
+  { text: "1, 4x." },
+]);
+check("Live: 46 erkannt (vier, sechs)", stLive.teeth.has(46), [...stLive.teeth].join(","));
+check("Live: 16+14 erkannt (1,6/1,4)", stLive.teeth.has(16) && stLive.teeth.has(14), [...stLive.teeth].join(","));
+check("Live: 46 -> x in B-Zeile", (stLive.chart?.[46]?.befund || "").includes("x"), JSON.stringify(stLive.chart?.[46]));
+check("Live: 16 -> x in B-Zeile", (stLive.chart?.[16]?.befund || "").includes("x"), JSON.stringify(stLive.chart?.[16]));
+check("Live: 14 -> x in B-Zeile", (stLive.chart?.[14]?.befund || "").includes("x"), JSON.stringify(stLive.chart?.[14]));
+check("Live: 14 OHNE Geister-Marks (kein sk/im)", (stLive.chart?.[14]?.befund || "").trim() === "x", JSON.stringify(stLive.chart?.[14]));
+check("Live: 'muss extrahiert werden' NICHT als Therapie", !(stLive.values.therapie || "").includes("extrahiert werden"), stLive.values.therapie || "(leer)");
+check("Live: Soll-Form in Befund-Box", (stLive.values.befund || "").includes("extrahiert werden"), (stLive.values.befund || "").slice(0, 120));
+check("Live: Entzuendung in Befund-Box", /entz[uü]nd/i.test(stLive.values.befund || ""), (stLive.values.befund || "").slice(0, 160));
+check("Live: Diagnose-Box gefuellt", /entz[uü]nd/i.test(stLive.values.diagnose || ""), stLive.values.diagnose);
+check("Live: Befund-Modus aktiv nach 'Befund 16x'", stLive.dictMode === "befund", String(stLive.dictMode));
+
+// Kommando-Trigger schaltet Modus + Rest wird Inhalt
+const stCmd = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stCmd, [
+  { text: "Schreib in den Befund ein 16x14x." },
+  { text: "2,5 Karies okklusal" },
+]);
+check("Cmd: Modus nach Kommando aktiv", stCmd.dictMode === "befund", String(stCmd.dictMode));
+check("Cmd: 25 -> c okklusal in B-Zeile", (stCmd.chart?.[25]?.befund || "").includes("c"), JSON.stringify(stCmd.chart?.[25]));
+
+// Echte Handlung beendet weiterhin (Perfekt AKTIV, keine Soll-Form)
+const stEnd = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stEnd, [
+  { text: "Befund" },
+  { text: "46 muss extrahiert werden" },
+  { text: "Ultracain gesetzt und 46 extrahiert" },
+]);
+check("Ende: echte Handlung beendet Modus", stEnd.dictMode === null, String(stEnd.dictMode));
+check("Ende: Handlung in Therapie-Box", /extrahiert/i.test(stEnd.values.therapie || ""), stEnd.values.therapie);
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

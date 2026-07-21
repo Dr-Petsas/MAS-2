@@ -109,7 +109,8 @@
     { re: /\bbr[uü]cke\b/i, code: "b" },
     { re: /weitgehend(?:e|er)?\s+zerst[oö]r|behandlungsbed[uü]rftig|\bww\b/i, code: "ww" },
     { re: /partiell(?:e|er)?\s+substanz|\bpw\b/i, code: "pw" },
-    { re: /nicht\s+erhaltungsw[uü]rdig|zu\s+extrah|\bextraktion\b/i, code: "x" },
+    // "muss extrahiert werden" = Befund x (Live 21.07.), nicht nur "Extraktion"
+    { re: /nicht\s+erhaltungsw[uü]rdig|zu\s+extrah|\bextraktion\b|extrahiert\s+werden|muss\s+(?:\w+\s+)?extrahiert|\bmuss\s+raus\b/i, code: "x" },
     { re: /fehlend(?:er|e)?\s+zahn|zahn\s+fehlt|\bfehlt\b/i, code: "f" },
     { re: /implantat\s+entfernen|\bix\b/i, code: "ix" },
     { re: /implantat\s*krone|\bsk\b/i, code: "sk" },
@@ -153,6 +154,49 @@
   const FDI_UK = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
   const ALL_FDI = new Set([...FDI_OK, ...FDI_UK]);
 
+  /* ── FDI-Normalisierung (Live-Befund 21.07., Patientin N.) ────────────────
+     Diktiert wird Quadrant+Zahn als EINZELNE Ziffern: Parakeet/Whisper
+     schreiben "1,6" / "1, 4" / "vier, sechs" / kompakt "16x14x".
+     Der Parser sah nur \b[1-4][1-8]\b und WORD_FDI-Komposita — alles
+     andere ging verloren. Diese Normalisierung laeuft VOR jeder Extraktion. */
+
+  const DIGIT_WORD = {
+    eins: "1", zwei: "2", zwo: "2", drei: "3", vier: "4",
+    fuenf: "5", "fünf": "5", sechs: "6", sieben: "7", acht: "8",
+  };
+
+  // Nach einer Ziffern-Paarung deutet eine Einheit auf Messwert, nicht Zahn
+  // ("3,5 Millimeter Sondierungstiefe", "1,7 ml Ultracain", "zwei, drei Wochen").
+  const UNIT_AFTER =
+    "(?:millimeter|zentimeter|milliliter|milligramm|mm|cm|ml|mg|prozent|%|" +
+    "uhr|minuten?|stunden?|sekunden?|grad|euro|wochen?|tagen?|monaten?|" +
+    "jahren?|mal|termine?n?|patient(?:en|innen)?)";
+  const RE_PAIR_DIGIT = new RegExp(
+    "(?<![\\d,.])([1-4])\\s*[,.]\\s*([1-8])(?![\\d,.])(?!\\s*" + UNIT_AFTER + ")",
+    "gi",
+  );
+  const RE_PAIR_WORD = new RegExp(
+    "\\b(eins|zwei|zwo|drei|vier)\\s*[,.]?\\s+(eins|zwei|zwo|drei|vier|f[uü]nf|sechs|sieben|acht)\\b" +
+    "(?!\\s*" + UNIT_AFTER + ")",
+    "gi",
+  );
+  // Kompakt-Diktat "16x14x" / "46x": x direkt an der Zahl, ohne Wortgrenze.
+  const RE_COMPACT_X = /([1-4][1-8])\s*([xX])(?=$|[\s.,;:]|[1-4])/g;
+
+  function normalizeToothText(text) {
+    let s = String(text || "");
+    s = s.replace(RE_PAIR_WORD, (m, a, b) => {
+      const fdi = (DIGIT_WORD[a.toLowerCase()] || "") + (DIGIT_WORD[b.toLowerCase()] || "");
+      return ALL_FDI.has(Number(fdi)) ? fdi : m;
+    });
+    s = s.replace(RE_PAIR_DIGIT, (m, a, b) => {
+      const fdi = a + b;
+      return ALL_FDI.has(Number(fdi)) ? fdi : m;
+    });
+    s = s.replace(RE_COMPACT_X, "$1 x ");
+    return s;
+  }
+
   function isKzbv(code) {
     return Object.prototype.hasOwnProperty.call(BEFUND, code);
   }
@@ -190,6 +234,7 @@
     ALL_FDI,
     LAYER_OF,
     markForLayer,
+    normalizeToothText,
     isKzbv,
     labelOf,
     TO_PERIO,

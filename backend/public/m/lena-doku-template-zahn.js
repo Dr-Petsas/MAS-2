@@ -300,6 +300,10 @@
     if (/^(?:ich\s+)?(?:beginne|starte)n?\s+(?:jetzt\s+)?(?:mit\s+)?(?:dem\s+|der\s+)?befund/i.test(s)) {
       return { rest: "" };
     }
+    // Kommando-Form mitten im Satz (Live 21.07.: "Schreib in den Befund ein
+    // 16x14x."): Verb ... Befund [ein/rein] -> Rest ist Befund-Inhalt.
+    const cmd = s.match(/\b(?:schreib\w*|trag\w*|notier\w*|nimm|setz\w*|mach\w*)\b[^.\n]{0,40}?\bbefund\b[:,]?\s*(?:ein|rein|auf|mit)?\b[:,]?\s*/i);
+    if (cmd) return { rest: s.slice(cmd.index + cmd[0].length).trim() };
     return null;
   }
 
@@ -328,6 +332,22 @@
     "i",
   );
 
+  /* "muss extrahiert werden" / "ist zu fuellen" ist BEFUND/Plan, keine
+     durchgefuehrte Handlung (Live 21.07.: beendete faelschlich den
+     Befund-Modus). Soll-/Passiv-Formen erkennen und drinbleiben. */
+  const THERAPY_NEED_RE =
+    /\b(?:muss|m[uü]ssen|musst|soll(?:te)?n?|w[aä]re|ist|sind|w[uü]rde|wird|werden)\b[^.\n]{0,60}\b(?:extrahier|exkavier|pr[aä]parier|trepanier|aufbereit|obturier|zementier|f[uü]ll|zieh|entfern|ersetz|[uü]berkron|behandel)/i;
+  const THERAPY_PASSIVE_RE =
+    /\b(?:extrahiert|exkaviert|pr[aä]pariert|trepaniert|aufbereitet|obturiert|zementiert|gef[uü]llt|gezogen|entfernt|ersetzt|[uü]berkront|behandelt)\s+(?:werden|wird|w[uü]rde)\b/i;
+
+  function isTherapyActionDone(text) {
+    return (
+      THERAPY_ACTION_RE.test(text) &&
+      !THERAPY_NEED_RE.test(text) &&
+      !THERAPY_PASSIVE_RE.test(text)
+    );
+  }
+
   /**
    * Modus je Lauf NEU aus der Segment-Reihenfolge ableiten. applySegments
    * bekommt immer die VOLLE Liste — so bleibt das Routing idempotent, auch
@@ -350,7 +370,7 @@
         if (trig.rest) routed.push({ text: trig.rest, forced: true });
         continue;
       }
-      if (mode === "befund" && THERAPY_ACTION_RE.test(t)) {
+      if (mode === "befund" && isTherapyActionDone(t)) {
         mode = null; // Therapie beginnt — ohne Trigger-Wort (Chef-Vorgabe)
         routed.push({ text: t, forced: false });
         continue;
@@ -413,14 +433,20 @@
         }
         continue;
       }
-      if (/\bkaries\b|kari[oö]s|befund|perkussion|vitalit[aä]t|locker|fistel|schwellung|schmerz|sondier|druckdolent|aufbiss/i.test(t)) {
+      if (/\bkaries\b|kari[oö]s|befund|perkussion|vitalit[aä]t|locker|fistel|schwellung|schmerz|sondier|druckdolent|aufbiss|entz[uü]nd|eitr\w*|abszess|mobil|blutung.*sondier|rezession|furkation/i.test(t)) {
         setField(state, "befund", t, "live");
       }
       if (/diagnos|caries|pulpitis|periodontitis|fractur|fraktur/i.test(t)) {
         setField(state, "diagnose", t, "live");
       }
       if (/exkav|f[uü]ll|komposit|trepan|aufbereit|obturat|extrah|naht|pr[aä]par|zement|einsetz/i.test(t)) {
-        setField(state, "therapie", t, "live");
+        // Soll-/Passiv-Form ("muss extrahiert werden") = Befund/Plan,
+        // nicht durchgefuehrte Therapie (Live 21.07.).
+        if (THERAPY_NEED_RE.test(t) || THERAPY_PASSIVE_RE.test(t)) {
+          setField(state, "befund", t, "live");
+        } else {
+          setField(state, "therapie", t, "live");
+        }
       }
       if (/kontrolle|wiedervorstellung|rezept|schonung|procedere|n[aä]chste/i.test(t)) {
         setField(state, "procedere", t, "live");
