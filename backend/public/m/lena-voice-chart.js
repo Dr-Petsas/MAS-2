@@ -124,9 +124,27 @@
   // Implantate im rechten Unterkiefer" haengte live ein sk an Zahn 14.
   const BARE_NOUN_CODES = new Set(["sk", "k", "b", "t", "pkw"]);
 
+  // Zahnloser Kiefer (Live 13:12: "Alle Zaehne fehlend."): markiert alle
+  // Zaehne des Scopes mit f. Scope: Oberkiefer/Unterkiefer/alle.
+  const RE_EDENTULOUS = /alle\s+z[aä]hne\s+(?:fehlen(?:d)?|weg|entfernt)|zahnlos|unbezahnt/i;
+
+  function edentulousEvents(text) {
+    const K = kat();
+    if (!K || !RE_EDENTULOUS.test(text)) return null;
+    const low = norm(text).toLowerCase();
+    let list = K.FDI_OK.concat(K.FDI_UK);
+    const ok = /oberkiefer|\bok\b/.test(low);
+    const uk = /unterkiefer|\buk\b/.test(low);
+    if (ok && !uk) list = K.FDI_OK.slice();
+    else if (uk && !ok) list = K.FDI_UK.slice();
+    return list.map((fdi) => ({ fdi, codes: ["f"], surfaces: [], text }));
+  }
+
   function parseUtterance(text) {
     const t = String(text || "").trim();
     if (!t) return [];
+    const eden = edentulousEvents(t);
+    if (eden) return eden;
     const fdis = extractFdi(t);
     const codes = extractCodes(t);
     const surfaces = extractSurfaces(t);

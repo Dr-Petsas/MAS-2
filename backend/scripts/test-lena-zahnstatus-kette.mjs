@@ -184,5 +184,31 @@ W.LenaDokuZahn.applySegments(stEnd, [
 check("Ende: echte Handlung beendet Modus", stEnd.dictMode === null, String(stEnd.dictMode));
 check("Ende: Handlung in Therapie-Box", /extrahiert/i.test(stEnd.values.therapie || ""), stEnd.values.therapie);
 
+// 10) ECHTE Zeilen 13:12 (Patientin D., zahnlos): "Alle Zaehne fehlend",
+//     Einzelziffern "1,8", Nachfragen ans System, "Therapie." als Ende.
+const stD = W.LenaDokuZahn.emptyState("Prothesenkontrolle");
+W.LenaDokuZahn.applySegments(stD, [
+  { text: "So, Befund." },
+  { text: "Alle Zähne fehlend." },
+  { text: "Alle Zähne fehlen." },
+  { text: "1,8 fehlt, 1,7 fehlt, 1,6 fehlt und so weiter." },
+  { text: "Hörst du nicht?" },
+  { text: "Nur gehen wir mal vorbei." },
+  { text: "Therapie." },
+  { text: "Hörst du mich?" },
+]);
+check("13:12: zahnlos -> ALLE Zaehne f (Probe 48)", stD.chart?.[48]?.befund === "f", JSON.stringify(stD.chart?.[48]));
+check("13:12: zahnlos -> ALLE Zaehne f (Probe 25)", stD.chart?.[25]?.befund === "f", JSON.stringify(stD.chart?.[25]));
+check("13:12: 18 f (aus '1,8 fehlt')", stD.chart?.[18]?.befund === "f", JSON.stringify(stD.chart?.[18]));
+check("13:12: Befund-Box hat 'Alle Zähne fehlend'", (stD.values.befund || "").includes("Alle Zähne fehlend"), (stD.values.befund || "").slice(0, 140));
+check("13:12: 'Hörst du nicht?' NICHT in Befund-Box", !/h[oö]rst du/i.test(stD.values.befund || ""), (stD.values.befund || "").slice(0, 140));
+check("13:12: 'Therapie.' beendet Modus", stD.dictMode === null, String(stD.dictMode));
+
+// Kiefer-Scope: nur Oberkiefer zahnlos
+const stOk = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stOk, [{ text: "Oberkiefer zahnlos" }]);
+check("OK zahnlos: 16 f", stOk.chart?.[16]?.befund === "f", JSON.stringify(stOk.chart?.[16]));
+check("OK zahnlos: 46 bleibt leer", (stOk.chart?.[46]?.befund || "") === "", JSON.stringify(stOk.chart?.[46]));
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

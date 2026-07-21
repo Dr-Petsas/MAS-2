@@ -317,6 +317,11 @@
     );
   }
 
+  /* Nachfragen ans System ("Hoerst du mich?", Live 13:12) sind kein Befund —
+     im Befund-Modus ueberspringen (bleiben nur im Rohdialog-Archiv). */
+  const SYSTEM_CHATTER_RE =
+    /\bh[oö]rst\s+du\b|\bverstehst\s+du\b|\bbist\s+du\s+(?:da|noch\s+da|bereit)\b|\bfunktioniert\s+(?:das|es|die\s+aufnahme)\b|\bhallo\s+(?:lena|clara)\b|\bkannst\s+du\s+mich\s+h[oö]ren\b/i;
+
   /** Therapie-HANDLUNG (Verben/LA) — beendet das Befund-Diktat automatisch. */
   const THERAPY_ACTION_RE = new RegExp(
     [
@@ -375,6 +380,7 @@
         routed.push({ text: t, forced: false });
         continue;
       }
+      if (mode === "befund" && SYSTEM_CHATTER_RE.test(t)) continue;
       routed.push({ text: t, forced: mode === "befund" });
     }
     if (state) state.dictMode = mode;

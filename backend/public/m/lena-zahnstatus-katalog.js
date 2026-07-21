@@ -171,8 +171,10 @@
     "(?:millimeter|zentimeter|milliliter|milligramm|mm|cm|ml|mg|prozent|%|" +
     "uhr|minuten?|stunden?|sekunden?|grad|euro|wochen?|tagen?|monaten?|" +
     "jahren?|mal|termine?n?|patient(?:en|innen)?)";
+  // KEIN Lookbehind (aeltere iPad-Safari werfen sonst beim new RegExp und der
+  // ganze Katalog faellt aus) — Vorgaenger-Zeichen wird mitgefangen.
   const RE_PAIR_DIGIT = new RegExp(
-    "(?<![\\d,.])([1-4])\\s*[,.]\\s*([1-8])(?![\\d,.])(?!\\s*" + UNIT_AFTER + ")",
+    "(^|[^\\d,.])([1-4])\\s*[,.]\\s*([1-8])(?![\\d,.])(?!\\s*" + UNIT_AFTER + ")",
     "gi",
   );
   const RE_PAIR_WORD = new RegExp(
@@ -189,9 +191,9 @@
       const fdi = (DIGIT_WORD[a.toLowerCase()] || "") + (DIGIT_WORD[b.toLowerCase()] || "");
       return ALL_FDI.has(Number(fdi)) ? fdi : m;
     });
-    s = s.replace(RE_PAIR_DIGIT, (m, a, b) => {
+    s = s.replace(RE_PAIR_DIGIT, (m, pre, a, b) => {
       const fdi = a + b;
-      return ALL_FDI.has(Number(fdi)) ? fdi : m;
+      return ALL_FDI.has(Number(fdi)) ? (pre + fdi) : m;
     });
     s = s.replace(RE_COMPACT_X, "$1 x ");
     return s;

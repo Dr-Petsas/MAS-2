@@ -151,8 +151,13 @@ app.get("/m/ipad.webmanifest", (req, res) => {
 // Companion-Seiten (Handy/iPad) NIE cachen — sonst zeigt eine installierte
 // Home-Bildschirm-App (iOS cached start_url hartnaeckig) veraltete Stände, obwohl
 // der Server längst die neue Oberfläche ausliefert. Muss VOR express.static stehen.
+// Gilt auch fuer die Lena-JS-Module: am 21.07. lief das iPad stundenlang mit
+// altem lena-doku-template-zahn.js aus dem Safari-Cache (?v= nicht gebumpt) —
+// Befund-Diktate verschwanden, obwohl der Server laengst den Fix auslieferte.
 app.use((req, res, next) => {
-  if (/^\/m\/(ipad|ipad-app|preview|pair|call)\.html$/.test(req.path)) {
+  if (/^\/m\/(ipad|ipad-app|preview|pair|call|lena-01)\.html$/.test(req.path) ||
+      /^\/m\/lena-01\//.test(req.path) ||
+      /^\/m\/lena-[\w-]+\.js$/.test(req.path)) {
     res.set("Cache-Control", "no-store, no-cache, must-revalidate");
   }
   next();
