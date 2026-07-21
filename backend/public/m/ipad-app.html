@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -414,7 +414,7 @@
 
     /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        LENA-DOKU-WIZARD (Dokumentation-Modus) — Preview-Layout.
-       Raum→Termin: POST /treatment/current · STT: Canary via lena-stt-capture.
+       Raum→Termin: POST /treatment/current · STT: Parakeet über Clara (iPad·BT·USB).
        â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
     .pane-doku { --pink: #d862c8; }
     .lena-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 2px 4px 4px; gap: 8px; overflow: hidden; }
@@ -504,56 +504,81 @@
     .btn-rec { background: var(--red); min-width: 130px; box-shadow: 0 8px 20px rgba(255,91,110,.35); }
     .btn-rec.is-live { background: transparent; color: var(--red); box-shadow: inset 0 0 0 2px var(--red); }
     .btn:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
-    /* Aufnahme: Gespräch dominant · Pegel feste Höhe, Mitte→rechts */
+    /* Aufnahme: zwei Karten (Patient | Mikro) statt enger Zeilen-Leiste */
     .wiz-rec .rec-panel {
-      gap: 8px; flex: 1; min-height: 0; height: 100%;
+      gap: 10px; flex: 1; min-height: 0; height: 100%;
       display: flex; flex-direction: column;
     }
     .rec-top {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
       align-items: stretch;
       gap: 10px;
       flex: none;
-      height: 108px; /* fest — Chat springt nicht bei Pegel/Label */
-      min-height: 108px;
-      max-height: 108px;
-      overflow: hidden;
+      min-height: 0;
+      overflow: visible;
+    }
+    .rec-card {
+      min-width: 0;
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 12px 12px 10px;
+      border-radius: 16px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      box-sizing: border-box;
+    }
+    .rec-card-patient {
+      background: linear-gradient(165deg, rgba(126,201,193,.1), rgba(0,0,0,.22));
+    }
+    .rec-card-mic {
+      background: rgba(0,0,0,.28);
     }
     .rec-head {
-      display: flex; align-items: center; gap: 8px; min-width: 0;
-      padding: 2px 0;
+      display: flex; align-items: flex-start; gap: 10px; min-width: 0;
     }
     .rec-av {
-      width: 36px; height: 36px; border-radius: 50%; flex: none;
+      width: 44px; height: 44px; border-radius: 14px; flex: none;
       background: linear-gradient(145deg, #d08a72, #c45c3e);
-      display: grid; place-items: center; font-weight: 800; font-size: .72rem;
+      display: grid; place-items: center; font-weight: 800; font-size: .78rem;
     }
-    .rec-head-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-    .rec-name { font-weight: 900; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .rec-meta { font-size: .7rem; color: var(--mute); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rec-head-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
+    .rec-name { font-weight: 900; font-size: 1.02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rec-meta { font-size: .72rem; color: var(--mute); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .rec-meta b { color: #b8fff0; }
     .rec-live {
       display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
       font-size: .62rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
-      color: var(--mute); background: rgba(255,255,255,.06); padding: 5px 8px; border-radius: 999px;
+      color: var(--mute); background: rgba(255,255,255,.06); padding: 6px 10px; border-radius: 10px;
       max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .rec-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--mute2); display: block; flex: none; }
     .rec-live.is-on { color: var(--red); background: rgba(255,91,110,.12); }
     .rec-live.is-on i { background: var(--red); animation: orbPulse 1.1s ease infinite; }
     .meters {
-      min-width: 0; width: 100%; height: 100%;
+      min-width: 0; width: 100%;
       display: flex; flex-direction: column; justify-content: flex-start;
-      gap: 5px; padding: 8px 10px; border-radius: 12px;
-      background: rgba(0,0,0,.32); border: 1px solid var(--line);
-      box-sizing: border-box; overflow: hidden;
+      gap: 8px; padding: 0; border: none; background: transparent;
+      box-sizing: border-box; overflow: visible;
     }
+    .meter-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .meter-card {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 8px 9px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      min-width: 0;
+    }
+    .meter-card-arzt { border-color: rgba(126,201,193,.28); }
+    .meter-card-pat { border-color: rgba(216,98,200,.28); }
+    .meters.is-mono .meter-card-arzt { display: none; }
+    .meters.is-mono .meter-cards { grid-template-columns: 1fr; }
     .meter-row {
-      display: grid; grid-template-columns: 52px minmax(0, 1fr) 48px;
-      gap: 8px; align-items: center;
-      height: 18px; min-height: 18px; max-height: 18px;
-      flex: none; overflow: hidden;
+      display: contents;
     }
     .meter-label { display: flex; align-items: center; gap: 5px; font-weight: 800; font-size: .7rem; min-width: 0; }
     .meter-label span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -581,34 +606,39 @@
     }
     .meter-note { display: none; }
     .mic-toggle {
-      display: flex; gap: 4px; padding: 3px; border-radius: 9px; flex: none;
-      height: 28px; min-height: 28px; max-height: 28px; box-sizing: border-box;
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;
+      padding: 4px; border-radius: 12px; flex: none;
+      box-sizing: border-box;
       background: rgba(255,255,255,.05); border: 1px solid var(--line);
     }
     .mic-toggle button {
-      flex: 1; border: 0; border-radius: 7px; padding: 5px 6px; cursor: pointer;
-      font-size: .68rem; font-weight: 800; color: var(--mute); background: transparent;
-      line-height: 1.15;
+      border: 0; border-radius: 9px; padding: 8px 4px; cursor: pointer;
+      font-size: .66rem; font-weight: 800; color: var(--mute); background: transparent;
+      line-height: 1.15; min-height: 34px;
     }
     .mic-toggle button.is-on {
       background: rgba(126,201,193,.22); color: #c8fff4;
       box-shadow: inset 0 0 0 1px rgba(126,201,193,.45);
     }
     .mic-swap {
-      margin: 0; padding: 3px 6px; border-radius: 7px; border: 1px solid var(--line);
+      margin: 0; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line);
       background: rgba(255,255,255,.04); color: var(--mute); font-size: .62rem; font-weight: 700;
-      cursor: pointer; -webkit-tap-highlight-color: transparent; text-align: left;
-      min-height: 22px; /* Platz bleibt auch wenn unsichtbar */
+      cursor: pointer; -webkit-tap-highlight-color: transparent; text-align: center;
+      min-height: 28px;
     }
-    .mic-swap[hidden] { display: block !important; visibility: hidden; pointer-events: none; }
+    .mic-swap[hidden] { display: none !important; }
     .mic-swap:disabled { opacity: .45; cursor: default; }
     .mic-toggle[data-mode="usb"] button.is-on {
       background: rgba(216,98,200,.2); color: #ffd6f5;
       box-shadow: inset 0 0 0 1px rgba(216,98,200,.45);
     }
+    .mic-toggle[data-mode="bluetooth"] button.is-on {
+      background: rgba(96,165,250,.2); color: #dbeafe;
+      box-shadow: inset 0 0 0 1px rgba(96,165,250,.45);
+    }
     .mic-active {
       margin: 0; font-size: .6rem; font-weight: 700; color: var(--mute2);
-      line-height: 16px; height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      line-height: 1.3; min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       flex: none;
     }
     .mic-active.is-warn { color: #ffb4a8; }
@@ -621,9 +651,19 @@
     }
     .doku-tpl {
       flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
-      display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 4px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 2px 2px 4px;
+      align-content: start;
       -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
     }
+    .doku-tpl > .tpl-title,
+    .doku-tpl > .tpl-field--wide,
+    .doku-tpl > .tpl-block,
+    #sumBoxes > .tpl-title,
+    #sumBoxes > .tpl-field--wide,
+    #sumBoxes > .tpl-block {
+      grid-column: 1 / -1;
+    }
+    .tpl-field--wide { min-width: 0; }
     .tpl-title {
       display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
       flex: none; padding: 0 2px;
@@ -637,28 +677,75 @@
       background: rgba(245,197,24,.12); border: 1px solid rgba(245,197,24,.35);
       padding: 4px 9px; border-radius: 999px;
     }
+    /* Box-Karten: hoher Kontrast fuer iPad (kein Zeilen-Grau) */
     .tpl-field {
-      background: var(--card); border: 1px solid var(--line);
-      border-radius: 12px; padding: 9px 11px; flex: none;
+      background: #f4f1ea; border: 2px solid #c8c0b0;
+      border-radius: 14px; padding: 12px 14px; flex: none;
+      color: #1a1a1a; box-shadow: 0 2px 0 rgba(0,0,0,.06);
     }
-    .tpl-field.is-gap { border-color: rgba(245,197,24,.45); background: rgba(245,197,24,.06); }
-    .tpl-field.is-pre { border-color: rgba(126,201,193,.25); }
-    .tpl-field.is-filled { border-color: rgba(52,211,153,.35); }
+    .tpl-field.is-gap {
+      border-color: #d4a017; background: #fff8e1;
+      box-shadow: inset 0 0 0 1px rgba(212,160,23,.25);
+    }
+    .tpl-field.is-pre {
+      border-color: #2a9d8f; background: #e8f6f4;
+    }
+    .tpl-field.is-focus {
+      outline: 3px solid #0f766e;
+      box-shadow: 0 0 0 4px rgba(15,118,110,.25);
+    }
+    .zs-schema { display: flex; flex-direction: column; gap: 10px; }
+    .zs-block {
+      border: 1px solid #c8c0b0; border-radius: 12px; padding: 6px 6px 8px;
+      background: #fffef9;
+    }
+    .zs-block-h {
+      font-size: .62rem; font-weight: 900; letter-spacing: .08em;
+      text-transform: uppercase; color: #6b6560; padding: 0 4px 4px;
+    }
+    .zs-row { display: grid; grid-template-columns: 18px 1fr; gap: 4px; align-items: stretch; margin-bottom: 2px; }
+    .zs-row-lab {
+      font-size: .58rem; font-weight: 900; color: #3d3a34;
+      display: grid; place-items: center; line-height: 1;
+    }
+    .zs-arch { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 2px; }
+    .zs-cell {
+      min-height: 22px; border-radius: 5px; border: 1px solid #d4cdc0;
+      background: #f7f4ee; display: grid; place-items: center;
+      font-size: .52rem; font-weight: 800; color: #1a1a1a;
+      padding: 1px 1px; text-align: center; line-height: 1.1; overflow: hidden;
+    }
+    .zs-row-nums .zs-cell { min-height: 28px; background: #fff; border-color: #b0a898; }
+    .zs-fdi { font-size: .62rem; font-weight: 900; color: #3d3a34; }
+    .zs-cell.has-mark { border-color: #0f766e; background: #e8f6f4; color: #0a5c56; }
+    .zs-cell.is-miss { border-color: #9a3412; background: #ffedd5; color: #9a3412; }
+    .zs-cell.is-sel { outline: 2px solid #0f766e; }
+    .zs-cell.is-done { border-color: #1b7a4e; background: #d8f3e2; }
+    .zs-row-layer[data-layer="therapie"] .zs-cell.has-mark {
+      background: #eaf7ef; border-color: #1b7a4e; color: #0d5c32;
+    }
+    .zs-row-layer[data-layer="befund"] .zs-cell.has-mark {
+      background: #fff8e1; border-color: #d4a017; color: #7a5500;
+    }
+    .zs-hint { margin: 2px 0 0; font-size: .58rem; color: #6b6560; font-weight: 600; }
     .tpl-lab {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-      font-size: .62rem; font-weight: 800; letter-spacing: .04em;
-      text-transform: uppercase; color: var(--mute); margin-bottom: 4px;
+      font-size: .72rem; font-weight: 900; letter-spacing: .04em;
+      text-transform: uppercase; color: #3d3a34; margin-bottom: 6px;
     }
     .tpl-badge {
-      font-size: .56rem; padding: 2px 6px; border-radius: 999px;
-      background: rgba(255,255,255,.06); color: var(--mute2); font-weight: 700;
+      font-size: .62rem; padding: 3px 8px; border-radius: 999px;
+      background: #e4dfd4; color: #3d3a34; font-weight: 800;
       letter-spacing: .02em; text-transform: none;
     }
-    .tpl-badge.pre { color: var(--lena-soft); background: rgba(15,118,110,.2); }
-    .tpl-badge.live { color: var(--green); background: rgba(52,211,153,.12); }
-    .tpl-badge.gap { color: var(--amber); background: rgba(245,197,24,.12); }
-    .tpl-val { font-size: .86rem; font-weight: 600; line-height: 1.35; min-height: 1.15em; }
-    .tpl-val.empty { color: var(--mute2); font-weight: 500; font-style: italic; }
+    .tpl-badge.pre { color: #0f5c54; background: #b8e6df; }
+    .tpl-badge.live { color: #0d5c32; background: #b8e6c8; }
+    .tpl-badge.gap { color: #7a5500; background: #ffe08a; }
+    .tpl-val {
+      font-size: 1.02rem; font-weight: 700; line-height: 1.4;
+      min-height: 1.25em; color: #111;
+    }
+    .tpl-val.empty { color: #6b6560; font-weight: 600; font-style: italic; }
     .teeth { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
     .tooth {
       aspect-ratio: 1; border-radius: 4px; font-size: .5rem; font-weight: 800;
@@ -670,19 +757,34 @@
       color: #fff; box-shadow: 0 0 8px rgba(15,118,110,.35);
     }
     .tpl-block {
-      border: 1px solid rgba(126,201,193,.35); border-radius: 14px; overflow: hidden;
-      background: rgba(15,118,110,.08); flex: none;
+      border: 2px solid #2a9d8f; border-radius: 16px; overflow: hidden;
+      background: #e8f6f4; flex: none;
     }
     .tpl-block-head {
-      display: flex; align-items: center; gap: 8px; padding: 7px 11px;
-      background: rgba(15,118,110,.18); font-size: .68rem; font-weight: 900;
-      letter-spacing: .04em; text-transform: uppercase; color: var(--lena-soft);
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      background: #0f766e; font-size: .78rem; font-weight: 900;
+      letter-spacing: .04em; text-transform: uppercase; color: #fff;
     }
     .tpl-block-head em {
-      font-style: normal; margin-left: auto; font-size: .58rem; color: var(--cyan);
+      font-style: normal; margin-left: auto; font-size: .68rem; color: #c8fff4;
       font-weight: 700; letter-spacing: 0; text-transform: none;
     }
-    .tpl-block-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; }
+    .tpl-block-body {
+      padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    }
+    .tpl-title h2 { color: #e8fff8 !important; font-size: .85rem !important; }
+    .tpl-gaps {
+      font-size: .75rem !important; color: #1a1a1a !important;
+      background: #ffe08a !important; border-color: #d4a017 !important;
+    }
+    .tooth {
+      background: #fff !important; border: 1px solid #b0a898 !important; color: #4a4540 !important;
+      font-size: .58rem !important;
+    }
+    .tooth.on {
+      background: #0f766e !important; border-color: #0a5c56 !important;
+      color: #fff !important;
+    }
     details.raw-dialog {
       flex: none; border: 1px solid var(--line); border-radius: 12px;
       background: rgba(0,0,0,.2); max-height: 38%;
@@ -703,7 +805,6 @@
       justify-content: flex-start;
       -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
     }
-    .meters.is-mono .meter-row-arzt { display: none; }
     .bubble { position: relative; max-width: 92%; padding: 7px 10px; border-radius: 12px; font-size: .78rem; line-height: 1.3; font-weight: 500; }
     .bubble.a { align-self: flex-end; background: rgba(15,118,110,.28); color: #c8fff4; border-bottom-right-radius: 5px; }
     .bubble.p { align-self: flex-start; background: rgba(255,255,255,.06); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
@@ -725,9 +826,40 @@
     .nd-head h2 { margin: 0; font-size: 1.1rem; font-weight: 900; letter-spacing: -.02em; }
     .nd-head .lead { margin: 2px 0 0; color: var(--mute); font-size: .76rem; font-weight: 500; }
     .nd-badge { margin-left: auto; font-size: .68rem; font-weight: 800; padding: 6px 11px; border-radius: 999px; background: rgba(52,211,153,.12); color: var(--voice); border: 1px solid rgba(52,211,153,.28); }
-    .nd-grid { display: grid; grid-template-columns: 1fr 1fr 1.1fr; gap: 8px; flex: 1; min-height: 0; overflow: hidden; }
-    .nd-col { background: rgba(0,0,0,.28); border: 1px solid var(--line); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-    .nd-col h3 { margin: 0 0 6px; font-size: .7rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--mute); flex: none; display: flex; align-items: center; gap: 6px; }
+    .nd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1; min-height: 0; overflow: hidden; }
+    .nd-gaps {
+      display: flex; flex-direction: column; gap: 6px; flex: none;
+      max-height: 38%; overflow-y: auto; margin-bottom: 8px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .nd-gap-q {
+      display: block; width: 100%; text-align: left; cursor: pointer;
+      border: 2px solid #d4a017; border-radius: 12px; padding: 10px 12px;
+      background: #fff8e1; color: #1a1a1a; font: inherit; font-size: .9rem; font-weight: 700;
+      line-height: 1.35;
+    }
+    .nd-gap-q:active, .nd-gap-q.is-on { border-color: #0f766e; background: #e8f6f4; }
+    .nd-gap-ok {
+      border: 2px solid #1b7a4e; border-radius: 12px; padding: 10px 12px;
+      background: #eaf7ef; color: #0d5c32; font-size: .88rem; font-weight: 700;
+    }
+    .nd-col {
+      background: #f4f1ea; border: 2px solid #c8c0b0; border-radius: 16px;
+      padding: 12px; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+      color: #1a1a1a;
+    }
+    .nd-col h3 {
+      margin: 0 0 8px; font-size: .78rem; font-weight: 900; letter-spacing: .06em;
+      text-transform: uppercase; color: #3d3a34; flex: none; display: flex; align-items: center; gap: 6px;
+    }
+    .nd-col .tag { background: #e4dfd4; color: #3d3a34; }
+    .nd-col textarea, .nd-merge, .nd-rec {
+      background: #fff !important; color: #111 !important; border: 1px solid #b0a898 !important;
+      font-size: .95rem !important; font-weight: 600 !important;
+    }
+    .nd-col .bubble.a { background: #d4efe9 !important; color: #0a3d38 !important; }
+    .nd-col .bubble.p { background: #fff !important; color: #111 !important; border-color: #b0a898 !important; }
+    .nd-col .bubble .who { color: #3d3a34 !important; opacity: .85 !important; }
     .nd-col h3 .tag { font-size: .6rem; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--mute2); letter-spacing: 0; text-transform: none; font-weight: 700; }
     .nd-col--rec h3 { color: var(--voice); }
     .nd-col--dict h3 { color: var(--pink-light); }
@@ -803,15 +935,16 @@
       margin: 0; font-size: .7rem; font-weight: 800; letter-spacing: .06em;
       text-transform: uppercase; color: var(--mute);
     }
-    #sumText {
+    #sumText { display: none; }
+    #sumBoxes {
       flex: 1; min-height: 0; margin: 0;
-      overflow-x: hidden; overflow-y: auto; white-space: pre-wrap;
-      font-family: inherit; font-size: .86rem; line-height: 1.45; font-weight: 500;
-      color: #f0e8f6;
-      background: rgba(255,255,255,.04); border: 1px solid var(--line);
-      border-radius: 12px; padding: 12px 14px;
-      -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+      overflow-x: hidden; overflow-y: auto;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      align-content: start;
+      padding: 2px; -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain; touch-action: pan-y;
     }
+    #sumBoxes .tpl-title h2 { color: #e8fff8 !important; }
     .sum-block ul { margin: 0; padding: 0 0 0 16px; color: var(--ink); font-size: .88rem; line-height: 1.55; }
     .sum-block li + li { margin-top: 4px; }
     .export-stack { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; overflow-y: auto; }
@@ -852,7 +985,11 @@
       .orb-wrap, .orb { width: 148px; height: 148px; }
     }
     @media (max-width: 860px) {
-      .wiz-arzt, .wiz-termin, .sum-grid, .sophie-grid, .nd-grid, .sum-head { grid-template-columns: 1fr; }
+      .wiz-arzt, .wiz-termin, .sum-grid, .sophie-grid, .sum-head { grid-template-columns: 1fr; }
+    }
+    /* Halfscreen-Boxen bleiben 2-spaltig auf iPad; nur sehr schmal 1 Spalte */
+    @media (max-width: 560px) {
+      .doku-tpl, #sumBoxes, .nd-grid, .tpl-block-body { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -997,8 +1134,8 @@
           <div class="step-chip" data-step="3"><span class="n">3</span>Aufnahme</div>
           <div class="step-chip" data-step="4"><span class="n">4</span>Nachdiktat</div>
           <div class="step-chip" data-step="5"><span class="n">5</span>Summary</div>
-          <div class="step-chip" data-step="6"><span class="n">6</span>Sophie</div>
-          <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/perio.html?v=20260720zq" title="01-Modus" style="text-decoration:none;margin-left:auto" hidden>
+          <div class="step-chip" data-step="6"><span class="n">6</span>Gespeichert</div>
+          <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/perio.html?v=20260721b" title="01-Modus" style="text-decoration:none;margin-left:auto" hidden>
             <span class="n">01</span>01-Modus
           </a>
         </div>
@@ -1011,7 +1148,7 @@
             <div class="doc-grid" id="doctors"></div>
             <div class="actions">
               <span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span>
-              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/perio.html?v=20260720zq" style="text-decoration:none" hidden>01-Modus</a>
+              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/perio.html?v=20260721b" style="text-decoration:none" hidden>01-Modus</a>
               <button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button>
             </div>
           </div>
@@ -1057,33 +1194,40 @@
         <div class="wiz wiz-rec" id="wiz3">
           <div class="panel rec-panel">
             <div class="rec-top">
-              <div class="rec-head">
-                <div class="rec-av" id="recAv">GJ</div>
-                <div class="rec-head-main">
-                  <div class="rec-name" id="recName">—</div>
-                  <div class="rec-meta"><b id="recDoc">—</b> · <span id="recTreat"></span></div>
-                  <div class="rec-live" id="recLive"><i></i><span>bereit</span></div>
+              <div class="rec-card rec-card-patient">
+                <div class="rec-head">
+                  <div class="rec-av" id="recAv">GJ</div>
+                  <div class="rec-head-main">
+                    <div class="rec-name" id="recName">—</div>
+                    <div class="rec-meta"><b id="recDoc">—</b> · <span id="recTreat"></span></div>
+                  </div>
                 </div>
+                <div class="rec-live" id="recLive"><i></i><span>bereit</span></div>
               </div>
-              <div class="meters is-mono" id="metersBox" aria-label="Pegel">
-                <div class="mic-toggle" id="micToggle" data-mode="ipad" role="group" aria-label="Mikrofonquelle">
-                  <button type="button" data-mic="ipad" class="is-on">1 Mic</button>
-                  <button type="button" data-mic="usb">Stereo</button>
+              <div class="rec-card rec-card-mic">
+                <div class="meters" id="metersBox" aria-label="Pegel">
+                  <div class="mic-toggle" id="micToggle" data-mode="ipad" role="group" aria-label="Mikrofonquelle">
+                    <button type="button" data-mic="ipad" class="is-on">iPad</button>
+                    <button type="button" data-mic="usb">USB</button>
+                    <button type="button" data-mic="bluetooth">Bluetooth</button>
+                  </div>
+                  <div class="meter-cards">
+                    <div class="meter-card meter-card-arzt">
+                      <div class="meter-label"><span class="dot dot-a"></span><span id="meterLabelArzt">Arzt</span></div>
+                      <div class="meter-track"><div class="meter-fill a" id="fillArzt"></div></div>
+                      <div class="meter-db" id="dbArzt">—</div>
+                    </div>
+                    <div class="meter-card meter-card-pat">
+                      <div class="meter-label"><span class="dot dot-p"></span><span id="meterLabelPat">Patient</span></div>
+                      <div class="meter-track"><div class="meter-fill p" id="fillPat"></div></div>
+                      <div class="meter-db" id="dbPat">—</div>
+                    </div>
+                  </div>
+                  <button type="button" class="mic-swap" id="btnStereoSwap" hidden>L/R tauschen</button>
+                  <p class="mic-active" id="micActiveLabel">Mikrofon · Pegel live</p>
+                  <p class="meter-note" id="meterMonoNote" hidden></p>
+                  <canvas class="line-canvas" id="lineCanvas" width="960" height="112" hidden aria-hidden="true"></canvas>
                 </div>
-                <div class="meter-row meter-row-arzt">
-                  <div class="meter-label"><span class="dot dot-a"></span><span id="meterLabelArzt">Arzt</span></div>
-                  <div class="meter-track"><div class="meter-fill a" id="fillArzt"></div></div>
-                  <div class="meter-db" id="dbArzt">âˆ’âˆž</div>
-                </div>
-                <div class="meter-row meter-row-mic">
-                  <div class="meter-label"><span class="dot dot-p"></span><span id="meterLabelPat">Mikrofon</span></div>
-                  <div class="meter-track"><div class="meter-fill p" id="fillPat"></div></div>
-                  <div class="meter-db" id="dbPat">âˆ’âˆž</div>
-                </div>
-                <button type="button" class="mic-swap" id="btnStereoSwap" hidden>L/R tauschen</button>
-                <p class="mic-active" id="micActiveLabel">1 Mikrofon · Pegel live</p>
-                <p class="meter-note" id="meterMonoNote" hidden></p>
-                <canvas class="line-canvas" id="lineCanvas" width="960" height="112" hidden aria-hidden="true"></canvas>
               </div>
             </div>
             <div class="doku-wrap">
@@ -1112,9 +1256,9 @@
             <div class="nd-head">
               <div>
                 <h2>Nachdiktat</h2>
-                <p class="lead" id="ndLead">Aufnahme bleibt, Nachdiktat wird ergänzt</p>
+                <p class="lead" id="ndLead">Aufnahme bleibt — offene Lücken gezielt ergänzen</p>
               </div>
-              <span class="nd-badge">eigene Seite · Merge</span>
+              <span class="nd-badge">Dialog · Lücken</span>
             </div>
             <div class="nd-grid">
               <div class="nd-col nd-col--rec">
@@ -1124,20 +1268,18 @@
                 </div>
               </div>
               <div class="nd-col nd-col--dict">
-                <h3>Nachdiktat <span class="tag">neu</span></h3>
-                <textarea id="dictFree" placeholder="Nach der Behandlung diktieren …"></textarea>
+                <h3>Lücken-Dialog <span class="tag">neu</span></h3>
+                <div class="nd-gaps" id="ndGaps" aria-live="polite"></div>
+                <textarea id="dictFree" placeholder="Antwort diktieren oder tippen …"></textarea>
                 <div class="nd-mic">
                   <button type="button" id="ndMic">â— Diktieren</button>
-                  <span id="ndMicHint">Kanal · Arzt · Canary-STT</span>
+                  <span id="ndMicHint">Kanal · Arzt · Parakeet (Clara)</span>
                 </div>
-              </div>
-              <div class="nd-col nd-col--merge">
-                <h3>Merge <span class="tag">Aufnahme + Nachdiktat</span></h3>
-                <div class="nd-merge" id="ndMerge"></div>
+                <div class="nd-merge" id="ndMerge" hidden></div>
               </div>
             </div>
             <div class="nd-actions">
-              <button type="button" class="btn btn-primary" id="ndToSum">Merge übernehmen · Zusammenfassung</button>
+              <button type="button" class="btn btn-primary" id="ndToSum">Weiter · Zusammenfassung</button>
             </div>
           </div>
         </div>
@@ -1172,7 +1314,8 @@
                   <h3>Dokumentation</h3>
                   <button type="button" class="btn btn-ghost" id="btnStructure">Neu strukturieren</button>
                 </div>
-                <pre id="sumText">—</pre>
+                <div id="sumBoxes" aria-live="polite"></div>
+                <pre id="sumText" hidden>—</pre>
               </div>
               <div class="sum-block sum-block--export">
                 <h3>Weiter</h3>
@@ -1180,37 +1323,32 @@
                   <button type="button" class="export-btn" id="btnExportPdf"><span class="ico">ðŸ“„</span><span>PDF Akte<small>Druck / Ablage</small></span></button>
                   <button type="button" class="export-btn" id="btnExportPms" disabled title="folgt Dens"><span class="ico">â†—</span><span>An PMS<small>Charly</small></span></button>
                   <button type="button" class="export-btn" id="btnExportNadine" disabled title="Folgt"><span class="ico">âœ‰</span><span>An Nadine<small>Mail-Entwurf</small></span></button>
-                  <button type="button" class="export-btn" id="btnToSophie"><span class="ico">ðŸ’¶</span><span>An Sophie<small>Abrechnung</small></span></button>
+                  <button type="button" class="export-btn" id="btnSaveDoc"><span class="ico">✓</span><span>Speichern<small>Doku für Clara</small></span></button>
                 </div>
               </div>
             </div>
             <div class="actions">
               <button type="button" class="btn btn-ghost" data-back="4">Nachdiktat</button>
-              <button type="button" class="btn btn-mag" id="btnToSophieNav" data-next="6">Sophie · Abrechnung</button>
+              <button type="button" class="btn btn-mag" id="btnSaveDocNav">Speichern</button>
             </div>
           </div>
         </div>
 
-        <!-- 6 Sophie -->
+        <!-- 6 Bestätigung nach Speichern (Sophie-Abrechnung folgt später) -->
         <div class="wiz wiz-sophie" id="wiz6">
-          <div class="panel" style="gap:10px;">
-            <h2>Sophie · Abrechnungsanalyse</h2>
-            <p class="lead">Vorschläge aus Doku — Codes prüfen, Lücken markieren, freigeben.</p>
-            <div class="sophie-grid">
-              <div class="sum-block">
-                <h3>Erkannte Positionen</h3>
-                <div id="billList"></div>
-                <div class="hint-box" id="billHint" style="margin-top:12px;display:none;"></div>
-              </div>
-              <div class="sum-block">
-                <h3>Prüfliste</h3>
-                <p style="font-size:12.5px;color:#7c879a;line-height:1.45;margin:0 0 12px;">Vorschläge aus der Doku — vor Freigabe klinisch prüfen.</p>
-                <div class="actions" style="margin-top:14px;">
-                  <button type="button" class="btn btn-ghost" id="btnBillBack" data-back="5">Summary</button>
-                  <button type="button" class="btn btn-primary" id="btnBill">Ziffern vorschlagen</button>
-                </div>
-              </div>
+          <div class="panel" style="gap:14px;">
+            <h2>Gespeichert</h2>
+            <p class="lead" id="saveDoneLead">Die Dokumentation liegt im Praxisgedächtnis — Clara kann sie vorlesen.</p>
+            <div class="hint-box" id="saveDoneHint" style="display:none;"></div>
+            <div class="actions">
+              <button type="button" class="btn btn-ghost" data-back="5">Summary</button>
+              <button type="button" class="btn btn-mag" id="btnSaveDoneClara">Zurück zu Clara</button>
             </div>
+            <!-- Alt-IDs für Billing-JS behalten (Sophie später) -->
+            <div id="billList" hidden></div>
+            <div id="billHint" hidden></div>
+            <button type="button" id="btnBill" hidden></button>
+            <button type="button" id="btnBillBack" hidden data-back="5"></button>
           </div>
         </div>
       </div>
@@ -1492,7 +1630,10 @@
           let sum = 0;
           for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
           const rms = Math.sqrt(sum / buf.length);
+          window.__claraMicRms = rms;
           const now = performance.now();
+          // Im Doku-Modus nur Pegel fuer Lena-Meter pflegen (kein Clara-Orb).
+          if (document.body?.dataset?.appMode === "doku") return;
           if (voice === "clara" || voice === "thinking") return;
           if (rms > 0.045) { userQuietSince = 0; if (voice !== "user") { voice = "user"; render(); } }
           else if (voice === "user") { if (!userQuietSince) userQuietSince = now; if (now - userQuietSince > 700) { voice = "listening"; render(); } }
@@ -1563,6 +1704,12 @@
             } else if (obj.type === "wake_state") {
               const standby = obj.state === "standby";
               if (standby !== wakeStandby) { wakeStandby = standby; if (phase === "live" && voice === "thinking" && standby) voice = "listening"; render(); }
+            } else if (obj.type === "lena_tee_ack") {
+              window.__lenaTeeActive = obj.active === true;
+              window.__lenaTeeAppt = String(obj.appointmentId || "");
+              try {
+                document.dispatchEvent(new CustomEvent("lena-tee-ack", { detail: obj }));
+              } catch (_) {}
             }
           } catch {}
         });
@@ -1582,6 +1729,15 @@
           if (forChat) {
             const pipe = new TextEncoder().encode(JSON.stringify({ type: "set_pipeline", mode: "text" }));
             await room.localParticipant.publishData(pipe, { topic: "pickadoc.cmd", reliable: true });
+          }
+          // Modus-Sync VOR set_profile: Wurde in der Doku-Ansicht verbunden
+          // (z. B. "Aufnehmen" ohne vorherige Clara-Verbindung), muss der
+          // Worker das wissen, BEVOR set_profile die Begruessung ausloest.
+          // Sonst redet Clara mitten in der Behandlung (Vorfall 21.07. frueh:
+          // Umschalt-Befehl ging ins Leere, weil noch nicht verbunden).
+          if (document.body?.dataset?.appMode === "doku") {
+            const md = new TextEncoder().encode(JSON.stringify({ type: "set_app_mode", mode: "doku" }));
+            await room.localParticipant.publishData(md, { topic: "pickadoc.cmd", reliable: true });
           }
           const data = new TextEncoder().encode(JSON.stringify({ type: "set_profile", profile_id: cfg.profileId, ...(forChat ? { pipeline: "text" } : {}) }));
           await room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true });
@@ -1611,33 +1767,81 @@
     els.chatEnableBtn?.addEventListener("click", tryPlayAudio);
 
     // Bridge fuer den Lena-Modus (klassischer Script-Block darunter):
-    // Clara sauber stoppen / wieder begruessen, ohne den LiveKit-Stack zu kreuzen.
+    // Soft-Switch: LiveKit + Headset-Mic bleiben IMMER offen — kein Hangup,
+    // kein Reconnect (Reconnect = Bluetooth weg).
+    // Lena: Worker stumm (app_mode=doku, kein LLM/keine Begruessung) — der
+    // Lautsprecher bleibt AN, damit die Souffleuse (coach_speak) hoerbar ist.
+    // KEIN els.audio.muted mehr: das hatte die Souffleuse mit stummgeschaltet.
     window.__claraIpad = {
       async stopForLena() {
-        try { if (els.audio) els.audio.muted = true; } catch (_) {}
-        if (room || connected || connecting) {
-          try { await hangup(); } catch (_) {}
-        }
+        try { window.__claraIpad.publishCmd({ type: "set_app_mode", mode: "doku" }); } catch (_) {}
       },
       async resumeFromLena() {
-        try { if (els.audio) els.audio.muted = false; } catch (_) {}
         try { window.speechSynthesis?.cancel?.(); } catch (_) {}
-        // Keine Browser-Begruessung — nur LiveKit-Session wieder aufbauen.
-        if (!connected && !connecting) {
-          try { await connect(); } catch (_) {}
+        // Bewusst KEIN connect(): neuer Room killt BT. Worker begruesst bei doku->clara.
+        try { window.__claraIpad.publishCmd({ type: "set_app_mode", mode: "clara" }); } catch (_) {}
+      },
+      async ensureLive() {
+        if (connected) return true;
+        if (connecting) {
+          for (let i = 0; i < 40 && connecting; i++) {
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          return !!connected;
         }
+        try { await connect(); } catch (_) {}
+        return !!connected;
       },
       isLive: () => !!connected,
+      /** LiveKit-Eingang auf deviceId legen (USB/iPad/BT), ohne Room-Reconnect. */
+      async switchMic(deviceId) {
+        const id = String(deviceId || "").trim();
+        if (!id || !room || !connected) return false;
+        try {
+          if (typeof room.switchActiveDevice === "function") {
+            await room.switchActiveDevice("audioinput", id);
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      },
+      publishCmd(obj) {
+        if (!room?.localParticipant || !connected) return false;
+        try {
+          const data = new TextEncoder().encode(JSON.stringify(obj || {}));
+          room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true }).catch(() => {});
+          return true;
+        } catch (_) {
+          return false;
+        }
+      },
+      micRms: () => Number(window.__claraMicRms) || 0,
+      /** LiveKit-Local-Mikro als MediaStream (für Lena Bluetooth-Share). */
+      getLocalMicStream() {
+        try {
+          const pubs = room?.localParticipant?.audioTrackPublications;
+          if (!pubs) return null;
+          for (const pub of pubs.values()) {
+            const mst = pub?.track?.mediaStreamTrack;
+            if (mst && mst.kind === "audio" && mst.readyState === "live") {
+              return new MediaStream([mst]);
+            }
+          }
+        } catch (_) {}
+        return null;
+      },
     };
   </script>
 
-  <script src="/m/lena-stt-capture.js?v=20260718c"></script>
-  <script src="/m/lena-doku-template-zahn.js?v=20260718a"></script>
+  <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
+  <script src="/m/lena-zahnstatus-katalog.js?v=20260721g"></script>
+  <script src="/m/lena-voice-chart.js?v=20260721g"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260721e"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard (Preview-Vorlage).
-    //  Aufnahme/Nachdiktat → Canary via lena_stt (WS /stt). Clara unangetastet
-    //  ausser Stop beim Umschalten (keine Browser-Stimme).
+    //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard.
+    //  Soft-Switch: LiveKit bleibt offen (kein Hangup, kein Reconnect, kein BT-Drop).
+    //  Lena: Clara stumm, Parakeet an (Aufnahme + Nachdiktat). Clara: wieder sprechen.
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     (function () {
       const $ = (id) => document.getElementById(id);
@@ -1645,10 +1849,21 @@
       /* Uhr */
       const clock = $("clock");
       const tickClock = () => {
+        if (!clock) return;
         clock.textContent = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
       };
       tickClock();
       setInterval(tickClock, 15000);
+
+      // Aufnahme-Flags FRUEH — sonst TDZ in Souffleuse-/Poll-Callbacks.
+      let recording = false, paused = false, seconds = 0, timerId = null, t0 = performance.now();
+      let recCapture = null;
+      let micPreview = null;
+      let previewGen = 0;
+      let recStartedAtMs = 0;
+      // Nachdiktat-Flags ebenfalls FRUEH (clearPatientDocState greift darauf zu).
+      let ndLive = false;
+      let ndKnownIds = new Set();
 
       /* â”€â”€ Akustik: nur Stop-Signal (keine Browser-Begrüßung) â”€â”€ */
       let audioCtx = null;
@@ -1707,17 +1922,14 @@
           brandSub.textContent = isClara ? "Vollinformiert in 10 Sekunden" : "Behandlungs-Doku";
 
           if (!isClara) {
-            // Clara → Dokumentation: akustisch „gestoppt" + LiveKit-Hangup.
-            playClaraStop();
+            // Soft: nur TTS stumm — Session + BT-Mic + Parakeet bleiben.
             brandOrb.className = "brand-orb";
             Promise.resolve(window.__claraIpad?.stopForLena?.()).catch(() => {});
-            // Pegel-Preview startet sobald Aufnahme-Schritt aktiv (Hook unten setzt Flag).
             try { window.__lenaWantPreview?.(true); } catch (_) {}
           } else {
             try { window.__lenaWantPreview?.(false); } catch (_) {}
-            // Dokumentation → Clara: nur LiveKit wieder verbinden.
-            // Keine Browser-speechSynthesis — echte Stimme kommt nur über Clara/LiveKit.
             try { window.speechSynthesis.cancel(); } catch (_) {}
+            try { window.__lenaStopNd?.(); } catch (_) {}
             brandOrb.className = "brand-orb is-listen";
             Promise.resolve(window.__claraIpad?.resumeFromLena?.()).catch(() => {});
           }
@@ -1730,29 +1942,151 @@
       try { deviceCreds = JSON.parse(localStorage.getItem("pickadoc.ipad.v1") || "null"); } catch (_) {}
       let selectedDoc = deviceCreds?.doctorName || deviceCreds?.operatorName || "";
       let selectedCalId = "";
-      let selectedAppt = { name: "—", treat: "", appointmentId: "", locationId: "", patientId: "", startMs: 0, comments: "", docsStatus: "", newPatient: false };
+      let selectedAppt = { name: "—", treat: "", appointmentId: "", locationId: "", patientId: "", startMs: 0, comments: "", docsStatus: "", newPatient: false, anamneseFindings: [] };
       let dayAppointments = [];
       let dayCalendars = [];
       let dayLocationId = "";
       let chairCurrent = null;
       let savedSegments = [];
+      let segmentsForApptId = "";
       let serverSummary = "";
       let dialogCleared = false;
       let dokuState = null;
+      let structuredText = "";
+
+      function anamnesePrefillSource() {
+        const chair = chairCurrent || {};
+        const appt = selectedAppt || {};
+        const same =
+          chair.appointmentId && appt.appointmentId &&
+          String(chair.appointmentId) === String(appt.appointmentId);
+        return {
+          findings: same
+            ? (chair.anamneseFindings || [])
+            : (appt.anamneseFindings || chair.anamneseFindings || []),
+          docsStatus: appt.docsStatus || chair.docsStatus || "",
+        };
+      }
       function refreshDokuTemplate(segs) {
         const Zahn = window.LenaDokuZahn;
         const box = $("dokuTpl");
         if (!Zahn || !box) return;
-        const anlass = selectedAppt?.treat || "";
-        if (!dokuState || dokuState.anlass !== String(anlass || "").trim()) {
+        const anlass = selectedAppt?.treat || chairCurrent?.visitMotive || "";
+        const apptId = String(selectedAppt?.appointmentId || "");
+        // Fremde Segmente (noch alter Patient im Speicher) nie auf neuen State mappen.
+        if (apptId && segmentsForApptId && segmentsForApptId !== apptId) {
+          savedSegments = [];
+          segmentsForApptId = apptId;
+          segs = [];
+        }
+        if (
+          !dokuState ||
+          String(dokuState.appointmentId || "") !== apptId ||
+          dokuState.anlass !== String(anlass || "").trim()
+        ) {
           dokuState = Zahn.emptyState(anlass);
+          dokuState.appointmentId = apptId;
+          Zahn.applySignrPrefill(dokuState, anamnesePrefillSource());
         }
         const list = Array.isArray(segs) ? segs : savedSegments;
         const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
         Zahn.applySegments(dokuState, clinical);
+        Zahn.ensureGaps?.(dokuState);
         Zahn.render(box, dokuState);
       }
-      let structuredText = "";
+      let souffleSpoken = new Set();
+      let souffleLastAt = 0;
+      let souffleRecStartedAt = 0;
+      const SOUFFLE_COOLDOWN_MS = 45000;
+      const SOUFFLE_FIRST_DELAY_MS = 25000;
+      function resetSouffle() {
+        souffleSpoken = new Set();
+        souffleLastAt = 0;
+        souffleRecStartedAt = 0;
+      }
+      function clearPatientDocState() {
+        // Laufende Aufnahme/Diktat gehoeren zum ALTEN Patienten — sofort
+        // stoppen, sonst tee't der Worker weiter in dessen Akte (Vorfall
+        // 21.07. 02:16: Eintraege wanderten zwischen Patienten).
+        if (recording) { try { void stopRecording(); } catch (_) {} }
+        if (ndLive) { try { void stopNdDictation(); } catch (_) {} }
+        ndKnownIds = new Set();
+        dokuState = null;
+        savedSegments = [];
+        segmentsForApptId = "";
+        structuredText = "";
+        serverSummary = "";
+        dialogCleared = false;
+        resetSouffle();
+        const wipe = (id, html) => { const el = $(id); if (el) el.innerHTML = html || ""; };
+        wipe("dokuTpl");
+        wipe("dialog", '<div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Rohtext erscheint hier im Archiv.</div>');
+        wipe("ndRec");
+        wipe("ndGaps");
+        wipe("sumBoxes");
+        wipe("ndMerge");
+        if ($("dictFree")) $("dictFree").value = "";
+        if ($("sumText")) $("sumText").textContent = "—";
+      }
+      function maybeSoufflePrompt() {
+        if (!recording || paused) return;
+        if (!$("wiz3")?.classList.contains("is-show")) return;
+        if (!paneDoku?.classList.contains("is-active")) return;
+        if (document.hidden) return;
+        const now = Date.now();
+        if (!souffleRecStartedAt) souffleRecStartedAt = now;
+        if (now - souffleRecStartedAt < SOUFFLE_FIRST_DELAY_MS) return;
+        if (now - souffleLastAt < SOUFFLE_COOLDOWN_MS) return;
+        const Zahn = window.LenaDokuZahn;
+        if (!Zahn?.nextSouffleHint || !dokuState) return;
+        Zahn.ensureGaps?.(dokuState);
+        const hint = Zahn.nextSouffleHint(dokuState, souffleSpoken);
+        if (!hint?.text) return;
+        const ok = window.__claraIpad?.publishCmd?.({ type: "coach_speak", text: hint.text });
+        if (!ok) return;
+        souffleSpoken.add(hint.key);
+        souffleLastAt = now;
+        dokuState.lastTouchedKey = hint.key;
+        const box = $("dokuTpl");
+        if (box) {
+          box.querySelectorAll(".tpl-field.is-focus").forEach((el) => el.classList.remove("is-focus"));
+          const el = box.querySelector('.tpl-field[data-key="' + hint.key + '"]');
+          if (el) {
+            el.classList.add("is-focus");
+            try { el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (_) {}
+          }
+        }
+        if ($("recLive")) {
+          const span = $("recLive")?.querySelector("span");
+          if (span) span.textContent = "Souffleuse · " + hint.box;
+        }
+      }
+      setInterval(() => {
+        try { maybeSoufflePrompt(); } catch (_) {}
+      }, 8000);
+      function refreshNdGaps() {
+        const Zahn = window.LenaDokuZahn;
+        const box = $("ndGaps");
+        if (!box || !Zahn) return;
+        if (!dokuState) {
+          dokuState = Zahn.emptyState(selectedAppt?.treat || "");
+          Zahn.applySignrPrefill(dokuState, anamnesePrefillSource());
+        }
+        Zahn.applySegments(
+          dokuState,
+          (savedSegments || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"),
+        );
+        const prompts = Zahn.openGapPrompts(dokuState);
+        if (!prompts.length) {
+          box.innerHTML = '<div class="nd-gap-ok">Keine offenen Pflicht-Lücken — optional ergänzen.</div>';
+          return;
+        }
+        box.innerHTML = prompts.map((p) =>
+          '<button type="button" class="nd-gap-q" data-key="' + String(p.key).replace(/"/g, "") + '">' +
+          String(p.question || "").replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+          "</button>",
+        ).join("");
+      }
       let structureBusy = false;
       let billingBusy = false;
       const wiz = [null, $("wiz1"), $("wiz2"), $("wiz3"), $("wiz4"), $("wiz5"), $("wiz6")];
@@ -1870,7 +2204,17 @@
       }
       async function loadSavedSegments() {
         const ids = treatmentIds();
-        if (!ids) { savedSegments = []; return []; }
+        if (!ids) {
+          savedSegments = [];
+          segmentsForApptId = "";
+          return [];
+        }
+        const wantAppt = String(ids.appointmentId || "");
+        // Anderen Patienten nie mit altem Segment-Puffer mischen.
+        if (segmentsForApptId && segmentsForApptId !== wantAppt) {
+          savedSegments = [];
+          segmentsForApptId = wantAppt;
+        }
         try {
           const resp = await fetch("/treatment/heartbeat", {
             method: "POST",
@@ -1885,11 +2229,27 @@
             }),
           });
           const data = await resp.json().catch(() => ({}));
-          if (!resp.ok || !data.ok) return savedSegments;
-          savedSegments = Array.isArray(data.segments) ? data.segments.filter((s) => s && !s.struck && s.text) : [];
+          // Stale-Response: Termin inzwischen gewechselt.
+          if (String(selectedAppt?.appointmentId || "") !== wantAppt) {
+            return [];
+          }
+          if (data.appointmentId && String(data.appointmentId) !== wantAppt) {
+            console.warn("heartbeat: appointment mismatch", data.appointmentId, wantAppt);
+            return [];
+          }
+          if (!resp.ok || !data.ok) {
+            // Bei Fehler keinen Fremd-Patienten-Inhalt behalten.
+            if (segmentsForApptId !== wantAppt) savedSegments = [];
+            return savedSegments;
+          }
+          savedSegments = Array.isArray(data.segments)
+            ? data.segments.filter((s) => s && !s.struck && s.text)
+            : [];
+          segmentsForApptId = wantAppt;
           if (typeof data.structuredText === "string") serverSummary = data.structuredText;
           return savedSegments;
         } catch (_) {
+          if (String(selectedAppt?.appointmentId || "") !== wantAppt) return [];
           return savedSegments;
         }
       }
@@ -1988,23 +2348,37 @@
           $("recTreat").textContent = selectedAppt.treat || "";
           $("recDoc").textContent = selectedDoc ? ("Dr. " + selectedDoc.replace(/^Dr\.?\s*/i, "")) : "—";
           $("recAv").textContent = (selectedAppt.name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+          const apptId = String(selectedAppt.appointmentId || "");
+          if (!apptId || segmentsForApptId !== apptId) {
+            savedSegments = [];
+            segmentsForApptId = apptId;
+            structuredText = "";
+            serverSummary = "";
+          }
           dokuState = null;
           refreshDokuTemplate([]);
           loadSavedSegments().then((segs) => {
+            if (String(selectedAppt.appointmentId || "") !== apptId) return;
             const main = segs.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
             if (main.length) renderDialogFromSegments(main);
+            else {
+              const d = $("dialog");
+              if (d) d.innerHTML = '<div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme starten — Rohtext erscheint hier im Archiv.</div>';
+            }
             refreshDokuTemplate(main);
           });
         }
         if (n === 4) {
-          $("ndLead").textContent = (selectedAppt.name || "—") + " · " + (selectedDoc || "—") + " — Aufnahme bleibt, Nachdiktat wird ergänzt";
+          $("ndLead").textContent = (selectedAppt.name || "—") + " · " + (selectedDoc || "—") + " — Lücken gezielt ergänzen";
           const src = $("dialog");
           const dst = $("ndRec");
           if (src && dst) dst.innerHTML = src.innerHTML;
           loadSavedSegments().then((segs) => {
             fillNachdiktatFromSegments(segs);
+            refreshNdGaps();
             updateMerge();
           });
+          refreshNdGaps();
           updateMerge();
         }
         if (n === 5) {
@@ -2065,13 +2439,23 @@
             (selectedAppt.treat ? " · " + selectedAppt.treat : "") +
             (docLabel !== "—" ? " · " + docLabel : "");
         }
-        if ($("sumText")) {
+        {
           const Zahn = window.LenaDokuZahn;
+          const box = $("sumBoxes");
           if (Zahn && dokuState) {
             Zahn.applySegments(dokuState, savedSegments.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
           }
           const tplText = (Zahn && dokuState) ? Zahn.toStructuredText(dokuState) : "";
-          $("sumText").textContent = structuredText || tplText || medicalDraftFromSegments() || "Noch keine medizinische Zusammenfassung.";
+          const plain = structuredText || tplText || medicalDraftFromSegments() || "";
+          if ($("sumText")) $("sumText").textContent = plain || "Noch keine medizinische Zusammenfassung.";
+          if (box && Zahn && dokuState) {
+            Zahn.render(box, dokuState);
+          } else if (box) {
+            box.innerHTML = '<div class="tpl-field is-gap"><div class="tpl-lab">Dokumentation</div>' +
+              '<div class="tpl-val' + (plain ? "" : " empty") + '">' +
+              (plain ? String(plain).replace(/</g, "&lt;").replace(/\n/g, "<br>") : "Noch keine medizinische Zusammenfassung.") +
+              "</div></div>";
+          }
         }
         // Redeanteil aus Diarisierung (Arzt vs Patient) — kompakt im Kopf.
         const share = channelShareFromSegments();
@@ -2209,12 +2593,82 @@
           '<div class="sec sec--dict"><strong>Aus dem Nachdiktat</strong><p>' + (dict || "Noch nichts diktiert …").replace(/\n/g, "<br>") + "</p></div>";
       }
       $("dictFree")?.addEventListener("input", updateMerge);
+      $("ndGaps")?.addEventListener("click", (ev) => {
+        const btn = ev.target.closest(".nd-gap-q");
+        if (!btn) return;
+        $("ndGaps").querySelectorAll(".nd-gap-q").forEach((b) => b.classList.remove("is-on"));
+        btn.classList.add("is-on");
+        const ta = $("dictFree");
+        if (!ta) return;
+        const q = (btn.textContent || "").trim();
+        if (!q) return;
+        const cur = ta.value.trim();
+        if (!cur) ta.value = q + "\n";
+        else if (!cur.includes(q)) ta.value = cur + "\n\n" + q + "\n";
+        ta.focus();
+        updateMerge();
+      });
       $("btnStructure")?.addEventListener("click", () => void runStructure());
       $("btnExportPdf")?.addEventListener("click", exportPdf);
-      $("btnToSophie")?.addEventListener("click", () => showStep(6));
+      let saveBusy = false;
+      async function runSaveDoc() {
+        if (saveBusy) return;
+        const btns = [$("btnSaveDoc"), $("btnSaveDocNav")].filter(Boolean);
+        saveBusy = true;
+        btns.forEach((b) => { b.disabled = true; });
+        if ($("btnSaveDocNav")) $("btnSaveDocNav").textContent = "Speichert …";
+        try {
+          await loadSavedSegments();
+          // Falls noch keine strukturierte Karte: einmal strukturieren (schreibt
+          // bereits Memory) — sonst nur finalize mit aktuellem Text.
+          let text = String(structuredText || "").trim();
+          if (!text) {
+            try {
+              const data = await masPost("/treatment/structure");
+              structuredText = String(data.structuredText || "").trim();
+              text = structuredText;
+              fillSummary();
+            } catch (_) {
+              text = medicalDraftFromSegments() || "";
+            }
+          }
+          const data = await masPost("/treatment/finalize", { structuredText: text });
+          if (data.structuredText) {
+            structuredText = String(data.structuredText);
+            fillSummary();
+          }
+          if ($("saveDoneLead")) {
+            $("saveDoneLead").textContent =
+              "Gespeichert für " + (selectedAppt.name || "Patient") +
+              " — Clara kann die Doku jetzt vorlesen.";
+          }
+          if ($("saveDoneHint")) {
+            $("saveDoneHint").style.display = "";
+            $("saveDoneHint").textContent =
+              (data.segmentsCount || 0) + " Segmente · Praxisgedächtnis aktualisiert";
+          }
+          showStep(6);
+        } catch (e) {
+          console.warn("finalize", e);
+          if ($("sumText")) {
+            $("sumText").textContent =
+              (structuredText || medicalDraftFromSegments() || "") +
+              "\n\n[Speichern fehlgeschlagen: " + String(e?.message || e) + "]";
+          }
+          alert("Speichern fehlgeschlagen: " + String(e?.message || e));
+        } finally {
+          saveBusy = false;
+          btns.forEach((b) => { b.disabled = false; });
+          if ($("btnSaveDocNav")) $("btnSaveDocNav").textContent = "Speichern";
+        }
+      }
+      $("btnSaveDoc")?.addEventListener("click", () => void runSaveDoc());
+      $("btnSaveDocNav")?.addEventListener("click", () => void runSaveDoc());
+      $("btnSaveDoneClara")?.addEventListener("click", () => {
+        const claraBtn = modeSwitch?.querySelector('button[data-mode="clara"]');
+        if (claraBtn) claraBtn.click();
+      });
       $("btnBill")?.addEventListener("click", () => void runBilling());
-      let ndCapture = null;
-      let ndLive = false;
       async function stopNdDictation() {
         ndLive = false;
         const btn = $("ndMic");
@@ -2222,55 +2676,82 @@
           btn.classList.remove("is-live");
           btn.textContent = "â— Diktieren";
         }
-        if ($("ndMicHint")) $("ndMicHint").textContent = "Kanal · Arzt · Canary-STT";
-        if (ndCapture) {
-          const c = ndCapture; ndCapture = null;
-          try { await c.stop(); } catch (_) {}
-        }
+        if ($("ndMicHint")) $("ndMicHint").textContent = "Kanal · Arzt · Parakeet (Clara)";
+        try { publishLenaTee(false); } catch (_) {}
       }
+      window.__lenaStopNd = () => { void stopNdDictation(); };
+      async function pullTeeNdSegments() {
+        if (!ndLive) return;
+        const ids = treatmentIds();
+        if (!ids) return;
+        try {
+          const resp = await fetch("/treatment/heartbeat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: ids.clientId,
+              locationId: ids.locationId,
+              appointmentId: ids.appointmentId,
+              deviceLabel: "iPad",
+              presence: false,
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok || !Array.isArray(data.segments)) return;
+          // Patient inzwischen gewechselt? Fremde Segmente NIE uebernehmen.
+          if (data.appointmentId && String(data.appointmentId) !== String(ids.appointmentId)) return;
+          if (String(selectedAppt?.appointmentId || "") !== String(ids.appointmentId)) return;
+          let added = false;
+          for (const s of data.segments) {
+            if (!s || s.struck || !s.text || !s.id) continue;
+            if (String(s.source || "").toLowerCase() !== "nachdiktat") continue;
+            if (ndKnownIds.has(s.id)) continue;
+            ndKnownIds.add(s.id);
+            const ta = $("dictFree");
+            if (ta) {
+              ta.value = (ta.value || "") + ((ta.value.trim() ? " " : "") + s.text);
+            }
+            savedSegments.push({ id: s.id, text: s.text, source: "nachdiktat" });
+            added = true;
+          }
+          if (added) {
+            updateMerge();
+            if ($("ndMicHint")) $("ndMicHint").textContent = "live · Parakeet · gespeichert";
+          }
+        } catch (_) {}
+      }
+      setInterval(() => {
+        if (document.hidden || !ndLive) return;
+        if (!paneDoku.classList.contains("is-active")) return;
+        pullTeeNdSegments().catch(() => {});
+      }, 1200);
       $("ndMic")?.addEventListener("click", async () => {
         if (ndLive) { await stopNdDictation(); return; }
-        if (typeof LenaSttCapture !== "function") {
-          $("ndMicHint").textContent = "STT-Client fehlt";
+        if (!treatmentIds()) {
+          if ($("ndMicHint")) $("ndMicHint").textContent = "kein Termin";
+          return;
+        }
+        const live = await window.__claraIpad?.ensureLive?.();
+        if (!live) {
+          if ($("ndMicHint")) $("ndMicHint").textContent = "Clara/Headset fehlt — zuerst verbinden";
+          return;
+        }
+        // Kein Canary/getUserMedia — sonst raubt iOS das BT-Mic von LiveKit.
+        const teeOk = publishLenaTee(true, "nachdiktat");
+        if (!teeOk) {
+          if ($("ndMicHint")) $("ndMicHint").textContent = "Tee-Befehl fehlgeschlagen — Worker neu?";
           return;
         }
         ndLive = true;
+        ndKnownIds = new Set(
+          savedSegments.filter((s) => String(s.source || "").toLowerCase() === "nachdiktat" && s.id)
+            .map((s) => s.id),
+        );
         const btn = $("ndMic");
         btn.classList.add("is-live");
         btn.textContent = "â–  Stop";
-        $("ndMicHint").textContent = "verbindet Canary …";
-        ndCapture = new LenaSttCapture();
-        const ndBase = Date.now();
-        const ok = await ndCapture.start(
-          { channel: "arzt", session: "ipad-nd-" + Date.now() },
-          {
-            onReady: (m) => {
-              $("ndMicHint").textContent = "live · " + (m?.primary || m?.model || "canary");
-            },
-            onPartial: (t) => {
-              if (t) $("ndMicHint").textContent = t.slice(0, 48) + (t.length > 48 ? "…" : "");
-            },
-            onFinal: (t, raw, corr, timing) => {
-              if (!t) return;
-              const ta = $("dictFree");
-              ta.value = (ta.value || "") + ((ta.value.trim() ? " " : "") + t);
-              updateMerge();
-              const abs = (timing && (timing.startMs || timing.endMs))
-                ? { startMs: ndBase + Number(timing.startMs || 0), endMs: ndBase + Number(timing.endMs || 0) }
-                : undefined;
-              postLenaSegment(t, "nachdiktat", abs).then((id) => {
-                if (id) savedSegments.push({ id: id === true ? "" : id, text: t, source: "nachdiktat" });
-                $("ndMicHint").textContent = id ? "gespeichert" : "lokal (nicht gespeichert)";
-              });
-            },
-            onError: (msg) => {
-              $("ndMicHint").textContent = String(msg || "STT-Fehler");
-              stopNdDictation();
-            },
-            onClose: () => { if (ndLive) stopNdDictation(); },
-          },
-        );
-        if (!ok) { ndLive = false; btn.classList.remove("is-live"); btn.textContent = "â— Diktieren"; }
+        $("ndMicHint").textContent = "live · Parakeet über Clara — sprechen";
       });
       $("ndToSum")?.addEventListener("click", async () => {
         await stopNdDictation();
@@ -2279,7 +2760,7 @@
         showStep(5);
       });
 
-      $("doctors").addEventListener("click", (e) => {
+      $("doctors")?.addEventListener("click", (e) => {
         const card = e.target.closest(".doc-card");
         if (!card) return;
         document.querySelectorAll(".doc-card").forEach((c) => c.classList.remove("is-sel"));
@@ -2317,10 +2798,15 @@
       }
       function pickApptFrom(a) {
         if (!a) {
-          selectedAppt = { name: "—", treat: "", appointmentId: "", locationId: "", patientId: "", startMs: 0, comments: "", docsStatus: "", newPatient: false };
+          selectedAppt = { name: "—", treat: "", appointmentId: "", locationId: "", patientId: "", startMs: 0, comments: "", docsStatus: "", newPatient: false, anamneseFindings: [] };
+          clearPatientDocState();
+          syncLena01Links();
           return;
         }
         const dur = a.endMs && a.startMs ? Math.max(5, Math.round((a.endMs - a.startMs) / 60000)) : 0;
+        const sameChair = chairCurrent?.appointmentId && a.appointmentId === chairCurrent.appointmentId;
+        const prevId = String(selectedAppt?.appointmentId || "");
+        const nextId = String(a.appointmentId || "");
         selectedAppt = {
           name: a.patientName || "—",
           treat: (a.visitMotive || "Termin") + (dur ? (" · " + dur + " min") : ""),
@@ -2329,10 +2815,20 @@
           patientId: a.patientId || "",
           startMs: a.startMs || 0,
           comments: a.comments || "",
-          docsStatus: a.docsStatus || "",
+          docsStatus: a.docsStatus || (sameChair ? (chairCurrent.docsStatus || "") : ""),
           newPatient: a.newPatient === true,
+          anamneseFindings: sameChair
+            ? (chairCurrent.anamneseFindings || [])
+            : (Array.isArray(a.anamneseFindings) ? a.anamneseFindings : []),
         };
         if (a.doctorName) selectedDoc = a.doctorName;
+        if (prevId !== nextId) {
+          clearPatientDocState();
+          // Leeres Template sofort zeigen, falls Aufnahme-Schritt offen ist.
+          if ($("wiz3")?.classList.contains("is-show")) refreshDokuTemplate([]);
+        }
+        syncRecHeader();
+        syncLena01Links();
       }
       function syncLena01Links() {
         // 01-Modus erst anbieten, wenn ein Patient/Termin ausgewaehlt ist —
@@ -2340,8 +2836,14 @@
         const name = (selectedAppt && selectedAppt.name && selectedAppt.name !== "—")
           ? selectedAppt.name
           : "";
-        const href = "/m/lena-01/perio.html?v=20260720zq"
-          + (name ? ("&patient=" + encodeURIComponent(name)) : "");
+        const loc = selectedAppt?.locationId || chairCurrent?.locationId || dayLocationId || "";
+        const appt = selectedAppt?.appointmentId || chairCurrent?.appointmentId || "";
+        let href = "/m/lena-01/perio.html?v=20260721b";
+        if (name) href += "&patient=" + encodeURIComponent(name);
+        if (loc) href += "&locationId=" + encodeURIComponent(loc);
+        if (appt) href += "&appointmentId=" + encodeURIComponent(appt);
+        if (loc) sessionStorage.setItem("lena01.locationId", loc);
+        if (appt) sessionStorage.setItem("lena01.appointmentId", appt);
         ["btnLena01", "btnLena01Panel"].forEach((id) => {
           const a = $(id);
           if (!a) return;
@@ -2441,6 +2943,7 @@
       }
       function renderAppts() {
         const list = $("appts");
+        if (!list) return;
         list.innerHTML = "";
         const items = dayAppointments.slice();
         if (!items.length) {
@@ -2448,8 +2951,13 @@
           pickApptFrom(null);
           return;
         }
+        // Auswahl des Users behalten (nicht alle 20s auf Stuhl-Patienten zuruecksetzen —
+        // sonst leeren Boxen und fuellen sich mit dem Vorpatienten).
         let selIdx = 0;
-        if (chairCurrent?.appointmentId) {
+        if (selectedAppt?.appointmentId) {
+          const i = items.findIndex((a) => a.appointmentId === selectedAppt.appointmentId);
+          if (i >= 0) selIdx = i;
+        } else if (chairCurrent?.appointmentId) {
           const i = items.findIndex((a) => a.appointmentId === chairCurrent.appointmentId);
           if (i >= 0) selIdx = i;
         }
@@ -2466,6 +2974,17 @@
           list.appendChild(btn);
         });
         pickApptFrom({ ...items[selIdx], locationId: chairCurrent?.locationId || dayLocationId || selectedAppt.locationId });
+      }
+      function syncRecHeader() {
+        if (!$("wiz3")?.classList.contains("is-show")) return;
+        if ($("recName")) $("recName").textContent = selectedAppt.name || "—";
+        if ($("recTreat")) $("recTreat").textContent = selectedAppt.treat || "";
+        if ($("recDoc")) {
+          $("recDoc").textContent = selectedDoc ? ("Dr. " + selectedDoc.replace(/^Dr\.?\s*/i, "")) : "—";
+        }
+        if ($("recAv")) {
+          $("recAv").textContent = (selectedAppt.name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+        }
       }
       function renderPicker() {
         $("pickTitle").textContent = MONTHS[pickerMonth.getMonth()] + " " + pickerMonth.getFullYear();
@@ -2535,8 +3054,18 @@
               docsStatus: data.docsStatus || "",
               newPatient: data.newPatient === true,
               patientHints: Array.isArray(data.patientHints) ? data.patientHints : [],
+              anamneseFindings: Array.isArray(data.anamneseFindings) ? data.anamneseFindings : [],
               doctorName: data.doctorName || "",
             };
+            // Prefill nachziehen, wenn Doku-State noch leer / neuer Termin.
+            if (dokuState && selectedAppt?.appointmentId === data.appointmentId) {
+              const Zahn = window.LenaDokuZahn;
+              Zahn?.applySignrPrefill?.(dokuState, {
+                findings: chairCurrent.anamneseFindings,
+                docsStatus: chairCurrent.docsStatus,
+              });
+              if ($("wiz3")?.classList.contains("is-show")) refreshDokuTemplate(savedSegments);
+            }
           } else if (iso(selectedDate) === iso(TODAY)) {
             chairCurrent = null;
           }
@@ -2564,8 +3093,8 @@
           return null;
         }
       }
-      $("pickPrev").addEventListener("click", () => { pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1); renderPicker(); });
-      $("pickNext").addEventListener("click", () => { pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1); renderPicker(); });
+      $("pickPrev")?.addEventListener("click", () => { pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1); renderPicker(); });
+      $("pickNext")?.addEventListener("click", () => { pickerMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1); renderPicker(); });
       document.querySelectorAll(".picker-quick button").forEach((b) => {
         b.addEventListener("click", () => {
           const j = b.dataset.jump;
@@ -2576,7 +3105,7 @@
           renderPicker(); updateTerminLead(); loadDay(iso(selectedDate));
         });
       });
-      $("appts").addEventListener("click", (e) => {
+      $("appts")?.addEventListener("click", (e) => {
         const btn = e.target.closest(".appt");
         if (!btn) return;
         $("appts").querySelectorAll(".appt").forEach((x) => x.classList.remove("is-sel"));
@@ -2610,6 +3139,8 @@
         const onSum = $("wiz5")?.classList.contains("is-show");
         if (!onRec && !onSum) return;
         loadSavedSegments().then((segs) => {
+          if (!$("wiz3")?.classList.contains("is-show") && !$("wiz5")?.classList.contains("is-show")) return;
+          if (String(selectedAppt?.appointmentId || "") !== String(segmentsForApptId || "")) return;
           if (onRec) {
             const main = (segs || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
             renderDialogFromSegments(main);
@@ -2621,16 +3152,85 @@
         }).catch(() => {});
       }, 6000);
 
-      /* Pegel + Aufnahme → Canary. Mic: iPad Built-in oder USB/DJI (Toggle). */
+      // Während Parakeet-Weiterleitung: Arzt-Segmente vom Worker nachziehen.
+      async function pullTeeArztSegments() {
+        if (!recording || !usesParakeetDoc()) return;
+        const ids = treatmentIds();
+        if (!ids) return;
+        try {
+          const resp = await fetch("/treatment/heartbeat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: ids.clientId,
+              locationId: ids.locationId,
+              appointmentId: ids.appointmentId,
+              deviceLabel: "iPad",
+              presence: false,
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok || !Array.isArray(data.segments)) return;
+          if (data.appointmentId && String(data.appointmentId) !== String(ids.appointmentId)) return;
+          if (String(selectedAppt?.appointmentId || "") !== String(ids.appointmentId)) return;
+          const known = new Set(savedSegments.map((s) => s.id).filter(Boolean));
+          let added = false;
+          for (const s of data.segments) {
+            if (!s || s.struck || !s.text || !s.id) continue;
+            if (String(s.source || "").toLowerCase() !== "arzt") continue;
+            if (known.has(s.id)) continue;
+            savedSegments.push({
+              id: s.id, text: s.text, source: "arzt",
+              startMs: Number(s.startMs) || 0,
+            });
+            segmentsForApptId = String(ids.appointmentId);
+            appendBubble("Arzt", s.text, s.id, Number(s.startMs) || 0);
+            known.add(s.id);
+            added = true;
+          }
+          if (added) refreshDokuTemplate(savedSegments);
+        } catch (_) {}
+      }
+      setInterval(() => {
+        if (document.hidden) return;
+        if (!recording || !usesParakeetDoc()) return;
+        if (!paneDoku.classList.contains("is-active")) return;
+        pullTeeArztSegments().catch(() => {});
+      }, 1200);
+
+      /* Pegel + Aufnahme: alle Modi = Parakeet über Clara. */
       const fillArzt = $("fillArzt"), fillPat = $("fillPat"), dbArzt = $("dbArzt"), dbPat = $("dbPat");
-      const canvas = $("lineCanvas"), ctx = canvas.getContext("2d");
+      const canvas = $("lineCanvas");
+      const ctx = canvas && typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
       const histA = new Array(120).fill(0), histP = new Array(120).fill(0);
-      let recording = false, paused = false, seconds = 0, timerId = null, t0 = performance.now();
-      let recCapture = null;
-      let micPreview = null;
-      let previewGen = 0;
-      let recStartedAtMs = 0;
       let micMode = (typeof lenaLoadMicMode === "function") ? lenaLoadMicMode() : "ipad";
+      // Alle drei Mic-Modi: Claras Parakeet (kein Whisper/Canary mehr in der Doku).
+      // recording/paused/recCapture/micPreview: oben im IIFE deklariert.
+      function usesParakeetDoc() { return true; }
+      function micModeLabel() {
+        if (micMode === "usb") return "USB";
+        if (micMode === "bluetooth") return "Bluetooth";
+        return "iPad";
+      }
+      async function ensureClaraMicForMode() {
+        const pickFn = (typeof lenaPickAudioInput === "function")
+          ? lenaPickAudioInput
+          : (typeof pickAudioInput === "function" ? pickAudioInput : null);
+        if (!pickFn) return { ok: true };
+        const pick = await pickFn(micMode);
+        if (!pick?.ok || !pick.deviceId) {
+          return { ok: false, warning: pick?.warning || (micModeLabel() + "-Mikro nicht gefunden") };
+        }
+        const switched = await window.__claraIpad?.switchMic?.(pick.deviceId);
+        return {
+          ok: true,
+          deviceId: pick.deviceId,
+          label: pick.device?.label || micModeLabel(),
+          switched: !!switched,
+          warning: pick.warning || "",
+        };
+      }
 
       // Eigenstaendiger Screen-Wake-Lock fuer die Doku-Aufnahme (dieses <script>
       // ist ein anderer Scope als der Clara-Call-Wake-Lock im Modul-Skript).
@@ -2670,7 +3270,7 @@
         try { await p.stop(); } catch (_) {}
       }
       async function startMicPreview() {
-        if (recording || typeof LenaMicPreview !== "function") return;
+        if (recording) return;
         if (!onRecStep()) {
           await stopMicPreview();
           return;
@@ -2678,31 +3278,33 @@
         const gen = ++previewGen;
         await stopMicPreview();
         if (gen !== previewGen || recording || !onRecStep()) return;
-        const prev = new LenaMicPreview();
-        const ok = await prev.start({ micMode, swapLR: stereoSwap() });
-        if (gen !== previewGen || recording || !onRecStep()) {
-          try { await prev.stop(); } catch (_) {}
+        // Kein zweites getUserMedia — Pegel nur aus Clara/LiveKit.
+        if (!window.__claraIpad?.isLive?.()) {
+          await window.__claraIpad?.ensureLive?.();
+        }
+        if (!window.__claraIpad?.isLive?.()) {
+          setMicActiveLabel(micModeLabel() + " · zuerst mit Clara verbinden", true);
           return;
         }
-        if (!ok) {
-          const w = prev.activeMic?.warning || "Pegel-Preview fehlgeschlagen";
-          setMicActiveLabel(w, true);
+        const micPick = await ensureClaraMicForMode();
+        if (gen !== previewGen || recording || !onRecStep()) return;
+        if (!micPick.ok) {
+          setMicActiveLabel(String(micPick.warning || "Mikro fehlt"), true);
           return;
         }
-        micPreview = prev;
-        const mic = prev.activeMic;
-        if (mic?.warning) {
-          setMicActiveLabel(mic.warning + (mic.label ? " · " + mic.label : ""), true);
-        } else if (mic?.label) {
-          const ch = mic.channelCount ? (" · " + mic.channelCount + "ch") : "";
-          setMicActiveLabel(
-            "Pegel live · " + mic.label + (micMode === "usb" ? " (Stereo)" : " (iPad)") + ch
-              + " — in TX sprechen zum Zuordnen",
-            false,
-          );
-        } else {
-          setMicActiveLabel("Pegel live — in die Mikros sprechen zum Zuordnen", false);
-        }
+        micPreview = {
+          levelsAp: () => {
+            const a = Math.min(1, (Number(window.__claraMicRms) || 0) * 8);
+            return { a, p: 0 };
+          },
+          activeMic: { mode: micMode, label: micPick.label || "Parakeet/Clara", shared: true },
+          stop: async () => {},
+          setSwap: () => {},
+        };
+        setMicActiveLabel(
+          "Pegel · " + (micPick.label || micModeLabel()) + " (Parakeet) — sprechen",
+          !!micPick.warning,
+        );
       }
       function applyMicToggleUi() {
         const box = $("micToggle");
@@ -2715,37 +3317,26 @@
         const note = $("meterMonoNote");
         const swapBtn = $("btnStereoSwap");
         const meters = $("metersBox");
-        const swap = stereoSwap();
-        if (meters) meters.classList.toggle("is-mono", micMode !== "usb");
-        if (swapBtn) {
-          swapBtn.hidden = micMode !== "usb";
-          swapBtn.disabled = recording;
-          swapBtn.textContent = swap ? "Lâ†”R · Arzt=Links" : "L/R tauschen";
-          swapBtn.title = swap
-            ? "Getauscht: Links=Arzt, Rechts=Patient"
-            : "Standard: Links=Patient, Rechts=Arzt";
+        if (meters) meters.classList.toggle("is-mono", false);
+        // L/R-Tausch war Whisper-Stereo — mit Parakeet entfallen.
+        if (swapBtn) swapBtn.hidden = true;
+        if ($("meterLabelArzt")) $("meterLabelArzt").textContent = "Arzt";
+        if ($("meterLabelPat")) $("meterLabelPat").textContent = "Patient";
+        if (!recording && !micPreview) {
+          setMicActiveLabel(micModeLabel() + " · Parakeet über Clara", false);
         }
-        if (micMode === "usb") {
-          if (!recording && !micPreview) {
-            setMicActiveLabel("Stereo · optional · in TXs sprechen", false);
-          }
-          if (note) {
-            note.textContent = swap
-              ? "Links=Arzt · Rechts=Patient"
-              : "Links=Patient · Rechts=Arzt";
-          }
-          if ($("meterLabelArzt")) $("meterLabelArzt").textContent = "Arzt";
-          if ($("meterLabelPat")) $("meterLabelPat").textContent = "Patient";
-        } else {
-          if (!recording && !micPreview) setMicActiveLabel("1 Mikrofon · Pegel live", false);
-          if (note) note.textContent = "Ein Kanal — Diarisierung nicht nötig";
-          if ($("meterLabelPat")) $("meterLabelPat").textContent = "Mikrofon";
+        if (note) {
+          note.hidden = false;
+          note.textContent = "Arzt-Doku = Claras Parakeet (" + micModeLabel() + ")";
         }
       }
       $("micToggle")?.querySelectorAll("button").forEach((btn) => {
         btn.addEventListener("click", () => {
           if (recording) return;
-          const next = btn.dataset.mic === "usb" ? "usb" : "ipad";
+          const next = (typeof lenaNormalizeMicMode === "function")
+            ? lenaNormalizeMicMode(btn.dataset.mic)
+            : (btn.dataset.mic === "usb" ? "usb"
+              : btn.dataset.mic === "bluetooth" ? "bluetooth" : "ipad");
           micMode = next;
           if (typeof lenaSaveMicMode === "function") lenaSaveMicMode(micMode);
           applyMicToggleUi();
@@ -2766,8 +3357,14 @@
           const usbN = (list || []).filter((d) => d.usb).length;
           if (micMode === "usb" && !usbN) {
             setMicActiveLabel("USB/DJI gewählt — noch kein externes Mic erkannt", true);
-          } else if (usbN && micMode === "ipad" && !micPreview) {
-            setMicActiveLabel("Quelle: iPad-Mikro · USB/DJI erkannt (" + usbN + ")", false);
+          } else if (!micPreview) {
+            const live = !!window.__claraIpad?.isLive?.();
+            setMicActiveLabel(
+              live
+                ? micModeLabel() + " · Parakeet über Clara"
+                : micModeLabel() + " · zuerst mit Clara verbinden",
+              !live,
+            );
           }
         }).catch(() => {});
       }
@@ -2854,6 +3451,7 @@
         return { a: 0, p: Math.min(1, src.level()) };
       }
       function draw() {
+        if (!ctx || !canvas) return;
         const w = canvas.width, h = canvas.height;
         ctx.fillStyle = "#050308"; ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = "rgba(255,255,255,0.05)";
@@ -2873,32 +3471,82 @@
       }
       function loop() {
         // Nur Meter, wenn Doku sichtbar (Akku). Wellenform-Canvas ist ausgeblendet.
-        if (!paneDoku.classList.contains("is-active")) {
+        if (!paneDoku?.classList.contains("is-active")) {
           requestAnimationFrame(loop);
           return;
         }
         const onRec = !!$("wiz3")?.classList.contains("is-show");
         if (onRec) {
           const { a, p } = levels();
-          setMeterFill(fillArzt, a);
-          setMeterFill(fillPat, p);
-          dbArzt.textContent = toDb(a);
-          dbPat.textContent = toDb(p);
+          if (fillArzt) setMeterFill(fillArzt, a);
+          if (fillPat) setMeterFill(fillPat, p);
+          if (dbArzt) dbArzt.textContent = toDb(a);
+          if (dbPat) dbPat.textContent = toDb(p);
           histA.push(a); histA.shift(); histP.push(p); histP.shift();
         }
         requestAnimationFrame(loop);
       }
       requestAnimationFrame(loop);
 
+      function publishLenaTee(active, source) {
+        const ids = treatmentIds();
+        // Stopp (active:false) IMMER senden duerfen — auch ohne gueltige Termin-
+        // IDs (Patient abgewaehlt): der Worker stoppt den laufenden Tee sonst nie.
+        if (!ids && active) return false;
+        const src = String(source || "arzt").toLowerCase() === "nachdiktat"
+          ? "nachdiktat" : "arzt";
+        window.__lenaTeeActive = false;
+        window.__lenaTeeAppt = "";
+        return !!window.__claraIpad?.publishCmd?.({
+          type: "lena_tee",
+          active: !!active,
+          clientId: ids?.clientId || "",
+          locationId: ids?.locationId || "",
+          appointmentId: ids?.appointmentId || "",
+          lang: "de-DE",
+          channel: "arzt",
+          source: src,
+          stt: "parakeet",
+        });
+      }
+      function waitLenaTeeAck(wantAppt, ms) {
+        return new Promise((resolve) => {
+          const t0 = Date.now();
+          let tick = 0;
+          const onAck = (ev) => {
+            const d = ev?.detail || {};
+            if (wantAppt && d.appointmentId && String(d.appointmentId) !== String(wantAppt)) return;
+            cleanup();
+            resolve(d.active === true);
+          };
+          const cleanup = () => {
+            document.removeEventListener("lena-tee-ack", onAck);
+            if (tick) clearInterval(tick);
+            tick = 0;
+          };
+          document.addEventListener("lena-tee-ack", onAck);
+          tick = setInterval(() => {
+            if (Date.now() - t0 > (ms || 2500)) {
+              cleanup();
+              resolve(window.__lenaTeeActive === true &&
+                (!wantAppt || String(window.__lenaTeeAppt || "") === String(wantAppt)));
+            }
+          }, 100);
+        });
+      }
+
       async function stopRecording() {
         recording = false; paused = false;
+        resetSouffle();
         docReleaseWakeLock();
         clearInterval(timerId); timerId = null;
         const btn = $("btnRec");
-        btn.textContent = "â— Aufnehmen"; btn.classList.remove("is-live");
-        $("btnPause").disabled = true; $("btnPause").textContent = "Pause";
-        $("recLive").classList.remove("is-on");
-        $("recLive").querySelector("span").textContent = "bereit";
+        if (btn) { btn.textContent = "● Aufnehmen"; btn.classList.remove("is-live"); }
+        if ($("btnPause")) { $("btnPause").disabled = true; $("btnPause").textContent = "Pause"; }
+        $("recLive")?.classList.remove("is-on");
+        const liveSpan = $("recLive")?.querySelector("span");
+        if (liveSpan) liveSpan.textContent = "bereit";
+        try { publishLenaTee(false); } catch (_) {}
         if (recCapture) {
           const c = recCapture; recCapture = null;
           try { await c.stop(); } catch (_) {}
@@ -2918,131 +3566,92 @@
         try { recCapture?.resume?.(); } catch (_) {}
       });
 
-      $("btnRec").addEventListener("click", async () => {
+      $("btnRec")?.addEventListener("click", async () => {
         const btn = $("btnRec");
         if (recording) { await stopRecording(); return; }
-        if (typeof LenaSttCapture !== "function") {
-          $("recLive").querySelector("span").textContent = "STT fehlt";
-          return;
-        }
-        if (micMode === "usb" && typeof LenaStereoSplitCapture !== "function") {
-          $("recLive").querySelector("span").textContent = "Stereo-STT fehlt";
-          return;
-        }
         if (!treatmentIds()) {
-          $("recLive").querySelector("span").textContent = "kein Termin";
+          const liveEl = $("recLive")?.querySelector("span");
+          if (liveEl) liveEl.textContent = "kein Termin";
           return;
         }
-        // Preview-Mic freigeben, bevor die Aufnahme getUserMedia holt.
         await stopMicPreview();
-        // Bestehende Segmente behalten (Nachaufnahme), Shell leeren erst wenn leer.
-        const existing = await loadSavedSegments();
-        if (existing.length) {
-          renderDialogFromSegments(existing.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
+
+        // iPad / Bluetooth / USB: alles Parakeet über Clara.
+        {
+          const liveEl = $("recLive")?.querySelector("span");
+          if (liveEl) liveEl.textContent = "Clara …";
+        }
+        const live = await window.__claraIpad?.ensureLive?.();
+        if (!live) {
+          setMicActiveLabel("Clara fehlt — zuerst verbinden", true);
+          const liveEl = $("recLive")?.querySelector("span");
+          if (liveEl) liveEl.textContent = "Clara fehlt";
+          void startMicPreview();
+          return;
+        }
+        const micPick = await ensureClaraMicForMode();
+        if (!micPick.ok) {
+          setMicActiveLabel(String(micPick.warning || "Mikro fehlt"), true);
+          const liveEl = $("recLive")?.querySelector("span");
+          if (liveEl) liveEl.textContent = "Mikro fehlt";
+          void startMicPreview();
+          return;
+        }
+        const existingBt = await loadSavedSegments();
+        if (existingBt.length) {
+          renderDialogFromSegments(existingBt.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
         } else {
           dialogCleared = false;
         }
         recording = true; paused = false; seconds = 0; t0 = performance.now();
         recStartedAtMs = Date.now();
-        // Bildschirm wachhalten: schlaeft das Display waehrend der Aufnahme ein,
-        // drosselt iOS/Safari den Tab und der Mikro-Stream bricht weg -> leise/
-        // abgehackte Segmente gehen verloren (Vorfall 17.07.2026).
+        resetSouffle();
+        souffleRecStartedAt = Date.now();
         docRequestWakeLock();
-        $("timer").textContent = "00:00";
-        btn.textContent = "â–  Stop"; btn.classList.add("is-live");
-        $("btnPause").disabled = false;
-        $("recLive").classList.add("is-on");
-        $("recLive").querySelector("span").textContent = "verbindet…";
-        timerId = setInterval(() => { if (!paused) { seconds++; $("timer").textContent = fmt(seconds); } }, 1000);
+        if ($("timer")) $("timer").textContent = "00:00";
+        if (btn) { btn.textContent = "■ Stop"; btn.classList.add("is-live"); }
+        if ($("btnPause")) $("btnPause").disabled = false;
+        $("recLive")?.classList.add("is-on");
+        {
+          const liveEl = $("recLive")?.querySelector("span");
+          if (liveEl) liveEl.textContent = "live · Parakeet";
+        }
+        timerId = setInterval(() => { if (!paused) { seconds++; if ($("timer")) $("timer").textContent = fmt(seconds); } }, 1000);
         patchRecorder("recording", { command: "", startedAtMs: recStartedAtMs, accumMs: 0 });
-
-        const useStereo = micMode === "usb";
-        recCapture = useStereo ? new LenaStereoSplitCapture() : new LenaSttCapture();
-
-        const handleFinal = (source, text, timing) => {
-          if (!text || paused) return;
-          // Ein-Mic-Default: alles als raum; Stereo behält arzt/raum.
-          const src = (useStereo && source === "arzt") ? "arzt" : "raum";
-          const who = src === "arzt" ? "Arzt" : "Gespräch";
-          // Lena liefert Stream-relative ms; Basis recStartedAtMs macht beide
-          // Kanaele wall-clock-vergleichbar (fuer den Cross-Channel-Merge).
-          const base = recStartedAtMs || 0;
-          const abs = (timing && Number(timing.startMs) >= 0 && (timing.startMs || timing.endMs))
-            ? { startMs: base + Number(timing.startMs || 0), endMs: base + Number(timing.endMs || 0) }
-            : undefined;
-          const bubble = appendBubble(who, text, "", abs?.startMs || 0);
-          $("recLive").querySelector("span").textContent = "speichert…";
-          postLenaSegment(text, src, abs).then((id) => {
-            const segId = id && id !== true ? String(id) : "";
-            if (segId) {
-              savedSegments.push({ id: segId, text, source: src, startMs: abs?.startMs || 0 });
-              if (bubble) {
-                bubble.dataset.segId = segId;
-                bubble.innerHTML = bubbleHtml(who, text, segId);
-              }
-            } else {
-              savedSegments.push({ id: "", text, source: src, startMs: abs?.startMs || 0 });
-            }
-            refreshDokuTemplate(savedSegments);
-            if (recording && !paused) {
-              $("recLive").querySelector("span").textContent = id ? "live · Doku" : "live · lokal";
-            }
-          });
-        };
-
-        const ok = await recCapture.start(
-          useStereo
-            ? { session: "ipad-rec-" + Date.now(), swapLR: stereoSwap(), lang: "de-DE" }
-            : { channel: "raum", session: "ipad-rec-" + Date.now(), micMode },
-          {
-            onReady: (m) => {
-              const mic = recCapture?.activeMic;
-              const short = useStereo
-                ? ("Stereo" + ((mic?.channelCount || 0) < 2 ? "âš " : ""))
-                : "iPad";
-              $("recLive").querySelector("span").textContent =
-                "live · " + short + " · " + (m?.primary || m?.model || "canary");
-              applyMicToggleUi();
-              if (mic?.warning) {
-                setMicActiveLabel(mic.warning + " · " + (mic.label || ""), true);
-              } else if (mic?.label) {
-                const ch = mic.channelCount ? (" · " + mic.channelCount + "ch") : "";
-                setMicActiveLabel(
-                  "Aktiv: " + mic.label + (useStereo ? " (DJI Stereo)" : " (iPad)") + ch,
-                  false,
-                );
-              }
-            },
-            onWarn: (msg) => {
-              if (msg) setMicActiveLabel(String(msg), true);
-            },
-            onPartial: (a, b) => {
-              // Stereo: (ch, text) · Mono: (text)
-              const t = useStereo ? b : a;
-              if (!t || paused) return;
-              $("recLive").querySelector("span").textContent = "… " + String(t).slice(0, 28);
-            },
-            onFinal: (a, b, c, d) => {
-              // Stereo: (ch, text, timing) · Mono: (text, raw, corrections, timing)
-              if (useStereo) handleFinal(a, b, c);
-              else handleFinal("raum", a, d);
-            },
-            onError: (msg) => {
-              $("recLive").querySelector("span").textContent = String(msg || "Fehler").slice(0, 40);
-              setMicActiveLabel(String(msg || "Mikrofon-Fehler"), true);
-              stopRecording();
-            },
-            onClose: () => { if (recording) stopRecording(); },
+        const teeSent = publishLenaTee(true);
+        const idsNow = treatmentIds();
+        const teeOk = teeSent
+          ? await waitLenaTeeAck(idsNow?.appointmentId, 2800)
+          : false;
+        const micLab = micPick.label || micModeLabel();
+        recCapture = {
+          activeMic: { mode: micMode, label: micLab, shared: true },
+          levelsAp: () => {
+            const a = Math.min(1, (Number(window.__claraMicRms) || 0) * 8);
+            return { a, p: 0 };
           },
+          stop: async () => {},
+          flush: () => {},
+          resume: () => {},
+        };
+        setMicActiveLabel(
+          teeOk
+            ? "Aktiv: Parakeet · " + micLab + " — sprechen (Doku)"
+            : "KEIN Tee — Clara-Worker: CLARA_LENA_TEE=1 und neu starten?",
+          !teeOk || !!micPick.warning,
         );
-        if (!ok) await stopRecording();
-        else applyMicToggleUi();
+        if ($("recLive")) {
+          const liveEl = $("recLive").querySelector("span");
+          if (liveEl) liveEl.textContent = teeOk ? "live · Parakeet" : "Tee fehlt";
+        }
+        applyMicToggleUi();
       });
-      $("btnPause").addEventListener("click", () => {
+      $("btnPause")?.addEventListener("click", () => {
         if (!recording) return;
         paused = !paused;
-        $("btnPause").textContent = paused ? "Weiter" : "Pause";
-        $("recLive").querySelector("span").textContent = paused ? "pause" : "live";
+        if ($("btnPause")) $("btnPause").textContent = paused ? "Weiter" : "Pause";
+        const liveSpan = $("recLive")?.querySelector("span");
+        if (liveSpan) liveSpan.textContent = paused ? "pause" : "live";
         patchRecorder(paused ? "paused" : "recording", {
           command: paused ? "pause" : "",
           commandAtMs: paused ? Date.now() : 0,

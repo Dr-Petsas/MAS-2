@@ -21,16 +21,20 @@
 import express from "express";
 import admin from "./../firebase.js";
 import { AUTH_ENFORCED } from "../auth.js";
-import { structureTreatment, billTreatment, flagSmalltalk } from "../lena/lenaDoc.js";
-import { appendEvent, deleteEventsByIdPrefix } from "../brain/eventStore.js";
-import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
+import {
+  structureTreatment,
+  billTreatment,
+  flagSmalltalk,
+  refreshTemplateFields,
+  finalizeTreatmentDoc,
+} from "../lena/lenaDoc.js";
+import { deleteEventsByIdPrefix } from "../brain/eventStore.js";
 import { identifyByDevice } from "../clara/devices.js";
 import { getActiveRecording } from "../clara/sessions.js";
 import { getDayAppointments, todayBerlin } from "../clara/daySchedule.js";
 import { resolveChairAppointment, matchCalendarId } from "../clara/treatmentRecording.js";
 import { getPatientAnamnese, clip } from "../clara/anamnese.js";
 
-const _DOKU_MEMORY_TAGE = 45;
 // React-Frontend (Firebase Hosting) — dort liegt /dictate/... fuer die Lena-iframe.
 const PLATFORM_WEB_URL = (process.env.PLATFORM_WEB_URL || "https://docgenda.web.app").replace(/\/+$/, "");
 
@@ -355,6 +359,11 @@ router.post("/treatment/current", async (req, res) => {
       docsStatus: hintCtx.docsStatus,
       newPatient: hintCtx.newPatient,
       patientHints,
+      // Strukturierte Anamnese fuer Doku-Box (Prefill), parallel zu patientHints.
+      anamneseFindings: (hintCtx.anamneseFindings || []).slice(0, 20).map((f) => ({
+        category: String(f?.category || "").trim().slice(0, 80),
+        text: String(f?.text || "").trim().slice(0, 400),
+      })).filter((f) => f.text),
       dictateUrl,
     });
   } catch (e) {
@@ -399,6 +408,10 @@ router.post("/treatment/heartbeat", async (req, res) => {
         source: typeof s.source === "string" ? s.source : "",
         struck: s.struck === true,
         createdAtMs: tsToMs(s.createdAt),
+        // Sprech-Zeit (Wall-Clock) fuer chronologische Sortierung ueber beide
+        // Kanaele; fehlt bei Alt-Segmenten (dann Fallback createdAt/Reihenfolge).
+        startMs: Number(s.startMs) || 0,
+        endMs: Number(s.endMs) || 0,
       };
     });
 
@@ -416,6 +429,8 @@ router.post("/treatment/heartbeat", async (req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({
       ok: true,
+      appointmentId: k.appointmentId,
+      locationId: k.locationId,
       patientName: `${o.patient?.firstName || ""} ${o.patient?.lastName || ""}`.trim(),
       doctorName: o.calendar?.name || "",
       visitMotive: o.visitMotive?.name || "",
@@ -519,47 +534,55 @@ router.post("/treatment/lena-segment", async (req, res) => {
       } catch { /* Recorder-Status ist Komfort */ }
     }
 
+    // Sprech-Zeitfenster (absolute Wall-Clock-ms, vom iPad aus recStartedAtMs +
+    // Lena-Stream-Offset). Nur speichern, wenn plausibel (>0) — sonst bleibt das
+    // Feld weg (Alt-Segmente/kein Timing => Merge faellt auf Text+createdAt zurueck).
+    const startMs = Number(req.body?.startMs) || 0;
+    const endMs = Number(req.body?.endMs) || 0;
+    const hasTiming = startMs > 0 && endMs >= startMs;
+
     const segRef = ref.collection("dictations").doc();
     await segRef.set({
       id: segRef.id,
       text,
       lang,
       source,
+      ...(hasTiming ? { startMs, endMs } : {}),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // W-LENA-7: Doku sichtbar fuers ganze Haus — dasselbe Shared-Memory-Event
-    // (Kanal lena_doc, 45 Tage) wie saveTreatmentDictation, damit auch die per
-    // Sprach-Diktat/Tee erfassten Segmente in Cockpit-/Patienten-Timeline
-    // mitlesen. Best-effort; der Diktat-Eintrag oben bleibt die fuehrende Quelle.
-    try {
-      const o = snap.data() || {};
-      const subjId = String(o.patientId || o.patient?.id || "").trim();
-      const subjName = `${o.patient?.firstName || ""} ${o.patient?.lastName || ""}`.trim();
-      const kurz = text.length > 420 ? text.slice(0, 417) + "..." : text;
-      await appendEvent(k.clientId, {
-        id: `lena-doc:${k.appointmentId}:${segRef.id}`,
-        channel: CHANNELS.LENA_DOC,
-        type: EVENT_TYPES.NOTE,
-        direction: DIRECTIONS.INTERNAL,
-        counterparty: { kind: "system", name: "Lena", ref: null },
-        subject: subjId
-          ? { patientId: subjId, name: subjName, matchStatus: "matched", matchMethod: "name" }
-          : { name: subjName, matchStatus: "unmatched" },
-        status: "none",
-        summary: `Behandlungsdokumentation (Lena, ${source}): ${kurz}`,
-        payloadRef: { kind: "dictation", id: segRef.id },
-        extractor: "lena@lena-segment",
-        tags: ["lena", "dokumentation", "behandlung"],
-        expiresAtMs: Date.now() + _DOKU_MEMORY_TAGE * 86400000,
-      });
-    } catch (memErr) {
-      // Shared-Memory ist Komfort — Segment ist bereits geschrieben.
-      console.warn("lena-segment: brain-event failed:", memErr?.message || memErr);
-    }
+    // Shared Memory (lena_doc) erst beim Abschluss „Speichern“
+    // (`/treatment/finalize`) — nicht live pro Segment (Chef 21.07.2026).
+    // Fuehrende Quelle bleibt dictations/* (Clara liest dort beim Vorlesen).
 
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, dictationId: segRef.id });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/finalize — Eintrag abschliessen: Karteikarte + Shared Memory.
+// iPad-Button „Speichern“. Auth wie structure (deviceKey oder Bearer).
+router.post("/treatment/finalize", async (req, res) => {
+  try {
+    const actor = await structureBillingActor(req);
+    if (!actor.ok) {
+      return res.status(actor.error === "invalid_token" ? 401 : 403).json({ ok: false, error: actor.error });
+    }
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const structuredText = String(req.body?.structuredText || "").trim();
+    const r = await finalizeTreatmentDoc(k.clientId, k.locationId, k.appointmentId, {
+      structuredText,
+      updatedBy: actor.updatedBy,
+    });
+    res.set("Cache-Control", "no-store");
+    if (!r.ok) {
+      const code = r.error === "no_content" ? 409 : 502;
+      return res.status(code).json(r);
+    }
+    res.json(r);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -683,6 +706,30 @@ router.post("/treatment/structure", async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (!r.ok) {
       const code = r.error === "no_segments" ? 409 : 502;
+      return res.status(code).json(r);
+    }
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/template — W-LENA-8b: Doku-Template-Felder eines Termins
+// robust per LLM aus den Segmenten fuellen (additiv) und unter
+// treatment/main.templateFields persistieren. Liefert templateFields +
+// template-basierten structuredText + Abrechnungshinweise (8c) zurueck. Die
+// Lena-Seite/das iPad kann das explizit anstossen; ausserdem laeuft es
+// automatisch am Ende von /treatment/structure mit. Gleiche Auth wie structure.
+router.post("/treatment/template", async (req, res) => {
+  try {
+    const actor = await structureBillingActor(req);
+    if (!actor.ok) return res.status(actor.error === "invalid_token" ? 401 : 403).json({ ok: false, error: actor.error });
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const r = await refreshTemplateFields(k.clientId, k.locationId, k.appointmentId, { updatedBy: actor.updatedBy });
+    res.set("Cache-Control", "no-store");
+    if (!r.ok) {
+      const code = r.reason === "no_segments" ? 409 : 502;
       return res.status(code).json(r);
     }
     res.json(r);

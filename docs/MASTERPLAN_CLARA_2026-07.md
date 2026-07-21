@@ -168,26 +168,23 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       Absauger/Stille-Halluzinationen drosseln — ASR-Qualitaet, kein Podcast-
       Studio. DSP-Fallback ohne DFN. DoD offen: Praxis-Clips WER + „sprach auf
       Stille?“ messbar besser.
-      TEIL 4 (Arzt-Quelle umschaltbar, beschlossen 11.07. abends) IN ARBEIT:
+      TEIL 4 (Arzt-Quelle umschaltbar, beschlossen 11.07. abends) LIVE (21.07.):
       Einsteller "Arzt-Mikro: Ansteckmikrofon (Funkempfaenger) / Headset
       (ueber Clara)" pro Standort. Motiv: Traegt der Chef das Shokz-Headset,
-      haengt es per Bluetooth am HANDY (fuer Clara) — ein zweiter Capture auf
-      dem Handy waere fragil. Loesung: EIN Mikro, EIN Capture, Verteilung am
-      Server. Drei Teile: (1) Einsteller + Persistenz in Firestore
+      haengt es per Bluetooth am HANDY/iPad (fuer Clara) — ein zweiter Capture
+      auf demselben Geraet waere fragil. Loesung: EIN Mikro, EIN Capture,
+      Verteilung am Server. Drei Teile: (1) Einsteller + Persistenz in Firestore
       (`clients/{c}/locations/{l}/settings/lenaRecorder.arztSource`), von drei
       Parteien lesbar (Frontend-Recorder, MAS, Clara-Worker). (2) Headset-Modus:
-      der PC nimmt NUR den Patienten-Kanal auf (Mono `LenaSttCapture`,
+      der PC/iPad nimmt NUR den Patienten-Kanal auf (Mono `LenaSttCapture`,
       channel=raum) — der Stereo-Split entfaellt. (3) Der Clara-Worker tee't
       waehrend einer AKTIVEN Aufnahme die Arzt-Aeusserungen aus der LiveKit-
       Session an `lena_stt` (channel=arzt) und schreibt sie als Segmente
       (source=arzt) — derselbe Baustein, den Phase 4 (Ambient) ohnehin braucht.
-      Stufe 1: nur per Sprache gestartete Aufnahmen (der Worker kennt die
-      Aufnahme aus dem Tool-Result von start_treatment_recording); UI-gestartet
-      per Recorder-Poll spaeter. Der Worker-Tee ist FLAG-GATED
-      (`CLARA_LENA_TEE`, default AUS) — Live-Worker-Neustart erst mit dem Chef
-      am Headset (wie W-LENA-1 gestaffelt). Ansteckmikro bleibt der Default und
-      die bessere Doku-Quelle; Headset-Modus = "Clara + Doku, nur ein Geraet
-      am Koerper".
+      Tee-Start: Sprachbefehl (Tool-Result `lenaTee`) ODER UI-Aufnahme am iPad
+      via LiveKit-Cmd `lena_tee` (`pickadoc.cmd`). `CLARA_LENA_TEE=1` dauerhaft
+      in `start-clara.ps1`. Ansteckmikro bleibt der Default und die bessere
+      Doku-Quelle; Headset-Modus = "Clara + Doku, nur ein Geraet am Koerper".
       TEIL 3 (Zwei-Lavalier-Setup am PC) LIVE (11.07.): Chef nutzt zwei
       Ansteckmikros an EINEM Funk-Empfaenger (USB, links/rechts) statt
       Raummikro+Handy. `LenaStereoSplitCapture` splittet die Kanaele
@@ -200,6 +197,13 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       Umschalter, kein Geraete-Dropdown, `micSelect.tsx` geloescht; geblieben
       sind L/R-Pegelmeter, "Links = Patient/Arzt"-Tausch und ein Knopf zu den
       Windows-Sound-Einstellungen.
+      NACHTRAG iPad (20.07./21.07.): Triple-Toggle **iPad / USB / Bluetooth**.
+      **iPad + Bluetooth + USB = Parakeet** über Clara (Weiterleitung in die
+      Doku; LiveKit-Mic wird auf gewähltes Gerät gelegt). Canary/Whisper-Doku
+      entfernt 21.07. Soft-Switch ohne Hangup/Reconnect; Doku-Welt
+      `set_app_mode:doku` = kein Clara-LLM, Parakeet AN. Aufnahme + Nachdiktat
+      = `lena_tee` source arzt|nachdiktat. Zurueck: Soft-Return-Begruessung.
+      Aufnahme-Kopf als Box-Karten statt Zeilenleiste.
 - [x] **W-LENA-3 Live-UI (Layout erhalten).** LIVE (11.07.2026). Datepicker/
       Arztfilter/Patientenliste bleiben. Rechts jetzt Umschalter Dialog<->Struktur:
       Dialog = chronologischer Verlauf (Patient links / Arzt rechts, Kanal=Sprecher
@@ -328,7 +332,10 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
         liest den `sophiePlan.terminGrund` vor. Ergaenzen/Loeschen bewusst ueber
         Diktat (7c), NICHT durch serverseitiges Verbiegen von `sophiePlan`
         (Konzept-Katalog liegt im Frontend; Sophie erkennt neu).
-      - [x] **7e Nachdiktat = wortwoertlich + Doku im Shared Memory (FERTIG 17.07.).**
+      - [x] **7e Nachdiktat + Speichern → Shared Memory (17.07./21.07.).**
+        iPad-Button „Speichern“ (ex Sophie-Abrechnung) ruft `/treatment/finalize`:
+        Karteikarte + `lena_doc`-Events erst beim Abschluss (nicht live pro
+        Segment). Clara kann danach vorlesen. Sophie-Abrechnung folgt spaeter.
         Clara-Diktat (Text `saveTreatmentDictation` UND getee'tes Live-Diktat bei
         `recorder.mode=dictation`) wird als `source=nachdiktat` abgelegt -> eigener,
         ungefilterter Abschnitt (wie iPad-Nachdiktat), erscheint LIVE in der
@@ -369,6 +376,39 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
         laeuft das Diktat, an genau diesen alten Termin gebunden (Tee schreibt
         dorthin). „Nein, vom 3. April" = Korrektur. So landet ein Nachtrag nie
         auf dem falschen Termin.
+
+- [~] **W-LENA-8 Vorlagen-First Doku-Template Zahnmedizin (beschlossen 18.07., Chef).**
+      Richtungswechsel: Lena zeigt kein Dialog-/Bubble-Hero mehr. Ein
+      **interaktives Doku-Template Zahnmedizin** ist die Arbeitsflaeche;
+      Rohdialog nur Accordion (§ 630f-Archiv). Scope bewusst NUR Zahnmedizin
+      (andere Faecher spaeter, wenn Erfahrung da). Ein Mikrofon reicht
+      (Diarisierung tritt zurueck; Zustimmung/Planwechsel aus Kontext).
+      Clara-Briefing liest spaeter dieselben Felder — bewusst NACH Zahn-Rundung.
+      - [x] **8a iPad UI Template-Hero (18.07.).** `ipad-app.html` wiz3:
+        `#dokuTpl` + Rohdialog `<details>`; Katalog
+        `/m/lena-doku-template-zahn.js` (Basis-Felder + adaptive Bloecke
+        inkl. Planänderung geplant/gemacht/Zustimmung). Mic-Default „1 Mic“;
+        Stereo optional. Preview: `/m/lena-doku-preview.html`.
+      - [ ] **8b Live-Feld-Extraktion robust (LLM).** Heuristik in 8a ist Start;
+        periodisch/final qwen Feld-Fill + Persistenz `templateFields` an
+        `treatment/main`. Planwechsel nur bei Entscheidungssprache; additiv
+        (geplant bleibt). Kein Mid-Chair-Tap.
+      - [ ] **8c structuredText aus bestaetigtem Template** (wiz5 Bridge;
+        Abrechnungshinweise GOZ/BEMA aus Feldern — Sophie bleibt Ziffern-Instanz).
+      - [x] **8d Clara Briefing (gewichtet, kurz) — FERTIG 19.07.** Heads-up
+        (`nextPatientsBriefing`) und Tages-Prep (`day-appointments`) lesen
+        `treatment/main.templateFields` des letzten Termins. Modul
+        `clara/lenaBriefing.js`: Feld-Gewichte (Komplikation/Planwechsel/
+        Therapie/Diagnose/offen > Befund/Anlass), max. 2 Fakten, ≤140 Zeichen,
+        „keine Komplikationen“ und Befund-Romane werden verworfen. Fallback
+        Kalender-visitMotive. SignR-Anamnese unveraendert separat. Absicherung:
+        `node scripts/test-lena-briefing.mjs`. Kein structuredText-Dump.
+      - [~] **8e 01-Modus Neupatient (Visual, 18.07.).** Einstieg iPad
+        (`/m/lena-01/`): schichtbasiertes SVG-Odontogramm (Base Zahn+Wurzeln,
+        Overlays Karies/Fuellung/Krone/WF/Belag/Implantat, Arch-Gingiva +
+        Brueckenband). Orientiert an `F:\struktur01` Lena01/OdontogramSvg,
+        aber modular statt Monolith. OFFEN: Editor-Interaktion, Persistenz,
+        Bedarf→Termine/Docs (spaeter, bewusst nach Visual-Freigabe).
 
 ## Phase W-SUCHE - MAS-Cockpit als Gedaechtnis-Suchmaschine (beschlossen 05.07.)
 
@@ -996,9 +1036,45 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   (Raum→Termin, deviceKey-gated). Backend neu gestartet (Route antwortet).
   OFFEN: Hosting-Deploy fuer `?embedded=1` auf dictationPage, Live-Abnahme
   am Stuhl.
+- 18.07.2026: Weitere Fachrichtungs-Doku-Templates (Ortho/HNO/Derma/…) —
+  erst wenn Zahnmedizin (W-LENA-8) rund ist; Chef: Erfahrung fehlt.
+- 21.07.2026: **Clara als Souffleuse am Stuhl** — DONE 21.07.: waehrend
+  Aufnahme alle ~45 s ein `coach_speak` „Denk noch an: {Box}.“ zu offenen
+  Template-Luecken; Box-Fokus; kein Dialog. Nachdiktat-Feintuning spaeter.
+- 21.07.2026: **Anamnese-Box vorausgefüllt** (SignR/Akte: Allergien,
+  Medikamente, Risiken) auf der Aufnahme-Seite; Chef ergaenzt nur Abweichungen.
+- 21.07.2026: **Nachdiktat als knapper Dialog** (nach der Behandlung) —
+  Clara fragt gezielt offene Luecken ab; kein Smalltalk. Getrennt von der
+  Souffleuse am Stuhl. **Feintuning Behandlungsschritte: spaeter.**
+- 21.07.2026 (Chef, praezisiert): **Nachdiktat als intensives Gespraech —
+  Abrechnungs-Vorbereitung.** Alle abrechnungsrelevanten Positionen muessen
+  im Nachdiktat erfasst werden. Clara deckt Luecken EXPLIZIT anhand
+  Termingrund + diktierten Behandlungen auf (wurde anaesthesiert? Roentgen?
+  Kofferdam? etc.). Dafuer **explizite Frage-Skripte je Behandlungsart**
+  (Fuellung/Endo/Extraktion/PZR/ZE ...) erstellen — Skripte kommen spaeter,
+  Struktur analog `openGapPrompts` in `lena-doku-template-zahn.js`.
+- 21.07.2026: **Tages-Schema (nicht 01)** — waehrend Behandlungsaufnahme
+  Stimme → FDI-Schema mit Zeilen Befund/Therapie/Paro/Kiefer (OK oben,
+  UK unten). 01-Modus bleibt Erstuntersuchung (spaeter). Beispiel:
+  „34 Karies distal“ → Befund KaD; „Füllung inzisal distal“ → Therapie FuOD.
 - (frei)
 
 ## Aenderungslog
+
+- 21.07.2026: **Souffleuse am Stuhl** — iPad sendet `coach_speak` bei offenen
+  Doku-Boxen („Denk noch an: Befund.“), Cooldown 45 s, erst ab 25 s Aufnahme;
+  Worker-Pfad unveraendert (`_run_coach_speak`). Nachdiktat-Feintuning spaeter.
+- 21.07.2026: **Voice-Zahnstatus MVP (KZBV)** — Katalog
+  `lena-zahnstatus-katalog.js` (EBZ: **f=fehlend**), Parser
+  `lena-voice-chart.js`, FDI-Schema in Doku-Box, Box-Fokus bei Live-Fill;
+  01-Modus `Lena01.selectTooth` + `perio-voice.js` Poll. Füllung klinisch
+  als `Fu`+Flächen (kein EBZ-f). 02-Tab-Führung auf Warteliste.
+- 18.07.2026: **W-LENA-8e 01-Modus Visual** — `/m/lena-01/` schichtbasiertes
+  SVG-Odontogramm (anatomische Silhouetten, Kronen-Kappen, Gingiva, Bruecke);
+  Einstieg aus ipad-app. Referenz `F:\struktur01`, absichtlich schlanker.
+- 18.07.2026: **W-LENA-8 gestartet (Chef)** — Lena Vorlagen-First Zahnmedizin:
+  iPad wiz3 Doku-Template Hero, Rohdialog Accordion, 1-Mic-Default,
+  Katalog `lena-doku-template-zahn.js`. Clara-Briefing und LLM-Fill folgen.
 
 - 17.07.2026: **Lena-STT Halluzinations-Abwehr (Chef)** — Testaufnahmen (Overlap,
   Nuschelsaetze) zeigten "Unmengen an Halluzinationen": Canary (DE-Lock, kein
@@ -1028,8 +1104,25 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Speicherstelle mit source+Zeit = separates Paket). (2) **Confidence bei Canary
   unbrauchbar** (konstant 1.0) -> conf-Gate bleibt AUS. (3) **Fachbegriffe** teils
   falsch ("kariös"->"karriös", "Veneer"->"Venier") -> erledigt (siehe naechster
-  Eintrag "Lena-Fachvokabular"). OFFEN bleibt: `startMs/endMs` kommen als 0 in Firestore
-  (separater Bug, blockiert den sauberen Cross-Channel-Merge).
+  Eintrag "Lena-Fachvokabular"). `startMs/endMs=0` + Cross-Channel-Merge -> erledigt
+  (siehe Eintrag "Lena Zeitstempel durchgereicht + Cross-Channel-Merge").
+- 17.07.2026: **Lena Zeitstempel durchgereicht + Cross-Channel-Merge (Chef)** —
+  Ursache `startMs/endMs=0`: Lena SENDET die Zeiten im WS-`final`, aber sie gingen
+  an DREI Stellen verloren — die Capture-Klassen (`lena-stt-capture.js`) reichten
+  sie nicht durch `onFinal`, `postLenaSegment` sendete sie nicht, und die Route
+  `/treatment/lena-segment` speicherte sie nicht. Jetzt end-to-end: Lena ->
+  onFinal(…, {startMs,endMs}) -> iPad rechnet ABSOLUT (recStartedAtMs + Offset;
+  beide Stereo-Kanaele teilen dieselbe Basis) -> Route speichert `startMs/endMs`
+  (nur wenn plausibel >0). Additiv, Alt-Segmente/kein Timing unveraendert. Darauf
+  aufbauend `src/lena/crossChannel.js`: an der SPEICHERSTELLE (Quelle+echte Zeit)
+  werden Zwei-Mikro-Zwillinge zusammengefasst, die der STT-Server-Dedup nicht
+  schafft — der divergente Live-Fall ("Den Zahn zwischen Raum…"/"Im
+  Zahnzwischenraum, Approximalraum…") ist per Bigramm-Aehnlichkeit 0.74 (>=0.5) +
+  Zeitfenster 2,5 s klar erkannt; echtes Gegen-Sprechen (Arzt/Patient, sim 0.32)
+  bleibt. Eingehaengt in `structureTreatment` (Gespraech, nie Nachdiktat). Test:
+  `node backend/scripts/test-lena-merge.mjs` (ohne Firebase/LLM). Der offene
+  naechste Qualitaetshebel (Kontext-Korrektur der Fachbegriff-Garbles per qwen3.6)
+  ist erledigt -> siehe Eintrag "Lena: Canary->qwen3.6-Fachbegriff-Korrektor".
 - 17.07.2026: **Lena-Fachvokabular + umgangssprachliche Deutung (Chef)** — Drei
   Teile: (1) `lena_stt/data/medical_terms_de.txt` von ~150 auf 281 Begriffe
   erweitert (Adjektiv-/Befundformen kariös/insuffizient/gelockert/klopfempfindlich …,
@@ -1044,6 +1137,30 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   WOERTLICHE Akte (§ 630f Original-Segmente) bleibt unangetastet. Zusaetzlich in der
   Klassifikation abgesichert: umgangssprachliche Befunde ('Loch','kaputt','tut weh' …)
   gelten als klinisch und werden NIE als Smalltalk verworfen.
+- 18.07.2026: **Lena Overnight-Optimierung (Whisper Primary)** — 33 DE-Zahnmedizin-
+  YouTube-Quellen / 148 Min Clips; 17 Config-Sweeps. Winner: sanfte RMS-Norm
+  (`TARGET_RMS=0.05`, `MAX_GAIN=3`, `BEAM=5`, Hotwords im Code default AUS).
+  Aggressive Norm/Hotwords ohne VAD erzeugten Loops. Praxis-Startscript:
+  `PRIMARY=whisper`, Hotwords AN (VAD filtert Stille). Bericht:
+  `F:\Clara-Voice\logs\REPORT_lena_overnight.md`. Korpus unter
+  `lena_stt/_overnight_corpus/`. Kein Canary-Finetune (braucht Labels).
+- 17.07.2026: **Lena: Canary->qwen3.6-Fachbegriff-Korrektor (W-LENA-7, Chef)** —
+  Chef-Entscheidung: **parakeet_de_med bleibt AUS der Live-Pipeline** (kein
+  zweites STT-Modell; es kann Canarys Text ohnehin nicht "korrigieren" — es raet
+  nur dasselbe Audio neu und brachte den 13.07.-Sprachsprung). Statt des zu
+  schwachen Fuzzy-Postkorrektors bei groben Garbles ("Barottis"->"Parotis",
+  "in Blattat"->"Implantat") geht Canarys Ausgabe jetzt DIREKT an qwen3.6 (starkes
+  5090-Modell). Neue, eng gezuegelte Stufe in `structureTreatment` (MAS,
+  `src/lena/lenaDoc.js` `correctGarbles()`, direkt nach Cross-Channel-Merge, vor
+  Klassifikation): qwen glaettet je Segment NUR echte Spracherkennungs-Verhoerer
+  (Fachbegriffe), mit Nachbarzeilen als Kontext. § 630f: der Canary-Rohtext
+  bleibt IMMER als `text`, die Korrektur nur als `textCorrected` daneben; ab da
+  laeuft alles ueber `segText()` (Klassifikation, Dialog, Karteikarte, Abrechnung).
+  Guard `src/lena/garbleCorrect.js` `acceptCorrection()` (firebase-frei, getestet
+  via `node backend/scripts/test-lena-correct.mjs`) verwirft Erfindungen,
+  Zahlen-/Zahnnummer-Aenderungen, Aufblaehung und Verstuemmelung -> im Zweifel
+  bleibt der Rohtext. Notaus `LENA_LLM_CORRECT=0`. BACKLOG (in Ruhe): Canary
+  selbst auf das Fachvokabular fein-tunen, dann traegt der Korrektor weniger.
 - 17.07.2026: **Lueckenerkennung + Recall-Freigabe korrigiert (Chef)** — Zwei
   Vorfaelle: (1) Clara meldete ZU VIELE freie Luecken, weil `runGapFill()`
   ueber ALLE Behandler-Kalender scannte (leerer Kollegen-Kalender =
