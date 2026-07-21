@@ -1852,6 +1852,9 @@
               try {
                 document.dispatchEvent(new CustomEvent("lena-tee-ack", { detail: obj }));
               } catch (_) {}
+            } else if (obj.type === "lena_open_findings") {
+              // Clara-Sprachbefehl start_findings_for_patient → Termin + Schema + Aufnahme.
+              try { window.__lenaOpenFindings?.(obj); } catch (_) {}
             } else if (obj.type === "lena_doku_segment") {
               // Sofort-Pfad: Worker pusht Final per LiveKit — kein Warten auf
               // Firestore-Heartbeat (sonst 1–2 s tot nach jeder Zahnzahl).
@@ -4147,6 +4150,43 @@
       // Doku-Seite: dieselben Aufnahme-Controls (ohne doppelte Logik).
       $("btnRec2")?.addEventListener("click", () => $("btnRec")?.click());
       $("btnPause2")?.addEventListener("click", () => $("btnPause")?.click());
+
+      // Clara-Sprachbefehl → Befund-Schritt (LiveKit lena_open_findings).
+      // Abgegrenzt: nur Termin wählen, Schema-Schritt, bestehender btnRec-Pfad
+      // (Tee + Bereit-Ansage). Keine neue Aufnahme-Logik.
+      window.__lenaOpenFindings = async function lenaOpenFindings(cmd) {
+        const wantId = String(cmd?.appointmentId || "").trim();
+        if (!wantId) return;
+        try {
+          if (iso(selectedDate) !== iso(TODAY)) {
+            selectedDate = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+            pickerMonth = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
+            try { renderPicker(); updateTerminLead(); } catch (_) {}
+          }
+          await loadDay(iso(TODAY));
+          const a = (dayAppointments || []).find(
+            (x) => String(x.appointmentId || x.id || "") === wantId,
+          );
+          if (!a) {
+            console.warn("lena_open_findings: Termin nicht in heutiger Liste", wantId);
+            return;
+          }
+          pickApptFrom({
+            ...a,
+            locationId: a.locationId || chairCurrent?.locationId || dayLocationId || "",
+          });
+          renderFeats(selectedAppt);
+          const dokuBtn = modeSwitch?.querySelector?.('button[data-mode="doku"]');
+          if (dokuBtn && activeMode !== "doku") dokuBtn.click();
+          showStep(3);
+          if (!recording) {
+            await new Promise((r) => setTimeout(r, 80));
+            $("btnRec")?.click();
+          }
+        } catch (err) {
+          console.warn("lena_open_findings failed", err);
+        }
+      };
     })();
   </script>
 </body>

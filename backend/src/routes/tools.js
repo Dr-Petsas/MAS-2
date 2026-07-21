@@ -38,7 +38,7 @@ import { spokenCommsDigest } from "../clara/commsDigest.js";
 import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
-import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession } from "../clara/treatmentRecording.js";
+import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../clara/lenaDictation.js";
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
@@ -1027,6 +1027,77 @@ router.post("/tools/stop-treatment-recording", async (req, res) => {
     await clearActiveRecording(clientId).catch(() => {});
     await clearPendingRecording(clientId).catch(() => {});
     return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// --- Lena-Befund per Sprachbefehl (Clara-Modus → iPad Schema-Schritt) --------
+// "Clara, Patient XY Befund aufnehmen" / "Befundaufnahme für Herrn XY":
+// Patient NUR gegen die HEUTIGE Terminliste; bei eindeutigem Treffer liefert
+// das Tool ``lenaOpenFindings`` — der Worker pusht LiveKit ``lena_open_findings``
+// ans iPad (Termin wählen → Schema → bestehender Aufnahme-Start mit Tee).
+// Kein Raten, kein Halluzinieren: mehrdeutig / nicht gefunden = sprechbare Frage.
+router.post("/tools/start-findings-for-patient", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const rawName = String(req.body?.lastName || req.body?.name || "").trim();
+    const hint = String(req.body?.hint || "").trim();
+    const name = cleanSpokenPersonName(rawName) || rawName;
+    if (!name) {
+      return res.json({
+        ok: true,
+        needsConfirm: true,
+        message: "Für welchen Patienten soll ich den Befund öffnen? Bitte den Namen nennen.",
+      });
+    }
+    const day = await getDayAppointments(clientId, { date: todayBerlin() });
+    if (!day?.ok) {
+      return res.json({ ok: false, message: "Den Kalender kann ich gerade nicht lesen." });
+    }
+    const { matches, reason } = matchTodayAppointmentsByName(day.appointments || [], name, hint);
+    if (reason === "none" || !matches.length) {
+      return res.json({
+        ok: false,
+        message: `Zu ${name} finde ich heute keinen Termin. Für wen soll ich den Befund öffnen?`,
+      });
+    }
+    if (reason === "ambiguous" || matches.length > 1) {
+      const liste = matches.slice(0, 4).map((a) => {
+        const who = a.patientName || a.patientLastName || "Patient";
+        const when = spokenApptWhen(a.startMs) || "";
+        return `${who}${when}`;
+      }).join("; ");
+      return res.json({
+        ok: true,
+        needsConfirm: true,
+        message: `Es gibt mehrere passende Termine heute: ${liste}. Welchen meinst du?`,
+      });
+    }
+    const a = matches[0];
+    const who = a.patientName || a.patientLastName || name;
+    const when = spokenApptWhen(a.startMs);
+    const locationId = String(day.locationId || a.locationId || "").trim();
+    if (!locationId || !a.id) {
+      return res.json({ ok: false, message: `Den Termin von ${who} kann ich gerade nicht öffnen.` });
+    }
+    return res.json({
+      ok: true,
+      appointmentId: a.id,
+      patientId: a.patientId || "",
+      patientName: who,
+      lenaOpenFindings: {
+        appointmentId: a.id,
+        locationId,
+        patientId: a.patientId || "",
+        patientName: who,
+      },
+      message: `Ich öffne den Befund für ${who}${when}.`,
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

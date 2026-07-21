@@ -5,6 +5,7 @@ import {
   spokenApptWhen,
   resolveChairAppointment,
   matchCalendarId,
+  matchTodayAppointmentsByName,
 } from "../src/clara/treatmentRecording.js";
 
 let fails = 0;
@@ -104,6 +105,27 @@ check("spokenApptWhen enthaelt 'Uhr'", /Uhr/.test(spokenApptWhen(now)));
 check("matchCalendarId exakt", matchCalendarId([{ id: "c1", name: "Dr. Petsas" }], "Dr. Petsas") === "c1");
 check("matchCalendarId Token", matchCalendarId([{ id: "c1", name: "Dr. med. Petsas" }], "Petsas") === "c1");
 check("matchCalendarId leer", matchCalendarId([{ id: "c1", name: "Dr. Petsas" }], "") === "");
+
+// 14) matchTodayAppointmentsByName — Befund-Sprachbefehl gegen heutige Liste
+{
+  const day = [
+    P("a", -5 * MIN, 30, { patientName: "Anna Meier", patientLastName: "Meier" }),
+    P("b", 60 * MIN, 30, { patientName: "Peter Mueller", patientLastName: "Mueller" }),
+  ];
+  const u = matchTodayAppointmentsByName(day, "Herrn Meier");
+  check("Befund-Name unique", u.reason === "unique" && u.matches[0]?.id === "a", u.reason);
+  const n = matchTodayAppointmentsByName(day, "Schmidt");
+  check("Befund-Name none", n.reason === "none" && !n.matches.length, n.reason);
+  const twins = [
+    P("c1", -5 * MIN, 30, { patientName: "Anna Meier", patientLastName: "Meier" }),
+    P("c2", 90 * MIN, 30, { patientName: "Bernd Meier", patientLastName: "Meier" }),
+  ];
+  const amb = matchTodayAppointmentsByName(twins, "Meier");
+  check("Befund-Name ambiguous", amb.reason === "ambiguous" && amb.matches.length === 2, amb.reason);
+  const hint = matchTodayAppointmentsByName(twins, "Meier", "Anna");
+  check("Befund-Name hint engt ein", hint.reason === "unique" && hint.matches[0]?.id === "c1", hint.reason);
+  check("Befund-Name leer", matchTodayAppointmentsByName(day, "").reason === "empty_name");
+}
 
 console.log();
 if (fails) { console.log(`${fails} CHECK(S) FEHLGESCHLAGEN`); process.exit(1); }

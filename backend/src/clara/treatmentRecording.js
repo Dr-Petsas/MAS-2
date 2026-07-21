@@ -37,6 +37,54 @@ export function spokenApptWhen(startMs) {
   }
 }
 
+/** Name fuer Tageslisten-Abgleich: klein, ohne Anrede/Satzzeichen. */
+function _normSpokenName(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\b(herrn?|frau|fr(?:ä|ae)ulein|hr|fr|dr|prof|doktor|patient(?:in)?)\.?\b/g, " ")
+    .replace(/[^a-zäöüß0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Reiner Abgleich eines gesprochenen Namens gegen HEUTIGE Termine.
+ * Kein Firestore, kein LLM — nie raten. Unit-testbar.
+ *
+ * @param {Array} appts  getDayAppointments-Form
+ * @param {string} spokenName  z.B. "Herrn Meier" / "Meier"
+ * @param {string} [hint]  optionaler Hinweis ("der um 10", "Peter")
+ * @returns {{matches:Array, reason:string}}
+ *   reason: "unique" | "ambiguous" | "none" | "empty_name"
+ */
+export function matchTodayAppointmentsByName(appts, spokenName, hint = "") {
+  const nameQ = _normSpokenName(spokenName);
+  if (!nameQ) return { matches: [], reason: "empty_name" };
+  const toks = nameQ.split(" ").filter(Boolean);
+  const patients = (Array.isArray(appts) ? appts : [])
+    .filter((a) => a && !a.isAbsence && a.patientId);
+  let matches = patients.filter((a) => {
+    const hay = _normSpokenName(`${a.patientName || ""} ${a.patientLastName || ""}`);
+    return toks.every((tok) => hay.includes(tok));
+  });
+  const hintQ = _normSpokenName(hint);
+  if (hintQ && matches.length > 1) {
+    const hToks = hintQ.split(" ").filter(Boolean);
+    const narrowed = matches.filter((a) => {
+      const hay = _normSpokenName(
+        `${a.patientName || ""} ${a.patientLastName || ""} ${a.visitMotive || ""}`,
+      );
+      const when = spokenApptWhen(a.startMs).toLowerCase();
+      const blob = `${hay} ${when}`;
+      return hToks.every((tok) => blob.includes(tok));
+    });
+    if (narrowed.length) matches = narrowed;
+  }
+  if (!matches.length) return { matches: [], reason: "none" };
+  if (matches.length > 1) return { matches, reason: "ambiguous" };
+  return { matches, reason: "unique" };
+}
+
 /**
  * Reine Auswahl "wer sitzt gerade im Stuhl?" aus einer Tagesliste.
  * Kein Firestore, kein LLM — deterministisch und unit-testbar.
