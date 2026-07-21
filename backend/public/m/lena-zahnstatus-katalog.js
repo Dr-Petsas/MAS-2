@@ -122,7 +122,9 @@
     { re: /implantat\s+entfernen|\bix\b/i, code: "ix" },
     { re: /implantat\s*krone|\bsk\b/i, code: "sk" },
     { re: /\bimplantat\b/i, code: "sk" },
-    { re: /teleskop|\bt\b(?!\w)/i, code: "t" },
+    // "Telesco" / "Teleskopkrone" (Live 22.07. 01:38) — Garble-Pfad normalisiert
+    // zusaetzlich in speechGarbleCorrect; Regex faengt Restformen.
+    { re: /telesko|telesco|\bteleskop(?:krone)?\b|\bt\b(?!\w)/i, code: "t" },
     { re: /l(?:[uü]|ue)ckenschluss/i, code: ")(" },
     // Klinisch (kein EBZ-f) — Umlaute auch als ae/oe/ue (Garble-/ASCII-Pfad)
     { re: /f(?:[uü]|ue)llung|komposit|inlay|onlay|\bfu\b/i, code: "Fu" },
@@ -198,9 +200,18 @@
   );
   // Kompakt-Diktat "16x14x" / "46x": x direkt an der Zahl, ohne Wortgrenze.
   const RE_COMPACT_X = /([1-4][1-8])\s*([xX])(?=$|[\s.,;:]|[1-4])/g;
+  // STT schreibt oft "1-1" / "2-1" statt "1,1" (Live 21.07. 21:15/21:37).
+  const RE_PAIR_HYPHEN = new RegExp(
+    "(^|[^\\d-])([1-4])\\s*-\\s*([1-8])(?!\\d)",
+    "gi",
+  );
 
   function normalizeToothText(text) {
     let s = String(text || "");
+    s = s.replace(RE_PAIR_HYPHEN, (m, pre, a, b) => {
+      const fdi = a + b;
+      return ALL_FDI.has(Number(fdi)) ? (pre + fdi) : m;
+    });
     s = s.replace(RE_PAIR_WORD, (m, a, b) => {
       const fdi = (DIGIT_WORD[a.toLowerCase()] || "") + (DIGIT_WORD[b.toLowerCase()] || "");
       return ALL_FDI.has(Number(fdi)) ? fdi : m;
@@ -233,6 +244,10 @@
     bei: "drei", by: "drei", right: "drei", frei: "drei",
     zeit: "zwei", why: "zwei", wei: "zwei", zwo: "zwei",
     sex: "sechs", sechse: "sechs",
+    // Live 21.07. 22:49: "Zwei Alt" = "Zwei Acht", "Drei Alten" = "Drei Acht",
+    // "Drei Eisen" = "Drei Eins".
+    alt: "acht", alte: "acht", alten: "acht",
+    eisen: "eins",
   };
   const RE_ALIAS_TOKEN = /[a-zA-ZäöüßÄÖÜ]+/g;
   function schemaDigitAlias(text) {
@@ -242,6 +257,40 @@
         ? SCHEMA_DIGIT_ALIAS[k]
         : w;
     });
+  }
+
+  /* ── Dental-STT-Garbles (Live 21./22.07. Headset-Tee) ────────────────────
+     Vor Digit-Alias und Parser: offensichtliche Fachwort-Verhoerer glaetten.
+     "Sex-Teleskop" MUSS vor sex→sechs laufen, sonst zerlegt der Digit-Alias
+     das Kompositum. Schema-only riskante Treffer (paris→karies) liegen in
+     schemaSpeechGarble. */
+  function speechGarbleCorrect(text) {
+    let s = String(text || "");
+    // Teleskop zuerst (vor Digit-Alias sex→sechs)
+    s = s.replace(
+      /\b(?:ein(?:e|zig(?:e|en)?)?\s+)?(?:sex|sechs(?:t)?)\s*[-]?\s*teleskop(?:\s*[-]?\s*krone)?\b/gi,
+      "Teleskopkrone",
+    );
+    s = s.replace(/\btelesco\b/gi, "Teleskop");
+    s = s.replace(/\bteleskop\s*[-]?\s*krone\b/gi, "Teleskopkrone");
+    s = s.replace(/\bz[uü]lung\b/gi, "Füllung");
+    s = s.replace(/\bcovidus\b/gi, "Karies");
+    s = s.replace(/\bf2ud\b/gi, "Füllung MOD");
+    s = s.replace(/\bkarie\b/gi, "Karies");
+    s = s.replace(/\bdistar\b/gi, "distal");
+    s = s.replace(/\boctosal(?:distale?)?/gi, (m) =>
+      /distal/i.test(m) ? "okklusal distal" : "okklusal",
+    );
+    s = s.replace(/\binzisal\s*distale?\b/gi, "inzisal distal");
+    s = s.replace(/\bokklusaldistale?\b/gi, "okklusal distal");
+    return s;
+  }
+  function schemaSpeechGarble(text) {
+    let s = speechGarbleCorrect(text);
+    // Nur Schema: Homophone die im Fliesstext echte Woerter sind
+    s = s.replace(/\bparis\b/gi, "Karies");
+    s = s.replace(/\bkicker\b/gi, "");
+    return s;
   }
 
   function isKzbv(code) {
@@ -376,6 +425,8 @@
     markForLayer,
     normalizeToothText,
     schemaDigitAlias,
+    speechGarbleCorrect,
+    schemaSpeechGarble,
     DIGIT_WORD,
     isKzbv,
     labelOf,

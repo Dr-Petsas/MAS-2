@@ -497,5 +497,47 @@ const echoAll = W.LenaVoiceChart.buildEchoText(
 );
 check("Echo: Massen-Befund -> 'Mehrere Zähne: fehlt.'", echoAll === "Mehrere Zähne: fehlt.", echoAll);
 
+// 18) Live-Garbles 22.07. 01:37 (Teleskop/Zülung/Covidus) + Pend-Reset
+const stTel = W.LenaDokuZahn.emptyState("");
+stTel.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stTel, [
+  { text: "Eins, sechs.", startMs: 1000 },
+  { text: "Telesco.", startMs: 2000 },
+  { text: "Ein Sex-Teleskop-Krone.", startMs: 3000 },
+  { text: "Es fehlen.", startMs: 4000 },
+  { text: "Zwei, zwei.", startMs: 5000 },
+  { text: "2, 2 fehlt.", startMs: 6000 },
+]);
+check("Tel: 16 = t (nicht f)", (stTel.chart?.[16]?.befund || "") === "t", JSON.stringify(stTel.chart?.[16]));
+check("Tel: 22 = f", (stTel.chart?.[22]?.befund || "") === "f", JSON.stringify(stTel.chart?.[22]));
+const stZu = W.LenaDokuZahn.emptyState("");
+stZu.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stZu, [
+  { text: "Eins, vier." },
+  { text: "Zülung MOD." },
+  { text: "Zwei, drei Karies." },
+]);
+check("Garble: Zülung MOD -> 14 fumod", (stZu.chart?.[14]?.befund || "").includes("fu"), JSON.stringify(stZu.chart?.[14]));
+check("Garble: 23 c", (stZu.chart?.[23]?.befund || "") === "c", JSON.stringify(stZu.chart?.[23]));
+const stHy = W.LenaDokuZahn.emptyState("");
+stHy.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stHy, [{ text: "1-1 Füllung, M-O-D." }]);
+check("Hyphen: '1-1 Füllung' -> 11 fu", (stHy.chart?.[11]?.befund || "").includes("fu"), JSON.stringify(stHy.chart?.[11]));
+const stPend = W.LenaDokuZahn.emptyState("");
+stPend.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stPend, [
+  { text: "Zeit.", startMs: 1000 },
+  { text: "Hier ab.", startMs: 2000 },
+  { text: "Hier?", startMs: 8000 },
+  { text: "Sieben.", startMs: 8800 },
+]);
+check("Pend-Reset: Hier+Sieben -> 47 (kein Geister-24)", stPend.teeth.has(47) && !stPend.teeth.has(24), [...stPend.teeth].join(","));
+check("Alias: Zwei Alt -> 28", (() => {
+  const s = W.LenaDokuZahn.emptyState("");
+  s.page = "schema";
+  W.LenaDokuZahn.applySchemaSegments(s, [{ text: "Zwei Alt." }]);
+  return s.teeth.has(28);
+})(), "");
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

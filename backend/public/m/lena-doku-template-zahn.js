@@ -142,12 +142,16 @@
     state.lastChartFdi = null;
     state.chart = global.LenaVoiceChart ? global.LenaVoiceChart.emptyChart() : null;
     const KAT = global.LenaZahnstatusKatalog;
+    const garble = KAT && KAT.schemaSpeechGarble
+      ? KAT.schemaSpeechGarble
+      : (KAT && KAT.speechGarbleCorrect ? KAT.speechGarbleCorrect : (t) => t);
     const alias = KAT && KAT.schemaDigitAlias ? KAT.schemaDigitAlias : (t) => t;
     const allFdi = KAT && KAT.ALL_FDI ? KAT.ALL_FDI : null;
     const PAIR_WINDOW_MS = 8000;
     const items = (segments || [])
       .map((s) => ({
-        text: alias(String(s.text || s.textCorrected || "").trim()),
+        // Garble vor Digit-Alias: "Sex-Teleskop" sonst → "sechs-Teleskop"
+        text: alias(garble(String(s.text || s.textCorrected || "").trim())),
         at: Number(s.startMs) || 0,
       }))
       .filter((x) => x.text);
@@ -167,6 +171,10 @@
         pend = /^[1-4]$/.test(d) ? { d, at: it.at } : null;
         continue;
       }
+      // Offene Ziffer verwerfen, sobald ein Nicht-Ziffern-Segment kommt —
+      // sonst paart "Zeit."(=zwei) spaeter mit "Hier?"(=vier) zu Geister-24
+      // statt "vier"+"sieben"→47 (Live 21.07. 21:37).
+      pend = null;
       texts.push(it.text);
     }
     state.pendingDigit = pend ? pend.d : "";

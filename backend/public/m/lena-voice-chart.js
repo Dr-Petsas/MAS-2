@@ -209,11 +209,13 @@
   // Zahn-Listen-Trenner: "13,14,15", "13 14 15", "16 und 14".
   const RE_LIST_GAP = /^[\s,.;:!?]*(?:und|oder|sowie|plus)?[\s,.;:!?]*$/i;
 
-  function parseUtterance(text) {
-    const t = String(text || "").trim();
-    if (!t) return [];
+  function parseUtterance(text, opts) {
+    const raw = String(text || "").trim();
+    if (!raw) return [];
     const K = kat();
     if (!K) return [];
+    // Dental-STT-Garbles (Telesco/Zülung/…) — sicher fuer Box+Schema.
+    const t = K.speechGarbleCorrect ? K.speechGarbleCorrect(raw) : raw;
     const eden = edentulousEvents(t);
     if (eden) return eden;
 
@@ -221,6 +223,7 @@
     const teethToks = scanToothTokens(low, K);
     const codeToks = scanCodeTokens(low);
     const surfaces = extractSurfaces(t);
+    const allowBare = !!(opts && opts.allowBareNouns);
 
     if (!teethToks.length) {
       const codes = [];
@@ -230,7 +233,10 @@
         seen.add(c.code);
         codes.push(c.code);
       });
-      const strong = codes.filter((c) => !BARE_NOUN_CODES.has(c));
+      // Schema/Befund-forceLayer: nacktes "Teleskopkrone"/"Krone" auf lastFdi
+      // (Live 22.07.: "Eins, sechs." + "Telesco."). Ausserhalb bleibt der
+      // Bare-Noun-Schutz (Implantat ohne Zahl darf nicht an 14 haengen).
+      const strong = allowBare ? codes : codes.filter((c) => !BARE_NOUN_CODES.has(c));
       if (!strong.length && !surfaces.length) return [];
       return [{ fdi: null, codes: strong, surfaces, text: t }];
     }
@@ -310,7 +316,8 @@
       // Befund-Diktat (Trigger "Befund", Chef 21.07.): Segment traegt
       // forceLayer="befund" — alle Marks landen in der B-Zeile.
       const fl = s && s.forceLayer ? String(s.forceLayer) : "";
-      parseUtterance(txt).forEach((ev) => {
+      const opts = fl === "befund" ? { allowBareNouns: true } : null;
+      parseUtterance(txt, opts).forEach((ev) => {
         if (fl) ev.forceLayer = fl;
         events.push(ev);
       });
@@ -368,6 +375,15 @@
 
     // f allein = fehlend (Befund) — nicht Füllung
     if (codes.includes("f") && !codes.includes("Fu")) {
+      // Plural ohne Zahn ("Es fehlen.") darf NICHT rueckwaerts auf den
+      // letzten Zahn fallen — sonst wurde live 16=f statt Teleskop
+      // (Chef 22.07. 01:38). Singular "fehlt." bleibt Carry-over.
+      if (!ev.fdi) {
+        const raw = String(ev.text || "");
+        if (/\bfehlen\b/i.test(raw) && !/\bfehlt\b/i.test(raw)) {
+          return lastFdi;
+        }
+      }
       cell.befund = "f";
       cell.therapie = "";
       cell.codes = ["f"];
