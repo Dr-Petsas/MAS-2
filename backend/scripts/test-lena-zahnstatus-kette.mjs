@@ -210,5 +210,37 @@ W.LenaDokuZahn.applySegments(stOk, [{ text: "Oberkiefer zahnlos" }]);
 check("OK zahnlos: 16 f", stOk.chart?.[16]?.befund === "f", JSON.stringify(stOk.chart?.[16]));
 check("OK zahnlos: 46 bleibt leer", (stOk.chart?.[46]?.befund || "") === "", JSON.stringify(stOk.chart?.[46]));
 
+// 11) Ansage-Test (Chef 21.07.): nackte Zahnnummern "12", "15", "34" —
+//     jeder genannte Zahn wird im Schema AKTIVIERT (is-named), der letzte
+//     bekommt die Auswahl (is-sel), Box zeigt "genannt: ...".
+const stN = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stN, [
+  { text: "12." },
+  { text: "15," },
+  { text: "Zahn zwölf." },
+  { text: "34." },
+]);
+check("Ansage: teeth = 12,15,34", stN.teeth.has(12) && stN.teeth.has(15) && stN.teeth.has(34), [...stN.teeth].join(","));
+check("Ansage: letzter Zahn = 34", stN.lastChartFdi === 34, String(stN.lastChartFdi));
+check("Ansage: Box 'genannt: 12, 15, 34'", (stN.values.zaehne || "").includes("genannt: 12, 15, 34"), stN.values.zaehne);
+const htmlN = W.LenaVoiceChart.renderSchemaHtml(stN.chart, stN.lastChartFdi, stN.teeth);
+check("Ansage: 12 aktiviert (is-named)", /class="zs-cell zs-num[^"]*is-named[^"]*" data-fdi="12"/.test(htmlN), (htmlN.match(/class="[^"]*" data-fdi="12"/g) || []).join(" | "));
+check("Ansage: 15 aktiviert (is-named)", /class="zs-cell zs-num[^"]*is-named[^"]*" data-fdi="15"/.test(htmlN), "");
+check("Ansage: 34 ausgewaehlt (is-sel)", /class="zs-cell zs-num[^"]*is-sel[^"]*" data-fdi="34"/.test(htmlN), "");
+check("Ansage: 11 NICHT aktiviert", !/class="zs-cell zs-num[^"]*is-(?:named|sel)[^"]*" data-fdi="11"/.test(htmlN), "");
+
+// Einzelziffer-Diktat "1,2" (STT-Schreibweise) -> 12
+const stN2 = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stN2, [{ text: "1,2." }, { text: "drei, vier." }]);
+check("Ansage: '1,2' -> 12", stN2.teeth.has(12), [...stN2.teeth].join(","));
+check("Ansage: 'drei, vier' -> 34", stN2.teeth.has(34), [...stN2.teeth].join(","));
+
+// Sobald ein Kuerzel kommt, wandert der Zahn von "genannt" zu markiert
+W.LenaDokuZahn.applySegments(stN, [{ text: "34 Karies okklusal." }]);
+check("Ansage->Befund: 34 markiert (co)", (stN.chart?.[34]?.befund || "").includes("co"), JSON.stringify(stN.chart?.[34]));
+check("Ansage->Befund: 34 raus aus 'genannt'", !/genannt:[^·]*34/.test(stN.values.zaehne || ""), stN.values.zaehne);
+const htmlN2 = W.LenaVoiceChart.renderSchemaHtml(stN.chart, 34, stN.teeth);
+check("Ansage->Befund: 34 hat has-mark statt is-named", /class="zs-cell zs-num[^"]*has-mark[^"]*" data-fdi="34"/.test(htmlN2) && !/is-named[^"]*" data-fdi="34"/.test(htmlN2), "");
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

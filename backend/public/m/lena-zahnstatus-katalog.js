@@ -173,8 +173,10 @@
     "jahren?|mal|termine?n?|patient(?:en|innen)?)";
   // KEIN Lookbehind (aeltere iPad-Safari werfen sonst beim new RegExp und der
   // ganze Katalog faellt aus) — Vorgaenger-Zeichen wird mitgefangen.
+  // Nach der zweiten Ziffer: keine weitere Ziffer ("1,23") und kein ",/."
+  // MIT Ziffer ("1.2.2026") — aber Satzende "1,2." ist erlaubt.
   const RE_PAIR_DIGIT = new RegExp(
-    "(^|[^\\d,.])([1-4])\\s*[,.]\\s*([1-8])(?![\\d,.])(?!\\s*" + UNIT_AFTER + ")",
+    "(^|[^\\d,.])([1-4])\\s*[,.]\\s*([1-8])(?!\\d)(?![,.]\\d)(?!\\s*" + UNIT_AFTER + ")",
     "gi",
   );
   const RE_PAIR_WORD = new RegExp(

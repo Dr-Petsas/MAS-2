@@ -421,7 +421,20 @@
       const lines = global.LenaVoiceChart.summaryLines
         ? global.LenaVoiceChart.summaryLines(state.chart)
         : [];
-      if (lines.length) setField(state, "zaehne", lines.join(" · "), "live");
+      // Genannte Zaehne OHNE Kuerzel trotzdem anzeigen (Erkennungs-Feedback:
+      // "12, 15, 34 ..." soll sofort sichtbar sein, Chef 21.07.).
+      const marked = new Set(lines.map((l) => parseInt(l, 10)));
+      const namedOnly = [...state.teeth]
+        .filter((z) => !marked.has(z))
+        .sort((a, b) => a - b);
+      const zparts = lines.slice();
+      if (namedOnly.length) zparts.push("genannt: " + namedOnly.join(", "));
+      if (zparts.length) {
+        // Berechnete Zusammenfassung: immer ERSETZEN, nie anhaengen —
+        // setField wuerde beim Wechsel genannt->markiert Altstaende stapeln.
+        state.values.zaehne = zparts.join(" · ");
+        state.status.zaehne = "live";
+      }
     } else if (state.teeth.size) {
       const list = [...state.teeth].sort((a, b) => a - b).join(", ");
       setField(state, "zaehne", "Zahn " + list, "live");
@@ -538,7 +551,7 @@
 
   function teethHtml(state) {
     if (global.LenaVoiceChart && state.chart) {
-      return global.LenaVoiceChart.renderSchemaHtml(state.chart, state.lastChartFdi || null);
+      return global.LenaVoiceChart.renderSchemaHtml(state.chart, state.lastChartFdi || null, state.teeth || null);
     }
     const selected = state.teeth || new Set();
     const row = (nums) => nums.map((n) => {

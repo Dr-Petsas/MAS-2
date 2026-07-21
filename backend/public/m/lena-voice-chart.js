@@ -45,7 +45,9 @@
     while ((m = reDigit.exec(raw))) push(m[1]);
     const low = norm(raw).toLowerCase();
     Object.keys(K.WORD_FDI).forEach((w) => {
-      if (low.includes(w)) push(K.WORD_FDI[w]);
+      // Wortgrenze statt includes: "zwoelf" enthaelt "elf" — aktivierte
+      // faelschlich Zahn 11 (Ansage-Test 21.07.).
+      if (new RegExp("\\b" + w + "\\b").test(low)) push(K.WORD_FDI[w]);
     });
     return out;
   }
@@ -294,15 +296,18 @@
     );
   }
 
-  function numCell(chart, fdi, selectedFdi) {
+  function numCell(chart, fdi, selectedFdi, namedSet) {
     const c = chart && chart[fdi];
     const b = badge(c);
     const on = selectedFdi === fdi ? " is-sel" : "";
     const has = b ? " has-mark" : "";
     const miss = c && (c.befund === "f" || (c.codes || []).includes("f")) ? " is-miss" : "";
     const done = c && c.therapie && /Fu/i.test(c.therapie) ? " is-done" : "";
+    // Genannt, aber (noch) ohne Kuerzel: sichtbar aktivieren — der Arzt testet
+    // "12, 15, 34 ..." und will JEDEN erkannten Zahn im Schema sehen.
+    const named = namedSet && namedSet.has(fdi) && !b ? " is-named" : "";
     return (
-      '<div class="zs-cell zs-num' + on + has + miss + done + '" data-fdi="' + fdi + '">' +
+      '<div class="zs-cell zs-num' + on + has + miss + done + named + '" data-fdi="' + fdi + '">' +
       '<span class="zs-fdi">' + fdi + "</span>" +
       "</div>"
     );
@@ -317,11 +322,11 @@
     );
   }
 
-  function numRow(chart, list, selectedFdi) {
+  function numRow(chart, list, selectedFdi, namedSet) {
     return (
       '<div class="zs-row zs-row-nums">' +
       '<span class="zs-row-lab">#</span>' +
-      '<div class="zs-arch">' + list.map((fdi) => numCell(chart, fdi, selectedFdi)).join("") + "</div>" +
+      '<div class="zs-arch">' + list.map((fdi) => numCell(chart, fdi, selectedFdi, namedSet)).join("") + "</div>" +
       "</div>"
     );
   }
@@ -329,8 +334,9 @@
   /**
    * OK: Zeilen B/T oberhalb der Ziffern.
    * UK: Ziffern, darunter B/T.
+   * namedTeeth (optional Set): genannte Zaehne ohne Kuerzel — werden aktiviert.
    */
-  function renderSchemaHtml(chart, selectedFdi) {
+  function renderSchemaHtml(chart, selectedFdi, namedTeeth) {
     const K = kat();
     if (!K) return "";
     const ok = K.FDI_OK;
@@ -341,11 +347,11 @@
       '<div class="zs-block-h">OK</div>' +
       layerRow(chart, ok, "befund", selectedFdi, "Befund") +
       layerRow(chart, ok, "therapie", selectedFdi, "Therapie") +
-      numRow(chart, ok, selectedFdi) +
+      numRow(chart, ok, selectedFdi, namedTeeth) +
       "</div>" +
       '<div class="zs-block zs-uk">' +
       '<div class="zs-block-h">UK</div>' +
-      numRow(chart, uk, selectedFdi) +
+      numRow(chart, uk, selectedFdi, namedTeeth) +
       layerRow(chart, uk, "befund", selectedFdi, "Befund") +
       layerRow(chart, uk, "therapie", selectedFdi, "Therapie") +
       "</div>" +
