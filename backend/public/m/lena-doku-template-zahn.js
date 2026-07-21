@@ -104,6 +104,7 @@
       lastChartFdi: null,
       gapCount: 0,
       lastTouchedKey: "",
+      dictMode: null, // null = auto | "befund" = Befund-Diktat (Trigger-Wort)
     };
   }
 
@@ -241,9 +242,15 @@
     if (!v) return;
     const prev = state.values[key] || "";
     if (prev && prev.length >= v.length && prev.toLowerCase().includes(v.toLowerCase())) return;
-    if (prev && v.length > prev.length) state.values[key] = v;
-    else if (!prev) state.values[key] = v;
-    else if (!prev.toLowerCase().includes(v.toLowerCase())) {
+    // Ersetzen NUR wenn der neue Text den alten enthaelt (wachsendes Partial /
+    // Server-Korrektur). Sonst anhaengen — vorher verlor die Box gesammelte
+    // Eintraege, sobald ein laengeres neues Diktat kam (Chef 21.07.:
+    // "Lena reagiert nicht mit Eintraegen im Befund").
+    if (prev && v.length > prev.length && v.toLowerCase().includes(prev.toLowerCase())) {
+      state.values[key] = v;
+    } else if (!prev) {
+      state.values[key] = v;
+    } else if (!prev.toLowerCase().includes(v.toLowerCase())) {
       state.values[key] = prev + (prev.endsWith(".") ? " " : ". ") + v;
     }
     state.status[key] = st || "live";
@@ -268,6 +275,92 @@
       .join("\n");
   }
 
+  /* ── Befund-Diktat (Trigger-Wort, Chef 21.07.) ────────────────────────────
+     Der Arzt sagt "Befund" → ALLE folgenden Diktate landen im Befund
+     (Box + Zahnschema B-Zeile), bis Therapie-HANDLUNG diktiert wird
+     (ohne Trigger-Wort) oder explizit "Befund Ende" kommt. */
+
+  const LEAD_FILLERS = /^(?:so|gut|okay|ok|ja|jetzt|dann|und|als\s+n[aä]chstes)[,.\s]+/i;
+
+  function stripLeadFillers(text) {
+    let s = String(text || "").trim();
+    for (;;) {
+      const m = s.match(LEAD_FILLERS);
+      if (!m) break;
+      s = s.slice(m[0].length);
+    }
+    return s;
+  }
+
+  /** Segment startet das Befund-Diktat? -> { rest } (Rest nach dem Kommando) */
+  function befundTrigger(text) {
+    const s = stripLeadFillers(text);
+    const m = s.match(/^befund(?:aufnahme|erhebung|status)?\b[:,.]?\s*/i);
+    if (m) return { rest: s.slice(m[0].length).trim() };
+    if (/^(?:ich\s+)?(?:beginne|starte)n?\s+(?:jetzt\s+)?(?:mit\s+)?(?:dem\s+|der\s+)?befund/i.test(s)) {
+      return { rest: "" };
+    }
+    return null;
+  }
+
+  /** Explizites Ende (optional — Therapie-Handlung beendet auch ohne). */
+  function befundEndCommand(text) {
+    const s = stripLeadFillers(text);
+    return (
+      /^befund\s+(?:ende|fertig|abgeschlossen|stopp?)\b/i.test(s) ||
+      /^(?:ende|stopp?)\s+befund\b/i.test(s) ||
+      /^therapie\b[:,.]?\s*$/i.test(s)
+    );
+  }
+
+  /** Therapie-HANDLUNG (Verben/LA) — beendet das Befund-Diktat automatisch. */
+  const THERAPY_ACTION_RE = new RegExp(
+    [
+      "exkavier\\w*", "pr[aä]parier\\w*", "trepanier\\w*", "aufbereit\\w*",
+      "obturier\\w*", "extrahier\\w*", "zementier\\w*", "injizier\\w*",
+      "infiltrier\\w*", "an[aä]sthesier\\w*", "\\ban[aä]sthesie\\b",
+      "ultracain", "ubistesin", "scandonest", "xylocain",
+      "gebondet", "bonding", "ge[aä]tzt", "angeätzt", "angeaetzt",
+      "gesp[uü]lt", "sp[uü]le\\b", "gen[aä]ht", "naht\\s+gelegt",
+      "f[uü]llung\\s+(?:gelegt|gemacht)", "\\bgelegt\\b", "\\bgesetzt\\b",
+      "eingesetzt", "abformung", "\\babdruck\\b",
+    ].join("|"),
+    "i",
+  );
+
+  /**
+   * Modus je Lauf NEU aus der Segment-Reihenfolge ableiten. applySegments
+   * bekommt immer die VOLLE Liste — so bleibt das Routing idempotent, auch
+   * wenn der State zwischendurch frisch aufgebaut wird.
+   * @returns Array<{ text: string, forced: boolean }>
+   */
+  function routeSegments(state, texts) {
+    let mode = null;
+    const routed = [];
+    for (const t of texts) {
+      // Ende-Kommando VOR dem Trigger pruefen — "Befund Ende" wuerde sonst
+      // vom Trigger-Regex ("befund\b" + Rest) als Neustart gelesen.
+      if (befundEndCommand(t)) {
+        mode = null;
+        continue;
+      }
+      const trig = befundTrigger(t);
+      if (trig) {
+        mode = "befund";
+        if (trig.rest) routed.push({ text: trig.rest, forced: true });
+        continue;
+      }
+      if (mode === "befund" && THERAPY_ACTION_RE.test(t)) {
+        mode = null; // Therapie beginnt — ohne Trigger-Wort (Chef-Vorgabe)
+        routed.push({ text: t, forced: false });
+        continue;
+      }
+      routed.push({ text: t, forced: mode === "befund" });
+    }
+    if (state) state.dictMode = mode;
+    return routed;
+  }
+
   /**
    * Heuristik: Segmente -> Felder/Bloecke. Kein LLM.
    * Planwechsel nur bei Entscheidungssprache; Zustimmung aus Kontext.
@@ -277,14 +370,24 @@
     const texts = (segments || [])
       .map((s) => String(s.text || s.textCorrected || "").trim())
       .filter(Boolean);
-    const all = texts.join("\n");
-    if (!all) return state;
+    if (!texts.length) {
+      state.dictMode = null;
+      return state;
+    }
+    const routed = routeSegments(state, texts);
+    // Block-/LA-/Plan-Scans nur ueber Auto-Segmente: "17 Fuellung insuffizient"
+    // im Befund-Diktat ist Bestand und darf keinen Fuellung-Block oeffnen.
+    const all = routed.filter((r) => !r.forced).map((r) => r.text).join("\n");
 
-    for (const t of texts) {
-      for (const z of extractTeeth(t)) state.teeth.add(z);
+    for (const r of routed) {
+      for (const z of extractTeeth(r.text)) state.teeth.add(z);
     }
     if (state.chart && global.LenaVoiceChart) {
-      const last = global.LenaVoiceChart.applySegments(state.chart, segments);
+      const chartSegs = routed.map((r) => ({
+        text: r.text,
+        forceLayer: r.forced ? "befund" : "",
+      }));
+      const last = global.LenaVoiceChart.applySegments(state.chart, chartSegs);
       if (last) {
         state.lastChartFdi = last;
         state.teeth.add(last);
@@ -298,9 +401,19 @@
       setField(state, "zaehne", "Zahn " + list, "live");
     }
 
-    // Befund / Therapie / Diagnose (grob)
-    for (const t of texts) {
-      if (/kari[oö]s|befund|perkussion|vitalit[aä]t|locker|fistel|schwellung|schmerz/i.test(t)) {
+    // Befund / Therapie / Diagnose
+    for (const r of routed) {
+      const t = r.text;
+      if (r.forced) {
+        // Befund-Diktat: JEDES Segment in die Befund-Box (Chef 21.07.),
+        // Diagnose-Sprache zusaetzlich in die Diagnose-Box.
+        setField(state, "befund", t, "live");
+        if (/diagnos|caries|pulpitis|periodontitis|fractur|fraktur/i.test(t)) {
+          setField(state, "diagnose", t, "live");
+        }
+        continue;
+      }
+      if (/\bkaries\b|kari[oö]s|befund|perkussion|vitalit[aä]t|locker|fistel|schwellung|schmerz|sondier|druckdolent|aufbiss/i.test(t)) {
         setField(state, "befund", t, "live");
       }
       if (/diagnos|caries|pulpitis|periodontitis|fractur|fraktur/i.test(t)) {
@@ -445,10 +558,14 @@
   function render(container, state) {
     if (!container || !state) return;
     const parts = [];
+    const modeChip = state.dictMode === "befund"
+      ? '<span class="tpl-mode" id="tplMode">● Befund-Diktat — alles geht in den Befund</span>'
+      : "";
     parts.push(
-      '<div class="tpl-title"><h2>' + escapeHtml(TEMPLATE.title) + "</h2>" +
+      '<div class="tpl-title"><h2>' + escapeHtml(TEMPLATE.title) + "</h2>" + modeChip +
       '<span class="tpl-gaps" id="tplGaps">Lücken: ' + (state.gapCount || 0) + "</span></div>"
     );
+    if (state.dictMode === "befund" && !state.lastTouchedKey) state.lastTouchedKey = "befund";
 
     parts.push(fieldHtml("Anlass", "anlass", state));
     parts.push(fieldHtml("Anamnese-Risiken", "anamnese", state));
@@ -517,6 +634,7 @@
     nextSouffleHint,
     openGapPrompts,
     applySegments,
+    routeSegments,
     render,
     focusLastTouched,
     toStructuredText,

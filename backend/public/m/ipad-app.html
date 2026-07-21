@@ -677,6 +677,19 @@
       background: rgba(245,197,24,.12); border: 1px solid rgba(245,197,24,.35);
       padding: 4px 9px; border-radius: 999px;
     }
+    /* Befund-Diktat aktiv (Trigger "Befund"): deutlicher Modus-Chip */
+    .tpl-mode {
+      font-size: .68rem; font-weight: 800; color: #b8fff0;
+      background: rgba(15,118,110,.35); border: 1px solid rgba(126,201,193,.55);
+      padding: 4px 9px; border-radius: 999px; margin-left: auto;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      animation: befundPulse 2.2s ease-in-out infinite;
+    }
+    .tpl-title .tpl-mode + .tpl-gaps { margin-left: 0; }
+    @keyframes befundPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(15,118,110,.0); }
+      50% { box-shadow: 0 0 0 4px rgba(15,118,110,.25); }
+    }
     /* Box-Karten: hoher Kontrast fuer iPad (kein Zeilen-Grau) */
     .tpl-field {
       background: #f4f1ea; border: 2px solid #c8c0b0;
@@ -2032,6 +2045,18 @@
         Zahn.applySegments(dokuState, clinical);
         Zahn.ensureGaps?.(dokuState);
         Zahn.render(box, dokuState);
+        // Befund-Diktat (Trigger "Befund") auch im Live-Badge zeigen —
+        // aber nur den Normal-Status tauschen, nie Warnungen ("Tee fehlt")
+        // oder Souffleusen-Hinweise ueberschreiben.
+        if (recording && !paused) {
+          const liveSpan = $("recLive")?.querySelector("span");
+          const cur = liveSpan?.textContent || "";
+          if (liveSpan && (cur === "live · Parakeet" || cur === "Befund-Diktat")) {
+            liveSpan.textContent = dokuState.dictMode === "befund"
+              ? "Befund-Diktat"
+              : "live · Parakeet";
+          }
+        }
       }
       let souffleSpoken = new Set();
       let souffleLastAt = 0;

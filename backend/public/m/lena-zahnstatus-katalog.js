@@ -116,11 +116,11 @@
     { re: /\bimplantat\b/i, code: "sk" },
     { re: /teleskop|\bt\b(?!\w)/i, code: "t" },
     { re: /l[uü]ckenschluss/i, code: ")(" },
-    // Klinisch (kein EBZ-f)
-    { re: /f[uü]llung|komposit|inlay|onlay|\bfu\b/i, code: "Fu" },
-    { re: /\bkaries\b|kari[oö]s|(?:^|[\s,;:])c(?=[\s,;:.]|$)/i, code: "Ka" },
-    { re: /wurzelf[uü]ll|guttapercha|\bwf\b/i, code: "WF" },
-    { re: /lokalan[aä]sthes|leitungsan[aä]sthes|infiltrationsan|\ban[aä]sthesie\b|\bultracain\b|\bubistesin\b/i, code: "LA" },
+    // Klinisch (kein EBZ-f) — Umlaute auch als ae/oe/ue (Garble-/ASCII-Pfad)
+    { re: /f(?:[uü]|ue)llung|komposit|inlay|onlay|\bfu\b/i, code: "Fu" },
+    { re: /\bkaries\b|kari(?:[oö]|oe)s|(?:^|[\s,;:])c(?=[\s,;:.]|$)/i, code: "Ka" },
+    { re: /wurzelf(?:[uü]|ue)ll|guttapercha|\bwf\b/i, code: "WF" },
+    { re: /lokalan(?:[aä]|ae)sthes|leitungsan(?:[aä]|ae)sthes|infiltrationsan|\ban(?:[aä]|ae)sthesie\b|\bultracain\b|\bubistesin\b/i, code: "LA" },
     { re: /sondiertiefen|taschentiefe|parodont|\bparo\b|\bbop\b/i, code: "Paro" },
     { re: /\bkiefergelenk\b|\bcmd\b|\bmyalgie\b/i, code: "Kief" },
   ];

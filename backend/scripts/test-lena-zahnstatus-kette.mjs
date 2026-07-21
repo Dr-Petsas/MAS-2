@@ -64,5 +64,71 @@ W.LenaDokuZahn.ensureGaps(st2);
 const hint = W.LenaDokuZahn.nextSouffleHint(st2, new Set());
 check("Souffleuse-Hinweis kommt", !!hint?.text, hint?.text);
 
+// 6) Befund-Diktat (Trigger "Befund", Chef 21.07.):
+//    ALLE Diktate danach -> Befund-Box + B-Zeile, auch ohne Befund-Keyword.
+//    Therapie-HANDLUNG beendet den Modus ohne Trigger-Wort.
+const st3 = W.LenaDokuZahn.emptyState("Fuellung 35");
+W.LenaDokuZahn.applySegments(st3, [
+  { text: "So, Befund" },
+  { text: "35 Karies distal" },
+  { text: "46 fehlt" },
+  { text: "17 Fuellung insuffizient" },
+  { text: "Sondierungstiefe fuenf Millimeter am 36" },
+]);
+check("Modus aktiv nach Trigger", st3.dictMode === "befund", String(st3.dictMode));
+check(
+  "Befund-Box sammelt ALLE Diktate",
+  ["35 Karies distal", "46 fehlt", "17 Fuellung insuffizient", "Sondierungstiefe"]
+    .every((s) => (st3.values.befund || "").includes(s)),
+  st3.values.befund,
+);
+check("35: c+d in B-Zeile", (st3.chart?.[35]?.befund || "").includes("cd"), JSON.stringify(st3.chart?.[35]));
+check("46: f (fehlend) in B-Zeile", st3.chart?.[46]?.befund === "f", JSON.stringify(st3.chart?.[46]));
+check(
+  "17: Bestands-Fuellung in B-Zeile (fu), NICHT Therapie",
+  (st3.chart?.[17]?.befund || "").includes("fu") && !(st3.chart?.[17]?.therapie || ""),
+  JSON.stringify(st3.chart?.[17]),
+);
+check("Fuellung-Block NICHT durch Bestand geoeffnet", !st3.openBlocks.has("fuellung"), [...st3.openBlocks].join(","));
+
+// Therapie-Handlung beendet den Modus (ohne Trigger) — Eintrag in Therapie
+W.LenaDokuZahn.applySegments(st3, [
+  { text: "So, Befund" },
+  { text: "35 Karies distal" },
+  { text: "46 fehlt" },
+  { text: "17 Fuellung insuffizient" },
+  { text: "Sondierungstiefe fuenf Millimeter am 36" },
+  { text: "Anaesthesie gesetzt mit Ultracain" },
+  { text: "Exkaviert und Kompositfuellung MOD an 35 gelegt" },
+]);
+check("Therapie-Handlung beendet Modus", st3.dictMode === null, String(st3.dictMode));
+check("Therapie-Box gefuellt (ohne Trigger)", (st3.values.therapie || "").includes("Exkaviert"), st3.values.therapie);
+check("35: Therapie fMOD in T-Zeile", /f/i.test(st3.chart?.[35]?.therapie || ""), JSON.stringify(st3.chart?.[35]));
+check("LA-Block offen", st3.openBlocks.has("la"), [...st3.openBlocks].join(","));
+
+// 7) "Befund Ende" beendet den Modus explizit
+const st4 = W.LenaDokuZahn.emptyState("Kontrolle");
+W.LenaDokuZahn.applySegments(st4, [
+  { text: "Befund" },
+  { text: "46 fehlt" },
+  { text: "Befund Ende" },
+  { text: "Patient wuenscht Beratung Implantat" },
+]);
+check("Befund Ende beendet Modus", st4.dictMode === null, String(st4.dictMode));
+check("Nach Ende kein Zwangs-Befund", !(st4.values.befund || "").includes("Beratung"), st4.values.befund);
+
+// 8) setField-Fix: laengeres NEUES Diktat ersetzt gesammelte Eintraege nicht
+const st5 = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(st5, [
+  { text: "Befund" },
+  { text: "35 Karies distal" },
+  { text: "Zahnfleisch generalisiert geroetet und geschwollen im Oberkiefer" },
+]);
+check(
+  "Kurzer Eintrag bleibt trotz laengerem Folgediktat",
+  (st5.values.befund || "").includes("35 Karies distal"),
+  st5.values.befund,
+);
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

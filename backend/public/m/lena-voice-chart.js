@@ -122,7 +122,13 @@
     (segments || []).forEach((s) => {
       const txt = String(s?.text || s?.textCorrected || "").trim();
       if (!txt) return;
-      parseUtterance(txt).forEach((ev) => events.push(ev));
+      // Befund-Diktat (Trigger "Befund", Chef 21.07.): Segment traegt
+      // forceLayer="befund" — alle Marks landen in der B-Zeile.
+      const fl = s && s.forceLayer ? String(s.forceLayer) : "";
+      parseUtterance(txt).forEach((ev) => {
+        if (fl) ev.forceLayer = fl;
+        events.push(ev);
+      });
     });
     return events;
   }
@@ -196,9 +202,17 @@
     codes.forEach((c) => {
       if (c === "f") return; // fehlend oben erledigt
       if (!cell.codes.includes(c)) cell.codes.push(c);
-      const layer = layerOf(c);
+      // Befund-Diktat: erzwungene Zeile schlaegt die Code-Zuordnung —
+      // "17 Fuellung insuffizient" im Befund-Modus ist BESTAND (B-Zeile),
+      // keine heutige Therapie.
+      const layer = ev.forceLayer === "befund" ? "befund" : layerOf(c);
       const dest = layer === "therapie" ? "therapie" : "befund";
-      const mark = formatMark(c, surfaces);
+      let mark = formatMark(c, surfaces);
+      if (ev.forceLayer === "befund" && c === "Fu") {
+        // Bestehende Fuellung in der B-Zeile: "fu"+Flaechen — NIE "f",
+        // das hiesse dort "fehlender Zahn" (KZBV).
+        mark = "fu" + surfTag(surfaces).toLowerCase();
+      }
       if (mark) appendMark(cell, dest, mark);
     });
 
