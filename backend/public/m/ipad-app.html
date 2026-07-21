@@ -983,6 +983,45 @@
       .flip.is-flipped .flip-inner { transform: none; }
       .flip-face--cards { display: none; }
       .orb-wrap, .orb { width: 148px; height: 148px; }
+
+      /* ── Querformat-Verdichtung (21.07.): Kopf + Chips + Patient/Mikro
+         werden schlanke Leisten — die Höhe gehört den Doku-Inhalten. ── */
+      .chrome { padding: 0 2px 5px; gap: 10px; }
+      .brand-orb { width: 26px; height: 26px; }
+      .brand-name { font-size: .95rem; }
+      .brand-sub { display: none; }
+      .mode-switch { padding: 2px; }
+      .mode-switch button { padding: 7px 10px; font-size: .76rem; }
+      .lena-wrap { gap: 5px; padding-top: 0; }
+      .steps { gap: 4px; }
+      .step-chip { padding: 4px 5px; font-size: .6rem; border-radius: 9px; gap: 4px; }
+      .step-chip .n { width: 14px; height: 14px; font-size: .56rem; }
+      .panel { padding: 10px; }
+      .wiz-rec .rec-panel { gap: 6px; }
+      /* Patient-Karte: eine Zeile — Avatar · Name/Meta · Live-Badge */
+      .rec-top { gap: 8px; }
+      .rec-card { padding: 6px 10px; gap: 8px; border-radius: 12px; }
+      .rec-card-patient { flex-direction: row; align-items: center; }
+      .rec-card-patient .rec-head { align-items: center; flex: 1 1 auto; }
+      .rec-av { width: 30px; height: 30px; border-radius: 9px; font-size: .64rem; }
+      .rec-head-main { gap: 1px; }
+      .rec-name { font-size: .88rem; }
+      .rec-meta { font-size: .66rem; }
+      .rec-card-patient .rec-live { align-self: center; flex: none; padding: 4px 8px; font-size: .56rem; }
+      /* Mikro-Karte: Umschalter + Pegel nebeneinander, Hinweis-Zeile darunter */
+      .meters { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+      .mic-toggle { flex: none; padding: 3px; }
+      .mic-toggle button { padding: 4px 9px; min-height: 26px; font-size: .6rem; }
+      .meter-cards { flex: 1 1 0; min-width: 0; gap: 6px; }
+      .meter-card { padding: 4px 7px; gap: 2px; }
+      .meter-label { font-size: .58rem; }
+      .meters .meter-track { height: 7px; min-height: 7px; max-height: 7px; }
+      .meters .meter-db { font-size: .56rem; line-height: 11px; height: 11px; }
+      .mic-active { flex: 1 1 100%; min-height: 0; line-height: 1.15; font-size: .56rem; }
+      .mic-swap { flex: none; padding: 4px 7px; font-size: .56rem; }
+      details.raw-dialog summary { padding: 6px 11px; font-size: .64rem; }
+      .rec-bar .btn { padding: 8px 11px; font-size: .76rem; }
+      .timer { font-size: .88rem; min-width: 50px; }
     }
     @media (max-width: 860px) {
       .wiz-arzt, .wiz-termin, .sum-grid, .sophie-grid, .sum-head { grid-template-columns: 1fr; }
