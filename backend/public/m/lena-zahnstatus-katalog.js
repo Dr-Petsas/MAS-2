@@ -100,23 +100,30 @@
    * Gesprochene Wörter → Kürzel (längere Phrasen zuerst matchen).
    * Reihenfolge: spezifisch vor generisch.
    */
+  // WICHTIG: Jede Regel muss Umlaut- UND ASCII-Form treffen ("Brücke" wie
+  // "Bruecke") — der Parser matcht seit 21.07. nachts auf dem ASCII-
+  // gefalteten Text (Positions-Bindung), Garble-/Nachkorrektur-Pfade
+  // liefern ohnehin beide Schreibweisen.
   const SPEECH = [
-    { re: /erneuerungsbed[uü]rftig(?:e|en)?\s+krone|krone\s+erneuern|kw\b/i, code: "kw" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e|en)?\s+krone|krone\s+erneuern|kw\b/i, code: "kw" },
     { re: /teilkrone|pkw\b/i, code: "pkw" },
     { re: /\bkrone\b/i, code: "k" },
-    { re: /erneuerungsbed[uü]rftig(?:e|en)?\s+br[uü]ckenglied|\bbw\b/i, code: "bw" },
-    { re: /br[uü]ckenglied|pontic/i, code: "b" },
-    { re: /\bbr[uü]cke\b/i, code: "b" },
-    { re: /weitgehend(?:e|er)?\s+zerst[oö]r|behandlungsbed[uü]rftig|\bww\b/i, code: "ww" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e|en)?\s+br(?:[uü]|ue)ckenglied|\bbw\b/i, code: "bw" },
+    { re: /br(?:[uü]|ue)ckenglied|pontic/i, code: "b" },
+    { re: /\bbr(?:[uü]|ue)cke\b/i, code: "b" },
+    { re: /weitgehend(?:e|er)?\s+zerst(?:[oö]|oe)r|behandlungsbed(?:[uü]|ue)rftig|\bww\b/i, code: "ww" },
     { re: /partiell(?:e|er)?\s+substanz|\bpw\b/i, code: "pw" },
     // "muss extrahiert werden" = Befund x (Live 21.07.), nicht nur "Extraktion"
-    { re: /nicht\s+erhaltungsw[uü]rdig|zu\s+extrah|\bextraktion\b|extrahiert\s+werden|muss\s+(?:\w+\s+)?extrahiert|\bmuss\s+raus\b/i, code: "x" },
-    { re: /fehlend(?:er|e)?\s+zahn|zahn\s+fehlt|\bfehlt\b/i, code: "f" },
+    { re: /nicht\s+erhaltungsw(?:[uü]|ue)rdig|zu\s+extrah|\bextraktion\b|extrahiert\s+werden|muss\s+(?:\w+\s+)?extrahiert|\bmuss\s+raus\b/i, code: "x" },
+    // Plural/Voranstellung (Chef 21.07.: "13,14,15 fehlen", "es fehlen 23,24",
+    // "fehlend sind 31 32") — \bfehl(t|en|end[e|er|en]) faengt alle Formen;
+    // "Fehler"/"empfehlen" bleiben draussen (Wortgrenze + Suffix-Liste).
+    { re: /\bfehl(?:t|en|end(?:e[rn]?)?)\b|zahn\s+fehlt/i, code: "f" },
     { re: /implantat\s+entfernen|\bix\b/i, code: "ix" },
     { re: /implantat\s*krone|\bsk\b/i, code: "sk" },
     { re: /\bimplantat\b/i, code: "sk" },
     { re: /teleskop|\bt\b(?!\w)/i, code: "t" },
-    { re: /l[uü]ckenschluss/i, code: ")(" },
+    { re: /l(?:[uü]|ue)ckenschluss/i, code: ")(" },
     // Klinisch (kein EBZ-f) — Umlaute auch als ae/oe/ue (Garble-/ASCII-Pfad)
     { re: /f(?:[uü]|ue)llung|komposit|inlay|onlay|\bfu\b/i, code: "Fu" },
     { re: /\bkaries\b|kari(?:[oö]|oe)s|(?:^|[\s,;:])c(?=[\s,;:.]|$)/i, code: "Ka" },
@@ -130,7 +137,7 @@
     { re: /\bmesial\b|\bm\b(?!\w)/i, code: "m" },
     { re: /\bokklusal\b|\bocclus|\binzisal\b|\bo\b(?!\w)/i, code: "o" },
     { re: /\bdistal\b|\bd\b(?!\w)/i, code: "d" },
-    { re: /\bvestibul[aä]r\b|\bbukkal\b|\blabial\b|\bv\b(?!\w)/i, code: "v" },
+    { re: /\bvestibul(?:[aä]|ae)r\b|\bbukkal\b|\blabial\b|\bv\b(?!\w)/i, code: "v" },
     { re: /\blingual\b|\bpalatinal\b|\bl\b(?!\w)/i, code: "l" },
     { re: /\bzervikal\b|\bhals\b|\bz\b(?!\w)/i, code: "z" },
   ];
@@ -162,7 +169,7 @@
 
   const DIGIT_WORD = {
     eins: "1", zwei: "2", zwo: "2", drei: "3", vier: "4",
-    fuenf: "5", "fünf": "5", sechs: "6", sieben: "7", acht: "8",
+    fuenf: "5", "fünf": "5", funf: "5", sechs: "6", sieben: "7", acht: "8",
   };
 
   // Nach einer Ziffern-Paarung deutet eine Einheit auf Messwert, nicht Zahn
@@ -180,7 +187,7 @@
     "gi",
   );
   const RE_PAIR_WORD = new RegExp(
-    "\\b(eins|zwei|zwo|drei|vier)\\s*[,.]?\\s+(eins|zwei|zwo|drei|vier|f[uü]nf|sechs|sieben|acht)\\b" +
+    "\\b(eins|zwei|zwo|drei|vier)\\s*[,.]?\\s+(eins|zwei|zwo|drei|vier|f(?:ue|[uü])nf|sechs|sieben|acht)\\b" +
     "(?!\\s*" + UNIT_AFTER + ")",
     "gi",
   );
@@ -245,6 +252,99 @@
     return BEFUND[code] || CLINICAL[code] || SURFACES[code] || code;
   }
 
+  /* ── Legende + gesprochenes Echo (Chef 21.07.: "erstmal einen perfekten
+     Befund") ─────────────────────────────────────────────────────────────
+     Kompakte, SPRECHBARE Kurz-Labels: Quelle fuer die Legende unter dem
+     Schema UND fuer das gesprochene Befund-Echo ("27 Füllung" ->
+     "Zwei sieben: Füllung."). Keine Abkuerzungen — die Texte laufen durch
+     ElevenLabs. Schluessel sind die MARK-Prefixe der B-Zeile (KZBV-Codes
+     plus klinisch c=Karies, fu=Bestandsfuellung). */
+  const SHORT_LABEL = {
+    f: "fehlt",
+    c: "Karies",
+    fu: "Füllung",
+    k: "Krone",
+    kw: "Krone erneuerungsbedürftig",
+    x: "extraktionswürdig",
+    ww: "weitgehend zerstört",
+    pw: "Substanzdefekt",
+    e: "ersetzter Zahn",
+    ew: "Ersatz erneuerungsbedürftig",
+    b: "Brückenglied",
+    bw: "Brückenglied erneuerungsbedürftig",
+    t: "Teleskopkrone",
+    tw: "Teleskop erneuerungsbedürftig",
+    t2w: "Teleskop-Sekundärteil defekt",
+    pkw: "Teilkrone erneuerungsbedürftig",
+    sk: "Implantatkrone",
+    skw: "Implantatkrone erneuerungsbedürftig",
+    st: "Implantat-Teleskop",
+    stw: "Implantat-Teleskop erneuerungsbedürftig",
+    sb: "Implantat-Brückenglied",
+    sbw: "Implantat-Brückenglied erneuerungsbedürftig",
+    se: "Implantat-Ersatz",
+    sew: "Implantat-Ersatz erneuerungsbedürftig",
+    so: "Implantat-Verbindungselement",
+    sow: "Verbindungselement erneuerungsbedürftig",
+    ix: "Implantat zu entfernen",
+    a: "Adhäsivbrücke Anker",
+    ab: "Adhäsivbrücke Glied",
+    aw: "Adhäsivbrücke Anker erneuerungsbedürftig",
+    abw: "Adhäsivbrücke Glied erneuerungsbedürftig",
+    r: "Wurzelstiftkappe",
+    rw: "Wurzelstiftkappe erneuerungsbedürftig",
+    ur: "unzureichende Retention",
+    ")(": "Lückenschluss",
+  };
+
+  function shortLabelOf(code) {
+    const c = String(code || "");
+    if (Object.prototype.hasOwnProperty.call(SHORT_LABEL, c)) return SHORT_LABEL[c];
+    const low = c.toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(SHORT_LABEL, low)) return SHORT_LABEL[low];
+    return labelOf(c);
+  }
+
+  /** Parser-Code -> gesprochener Klartext fuers Befund-Echo (ElevenLabs). */
+  function speechLabelOf(code) {
+    const c = String(code || "");
+    if (c === "Ka") return SHORT_LABEL.c;      // Karies
+    if (c === "Fu") return SHORT_LABEL.fu;     // Füllung
+    if (c === "WF") return "Wurzelfüllung";
+    if (c === "LA") return "Anästhesie";
+    if (c === "Paro") return "Parodontalbefund";
+    if (c === "Kief") return "Kieferbefund";
+    return shortLabelOf(c);
+  }
+
+  /** FDI als Einzelziffern sprechen (Dental-Konvention): 27 -> "zwei sieben". */
+  const SPOKEN_DIGIT = ["null", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun"];
+  function spokenFdi(fdi) {
+    const s = String(fdi || "");
+    if (!/^[1-4][1-8]$/.test(s)) return s;
+    return SPOKEN_DIGIT[Number(s[0])] + " " + SPOKEN_DIGIT[Number(s[1])];
+  }
+
+  // Anzeige-Reihenfolge: haeufigste zuerst, danach der komplette Rest aus
+  // BEFUND (nichts geht verloren, wenn der Katalog waechst).
+  const LEGEND_COMMON = [
+    "f", "c", "fu", "k", "kw", "x", "ww", "pw", "e", "ew", "b", "bw",
+  ];
+
+  /** Alle Legenden-Eintraege: [{ code, label }] — Quelle BEFUND + c/fu. */
+  function legendEntries() {
+    const seen = new Set();
+    const out = [];
+    const push = (code) => {
+      if (!code || seen.has(code)) return;
+      seen.add(code);
+      out.push({ code, label: shortLabelOf(code) });
+    };
+    LEGEND_COMMON.forEach(push);
+    Object.keys(BEFUND).forEach(push);
+    return out;
+  }
+
   /** Map KZBV/klinisch → 01-perio finding id (wenn vorhanden). */
   const TO_PERIO = {
     f: "zahn_fehlt",
@@ -279,6 +379,11 @@
     DIGIT_WORD,
     isKzbv,
     labelOf,
+    SHORT_LABEL,
+    shortLabelOf,
+    speechLabelOf,
+    spokenFdi,
+    legendEntries,
     TO_PERIO,
     source: "Schema B/T: c=Karies, f in B=fehlend, f+MOD in T=Füllung",
   };

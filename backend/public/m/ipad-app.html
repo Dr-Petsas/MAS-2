@@ -746,6 +746,37 @@
       background: #fff8e1; border-color: #d4a017; color: #7a5500;
     }
     .zs-hint { margin: 2px 0 0; font-size: .58rem; color: #6b6560; font-weight: 600; }
+    /* KZBV-Legende unter dem Schema (Chef 21.07.): kompakt, mehrspaltig,
+       darf das Schema nicht verdraengen. Benutzte Kuerzel dezent markiert,
+       das zuletzt gesetzte pulsiert kurz mit dem aktiven Zahn. */
+    .zs-legend {
+      margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 3px 6px;
+      align-items: center; line-height: 1;
+    }
+    .zs-leg {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 5px; border-radius: 6px; border: 1px solid #e2dccf;
+      background: #faf8f3; font-size: .5rem; font-weight: 600; color: #6b6560;
+      white-space: nowrap;
+    }
+    .zs-leg-k {
+      font-size: .56rem; font-weight: 900; color: #3d3a34;
+      font-family: ui-monospace, Menlo, monospace;
+    }
+    .zs-leg.is-used { border-color: #d4a017; background: #fff8e1; color: #7a5500; }
+    .zs-leg.is-used .zs-leg-k { color: #7a5500; }
+    .zs-leg.is-flash {
+      border-color: #0f766e; background: #bfe8e0; color: #0a5c56;
+      box-shadow: 0 0 0 3px rgba(15,118,110,.25);
+      animation: zsLegFlash 1s ease-in-out 3;
+    }
+    .zs-leg.is-flash .zs-leg-k { color: #0a5c56; }
+    @keyframes zsLegFlash {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(15,118,110,.25); }
+      50% { box-shadow: 0 0 0 6px rgba(15,118,110,.45); }
+    }
+    .doku-tpl--schema .zs-leg { font-size: .54rem; padding: 3px 6px; }
+    .doku-tpl--schema .zs-leg-k { font-size: .62rem; }
     .doku-wrap--schema { flex: 1; min-height: 0; }
     /* Schema-Seite: KEIN 2-Spalten-Grid — Zahnschema volle Breite (Chef 21.07.) */
     .doku-tpl--schema { padding: 4px 2px; display: block; }
@@ -1808,6 +1839,8 @@
             if (obj.type === "audio_state") {
               if (obj.state === "speaking") { markClaraLive(); phase = "live"; voice = "clara"; render(); }
               else if (phase === "live" && voice === "clara") { voice = "listening"; render(); }
+              // Befund-Echo-Queue (Schema-Seite) braucht das Sprech-Ende.
+              try { window.__lenaEchoAudioState?.(obj.state); } catch (_) {}
             } else if (obj.type === "final_transcript" && phase === "live" && !wakeStandby) {
               voice = "thinking"; render();
             } else if (obj.type === "wake_state") {
@@ -1949,9 +1982,9 @@
   </script>
 
   <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
-  <script src="/m/lena-zahnstatus-katalog.js?v=20260721k"></script>
-  <script src="/m/lena-voice-chart.js?v=20260721k"></script>
-  <script src="/m/lena-doku-template-zahn.js?v=20260721k"></script>
+  <script src="/m/lena-zahnstatus-katalog.js?v=20260721l"></script>
+  <script src="/m/lena-voice-chart.js?v=20260721l"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260721l"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard.
@@ -2161,6 +2194,103 @@
         if (isSchemaStep()) refreshSchemaTemplate(segs, livePartial);
         else if (isDokuBoxesStep()) refreshDokuTemplate(segs);
       }
+      /* ── Befund-Echo (Chef 21.07. 23:39): Nach jedem committeten Schema-
+         Segment spricht Clara den erkannten Befund ("27 Füllung" ->
+         "Zwei sieben: Füllung."). Regeln:
+         - Laufendes Echo NIE abbrechen; max. 1 wartendes Echo, neuere
+           ersetzen aeltere (Diktiertempo wird nie gebremst).
+         - Rueckkopplungs-Schutz: der Worker verwirft das Mikro-Echo im
+           Tee-Pfad (_lena_tee_utterance); hier zusaetzlich defensiv, falls
+           doch eins durchkommt (Token-Teilmenge, <6 s). ─────────────────── */
+      let echoSpeaking = false;
+      let echoPending = null;      // max. 1 wartendes Echo (neuestes gewinnt)
+      let echoLastText = "";
+      let echoLastAt = 0;
+      let echoTimer = 0;
+      const ECHO_DIGIT_WORD = {
+        null: "0", eins: "1", zwei: "2", zwo: "2", drei: "3", vier: "4",
+        fuenf: "5", funf: "5", sechs: "6", sieben: "7", acht: "8", neun: "9",
+      };
+      function echoTokens(s) {
+        const raw = String(s || "").toLowerCase()
+          .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+          .match(/[a-z0-9]+/g) || [];
+        const out = [];
+        for (const t of raw) {
+          if (Object.prototype.hasOwnProperty.call(ECHO_DIGIT_WORD, t)) {
+            out.push(ECHO_DIGIT_WORD[t]);
+            continue;
+          }
+          if (/^\d+$/.test(t)) { for (const d of t) out.push(d); continue; }
+          out.push(t);
+        }
+        return out;
+      }
+      /** Segment sieht aus wie das zuletzt gesprochene Echo? -> verwerfen.
+          Einzel-Token nie verwerfen (Einzelziffern-Paarung "Vier."/"Sechs."). */
+      function lenaEchoGuardHit(text) {
+        if (!echoLastText || Date.now() - echoLastAt > 6000) return false;
+        const seg = echoTokens(text);
+        if (seg.length < 2) return false;
+        const ref = new Set(echoTokens(echoLastText));
+        const hits = seg.filter((t) => ref.has(t)).length;
+        const tolerance = seg.length >= 4 ? 1 : 0;
+        return hits >= 2 && hits >= seg.length - tolerance;
+      }
+      function lenaEchoSend(text) {
+        const ok = window.__claraIpad?.publishCmd?.({ type: "coach_speak", text });
+        if (!ok) { echoPending = null; return; }
+        echoSpeaking = true;
+        echoLastText = text;
+        echoLastAt = Date.now();
+        // Fallback, falls kein audio_state kommt (Verbindungsknick).
+        if (echoTimer) clearTimeout(echoTimer);
+        echoTimer = setTimeout(() => {
+          echoSpeaking = false;
+          lenaEchoFlush();
+        }, 2500 + Math.min(6000, text.length * 80));
+      }
+      function lenaEchoFlush() {
+        if (echoSpeaking) return;
+        const t = echoPending;
+        echoPending = null;
+        if (t) lenaEchoSend(t);
+      }
+      function lenaEchoSpeak(text) {
+        if (!text) return;
+        if (echoSpeaking) { echoPending = text; return; }
+        lenaEchoSend(text);
+      }
+      // Sprech-Ende vom Worker (audio_state idle): Verwurf-Fenster ab
+      // Sprech-ENDE zaehlen, dann wartendes Echo nachschieben.
+      window.__lenaEchoAudioState = (st) => {
+        if (!echoSpeaking) return;
+        echoLastAt = Date.now();
+        if (st === "speaking") return;
+        echoSpeaking = false;
+        if (echoTimer) { clearTimeout(echoTimer); echoTimer = 0; }
+        setTimeout(lenaEchoFlush, 150);
+      };
+      /** Diff NUR aus committeten Segmenten (Partial-Paint verfaelscht
+          dokuState.teeth): vorher/nachher als Wegwerf-Zustand neu aufbauen. */
+      function lenaEchoComputeForCommit() {
+        const Zahn = window.LenaDokuZahn;
+        const VC = window.LenaVoiceChart;
+        if (!Zahn || !VC || !VC.diffChartForEcho) return "";
+        const clinical = savedSegments.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        if (!clinical.length) return "";
+        const vor = Zahn.emptyState("");
+        vor.page = "schema";
+        Zahn.applySchemaSegments(vor, clinical.slice(0, -1));
+        const nach = Zahn.emptyState("");
+        nach.page = "schema";
+        Zahn.applySchemaSegments(nach, clinical);
+        const diff = VC.diffChartForEcho(
+          VC.chartEchoSnapshot(vor.chart), nach.chart, vor.teeth, nach.teeth,
+        );
+        return VC.buildEchoText(diff);
+      }
+
       /** LiveKit-Push vom Worker: Final sofort (vor Firestore). */
       function ingestLenaDokuSegment(obj) {
         if (!recording || paused) return;
@@ -2172,6 +2302,11 @@
         if (wantAppt && gotAppt && wantAppt !== gotAppt) return;
         const src = String(obj?.source || "arzt").toLowerCase() || "arzt";
         if (src !== "arzt" && src !== "nachdiktat") return;
+        // Rueckkopplungs-Schutz: eigenes Echo nicht als Diktat committen.
+        if (src === "arzt" && lenaEchoGuardHit(text)) {
+          liveDokuPartial = "";
+          return;
+        }
         const norm = text.toLowerCase();
         const recent = savedSegments.slice(-8);
         if (recent.some((s) => String(s.text || "").trim().toLowerCase() === norm)) {
@@ -2190,10 +2325,15 @@
         liveDokuPartial = "";
         if (src === "arzt") {
           try { appendBubble("Arzt", text, id, Number(obj?.startMs) || Date.now()); } catch (_) {}
+          let echoText = "";
+          if (isSchemaStep()) {
+            try { echoText = lenaEchoComputeForCommit(); } catch (_) {}
+          }
           refreshLivePage(savedSegments, "");
           if (isSchemaStep()) {
             const fdis = window.LenaVoiceChart?.extractFdi?.(text) || [];
             if (fdis.length) paintToothPreview(dokuState?.teeth || fdis, fdis[fdis.length - 1]);
+            if (echoText) lenaEchoSpeak(echoText);
           }
         }
       }
@@ -2227,6 +2367,9 @@
         if (!paneDoku?.classList.contains("is-active")) return;
         let t = String(text || "").trim();
         if (!t) return;
+        // Eigenes Echo (Mikro nimmt Lautsprecher auf) nicht aufleuchten
+        // lassen und erst recht nicht per Lightspeed committen.
+        if (lenaEchoGuardHit(t)) return;
         // Schema-Schritt: Garble-Aliasse frueh anwenden (hier->vier etc.),
         // damit Partial-Paint + Snap-Commit die korrigierte Form sehen.
         try { t = window.LenaZahnstatusKatalog?.schemaDigitAlias?.(t) || t; } catch (_) {}

@@ -180,9 +180,11 @@
       for (const z of extractTeeth(t)) state.teeth.add(z);
     }
     if (state.chart && global.LenaVoiceChart) {
+      // Schema-Seite ist REINE Befundaufnahme (Chef 21.07.): alles in die
+      // B-Zeile zwingen — "17 Fuellung" ist hier Bestand, keine Therapie.
       const last = global.LenaVoiceChart.applySegments(
         state.chart,
-        texts.map((t) => ({ text: t })),
+        texts.map((t) => ({ text: t, forceLayer: "befund" })),
       );
       if (last) {
         state.lastChartFdi = last;
@@ -211,8 +213,25 @@
     if (!container || !state) return;
     const named = state.teeth || new Set();
     const list = [...named].sort((a, b) => a - b);
+    // Legenden-Flash: zuletzt gesetzte Kuerzel pulsieren mit dem Zahn —
+    // aber nur solange der Eintrag frisch ist (Re-Renders/Partials sollen
+    // einen alten Befund nicht ewig weiterblinken lassen).
+    let flashKeys = [];
+    const lm = state.chart && state.chart._lastMark;
+    if (lm && lm.keys && lm.keys.length) {
+      const key = String(lm.fdi || "") + ":" + lm.keys.join(",");
+      if (!state._legendFlash || state._legendFlash.key !== key) {
+        state._legendFlash = { key, at: Date.now() };
+      }
+      if (Date.now() - state._legendFlash.at < 5000) flashKeys = lm.keys;
+    }
     const chartHtml = global.LenaVoiceChart && state.chart
-      ? global.LenaVoiceChart.renderSchemaHtml(state.chart, state.lastChartFdi || null, state.teeth)
+      ? global.LenaVoiceChart.renderSchemaHtml(
+          state.chart,
+          state.lastChartFdi || null,
+          state.teeth,
+          { hideTherapy: true, legend: true, flashKeys },
+        )
       : "";
     // Halbe Ansage ("Vier ...") sichtbar machen — nur wenn frisch (<10 s).
     const pendFresh = state.pendingDigit
@@ -226,7 +245,7 @@
     container.innerHTML = (
       '<div class="tpl-title tpl-title--schema">' +
       "<h2>Zahnschema</h2>" +
-      '<span class="tpl-mode" id="tplMode">● nur Ziffern + Befund/Therapie</span>' +
+      '<span class="tpl-mode" id="tplMode">● nur Ziffern + Befund</span>' +
       "</div>" +
       '<p class="zs-schema-lead">Hier landet nur das Schema. Text-Boxen folgen auf der nächsten Seite.</p>' +
       live +

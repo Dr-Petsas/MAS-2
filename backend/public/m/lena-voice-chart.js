@@ -28,26 +28,100 @@
     return String(text || "");
   }
 
+  /* ── Positions-Scan (Voll-Grammatik, Chef 21.07. nachts) ─────────────────
+     Zahn- und Befund-Tokens werden MIT Textposition erhoben — auf dem
+     ASCII-gefalteten, Zahn-normalisierten Text. Damit binden wir:
+       a) "27 Fuellung"                (Befund NACH Zahn)
+       b) "Fuellung, Krone an 27"      (Befunde VOR Zahn + Praeposition)
+       c) "13,14,15 fehlen"            (Zahn-LISTE + ein Befund, distributiv)
+       d) "es fehlen 23,24" / "Krone und Fuellung an 27" (vorangestellt) */
+
+  let _speechGlob = null;
+  function speechGlobals() {
+    const K = kat();
+    if (!K) return [];
+    if (_speechGlob && _speechGlob.src === K.SPEECH) return _speechGlob.list;
+    const list = K.SPEECH.map((r) => ({ code: r.code, re: new RegExp(r.re.source, "gi") }));
+    _speechGlob = { src: K.SPEECH, list };
+    return list;
+  }
+
+  let _wordFdiRe = null;
+  function wordFdiRegex(K) {
+    if (_wordFdiRe && _wordFdiRe.src === K.WORD_FDI) return _wordFdiRe.re;
+    const words = Object.keys(K.WORD_FDI).sort((a, b) => b.length - a.length);
+    const re = new RegExp("\\b(" + words.join("|") + ")\\b", "gi");
+    _wordFdiRe = { src: K.WORD_FDI, re };
+    return re;
+  }
+
+  function scanToothTokens(low, K) {
+    const out = [];
+    let m;
+    const reDigit = /\b([1-4][1-8])\b/g;
+    while ((m = reDigit.exec(low))) {
+      const fdi = Number(m[1]);
+      if (K.ALL_FDI.has(fdi)) out.push({ type: "tooth", fdi, at: m.index, end: m.index + m[0].length });
+    }
+    const wre = wordFdiRegex(K);
+    wre.lastIndex = 0;
+    while ((m = wre.exec(low))) {
+      const fdi = K.WORD_FDI[m[1].toLowerCase()];
+      if (fdi) out.push({ type: "tooth", fdi, at: m.index, end: m.index + m[0].length });
+    }
+    out.sort((a, b) => a.at - b.at);
+    return out;
+  }
+
+  function scanCodeTokens(low) {
+    const out = [];
+    const seenAt = new Set();
+    const push = (code, at, end) => {
+      if (!code) return;
+      const key = code + "@" + at;
+      if (seenAt.has(key)) return;
+      seenAt.add(key);
+      out.push({ type: "code", code, at, end });
+    };
+    let m;
+    speechGlobals().forEach((ent) => {
+      ent.re.lastIndex = 0;
+      while ((m = ent.re.exec(low))) {
+        push(ent.code, m.index, m.index + m[0].length);
+        if (m.index === ent.re.lastIndex) ent.re.lastIndex++;
+      }
+    });
+    // Freistehende KZBV-Mehrbuchstaben-Codes (eindeutig, keine dt. Woerter).
+    const tokenRe = /\b(abw|pkw|skw|stw|sbw|sew|sow|t2w|ix|kw|bw|pw|ww|sk|st|tw|ur|aw|sb|ew|rw)\b/gi;
+    while ((m = tokenRe.exec(low))) push(m[1].toLowerCase(), m.index, m.index + m[0].length);
+    // Mehrdeutige Kurz-Codes ("ab"=Praeposition, "so"/"se"=Alltagswoerter):
+    // NUR direkt nach einer Zahnnummer werten ("16 ab", "35 so").
+    const nearRe = /\b[1-4][1-8]\s*[.,]?\s+(ab|so|se)(?=[\s,;:.!?]|$)/gi;
+    while ((m = nearRe.exec(low))) {
+      const at = m.index + m[0].lastIndexOf(m[1]);
+      push(m[1].toLowerCase(), at, at + m[1].length);
+    }
+    // Einzelbuchstaben f/k/x/b/c zwischen Trennern ("Befund eines x bei 46").
+    const loneRe = /(?:^|[\s,;:])([fkxbc])(?=[\s,;:.!?]|$)/gi;
+    while ((m = loneRe.exec(low))) {
+      const at = m.index + m[0].indexOf(m[1]);
+      const tok = m[1].toLowerCase();
+      push(tok === "c" ? "Ka" : tok, at, at + 1);
+    }
+    out.sort((a, b) => a.at - b.at);
+    return out;
+  }
+
   function extractFdi(text) {
     const K = kat();
     if (!K) return [];
+    const low = norm(normTeeth(text)).toLowerCase();
     const out = [];
     const seen = new Set();
-    const push = (n) => {
-      const fdi = Number(n);
-      if (!K.ALL_FDI.has(fdi) || seen.has(fdi)) return;
-      seen.add(fdi);
-      out.push(fdi);
-    };
-    const raw = normTeeth(text);
-    let m;
-    const reDigit = /\b([1-4][1-8])\b/g;
-    while ((m = reDigit.exec(raw))) push(m[1]);
-    const low = norm(raw).toLowerCase();
-    Object.keys(K.WORD_FDI).forEach((w) => {
-      // Wortgrenze statt includes: "zwoelf" enthaelt "elf" — aktivierte
-      // faelschlich Zahn 11 (Ansage-Test 21.07.).
-      if (new RegExp("\\b" + w + "\\b").test(low)) push(K.WORD_FDI[w]);
+    scanToothTokens(low, K).forEach((t) => {
+      if (seen.has(t.fdi)) return;
+      seen.add(t.fdi);
+      out.push(t.fdi);
     });
     return out;
   }
@@ -55,34 +129,15 @@
   function extractCodes(text) {
     const K = kat();
     if (!K) return [];
-    const codes = [];
+    const low = norm(normTeeth(text)).toLowerCase();
+    const out = [];
     const seen = new Set();
-    const add = (c) => {
-      if (!c || seen.has(c)) return;
-      seen.add(c);
-      codes.push(c);
-    };
-    const low = normTeeth(text).toLowerCase();
-    const tokenRe = /\b(abw|pkw|skw|stw|sbw|sew|sow|t2w|ix|kw|bw|pw|ww|sk|st|tw|ur|ab|aw|sb|se|so|ew|rw)\b/gi;
-    let m;
-    while ((m = tokenRe.exec(low))) add(m[1].toLowerCase());
-    const single = /\b([1-4][1-8])\s+(kw|ww|pw|bw|ix|[fkxbc])(?=[\s,;:.]|$)/gi;
-    while ((m = single.exec(low))) {
-      const tok = m[2].toLowerCase();
-      if (tok === "c") add("Ka");
-      else add(tok);
-    }
-    const lone = /(?:^|[\s,;:])([fkxbc])(?=[\s,;:.]|$)/gi;
-    while ((m = lone.exec(low))) {
-      const tok = m[1].toLowerCase();
-      if (tok === "c") add("Ka");
-      else add(tok);
-    }
-
-    K.SPEECH.forEach((rule) => {
-      if (rule.re.test(text)) add(rule.code);
+    scanCodeTokens(low).forEach((c) => {
+      if (seen.has(c.code)) return;
+      seen.add(c.code);
+      out.push(c.code);
     });
-    return codes;
+    return out;
   }
 
   // Deutsche Woerter, die NUR aus Flaechenbuchstaben bestehen — nie als
@@ -142,21 +197,109 @@
     return list.map((fdi) => ({ fdi, codes: ["f"], surfaces: [], text }));
   }
 
+  // Fuellwoerter, die zwischen vorangestellten Befunden und der Zahnnummer
+  // stehen duerfen ("Fuellung, Krone an 27", "fehlend sind 31 32").
+  const BIND_FILLERS = new Set([
+    "an", "auf", "am", "bei", "beim", "und", "auch", "noch", "sind", "ist",
+    "es", "der", "die", "das", "den", "dem", "ein", "eine", "einen", "einem",
+    "eines", "zahn", "zaehne", "zahne", "nummer", "regio", "jetzt", "dann",
+    "mal", "bitte", "hier", "vorne", "hinten",
+  ]);
+  const BIND_PREPS = new Set(["an", "auf", "am", "bei", "beim"]);
+  // Zahn-Listen-Trenner: "13,14,15", "13 14 15", "16 und 14".
+  const RE_LIST_GAP = /^[\s,.;:!?]*(?:und|oder|sowie|plus)?[\s,.;:!?]*$/i;
+
   function parseUtterance(text) {
     const t = String(text || "").trim();
     if (!t) return [];
+    const K = kat();
+    if (!K) return [];
     const eden = edentulousEvents(t);
     if (eden) return eden;
-    const fdis = extractFdi(t);
-    const codes = extractCodes(t);
+
+    const low = norm(normTeeth(t)).toLowerCase();
+    const teethToks = scanToothTokens(low, K);
+    const codeToks = scanCodeTokens(low);
     const surfaces = extractSurfaces(t);
-    if (!fdis.length && !codes.length && !surfaces.length) return [];
-    if (!fdis.length) {
+
+    if (!teethToks.length) {
+      const codes = [];
+      const seen = new Set();
+      codeToks.forEach((c) => {
+        if (seen.has(c.code)) return;
+        seen.add(c.code);
+        codes.push(c.code);
+      });
       const strong = codes.filter((c) => !BARE_NOUN_CODES.has(c));
       if (!strong.length && !surfaces.length) return [];
       return [{ fdi: null, codes: strong, surfaces, text: t }];
     }
-    return fdis.map((fdi) => ({ fdi, codes: codes.slice(), surfaces: surfaces.slice(), text: t }));
+
+    // Vorwaerts-Bindung: Befund-Token gehoert zum NAECHSTEN Zahn, wenn bis
+    // dahin nur Fuellwoerter stehen UND eine Praeposition dabei ist
+    // ("Krone an 27"). Andere Befund-Tokens im Zwischenraum (z. B. bei
+    // "Krone und Fuellung an 27") werden vorher maskiert.
+    const masked = (() => {
+      const arr = low.split("");
+      codeToks.forEach((c) => {
+        for (let i = c.at; i < c.end && i < arr.length; i++) arr[i] = " ";
+      });
+      return arr.join("");
+    })();
+
+    function bindsForward(tok) {
+      const next = teethToks.find((tt) => tt.at >= tok.end);
+      if (!next) return false;
+      const gap = masked.slice(tok.end, next.at);
+      const words = gap.match(/[a-z0-9äöüß]+/g) || [];
+      if (!words.length) return false;
+      let hasPrep = false;
+      for (const w of words) {
+        if (!BIND_FILLERS.has(w)) return false;
+        if (BIND_PREPS.has(w)) hasPrep = true;
+      }
+      return hasPrep;
+    }
+
+    function isListGap(fromEnd, toStart) {
+      if (codeToks.some((c) => c.at >= fromEnd && c.at < toStart)) return false;
+      return RE_LIST_GAP.test(low.slice(fromEnd, toStart));
+    }
+
+    const stream = teethToks.concat(codeToks).sort((a, b) => a.at - b.at);
+    const groups = [];
+    let pending = [];
+    let cur = null;
+    stream.forEach((tok) => {
+      if (tok.type === "tooth") {
+        if (cur && !cur.codesAfter.length && isListGap(cur.lastEnd, tok.at)) {
+          cur.teeth.push(tok.fdi);
+          cur.lastEnd = tok.end;
+        } else {
+          cur = { teeth: [tok.fdi], codesBefore: pending, codesAfter: [], lastEnd: tok.end };
+          pending = [];
+          groups.push(cur);
+        }
+        return;
+      }
+      if (!cur || bindsForward(tok)) pending.push(tok.code);
+      else cur.codesAfter.push(tok.code);
+    });
+
+    const events = [];
+    groups.forEach((g) => {
+      const codes = [];
+      const seen = new Set();
+      g.codesBefore.concat(g.codesAfter).forEach((c) => {
+        if (seen.has(c)) return;
+        seen.add(c);
+        codes.push(c);
+      });
+      g.teeth.forEach((fdi) => {
+        events.push({ fdi, codes: codes.slice(), surfaces: surfaces.slice(), text: t });
+      });
+    });
+    return events;
   }
 
   function parseSegments(segments) {
@@ -261,11 +404,28 @@
     return fdi;
   }
 
+  /** Parser-Code -> Legenden-/Mark-Schluessel (Ka->c, Fu->fu, sonst klein). */
+  function markKeyOf(code) {
+    if (code === "Ka") return "c";
+    if (code === "Fu") return "fu";
+    return String(code || "").toLowerCase();
+  }
+
   function applySegments(chart, segments) {
     let last = null;
+    let lastMark = null;
     parseSegments(segments).forEach((ev) => {
       last = mergeEvent(chart, ev, last);
+      if (ev.codes && ev.codes.length) {
+        lastMark = { fdi: ev.fdi || last, keys: ev.codes.map(markKeyOf) };
+      }
     });
+    // Fuer Legenden-Flash (zuletzt gesetztes Kuerzel). Kein FDI-Schluessel —
+    // summaryLines/Render ueberspringen "_"-Eintraege.
+    if (chart) {
+      if (lastMark) chart._lastMark = lastMark;
+      else delete chart._lastMark;
+    }
     return last;
   }
 
@@ -331,40 +491,152 @@
     );
   }
 
+  /** Im Chart verwendete Legenden-Schluessel (c, fu, f, k, ...). */
+  function usedLegendKeys(chart) {
+    const used = new Set();
+    Object.keys(chart || {}).forEach((fdi) => {
+      if (fdi.charAt(0) === "_") return;
+      const c = chart[fdi];
+      if (!c || !Array.isArray(c.codes)) return;
+      c.codes.forEach((code) => used.add(markKeyOf(code)));
+    });
+    return used;
+  }
+
+  /** KZBV-Legende unter dem Schema. flashKeys: zuletzt gesetzte Kuerzel
+      (bekommen die Puls-Optik des aktiven Zahns), used: dezente Markierung. */
+  function legendHtml(chart, flashKeys) {
+    const K = kat();
+    if (!K || typeof K.legendEntries !== "function") return "";
+    const used = usedLegendKeys(chart);
+    const flash = new Set(flashKeys || []);
+    const items = K.legendEntries().map((e) => {
+      const cls = "zs-leg" +
+        (used.has(e.code) ? " is-used" : "") +
+        (flash.has(e.code) ? " is-flash" : "");
+      return (
+        '<span class="' + cls + '" data-code="' + esc(e.code) + '">' +
+        '<b class="zs-leg-k">' + esc(e.code) + "</b>" +
+        '<span class="zs-leg-t">' + esc(e.label) + "</span>" +
+        "</span>"
+      );
+    });
+    return '<div class="zs-legend" aria-label="KZBV-Legende">' + items.join("") + "</div>";
+  }
+
   /**
    * OK: Zeilen B/T oberhalb der Ziffern.
    * UK: Ziffern, darunter B/T.
    * namedTeeth (optional Set): genannte Zaehne ohne Kuerzel — werden aktiviert.
+   * opts (optional): { hideTherapy, legend, flashKeys } — Schema-Seite ist
+   * REINE Befundaufnahme (Chef 21.07.): T-Zeile weg, KZBV-Legende drunter.
    */
-  function renderSchemaHtml(chart, selectedFdi, namedTeeth) {
+  function renderSchemaHtml(chart, selectedFdi, namedTeeth, opts) {
     const K = kat();
     if (!K) return "";
+    const o = opts || {};
     const ok = K.FDI_OK;
     const uk = K.FDI_UK;
+    const therapyRow = (list) =>
+      o.hideTherapy ? "" : layerRow(chart, list, "therapie", selectedFdi, "Therapie");
+    const foot = o.legend
+      ? legendHtml(chart, o.flashKeys)
+      : '<p class="zs-hint">B: c=Karies · f=fehlend · T: fMOD=Füllung · LA</p>';
     return (
       '<div class="zs-schema" aria-label="Zahnschema Befund Therapie">' +
       '<div class="zs-block zs-ok">' +
       '<div class="zs-block-h">OK</div>' +
       layerRow(chart, ok, "befund", selectedFdi, "Befund") +
-      layerRow(chart, ok, "therapie", selectedFdi, "Therapie") +
+      therapyRow(ok) +
       numRow(chart, ok, selectedFdi, namedTeeth) +
       "</div>" +
       '<div class="zs-block zs-uk">' +
       '<div class="zs-block-h">UK</div>' +
       numRow(chart, uk, selectedFdi, namedTeeth) +
       layerRow(chart, uk, "befund", selectedFdi, "Befund") +
-      layerRow(chart, uk, "therapie", selectedFdi, "Therapie") +
+      therapyRow(uk) +
       "</div>" +
-      '<p class="zs-hint">B: c=Karies · f=fehlend · T: fMOD=Füllung · LA</p>' +
+      foot +
       "</div>"
     );
+  }
+
+  /* ── Befund-Echo (Chef 21.07.: gesprochene Rueckmeldung je Befund) ───────
+     Pure Funktionen, damit der Kettentest die Schleifen-Sicherheit prueft:
+     Snapshot -> Diff -> Echo-Text. Der Echo-Text selbst darf beim Wieder-
+     Einspeisen (Mikro nimmt Lautsprecher auf) KEINE NEUEN Marks erzeugen. */
+
+  /** Kompakter Mark-Snapshot je Zahn (fuer Diff zwischen zwei Commits). */
+  function chartEchoSnapshot(chart) {
+    const snap = {};
+    Object.keys(chart || {}).forEach((fdi) => {
+      if (fdi.charAt(0) === "_") return;
+      const c = chart[fdi];
+      if (!c || !Array.isArray(c.codes) || !c.codes.length) return;
+      snap[fdi] = c.codes.slice().sort().join(",");
+    });
+    return snap;
+  }
+
+  /** Diff zweier Snapshots + genannte Zaehne: was ist NEU dazugekommen? */
+  function diffChartForEcho(prevSnap, chart, prevNamed, named) {
+    const added = [];
+    const snap = chartEchoSnapshot(chart);
+    Object.keys(snap).forEach((fdi) => {
+      const prevSet = new Set(
+        prevSnap && prevSnap[fdi] ? String(prevSnap[fdi]).split(",") : [],
+      );
+      const neu = snap[fdi].split(",").filter((c) => c && !prevSet.has(c));
+      if (neu.length) added.push({ fdi: Number(fdi), codes: neu });
+    });
+    const namedOnly = [];
+    (named ? Array.from(named) : []).forEach((fdi) => {
+      if (prevNamed && prevNamed.has(fdi)) return;
+      if (snap[fdi]) return; // hat Marks -> steckt in added
+      namedOnly.push(Number(fdi));
+    });
+    return { added, namedOnly };
+  }
+
+  /**
+   * Diff -> gesprochener Echo-Text. Zahnnummern als Einzelziffern
+   * ("zwei sieben", Dental-Konvention), Kuerzel als Klartext.
+   * "27 Fuellung" -> "Zwei sieben: Füllung."
+   * ">6 Zaehne gleicher Befund" -> "Mehrere Zähne: fehlt." (NIE Zahlwoerter
+   * wie "sechzehn Zaehne" — die wuerden beim Wieder-Einspeisen als FDI parsen).
+   */
+  function buildEchoText(diff) {
+    const K = kat();
+    if (!K || !diff) return "";
+    const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    const parts = [];
+    const groups = new Map(); // codes-Key -> { codes, teeth[] }
+    (diff.added || []).forEach((a) => {
+      const key = a.codes.join("+");
+      if (!groups.has(key)) groups.set(key, { codes: a.codes, teeth: [] });
+      groups.get(key).teeth.push(a.fdi);
+    });
+    groups.forEach((g) => {
+      const label = g.codes.map((c) => K.speechLabelOf(c)).join(" und ");
+      const teethTxt = g.teeth.length > 6
+        ? "mehrere Zähne"
+        : g.teeth.map((f) => K.spokenFdi(f)).join(", ");
+      parts.push(cap(teethTxt) + ": " + label + ".");
+    });
+    const named = (diff.namedOnly || []).slice(0, 4);
+    if (named.length) {
+      parts.push(cap(named.map((f) => K.spokenFdi(f)).join(", ")) + ".");
+    }
+    return parts.join(" ");
   }
 
   function summaryLines(chart) {
     const lines = [];
     if (!chart) return lines;
     Object.keys(chart).forEach((fdi) => {
+      if (fdi.charAt(0) === "_") return; // Meta (_lastMark), keine Zelle
       const c = chart[fdi];
+      if (!c) return;
       const parts = [];
       if (c.befund) parts.push("B:" + c.befund);
       if (c.therapie) parts.push("T:" + c.therapie);
@@ -387,5 +659,10 @@
     badge,
     summaryLines,
     renderSchemaHtml,
+    markKeyOf,
+    legendHtml,
+    chartEchoSnapshot,
+    diffChartForEcho,
+    buildEchoText,
   };
 })(typeof window !== "undefined" ? window : globalThis);

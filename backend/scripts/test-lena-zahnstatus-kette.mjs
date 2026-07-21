@@ -325,5 +325,177 @@ W.LenaDokuZahn.applySchemaSegments(stP3, [
 ]);
 check("Alias+Paarung: 'Hier?'+'Sieben.' -> 47", stP3.teeth.has(47), [...stP3.teeth].join(","));
 
+// 15) VOLL-GRAMMATIK (Chef 21.07. 23:39) — vier Ansage-Formen.
+// a) Zahn-Befund
+const gA1 = W.LenaVoiceChart.parseUtterance("27 Füllung");
+check("Gram a: '27 Füllung' -> 27 Fu", gA1.length === 1 && gA1[0].fdi === 27 && gA1[0].codes.includes("Fu"), JSON.stringify(gA1));
+const gA2 = W.LenaVoiceChart.parseUtterance("16 Karies");
+check("Gram a: '16 Karies' -> 16 Ka", gA2.length === 1 && gA2[0].fdi === 16 && gA2[0].codes.includes("Ka"), JSON.stringify(gA2));
+const gA3 = W.LenaVoiceChart.parseUtterance("34 fehlt");
+check("Gram a: '34 fehlt' -> 34 f", gA3.length === 1 && gA3[0].fdi === 34 && gA3[0].codes.includes("f"), JSON.stringify(gA3));
+
+// b) Befund-Zahn (Praeposition an/auf/am/bei)
+const gB1 = W.LenaVoiceChart.parseUtterance("Füllung, Krone an 27");
+check("Gram b: 'Füllung, Krone an 27' -> 27 Fu+k",
+  gB1.length === 1 && gB1[0].fdi === 27 && gB1[0].codes.includes("Fu") && gB1[0].codes.includes("k"),
+  JSON.stringify(gB1));
+const gB2 = W.LenaVoiceChart.parseUtterance("Krone auf 14");
+check("Gram b: 'Krone auf 14' -> 14 k", gB2.length === 1 && gB2[0].fdi === 14 && gB2[0].codes.includes("k"), JSON.stringify(gB2));
+const gB3 = W.LenaVoiceChart.parseUtterance("Füllung am 36");
+check("Gram b: 'Füllung am 36' -> 36 Fu", gB3.length === 1 && gB3[0].fdi === 36 && gB3[0].codes.includes("Fu"), JSON.stringify(gB3));
+const gB4 = W.LenaVoiceChart.parseUtterance("Karies bei 46");
+check("Gram b: 'Karies bei 46' -> 46 Ka", gB4.length === 1 && gB4[0].fdi === 46 && gB4[0].codes.includes("Ka"), JSON.stringify(gB4));
+// Praeposition bindet NICHT rueckwaerts ueber den Zahn hinweg:
+const gB5 = W.LenaVoiceChart.parseUtterance("34 fehlt und 16 Karies");
+const gb5map = Object.fromEntries(gB5.map((e) => [e.fdi, e.codes.join(",")]));
+check("Gram b Negativ: '34 fehlt und 16 Karies' getrennt",
+  gb5map[34] === "f" && gb5map[16] === "Ka", JSON.stringify(gb5map));
+
+// c) Multiple Zaehne + EIN Befund (distributiv)
+const gC1 = W.LenaVoiceChart.parseUtterance("13,14,15,16,17 fehlen");
+check("Gram c: '13,14,15,16,17 fehlen' -> 5x f",
+  gC1.length === 5 && gC1.every((e) => e.codes.join() === "f") &&
+  [13, 14, 15, 16, 17].every((z) => gC1.some((e) => e.fdi === z)),
+  JSON.stringify(gC1.map((e) => e.fdi + ":" + e.codes.join())));
+const gC2 = W.LenaVoiceChart.parseUtterance("13 14 15 fehlen");
+check("Gram c: '13 14 15 fehlen' -> 3x f",
+  gC2.length === 3 && gC2.every((e) => e.codes.join() === "f"),
+  JSON.stringify(gC2.map((e) => e.fdi + ":" + e.codes.join())));
+const gC3 = W.LenaVoiceChart.parseUtterance("dreizehn vierzehn fünfzehn fehlen");
+check("Gram c: Zahlwoerter 'dreizehn vierzehn fünfzehn fehlen'",
+  gC3.length === 3 && [13, 14, 15].every((z) => gC3.some((e) => e.fdi === z && e.codes.includes("f"))),
+  JSON.stringify(gC3.map((e) => e.fdi + ":" + e.codes.join())));
+
+// d) Befund(e) vorangestellt
+const gD1 = W.LenaVoiceChart.parseUtterance("es fehlen 23,24,25,26,27");
+check("Gram d: 'es fehlen 23,24,25,26,27' -> 5x f",
+  gD1.length === 5 && gD1.every((e) => e.codes.join() === "f") &&
+  [23, 24, 25, 26, 27].every((z) => gD1.some((e) => e.fdi === z)),
+  JSON.stringify(gD1.map((e) => e.fdi + ":" + e.codes.join())));
+const gD2 = W.LenaVoiceChart.parseUtterance("fehlend sind 31 32");
+check("Gram d: 'fehlend sind 31 32' -> 31 f, 32 f",
+  gD2.length === 2 && [31, 32].every((z) => gD2.some((e) => e.fdi === z && e.codes.includes("f"))),
+  JSON.stringify(gD2.map((e) => e.fdi + ":" + e.codes.join())));
+const gD3 = W.LenaVoiceChart.parseUtterance("Krone und Füllung an 27");
+check("Gram d: 'Krone und Füllung an 27' -> 27 k+Fu",
+  gD3.length === 1 && gD3[0].fdi === 27 && gD3[0].codes.includes("k") && gD3[0].codes.includes("Fu"),
+  JSON.stringify(gD3));
+const gD4 = W.LenaVoiceChart.parseUtterance("Karies an 16 und 17");
+check("Gram d: 'Karies an 16 und 17' -> beide Ka",
+  gD4.length === 2 && [16, 17].every((z) => gD4.some((e) => e.fdi === z && e.codes.includes("Ka"))),
+  JSON.stringify(gD4.map((e) => e.fdi + ":" + e.codes.join())));
+
+// Negativ: Masseinheiten-Guard + Alltagswoerter duerfen NICHT parsen
+const gN1 = W.LenaVoiceChart.parseUtterance("Sondierungstiefe 3,5 Millimeter");
+check("Gram Negativ: '3,5 Millimeter' -> kein Zahn 35", !gN1.some((e) => e.fdi === 35), JSON.stringify(gN1));
+const gN2 = W.LenaVoiceChart.parseUtterance("zwei, drei Wochen Schonung");
+check("Gram Negativ: 'zwei, drei Wochen' -> kein Zahn 23", !gN2.some((e) => e.fdi === 23), JSON.stringify(gN2));
+const gN3 = W.LenaVoiceChart.parseUtterance("So, ab morgen bitte weiter");
+check("Gram Negativ: 'So, ab morgen' -> keine Codes so/ab", gN3.length === 0, JSON.stringify(gN3));
+const gN4 = W.LenaVoiceChart.parseUtterance("Der Fehler war empfehlenswert");
+check("Gram Negativ: 'Fehler/empfehlen' -> kein f", !gN4.some((e) => (e.codes || []).includes("f")), JSON.stringify(gN4));
+
+// Ende-zu-Ende auf der Schema-Seite (forceLayer befund) inkl. Plural
+const stF = W.LenaDokuZahn.emptyState("");
+stF.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stF, [
+  { text: "13,14,15 fehlen" },
+  { text: "Füllung, Krone an 27" },
+  { text: "16 Karies" },
+]);
+check("Schema-Kette: 13/14/15 fehlen", [13, 14, 15].every((z) => stF.chart?.[z]?.befund === "f"),
+  JSON.stringify([13, 14, 15].map((z) => stF.chart?.[z]?.befund)));
+check("Schema-Kette: 27 fu+k in B-Zeile",
+  (stF.chart?.[27]?.befund || "").includes("fu") && (stF.chart?.[27]?.befund || "").includes("k"),
+  JSON.stringify(stF.chart?.[27]));
+check("Schema-Kette: 16 c in B-Zeile", (stF.chart?.[16]?.befund || "") === "c", JSON.stringify(stF.chart?.[16]));
+check("Schema-Kette: Therapie-Zeile bleibt leer",
+  [13, 14, 15, 16, 27].every((z) => !(stF.chart?.[z]?.therapie || "")),
+  JSON.stringify([13, 14, 15, 16, 27].map((z) => stF.chart?.[z]?.therapie)));
+
+// 16) LEGENDE: Schema-Seite rendert KZBV-Kuerzel, benutzte leuchten
+const legHtml = (() => {
+  const div = { innerHTML: "" };
+  W.LenaDokuZahn.renderSchemaOnly(div, stF);
+  return div.innerHTML;
+})();
+check("Legende: vorhanden", legHtml.includes("zs-legend"), "");
+check("Legende: 'f' + Klartext 'fehlt'", /data-code="f"[^>]*>.*?fehlt/.test(legHtml.replace(/<b[^>]*>|<\/b>|<span[^>]*>|<\/span>/g, "")) || (legHtml.includes('data-code="f"') && legHtml.includes("fehlt")), "");
+check("Legende: benutzte Kuerzel markiert (is-used an f, c, fu, k)",
+  ["f", "c", "fu", "k"].every((c) => new RegExp('class="zs-leg[^"]*is-used[^"]*" data-code="' + c + '"').test(legHtml)), "");
+check("Legende: unbenutztes Kuerzel NICHT markiert (ix)",
+  !/class="zs-leg[^"]*is-used[^"]*" data-code="ix"/.test(legHtml), "");
+check("Legende: Flash am zuletzt gesetzten Kuerzel (c von '16 Karies')",
+  /class="zs-leg[^"]*is-flash[^"]*" data-code="c"/.test(legHtml), "");
+check("Schema-Seite: KEINE Therapie-Zeile im HTML", !legHtml.includes('data-layer="therapie"'), "");
+check("Doku-Seite: Therapie-Zeile bleibt (Regression)",
+  W.LenaVoiceChart.renderSchemaHtml(stF.chart, null, null).includes('data-layer="therapie"'), "");
+
+// 17) BEFUND-ECHO: Diff -> Echo-Text -> Schleifen-Sicherheit
+const snapVor = W.LenaVoiceChart.chartEchoSnapshot(W.LenaVoiceChart.emptyChart());
+const diff1 = W.LenaVoiceChart.diffChartForEcho(snapVor, stF.chart, new Set(), stF.teeth);
+const echo1 = W.LenaVoiceChart.buildEchoText(diff1);
+check("Echo: Text erzeugt", !!echo1, echo1);
+check("Echo: FDI als Einzelziffern ('zwei sieben')", /zwei sieben/i.test(echo1), echo1);
+check("Echo: Kuerzel als Klartext (Füllung/Krone/fehlt)",
+  /Füllung/.test(echo1) && /Krone/.test(echo1) && /fehlt/.test(echo1), echo1);
+check("Echo: KEIN 'siebenundzwanzig'", !/siebenundzwanzig/i.test(echo1), echo1);
+// Einzelfall exakt wie Chef-Beispiel: "27 Füllung" -> "Zwei sieben: Füllung."
+const stE1 = W.LenaDokuZahn.emptyState("");
+stE1.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stE1, [{ text: "27 Füllung" }]);
+const echoBsp = W.LenaVoiceChart.buildEchoText(
+  W.LenaVoiceChart.diffChartForEcho(snapVor, stE1.chart, new Set(), stE1.teeth),
+);
+check("Echo: '27 Füllung' -> 'Zwei sieben: Füllung.'", echoBsp === "Zwei sieben: Füllung.", echoBsp);
+
+// Schleifen-Sicherheit: Echo-Text als neues Segment darf KEINE neuen Marks
+// erzeugen (Mikro nimmt Lautsprecher auf; Worker/Frontend verwerfen zwar,
+// aber selbst wenn beides versagt, entsteht kein neuer Zustand -> kein Loop).
+const segsLoop = [
+  { text: "13,14,15 fehlen" },
+  { text: "Füllung, Krone an 27" },
+  { text: "16 Karies" },
+];
+const stL1 = W.LenaDokuZahn.emptyState("");
+stL1.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stL1, segsLoop);
+const snapNach = W.LenaVoiceChart.chartEchoSnapshot(stL1.chart);
+const namedNach = new Set(stL1.teeth);
+const stL2 = W.LenaDokuZahn.emptyState("");
+stL2.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stL2, segsLoop.concat([{ text: echo1 }]));
+const diffLoop = W.LenaVoiceChart.diffChartForEcho(snapNach, stL2.chart, namedNach, stL2.teeth);
+const echoLoop = W.LenaVoiceChart.buildEchoText(diffLoop);
+check("Echo-Loop: Echo-Text erzeugt KEINE neuen Marks", echoLoop === "", echoLoop || "(leer)");
+check("Echo-Loop: Chart identisch",
+  JSON.stringify(W.LenaVoiceChart.chartEchoSnapshot(stL2.chart)) === JSON.stringify(snapNach),
+  "");
+// Auch das Bare-Zahn-Echo ("Vier sechs.") ist schleifenfest:
+const stL3 = W.LenaDokuZahn.emptyState("");
+stL3.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stL3, [{ text: "46" }]);
+const snap46 = W.LenaVoiceChart.chartEchoSnapshot(stL3.chart);
+const named46 = new Set(stL3.teeth);
+const echo46 = W.LenaVoiceChart.buildEchoText(
+  W.LenaVoiceChart.diffChartForEcho(snapVor, stL3.chart, new Set(), stL3.teeth),
+);
+check("Echo: Bare-Zahn '46' -> 'Vier sechs.'", echo46 === "Vier sechs.", echo46);
+const stL4 = W.LenaDokuZahn.emptyState("");
+stL4.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stL4, [{ text: "46" }, { text: echo46 }]);
+const diff46 = W.LenaVoiceChart.diffChartForEcho(snap46, stL4.chart, named46, stL4.teeth);
+check("Echo-Loop: 'Vier sechs.' erzeugt kein neues Echo",
+  W.LenaVoiceChart.buildEchoText(diff46) === "", W.LenaVoiceChart.buildEchoText(diff46) || "(leer)");
+// Massen-Befund wird gesprochen als "Mehrere Zähne" (nie Zahlwort wie
+// "sechzehn" — das wuerde als FDI 16 zurueckparsen!)
+const stL5 = W.LenaDokuZahn.emptyState("");
+stL5.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stL5, [{ text: "Alle Zähne fehlen" }]);
+const echoAll = W.LenaVoiceChart.buildEchoText(
+  W.LenaVoiceChart.diffChartForEcho(snapVor, stL5.chart, new Set(), stL5.teeth),
+);
+check("Echo: Massen-Befund -> 'Mehrere Zähne: fehlt.'", echoAll === "Mehrere Zähne: fehlt.", echoAll);
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;
