@@ -532,24 +532,58 @@
   }
 
   /** KZBV-Legende unter dem Schema. flashKeys: zuletzt gesetzte Kuerzel
-      (bekommen die Puls-Optik des aktiven Zahns), used: dezente Markierung. */
+      (bekommen die Puls-Optik des aktiven Zahns), used: dezente Markierung.
+      Layout (Chef 22.07. 01:59): nur die haeufigsten Kuerzel + alle
+      benutzten/aufleuchtenden sofort sichtbar, der Rest hinter einem
+      dezenten "mehr"-Toggle. Der Auf/Zu-Zustand ueberlebt Re-Renders
+      (Modul-Flag legendOpen, Klick via LenaVoiceChart.toggleLegendOpen). */
+  let legendOpen = false;
+  function toggleLegendOpen(btn) {
+    legendOpen = !legendOpen;
+    const box = btn && btn.closest ? btn.closest(".zs-legend") : null;
+    if (box) box.classList.toggle("is-open", legendOpen);
+    if (btn) {
+      btn.textContent = legendOpen
+        ? "weniger"
+        : "+" + (btn.getAttribute("data-more") || "") + " mehr";
+    }
+    return legendOpen;
+  }
   function legendHtml(chart, flashKeys) {
     const K = kat();
     if (!K || typeof K.legendEntries !== "function") return "";
     const used = usedLegendKeys(chart);
     const flash = new Set(flashKeys || []);
-    const items = K.legendEntries().map((e) => {
+    const common = new Set(K.LEGEND_COMMON || []);
+    const chip = (e, rest) => {
       const cls = "zs-leg" +
+        (rest ? " zs-leg--rest" : "") +
         (used.has(e.code) ? " is-used" : "") +
         (flash.has(e.code) ? " is-flash" : "");
       return (
-        '<span class="' + cls + '" data-code="' + esc(e.code) + '">' +
+        '<span class="' + cls + '" data-code="' + esc(e.code) + '" title="' + esc(e.label) + '">' +
         '<b class="zs-leg-k">' + esc(e.code) + "</b>" +
         '<span class="zs-leg-t">' + esc(e.label) + "</span>" +
         "</span>"
       );
+    };
+    const prim = [];
+    const rest = [];
+    K.legendEntries().forEach((e) => {
+      // Benutzte/aufleuchtende Kuerzel NIE hinter "mehr" verstecken.
+      if (common.has(e.code) || used.has(e.code) || flash.has(e.code)) prim.push(chip(e, false));
+      else rest.push(chip(e, true));
     });
-    return '<div class="zs-legend" aria-label="KZBV-Legende">' + items.join("") + "</div>";
+    const more = rest.length
+      ? '<button type="button" class="zs-leg-more" data-more="' + rest.length + '"' +
+        ' onclick="try{LenaVoiceChart.toggleLegendOpen(this)}catch(e){}">' +
+        (legendOpen ? "weniger" : "+" + rest.length + " mehr") + "</button>"
+      : "";
+    return (
+      '<div class="zs-legend' + (legendOpen ? " is-open" : "") + '" aria-label="KZBV-Legende">' +
+      prim.join("") + more + rest.join("") +
+      "</div>"
+    );
   }
 
   /**
@@ -738,6 +772,7 @@
     renderSchemaHtml,
     markKeyOf,
     legendHtml,
+    toggleLegendOpen,
     chartEchoSnapshot,
     diffChartForEcho,
     mergeEchoDiffs,

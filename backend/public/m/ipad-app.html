@@ -746,37 +746,50 @@
       background: #fff8e1; border-color: #d4a017; color: #7a5500;
     }
     .zs-hint { margin: 2px 0 0; font-size: .58rem; color: #6b6560; font-weight: 600; }
-    /* KZBV-Legende unter dem Schema (Chef 21.07.): kompakt, mehrspaltig,
-       darf das Schema nicht verdraengen. Benutzte Kuerzel dezent markiert,
-       das zuletzt gesetzte pulsiert kurz mit dem aktiven Zahn. */
+    /* KZBV-Legende unter dem Schema (Chef 22.07. 01:59): lesbar + kompakt.
+       Nur haeufigste + benutzte Kuerzel sichtbar (1-2 Zeilen), Rest hinter
+       "+N mehr" (zs-leg--rest). is-used = benutzt (gelb, dauerhaft),
+       is-flash = zuletzt erkannt (tuerkis, kraeftiger Puls — NIE versteckt). */
     .zs-legend {
-      margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 3px 6px;
+      margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 5px 7px;
       align-items: center; line-height: 1;
     }
     .zs-leg {
-      display: inline-flex; align-items: center; gap: 3px;
-      padding: 2px 5px; border-radius: 6px; border: 1px solid #e2dccf;
-      background: #faf8f3; font-size: .5rem; font-weight: 600; color: #6b6560;
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 8px; border-radius: 8px; border: 1px solid #ddd6c6;
+      background: #faf8f3; font-size: .66rem; font-weight: 600; color: #55504a;
       white-space: nowrap;
     }
     .zs-leg-k {
-      font-size: .56rem; font-weight: 900; color: #3d3a34;
+      font-size: .72rem; font-weight: 900; color: #3d3a34;
       font-family: ui-monospace, Menlo, monospace;
     }
     .zs-leg.is-used { border-color: #d4a017; background: #fff8e1; color: #7a5500; }
     .zs-leg.is-used .zs-leg-k { color: #7a5500; }
     .zs-leg.is-flash {
-      border-color: #0f766e; background: #bfe8e0; color: #0a5c56;
-      box-shadow: 0 0 0 3px rgba(15,118,110,.25);
-      animation: zsLegFlash 1s ease-in-out 3;
+      border-color: #0a5c56; background: #0f766e; color: #fff;
+      box-shadow: 0 0 0 3px rgba(15,118,110,.3), 0 0 18px rgba(15,118,110,.55);
+      transform: scale(1.12); transform-origin: center;
+      position: relative; z-index: 2;
+      animation: zsLegFlash .55s ease-in-out 8;
     }
-    .zs-leg.is-flash .zs-leg-k { color: #0a5c56; }
+    .zs-leg.is-flash .zs-leg-k, .zs-leg.is-flash .zs-leg-t { color: #fff; }
     @keyframes zsLegFlash {
-      0%, 100% { box-shadow: 0 0 0 3px rgba(15,118,110,.25); }
-      50% { box-shadow: 0 0 0 6px rgba(15,118,110,.45); }
+      0%, 100% { background: #0f766e; box-shadow: 0 0 0 3px rgba(15,118,110,.3), 0 0 18px rgba(15,118,110,.55); }
+      50% { background: #17c3ae; box-shadow: 0 0 0 7px rgba(46,230,200,.4), 0 0 26px rgba(46,230,200,.75); }
     }
-    .doku-tpl--schema .zs-leg { font-size: .54rem; padding: 3px 6px; }
-    .doku-tpl--schema .zs-leg-k { font-size: .62rem; }
+    /* Rest-Kuerzel: eingeklappt unsichtbar — ausser sie leuchten gerade. */
+    .zs-legend:not(.is-open) .zs-leg--rest { display: none; }
+    .zs-legend:not(.is-open) .zs-leg--rest.is-flash { display: inline-flex; }
+    .zs-leg-more {
+      border: 1px dashed #c1b9a8; background: transparent; color: #6b6560;
+      font: inherit; font-size: .64rem; font-weight: 700; padding: 4px 10px;
+      border-radius: 999px; cursor: pointer; line-height: 1;
+    }
+    .zs-leg-more:hover { color: #3d3a34; border-color: #8f8778; }
+    .doku-tpl--schema .zs-leg { font-size: .72rem; padding: 5px 9px; }
+    .doku-tpl--schema .zs-leg-k { font-size: .8rem; }
+    .doku-tpl--schema .zs-leg-more { font-size: .7rem; }
     .doku-wrap--schema { flex: 1; min-height: 0; }
     /* Schema-Seite: KEIN 2-Spalten-Grid — Zahnschema volle Breite (Chef 21.07.) */
     .doku-tpl--schema { padding: 4px 2px; display: block; }
@@ -797,6 +810,46 @@
     .zs-schema-sum { margin-top: 8px; font-size: .72rem; }
     .tpl-title--schema { margin-bottom: 6px; }
     .rec-top--slim { margin-bottom: 4px; }
+    /* ── Schema-Schritt: Kopf radikal schmal (Chef 22.07. 01:59) ──────────
+       Im Doku-Modus + Schritt 3 kollabieren Chrome-Kopf und Schritt-Leiste
+       zu NULL und die Patient/Mikro-Karten zu EINER schmalen Zeile — das
+       Zahnschema bekommt die Hoehe. Tap auf ▾ (body.head-open) klappt alles
+       wieder auf. Andere Schritte/Modi/Portrait bleiben unveraendert. */
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) .chrome { display: none; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #paneDoku .steps { display: none; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) .lena-wrap { padding-top: 4px; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-top { display: flex; align-items: center; gap: 8px; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-card { flex-direction: row; align-items: center; gap: 10px; padding: 4px 10px; border-radius: 10px; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-card-patient { flex: 1 1 auto; min-width: 0; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-head { flex: 1; align-items: center; gap: 8px; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-av { width: 26px; height: 26px; border-radius: 8px; font-size: .58rem; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-head-main { flex-direction: row; align-items: baseline; gap: 8px; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-name { font-size: .9rem; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-meta { font-size: .64rem; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-live { padding: 4px 8px; font-size: .56rem; align-self: center; flex: none; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-card-mic { flex: 0 0 auto; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .meters { flex-direction: row; align-items: center; gap: 8px; width: auto; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .meter-cards,
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .mic-active,
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .meter-note,
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .mic-swap { display: none; }
+    /* Mini-Anzeige "3/7 Schema" + Auf/Zu-Knopf: nur im Schema-Schritt. */
+    .head-mini { display: none; align-items: center; gap: 7px; flex: none; }
+    body:has(#paneDoku.is-active #wiz3.is-show) #wiz3 .head-mini { display: inline-flex; }
+    .head-mini-step {
+      font-size: .6rem; font-weight: 800; letter-spacing: .05em;
+      color: var(--mute); text-transform: uppercase; white-space: nowrap;
+    }
+    .head-mini-btn {
+      width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line);
+      background: var(--card); color: var(--ink); cursor: pointer; font-size: .82rem;
+      display: grid; place-items: center; line-height: 1; padding: 0;
+    }
+    /* Aufgeklappt (body.head-open): Karten normal, Mini haengt rechts dran. */
+    body.head-open:has(#paneDoku.is-active #wiz3.is-show) #wiz3 .rec-top {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) auto;
+    }
+    body.head-open:has(#paneDoku.is-active #wiz3.is-show) #wiz3 .head-mini { align-self: start; }
     .wiz-boxes .doku-wrap { flex: 1; min-height: 0; overflow: auto; }
     .tpl-lab {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -1338,6 +1391,10 @@
                   <p class="meter-note" id="meterMonoNote" hidden></p>
                   <canvas class="line-canvas" id="lineCanvas" width="960" height="112" hidden aria-hidden="true"></canvas>
                 </div>
+              </div>
+              <div class="head-mini" id="headMini">
+                <span class="head-mini-step">3/7 · Schema</span>
+                <button type="button" class="head-mini-btn" id="btnHeadOpen" aria-label="Kopf auf-/zuklappen">▾</button>
               </div>
             </div>
             <div class="doku-wrap doku-wrap--schema">
@@ -2022,8 +2079,8 @@
   </script>
 
   <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
-  <script src="/m/lena-zahnstatus-katalog.js?v=20260722a"></script>
-  <script src="/m/lena-voice-chart.js?v=20260722c"></script>
+  <script src="/m/lena-zahnstatus-katalog.js?v=20260722b"></script>
+  <script src="/m/lena-voice-chart.js?v=20260722d"></script>
   <script src="/m/lena-doku-template-zahn.js?v=20260722c"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2487,7 +2544,13 @@
           if (isSchemaStep() && !isDeleteCmd) {
             try { echoDiff = lenaEchoDiffForCommit(); } catch (_) {}
           }
+          // Legenden-Flash neu armieren: ein FRISCHES Kuerzel-Segment soll
+          // auch dann pulsieren, wenn derselbe Befund schon einmal gesetzt
+          // war (der Dedupe-Schluessel in renderSchemaOnly waere identisch).
+          const segKeys = isSchemaStep() && !isDeleteCmd ? legendKeysOf(text) : [];
+          if (segKeys.length && dokuState) delete dokuState._legendFlash;
           refreshLivePage(savedSegments, "");
+          if (segKeys.length) paintLegendFlash(segKeys);
           if (isSchemaStep() && !isDeleteCmd) {
             const fdis = window.LenaVoiceChart?.extractFdi?.(text) || [];
             if (fdis.length) paintToothPreview(dokuState?.teeth || fdis, fdis[fdis.length - 1]);
@@ -2521,6 +2584,40 @@
         });
         return true;
       }
+      /** Legenden-Chip SOFORT aufleuchten lassen (Partial-/Live-Pfad,
+          ohne auf den Voll-Rebuild zu warten — Chef 22.07.: "Krone" muss
+          beim Sprechen leuchten). keys = Legenden-Schluessel (k, fu, c ...). */
+      let legendFlashTimer = 0;
+      function paintLegendFlash(keys) {
+        const root = $("schemaTpl");
+        if (!root || !keys || !keys.length) return false;
+        const legend = root.querySelector(".zs-legend");
+        if (!legend) return false;
+        let hit = false;
+        keys.forEach((k) => {
+          const el = legend.querySelector('.zs-leg[data-code="' + String(k).replace(/["\\]/g, "") + '"]');
+          if (!el) return;
+          hit = true;
+          el.classList.remove("is-flash");
+          void el.offsetWidth; // CSS-Animation neu starten
+          el.classList.add("is-flash");
+        });
+        if (hit) {
+          clearTimeout(legendFlashTimer);
+          legendFlashTimer = setTimeout(() => {
+            legend.querySelectorAll(".zs-leg.is-flash").forEach((el) => el.classList.remove("is-flash"));
+          }, 6500);
+        }
+        return hit;
+      }
+      /** Kuerzel aus gesprochenem Text -> Legenden-Schluessel (k, fu, c ...). */
+      function legendKeysOf(text) {
+        try {
+          const VC = window.LenaVoiceChart;
+          if (!VC?.extractCodes || !VC?.markKeyOf) return [];
+          return (VC.extractCodes(text) || []).map(VC.markKeyOf);
+        } catch (_) { return []; }
+      }
       /** Kurze fertige Schema-Ansage? (spiegel Worker _SCHEMA_SNAP_RE) */
       function isSchemaSnap(text) {
         const t = String(text || "").trim();
@@ -2541,6 +2638,10 @@
         // damit Partial-Paint + Snap-Commit die korrigierte Form sehen.
         try { t = window.LenaZahnstatusKatalog?.schemaDigitAlias?.(t) || t; } catch (_) {}
         liveDokuPartial = t;
+        // Erkanntes Kuerzel SOFORT in der Legende aufleuchten lassen —
+        // auch ohne Zahnnummer im selben Partial ("27 ... Krone").
+        const partialKeys = legendKeysOf(t);
+        if (partialKeys.length) paintLegendFlash(partialKeys);
         const fdis = window.LenaVoiceChart?.extractFdi?.(t) || [];
         if (!fdis.length) return;
         const sel = fdis[fdis.length - 1];
@@ -2916,6 +3017,12 @@
           c.classList.toggle("is-now", s === n);
           c.classList.toggle("is-done", s < n);
         });
+        // Schema-Kopf-Klappzustand nur im Schema-Schritt halten.
+        if (n !== 3) {
+          document.body.classList.remove("head-open");
+          const hb = document.getElementById("btnHeadOpen");
+          if (hb) hb.textContent = "▾";
+        }
         if (n === 3) {
           $("recName").textContent = selectedAppt.name || "—";
           $("recTreat").textContent = selectedAppt.treat || "";
@@ -4375,6 +4482,19 @@
           console.warn("lena_open_findings failed", err);
         }
       };
+    })();
+  </script>
+  <script>
+    // Schema-Schritt: Kopf auf-/zuklappen (Chef 22.07. 01:59). Der schmale
+    // Kopf ist reine CSS-Sache (body:has(#wiz3.is-show)); dieser Knopf
+    // schaltet nur body.head-open und dreht das Pfeil-Symbol.
+    (() => {
+      const btn = document.getElementById("btnHeadOpen");
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        const open = document.body.classList.toggle("head-open");
+        btn.textContent = open ? "▴" : "▾";
+      });
     })();
   </script>
 </body>

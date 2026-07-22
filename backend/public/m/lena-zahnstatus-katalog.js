@@ -435,6 +435,7 @@
     speechLabelOf,
     spokenFdi,
     legendEntries,
+    LEGEND_COMMON,
     TO_PERIO,
     source: "Schema B/T: c=Karies, f in B=fehlend, f+MOD in T=Füllung",
   };
