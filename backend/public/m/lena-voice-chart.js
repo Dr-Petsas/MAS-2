@@ -78,10 +78,15 @@
     const seenAt = new Set();
     const push = (code, at, end) => {
       if (!code) return;
-      const key = code + "@" + at;
+      let c = code;
+      // Gesprochene/geschriebene Praxis-Kuerzel → kanonische Schema-Codes
+      if (c === "tk") c = "pkw";
+      else if (c === "km") c = "k";
+      else if (c === "fu") c = "Fu";
+      const key = c + "@" + at;
       if (seenAt.has(key)) return;
       seenAt.add(key);
-      out.push({ type: "code", code, at, end });
+      out.push({ type: "code", code: c, at, end });
     };
     let m;
     speechGlobals().forEach((ent) => {
@@ -92,7 +97,7 @@
       }
     });
     // Freistehende KZBV-Mehrbuchstaben-Codes (eindeutig, keine dt. Woerter).
-    const tokenRe = /\b(abw|pkw|skw|stw|sbw|sew|sow|t2w|ix|kw|bw|pw|ww|sk|st|tw|ur|aw|sb|ew|rw)\b/gi;
+    const tokenRe = /\b(abw|pkw|skw|stw|sbw|sew|sow|t2w|ix|kw|bw|pw|ww|sk|st|tw|ur|aw|sb|ew|rw|tk|km|fu)\b/gi;
     while ((m = tokenRe.exec(low))) push(m[1].toLowerCase(), m.index, m.index + m[0].length);
     // Mehrdeutige Kurz-Codes ("ab"=Praeposition, "so"/"se"=Alltagswoerter):
     // NUR direkt nach einer Zahnnummer werten ("16 ab", "35 so").

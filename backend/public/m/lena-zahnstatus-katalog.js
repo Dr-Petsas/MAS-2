@@ -105,8 +105,9 @@
   // gefalteten Text (Positions-Bindung), Garble-/Nachkorrektur-Pfade
   // liefern ohnehin beide Schreibweisen.
   const SPEECH = [
-    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e|en)?\s+krone|krone\s+erneuern|kw\b/i, code: "kw" },
-    { re: /teilkrone|pkw\b/i, code: "pkw" },
+    { re: /teilkrone|\bpkw\b|\btk\b|\btee[\s.\-]*ka\b|\bt[\s.\-]+k\b(?!\w)/i, code: "pkw" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e|en)?\s+krone|krone\s+erneuern|\bkw\b/i, code: "kw" },
+    { re: /metallkeramik(?:krone)?|\bkm[\s.\-]*krone\b|\bkm\b|\bka[\s.\-]*em\b|\bk[\s.\-]+m\b(?!\w)/i, code: "k" },
     { re: /\bkrone\b/i, code: "k" },
     { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e|en)?\s+br(?:[uü]|ue)ckenglied|\bbw\b/i, code: "bw" },
     { re: /br(?:[uü]|ue)ckenglied|pontic/i, code: "b" },
@@ -273,6 +274,12 @@
     );
     s = s.replace(/\btelesco\b/gi, "Teleskop");
     s = s.replace(/\bteleskop\s*[-]?\s*krone\b/gi, "Teleskopkrone");
+    // Gesprochene Kuerzel-Buchstaben (STT: "tee ka", "ka em", "t k", "k m")
+    s = s.replace(/\btee[\s.\-]*ka\b/gi, "tk");
+    s = s.replace(/\bka[\s.\-]*em\b/gi, "km");
+    s = s.replace(/\bt[\s.\-]+k\b(?!\w)/gi, "tk");
+    s = s.replace(/\bk[\s.\-]+m\b(?!\w)/gi, "km");
+    s = s.replace(/\bpkw\b/gi, "pkw");
     s = s.replace(/\bz[uü]lung\b/gi, "Füllung");
     s = s.replace(/\bcovidus\b/gi, "Karies");
     s = s.replace(/\bf2ud\b/gi, "Füllung MOD");
