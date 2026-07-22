@@ -233,21 +233,58 @@
     #lenaWizard .zs-row-layer[data-layer="therapie"] .zs-cell.has-mark { background: #eaf7ef; border-color: #1b7a4e; color: #0d5c32; }
     #lenaWizard .zs-row-layer[data-layer="befund"] .zs-cell.has-mark { background: #fff8e1; border-color: #d4a017; color: #7a5500; }
     #lenaWizard .zs-hint { margin: 2px 0 0; font-size: .54rem; color: #6b6560; font-weight: 600; }
-    #lenaWizard .zs-legend { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 3px 5px; align-items: center; line-height: 1; }
+    #lenaWizard .zs-legend-panel {
+      margin: 6px 0 0; padding: 5px 6px 6px; border-radius: 8px;
+      background: #fffef8; border: 1px solid #c8c0b0;
+    }
+    #lenaWizard .zs-legend-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      font-size: .48rem; font-weight: 900; letter-spacing: .04em;
+      text-transform: uppercase; color: #3d3a34; margin: 0 0 4px;
+    }
+    #lenaWizard .zs-legend {
+      display: flex; flex-direction: column; gap: 4px;
+      max-height: 7.5rem; overflow-y: auto;
+    }
+    #lenaWizard .zs-legend-panel:not(.is-open) .zs-legend { display: none; }
+    #lenaWizard .zs-leg-g { border-radius: 6px; padding: 3px 4px 4px; }
+    #lenaWizard .zs-leg-g-title {
+      font-size: .42rem; font-weight: 900; letter-spacing: .04em;
+      text-transform: uppercase; margin: 0 0 3px;
+    }
+    #lenaWizard .zs-leg-g-chips { display: flex; flex-wrap: wrap; gap: 2px 4px; }
+    #lenaWizard .zs-leg-g--status { background: #ffe8e4; }
+    #lenaWizard .zs-leg-g--status .zs-leg-g-title { color: #9a1f2e; }
+    #lenaWizard .zs-leg-g--karies { background: #fff1cc; }
+    #lenaWizard .zs-leg-g--karies .zs-leg-g-title { color: #7a5500; }
+    #lenaWizard .zs-leg-g--fuellung { background: #e3eefc; }
+    #lenaWizard .zs-leg-g--fuellung .zs-leg-g-title { color: #1e4d8c; }
+    #lenaWizard .zs-leg-g--krone { background: #e8f6f4; }
+    #lenaWizard .zs-leg-g--krone .zs-leg-g-title { color: #0a5c56; }
+    #lenaWizard .zs-leg-g--bruecke { background: #ebe7fb; }
+    #lenaWizard .zs-leg-g--bruecke .zs-leg-g-title { color: #4c2f9e; }
+    #lenaWizard .zs-leg-g--implantat { background: #e4f4fb; }
+    #lenaWizard .zs-leg-g--implantat .zs-leg-g-title { color: #0b5f7a; }
+    #lenaWizard .zs-leg-g--sonst { background: #f0ebe1; }
+    #lenaWizard .zs-leg-g--sonst .zs-leg-g-title { color: #3d3a34; }
     #lenaWizard .zs-leg {
       display: inline-flex; align-items: center; gap: 3px;
-      padding: 2px 4px; border-radius: 6px; border: 1px solid #e2dccf;
-      background: #faf8f3; font-size: .46rem; font-weight: 600; color: #6b6560; white-space: nowrap;
+      padding: 2px 4px; border-radius: 6px; border: 1px solid rgba(0,0,0,.12);
+      background: #fff; font-size: .46rem; font-weight: 600; color: #1a1a1a; white-space: nowrap;
     }
-    #lenaWizard .zs-leg-k { font-size: .52rem; font-weight: 900; color: #3d3a34; font-family: ui-monospace, Menlo, monospace; }
-    #lenaWizard .zs-leg.is-used { border-color: #d4a017; background: #fff8e1; color: #7a5500; }
-    #lenaWizard .zs-leg.is-used .zs-leg-k { color: #7a5500; }
+    #lenaWizard .zs-leg-k { font-size: .52rem; font-weight: 900; color: #0a0a0a; font-family: ui-monospace, Menlo, monospace; }
+    #lenaWizard .zs-leg.is-used { border-width: 1.5px; font-weight: 800; }
     #lenaWizard .zs-leg.is-flash {
       border-color: #0f766e; background: #bfe8e0; color: #0a5c56;
       box-shadow: 0 0 0 2px rgba(15,118,110,.25);
       animation: lwLegFlash 1s ease-in-out 3;
     }
     #lenaWizard .zs-leg.is-flash .zs-leg-k { color: #0a5c56; }
+    #lenaWizard .zs-leg-more {
+      border: 1px solid #8f8778; background: #f0ebe1; color: #1a1a1a;
+      font: inherit; font-size: .44rem; font-weight: 800; padding: 2px 7px;
+      border-radius: 999px; cursor: pointer; line-height: 1; text-transform: none;
+    }
     @keyframes lwLegFlash {
       0%, 100% { box-shadow: 0 0 0 2px rgba(15,118,110,.25); }
       50% { box-shadow: 0 0 0 5px rgba(15,118,110,.45); }
@@ -527,9 +564,9 @@
     </aside>
   </main>
 
-  <script src="/m/lena-zahnstatus-katalog.js?v=20260722a"></script>
-  <script src="/m/lena-voice-chart.js?v=20260722a"></script>
-  <script src="/m/lena-doku-template-zahn.js?v=20260722b"></script>
+  <script src="/m/lena-zahnstatus-katalog.js?v=20260722f"></script>
+  <script src="/m/lena-voice-chart.js?v=20260722f"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260722c"></script>
   <script src="/m/lena-01/perio-legend.js?v=20260721b"></script>
   <script src="/m/lena-01/perio-chart.js?v=20260721b"></script>
   <script src="/m/lena-01/perio.js?v=20260721b"></script>

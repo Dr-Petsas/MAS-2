@@ -538,13 +538,11 @@
   let legendOpen = true;
   function toggleLegendOpen(btn) {
     legendOpen = !legendOpen;
-    const box = btn && btn.closest ? btn.closest(".zs-legend") : null;
+    const box = btn && btn.closest
+      ? (btn.closest(".zs-legend-panel") || btn.closest(".zs-legend"))
+      : null;
     if (box) box.classList.toggle("is-open", legendOpen);
-    if (btn) {
-      btn.textContent = legendOpen
-        ? "weniger"
-        : "+" + (btn.getAttribute("data-more") || "") + " mehr";
-    }
+    if (btn) btn.textContent = legendOpen ? "einklappen" : "aufklappen";
     return legendOpen;
   }
   function legendHtml(chart, flashKeys) {
@@ -552,37 +550,48 @@
     if (!K || typeof K.legendEntries !== "function") return "";
     const used = usedLegendKeys(chart);
     const flash = new Set(flashKeys || []);
-    const common = new Set(K.LEGEND_COMMON || []);
-    const chip = (e, rest) => {
-      const cls = "zs-leg" +
-        (rest ? " zs-leg--rest" : "") +
+    const groups = Array.isArray(K.LEGEND_GROUPS) && K.LEGEND_GROUPS.length
+      ? K.LEGEND_GROUPS.concat([{ id: "sonst", title: "Sonstiges", codes: [] }])
+      : [{ id: "sonst", title: "Kürzel", codes: [] }];
+    const byGroup = Object.create(null);
+    groups.forEach((g) => { byGroup[g.id] = []; });
+    K.legendEntries().forEach((e) => {
+      const gid = e.group && byGroup[e.group] ? e.group : "sonst";
+      byGroup[gid].push(e);
+    });
+    const chip = (e) => {
+      const gid = e.group || "sonst";
+      const cls = "zs-leg zs-leg--g-" + gid +
         (used.has(e.code) ? " is-used" : "") +
         (flash.has(e.code) ? " is-flash" : "");
       return (
-        '<span class="' + cls + '" data-code="' + esc(e.code) + '" title="' + esc(e.label) + '">' +
+        '<span class="' + cls + '" data-code="' + esc(e.code) + '" data-group="' + esc(gid) + '"' +
+        ' title="' + esc(e.label) + '">' +
         '<b class="zs-leg-k">' + esc(e.code) + "</b>" +
         '<span class="zs-leg-t">' + esc(e.label) + "</span>" +
         "</span>"
       );
     };
-    const prim = [];
-    const rest = [];
-    K.legendEntries().forEach((e) => {
-      // Benutzte/aufleuchtende Kuerzel NIE hinter "mehr" verstecken.
-      if (common.has(e.code) || used.has(e.code) || flash.has(e.code)) prim.push(chip(e, false));
-      else rest.push(chip(e, true));
+    const blocks = [];
+    groups.forEach((g) => {
+      const items = byGroup[g.id] || [];
+      if (!items.length) return;
+      blocks.push(
+        '<div class="zs-leg-g zs-leg-g--' + esc(g.id) + '">' +
+        '<div class="zs-leg-g-title">' + esc(g.title) + "</div>" +
+        '<div class="zs-leg-g-chips">' + items.map(chip).join("") + "</div>" +
+        "</div>"
+      );
     });
-    const more = rest.length
-      ? '<button type="button" class="zs-leg-more" data-more="' + rest.length + '"' +
-        ' onclick="try{LenaVoiceChart.toggleLegendOpen(this)}catch(e){}">' +
-        (legendOpen ? "weniger" : "+" + rest.length + " mehr") + "</button>"
-      : "";
     return (
-      '<div class="zs-legend-panel" aria-label="KZBV-Legende">' +
-      '<div class="zs-legend-head">Legende · alle Kürzel</div>' +
-      '<div class="zs-legend' + (legendOpen ? " is-open" : "") + '">' +
-      prim.join("") + more + rest.join("") +
-      "</div></div>"
+      '<div class="zs-legend-panel' + (legendOpen ? " is-open" : "") + '" aria-label="KZBV-Legende">' +
+      '<div class="zs-legend-head">' +
+      '<span>Legende · nach Gruppen</span>' +
+      '<button type="button" class="zs-leg-more" onclick="try{LenaVoiceChart.toggleLegendOpen(this)}catch(e){}">' +
+      (legendOpen ? "einklappen" : "aufklappen") +
+      "</button></div>" +
+      '<div class="zs-legend">' + blocks.join("") + "</div>" +
+      "</div>"
     );
   }
 

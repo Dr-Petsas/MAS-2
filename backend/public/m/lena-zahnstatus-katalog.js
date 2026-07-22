@@ -382,14 +382,60 @@
     "e", "ew", "b", "bw", "sk", "st", "pkw", "ur", "ix",
   ];
 
-  /** Alle Legenden-Eintraege: [{ code, label }] — Quelle BEFUND + c/fu. */
+  /**
+   * Farbgruppen fuer die Legende (Chef 22.07. 04:19): sinnvolle klinische
+   * Bloecke mit Abstufung. Jeder Code hat genau eine Gruppe.
+   * group = CSS-Suffix (zs-leg--g-<id> / zs-leg-g--<id>).
+   */
+  const LEGEND_GROUPS = [
+    {
+      id: "status",
+      title: "Status / Extraktion",
+      codes: ["f", "x", "ix", "e", "ew"],
+    },
+    {
+      id: "karies",
+      title: "Karies / Defekt",
+      codes: ["c", "ww", "pw", "ur"],
+    },
+    {
+      id: "fuellung",
+      title: "Füllung",
+      codes: ["fu"],
+    },
+    {
+      id: "krone",
+      title: "Krone / Teleskop",
+      codes: ["k", "kw", "pkw", "t", "tw", "t2w"],
+    },
+    {
+      id: "bruecke",
+      title: "Brücke / Adhäsiv",
+      codes: ["b", "bw", "a", "aw", "ab", "abw", ")("],
+    },
+    {
+      id: "implantat",
+      title: "Implantat",
+      codes: ["sk", "skw", "st", "stw", "sb", "sbw", "se", "sew", "so", "sow", "r", "rw"],
+    },
+  ];
+
+  /** Alle Legenden-Eintraege: [{ code, label, group }] — Quelle BEFUND + c/fu. */
   function legendEntries() {
+    const groupOf = Object.create(null);
+    LEGEND_GROUPS.forEach((g) => {
+      (g.codes || []).forEach((c) => { groupOf[c] = g.id; });
+    });
     const seen = new Set();
     const out = [];
     const push = (code) => {
       if (!code || seen.has(code)) return;
       seen.add(code);
-      out.push({ code, label: shortLabelOf(code) });
+      out.push({
+        code,
+        label: shortLabelOf(code),
+        group: groupOf[code] || "sonst",
+      });
     };
     LEGEND_COMMON.forEach(push);
     // Klinische Schema-Codes (nicht in BEFUND) immer mit anzeigen.
@@ -441,6 +487,7 @@
     spokenFdi,
     legendEntries,
     LEGEND_COMMON,
+    LEGEND_GROUPS,
     TO_PERIO,
     source: "Schema B/T: c=Karies, f in B=fehlend, f+MOD in T=Füllung",
   };
