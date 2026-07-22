@@ -1987,7 +1987,7 @@
   <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
   <script src="/m/lena-zahnstatus-katalog.js?v=20260722a"></script>
   <script src="/m/lena-voice-chart.js?v=20260722a"></script>
-  <script src="/m/lena-doku-template-zahn.js?v=20260722a"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260722b"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard.
@@ -2294,6 +2294,34 @@
         return VC.buildEchoText(diff);
       }
 
+      /* ── "01 fertig" (Chef 22.07. 01:56): Sprachkommando schliesst den
+         Befund (01) ab und schaltet Schema -> Doku. Aufnahme/Tee laufen
+         WEITER — nur die Seite wechselt, exakt ueber showStep(4) (derselbe
+         Weg wie der "Weiter · Doku"-Button, data-next="4"). Idempotenz:
+         nur FRISCH eingetroffene Segmente schalten (Live-Push/Poll rufen
+         das hier auf, Voll-Rebuilds nie); schemaFinishShouldSwitch blockt
+         historische Segmente (aelter als Aufnahmestart) und Re-Deliveries
+         (at <= letzter Wechsel). ─────────────────────────────────────── */
+      let lenaFinishSwitchedAt = 0;
+      function maybeLenaSchemaFinish(text, startMs) {
+        if (!recording || paused) return false;
+        if (!isSchemaStep()) return false;
+        const Zahn = window.LenaDokuZahn;
+        if (!Zahn?.schemaFinishShouldSwitch) return false;
+        const at = Number(startMs) || Date.now();
+        if (!Zahn.schemaFinishShouldSwitch(text, {
+          at,
+          recStartedAt: recStartedAtMs || 0,
+          lastSwitchAt: lenaFinishSwitchedAt,
+        })) return false;
+        lenaFinishSwitchedAt = Date.now();
+        // Quittung ueber die Echo-Queue (bricht laufende Echos nicht ab;
+        // Schleifenschutz: Worker-Echo-Guard + lenaEchoGuardHit).
+        try { lenaEchoSpeak("Befund abgeschlossen — weiter zur Behandlungs-Doku."); } catch (_) {}
+        showStep(4);
+        return true;
+      }
+
       /** LiveKit-Push vom Worker: Final sofort (vor Firestore). */
       function ingestLenaDokuSegment(obj) {
         if (!recording || paused) return;
@@ -2328,6 +2356,9 @@
         liveDokuPartial = "";
         if (src === "arzt") {
           try { appendBubble("Arzt", text, id, Number(obj?.startMs) || Date.now()); } catch (_) {}
+          // Steuer-Segment "01 fertig": Quittung + Seitenwechsel, kein
+          // Befund-Echo/Schema-Paint mehr noetig (showStep(4) rendert Doku).
+          if (maybeLenaSchemaFinish(text, Number(obj?.startMs) || 0)) return;
           let echoText = "";
           if (isSchemaStep()) {
             try { echoText = lenaEchoComputeForCommit(); } catch (_) {}
@@ -3657,6 +3688,9 @@
             known.add(s.id);
             knownText.add(norm);
             added = true;
+            // Fallback-Pfad fuer "01 fertig", falls der LiveKit-Push das
+            // Kommando nicht zugestellt hat (Guards wie im Push-Pfad).
+            try { maybeLenaSchemaFinish(s.text, Number(s.startMs) || 0); } catch (_) {}
           }
           if (added) refreshLivePage(savedSegments);
         } catch (_) {}

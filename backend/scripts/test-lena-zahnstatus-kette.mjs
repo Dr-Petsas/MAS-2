@@ -539,5 +539,132 @@ check("Alias: Zwei Alt -> 28", (() => {
   return s.teeth.has(28);
 })(), "");
 
+// 19) "01 fertig" (Chef 22.07. 01:56): Sprachkommando beendet den Befund
+//     und schaltet Schema -> Doku. Steuer-Segment: kein Chart-/Box-Inhalt,
+//     idempotent beim Voll-Rebuild, "01" NIE als Zahn geparst.
+const FIN = W.LenaDokuZahn.schemaFinishCommand;
+check("Fertig-API vorhanden", typeof FIN === "function" && typeof W.LenaDokuZahn.schemaFinishShouldSwitch === "function");
+// Positiv: alle Kommando-Varianten (Gross/Klein, Zahlwort/Ziffer, Interpunktion)
+[
+  "01 fertig",
+  "01 fertig.",
+  "So, 01 fertig!",
+  "null eins fertig",
+  "Null eins fertig.",
+  "NULL EINS FERTIG",
+  "0 1 fertig.",
+  "Die 01 ist fertig.",
+  "Befund fertig",
+  "Befund fertig.",
+  "Der Befund ist fertig.",
+  "fertig mit dem Befund",
+  "Fertig mit dem Befund.",
+  "01 abgeschlossen",
+  "01 abgeschlossen.",
+  "Befund abgeschlossen",
+  "Befund abgeschlossen!",
+  "weiter zur Doku",
+  "Weiter zur Doku.",
+  "weiter mit der Doku",
+  "Weiter mit der Doku.",
+  "Weiter zur Dokumentation.",
+].forEach((t) => check("Fertig-Kommando: " + JSON.stringify(t), FIN(t) === true, String(FIN(t))));
+// Negativ: "fertig" allein / Befund-Versuche / Diktat mit "fertig" mittendrin
+[
+  "fertig",
+  "Fertig.",
+  "So, fertig.",
+  "01 fehlt",
+  "01 fehlt.",
+  "Zahn 41 fertig praepariert",
+  "Zahn 41 fertig präpariert.",
+  "16 fertig",
+  "Wir sind gleich fertig",
+  "Die Fuellung ist fertig",
+  "Befund 16x.",
+  "weiter gehts",
+  "Befund fertig machen wir spaeter",
+].forEach((t) => check("KEIN Kommando: " + JSON.stringify(t), FIN(t) === false, String(FIN(t))));
+// "01" darf NIRGENDS als Zahn parsen (FDI kennt kein 01)
+const p01 = W.LenaVoiceChart.parseUtterance("01 fertig");
+check("'01' nie als Zahn (parseUtterance)", !p01.some((e) => e.fdi), JSON.stringify(p01));
+check("'01' nie als Zahn (extractFdi)", W.LenaVoiceChart.extractFdi("01 fertig.").length === 0, JSON.stringify(W.LenaVoiceChart.extractFdi("01 fertig.")));
+check("norm laesst '01' in Ruhe", !/\b[1-4][1-8]\b/.test(K.normalizeToothText("01 fertig")), K.normalizeToothText("01 fertig"));
+// Schema-Seite: Kommando-Segment erzeugt KEINEN Chart-Inhalt, verwirft
+// offene Einzelziffer, laesst vorhandene Befunde unangetastet.
+const stFin = W.LenaDokuZahn.emptyState("");
+stFin.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stFin, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "2,7 Füllung", startMs: 2000 },
+  { text: "Eins.", startMs: 3000 },        // offene Einzelziffer ...
+  { text: "01 fertig.", startMs: 3500 },   // ... Kommando verwirft sie
+]);
+check("Fertig: Chart 16 = c bleibt", (stFin.chart?.[16]?.befund || "") === "c", JSON.stringify(stFin.chart?.[16]));
+check("Fertig: Chart 27 = fu bleibt", (stFin.chart?.[27]?.befund || "").includes("fu"), JSON.stringify(stFin.chart?.[27]));
+check("Fertig: keine Geister-Zaehne (nur 16+27)", stFin.teeth.size === 2, [...stFin.teeth].join(","));
+check("Fertig: offene Einzelziffer verworfen", !stFin.pendingDigit, String(stFin.pendingDigit));
+// "null eins fertig" erzeugt ebenfalls keinerlei Zaehne
+const stFin2 = W.LenaDokuZahn.emptyState("");
+stFin2.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stFin2, [
+  { text: "Null.", startMs: 1000 },
+  { text: "Eins.", startMs: 1500 },
+  { text: "Fertig.", startMs: 2000 },      // getrennt: KEIN Kommando, aber ...
+  { text: "null eins fertig", startMs: 3000 },
+]);
+check("Fertig: 'null eins fertig' -> keine Zaehne", stFin2.teeth.size === 0, [...stFin2.teeth].join(","));
+// Idempotenz: Voll-Rebuild mit historischem Kommando aendert nichts am Chart
+const segsHist = [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "01 fertig.", startMs: 2000 },
+];
+const stR1 = W.LenaDokuZahn.emptyState("");
+stR1.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stR1, segsHist);
+const stR2 = W.LenaDokuZahn.emptyState("");
+stR2.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stR2, [{ text: "16 Karies", startMs: 1000 }]);
+check(
+  "Fertig-Rebuild: Chart mit/ohne Kommando identisch",
+  JSON.stringify(W.LenaVoiceChart.chartEchoSnapshot(stR1.chart)) ===
+    JSON.stringify(W.LenaVoiceChart.chartEchoSnapshot(stR2.chart)),
+  "",
+);
+// Seitenwechsel-Entscheid (Guards wie in ipad-app.html):
+const SW = W.LenaDokuZahn.schemaFinishShouldSwitch;
+check("Switch: frisches Kommando schaltet",
+  SW("01 fertig.", { at: 10000, recStartedAt: 5000, lastSwitchAt: 0 }) === true, "");
+check("Switch: Re-Delivery (at <= letzter Wechsel) schaltet NICHT",
+  SW("01 fertig.", { at: 10000, recStartedAt: 5000, lastSwitchAt: 10000 }) === false, "");
+check("Switch: historisches Segment (vor Aufnahmestart) schaltet NICHT",
+  SW("01 fertig.", { at: 1000, recStartedAt: 60000, lastSwitchAt: 0 }) === false, "");
+check("Switch: Nicht-Kommando schaltet NICHT",
+  SW("Zahn 41 fertig praepariert", { at: 10000, recStartedAt: 5000, lastSwitchAt: 0 }) === false, "");
+check("Switch: zweites ECHTES Kommando spaeter schaltet wieder",
+  SW("Befund abgeschlossen.", { at: 20000, recStartedAt: 5000, lastSwitchAt: 10000 }) === true, "");
+// Doku-Rebuild: Kommando laeuft NICHT als Text in die Boxen (auch im
+// Befund-Diktat-Modus nicht) und beendet den Modus nicht versehentlich.
+const stFinD = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stFinD, [
+  { text: "Befund" },
+  { text: "46 fehlt" },
+  { text: "01 fertig." },
+  { text: "weiter zur Doku" },
+]);
+check("Doku-Rebuild: '01 fertig' NICHT in Befund-Box", !(stFinD.values.befund || "").includes("01 fertig"), stFinD.values.befund);
+check("Doku-Rebuild: 'weiter zur Doku' NICHT in Boxen",
+  !Object.values(stFinD.values).some((v) => String(v).includes("weiter zur Doku")), "");
+check("Doku-Rebuild: 46 fehlt bleibt im Befund", (stFinD.values.befund || "").includes("46 fehlt"), stFinD.values.befund);
+// Quittungs-Echo darf (falls Echo-Schutz doppelt versagt) nichts anrichten:
+const stEcho = W.LenaDokuZahn.emptyState("");
+stEcho.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stEcho, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "Befund abgeschlossen — weiter zur Behandlungs-Doku.", startMs: 2000 },
+]);
+check("Quittung: erzeugt keine Marks/Zaehne", stEcho.teeth.size === 1 && (stEcho.chart?.[16]?.befund || "") === "c", [...stEcho.teeth].join(","));
+check("Quittung: ist selbst KEIN Schalt-Kommando", FIN("Befund abgeschlossen — weiter zur Behandlungs-Doku.") === false, "");
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

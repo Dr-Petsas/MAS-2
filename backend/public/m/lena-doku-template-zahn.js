@@ -130,6 +130,62 @@
     return DIGIT_WORD_LOCAL[t] || null;
   }
 
+  /* ── "01 fertig" (Chef 22.07. 01:56): Sprachkommando schliesst den Befund
+     (01 = eingehende Untersuchung) ab und schaltet zur Behandlungs-Doku.
+     STEUER-Segment: erzeugt NIE Chart-/Box-Inhalt. Der Seitenwechsel selbst
+     passiert in ipad-app.html und NUR fuer frisch eingetroffene Segmente
+     (schemaFinishShouldSwitch) — Voll-Rebuilds ueberspringen das Segment
+     lediglich. "fertig" ALLEIN ist bewusst KEIN Kommando (kommt im Diktat
+     vor, z. B. "Zahn 41 fertig praepariert"). */
+  const FINISH_DONE = "(?:fertig|abgeschlossen|beendet|erledigt|abschliessen|abschließen)";
+  const FINISH_SEP = "[\\s,;:.—–-]+";
+  const FINISH_TAIL = "[\\s.,!?;:]*$";
+  // "01" gesprochen: "null eins", STT-Schreibweisen "01" / "0 1" / "0-1" / "Nulleins".
+  const FINISH_NULL_EINS = "(?:0\\s*[-–,.]?\\s*1|null\\s*[-,.]?\\s*eins)";
+  const RE_FINISH_LIST = [
+    // "01 fertig" / "null eins fertig" / "die 01 ist abgeschlossen"
+    new RegExp("^(?:der\\s+|die\\s+)?" + FINISH_NULL_EINS + "(?:\\s+ist)?" + FINISH_SEP + FINISH_DONE + FINISH_TAIL, "i"),
+    // "Befund fertig" / "Befund abgeschlossen" / "der Befund ist fertig"
+    new RegExp("^(?:der\\s+)?befund(?:aufnahme|erhebung)?(?:\\s+ist)?" + FINISH_SEP + FINISH_DONE + FINISH_TAIL, "i"),
+    // "fertig mit dem Befund" / "fertig mit der 01"
+    new RegExp("^" + FINISH_DONE + "\\s+mit\\s+(?:dem\\s+|der\\s+)?(?:befund(?:aufnahme|erhebung)?|" + FINISH_NULL_EINS + ")" + FINISH_TAIL, "i"),
+    // "weiter zur Doku" / "weiter mit der Doku" / "weiter zur Behandlungs-Doku"
+    new RegExp("^weiter\\s+(?:zur?|mit)\\s+(?:der\\s+|die\\s+)?(?:behandlungs[\\s-]*)?doku(?:mentation)?" + FINISH_TAIL, "i"),
+  ];
+  // Quittungs-Echo ("Befund abgeschlossen — weiter zur Behandlungs-Doku."):
+  // falls es trotz Worker-/Frontend-Echo-Schutz als Segment durchkommt,
+  // hier ebenfalls als Steuer-Text erkennen -> nie Inhalt, nie Chart.
+  const RE_FINISH_ECHO = /^befund\s+abgeschlossen\b[\s.,!?;:—–-]*weiter\s+zur\s+behandlungs/i;
+
+  /** Segment ist ein "Befund fertig"-Kommando (ganzes Segment, strikt)? */
+  function schemaFinishCommand(text) {
+    const s = stripLeadFillers(text);
+    if (!s || s.length > 64) return false;
+    return RE_FINISH_LIST.some((re) => re.test(s));
+  }
+
+  /** Steuer-Text (Kommando ODER Quittungs-Echo) — beim Rebuild ueberspringen. */
+  function isFinishControlText(text) {
+    return schemaFinishCommand(text) || RE_FINISH_ECHO.test(String(text || "").trim());
+  }
+
+  /**
+   * Seitenwechsel-Entscheid fuer ein NEU eingetroffenes Kommando-Segment
+   * (Live-Push/Poll in ipad-app.html). Idempotenz: historische Segmente
+   * (aelter als der Aufnahmestart) und Re-Deliveries (at <= letzter
+   * Wechsel) schalten NICHT erneut. Voll-Rebuilds rufen das nie auf.
+   */
+  function schemaFinishShouldSwitch(text, opts) {
+    if (!schemaFinishCommand(text)) return false;
+    const o = opts || {};
+    const at = Number(o.at) || 0;
+    const started = Number(o.recStartedAt) || 0;
+    const last = Number(o.lastSwitchAt) || 0;
+    if (at && started && at < started - 5000) return false;
+    if (at && last && at <= last) return false;
+    return true;
+  }
+
   /**
    * Schema-Seite: Chart aus Segmenten NEU aufbauen (idempotent).
    * Keine Text-Boxen — Lena erwartet hier nur Ziffern + Marks.
@@ -158,6 +214,12 @@
     const texts = [];
     let pend = null; // { d: "1".."4", at: ms }
     for (const it of items) {
+      // "01 fertig"-Steuersegment (Chef 22.07.): reines Kommando — kein
+      // Chart-Inhalt, offene Einzelziffer verwerfen (Befund ist zu Ende).
+      if (isFinishControlText(it.text)) {
+        pend = null;
+        continue;
+      }
       const d = singleDigitOf(it.text);
       if (d != null) {
         if (pend && (!pend.at || !it.at || it.at - pend.at <= PAIR_WINDOW_MS)) {
@@ -564,6 +626,12 @@
         mode = null;
         continue;
       }
+      // "01 fertig"-Steuersegment (Schema-Seitenwechsel, Chef 22.07.):
+      // beim Doku-Rebuild ueberspringen — sonst laeuft "01 fertig" im
+      // Befund-Diktat-Modus als Text in die Befund-Box.
+      if (isFinishControlText(t)) {
+        continue;
+      }
       const trig = befundTrigger(t);
       if (trig) {
         mode = "befund";
@@ -879,6 +947,8 @@
     applySegments,
     applySchemaSegments,
     routeSegments,
+    schemaFinishCommand,
+    schemaFinishShouldSwitch,
     render,
     renderSchemaOnly,
     renderBoxesOnly,
