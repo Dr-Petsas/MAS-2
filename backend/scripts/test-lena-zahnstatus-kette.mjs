@@ -666,5 +666,252 @@ W.LenaDokuZahn.applySchemaSegments(stEcho, [
 check("Quittung: erzeugt keine Marks/Zaehne", stEcho.teeth.size === 1 && (stEcho.chart?.[16]?.befund || "") === "c", [...stEcho.teeth].join(","));
 check("Quittung: ist selbst KEIN Schalt-Kommando", FIN("Befund abgeschlossen — weiter zur Behandlungs-Doku.") === false, "");
 
+// 20) Loesch-Kommandos (Chef 22.07. 02:51): Reset-Marker + Einzelzahn-Loeschung
+//     wirken im VOLL-REBUILD (anders als "01 fertig", das nur live schaltet).
+const RST = W.LenaDokuZahn.schemaResetCommand;
+const DEL = W.LenaDokuZahn.toothDeleteCommand;
+check("schemaResetCommand exportiert", typeof RST === "function");
+check("toothDeleteCommand exportiert", typeof DEL === "function");
+[
+  "lösch alles", "Lösch alles.", "lösche alles", "loesch alles",
+  "alles löschen", "Alles löschen!", "alles loeschen",
+  "alles neu", "Alles neu.", "von vorne", "Von vorne.",
+  "nochmal neu", "Nochmal neu.", "noch mal neu",
+  "alles auf Anfang", "Alles auf Anfang.",
+  "So, alles löschen bitte.",
+].forEach((t) => check("Reset-Kommando: " + JSON.stringify(t), RST(t) === true, String(RST(t))));
+[
+  "alles klar", "alles gut", "16 fehlt", "neu", "nochmal bitte",
+  "von vorne nach hinten Karies", "alles beim Alten", "lösche 16",
+].forEach((t) => check("KEIN Reset: " + JSON.stringify(t), RST(t) === false, String(RST(t))));
+[
+  ["16 löschen", 16, false], ["16 löschen.", 16, false], ["lösche 16", 16, false],
+  ["Lösche die 16.", 16, false], ["16 weg", 16, false], ["Zahn 16 weg damit.", 16, false],
+  ["16 raus", 16, false], ["16 streichen", 16, false], ["entferne 16", 16, false],
+  ["eins sechs löschen", 16, false], ["sechzehn löschen", 16, false],
+  ["47 löschen", 47, false],
+  ["16 neu", 16, true], ["16 neu.", 16, true], ["16 nochmal", 16, true],
+  ["16 noch mal", 16, true], ["16 korrigieren", 16, true], ["24 nochmal", 24, true],
+].forEach(([t, fdi, rebind]) => {
+  const r = DEL(t);
+  check(
+    "Zahn-Loeschung: " + JSON.stringify(t) + " -> " + fdi + (rebind ? " (pending)" : ""),
+    !!r && r.fdi === fdi && r.rebind === rebind,
+    JSON.stringify(r),
+  );
+});
+[
+  "16 fehlt", "16 fehlt.",              // Befund f — KEIN Loeschen (Chef-Abgrenzung)
+  "nochmal bitte", "Nochmal bitte.",    // an Lena gerichtet — kein Zahn-Kommando
+  "01 fertig",                          // bleibt Seitenwechsel
+  "16 neue Füllung",                    // Diktat, kein Kommando
+  "16 Karies", "16", "löschen",
+  "Karies weg",                         // kein Zahn davor
+].forEach((t) => check("KEINE Zahn-Loeschung: " + JSON.stringify(t), DEL(t) === null, JSON.stringify(DEL(t))));
+// Rebuild-Semantik global: alles VOR dem juengsten Reset verfaellt
+const stRst = W.LenaDokuZahn.emptyState("");
+stRst.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stRst, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "17 fehlt", startMs: 2000 },
+  { text: "lösch alles", startMs: 3000 },
+  { text: "24 Füllung", startMs: 4000 },
+]);
+check("Reset-Rebuild: nur 24 uebrig", stRst.teeth.size === 1 && stRst.teeth.has(24), [...stRst.teeth].join(","));
+check("Reset-Rebuild: 16 leer", !(stRst.chart?.[16]?.befund || ""), JSON.stringify(stRst.chart?.[16]));
+check("Reset-Rebuild: 24 = fu", (stRst.chart?.[24]?.befund || "").includes("fu"), JSON.stringify(stRst.chart?.[24]));
+// Reset als LETZTES Segment: Chart komplett leer
+const stRst2 = W.LenaDokuZahn.emptyState("");
+stRst2.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stRst2, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "alles auf Anfang", startMs: 2000 },
+]);
+check("Reset-Rebuild: am Ende -> leer", stRst2.teeth.size === 0 && !(stRst2.values.zaehne || ""), stRst2.values.zaehne);
+// Zwei Resets: der JUENGSTE zaehlt
+const stRst3 = W.LenaDokuZahn.emptyState("");
+stRst3.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stRst3, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "von vorne", startMs: 2000 },
+  { text: "17 Krone", startMs: 3000 },
+  { text: "alles neu", startMs: 4000 },
+  { text: "34 fehlt", startMs: 5000 },
+]);
+check("Reset-Rebuild: juengster Reset gewinnt", stRst3.teeth.size === 1 && stRst3.teeth.has(34), [...stRst3.teeth].join(","));
+// Einzelzahn: fruehere Marks des Zahns verfallen, andere bleiben
+const stDel = W.LenaDokuZahn.emptyState("");
+stDel.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stDel, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "17 fehlt", startMs: 2000 },
+  { text: "16 löschen", startMs: 3000 },
+]);
+check("Zahn-Loeschung: 16 leer, 17 bleibt",
+  !(stDel.chart?.[16]?.befund || "") && (stDel.chart?.[17]?.befund || "") === "f",
+  JSON.stringify([stDel.chart?.[16], stDel.chart?.[17]]));
+check("Zahn-Loeschung: 16 nicht mehr genannt", !stDel.teeth.has(16) && stDel.teeth.has(17), [...stDel.teeth].join(","));
+// "16 neu": Zahn bleibt pending, naechste Code-Ansage bindet an ihn
+const stRedo = W.LenaDokuZahn.emptyState("");
+stRedo.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stRedo, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "16 neu", startMs: 2000 },
+  { text: "Teleskopkrone", startMs: 3000 },
+]);
+check("16 neu: alte Marks weg, neue Ansage bindet an 16",
+  (stRedo.chart?.[16]?.befund || "") === "t", JSON.stringify(stRedo.chart?.[16]));
+check("16 neu: Zahn bleibt pending/genannt", stRedo.teeth.has(16) && stRedo.lastChartFdi === 16, String(stRedo.lastChartFdi));
+// Nach spaeterem Diktat an anderem Zahn wieder normal
+const stDel2 = W.LenaDokuZahn.emptyState("");
+stDel2.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stDel2, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "16 löschen", startMs: 2000 },
+  { text: "16 Krone", startMs: 3000 },
+]);
+check("Nach Loeschung neu diktierbar: 16 = k", (stDel2.chart?.[16]?.befund || "") === "k", JSON.stringify(stDel2.chart?.[16]));
+// Loesch-Quittungen sind Steuer-Text: nie Inhalt, nie Zaehne
+const stQ = W.LenaDokuZahn.emptyState("");
+stQ.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stQ, [
+  { text: "17 fehlt", startMs: 1000 },
+  { text: "Eins sechs: gelöscht.", startMs: 2000 },
+  { text: "Alles gelöscht — von vorne.", startMs: 3000 },
+]);
+check("Loesch-Quittungen: keine Zaehne/kein Reset", stQ.teeth.size === 1 && stQ.teeth.has(17) && (stQ.chart?.[17]?.befund || "") === "f", [...stQ.teeth].join(","));
+// Doku-Rebuild: Reset + Loeschung wirken auch dort, Kommandos nie in Boxen
+const stDokuDel = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stDokuDel, [
+  { text: "Befund" },
+  { text: "16 Karies" },
+  { text: "46 fehlt" },
+  { text: "16 löschen" },
+]);
+check("Doku-Rebuild: 16 geloescht, 46 bleibt",
+  !(stDokuDel.chart?.[16]?.befund || "") && (stDokuDel.chart?.[46]?.befund || "") === "f",
+  JSON.stringify([stDokuDel.chart?.[16], stDokuDel.chart?.[46]]));
+check("Doku-Rebuild: '16 löschen' NICHT in Boxen",
+  !Object.values(stDokuDel.values).some((v) => String(v).includes("löschen")), "");
+const stDokuRst = W.LenaDokuZahn.emptyState("");
+W.LenaDokuZahn.applySegments(stDokuRst, [
+  { text: "Befund" },
+  { text: "16 Karies" },
+  { text: "lösch alles" },
+  { text: "Befund" },
+  { text: "24 Füllung" },
+]);
+check("Doku-Rebuild: Reset verwirft Aelteres (16 weg, 24 da)",
+  !(stDokuRst.chart?.[16]?.befund || "") && !!(stDokuRst.chart?.[24]?.befund || ""),
+  JSON.stringify([stDokuRst.chart?.[16], stDokuRst.chart?.[24]]));
+check("Doku-Rebuild: '16 Karies' vor Reset NICHT im Befund-Text",
+  !(stDokuRst.values.befund || "").includes("16 Karies"), stDokuRst.values.befund);
+// Idempotenz: zweiter Rebuild derselben Liste = identisches Chart
+const snapA = W.LenaVoiceChart.chartEchoSnapshot(stDel.chart);
+const stDelB = W.LenaDokuZahn.emptyState("");
+stDelB.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stDelB, [
+  { text: "16 Karies", startMs: 1000 },
+  { text: "17 fehlt", startMs: 2000 },
+  { text: "16 löschen", startMs: 3000 },
+]);
+check("Loeschung idempotent (Rebuild = Rebuild)",
+  JSON.stringify(snapA) === JSON.stringify(W.LenaVoiceChart.chartEchoSnapshot(stDelB.chart)), "");
+
+// 21) Rueckfragen bei Unverstandenem (Chef 22.07.: "16 was?" / "nochmal bitte")
+const CLA = W.LenaDokuZahn.schemaClarifyAnalyze;
+const CLT = W.LenaDokuZahn.clarifyQuestionText;
+check("schemaClarifyAnalyze exportiert", typeof CLA === "function");
+// Zahn + unparsebarer Rest -> Zahn-Rueckfrage
+[
+  ["16 Kordelblubb.", 16], ["16 was", 16], ["Zahn 24 irgendwas Unklares", 24],
+  ["47 Mumpitz", 47],
+].forEach(([t, fdi]) => {
+  const r = CLA(t);
+  check("Rueckfrage Zahn: " + JSON.stringify(t), !!r && r.ask === "tooth" && r.fdi === fdi, JSON.stringify(r));
+});
+check("Wortlaut Zahn-Rueckfrage", CLT(CLA("16 Kordelblubb")) === "Eins sechs — was genau?", CLT(CLA("16 Kordelblubb")));
+// Gar nichts erkannt -> "Nochmal bitte?"
+[
+  "blabla unfug", "Der Hansel klingt komisch heute",
+].forEach((t) => {
+  const r = CLA(t);
+  check("Rueckfrage Wiederholung: " + JSON.stringify(t), !!r && r.ask === "repeat", JSON.stringify(r));
+});
+check("Wortlaut Wiederholung", CLT({ ask: "repeat" }) === "Nochmal bitte?", CLT({ ask: "repeat" }));
+// KEINE Rueckfrage bei: verstandenem Diktat, blossen Zahn-Ansagen,
+// Einzelziffern (Paarung!), Steuer-/Quittungstexten, Floskeln, Systemfragen
+[
+  "16 Karies", "16 mesial", "17 fehlt", "Teleskopkrone",
+  "Zahn 16.", "16 und 17", "16", "Vier.", "Sechs.",
+  "01 fertig", "lösch alles", "16 löschen", "16 neu",
+  "Eins sechs: gelöscht.", "Alles gelöscht — von vorne.",
+  "Eins sechs — was genau?", "Nochmal bitte?",
+  "Befund abgeschlossen — weiter zur Behandlungs-Doku.",
+  "Gut.", "Okay.", "Danke.", "Moment mal.", "Hörst du mich?",
+].forEach((t) => check("KEINE Rueckfrage: " + JSON.stringify(t), CLA(t) === null, JSON.stringify(CLA(t))));
+// Rueckfragen-Texte sind Steuer-Text: erzeugen im Rebuild nichts
+const stCla = W.LenaDokuZahn.emptyState("");
+stCla.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stCla, [
+  { text: "17 fehlt", startMs: 1000 },
+  { text: "Eins sechs — was genau?", startMs: 2000 },
+  { text: "Nochmal bitte?", startMs: 3000 },
+]);
+check("Rueckfragen-Echo: keine Zaehne/Marks", stCla.teeth.size === 1 && stCla.teeth.has(17), [...stCla.teeth].join(","));
+// Pending-Bindung nach Zahn-Rueckfrage: "16 Unfug" benennt 16, naechste
+// Code-Ansage bindet per Carry-over an 16 (allowBareNouns im Schema).
+const stBind = W.LenaDokuZahn.emptyState("");
+stBind.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stBind, [
+  { text: "16 Kordelblubb", startMs: 1000 },
+  { text: "Teleskopkrone", startMs: 2000 },
+]);
+check("Pending-Bindung: 16 -> Teleskopkrone", (stBind.chart?.[16]?.befund || "") === "t", JSON.stringify(stBind.chart?.[16]));
+check("Pending-Bindung: kein Geister-Inhalt aus 'Kordelblubb'",
+  Object.keys(W.LenaVoiceChart.chartEchoSnapshot(stBind.chart)).length === 1, "");
+
+// 22) Echo-Buendelung (Chef 22.07.: "wiederholungen sind unvollstaendig")
+const MRG = W.LenaVoiceChart.mergeEchoDiffs;
+check("mergeEchoDiffs exportiert", typeof MRG === "function");
+{
+  const a = { added: [{ fdi: 13, codes: ["f"] }], namedOnly: [27] };
+  const b = { added: [{ fdi: 14, codes: ["f"] }, { fdi: 27, codes: ["k"] }], namedOnly: [33] };
+  const m = MRG(a, b);
+  check("Merge: added vereint", m.added.length === 3, JSON.stringify(m.added));
+  check("Merge: 27 wandert von namedOnly zu added", !m.namedOnly.includes(27) && m.added.some((e) => e.fdi === 27), JSON.stringify(m));
+  check("Merge: namedOnly 33 bleibt", m.namedOnly.includes(33), JSON.stringify(m.namedOnly));
+  check("Merge: null-sicher", MRG(null, a) === a && MRG(a, null) === a && MRG(null, null) === null, "");
+  const m2 = MRG({ added: [{ fdi: 16, codes: ["c"] }] }, { added: [{ fdi: 16, codes: ["cd"] }] });
+  check("Merge: codes je Zahn vereint", m2.added.length === 1 && m2.added[0].codes.join(",") === "c,cd", JSON.stringify(m2.added));
+}
+// Bereichs-Sprechweise: Serie -> "eins drei bis eins sieben"
+{
+  const t = W.LenaVoiceChart.buildEchoText({
+    added: [13, 14, 15, 16, 17].map((f) => ({ fdi: f, codes: ["f"] })).concat([{ fdi: 27, codes: ["k"] }]),
+    namedOnly: [],
+  });
+  check("Buendel-Echo: Bereich + Einzelbefund",
+    t === "Eins drei bis eins sieben: fehlt. Zwei sieben: Krone.", t);
+  // Loop-Sicherheit: Bereichs-Echo darf beim Wieder-Einspeisen NICHTS Neues markieren
+  const chB = W.LenaVoiceChart.emptyChart();
+  W.LenaVoiceChart.applySegments(chB, [
+    { text: "13 14 15 16 17 fehlen", forceLayer: "befund" },
+    { text: "27 Krone", forceLayer: "befund" },
+  ]);
+  const snapB1 = JSON.stringify(W.LenaVoiceChart.chartEchoSnapshot(chB));
+  W.LenaVoiceChart.applySegments(chB, [
+    { text: "13 14 15 16 17 fehlen", forceLayer: "befund" },
+    { text: "27 Krone", forceLayer: "befund" },
+    { text: t, forceLayer: "befund" },
+  ]);
+  check("Buendel-Echo: loop-sicher (keine neuen Marks)",
+    snapB1 === JSON.stringify(W.LenaVoiceChart.chartEchoSnapshot(chB)), "");
+  // Zahnloser Kiefer bleibt kompakt
+  const all = [...K.ALL_FDI].map((f) => ({ fdi: f, codes: ["f"] }));
+  check("Buendel-Echo: 32x fehlt -> 'Mehrere Zähne: fehlt.'",
+    W.LenaVoiceChart.buildEchoText({ added: all, namedOnly: [] }) === "Mehrere Zähne: fehlt.", "");
+}
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

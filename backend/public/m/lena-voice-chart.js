@@ -427,8 +427,14 @@
     return String(code || "").toLowerCase();
   }
 
-  function applySegments(chart, segments) {
-    let last = null;
+  /**
+   * startLast (optional): Carry-over-Zahn aus einem frueheren Chunk —
+   * die Loesch-Kommandos (Chef 22.07.) bauen das Chart in Abschnitten
+   * ("16 neu" -> Zelle leeren, danach bindet die naechste Code-Ansage
+   * wieder an 16). Ohne drittes Argument byte-identisches Verhalten.
+   */
+  function applySegments(chart, segments, startLast) {
+    let last = startLast || null;
     let lastMark = null;
     parseSegments(segments).forEach((ev) => {
       last = mergeEvent(chart, ev, last);
@@ -443,6 +449,12 @@
       else delete chart._lastMark;
     }
     return last;
+  }
+
+  /** Loesch-Kommando "16 loeschen" (Chef 22.07.): Zelle komplett leeren. */
+  function resetTooth(chart, fdi) {
+    if (!chart || !chart[fdi]) return;
+    chart[fdi] = emptyCell();
   }
 
   /** Kurztext für Summary-Zeile / Zahn-Badge (Therapie vor Befund). */
@@ -615,10 +627,55 @@
   }
 
   /**
+   * Zwei Echo-Diffs vereinen (Sammel-Puffer, Chef 22.07.: bei schneller
+   * Diktat-Serie darf kein committeter Befund unquittiert verfallen).
+   * codes je Zahn = Union; namedOnly ohne Zaehne, die inzwischen Marks haben.
+   */
+  function mergeEchoDiffs(a, b) {
+    if (!a) return b || null;
+    if (!b) return a;
+    const byFdi = new Map();
+    (a.added || []).concat(b.added || []).forEach((e) => {
+      if (!e || !e.fdi) return;
+      const cur = byFdi.get(Number(e.fdi)) || [];
+      (e.codes || []).forEach((c) => { if (c && !cur.includes(c)) cur.push(c); });
+      byFdi.set(Number(e.fdi), cur);
+    });
+    const added = [...byFdi.entries()]
+      .map(([fdi, codes]) => ({ fdi, codes }))
+      .sort((x, y) => x.fdi - y.fdi);
+    const namedSet = new Set(
+      (a.namedOnly || []).concat(b.namedOnly || []).map(Number),
+    );
+    const namedOnly = [...namedSet].filter((f) => !byFdi.has(f)).sort((x, y) => x - y);
+    return { added, namedOnly };
+  }
+
+  /**
+   * Aufeinanderfolgende FDIs als Bereich sprechen: [13,14,15,16,17] ->
+   * "eins drei bis eins sieben" (Chef 22.07.: gebuendelte Echos). Nie
+   * Zahlwoerter wie "dreizehn" — die wuerden als FDI zurueckparsen.
+   */
+  function spokenTeethParts(K, teeth) {
+    const list = [...new Set((teeth || []).map(Number))].sort((a, b) => a - b);
+    const parts = [];
+    let i = 0;
+    while (i < list.length) {
+      let j = i;
+      while (j + 1 < list.length && list[j + 1] === list[j] + 1) j++;
+      if (j - i >= 2) parts.push(K.spokenFdi(list[i]) + " bis " + K.spokenFdi(list[j]));
+      else for (let k = i; k <= j; k++) parts.push(K.spokenFdi(list[k]));
+      i = j + 1;
+    }
+    return parts;
+  }
+
+  /**
    * Diff -> gesprochener Echo-Text. Zahnnummern als Einzelziffern
    * ("zwei sieben", Dental-Konvention), Kuerzel als Klartext.
    * "27 Fuellung" -> "Zwei sieben: Füllung."
-   * ">6 Zaehne gleicher Befund" -> "Mehrere Zähne: fehlt." (NIE Zahlwoerter
+   * Serien als Bereich: "Eins drei bis eins sieben: fehlt."
+   * Viele verstreute Zaehne -> "Mehrere Zähne: fehlt." (NIE Zahlwoerter
    * wie "sechzehn Zaehne" — die wuerden beim Wieder-Einspeisen als FDI parsen).
    */
   function buildEchoText(diff) {
@@ -634,14 +691,17 @@
     });
     groups.forEach((g) => {
       const label = g.codes.map((c) => K.speechLabelOf(c)).join(" und ");
-      const teethTxt = g.teeth.length > 6
+      const spoken = spokenTeethParts(K, g.teeth);
+      // Bis zu 2 Bereichs-/Einzel-Teile immer sprechen; sonst ab 7 Zaehnen
+      // zusammenfassen (zahnloser Kiefer bleibt "Mehrere Zähne: fehlt.").
+      const teethTxt = (spoken.length > 2 && g.teeth.length > 6)
         ? "mehrere Zähne"
-        : g.teeth.map((f) => K.spokenFdi(f)).join(", ");
+        : spoken.join(", ");
       parts.push(cap(teethTxt) + ": " + label + ".");
     });
-    const named = (diff.namedOnly || []).slice(0, 4);
+    const named = spokenTeethParts(K, diff.namedOnly || []).slice(0, 4);
     if (named.length) {
-      parts.push(cap(named.map((f) => K.spokenFdi(f)).join(", ")) + ".");
+      parts.push(cap(named.join(", ")) + ".");
     }
     return parts.join(" ");
   }
@@ -672,6 +732,7 @@
     emptyChart,
     mergeEvent,
     applySegments,
+    resetTooth,
     badge,
     summaryLines,
     renderSchemaHtml,
@@ -679,6 +740,7 @@
     legendHtml,
     chartEchoSnapshot,
     diffChartForEcho,
+    mergeEchoDiffs,
     buildEchoText,
   };
 })(typeof window !== "undefined" ? window : globalThis);

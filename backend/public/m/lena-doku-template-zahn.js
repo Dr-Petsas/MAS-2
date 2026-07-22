@@ -186,6 +186,215 @@
     return true;
   }
 
+  /* ── Loesch-Kommandos (Chef 22.07. 02:51) ────────────────────────────────
+     Steuer-Segmente wie "01 fertig", ABER mit Rebuild-Wirkung: der Voll-
+     Rebuild wertet sie aus — Reset-Marker verwirft alles Aeltere, Zahn-
+     Loeschung ueberspringt fruehere Marks des Zahns. Die Kommandos selbst
+     erzeugen NIE Inhalt. Abgrenzung: "16 fehlt" ist BEFUND f, kein
+     Loeschen; "nochmal bitte" (an Lena) ist kein Zahn-Kommando. */
+  const RESET_TAIL = "(?:\\s+bitte)?[\\s.,!?;:]*$";
+  const RE_RESET_LIST = [
+    // "lösch alles" / "lösche mal alles"
+    new RegExp("^l(?:\u00f6|oe)sche?\\s+(?:mal\\s+)?alles" + RESET_TAIL, "i"),
+    // "alles löschen"
+    new RegExp("^alles\\s+l(?:\u00f6|oe)schen" + RESET_TAIL, "i"),
+    // "alles neu" / "alles wieder neu machen"
+    new RegExp("^alles\\s+(?:wieder\\s+)?neu(?:\\s+machen)?" + RESET_TAIL, "i"),
+    // "von vorne" / "wir fangen von vorne an"
+    new RegExp("^(?:wir\\s+fangen\\s+|fangen\\s+wir\\s+)?von\\s+vorne?(?:\\s+an(?:fangen)?|\\s+beginnen)?" + RESET_TAIL, "i"),
+    // "nochmal neu" / "noch mal ganz von vorne"
+    new RegExp("^noch\\s*mal\\s+(?:ganz\\s+)?(?:neu|von\\s+vorne?)" + RESET_TAIL, "i"),
+    // "alles auf Anfang"
+    new RegExp("^alles\\s+auf\\s+anfang" + RESET_TAIL, "i"),
+  ];
+
+  /** Segment ist ein globales Reset-Kommando ("loesch alles")? */
+  function schemaResetCommand(text) {
+    const s = stripLeadFillers(text);
+    if (!s || s.length > 48) return false;
+    return RE_RESET_LIST.some((re) => re.test(s));
+  }
+
+  const DEL_FDI = "([1-4][1-8])";
+  const DEL_SEP = "[\\s,;:.—–-]+";
+  // Loesch-Verben: "fehlt" fehlt hier BEWUSST (Befund f, kein Kommando).
+  const RE_TOOTH_DEL_LIST = [
+    // "16 löschen" / "Zahn 16 weg" / "die 16 raus" / "16 streichen"
+    new RegExp("^(?:zahn\\s+)?(?:der\\s+|die\\s+|den\\s+)?" + DEL_FDI + "(?:\\s+(?:wieder|bitte))?" + DEL_SEP + "(?:l(?:\u00f6|oe)schen?|weg(?:\\s+damit)?|raus|entfernen|streichen)" + RESET_TAIL, "i"),
+    // "lösche 16" / "entferne Zahn 16" / "streich die 16"
+    new RegExp("^(?:l(?:\u00f6|oe)sche?|entferne?|streiche?)\\s+(?:mal\\s+)?(?:zahn\\s+)?(?:der\\s+|die\\s+|den\\s+)?" + DEL_FDI + RESET_TAIL, "i"),
+  ];
+  const RE_TOOTH_REDO_LIST = [
+    // "16 neu" / "16 nochmal" / "16 korrigieren" -> loeschen + Zahn pending
+    new RegExp("^(?:zahn\\s+)?(?:der\\s+|die\\s+|den\\s+)?" + DEL_FDI + DEL_SEP + "(?:neu|noch\\s*mals?|korrigier(?:en)?|korrektur)" + RESET_TAIL, "i"),
+  ];
+
+  /**
+   * Segment ist ein Einzelzahn-Loesch-Kommando?
+   * @returns { fdi, rebind } | null — rebind=true ("16 neu"/"16 nochmal"):
+   * Zahn bleibt pending, die naechste Code-Ansage bindet an ihn.
+   */
+  function toothDeleteCommand(text) {
+    const KAT = global.LenaZahnstatusKatalog;
+    let s = stripLeadFillers(text);
+    if (!s || s.length > 48) return null;
+    // "eins sechs löschen" -> "16 löschen", "sechzehn löschen" -> "16 löschen"
+    if (KAT && KAT.normalizeToothText) s = KAT.normalizeToothText(s);
+    if (KAT && KAT.WORD_FDI) {
+      s = s.replace(/[a-z\u00e4\u00f6\u00fc\u00df]+/gi, (w) => {
+        const f = KAT.WORD_FDI[w.toLowerCase()];
+        return f ? String(f) : w;
+      });
+    }
+    for (const re of RE_TOOTH_REDO_LIST) {
+      const m = re.exec(s);
+      if (m) return { fdi: Number(m[1]), rebind: true };
+    }
+    for (const re of RE_TOOTH_DEL_LIST) {
+      const m = re.exec(s);
+      if (m) return { fdi: Number(m[1]), rebind: false };
+    }
+    return null;
+  }
+
+  // Quittungen/Rueckfragen der Loesch-/Klaer-Strecke: Steuer-Text — falls
+  // sie trotz Echo-Schutz als Segment landen, nie Inhalt ("Eins sechs:
+  // gelöscht." wuerde sonst beim Rebuild Zahn 16 wieder benennen).
+  const CTRL_Q = "(?:eins|zwei|zwo|drei|vier)\\s+(?:eins|zwei|zwo|drei|vier|f(?:\u00fc|ue)nf|sechs|sieben|acht)";
+  const RE_CONTROL_ECHOES = [
+    new RegExp("^alles\\s+gel(?:\u00f6|oe)scht\\b", "i"),
+    new RegExp("^" + CTRL_Q + "\\s*[:,]?\\s*gel(?:\u00f6|oe)scht\\b", "i"),
+    new RegExp("^" + CTRL_Q + "\\s*[—–:,-]*\\s*was\\s+genau\\b", "i"),
+    new RegExp("^noch\\s*mal\\s+bitte\\b", "i"),
+  ];
+
+  function isControlEchoText(text) {
+    const s = String(text || "").trim();
+    return RE_CONTROL_ECHOES.some((re) => re.test(s));
+  }
+
+  /** Steuer-Text JEDER Art (Kommandos, Quittungen, Rueckfragen). */
+  function isControlOrReceiptText(text) {
+    return (
+      isFinishControlText(text) ||
+      schemaResetCommand(text) ||
+      !!toothDeleteCommand(text) ||
+      isControlEchoText(text)
+    );
+  }
+
+  /**
+   * Chart-Aufbau mit Loesch-Marken: Segmente in Abschnitten anwenden; bei
+   * { del: { fdi, rebind } } die Zelle leeren. rebind=true macht den Zahn
+   * zum Carry-over — die naechste Code-Ansage bindet wieder an ihn.
+   */
+  function buildChartWithDeletes(chart, ops) {
+    const VC = global.LenaVoiceChart;
+    if (!VC || !chart) return null;
+    let last = null;
+    let chunk = [];
+    const flush = () => {
+      if (!chunk.length) return;
+      last = VC.applySegments(chart, chunk, last);
+      chunk = [];
+    };
+    for (const op of ops) {
+      if (op && op.del) {
+        flush();
+        if (VC.resetTooth) VC.resetTooth(chart, op.del.fdi);
+        // Legenden-Flash nicht auf einem geloeschten Mark stehen lassen.
+        if (chart._lastMark && Number(chart._lastMark.fdi) === Number(op.del.fdi)) {
+          delete chart._lastMark;
+        }
+        last = op.del.rebind ? op.del.fdi : null;
+        continue;
+      }
+      chunk.push(op);
+    }
+    flush();
+    return last;
+  }
+
+  /* ── Rueckfragen bei Unverstandenem (Chef 22.07. 02:51) ──────────────────
+     Zahn erkannt, Rest unparsebar -> "Eins sechs — was genau?" (Zahn bleibt
+     als genannt/pending stehen, die naechste Code-Ansage bindet per
+     Carry-over an ihn). Gar nichts erkannt -> "Nochmal bitte?" (Rate-Limit
+     liegt beim Aufrufer). NIE fragen bei Steuer-/Quittungstexten,
+     Einzelziffern (Paarung!), System-Nachfragen oder Hoeflichkeitsfloskeln. */
+  const CLARIFY_IGNORE_RE =
+    /^(?:ja|nein|genau|gut|danke(?:\s+sch(?:\u00f6|oe)n)?|bitte|moment(?:\s+mal)?|warte(?:\s+mal)?|wie\s+bitte|okay|ok|super|prima|passt(?:\s+so)?|alles\s+klar|weiter|stopp?|pause)[\s.,!?]*$/i;
+  const CLARIFY_FILLER = new Set([
+    "zahn", "der", "die", "das", "den", "dem", "und", "auch", "bitte", "so",
+    "ok", "okay", "ja", "jetzt", "dann", "mal", "noch", "am", "an", "ist",
+    "mit", "haben", "hat", "wir", "bis",
+  ]);
+
+  /** Woerter, die nach Abzug von Zahn-Tokens/Fuellern uebrig bleiben. */
+  function clarifyRestWords(s, KAT) {
+    let t = KAT && KAT.normalizeToothText ? KAT.normalizeToothText(s) : s;
+    t = String(t).toLowerCase();
+    t = t.replace(/[1-4][1-8]/g, " ");
+    t = t.replace(/\b[1-8]\b/g, " ");
+    let n = 0;
+    for (const w of t.split(/[^a-z\u00e4\u00f6\u00fc\u00df]+/i)) {
+      if (!w) continue;
+      if (CLARIFY_FILLER.has(w)) continue;
+      if (DIGIT_WORD_LOCAL[w]) continue; // "eins", "sechs", ...
+      if (KAT && KAT.WORD_FDI && KAT.WORD_FDI[w]) continue; // "sechzehn"
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * Rueckfrage-Analyse fuer ein frisches Schema-Segment.
+   * @returns { ask: "tooth", fdi } | { ask: "repeat" } | null
+   */
+  function schemaClarifyAnalyze(text) {
+    const KAT = global.LenaZahnstatusKatalog;
+    const VC = global.LenaVoiceChart;
+    if (!VC || !VC.extractFdi) return null;
+    const raw = String(text || "").trim();
+    if (!raw) return null;
+    const garble = KAT && (KAT.schemaSpeechGarble || KAT.speechGarbleCorrect)
+      ? (KAT.schemaSpeechGarble || KAT.speechGarbleCorrect)
+      : (t) => t;
+    const alias = KAT && KAT.schemaDigitAlias ? KAT.schemaDigitAlias : (t) => t;
+    const s = alias(garble(raw));
+    if (isControlOrReceiptText(s) || isControlOrReceiptText(raw)) return null;
+    if (singleDigitOf(s) != null) return null;
+    if (SYSTEM_CHATTER_RE.test(s)) return null;
+    const stripped = stripLeadFillers(s);
+    if (!stripped || CLARIFY_IGNORE_RE.test(stripped)) return null;
+    const codes = VC.extractCodes(stripped);
+    const surfaces = VC.extractSurfaces ? VC.extractSurfaces(stripped) : [];
+    if (codes.length || surfaces.length) return null; // etwas wurde verstanden
+    const teeth = VC.extractFdi(stripped);
+    if (teeth.length) {
+      // Blosse Zahn-Ansagen ("16.", "Zahn 16 und 17") sind normal — nur
+      // fragen, wenn nach den Zahn-Tokens echter Resttext steht.
+      if (clarifyRestWords(stripped, KAT) > 0) {
+        return { ask: "tooth", fdi: teeth[teeth.length - 1] };
+      }
+      return null;
+    }
+    const words = stripped.split(/\s+/).filter((w) => /[a-z\u00e4\u00f6\u00fc\u00df]/i.test(w));
+    if (words.length >= 2) return { ask: "repeat" };
+    return null;
+  }
+
+  /** Rueckfrage-Wortlaut zum Analyse-Ergebnis ("" wenn keine Frage). */
+  function clarifyQuestionText(res) {
+    if (!res || !res.ask) return "";
+    if (res.ask === "tooth") {
+      const KAT = global.LenaZahnstatusKatalog;
+      const spoken = KAT && KAT.spokenFdi ? KAT.spokenFdi(res.fdi) : String(res.fdi);
+      return spoken.charAt(0).toUpperCase() + spoken.slice(1) + " — was genau?";
+    }
+    if (res.ask === "repeat") return "Nochmal bitte?";
+    return "";
+  }
+
   /**
    * Schema-Seite: Chart aus Segmenten NEU aufbauen (idempotent).
    * Keine Text-Boxen — Lena erwartet hier nur Ziffern + Marks.
@@ -220,6 +429,26 @@
         pend = null;
         continue;
       }
+      // Globales Reset ("lösch alles", Chef 22.07. 02:51): alles VOR dem
+      // juengsten Reset verfaellt — der Rebuild beginnt dort von vorne.
+      if (schemaResetCommand(it.text)) {
+        texts.length = 0;
+        pend = null;
+        continue;
+      }
+      // Einzelzahn-Loeschung ("16 löschen" / "16 neu"): als Marker in den
+      // Ablauf einreihen — beim Chart-Aufbau verfallen fruehere Marks.
+      const del = toothDeleteCommand(it.text);
+      if (del) {
+        texts.push({ del });
+        pend = null;
+        continue;
+      }
+      // Quittungen/Rueckfragen (falls je als Segment committet): nie Inhalt.
+      if (isControlEchoText(it.text)) {
+        pend = null;
+        continue;
+      }
       const d = singleDigitOf(it.text);
       if (d != null) {
         if (pend && (!pend.at || !it.at || it.at - pend.at <= PAIR_WINDOW_MS)) {
@@ -246,15 +475,26 @@
       state.status.zaehne = "empty";
       return state;
     }
+    // Reihenfolge-treu: eine Loeschung entfernt den Zahn auch aus der
+    // "genannt"-Menge; "16 neu" laesst ihn als pending (tuerkis) stehen.
     for (const t of texts) {
+      if (typeof t === "object" && t && t.del) {
+        state.teeth.delete(t.del.fdi);
+        if (t.del.rebind) state.teeth.add(t.del.fdi);
+        continue;
+      }
       for (const z of extractTeeth(t)) state.teeth.add(z);
     }
     if (state.chart && global.LenaVoiceChart) {
       // Schema-Seite ist REINE Befundaufnahme (Chef 21.07.): alles in die
       // B-Zeile zwingen — "17 Fuellung" ist hier Bestand, keine Therapie.
-      const last = global.LenaVoiceChart.applySegments(
+      const last = buildChartWithDeletes(
         state.chart,
-        texts.map((t) => ({ text: t, forceLayer: "befund" })),
+        texts.map((t) => (
+          typeof t === "object" && t && t.del
+            ? t
+            : { text: t, forceLayer: "befund" }
+        )),
       );
       if (last) {
         state.lastChartFdi = last;
@@ -626,10 +866,17 @@
         mode = null;
         continue;
       }
-      // "01 fertig"-Steuersegment (Schema-Seitenwechsel, Chef 22.07.):
-      // beim Doku-Rebuild ueberspringen — sonst laeuft "01 fertig" im
-      // Befund-Diktat-Modus als Text in die Befund-Box.
-      if (isFinishControlText(t)) {
+      // Steuer-Segmente (Seitenwechsel "01 fertig", Reset, Quittungen/
+      // Rueckfragen): beim Doku-Rebuild ueberspringen — sonst laeuft z. B.
+      // "01 fertig" im Befund-Diktat-Modus als Text in die Befund-Box.
+      if (isFinishControlText(t) || schemaResetCommand(t) || isControlEchoText(t)) {
+        continue;
+      }
+      // Einzelzahn-Loeschung: kein Box-Inhalt, aber als Marker weiterreichen —
+      // der Chart-Aufbau wendet sie reihenfolge-treu an (buildChartWithDeletes).
+      const delCmd = toothDeleteCommand(t);
+      if (delCmd) {
+        routed.push({ text: "", forced: false, del: delCmd });
         continue;
       }
       const trig = befundTrigger(t);
@@ -660,9 +907,17 @@
     if (state.page === "schema") {
       return applySchemaSegments(state, segments);
     }
-    const texts = (segments || [])
+    let texts = (segments || [])
       .map((s) => String(s.text || s.textCorrected || "").trim())
       .filter(Boolean);
+    // Globales Reset ("lösch alles") gilt auch fuer den Doku-Rebuild:
+    // alles vor dem juengsten Reset verfaellt (Chart UND Boxen).
+    for (let i = texts.length - 1; i >= 0; i--) {
+      if (schemaResetCommand(texts[i])) {
+        texts = texts.slice(i + 1);
+        break;
+      }
+    }
     if (!texts.length) {
       state.dictMode = null;
       return state;
@@ -678,15 +933,19 @@
     state.teeth = new Set();
     state.lastChartFdi = null;
     for (const r of routed) {
+      if (r.del) {
+        state.teeth.delete(r.del.fdi);
+        if (r.del.rebind) state.teeth.add(r.del.fdi);
+        continue;
+      }
       for (const z of extractTeeth(r.text)) state.teeth.add(z);
     }
     if (global.LenaVoiceChart) {
       state.chart = global.LenaVoiceChart.emptyChart();
-      const chartSegs = routed.map((r) => ({
-        text: r.text,
-        forceLayer: r.forced ? "befund" : "",
-      }));
-      const last = global.LenaVoiceChart.applySegments(state.chart, chartSegs);
+      const chartSegs = routed.map((r) => (
+        r.del ? { del: r.del } : { text: r.text, forceLayer: r.forced ? "befund" : "" }
+      ));
+      const last = buildChartWithDeletes(state.chart, chartSegs);
       if (last) {
         state.lastChartFdi = last;
         state.teeth.add(last);
@@ -708,6 +967,7 @@
 
     // Befund / Therapie / Diagnose
     for (const r of routed) {
+      if (r.del) continue; // Loesch-Marker: nie Box-Inhalt
       const t = r.text;
       if (r.forced) {
         // Befund-Diktat: JEDES Segment in die Befund-Box (Chef 21.07.),
@@ -949,6 +1209,11 @@
     routeSegments,
     schemaFinishCommand,
     schemaFinishShouldSwitch,
+    schemaResetCommand,
+    toothDeleteCommand,
+    isControlOrReceiptText,
+    schemaClarifyAnalyze,
+    clarifyQuestionText,
     render,
     renderSchemaOnly,
     renderBoxesOnly,

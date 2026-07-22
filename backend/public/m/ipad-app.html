@@ -1736,9 +1736,35 @@
     els.calling.textContent = device?.operatorName ? `Hallo ${device.operatorName}` : "Sprechzimmer";
     render();
 
+    // Rest-Artefakt beim Aufnahme-Start (Chef 22.07. 01:45): der Worker
+    // bricht laufende Rede zwar ab (set_app_mode doku -> cancel_in_flight +
+    // audio_source.clear_queue), aber Audio, das schon im WebRTC-/Browser-
+    // Puffer liegt (~0,3-1 s, z. B. eine gerade angelaufene Begruessung),
+    // spielt am iPad TROTZDEM aus. Log-Beleg 21.07. 22:49: "greeting:
+    // dispatching" um 34,770, "set_app_mode: clara -> doku" erst um 35,092.
+    // Fix: beim Aufnahme-Start kurz stumm schalten, bis die Bereit-Ansage
+    // kommt (audio_state=speaking) oder der Sicherheits-Timeout ablaeuft.
+    // BEWUSST kein Dauer-Mute (Vorfall Souffleuse: els.audio.muted blieb an).
+    let hushTimer = 0;
+    let hushActive = false;
+    function hushAgentAudio(maxMs) {
+      try {
+        els.audio.muted = true;
+        hushActive = true;
+        if (hushTimer) clearTimeout(hushTimer);
+        hushTimer = setTimeout(unhushAgentAudio, Math.max(300, Number(maxMs) || 2200));
+      } catch (_) {}
+    }
+    function unhushAgentAudio() {
+      if (hushTimer) { clearTimeout(hushTimer); hushTimer = 0; }
+      if (!hushActive) return;
+      hushActive = false;
+      try { els.audio.muted = false; } catch (_) {}
+    }
     async function tryPlayAudio() {
       try {
-        els.audio.muted = false; els.audio.volume = 1;
+        if (!hushActive) { els.audio.muted = false; }
+        els.audio.volume = 1;
         if (room && typeof room.startAudio === "function" && room.canPlaybackAudio === false) await room.startAudio();
         await els.audio.play();
         showEnable(false);
@@ -1837,7 +1863,13 @@
             if (!obj || !obj.type) return;
             chatUi.handleEvent(obj);
             if (obj.type === "audio_state") {
-              if (obj.state === "speaking") { markClaraLive(); phase = "live"; voice = "clara"; render(); }
+              if (obj.state === "speaking") {
+                // Frische Rede (Bereit-Ansage) beginnt: Stumm-Fenster vom
+                // Aufnahme-Start sofort aufheben — nur ALTES Puffer-Audio
+                // sollte verschluckt werden, nie die Quittung.
+                unhushAgentAudio();
+                markClaraLive(); phase = "live"; voice = "clara"; render();
+              }
               else if (phase === "live" && voice === "clara") { voice = "listening"; render(); }
               // Befund-Echo-Queue (Schema-Seite) braucht das Sprech-Ende.
               try { window.__lenaEchoAudioState?.(obj.state); } catch (_) {}
@@ -1927,6 +1959,11 @@
       async stopForLena() {
         try { window.__claraIpad.publishCmd({ type: "set_app_mode", mode: "doku" }); } catch (_) {}
       },
+      /** Aufnahme-Start: kurzes Stumm-Fenster gegen Rest-Audio im Puffer
+          (aufgehoben durch audio_state=speaking der Bereit-Ansage oder
+          Timeout). */
+      hushForRecStart(maxMs) { try { hushAgentAudio(maxMs); } catch (_) {} },
+      unhush() { try { unhushAgentAudio(); } catch (_) {} },
       async resumeFromLena() {
         try { window.speechSynthesis?.cancel?.(); } catch (_) {}
         // Bewusst KEIN connect(): neuer Room killt BT. Worker begruesst bei doku->clara.
@@ -1986,8 +2023,8 @@
 
   <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
   <script src="/m/lena-zahnstatus-katalog.js?v=20260722a"></script>
-  <script src="/m/lena-voice-chart.js?v=20260722a"></script>
-  <script src="/m/lena-doku-template-zahn.js?v=20260722b"></script>
+  <script src="/m/lena-voice-chart.js?v=20260722c"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260722c"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard.
@@ -2200,13 +2237,18 @@
       /* ── Befund-Echo (Chef 21.07. 23:39): Nach jedem committeten Schema-
          Segment spricht Clara den erkannten Befund ("27 Füllung" ->
          "Zwei sieben: Füllung."). Regeln:
-         - Laufendes Echo NIE abbrechen; max. 1 wartendes Echo, neuere
-           ersetzen aeltere (Diktiertempo wird nie gebremst).
+         - Laufendes Echo NIE abbrechen; Diktiertempo wird nie gebremst.
+         - VOLLSTAENDIGKEIT (Chef 22.07. 02:51): wartende Befund-Diffs werden
+           GEMERGT statt verworfen und als EIN gebuendeltes Echo gesprochen
+           ("Eins drei bis eins sieben: fehlt. Zwei sieben: Krone.") —
+           jeder committete Befund wird irgendwann quittiert. Quittungen/
+           Rueckfragen (Texte) sammeln sich in einer kleinen Liste.
          - Rueckkopplungs-Schutz: der Worker verwirft das Mikro-Echo im
            Tee-Pfad (_lena_tee_utterance); hier zusaetzlich defensiv, falls
            doch eins durchkommt (Token-Teilmenge, <6 s). ─────────────────── */
       let echoSpeaking = false;
-      let echoPending = null;      // max. 1 wartendes Echo (neuestes gewinnt)
+      let echoPending = null;      // wartende Quittungs-/Fragen-Texte (Array)
+      let echoPendingDiff = null;  // gemergter Befund-Diff wartender Echos
       let echoLastText = "";
       let echoLastAt = 0;
       let echoTimer = 0;
@@ -2242,7 +2284,7 @@
       }
       function lenaEchoSend(text) {
         const ok = window.__claraIpad?.publishCmd?.({ type: "coach_speak", text });
-        if (!ok) { echoPending = null; return; }
+        if (!ok) { echoPending = null; echoPendingDiff = null; return; }
         echoSpeaking = true;
         echoLastText = text;
         echoLastAt = Date.now();
@@ -2253,16 +2295,47 @@
           lenaEchoFlush();
         }, 2500 + Math.min(6000, text.length * 80));
       }
+      /** Alles Wartende zu EINEM Echo buendeln: erst Befund-Diff, dann Texte. */
       function lenaEchoFlush() {
         if (echoSpeaking) return;
-        const t = echoPending;
-        echoPending = null;
-        if (t) lenaEchoSend(t);
+        const parts = [];
+        if (echoPendingDiff) {
+          try {
+            const t = window.LenaVoiceChart?.buildEchoText?.(echoPendingDiff) || "";
+            if (t) parts.push(t);
+          } catch (_) {}
+          echoPendingDiff = null;
+        }
+        if (echoPending && echoPending.length) {
+          parts.push(...echoPending);
+          echoPending = null;
+        }
+        const text = parts.join(" ").trim();
+        if (text) lenaEchoSend(text);
       }
+      /** Quittungs-/Fragen-Text sprechen (wartet hinter laufendem Echo). */
       function lenaEchoSpeak(text) {
         if (!text) return;
-        if (echoSpeaking) { echoPending = text; return; }
+        if (echoSpeaking) {
+          if (!echoPending) echoPending = [];
+          // identische Doppel vermeiden, sonst nichts verwerfen
+          if (echoPending[echoPending.length - 1] !== text) echoPending.push(text);
+          return;
+        }
         lenaEchoSend(text);
+      }
+      /** Befund-Diff quittieren — Wartendes wird GEMERGT, nie verworfen. */
+      function lenaEchoQueueDiff(diff) {
+        if (!diff || (!(diff.added || []).length && !(diff.namedOnly || []).length)) return;
+        if (echoSpeaking) {
+          try {
+            echoPendingDiff = window.LenaVoiceChart?.mergeEchoDiffs?.(echoPendingDiff, diff) || diff;
+          } catch (_) { echoPendingDiff = echoPendingDiff || diff; }
+          return;
+        }
+        let text = "";
+        try { text = window.LenaVoiceChart?.buildEchoText?.(diff) || ""; } catch (_) {}
+        if (text) lenaEchoSend(text);
       }
       // Sprech-Ende vom Worker (audio_state idle): Verwurf-Fenster ab
       // Sprech-ENDE zaehlen, dann wartendes Echo nachschieben.
@@ -2275,23 +2348,70 @@
         setTimeout(lenaEchoFlush, 150);
       };
       /** Diff NUR aus committeten Segmenten (Partial-Paint verfaelscht
-          dokuState.teeth): vorher/nachher als Wegwerf-Zustand neu aufbauen. */
-      function lenaEchoComputeForCommit() {
+          dokuState.teeth): vorher/nachher als Wegwerf-Zustand neu aufbauen.
+          Gibt den DIFF zurueck (nicht den Text) — die Queue merged wartende
+          Diffs zu EINEM gebuendelten Echo (Chef 22.07.). */
+      function lenaEchoDiffForCommit() {
         const Zahn = window.LenaDokuZahn;
         const VC = window.LenaVoiceChart;
-        if (!Zahn || !VC || !VC.diffChartForEcho) return "";
+        if (!Zahn || !VC || !VC.diffChartForEcho) return null;
         const clinical = savedSegments.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
-        if (!clinical.length) return "";
+        if (!clinical.length) return null;
         const vor = Zahn.emptyState("");
         vor.page = "schema";
         Zahn.applySchemaSegments(vor, clinical.slice(0, -1));
         const nach = Zahn.emptyState("");
         nach.page = "schema";
         Zahn.applySchemaSegments(nach, clinical);
-        const diff = VC.diffChartForEcho(
+        return VC.diffChartForEcho(
           VC.chartEchoSnapshot(vor.chart), nach.chart, vor.teeth, nach.teeth,
         );
-        return VC.buildEchoText(diff);
+      }
+
+      /* ── Loesch-Kommandos (Chef 22.07. 02:51): Die WIRKUNG passiert im
+         Voll-Rebuild (applySchemaSegments wertet Reset-/Loesch-Marker aus,
+         auch historisch). Hier nur die gesprochene Quittung — und die nur
+         fuer FRISCHE Kommandos (nicht beim Nachladen alter Segmente). ──── */
+      function maybeLenaSchemaDeleteReceipt(text, startMs) {
+        if (!recording || paused) return false;
+        if (!isSchemaStep()) return false;
+        const Zahn = window.LenaDokuZahn;
+        if (!Zahn) return false;
+        const at = Number(startMs) || Date.now();
+        if (recStartedAtMs && at && at < recStartedAtMs - 5000) return false;
+        if (Zahn.schemaResetCommand?.(text)) {
+          try { lenaEchoSpeak("Alles gelöscht — von vorne."); } catch (_) {}
+          return true;
+        }
+        const del = Zahn.toothDeleteCommand?.(text);
+        if (del) {
+          const spoken = window.LenaZahnstatusKatalog?.spokenFdi?.(del.fdi) || String(del.fdi);
+          try { lenaEchoSpeak(spoken.charAt(0).toUpperCase() + spoken.slice(1) + ": gelöscht."); } catch (_) {}
+          return true;
+        }
+        return false;
+      }
+
+      /* ── Rueckfragen bei Unverstandenem (Chef 22.07. 02:51): Analyse im
+         Template (schemaClarifyAnalyze), hier nur Rate-Limit: max. 1 Frage
+         je ~10 s, nie zweimal fuer denselben Wortlaut in Folge. ─────────── */
+      let lenaClarifyAt = 0;
+      let lenaClarifyNorm = "";
+      function lenaClarifyMaybe(text) {
+        const Zahn = window.LenaDokuZahn;
+        if (!Zahn?.schemaClarifyAnalyze) return "";
+        let res = null;
+        try { res = Zahn.schemaClarifyAnalyze(text); } catch (_) {}
+        if (!res) return "";
+        const norm = String(text || "").trim().toLowerCase();
+        const now = Date.now();
+        if (now - lenaClarifyAt < 10000) return "";
+        if (norm && norm === lenaClarifyNorm) return "";
+        lenaClarifyAt = now;
+        lenaClarifyNorm = norm;
+        let q = "";
+        try { q = Zahn.clarifyQuestionText(res) || ""; } catch (_) {}
+        return q;
       }
 
       /* ── "01 fertig" (Chef 22.07. 01:56): Sprachkommando schliesst den
@@ -2359,15 +2479,28 @@
           // Steuer-Segment "01 fertig": Quittung + Seitenwechsel, kein
           // Befund-Echo/Schema-Paint mehr noetig (showStep(4) rendert Doku).
           if (maybeLenaSchemaFinish(text, Number(obj?.startMs) || 0)) return;
-          let echoText = "";
-          if (isSchemaStep()) {
-            try { echoText = lenaEchoComputeForCommit(); } catch (_) {}
+          // Loesch-Kommando: Wirkung uebernimmt der Voll-Rebuild unten,
+          // hier nur Quittung. Kein Preview-Paint (wuerde den geloeschten
+          // Zahn wieder tuerkis anmalen), kein Befund-Echo.
+          const isDeleteCmd = maybeLenaSchemaDeleteReceipt(text, Number(obj?.startMs) || 0);
+          let echoDiff = null;
+          if (isSchemaStep() && !isDeleteCmd) {
+            try { echoDiff = lenaEchoDiffForCommit(); } catch (_) {}
           }
           refreshLivePage(savedSegments, "");
-          if (isSchemaStep()) {
+          if (isSchemaStep() && !isDeleteCmd) {
             const fdis = window.LenaVoiceChart?.extractFdi?.(text) || [];
             if (fdis.length) paintToothPreview(dokuState?.teeth || fdis, fdis[fdis.length - 1]);
-            if (echoText) lenaEchoSpeak(echoText);
+            // Rueckfrage bei Unverstandenem (Chef 22.07.): "Eins sechs —
+            // was genau?" ersetzt das blosse Zahn-Echo; "Nochmal bitte?"
+            // kommt nur, wenn gar nichts erkannt wurde (Rate-Limit 10 s).
+            const q = lenaClarifyMaybe(text);
+            if (q && (!echoDiff || !(echoDiff.added || []).length)) {
+              lenaEchoSpeak(q);
+            } else {
+              lenaEchoQueueDiff(echoDiff);
+              if (q) lenaEchoSpeak(q);
+            }
           }
         }
       }
@@ -3688,9 +3821,14 @@
             known.add(s.id);
             knownText.add(norm);
             added = true;
-            // Fallback-Pfad fuer "01 fertig", falls der LiveKit-Push das
-            // Kommando nicht zugestellt hat (Guards wie im Push-Pfad).
-            try { maybeLenaSchemaFinish(s.text, Number(s.startMs) || 0); } catch (_) {}
+            // Fallback-Pfad fuer "01 fertig" + Loesch-Quittungen, falls der
+            // LiveKit-Push das Kommando nicht zugestellt hat (Guards wie im
+            // Push-Pfad; Loesch-WIRKUNG kommt ohnehin aus dem Rebuild).
+            try {
+              if (!maybeLenaSchemaFinish(s.text, Number(s.startMs) || 0)) {
+                maybeLenaSchemaDeleteReceipt(s.text, Number(s.startMs) || 0);
+              }
+            } catch (_) {}
           }
           if (added) refreshLivePage(savedSegments);
         } catch (_) {}
@@ -4079,6 +4217,12 @@
         }
         await stopMicPreview();
 
+        // Stumm-Fenster ab JETZT (Chef 22.07. 01:45): eine evtl. gerade
+        // laufende/gleich startende Begruessung soll nicht als Fragment in
+        // den Aufnahme-Start spielen. Aufgehoben durch die Bereit-Ansage
+        // (audio_state=speaking) oder Timeout; Fehlerpfade heben sofort auf.
+        try { window.__claraIpad?.hushForRecStart?.(4000); } catch (_) {}
+
         // iPad / Bluetooth / USB: alles Parakeet über Clara.
         {
           const liveEl = $("recLive")?.querySelector("span");
@@ -4086,6 +4230,7 @@
         }
         const live = await window.__claraIpad?.ensureLive?.();
         if (!live) {
+          try { window.__claraIpad?.unhush?.(); } catch (_) {}
           setMicActiveLabel("Clara fehlt — zuerst verbinden", true);
           const liveEl = $("recLive")?.querySelector("span");
           if (liveEl) liveEl.textContent = "Clara fehlt";
@@ -4094,6 +4239,7 @@
         }
         const micPick = await ensureClaraMicForMode();
         if (!micPick.ok) {
+          try { window.__claraIpad?.unhush?.(); } catch (_) {}
           setMicActiveLabel(String(micPick.warning || "Mikro fehlt"), true);
           const liveEl = $("recLive")?.querySelector("span");
           if (liveEl) liveEl.textContent = "Mikro fehlt";
@@ -4129,6 +4275,10 @@
         }, 1000);
         syncRecChrome();
         patchRecorder("recording", { command: "", startedAtMs: recStartedAtMs, accumMs: 0 });
+        // Rest-Artefakt-Schutz (Chef 22.07. 01:45): gepuffertes Alt-Audio
+        // (z. B. angelaufene Begruessung) stumm verschlucken, bis die
+        // Bereit-Ansage kommt (audio_state=speaking hebt das Fenster auf).
+        try { window.__claraIpad?.hushForRecStart?.(2500); } catch (_) {}
         // Doku-Schnellpfad im Worker erzwingen (kurzes Hang + Preview-Final).
         try { window.__claraIpad?.publishCmd?.({ type: "set_app_mode", mode: "doku" }); } catch (_) {}
         try { window.__claraIpad?.stopForLena?.(); } catch (_) {}
@@ -4191,6 +4341,10 @@
       window.__lenaOpenFindings = async function lenaOpenFindings(cmd) {
         const wantId = String(cmd?.appointmentId || "").trim();
         if (!wantId) return;
+        // Clara spricht bei diesem Sprachbefehl gerade ihre Bestaetigung —
+        // Stumm-Fenster SOFORT, damit kein Fragment in den Wizard-Start
+        // hineinspielt (btnRec verlaengert es gleich noch einmal).
+        try { window.__claraIpad?.hushForRecStart?.(4000); } catch (_) {}
         try {
           if (iso(selectedDate) !== iso(TODAY)) {
             selectedDate = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
