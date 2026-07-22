@@ -746,51 +746,86 @@
       background: #fff8e1; border-color: #d4a017; color: #7a5500;
     }
     .zs-hint { margin: 2px 0 0; font-size: .58rem; color: #6b6560; font-weight: 600; }
-    /* KZBV-Legende unter dem Schema (Chef 22.07. 01:59): lesbar + kompakt.
-       Nur haeufigste + benutzte Kuerzel sichtbar (1-2 Zeilen), Rest hinter
-       "+N mehr" (zs-leg--rest). is-used = benutzt (gelb, dauerhaft),
-       is-flash = zuletzt erkannt (tuerkis, kraeftiger Puls — NIE versteckt). */
+    /* KZBV-Legende: HELLES Panel auf dunklem App-Hintergrund (Chef 22.07. 04:16:
+       "schwarz auf schwarz" — body --ink ist hell, Chip-Text muss hart dunkel sein).
+       Default offen = vollstaendig; "weniger" klappt nur seltene Codes. */
+    .zs-legend-panel {
+      margin: 8px 0 0; padding: 8px 10px 10px; border-radius: 12px;
+      background: #fffef8; border: 1px solid #c8c0b0;
+      box-shadow: 0 2px 0 rgba(0,0,0,.06); color: #1a1a1a;
+    }
+    .zs-legend-head {
+      font-size: .62rem; font-weight: 900; letter-spacing: .06em;
+      text-transform: uppercase; color: #3d3a34; margin: 0 0 6px;
+    }
     .zs-legend {
-      margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 5px 7px;
-      align-items: center; line-height: 1;
+      display: flex; flex-wrap: wrap; gap: 5px 7px;
+      align-items: center; line-height: 1.15;
+      max-height: 9.5rem; overflow-y: auto; -webkit-overflow-scrolling: touch;
     }
     .zs-leg {
       display: inline-flex; align-items: center; gap: 5px;
-      padding: 4px 8px; border-radius: 8px; border: 1px solid #ddd6c6;
-      background: #faf8f3; font-size: .66rem; font-weight: 600; color: #55504a;
-      white-space: nowrap;
+      padding: 5px 9px; border-radius: 8px; border: 1px solid #b8b09e;
+      background: #ffffff !important; font-size: .72rem; font-weight: 700;
+      color: #1a1a1a !important; white-space: nowrap;
     }
     .zs-leg-k {
-      font-size: .72rem; font-weight: 900; color: #3d3a34;
+      font-size: .8rem; font-weight: 900; color: #0a0a0a !important;
       font-family: ui-monospace, Menlo, monospace;
     }
-    .zs-leg.is-used { border-color: #d4a017; background: #fff8e1; color: #7a5500; }
-    .zs-leg.is-used .zs-leg-k { color: #7a5500; }
+    .zs-leg-t { color: #1a1a1a !important; font-weight: 600; }
+    .zs-leg.is-used { border-color: #d4a017 !important; background: #fff3c4 !important; color: #5c3d00 !important; }
+    .zs-leg.is-used .zs-leg-k, .zs-leg.is-used .zs-leg-t { color: #5c3d00 !important; }
     .zs-leg.is-flash {
-      border-color: #0a5c56; background: #0f766e; color: #fff;
+      border-color: #0a5c56 !important; background: #0f766e !important; color: #fff !important;
       box-shadow: 0 0 0 3px rgba(15,118,110,.3), 0 0 18px rgba(15,118,110,.55);
       transform: scale(1.12); transform-origin: center;
       position: relative; z-index: 2;
       animation: zsLegFlash .55s ease-in-out 8;
     }
-    .zs-leg.is-flash .zs-leg-k, .zs-leg.is-flash .zs-leg-t { color: #fff; }
+    .zs-leg.is-flash .zs-leg-k, .zs-leg.is-flash .zs-leg-t { color: #fff !important; }
     @keyframes zsLegFlash {
       0%, 100% { background: #0f766e; box-shadow: 0 0 0 3px rgba(15,118,110,.3), 0 0 18px rgba(15,118,110,.55); }
       50% { background: #17c3ae; box-shadow: 0 0 0 7px rgba(46,230,200,.4), 0 0 26px rgba(46,230,200,.75); }
     }
-    /* Rest-Kuerzel: eingeklappt unsichtbar — ausser sie leuchten gerade. */
     .zs-legend:not(.is-open) .zs-leg--rest { display: none; }
     .zs-legend:not(.is-open) .zs-leg--rest.is-flash { display: inline-flex; }
     .zs-leg-more {
-      border: 1px dashed #c1b9a8; background: transparent; color: #6b6560;
-      font: inherit; font-size: .64rem; font-weight: 700; padding: 4px 10px;
+      border: 1px solid #8f8778; background: #f0ebe1; color: #1a1a1a !important;
+      font: inherit; font-size: .7rem; font-weight: 800; padding: 5px 11px;
       border-radius: 999px; cursor: pointer; line-height: 1;
     }
-    .zs-leg-more:hover { color: #3d3a34; border-color: #8f8778; }
-    .doku-tpl--schema .zs-leg { font-size: .72rem; padding: 5px 9px; }
-    .doku-tpl--schema .zs-leg-k { font-size: .8rem; }
-    .doku-tpl--schema .zs-leg-more { font-size: .7rem; }
-    .doku-wrap--schema { flex: 1; min-height: 0; }
+    .zs-schema-lead { color: #d8cfc0 !important; }
+    .zs-schema-sum, .doku-tpl--schema > .tpl-val {
+      color: #1a1a1a !important; background: #fffef8; border: 1px solid #c8c0b0;
+      border-radius: 10px; padding: 8px 10px; margin-top: 8px;
+    }
+    /* Schema-Zoom (Chef 22.07. 04:16): +/- und Pinch, Viewport nicht sperren. */
+    .zs-tools {
+      display: none; align-items: center; gap: 6px; flex: none;
+      padding: 2px 0 4px;
+    }
+    body:has(#paneDoku.is-active #wiz3.is-show) .zs-tools { display: inline-flex; }
+    .zs-tools button {
+      width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--card); color: #fff; font-size: 1.15rem; font-weight: 800;
+      cursor: pointer; line-height: 1; padding: 0; display: grid; place-items: center;
+    }
+    .zs-tools button:active { background: rgba(15,118,110,.35); }
+    .zs-tools .zs-zoom-pct {
+      min-width: 48px; text-align: center; font-size: .72rem; font-weight: 800;
+      color: #e8fff8; font-variant-numeric: tabular-nums;
+    }
+    .zs-zoom-viewport {
+      flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch;
+      touch-action: pan-x pan-y; overscroll-behavior: contain;
+      border-radius: 12px;
+    }
+    .zs-zoom-viewport .doku-tpl--schema {
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+    .doku-wrap--schema { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     /* Schema-Seite: KEIN 2-Spalten-Grid — Zahnschema volle Breite (Chef 21.07.) */
     .doku-tpl--schema { padding: 4px 2px; display: block; }
     .doku-tpl--schema .zs-cell { min-height: 30px; font-size: .6rem; }
@@ -798,7 +833,7 @@
     .doku-tpl--schema .zs-fdi { font-size: .78rem; }
     .doku-tpl--schema .zs-row { grid-template-columns: 24px 1fr; }
     .zs-schema-lead {
-      margin: 0 0 8px; font-size: .72rem; font-weight: 600; color: #5c564e; line-height: 1.35;
+      margin: 0 0 8px; font-size: .72rem; font-weight: 600; color: #d8cfc0; line-height: 1.35;
     }
     .zs-live-line {
       margin: 0 0 8px; padding: 7px 10px; border-radius: 10px;
@@ -1398,7 +1433,15 @@
               </div>
             </div>
             <div class="doku-wrap doku-wrap--schema">
-              <div class="doku-tpl doku-tpl--schema" id="schemaTpl"></div>
+              <div class="zs-tools" id="schemaZoomTools" aria-label="Schema zoomen">
+                <button type="button" id="btnSchemaZoomOut" aria-label="Verkleinern">−</button>
+                <span class="zs-zoom-pct" id="schemaZoomPct">100%</span>
+                <button type="button" id="btnSchemaZoomIn" aria-label="Vergrößern">+</button>
+                <button type="button" id="btnSchemaZoomReset" aria-label="Zoom zurücksetzen" style="width:auto;padding:0 10px;font-size:.68rem">1:1</button>
+              </div>
+              <div class="zs-zoom-viewport" id="schemaZoomViewport">
+                <div class="doku-tpl doku-tpl--schema" id="schemaTpl"></div>
+              </div>
               <details class="raw-dialog" id="rawDialog">
                 <summary>Rohdialog <span class="tpl-badge">§ 630f · Archiv</span></summary>
                 <div class="dialog" id="dialog">
@@ -2079,8 +2122,8 @@
   </script>
 
   <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
-  <script src="/m/lena-zahnstatus-katalog.js?v=20260722b"></script>
-  <script src="/m/lena-voice-chart.js?v=20260722d"></script>
+  <script src="/m/lena-zahnstatus-katalog.js?v=20260722e"></script>
+  <script src="/m/lena-voice-chart.js?v=20260722e"></script>
   <script src="/m/lena-doku-template-zahn.js?v=20260722c"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -4495,6 +4538,60 @@
         const open = document.body.classList.toggle("head-open");
         btn.textContent = open ? "▴" : "▾";
       });
+    })();
+  </script>
+  <script>
+    // Schema-Zoom: +/- Buttons + Pinch (Chef 22.07. 04:16). Viewport-Meta
+    // bleibt ohne user-scalable-Sperre; hier zoomen wir nur das Schema.
+    (() => {
+      const stage = document.getElementById("schemaTpl");
+      const viewport = document.getElementById("schemaZoomViewport");
+      const pctEl = document.getElementById("schemaZoomPct");
+      const btnIn = document.getElementById("btnSchemaZoomIn");
+      const btnOut = document.getElementById("btnSchemaZoomOut");
+      const btnReset = document.getElementById("btnSchemaZoomReset");
+      if (!stage || !viewport) return;
+      let scale = 1;
+      const MIN = 0.7;
+      const MAX = 2.4;
+      const STEP = 0.15;
+      function apply() {
+        scale = Math.max(MIN, Math.min(MAX, scale));
+        stage.style.transform = "scale(" + scale.toFixed(3) + ")";
+        // Layout-Platz nach Scale: sonst clippt der Viewport den vergroesserten Inhalt.
+        stage.style.width = (100 / scale).toFixed(2) + "%";
+        if (pctEl) pctEl.textContent = Math.round(scale * 100) + "%";
+      }
+      function zoomBy(delta) {
+        scale += delta;
+        apply();
+      }
+      btnIn?.addEventListener("click", () => zoomBy(STEP));
+      btnOut?.addEventListener("click", () => zoomBy(-STEP));
+      btnReset?.addEventListener("click", () => { scale = 1; apply(); });
+      // Pinch-to-zoom
+      let pinch0 = 0;
+      let scale0 = 1;
+      function dist(t0, t1) {
+        const dx = t0.clientX - t1.clientX;
+        const dy = t0.clientY - t1.clientY;
+        return Math.hypot(dx, dy);
+      }
+      viewport.addEventListener("touchstart", (e) => {
+        if (e.touches.length === 2) {
+          pinch0 = dist(e.touches[0], e.touches[1]);
+          scale0 = scale;
+        }
+      }, { passive: true });
+      viewport.addEventListener("touchmove", (e) => {
+        if (e.touches.length !== 2 || !pinch0) return;
+        const d = dist(e.touches[0], e.touches[1]);
+        if (d < 8) return;
+        scale = scale0 * (d / pinch0);
+        apply();
+      }, { passive: true });
+      viewport.addEventListener("touchend", () => { pinch0 = 0; }, { passive: true });
+      apply();
     })();
   </script>
 </body>

@@ -533,11 +533,9 @@
 
   /** KZBV-Legende unter dem Schema. flashKeys: zuletzt gesetzte Kuerzel
       (bekommen die Puls-Optik des aktiven Zahns), used: dezente Markierung.
-      Layout (Chef 22.07. 01:59): nur die haeufigsten Kuerzel + alle
-      benutzten/aufleuchtenden sofort sichtbar, der Rest hinter einem
-      dezenten "mehr"-Toggle. Der Auf/Zu-Zustand ueberlebt Re-Renders
-      (Modul-Flag legendOpen, Klick via LenaVoiceChart.toggleLegendOpen). */
-  let legendOpen = false;
+      Chef 22.07. 04:16: VOLLSTAENDIG + helles Panel (Kontrast auf dunklem
+      App-Hintergrund). Default offen; "weniger" klappt nur den seltenen Rest. */
+  let legendOpen = true;
   function toggleLegendOpen(btn) {
     legendOpen = !legendOpen;
     const box = btn && btn.closest ? btn.closest(".zs-legend") : null;
@@ -580,9 +578,11 @@
         (legendOpen ? "weniger" : "+" + rest.length + " mehr") + "</button>"
       : "";
     return (
-      '<div class="zs-legend' + (legendOpen ? " is-open" : "") + '" aria-label="KZBV-Legende">' +
+      '<div class="zs-legend-panel" aria-label="KZBV-Legende">' +
+      '<div class="zs-legend-head">Legende · alle Kürzel</div>' +
+      '<div class="zs-legend' + (legendOpen ? " is-open" : "") + '">' +
       prim.join("") + more + rest.join("") +
-      "</div>"
+      "</div></div>"
     );
   }
 

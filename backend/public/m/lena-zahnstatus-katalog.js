@@ -374,10 +374,12 @@
     return SPOKEN_DIGIT[Number(s[0])] + " " + SPOKEN_DIGIT[Number(s[1])];
   }
 
-  // Anzeige-Reihenfolge: haeufigste zuerst, danach der komplette Rest aus
-  // BEFUND (nichts geht verloren, wenn der Katalog waechst).
+  // Anzeige-Reihenfolge: haeufigste/klinisch relevante zuerst, danach der
+  // komplette Rest aus BEFUND (nichts geht verloren, wenn der Katalog waechst).
+  // t/tw/st bewusst vorne — Chef 22.07.: Teleskop musste sofort sichtbar sein.
   const LEGEND_COMMON = [
-    "f", "c", "fu", "k", "kw", "x", "ww", "pw", "e", "ew", "b", "bw",
+    "f", "c", "fu", "k", "kw", "t", "tw", "x", "ww", "pw",
+    "e", "ew", "b", "bw", "sk", "st", "pkw", "ur", "ix",
   ];
 
   /** Alle Legenden-Eintraege: [{ code, label }] — Quelle BEFUND + c/fu. */
@@ -390,6 +392,9 @@
       out.push({ code, label: shortLabelOf(code) });
     };
     LEGEND_COMMON.forEach(push);
+    // Klinische Schema-Codes (nicht in BEFUND) immer mit anzeigen.
+    push("c");
+    push("fu");
     Object.keys(BEFUND).forEach(push);
     return out;
   }
