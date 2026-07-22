@@ -1,47 +1,1177 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lena · Knochenverlauf</title>
+  <title>Lena · 01-Befund</title>
   <meta name="theme-color" content="#0b0e13" />
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260720zq" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260721b" />
+  <style>
+    /* ═══════════════════════════════════════════════════════════════════
+       PC-WIZARD (Chef 22.07. 01:58): rechter Bereich = kompakter Wizard,
+       exakt der iPad-Fluss (ipad-app.html): Arzt → Termin → Schema → Doku
+       → Nachdiktat → Summary → OK. Grosser linker Bereich (01-Schema +
+       Lupe + Befund-Legende) bleibt. Read-only: zeigt Live-Stand ueber
+       dieselben MAS-Endpunkte wie das iPad (POST /treatment/current,
+       POST /treatment/heartbeat) — KEIN LiveKit, keine Aufnahme-Steuerung.
+       Alle Regeln hier gescoped (#lenaWizard / .lw-host), perio.css bleibt
+       unangetastet. tpl-*/zs-*-Regeln sind 1:1 aus ipad-app.html kopiert,
+       damit Schema (inkl. KZBV-Legende, ohne Therapie-Zeile) und Doku-
+       Boxen identisch zum iPad rendern.
+       ═══════════════════════════════════════════════════════════════════ */
+    main.perio-half.lw-host {
+      /* selbsttragend (nicht von perio.css .perio-half abhaengig) */
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) clamp(300px, 27vw, 390px);
+      gap: 14px; align-items: stretch;
+      min-height: calc(100vh - 88px);
+    }
+    @media (max-width: 1040px) {
+      main.perio-half.lw-host { grid-template-columns: 1fr; min-height: 0; }
+    }
+    /* Befund-Tabs + Legende ziehen unter das linke Schema (der rechte
+       Platz gehoert jetzt dem Wizard) — Ids/Verhalten unveraendert. */
+    .half-schema .left-befund {
+      flex: none; display: flex; flex-direction: column; gap: 8px;
+      margin-top: 10px;
+    }
+    .half-schema .left-befund .befund-box-head { padding: 0 4px; }
+    .half-schema .left-befund .legend { flex: none; }
+    .half-schema .left-befund .legend-items {
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      max-height: 280px; overflow-y: auto;
+    }
+
+    #lenaWizard {
+      --card: rgba(255,255,255,.045); --card-strong: rgba(255,255,255,.07);
+      --line: rgba(255,255,255,.10); --mute: #b3a6bf; --mute2: #7a6d86;
+      --lena: #0f766e; --lena-soft: #7ec9c1; --green: #34d399;
+      --amber: #f5c518; --red: #ff5b6e; --yellow: #e9c46a;
+      --magenta: #d862c8; --magenta-deep: #b13fa0;
+      padding: 10px; gap: 8px; display: flex; flex-direction: column;
+      background: #10151c;
+    }
+    #lenaWizard .lw-head {
+      flex: none; display: flex; align-items: baseline; gap: 8px; padding: 0 2px;
+    }
+    #lenaWizard .lw-head h2 {
+      margin: 0; font-size: .8rem; font-weight: 900; letter-spacing: .05em;
+      text-transform: uppercase; color: #f0d3ac;
+    }
+    #lenaWizard .lw-head span { font-size: .62rem; color: var(--mute2); font-weight: 700; }
+
+    /* ── Schritt-Chips (wie iPad .steps) ── */
+    #lenaWizard .steps { display: flex; flex-wrap: wrap; gap: 4px; flex: none; }
+    #lenaWizard .step-chip {
+      flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px;
+      padding: 5px 6px; border-radius: 10px; background: var(--card); border: 1px solid var(--line);
+      font-size: .6rem; font-weight: 700; color: var(--mute2); white-space: nowrap; cursor: pointer;
+    }
+    #lenaWizard .step-chip .n {
+      width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center;
+      font-size: .56rem; background: rgba(255,255,255,.08);
+    }
+    #lenaWizard .step-chip.is-now { color: #b8fff0; background: rgba(15,118,110,.28); border-color: rgba(126,201,193,.35); }
+    #lenaWizard .step-chip.is-now .n { background: var(--lena); color: #fff; }
+    #lenaWizard .step-chip.is-done { color: var(--green); border-color: rgba(52,211,153,.25); }
+    #lenaWizard .step-chip.is-done .n { background: rgba(52,211,153,.25); color: var(--green); }
+
+    /* ── Schritt-Panels (wie iPad .wiz/.panel, schmal einspaltig) ── */
+    #lenaWizard .wiz { display: none; flex: 1; min-height: 0; overflow: hidden; }
+    #lenaWizard .wiz.is-show { display: flex; flex-direction: column; gap: 8px; }
+    #lenaWizard .panel {
+      background: var(--card-strong); border: 1px solid var(--line); border-radius: 14px;
+      padding: 10px; min-height: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    }
+    #lenaWizard .panel h2 { margin: 0 0 2px; font-size: .92rem; font-weight: 900; letter-spacing: -.02em; color: #eef2f4; }
+    #lenaWizard .panel .lead { margin: 0 0 8px; color: var(--mute); font-size: .7rem; font-weight: 500; }
+    #lenaWizard .actions { display: flex; justify-content: space-between; gap: 6px; flex: none; margin-top: auto; padding-top: 8px; }
+    #lenaWizard .btn {
+      border: 0; font: inherit; font-weight: 750; font-size: .74rem; border-radius: 10px;
+      padding: 8px 11px; cursor: pointer; color: #fff;
+    }
+    #lenaWizard .btn-ghost { background: rgba(255,255,255,.07); color: var(--mute); }
+    #lenaWizard .btn-primary { background: linear-gradient(135deg, #1a9b8e, var(--lena)); box-shadow: 0 6px 16px rgba(15,118,110,.35); }
+    #lenaWizard .hint {
+      font-size: .66rem; color: var(--mute2); font-weight: 600; line-height: 1.35; margin: 0;
+    }
+
+    /* Arzt-Karten (wie iPad .doc-card, einspaltig) */
+    #lenaWizard .doc-grid { display: grid; grid-template-columns: 1fr; gap: 8px; flex: 1; align-content: start; overflow-y: auto; min-height: 0; }
+    #lenaWizard .doc-card {
+      border: 1px solid var(--line); background: rgba(0,0,0,.22); border-radius: 12px; padding: 10px;
+      text-align: left; cursor: pointer; font: inherit; color: inherit; display: flex; align-items: center; gap: 10px;
+    }
+    #lenaWizard .doc-card.is-sel { border-color: rgba(126,201,193,.5); box-shadow: 0 0 0 3px rgba(15,118,110,.2); }
+    #lenaWizard .doc-av {
+      width: 32px; height: 32px; border-radius: 10px; flex: none; display: grid; place-items: center;
+      font-weight: 800; font-size: .68rem; color: #fff; background: linear-gradient(145deg, #3d8f88, #0f766e);
+    }
+    #lenaWizard .doc-name { font-weight: 800; font-size: .82rem; }
+    #lenaWizard .doc-role { font-size: .64rem; color: var(--mute); font-weight: 600; margin-top: 1px; }
+    #lenaWizard .arzt-status { font-size: .66rem; color: var(--mute); font-weight: 600; }
+
+    /* Termin-Schnellwahl + Liste (wie iPad .picker-quick/.appt) */
+    #lenaWizard .picker-quick { display: flex; gap: 5px; flex: none; margin-bottom: 8px; }
+    #lenaWizard .picker-quick button {
+      flex: 1; border: 1px solid var(--line); background: var(--card); color: var(--mute);
+      font: inherit; font-size: .64rem; font-weight: 700; padding: 6px 4px; border-radius: 8px; cursor: pointer;
+    }
+    #lenaWizard .picker-quick button:hover { color: #eef2f4; border-color: rgba(216,98,200,.4); }
+    #lenaWizard .appt-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; min-height: 0; flex: 1; }
+    #lenaWizard .appt {
+      display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; padding: 8px 9px;
+      border-radius: 11px; border: 1px solid transparent; background: rgba(0,0,0,.22); color: inherit;
+      font: inherit; cursor: pointer; text-align: left;
+    }
+    #lenaWizard .appt.is-sel { border-color: rgba(216,98,200,.4); background: rgba(216,98,200,.12); }
+    #lenaWizard .appt-time { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--mute); font-size: .72rem; }
+    #lenaWizard .appt-name { font-weight: 800; font-size: .76rem; }
+    #lenaWizard .appt-treat { font-size: .62rem; color: var(--mute); font-weight: 600; margin-top: 1px; }
+    #lenaWizard .appt-tag { font-size: .56rem; font-weight: 800; padding: 3px 7px; border-radius: 999px; background: rgba(52,211,153,.15); color: var(--green); }
+    #lenaWizard .appt-tag.wait { background: rgba(245,200,76,.12); color: var(--yellow); }
+
+    /* Patient-Kopf (wie iPad .rec-card-patient, kompakt) */
+    #lenaWizard .rec-head { display: flex; align-items: center; gap: 8px; flex: none; }
+    #lenaWizard .rec-av {
+      width: 32px; height: 32px; border-radius: 10px; flex: none;
+      background: linear-gradient(145deg, #d08a72, #c45c3e);
+      display: grid; place-items: center; font-weight: 800; font-size: .64rem; color: #fff;
+    }
+    #lenaWizard .rec-head-main { min-width: 0; flex: 1; }
+    #lenaWizard .rec-name { font-weight: 900; font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #lenaWizard .rec-meta { font-size: .62rem; color: var(--mute); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #lenaWizard .rec-meta b { color: #b8fff0; }
+    #lenaWizard .rec-live {
+      display: inline-flex; align-items: center; gap: 5px; flex: none;
+      font-size: .56rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--mute); background: rgba(255,255,255,.06); padding: 4px 8px; border-radius: 8px;
+    }
+    #lenaWizard .rec-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--mute2); display: block; flex: none; }
+    #lenaWizard .rec-live.is-on { color: var(--red); background: rgba(255,91,110,.12); }
+    #lenaWizard .rec-live.is-on i { background: var(--red); animation: lwPulse 1.1s ease infinite; }
+    @keyframes lwPulse { 50% { opacity: .35; } }
+
+    /* Doku-Container (wie iPad .doku-wrap/.doku-tpl, schmal 1-spaltig) */
+    #lenaWizard .doku-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+    #lenaWizard .doku-tpl {
+      flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto;
+      display: grid; grid-template-columns: 1fr; gap: 8px; padding: 2px;
+      align-content: start;
+    }
+    #lenaWizard .doku-tpl--schema { display: block; }
+
+    /* ── ab hier: 1:1 aus ipad-app.html (Schema + Boxen identisch) ── */
+    #lenaWizard .tpl-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex: none; padding: 0 2px; flex-wrap: wrap; }
+    #lenaWizard .tpl-title h2 { margin: 0; font-size: .68rem; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; color: #e8fff8; }
+    #lenaWizard .tpl-gaps {
+      font-size: .62rem; font-weight: 800; color: #1a1a1a;
+      background: #ffe08a; border: 1px solid #d4a017;
+      padding: 3px 8px; border-radius: 999px;
+    }
+    #lenaWizard .tpl-mode {
+      font-size: .6rem; font-weight: 800; color: #b8fff0;
+      background: rgba(15,118,110,.35); border: 1px solid rgba(126,201,193,.55);
+      padding: 3px 8px; border-radius: 999px; margin-left: auto;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #lenaWizard .tpl-field {
+      background: #f4f1ea; border: 2px solid #c8c0b0;
+      border-radius: 12px; padding: 9px 11px; flex: none;
+      color: #1a1a1a; box-shadow: 0 2px 0 rgba(0,0,0,.06);
+    }
+    #lenaWizard .tpl-field.is-gap { border-color: #d4a017; background: #fff8e1; box-shadow: inset 0 0 0 1px rgba(212,160,23,.25); }
+    #lenaWizard .tpl-field.is-pre { border-color: #2a9d8f; background: #e8f6f4; }
+    #lenaWizard .tpl-field.is-focus { outline: 3px solid #0f766e; box-shadow: 0 0 0 4px rgba(15,118,110,.25); }
+    #lenaWizard .tpl-lab {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      font-size: .62rem; font-weight: 900; letter-spacing: .04em;
+      text-transform: uppercase; color: #3d3a34; margin-bottom: 5px;
+    }
+    #lenaWizard .tpl-badge {
+      font-size: .56rem; padding: 2px 7px; border-radius: 999px;
+      background: #e4dfd4; color: #3d3a34; font-weight: 800; letter-spacing: .02em; text-transform: none;
+    }
+    #lenaWizard .tpl-badge.pre { color: #0f5c54; background: #b8e6df; }
+    #lenaWizard .tpl-badge.live { color: #0d5c32; background: #b8e6c8; }
+    #lenaWizard .tpl-badge.gap { color: #7a5500; background: #ffe08a; }
+    #lenaWizard .tpl-val { font-size: .84rem; font-weight: 700; line-height: 1.35; min-height: 1.2em; color: #111; }
+    #lenaWizard .tpl-val.empty { color: #6b6560; font-weight: 600; font-style: italic; }
+    #lenaWizard .tpl-block { border: 2px solid #2a9d8f; border-radius: 14px; overflow: hidden; background: #e8f6f4; flex: none; }
+    #lenaWizard .tpl-block-head {
+      display: flex; align-items: center; gap: 8px; padding: 8px 11px;
+      background: #0f766e; font-size: .66rem; font-weight: 900;
+      letter-spacing: .04em; text-transform: uppercase; color: #fff;
+    }
+    #lenaWizard .tpl-block-head em { font-style: normal; margin-left: auto; font-size: .58rem; color: #c8fff4; font-weight: 700; letter-spacing: 0; text-transform: none; }
+    #lenaWizard .tpl-block-body { padding: 8px 9px; display: grid; grid-template-columns: 1fr; gap: 7px; }
+    #lenaWizard .zs-schema { display: flex; flex-direction: column; gap: 8px; }
+    #lenaWizard .zs-block { border: 1px solid #c8c0b0; border-radius: 12px; padding: 5px 5px 7px; background: #fffef9; }
+    #lenaWizard .zs-block-h {
+      font-size: .56rem; font-weight: 900; letter-spacing: .08em;
+      text-transform: uppercase; color: #6b6560; padding: 0 4px 4px;
+    }
+    #lenaWizard .zs-row { display: grid; grid-template-columns: 15px 1fr; gap: 3px; align-items: stretch; margin-bottom: 2px; }
+    #lenaWizard .zs-row-lab { font-size: .52rem; font-weight: 900; color: #3d3a34; display: grid; place-items: center; line-height: 1; }
+    #lenaWizard .zs-arch { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 1px; }
+    #lenaWizard .zs-cell {
+      min-height: 17px; border-radius: 4px; border: 1px solid #d4cdc0;
+      background: #f7f4ee; display: grid; place-items: center;
+      font-size: .44rem; font-weight: 800; color: #1a1a1a;
+      padding: 1px 0; text-align: center; line-height: 1.05; overflow: hidden;
+    }
+    #lenaWizard .zs-row-nums .zs-cell { min-height: 20px; background: #fff; border-color: #b0a898; }
+    #lenaWizard .zs-fdi { font-size: .5rem; font-weight: 900; color: #3d3a34; }
+    #lenaWizard .zs-cell.has-mark { border-color: #0f766e; background: #e8f6f4; color: #0a5c56; }
+    #lenaWizard .zs-cell.is-miss { border-color: #9a3412; background: #ffedd5; color: #9a3412; }
+    #lenaWizard .zs-cell.is-sel { outline: 2px solid #0f766e; }
+    #lenaWizard .zs-cell.is-done { border-color: #1b7a4e; background: #d8f3e2; }
+    #lenaWizard .zs-cell.is-named { border-color: #0f766e; background: #d2efe9; }
+    #lenaWizard .zs-cell.is-named .zs-fdi { color: #0a5c56; }
+    #lenaWizard .zs-cell.is-sel .zs-fdi { color: #0a5c56; }
+    #lenaWizard .zs-cell.is-sel.zs-num { background: #bfe8e0; border-color: #0f766e; box-shadow: 0 0 0 2px rgba(15,118,110,.25); }
+    #lenaWizard .zs-row-layer[data-layer="therapie"] .zs-cell.has-mark { background: #eaf7ef; border-color: #1b7a4e; color: #0d5c32; }
+    #lenaWizard .zs-row-layer[data-layer="befund"] .zs-cell.has-mark { background: #fff8e1; border-color: #d4a017; color: #7a5500; }
+    #lenaWizard .zs-hint { margin: 2px 0 0; font-size: .54rem; color: #6b6560; font-weight: 600; }
+    #lenaWizard .zs-legend { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 3px 5px; align-items: center; line-height: 1; }
+    #lenaWizard .zs-leg {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 4px; border-radius: 6px; border: 1px solid #e2dccf;
+      background: #faf8f3; font-size: .46rem; font-weight: 600; color: #6b6560; white-space: nowrap;
+    }
+    #lenaWizard .zs-leg-k { font-size: .52rem; font-weight: 900; color: #3d3a34; font-family: ui-monospace, Menlo, monospace; }
+    #lenaWizard .zs-leg.is-used { border-color: #d4a017; background: #fff8e1; color: #7a5500; }
+    #lenaWizard .zs-leg.is-used .zs-leg-k { color: #7a5500; }
+    #lenaWizard .zs-leg.is-flash {
+      border-color: #0f766e; background: #bfe8e0; color: #0a5c56;
+      box-shadow: 0 0 0 2px rgba(15,118,110,.25);
+      animation: lwLegFlash 1s ease-in-out 3;
+    }
+    #lenaWizard .zs-leg.is-flash .zs-leg-k { color: #0a5c56; }
+    @keyframes lwLegFlash {
+      0%, 100% { box-shadow: 0 0 0 2px rgba(15,118,110,.25); }
+      50% { box-shadow: 0 0 0 5px rgba(15,118,110,.45); }
+    }
+    #lenaWizard .zs-schema-lead { margin: 0 0 6px; font-size: .62rem; font-weight: 600; color: #5c564e; line-height: 1.3; }
+    #lenaWizard .zs-live-line {
+      margin: 0 0 6px; padding: 6px 9px; border-radius: 9px;
+      background: #e8f6f4; border: 1px solid rgba(15,118,110,.35);
+      font-size: .68rem; font-weight: 700; color: #0a5c56;
+    }
+    #lenaWizard .zs-live-line--empty { background: #f7f4ee; border-color: #d4cdc0; color: #6b6560; font-weight: 600; }
+    #lenaWizard .zs-pend { color: #b45309; font-weight: 900; margin-left: 6px; }
+    #lenaWizard .zs-schema-sum { margin-top: 6px; font-size: .62rem; }
+    #lenaWizard .doku-tpl--schema .zs-schema-lead,
+    #lenaWizard .doku-tpl--schema .zs-schema-sum { background: #f4f1ea; border-radius: 8px; padding: 5px 8px; }
+    #lenaWizard .teeth { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
+    #lenaWizard .tooth {
+      aspect-ratio: 1; border-radius: 4px; font-size: .46rem; font-weight: 800;
+      display: grid; place-items: center; background: #fff; border: 1px solid #b0a898; color: #4a4540;
+    }
+    #lenaWizard .tooth.on { background: #0f766e; border-color: #0a5c56; color: #fff; }
+
+    /* Rohdialog (wie iPad details.raw-dialog) */
+    #lenaWizard details.raw-dialog {
+      flex: none; border: 1px solid var(--line); border-radius: 11px;
+      background: rgba(0,0,0,.2); display: flex; flex-direction: column; min-height: 0;
+    }
+    #lenaWizard details.raw-dialog[open] { flex: 0 1 34%; }
+    #lenaWizard details.raw-dialog summary {
+      cursor: pointer; padding: 8px 10px; font-size: .62rem; font-weight: 800;
+      color: var(--mute); letter-spacing: .03em; list-style: none;
+      display: flex; align-items: center; gap: 6px; flex: none;
+    }
+    #lenaWizard details.raw-dialog summary::-webkit-details-marker { display: none; }
+    #lenaWizard details.raw-dialog summary::before { content: "▸"; color: var(--mute2); }
+    #lenaWizard details.raw-dialog[open] summary::before { content: "▾"; }
+    #lenaWizard .tpl-badge--dark { background: rgba(255,255,255,.06); color: var(--mute2); }
+    #lenaWizard .dialog {
+      flex: 1 1 auto; min-height: 0; max-height: 190px; overflow-x: hidden; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 5px; padding: 0 8px 8px;
+    }
+    #lenaWizard .bubble { position: relative; max-width: 94%; padding: 6px 9px; border-radius: 10px; font-size: .68rem; line-height: 1.3; font-weight: 500; }
+    #lenaWizard .bubble.a { align-self: flex-end; background: rgba(15,118,110,.28); color: #c8fff4; border-bottom-right-radius: 4px; }
+    #lenaWizard .bubble.p { align-self: flex-start; background: rgba(255,255,255,.06); border: 1px solid var(--line); border-bottom-left-radius: 4px; color: #d7dee6; }
+    #lenaWizard .bubble .who { display: block; font-size: .52rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; opacity: .65; margin-bottom: 2px; }
+
+    /* Nachdiktat (Anzeige, wie iPad .nd-*) */
+    #lenaWizard .nd-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    #lenaWizard .nd-col {
+      background: #f4f1ea; border: 2px solid #c8c0b0; border-radius: 14px;
+      padding: 9px; display: flex; flex-direction: column; min-height: 0; color: #1a1a1a; flex: none;
+    }
+    #lenaWizard .nd-col h3 {
+      margin: 0 0 6px; font-size: .64rem; font-weight: 900; letter-spacing: .06em;
+      text-transform: uppercase; color: #3d3a34; display: flex; align-items: center; gap: 5px;
+    }
+    #lenaWizard .nd-col .tag { font-size: .52rem; padding: 2px 6px; border-radius: 999px; background: #e4dfd4; color: #3d3a34; letter-spacing: 0; text-transform: none; font-weight: 700; }
+    #lenaWizard .nd-rec { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: #fff; border: 1px solid #b0a898; border-radius: 9px; padding: 6px; }
+    #lenaWizard .nd-rec .bubble.a { background: #d4efe9; color: #0a3d38; }
+    #lenaWizard .nd-rec .bubble.p { background: #fff; color: #111; border-color: #b0a898; }
+    #lenaWizard .nd-rec .bubble .who { color: #3d3a34; opacity: .85; }
+    #lenaWizard .nd-gaps { display: flex; flex-direction: column; gap: 5px; }
+    #lenaWizard .nd-gap-q {
+      border: 2px solid #d4a017; border-radius: 10px; padding: 8px 10px;
+      background: #fff8e1; color: #1a1a1a; font-size: .74rem; font-weight: 700; line-height: 1.3;
+    }
+    #lenaWizard .nd-gap-ok {
+      border: 2px solid #1b7a4e; border-radius: 10px; padding: 8px 10px;
+      background: #eaf7ef; color: #0d5c32; font-size: .72rem; font-weight: 700;
+    }
+    #lenaWizard .nd-text { background: #fff; border: 1px solid #b0a898; border-radius: 9px; padding: 7px 9px; font-size: .76rem; font-weight: 600; color: #111; min-height: 2em; }
+    #lenaWizard .nd-text.empty { color: #6b6560; font-style: italic; }
+
+    /* Summary */
+    #lenaWizard .sum-patient { font-size: .7rem; font-weight: 700; color: #e8dff0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; margin-bottom: 6px; }
+    #lenaWizard #lwSumBoxes {
+      flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto;
+      display: grid; grid-template-columns: 1fr; gap: 8px; align-content: start; padding: 2px;
+    }
+    #lenaWizard #lwSumText { display: none; }
+
+    /* Fusszeile: Kopplungs-/Poll-Status */
+    #lenaWizard .lw-foot {
+      flex: none; display: flex; align-items: center; gap: 6px;
+      font-size: .6rem; font-weight: 700; color: var(--mute2); padding: 0 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #lenaWizard .lw-foot b { color: var(--mute); }
+  </style>
 </head>
 <body>
   <header>
     <div>
       <span class="eyebrow">LENA · 01-MODUS</span>
-      <h1 id="pageTitle">01-Modus</h1>
+      <h1 id="pageTitle">01-Befund</h1>
     </div>
     <div style="display:flex;gap:8px;">
       <a href="/m/ipad-app.html">← zurück</a>
     </div>
   </header>
 
-  <main>
-    <div class="schema-row">
-      <section class="stage-wrap">
-        <div id="stage"></div>
-      </section>
-      <aside class="zoom-pane">
-        <div class="zoom-head" id="zoomLabel">Zahn 46</div>
-        <div id="zoomStage"></div>
-      </aside>
-    </div>
-
-    <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten"></nav>
-
-    <section class="legend" id="legendPro">
-      <div class="legend-head">
-        <h3>Prophylaxe</h3>
-        <p>Befund wählen, dann Zähne im Schema anklicken. Nochmal klicken entfernt ihn.</p>
+  <main class="perio-half lw-host">
+    <section class="half-box half-schema">
+      <div class="schema-row">
+        <div class="stage-wrap">
+          <div id="stage"></div>
+        </div>
+        <aside class="zoom-pane">
+          <div class="zoom-head" id="zoomLabel">Zahn 46</div>
+          <div id="zoomStage"></div>
+        </aside>
       </div>
-      <div class="legend-items" id="legendItems"></div>
+      <!-- Befund-Sparten + Legende: unter dem Schema (rechts sitzt der Wizard) -->
+      <div class="left-befund">
+        <div class="befund-box-head">
+          <h2>Befund</h2>
+          <p>Sparte wählen, dann Zähne tippen. Nochmal tippen entfernt.</p>
+        </div>
+        <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten"></nav>
+        <div class="legend" id="legendPro">
+          <div class="legend-head">
+            <h3>Prophylaxe</h3>
+            <p>Befund tippen, dann Zahn wählen.</p>
+          </div>
+          <div class="legend-items" id="legendItems"></div>
+        </div>
+      </div>
+      <!-- Stubs fuer perio.js syncPanel (Panel wurde im Halfscreen-Umbau entfernt) -->
+      <span id="selLabel" hidden></span>
+      <input id="miss" type="checkbox" hidden />
     </section>
+
+    <!-- ═══ PC-WIZARD: iPad-Fluss read-only (Chef 22.07.) ═══ -->
+    <aside class="half-box lw-panel" id="lenaWizard" aria-label="Lena Doku-Wizard">
+      <div class="lw-head"><h2>Lena · Doku</h2><span>wie iPad · Live-Ansicht</span></div>
+      <div class="steps" id="lwSteps">
+        <div class="step-chip is-now" data-step="1"><span class="n">1</span>Arzt</div>
+        <div class="step-chip" data-step="2"><span class="n">2</span>Termin</div>
+        <div class="step-chip" data-step="3"><span class="n">3</span>Schema</div>
+        <div class="step-chip" data-step="4"><span class="n">4</span>Doku</div>
+        <div class="step-chip" data-step="5"><span class="n">5</span>Nachdiktat</div>
+        <div class="step-chip" data-step="6"><span class="n">6</span>Summary</div>
+        <div class="step-chip" data-step="7"><span class="n">7</span>OK</div>
+      </div>
+
+      <!-- 1 Arzt -->
+      <div class="wiz is-show" id="lwWiz1">
+        <div class="panel">
+          <h2>Wer behandelt?</h2>
+          <p class="lead" id="lwArztLead">Behandler vom gekoppelten Arbeitsplatz.</p>
+          <div class="doc-grid" id="lwDoctors"></div>
+          <div class="actions">
+            <span class="arzt-status" id="lwArztStatus"></span>
+            <button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2 Termin -->
+      <div class="wiz" id="lwWiz2">
+        <div class="panel">
+          <h2>Termin wählen</h2>
+          <p class="lead" id="lwTerminLead">Termine für Behandler · <span id="lwTerminDate">Heute</span></p>
+          <div class="picker-quick" id="lwQuick">
+            <button type="button" data-jump="today">Heute</button>
+            <button type="button" data-jump="-1">Gestern</button>
+            <button type="button" data-jump="-7">−7 Tage</button>
+          </div>
+          <div class="appt-list" id="lwAppts"></div>
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" data-back="1">Zurück</button>
+            <button type="button" class="btn btn-primary" data-next="3">Schema starten</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 Zahnschema (identisches Rendering: renderSchemaOnly) -->
+      <div class="wiz" id="lwWiz3">
+        <div class="panel">
+          <div class="rec-head">
+            <div class="rec-av" id="lwRecAv">—</div>
+            <div class="rec-head-main">
+              <div class="rec-name" id="lwRecName">—</div>
+              <div class="rec-meta"><b id="lwRecDoc">—</b> · <span id="lwRecTreat"></span></div>
+            </div>
+            <div class="rec-live" id="lwRecLive"><i></i><span>bereit</span></div>
+          </div>
+          <div class="doku-wrap">
+            <div class="doku-tpl doku-tpl--schema" id="lwSchemaTpl"></div>
+            <details class="raw-dialog" id="lwRawDialog">
+              <summary>Rohdialog <span class="tpl-badge tpl-badge--dark">§ 630f · Archiv</span></summary>
+              <div class="dialog" id="lwDialog">
+                <div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme am iPad starten — Zahnnummern erscheinen im Schema.</div>
+              </div>
+            </details>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" data-back="2">Termin</button>
+            <button type="button" class="btn btn-primary" data-next="4">Weiter · Doku</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 Box-Doku (identisches Rendering: renderBoxesOnly) -->
+      <div class="wiz" id="lwWiz4">
+        <div class="panel">
+          <div class="rec-head">
+            <div class="rec-av" id="lwRecAv2">—</div>
+            <div class="rec-head-main">
+              <div class="rec-name" id="lwRecName2">—</div>
+              <div class="rec-meta"><span id="lwRecTreat2"></span></div>
+            </div>
+            <div class="rec-live" id="lwRecLive2"><i></i><span>Schema → Doku</span></div>
+          </div>
+          <div class="doku-wrap">
+            <div class="doku-tpl" id="lwDokuTpl"></div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" data-back="3">Schema</button>
+            <button type="button" class="btn btn-primary" data-next="5">Weiter · Nachdiktat</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5 Nachdiktat (Anzeige — Diktat passiert am iPad) -->
+      <div class="wiz" id="lwWiz5">
+        <div class="panel">
+          <h2>Nachdiktat</h2>
+          <p class="lead" id="lwNdLead">Aufnahme bleibt — offene Lücken gezielt ergänzen</p>
+          <div class="nd-scroll">
+            <div class="nd-col">
+              <h3>Aufnahme <span class="tag">fix</span></h3>
+              <div class="nd-rec" id="lwNdRec"></div>
+            </div>
+            <div class="nd-col">
+              <h3>Lücken-Dialog <span class="tag">neu</span></h3>
+              <div class="nd-gaps" id="lwNdGaps" aria-live="polite"></div>
+              <div class="nd-text empty" id="lwNdText" style="margin-top:6px">noch kein Nachdiktat …</div>
+              <p class="hint" style="margin-top:6px">Diktieren läuft am iPad (Kanal · Arzt · Parakeet) — hier Live-Anzeige.</p>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" data-back="4">Doku</button>
+            <button type="button" class="btn btn-primary" data-next="6">Weiter · Zusammenfassung</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6 Summary -->
+      <div class="wiz" id="lwWiz6">
+        <div class="panel">
+          <h2>Zusammenfassung</h2>
+          <p class="lead">Klinik aus dem Gespräch · Nachdiktat wortwörtlich</p>
+          <div class="sum-patient" id="lwSumPatient">—</div>
+          <div id="lwSumBoxes" aria-live="polite"></div>
+          <pre id="lwSumText" hidden>—</pre>
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" data-back="5">Nachdiktat</button>
+            <button type="button" class="btn btn-primary" data-next="7">Weiter · OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7 Gespeichert -->
+      <div class="wiz" id="lwWiz7">
+        <div class="panel">
+          <h2>Gespeichert</h2>
+          <p class="lead" id="lwSaveLead">Die Dokumentation liegt im Praxisgedächtnis — Clara kann sie vorlesen.</p>
+          <p class="hint">Speichern/Export (PDF · PMS · Nadine) laufen am iPad — diese Ansicht ist read-only.</p>
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" data-back="6">Summary</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="lw-foot" id="lwFoot">—</div>
+    </aside>
   </main>
 
-  <script src="/m/lena-01/perio-legend.js?v=20260720zq"></script>
-  <script src="/m/lena-01/perio-chart.js?v=20260720zq"></script>
-  <script src="/m/lena-01/perio.js?v=20260720zq"></script>
+  <script src="/m/lena-zahnstatus-katalog.js?v=20260722a"></script>
+  <script src="/m/lena-voice-chart.js?v=20260722a"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260722b"></script>
+  <script src="/m/lena-01/perio-legend.js?v=20260721b"></script>
+  <script src="/m/lena-01/perio-chart.js?v=20260721b"></script>
+  <script src="/m/lena-01/perio.js?v=20260721b"></script>
+  <script src="/m/lena-01/perio-voice.js?v=20260721b"></script>
+  <script>
+    /* ═══ PC-WIZARD (read-only Spiegel des iPad-Lena-Wizards) ═══════════════
+       Datenpfad identisch zur iPad-App (ipad-app.html):
+       - POST /treatment/current  {clientId, deviceId, deviceKey, date}
+         → Behandler-Kalender + Tagesliste + Stuhl-Termin (nur gekoppelt).
+       - POST /treatment/heartbeat {clientId, locationId, appointmentId,
+         deviceLabel, presence:false} → Segmente + structuredText + recorder.
+       Rendering ueber die geteilten Module (LenaDokuZahn/LenaVoiceChart/
+       LenaZahnstatusKatalog) — exakt wie iPad Schritt 3/4/6.
+       KEIN LiveKit, KEINE Aufnahme-Steuerung, KEINE Schreib-Endpunkte
+       (structure/billing/finalize/lena-segment bleiben dem iPad).
+       Patientenwechsel-Hygiene wie iPad clearPatientDocState; bei Wechsel
+       auf einen ANDEREN Termin laedt die Seite neu (linkes 01-Schema +
+       perio-voice starten frisch — kein alter Zustand mischt sich). ═══════ */
+    (function () {
+      "use strict";
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+      let deviceCreds = null;
+      try { deviceCreds = JSON.parse(localStorage.getItem("pickadoc.ipad.v1") || "null"); } catch (_) {}
+      const paired = !!(deviceCreds?.clientId && deviceCreds?.deviceId && deviceCreds?.deviceKey);
+      const qs = new URLSearchParams(location.search);
+      const ctxLoc = (qs.get("locationId") || sessionStorage.getItem("lena01.locationId") || "").trim();
+      const ctxAppt = (qs.get("appointmentId") || sessionStorage.getItem("lena01.appointmentId") || "").trim();
+      const ctxName = (qs.get("patient") || qs.get("name") || "").trim();
+      const ctxClient = (deviceCreds?.clientId || qs.get("c") || sessionStorage.getItem("lena01.clientId") || "").trim();
+      if (qs.get("c")) sessionStorage.setItem("lena01.clientId", qs.get("c"));
+
+      let selectedDoc = deviceCreds?.doctorName || deviceCreds?.operatorName || "";
+      let selectedAppt = {
+        name: ctxName || "—", treat: "", appointmentId: ctxAppt, locationId: ctxLoc,
+        patientId: "", startMs: 0, comments: "", docsStatus: "", newPatient: false, anamneseFindings: [],
+      };
+      let dayAppointments = [];
+      let dayCalendars = [];
+      let dayLocationId = "";
+      let chairCurrent = null;
+      let savedSegments = [];
+      let segmentsForApptId = "";
+      let serverSummary = "";
+      let dokuState = null;
+      let recorderInfo = null;
+      let lastPollAt = 0;
+      let userNavAt = 0;
+
+      const chips = [...document.querySelectorAll("#lwSteps .step-chip[data-step]")];
+      const TODAY = new Date();
+      const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      const DOW = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+      let selectedDate = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+
+      const hhmm = (ms) => (ms ? new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "");
+      const initials = (name) => String(name || "?").split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+      const docLabel = () => (selectedDoc ? ("Dr. " + selectedDoc.replace(/^Dr\.?\s*/i, "")) : "—");
+
+      function currentStep() {
+        for (let i = 1; i <= 7; i++) if ($("lwWiz" + i)?.classList.contains("is-show")) return i;
+        return 1;
+      }
+      function isSchemaStep() { return currentStep() === 3; }
+      function isDokuBoxesStep() { return currentStep() === 4; }
+
+      function ids() {
+        const locationId = selectedAppt.locationId || chairCurrent?.locationId || dayLocationId || ctxLoc || "";
+        const appointmentId = selectedAppt.appointmentId || chairCurrent?.appointmentId || ctxAppt || "";
+        const clientId = ctxClient;
+        if (!clientId || !locationId || !appointmentId) return null;
+        return { clientId, locationId, appointmentId };
+      }
+
+      /* ── Doku-State (identische Semantik wie iPad) ─────────────────────── */
+      function anamnesePrefillSource() {
+        const chair = chairCurrent || {};
+        const appt = selectedAppt || {};
+        const same = chair.appointmentId && appt.appointmentId &&
+          String(chair.appointmentId) === String(appt.appointmentId);
+        return {
+          findings: same ? (chair.anamneseFindings || []) : (appt.anamneseFindings || chair.anamneseFindings || []),
+          docsStatus: appt.docsStatus || chair.docsStatus || "",
+        };
+      }
+      function ensureDokuState() {
+        const Zahn = window.LenaDokuZahn;
+        if (!Zahn) return null;
+        const anlass = selectedAppt?.treat || chairCurrent?.visitMotive || "";
+        const apptId = String(selectedAppt?.appointmentId || "");
+        if (apptId && segmentsForApptId && segmentsForApptId !== apptId) {
+          savedSegments = [];
+          segmentsForApptId = apptId;
+        }
+        if (!dokuState ||
+            String(dokuState.appointmentId || "") !== apptId ||
+            dokuState.anlass !== String(anlass || "").trim()) {
+          dokuState = Zahn.emptyState(anlass);
+          dokuState.appointmentId = apptId;
+          Zahn.applySignrPrefill(dokuState, anamnesePrefillSource());
+        }
+        return dokuState;
+      }
+      function refreshSchemaTemplate(segs) {
+        const Zahn = window.LenaDokuZahn;
+        const box = $("lwSchemaTpl");
+        if (!Zahn || !box) return;
+        if (!ensureDokuState()) return;
+        dokuState.page = "schema";
+        const list = Array.isArray(segs) ? segs : savedSegments;
+        const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        Zahn.applySchemaSegments(dokuState, clinical);
+        Zahn.renderSchemaOnly(box, dokuState);
+      }
+      function refreshDokuTemplate(segs) {
+        const Zahn = window.LenaDokuZahn;
+        const box = $("lwDokuTpl");
+        if (!Zahn || !box) return;
+        if (!ensureDokuState()) return;
+        dokuState.page = "doku";
+        const list = Array.isArray(segs) ? segs : savedSegments;
+        const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        Zahn.applySegments(dokuState, clinical);
+        Zahn.ensureGaps?.(dokuState);
+        Zahn.renderBoxesOnly(box, dokuState);
+      }
+      /** Wie iPad clearPatientDocState: beim Wechsel keinen alten Zustand zeigen. */
+      function clearPatientDocState() {
+        dokuState = null;
+        savedSegments = [];
+        segmentsForApptId = "";
+        serverSummary = "";
+        const wipe = (id, html) => { const el = $(id); if (el) el.innerHTML = html || ""; };
+        wipe("lwSchemaTpl");
+        wipe("lwDokuTpl");
+        wipe("lwDialog", '<div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Aufnahme am iPad starten — Zahnnummern erscheinen im Schema.</div>');
+        wipe("lwNdRec");
+        wipe("lwNdGaps");
+        wipe("lwSumBoxes");
+        if ($("lwNdText")) { $("lwNdText").textContent = "noch kein Nachdiktat …"; $("lwNdText").classList.add("empty"); }
+        if ($("lwSumText")) $("lwSumText").textContent = "—";
+      }
+
+      /* ── Segmente ziehen (gleicher Endpunkt/Guards wie iPad) ───────────── */
+      async function loadSavedSegments() {
+        const k = ids();
+        if (!k) {
+          savedSegments = [];
+          segmentsForApptId = "";
+          return [];
+        }
+        const wantAppt = String(k.appointmentId || "");
+        if (segmentsForApptId && segmentsForApptId !== wantAppt) {
+          savedSegments = [];
+          segmentsForApptId = wantAppt;
+        }
+        try {
+          const resp = await fetch("/treatment/heartbeat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: k.clientId,
+              locationId: k.locationId,
+              appointmentId: k.appointmentId,
+              deviceLabel: "PC-01",
+              presence: false,
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (String(selectedAppt?.appointmentId || ctxAppt || "") !== wantAppt) return [];
+          if (data.appointmentId && String(data.appointmentId) !== wantAppt) return [];
+          if (!resp.ok || !data.ok) {
+            if (segmentsForApptId !== wantAppt) savedSegments = [];
+            return savedSegments;
+          }
+          savedSegments = Array.isArray(data.segments)
+            ? data.segments.filter((s) => s && !s.struck && s.text)
+            : [];
+          segmentsForApptId = wantAppt;
+          if (typeof data.structuredText === "string") serverSummary = data.structuredText;
+          recorderInfo = data.recorder || null;
+          lastPollAt = Date.now();
+          // Patient-/Arzt-Metadaten nachziehen (Link-Modus ohne Kopplung).
+          if (data.patientName && (!selectedAppt.name || selectedAppt.name === "—")) {
+            selectedAppt.name = data.patientName;
+            if (!qs.get("patient")) {
+              if ($("pageTitle")) $("pageTitle").textContent = "01 - " + data.patientName;
+              document.title = "Lena · 01 · " + data.patientName;
+            }
+          }
+          if (data.visitMotive && !selectedAppt.treat) selectedAppt.treat = data.visitMotive;
+          if (data.doctorName && !selectedDoc) selectedDoc = data.doctorName;
+          syncRecHeader();
+          paintRecorder();
+          paintFoot();
+          return savedSegments;
+        } catch (_) {
+          return savedSegments;
+        }
+      }
+
+      /* ── Anzeige-Helfer ────────────────────────────────────────────────── */
+      function bubbleHtml(who, text) {
+        return '<span class="who">' + who + '</span><span class="bubble-text">' + esc(text) + "</span>";
+      }
+      function renderDialogFromSegments(segs, hostId) {
+        const box = $(hostId || "lwDialog");
+        if (!box) return;
+        const list = (segs || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        if (!list.length) {
+          box.innerHTML = '<div class="bubble p" style="opacity:.65"><span class="who">Hinweis</span>Noch keine Segmente — Aufnahme läuft am iPad.</div>';
+          return;
+        }
+        const ordered = list.slice().sort((a, b) => {
+          const sa = Number(a.startMs) || 0, sb = Number(b.startMs) || 0;
+          if (sa && sb) return sa - sb;
+          if (sa) return -1;
+          if (sb) return 1;
+          return 0;
+        });
+        box.innerHTML = "";
+        ordered.forEach((s) => {
+          const src = String(s.source || "raum").toLowerCase();
+          const who = src === "arzt" ? "Arzt" : "Gespräch";
+          const div = document.createElement("div");
+          div.className = "bubble " + (who === "Arzt" ? "a" : "p");
+          div.innerHTML = bubbleHtml(who, s.text);
+          box.appendChild(div);
+        });
+        box.scrollTop = box.scrollHeight;
+      }
+      function syncRecHeader() {
+        const av = initials(selectedAppt.name || "?");
+        if ($("lwRecName")) $("lwRecName").textContent = selectedAppt.name || "—";
+        if ($("lwRecTreat")) $("lwRecTreat").textContent = selectedAppt.treat || "";
+        if ($("lwRecDoc")) $("lwRecDoc").textContent = docLabel();
+        if ($("lwRecAv")) $("lwRecAv").textContent = av;
+        if ($("lwRecName2")) $("lwRecName2").textContent = selectedAppt.name || "—";
+        if ($("lwRecTreat2")) $("lwRecTreat2").textContent = selectedAppt.treat || "";
+        if ($("lwRecAv2")) $("lwRecAv2").textContent = av;
+      }
+      function paintRecorder() {
+        const r = recorderInfo || {};
+        const on = r.status === "recording";
+        const label = on
+          ? ("Aufnahme · " + (r.deviceLabel || r.by || "iPad"))
+          : (r.status === "paused" ? "Pause" : "bereit");
+        [["lwRecLive", label], ["lwRecLive2", on ? label : "Schema → Doku"]].forEach(([id, txt]) => {
+          const el = $(id);
+          if (!el) return;
+          el.classList.toggle("is-on", on);
+          const span = el.querySelector("span");
+          if (span) span.textContent = txt;
+        });
+      }
+      function paintFoot() {
+        const el = $("lwFoot");
+        if (!el) return;
+        const t = lastPollAt ? new Date(lastPollAt).toLocaleTimeString("de-DE") : "—";
+        const rec = recorderInfo?.status === "recording" ? " · <b>● Aufnahme läuft</b>" : "";
+        el.innerHTML = (paired ? "<b>Gekoppelt</b>" : "Nicht gekoppelt — Kontext per iPad-Link") +
+          " · Stand " + esc(t) + rec;
+      }
+
+      /* ── Arzt + Termine (gleicher Endpunkt wie iPad: /treatment/current) ── */
+      function dateLabel(d) {
+        const s = iso(d), st = iso(TODAY);
+        const y = new Date(TODAY); y.setDate(y.getDate() - 1);
+        if (s === st) return "Heute";
+        if (s === iso(y)) return "Gestern";
+        return DOW[d.getDay()] + ", " + String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0") + ".";
+      }
+      function updateTerminLead() {
+        const el = $("lwTerminLead");
+        if (el) el.innerHTML = "Termine für " + esc(docLabel() === "—" ? "Behandler" : docLabel()) +
+          ' · <span id="lwTerminDate">' + esc(dateLabel(selectedDate)) + "</span>";
+      }
+      function apptTag(a) {
+        if (a.patientStatus === 2) return { tag: "fertig", tc: "" };
+        if (chairCurrent?.appointmentId && a.appointmentId === chairCurrent.appointmentId) return { tag: "jetzt", tc: "wait" };
+        if (a.startMs && a.startMs <= Date.now()) return { tag: "läuft", tc: "wait" };
+        return { tag: "offen", tc: "wait" };
+      }
+      function renderDoctors(cals, doctorName) {
+        const grid = $("lwDoctors");
+        if (!grid) return;
+        grid.innerHTML = "";
+        const list = (cals && cals.length) ? cals : (doctorName ? [{ id: "", name: doctorName }] : []);
+        if (!list.length) {
+          grid.innerHTML = '<p class="hint" style="padding:10px">' +
+            (paired ? "Kein Behandler am Gerät hinterlegt." : "Nicht gekoppelt — Wizard folgt dem iPad-Link (Patient/Termin kommen per Heartbeat).") + "</p>";
+          if ($("lwArztLead")) $("lwArztLead").textContent = paired ? "Arbeitsplatz ohne Kalender-Zuordnung." : "Behandler vom gekoppelten Arbeitsplatz.";
+          return;
+        }
+        if ($("lwArztLead")) {
+          $("lwArztLead").textContent = list.length === 1
+            ? "Behandler dieses Arbeitsplatzes."
+            : "Behandler wählen — Termine werden gefiltert.";
+        }
+        list.forEach((c, i) => {
+          const name = c.name || "Behandler";
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "doc-card" + (i === 0 ? " is-sel" : "");
+          btn.dataset.doc = name;
+          btn.innerHTML =
+            '<div class="doc-av">' + esc(initials(name)) + "</div>" +
+            '<div><div class="doc-name">' + esc(name.match(/^Dr\.?\s/i) ? name : ("Dr. " + name)) + "</div>" +
+            '<div class="doc-role">Kalender</div></div>';
+          grid.appendChild(btn);
+        });
+        if (!selectedDoc) selectedDoc = list[0].name || doctorName || "";
+      }
+      function pickApptFrom(a) {
+        if (!a) {
+          selectedAppt = { name: "—", treat: "", appointmentId: "", locationId: "", patientId: "", startMs: 0, comments: "", docsStatus: "", newPatient: false, anamneseFindings: [] };
+          clearPatientDocState();
+          syncRecHeader();
+          return;
+        }
+        const prevId = String(selectedAppt?.appointmentId || "");
+        const nextId = String(a.appointmentId || "");
+        const dur = a.endMs && a.startMs ? Math.max(5, Math.round((a.endMs - a.startMs) / 60000)) : 0;
+        const sameChair = chairCurrent?.appointmentId && a.appointmentId === chairCurrent.appointmentId;
+        selectedAppt = {
+          name: a.patientName || "—",
+          treat: (a.visitMotive || "Termin") + (dur ? (" · " + dur + " min") : ""),
+          appointmentId: nextId,
+          locationId: a.locationId || chairCurrent?.locationId || dayLocationId || ctxLoc || "",
+          patientId: a.patientId || "",
+          startMs: a.startMs || 0,
+          comments: a.comments || "",
+          docsStatus: a.docsStatus || (sameChair ? (chairCurrent.docsStatus || "") : ""),
+          newPatient: a.newPatient === true,
+          anamneseFindings: sameChair
+            ? (chairCurrent.anamneseFindings || [])
+            : (Array.isArray(a.anamneseFindings) ? a.anamneseFindings : []),
+        };
+        if (a.doctorName) selectedDoc = a.doctorName;
+        if (prevId && nextId && prevId !== nextId) {
+          // Patientenwechsel-Hygiene: Wizard-Zustand leeren UND Seite frisch
+          // laden — das linke 01-Schema + perio-voice haengen am alten Termin.
+          clearPatientDocState();
+          sessionStorage.setItem("lena01.locationId", selectedAppt.locationId);
+          sessionStorage.setItem("lena01.appointmentId", nextId);
+          sessionStorage.setItem("lena01.wizStep", String(currentStep()));
+          const u = new URL(location.href);
+          if (selectedAppt.name && selectedAppt.name !== "—") u.searchParams.set("patient", selectedAppt.name);
+          else u.searchParams.delete("patient");
+          u.searchParams.set("locationId", selectedAppt.locationId);
+          u.searchParams.set("appointmentId", nextId);
+          location.replace(u.toString());
+          return;
+        }
+        if (nextId) {
+          sessionStorage.setItem("lena01.locationId", selectedAppt.locationId);
+          sessionStorage.setItem("lena01.appointmentId", nextId);
+        }
+        syncRecHeader();
+      }
+      function renderAppts() {
+        const list = $("lwAppts");
+        if (!list) return;
+        list.innerHTML = "";
+        const items = dayAppointments.slice();
+        if (!items.length) {
+          list.innerHTML = '<p class="hint" style="padding:14px 6px;text-align:center">' +
+            (paired ? "Keine Termine an diesem Tag." : "Nicht gekoppelt — Terminliste nur am iPad.") + "</p>";
+          return;
+        }
+        let selIdx = 0;
+        if (selectedAppt?.appointmentId) {
+          const i = items.findIndex((a) => a.appointmentId === selectedAppt.appointmentId);
+          if (i >= 0) selIdx = i;
+        } else if (chairCurrent?.appointmentId) {
+          const i = items.findIndex((a) => a.appointmentId === chairCurrent.appointmentId);
+          if (i >= 0) selIdx = i;
+        }
+        items.forEach((a, i) => {
+          const { tag, tc } = apptTag(a);
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "appt" + (i === selIdx ? " is-sel" : "");
+          btn.dataset.idx = String(i);
+          btn.innerHTML =
+            '<div class="appt-time">' + esc(hhmm(a.startMs)) + "</div>" +
+            '<div><div class="appt-name">' + esc(a.patientName || "—") + '</div><div class="appt-treat">' + esc(a.visitMotive || "Termin") + "</div></div>" +
+            '<span class="appt-tag ' + tc + '">' + tag + "</span>";
+          list.appendChild(btn);
+        });
+        pickApptFrom({ ...items[selIdx], locationId: chairCurrent?.locationId || dayLocationId || selectedAppt.locationId });
+      }
+      async function loadDay(dateStr) {
+        if (!paired) {
+          if ($("lwArztStatus")) $("lwArztStatus").textContent = "Nicht gekoppelt";
+          renderDoctors([], selectedDoc);
+          renderAppts();
+          return null;
+        }
+        if ($("lwArztStatus")) $("lwArztStatus").textContent = "Lade …";
+        try {
+          const resp = await fetch("/treatment/current", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: deviceCreds.clientId,
+              deviceId: deviceCreds.deviceId,
+              deviceKey: deviceCreds.deviceKey,
+              date: dateStr,
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.ok) {
+            if ($("lwArztStatus")) $("lwArztStatus").textContent = data.error || ("HTTP " + resp.status);
+            return null;
+          }
+          dayCalendars = Array.isArray(data.calendars) ? data.calendars : [];
+          dayAppointments = Array.isArray(data.appointments) ? data.appointments : [];
+          if (data.locationId) dayLocationId = data.locationId;
+          if (data.found) {
+            chairCurrent = {
+              appointmentId: data.appointmentId,
+              locationId: data.locationId,
+              patientId: data.patientId,
+              patientName: data.patientName,
+              visitMotive: data.visitMotive,
+              startMs: data.startMs,
+              comments: data.comments || "",
+              docsStatus: data.docsStatus || "",
+              newPatient: data.newPatient === true,
+              anamneseFindings: Array.isArray(data.anamneseFindings) ? data.anamneseFindings : [],
+              doctorName: data.doctorName || "",
+            };
+          } else if (iso(selectedDate) === iso(TODAY)) {
+            chairCurrent = null;
+          }
+          if (data.doctorName && !selectedDoc) selectedDoc = data.doctorName;
+          if ($("lwArztStatus")) {
+            $("lwArztStatus").textContent = data.found
+              ? ("Stuhl: " + (data.patientName || "Termin"))
+              : (data.reason === "none" ? "Kein Termin jetzt" : ("Hinweis: " + data.reason));
+          }
+          if (!$("lwDoctors")?.querySelector(".doc-card") || dayCalendars.length) {
+            renderDoctors(dayCalendars, data.doctorName || selectedDoc);
+          }
+          renderAppts();
+          updateTerminLead();
+          paintFoot();
+          return data;
+        } catch (e) {
+          if ($("lwArztStatus")) $("lwArztStatus").textContent = String(e?.message || e);
+          return null;
+        }
+      }
+
+      /* ── Nachdiktat + Summary (read-only, iPad-Semantik) ───────────────── */
+      function refreshNdGaps() {
+        const Zahn = window.LenaDokuZahn;
+        const box = $("lwNdGaps");
+        if (!box || !Zahn) return;
+        if (!dokuState) {
+          dokuState = Zahn.emptyState(selectedAppt?.treat || "");
+          Zahn.applySignrPrefill(dokuState, anamnesePrefillSource());
+        }
+        dokuState.page = "doku";
+        Zahn.applySegments(
+          dokuState,
+          (savedSegments || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"),
+        );
+        const prompts = Zahn.openGapPrompts(dokuState);
+        if (!prompts.length) {
+          box.innerHTML = '<div class="nd-gap-ok">Keine offenen Pflicht-Lücken — optional ergänzen.</div>';
+          return;
+        }
+        box.innerHTML = prompts.map((p) =>
+          '<div class="nd-gap-q">' + esc(p.question || "") + "</div>",
+        ).join("");
+      }
+      function fillNdText() {
+        const el = $("lwNdText");
+        if (!el) return;
+        const nd = (savedSegments || []).filter((s) => String(s.source || "").toLowerCase() === "nachdiktat");
+        if (!nd.length) {
+          el.textContent = "noch kein Nachdiktat …";
+          el.classList.add("empty");
+          return;
+        }
+        el.textContent = nd.map((s) => s.text).join(" ");
+        el.classList.remove("empty");
+      }
+      function medicalDraftFromSegments() {
+        const clinicish = /(zahn|regio|implant|krone|br(ü|ue)cke|f(ü|ue)llung|extrakt|wurzel|endo|karies|an(ä|ae)sth|befund|diagnos|r(ö|oe)ntgen|paro|pzr|augment|naht|schmerz|goz|bema|okklusion|kontrolle)/i;
+        const lines = [];
+        (savedSegments || []).forEach((s) => {
+          const src = String(s.source || "").toLowerCase();
+          const t = String(s.text || "").trim();
+          if (!t || src === "nachdiktat") return;
+          if (clinicish.test(t)) lines.push("- " + t);
+        });
+        return lines.join("\n").trim();
+      }
+      function fillSummary() {
+        if ($("lwSumPatient")) {
+          $("lwSumPatient").textContent = (selectedAppt.name || "—") +
+            (selectedAppt.treat ? " · " + selectedAppt.treat : "") +
+            (docLabel() !== "—" ? " · " + docLabel() : "");
+        }
+        const Zahn = window.LenaDokuZahn;
+        const box = $("lwSumBoxes");
+        if (Zahn && dokuState) {
+          dokuState.page = "doku";
+          Zahn.applySegments(dokuState, savedSegments.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
+        }
+        const tplText = (Zahn && dokuState) ? Zahn.toStructuredText(dokuState) : "";
+        const plain = serverSummary || tplText || medicalDraftFromSegments() || "";
+        if ($("lwSumText")) $("lwSumText").textContent = plain || "Noch keine medizinische Zusammenfassung.";
+        if (box && Zahn && dokuState) {
+          Zahn.render(box, dokuState);
+        } else if (box) {
+          box.innerHTML = '<div class="tpl-field is-gap"><div class="tpl-lab">Dokumentation</div>' +
+            '<div class="tpl-val' + (plain ? "" : " empty") + '">' +
+            (plain ? esc(plain).replace(/\n/g, "<br>") : "Noch keine medizinische Zusammenfassung.") +
+            "</div></div>";
+        }
+      }
+
+      /* ── Schritt-Navigation (Klick wie iPad; Hooks je Schritt) ─────────── */
+      function paintCurrent(segs) {
+        const n = currentStep();
+        const main = (segs || savedSegments || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        if (n === 3) {
+          renderDialogFromSegments(main, "lwDialog");
+          refreshSchemaTemplate(main);
+        } else if (n === 4) {
+          refreshDokuTemplate(main);
+        } else if (n === 5) {
+          renderDialogFromSegments(main, "lwNdRec");
+          refreshNdGaps();
+          fillNdText();
+        } else if (n === 6) {
+          fillSummary();
+        }
+      }
+      function showStep(n) {
+        for (let i = 1; i <= 7; i++) $("lwWiz" + i)?.classList.toggle("is-show", i === n);
+        chips.forEach((c) => {
+          const s = Number(c.dataset.step);
+          c.classList.toggle("is-now", s === n);
+          c.classList.toggle("is-done", s < n);
+        });
+        if (n === 3 || n === 4) {
+          syncRecHeader();
+          const apptId = String(selectedAppt.appointmentId || ids()?.appointmentId || "");
+          if (!apptId || segmentsForApptId !== apptId) {
+            savedSegments = [];
+            segmentsForApptId = apptId;
+            serverSummary = "";
+            dokuState = null;
+          }
+          if (n === 3) { if (dokuState) dokuState.page = "schema"; refreshSchemaTemplate(savedSegments); }
+          else { if (dokuState) dokuState.page = "doku"; else ensureDokuState(); refreshDokuTemplate(savedSegments); }
+        }
+        if (n === 5 && $("lwNdLead")) {
+          $("lwNdLead").textContent = (selectedAppt.name || "—") + " · " + docLabel() + " — Lücken gezielt ergänzen";
+        }
+        if (n >= 3 && n <= 6) {
+          paintCurrent(savedSegments);
+          loadSavedSegments().then((segs) => paintCurrent(segs)).catch(() => {});
+        }
+      }
+
+      document.querySelectorAll("#lenaWizard [data-next]").forEach((b) =>
+        b.addEventListener("click", () => { userNavAt = Date.now(); showStep(Number(b.dataset.next)); }));
+      document.querySelectorAll("#lenaWizard [data-back]").forEach((b) =>
+        b.addEventListener("click", () => { userNavAt = Date.now(); showStep(Number(b.dataset.back)); }));
+      chips.forEach((c) => c.addEventListener("click", () => { userNavAt = Date.now(); showStep(Number(c.dataset.step)); }));
+      $("lwDoctors")?.addEventListener("click", (e) => {
+        const card = e.target.closest(".doc-card");
+        if (!card) return;
+        document.querySelectorAll("#lwDoctors .doc-card").forEach((c) => c.classList.remove("is-sel"));
+        card.classList.add("is-sel");
+        selectedDoc = card.dataset.doc || "";
+        updateTerminLead();
+        loadDay(iso(selectedDate));
+      });
+      $("lwQuick")?.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-jump]");
+        if (!b) return;
+        const j = b.dataset.jump;
+        const d = new Date(TODAY);
+        if (j !== "today") d.setDate(d.getDate() + Number(j));
+        selectedDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        updateTerminLead();
+        loadDay(iso(selectedDate));
+      });
+      $("lwAppts")?.addEventListener("click", (e) => {
+        const btn = e.target.closest(".appt");
+        if (!btn) return;
+        userNavAt = Date.now();
+        document.querySelectorAll("#lwAppts .appt").forEach((x) => x.classList.remove("is-sel"));
+        btn.classList.add("is-sel");
+        const a = dayAppointments[Number(btn.dataset.idx)];
+        pickApptFrom({ ...a, locationId: chairCurrent?.locationId || dayLocationId || selectedAppt.locationId });
+      });
+
+      /* ── Boot + Polling (Intervalle wie iPad-Fallback: 20 s Tag / 6 s Segmente) ── */
+      updateTerminLead();
+      syncRecHeader();
+      paintFoot();
+      const restoreStep = Number(sessionStorage.getItem("lena01.wizStep") || "0");
+      sessionStorage.removeItem("lena01.wizStep");
+      loadDay(iso(TODAY)).then((data) => {
+        if (restoreStep >= 1 && restoreStep <= 7) { showStep(restoreStep); return; }
+        if (ctxAppt) { showStep(3); return; }
+        if (data?.found && data.appointmentId) showStep(2);
+      });
+      setInterval(() => {
+        if (document.hidden) return;
+        if (paired && iso(selectedDate) === iso(TODAY)) loadDay(iso(TODAY));
+      }, 20000);
+      setInterval(() => {
+        if (document.hidden) return;
+        const n = currentStep();
+        if (n < 3 || n > 6) {
+          // Live-Folge: startet am iPad eine Aufnahme, springt der Wizard aufs
+          // Schema (sofern der Nutzer nicht gerade selbst navigiert).
+          if (n < 3 && ids() && Date.now() - userNavAt > 30000) {
+            loadSavedSegments().then(() => {
+              if (recorderInfo?.status === "recording" && currentStep() < 3) showStep(3);
+            }).catch(() => {});
+          }
+          return;
+        }
+        loadSavedSegments().then((segs) => {
+          if (String(selectedAppt?.appointmentId || ctxAppt || "") !== String(segmentsForApptId || "")) return;
+          paintCurrent(segs);
+        }).catch(() => {});
+      }, 6000);
+    })();
+  </script>
 </body>
 </html>
