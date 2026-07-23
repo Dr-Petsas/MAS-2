@@ -79,14 +79,32 @@
     return false;
   }
 
-  /** Permission + Liste der audioinput-Geraete (mit Labels). */
+  /** Permission + Liste der audioinput-Geraete (mit Labels).
+   *  BT-HEADSET (23.07.2026): KEIN Wegwerf-getUserMedia mehr, sobald die
+   *  Mikro-Erlaubnis bereits vorliegt. Ein getUserMedia({audio}) + sofortiges
+   *  track.stop() entreisst LiveKit auf iPadOS das Bluetooth-Headset
+   *  (Re-Handshake + evtl. Erlaubnis-Popup) — genau der Fehler beim Wechsel
+   *  Clara<->Lena. Nur beim allerersten Aufruf OHNE Erlaubnis wird einmalig
+   *  gewaermt (da haelt LiveKit noch kein Mikro). */
   async function listAudioInputs() {
     if (!navigator.mediaDevices?.enumerateDevices) return [];
-    try {
-      const warm = await navigator.mediaDevices.getUserMedia({ audio: true });
-      try { warm.getTracks().forEach((t) => t.stop()); } catch (_) {}
-    } catch (_) { /* Permission verweigert — Liste ggf. ohne Labels */ }
-    const devices = await navigator.mediaDevices.enumerateDevices();
+    let devices = await navigator.mediaDevices.enumerateDevices();
+    const hasLabels = devices.some((d) => d.kind === "audioinput" && d.label);
+    if (!hasLabels) {
+      let granted = false;
+      try {
+        const st = await navigator.permissions?.query?.({ name: "microphone" });
+        granted = st?.state === "granted";
+      } catch (_) { /* permissions-API evtl. nicht verfuegbar (iOS) */ }
+      if (!granted) {
+        // Erststart ohne Erlaubnis: einmalig warmen (kein LiveKit-Mic offen).
+        try {
+          const warm = await navigator.mediaDevices.getUserMedia({ audio: true });
+          try { warm.getTracks().forEach((t) => t.stop()); } catch (_) {}
+        } catch (_) { /* Permission verweigert — Liste ggf. ohne Labels */ }
+        devices = await navigator.mediaDevices.enumerateDevices();
+      }
+    }
     return devices
       .filter((d) => d.kind === "audioinput" && d.deviceId)
       .map((d) => ({

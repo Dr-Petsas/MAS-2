@@ -2049,6 +2049,10 @@
         if (cfg.operator?.name) els.calling.textContent = `Verbunden · ${cfg.operator.name}`;
 
         room = new Room({ adaptiveStream: true, dynacast: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        // Neuer Room -> LiveKit startet auf dem Default-Geraet. Gemerkte aktive
+        // Mic-Geraete-ID zuruecksetzen, damit switchMic den ersten echten Wechsel
+        // nicht faelschlich ueberspringt (BT-Entkopplung 23.07.2026).
+        window.__claraActiveMicId = "";
         room.on(RoomEvent.TrackSubscribed, (track) => {
           if (chatPipeline || track.kind !== Track.Kind.Audio || audioAttached) return;
           track.attach(els.audio); audioAttached = true; tryPlayAudio();
@@ -2186,13 +2190,18 @@
         return !!connected;
       },
       isLive: () => !!connected,
-      /** LiveKit-Eingang auf deviceId legen (USB/iPad/BT), ohne Room-Reconnect. */
+      /** LiveKit-Eingang auf deviceId legen (USB/iPad/BT), ohne Room-Reconnect.
+          BT-HEADSET (23.07.2026): Steht LiveKit bereits auf genau diesem Geraet,
+          NICHT erneut wechseln — ein redundanter switchActiveDevice macht auf
+          iPadOS einen unnoetigen Bluetooth-Re-Handshake. */
       async switchMic(deviceId) {
         const id = String(deviceId || "").trim();
         if (!id || !room || !connected) return false;
+        if (window.__claraActiveMicId && window.__claraActiveMicId === id) return true;
         try {
           if (typeof room.switchActiveDevice === "function") {
             await room.switchActiveDevice("audioinput", id);
+            window.__claraActiveMicId = id;
             return true;
           }
         } catch (_) {}
