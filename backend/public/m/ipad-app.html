@@ -1035,7 +1035,10 @@
       padding: 2px 7px; border-radius: 6px; cursor: pointer;
     }
     .bubble .bubble-ops button:active { transform: scale(.96); }
-    .rec-bar { display: flex; align-items: center; gap: 6px; flex: none; padding-top: 2px; }
+    .rec-bar {
+      display: flex; align-items: center; gap: 6px; flex: none; padding-top: 2px;
+      position: relative; z-index: 6; /* ueber Schema-Zoom, sonst verschluckt Touch den Stop */
+    }
     .rec-bar .btn { padding: 9px 12px; font-size: .8rem; }
     .timer { font-variant-numeric: tabular-nums; font-weight: 800; font-size: .95rem; min-width: 56px; }
     .spacer { flex: 1; }
@@ -2224,9 +2227,9 @@
   </script>
 
   <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
-  <script src="/m/lena-zahnstatus-katalog.js?v=20260722g"></script>
-  <script src="/m/lena-voice-chart.js?v=20260722g"></script>
-  <script src="/m/lena-doku-template-zahn.js?v=20260722c"></script>
+  <script src="/m/lena-zahnstatus-katalog.js?v=20260722i"></script>
+  <script src="/m/lena-voice-chart.js?v=20260722i"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard.
@@ -2346,6 +2349,8 @@
       // Live-Preview des aktuellen Parakeet-Partials (nur Anzeige, nicht speichern).
       let liveDokuPartial = "";
       let livePartialTimer = 0;
+      // Letzte Arzt-Aktivitaet (Partial/Final) — Souffleuse nur in Pausen.
+      let lastArztSpeechAt = 0;
 
       function anamnesePrefillSource() {
         const chair = chairCurrent || {};
@@ -2677,6 +2682,7 @@
         if (wantAppt) segmentsForApptId = wantAppt;
         liveDokuPartial = "";
         if (src === "arzt") {
+          lastArztSpeechAt = Date.now();
           try { appendBubble("Arzt", text, id, Number(obj?.startMs) || Date.now()); } catch (_) {}
           // Steuer-Segment "01 fertig": Quittung + Seitenwechsel, kein
           // Befund-Echo/Schema-Paint mehr noetig (showStep(4) rendert Doku).
@@ -2772,13 +2778,17 @@
       /** Partial: Schema sofort aufleuchten; fertige Snap = sofort Segment. */
       function ingestLenaDokuPartial(text) {
         if (!recording || paused) return;
-        if (!isSchemaStep()) return;
+        if (!isRecLiveStep()) return;
         if (!paneDoku?.classList.contains("is-active")) return;
         let t = String(text || "").trim();
         if (!t) return;
         // Eigenes Echo (Mikro nimmt Lautsprecher auf) nicht aufleuchten
         // lassen und erst recht nicht per Lightspeed committen.
         if (lenaEchoGuardHit(t)) return;
+        // Jede Arzt-Aktivitaet zaehlt fuer Souffleuse-Pause (auch Box-Doku).
+        lastArztSpeechAt = Date.now();
+        // Schema-Paint / Lightspeed nur im Schema-Schritt.
+        if (!isSchemaStep()) return;
         // Schema-Schritt: Garble-Aliasse frueh anwenden (hier->vier etc.),
         // damit Partial-Paint + Snap-Commit die korrigierte Form sehen.
         try { t = window.LenaZahnstatusKatalog?.schemaDigitAlias?.(t) || t; } catch (_) {}
@@ -2814,10 +2824,13 @@
       let souffleRecStartedAt = 0;
       const SOUFFLE_COOLDOWN_MS = 45000;
       const SOUFFLE_FIRST_DELAY_MS = 25000;
+      // Souffleuse spricht weiter — aber nur in Sprechpausen (Chef 23.07.).
+      const SOUFFLE_SILENCE_MS = 4000;
       function resetSouffle() {
         souffleSpoken = new Set();
         souffleLastAt = 0;
         souffleRecStartedAt = 0;
+        lastArztSpeechAt = 0;
       }
       function clearPatientDocState() {
         // Laufende Aufnahme/Diktat gehoeren zum ALTEN Patienten — sofort
@@ -2852,7 +2865,11 @@
         if (!isDokuBoxesStep()) return;
         if (!paneDoku?.classList.contains("is-active")) return;
         if (document.hidden) return;
+        // Waehrend der Arzt spricht: warten (Partial oder frisches Final).
+        if (liveDokuPartial) return;
+        if (echoSpeaking) return;
         const now = Date.now();
+        if (lastArztSpeechAt && now - lastArztSpeechAt < SOUFFLE_SILENCE_MS) return;
         if (!souffleRecStartedAt) souffleRecStartedAt = now;
         if (now - souffleRecStartedAt < SOUFFLE_FIRST_DELAY_MS) return;
         if (now - souffleLastAt < SOUFFLE_COOLDOWN_MS) return;
@@ -2861,8 +2878,8 @@
         Zahn.ensureGaps?.(dokuState);
         const hint = Zahn.nextSouffleHint(dokuState, souffleSpoken);
         if (!hint?.text) return;
-        const ok = window.__claraIpad?.publishCmd?.({ type: "coach_speak", text: hint.text });
-        if (!ok) return;
+        // Sprechen nur in Pause; Echo-Guard via lenaEchoSend (nicht in Akte).
+        lenaEchoSend(hint.text);
         souffleSpoken.add(hint.key);
         souffleLastAt = now;
         dokuState.lastTouchedKey = hint.key;
@@ -2882,7 +2899,7 @@
       }
       setInterval(() => {
         try { maybeSoufflePrompt(); } catch (_) {}
-      }, 8000);
+      }, 2000);
       function refreshNdGaps() {
         const Zahn = window.LenaDokuZahn;
         const box = $("ndGaps");
@@ -4399,7 +4416,8 @@
           lang: "de-DE",
           channel: "arzt",
           source: src,
-          stt: "parakeet",
+          // Doku = Whisper (lena_stt); Clara-Telefon bleibt Parakeet.
+          stt: "whisper",
         });
       }
       function waitLenaTeeAck(wantAppt, ms) {
@@ -4428,13 +4446,27 @@
         });
       }
 
+      // Start/Stop-Generation: zweiter Tap bricht einen noch laufenden Start ab
+      // (ensureLive / Tee-Ack), sonst bleibt Stop wirkungslos oder startet neu.
+      let recToggleGen = 0;
+
+      function setRecButtonsLive(live) {
+        const b1 = $("btnRec");
+        if (b1) {
+          b1.textContent = live ? "■ Stop" : "● Aufnehmen";
+          b1.classList.toggle("is-live", !!live);
+          b1.disabled = false;
+        }
+        syncRecChrome();
+      }
+
       async function stopRecording() {
+        recToggleGen += 1; // in-flight start ungültig
         recording = false; paused = false;
         resetSouffle();
         docReleaseWakeLock();
         clearInterval(timerId); timerId = null;
-        const btn = $("btnRec");
-        if (btn) { btn.textContent = "● Aufnehmen"; btn.classList.remove("is-live"); }
+        setRecButtonsLive(false);
         if ($("btnPause")) { $("btnPause").disabled = true; $("btnPause").textContent = "Pause"; }
         $("recLive")?.classList.remove("is-on");
         const liveSpan = $("recLive")?.querySelector("span");
@@ -4447,6 +4479,7 @@
         const accumMs = recStartedAtMs ? Math.max(0, Date.now() - recStartedAtMs) : seconds * 1000;
         await patchRecorder("idle", { command: "stop", commandAtMs: Date.now(), accumMs, startedAtMs: recStartedAtMs || 0 });
         applyMicToggleUi();
+        syncRecChrome();
         void startMicPreview();
       }
 
@@ -4459,15 +4492,25 @@
         try { recCapture?.resume?.(); } catch (_) {}
       });
 
-      $("btnRec")?.addEventListener("click", async () => {
-        const btn = $("btnRec");
-        if (recording) { await stopRecording(); return; }
+      async function startRecording() {
+        if (recording) return;
         if (!treatmentIds()) {
           const liveEl = $("recLive")?.querySelector("span");
           if (liveEl) liveEl.textContent = "kein Termin";
           return;
         }
+        const gen = ++recToggleGen;
+        // Sofort Stop anzeigen — zweiter Tap = Abbruch, auch waehrend ensureLive.
+        setRecButtonsLive(true);
+        if ($("btnPause")) $("btnPause").disabled = false;
+        $("recLive")?.classList.add("is-on");
+        {
+          const liveEl = $("recLive")?.querySelector("span");
+          if (liveEl) liveEl.textContent = "startet …";
+        }
+
         await stopMicPreview();
+        if (gen !== recToggleGen) return;
 
         // Stumm-Fenster ab JETZT (Chef 22.07. 01:45): eine evtl. gerade
         // laufende/gleich startende Begruessung soll nicht als Fragment in
@@ -4475,30 +4518,38 @@
         // (audio_state=speaking) oder Timeout; Fehlerpfade heben sofort auf.
         try { window.__claraIpad?.hushForRecStart?.(4000); } catch (_) {}
 
-        // iPad / Bluetooth / USB: alles Parakeet über Clara.
         {
           const liveEl = $("recLive")?.querySelector("span");
           if (liveEl) liveEl.textContent = "Clara …";
         }
         const live = await window.__claraIpad?.ensureLive?.();
+        if (gen !== recToggleGen) return;
         if (!live) {
           try { window.__claraIpad?.unhush?.(); } catch (_) {}
           setMicActiveLabel("Clara fehlt — zuerst verbinden", true);
           const liveEl = $("recLive")?.querySelector("span");
           if (liveEl) liveEl.textContent = "Clara fehlt";
+          setRecButtonsLive(false);
+          if ($("btnPause")) $("btnPause").disabled = true;
+          $("recLive")?.classList.remove("is-on");
           void startMicPreview();
           return;
         }
         const micPick = await ensureClaraMicForMode();
+        if (gen !== recToggleGen) return;
         if (!micPick.ok) {
           try { window.__claraIpad?.unhush?.(); } catch (_) {}
           setMicActiveLabel(String(micPick.warning || "Mikro fehlt"), true);
           const liveEl = $("recLive")?.querySelector("span");
           if (liveEl) liveEl.textContent = "Mikro fehlt";
+          setRecButtonsLive(false);
+          if ($("btnPause")) $("btnPause").disabled = true;
+          $("recLive")?.classList.remove("is-on");
           void startMicPreview();
           return;
         }
         const existingBt = await loadSavedSegments();
+        if (gen !== recToggleGen) return;
         if (existingBt.length) {
           renderDialogFromSegments(existingBt.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"));
         } else {
@@ -4510,13 +4561,14 @@
         souffleRecStartedAt = Date.now();
         docRequestWakeLock();
         if ($("timer")) $("timer").textContent = "00:00";
-        if (btn) { btn.textContent = "■ Stop"; btn.classList.add("is-live"); }
+        setRecButtonsLive(true);
         if ($("btnPause")) $("btnPause").disabled = false;
         $("recLive")?.classList.add("is-on");
         {
           const liveEl = $("recLive")?.querySelector("span");
-          if (liveEl) liveEl.textContent = "live · Parakeet";
+          if (liveEl) liveEl.textContent = "live · Whisper";
         }
+        clearInterval(timerId);
         timerId = setInterval(() => {
           if (!paused) {
             seconds++;
@@ -4539,6 +4591,10 @@
         const teeOk = teeSent
           ? await waitLenaTeeAck(idsNow?.appointmentId, 2800)
           : false;
+        if (gen !== recToggleGen) {
+          // Stop waehrend Tee-Ack: Aufnahme bereits beendet.
+          return;
+        }
         const micLab = micPick.label || micModeLabel();
         recCapture = {
           activeMic: { mode: micMode, label: micLab, shared: true },
@@ -4552,16 +4608,28 @@
         };
         setMicActiveLabel(
           teeOk
-            ? "Aktiv: Parakeet · " + micLab + " — sprechen (Doku)"
+            ? "Aktiv: Whisper · " + micLab + " — sprechen (Doku)"
             : "KEIN Tee — Clara-Worker: CLARA_LENA_TEE=1 und neu starten?",
           !teeOk || !!micPick.warning,
         );
         if ($("recLive")) {
           const liveEl = $("recLive").querySelector("span");
-          if (liveEl) liveEl.textContent = teeOk ? "live · Parakeet" : "Tee fehlt";
+          if (liveEl) liveEl.textContent = teeOk ? "live · Whisper" : "Tee fehlt";
         }
         applyMicToggleUi();
-      });
+        syncRecChrome();
+      }
+
+      async function toggleRecording() {
+        // Laufend ODER Start noch nicht fertig (Button schon is-live) → Stop.
+        if (recording || $("btnRec")?.classList.contains("is-live")) {
+          await stopRecording();
+          return;
+        }
+        await startRecording();
+      }
+
+      $("btnRec")?.addEventListener("click", () => { void toggleRecording(); });
       $("btnPause")?.addEventListener("click", () => {
         if (!recording) return;
         paused = !paused;
@@ -4584,7 +4652,7 @@
         syncRecChrome();
       });
       // Doku-Seite: dieselben Aufnahme-Controls (ohne doppelte Logik).
-      $("btnRec2")?.addEventListener("click", () => $("btnRec")?.click());
+      $("btnRec2")?.addEventListener("click", () => { void toggleRecording(); });
       $("btnPause2")?.addEventListener("click", () => $("btnPause")?.click());
 
       // Clara-Sprachbefehl → Befund-Schritt (LiveKit lena_open_findings).
@@ -4619,9 +4687,9 @@
           const dokuBtn = modeSwitch?.querySelector?.('button[data-mode="doku"]');
           if (dokuBtn && activeMode !== "doku") dokuBtn.click();
           showStep(3);
-          if (!recording) {
+          if (!recording && !$("btnRec")?.classList.contains("is-live")) {
             await new Promise((r) => setTimeout(r, 80));
-            $("btnRec")?.click();
+            void startRecording();
           }
         } catch (err) {
           console.warn("lena_open_findings failed", err);

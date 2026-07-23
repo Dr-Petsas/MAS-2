@@ -599,8 +599,14 @@
       parts.push("</div></div>");
     }
     parts.push(fieldHtml("Aufklärung", "aufklaerung", state));
-    parts.push(fieldHtml("Komplikationen", "komplikationen", state));
-    parts.push(fieldHtml("Procedere", "procedere", state));
+    // Komplikationen / Procedere: vorerst ausgeblendet (Chef 23.07.) —
+    // nur anzeigen, wenn doch etwas diktiert wurde.
+    if (String(state.values.komplikationen || "").trim()) {
+      parts.push(fieldHtml("Komplikationen", "komplikationen", state));
+    }
+    if (String(state.values.procedere || "").trim()) {
+      parts.push(fieldHtml("Procedere", "procedere", state));
+    }
     container.innerHTML = parts.join("");
     focusLastTouched(container, state);
   }
@@ -633,13 +639,21 @@
     return state;
   }
 
-  /** Pflicht-Lücken setzen (auch ohne Segmente — für Souffleuse). */
+  /** Pflicht-Lücken setzen (auch ohne Segmente — für Souffleuse).
+   * Komplikationen/Procedere vorerst NICHT pflichtig (Chef 23.07.) —
+   * nur Aufklärung neben Befund/Diagnose/Therapie. */
   function ensureGaps(state) {
     if (!state) return state;
-    const need = ["befund", "diagnose", "therapie", "komplikationen", "procedere"];
+    const need = ["befund", "diagnose", "therapie", "aufklaerung"];
     for (const k of need) {
       if (!String(state.values[k] || "").trim() && state.status[k] !== "pre") {
         state.status[k] = "gap";
+      }
+    }
+    // Alte Pflicht-Flags abraeumen, falls noch aus frueherem Stand.
+    for (const k of ["komplikationen", "procedere"]) {
+      if (state.status[k] === "gap" && !String(state.values[k] || "").trim()) {
+        state.status[k] = "empty";
       }
     }
     if (state.openBlocks.has("fuellung")) {
@@ -664,8 +678,6 @@
     befund: "Befund",
     diagnose: "Diagnose",
     therapie: "Therapie",
-    komplikationen: "Komplikationen",
-    procedere: "Procedere",
     aufklaerung: "Aufklärung",
     la_mittel: "Lokalanästhesie",
     fuellung_material: "Füllungsmaterial",
@@ -702,8 +714,6 @@
       befund: "Befund noch offen — was war der klinische Befund?",
       diagnose: "Diagnose fehlt — wie lautet sie?",
       therapie: "Therapie fehlt — was wurde gemacht?",
-      komplikationen: "Komplikationen? (sonst: keine)",
-      procedere: "Procedere / nächster Schritt?",
       aufklaerung: "Aufklärung dokumentiert?",
       la_mittel: "Lokalanästhesie: Wirkstoff / Menge?",
       fuellung_material: "Füllung: Material?",
@@ -752,6 +762,37 @@
     }
     state.status[key] = st || "live";
     if ((st || "live") === "live") state.lastTouchedKey = key;
+  }
+
+  /** Live-Felder vor Idempotent-Rebuild leeren (SignR/Anlass = status "pre" bleiben). */
+  function clearLiveFields(state) {
+    if (!state || !state.values) return;
+    for (const k of Object.keys(state.values)) {
+      if (state.status[k] === "pre") continue;
+      if (k === "anlass") continue;
+      delete state.values[k];
+      state.status[k] = "empty";
+    }
+    // Bloecke neu aus dem Diktat ableiten (Startbloecke bleiben Basis).
+    state.openBlocks = guessStartBlocks(state.anlass || state.values.anlass || "");
+    state.gapCount = 0;
+    state.lastTouchedKey = "";
+  }
+
+  /**
+   * Kurze Quittungen / Fülllaute — kein Freitext-Sink (Doku-Seite).
+   * Echte Formulierungen (>= ~12 Zeichen oder >= 3 Woerter) kommen durch.
+   */
+  function isDokuChatter(text) {
+    const s = String(text || "").trim();
+    if (!s) return true;
+    if (SYSTEM_CHATTER_RE.test(s)) return true;
+    if (/^(?:ja|nein|ok|okay|gut|danke|bitte|moment|weiter|richtig|genau|super|perfekt|mh+|mhm+|aha|hm+)[\s.!?]*$/i.test(s)) {
+      return true;
+    }
+    const words = s.split(/\s+/).filter(Boolean);
+    if (s.length < 12 && words.length < 3) return true;
+    return false;
   }
 
   function extractTeeth(text) {
@@ -809,9 +850,40 @@
     const s = stripLeadFillers(text);
     return (
       /^befund\s+(?:ende|fertig|abgeschlossen|stopp?)\b/i.test(s) ||
-      /^(?:ende|stopp?)\s+befund\b/i.test(s) ||
-      /^therapie\b[:,.]?\s*$/i.test(s)
+      /^(?:ende|stopp?)\s+befund\b/i.test(s)
     );
+  }
+
+  /** Segment startet Diagnose-Diktat? */
+  function diagnoseTrigger(text) {
+    const s = stripLeadFillers(text);
+    const m = s.match(/^diagnos(?:e|is)\b[:,.]?\s*/i);
+    if (m) return { rest: s.slice(m[0].length).trim() };
+    const cmd = s.match(
+      /\b(?:schreib\w*|trag\w*|notier\w*|nimm|setz\w*|mach\w*|fakte)\b[^.\n]{0,40}?\bdiagnos(?:e|is)\b[:,]?\s*(?:ein|rein|auf|mit)?\b[:,]?\s*/i,
+    );
+    if (cmd) return { rest: s.slice(cmd.index + cmd[0].length).trim() };
+    return null;
+  }
+
+  /** Segment startet Therapie-Diktat? ("Therapie." allein = Modus, ohne Inhalt) */
+  function therapieTrigger(text) {
+    const s = stripLeadFillers(text);
+    const m = s.match(/^therapie\b[:,.]?\s*/i);
+    if (m) return { rest: s.slice(m[0].length).trim() };
+    const cmd = s.match(
+      /\b(?:schreib\w*|trag\w*|notier\w*)\b[^.\n]{0,40}?\btherapie\b[:,]?\s*(?:ein|rein|auf|mit)?\b[:,]?\s*/i,
+    );
+    if (cmd) return { rest: s.slice(cmd.index + cmd[0].length).trim() };
+    return null;
+  }
+
+  /** Segment startet Aufklärungs-Notiz? */
+  function aufklaerungTrigger(text) {
+    const s = stripLeadFillers(text);
+    const m = s.match(/^aufkl[aä]rung\b[:,.]?\s*/i);
+    if (m) return { rest: s.slice(m[0].length).trim() };
+    return null;
   }
 
   /* Nachfragen ans System ("Hoerst du mich?", Live 13:12) sind kein Befund —
@@ -830,6 +902,7 @@
       "gesp[uü]lt", "sp[uü]le\\b", "gen[aä]ht", "naht\\s+gelegt",
       "f[uü]llung\\s+(?:gelegt|gemacht)", "\\bgelegt\\b", "\\bgesetzt\\b",
       "eingesetzt", "abformung", "\\babdruck\\b",
+      "membran", "knochenaufbau", "augment", "bio[- ]?oss", "sinuslift",
     ].join("|"),
     "i",
   );
@@ -854,44 +927,63 @@
    * Modus je Lauf NEU aus der Segment-Reihenfolge ableiten. applySegments
    * bekommt immer die VOLLE Liste — so bleibt das Routing idempotent, auch
    * wenn der State zwischendurch frisch aufgebaut wird.
-   * @returns Array<{ text: string, forced: boolean }>
+   * @returns Array<{ text: string, forced: boolean, box?: string }>
    */
   function routeSegments(state, texts) {
-    let mode = null;
+    let mode = null; // befund | diagnose | therapie | aufklaerung | null
     const routed = [];
+    const pushForced = (box, rest) => {
+      if (rest) routed.push({ text: rest, forced: true, box });
+    };
     for (const t of texts) {
-      // Ende-Kommando VOR dem Trigger pruefen — "Befund Ende" wuerde sonst
-      // vom Trigger-Regex ("befund\b" + Rest) als Neustart gelesen.
       if (befundEndCommand(t)) {
         mode = null;
         continue;
       }
-      // Steuer-Segmente (Seitenwechsel "01 fertig", Reset, Quittungen/
-      // Rueckfragen): beim Doku-Rebuild ueberspringen — sonst laeuft z. B.
-      // "01 fertig" im Befund-Diktat-Modus als Text in die Befund-Box.
       if (isFinishControlText(t) || schemaResetCommand(t) || isControlEchoText(t)) {
         continue;
       }
-      // Einzelzahn-Loeschung: kein Box-Inhalt, aber als Marker weiterreichen —
-      // der Chart-Aufbau wendet sie reihenfolge-treu an (buildChartWithDeletes).
       const delCmd = toothDeleteCommand(t);
       if (delCmd) {
         routed.push({ text: "", forced: false, del: delCmd });
         continue;
       }
+      const dTrig = diagnoseTrigger(t);
+      if (dTrig) {
+        mode = "diagnose";
+        pushForced("diagnose", dTrig.rest);
+        continue;
+      }
+      const thTrig = therapieTrigger(t);
+      if (thTrig) {
+        mode = "therapie";
+        pushForced("therapie", thTrig.rest);
+        continue;
+      }
+      const aTrig = aufklaerungTrigger(t);
+      if (aTrig) {
+        mode = "aufklaerung";
+        pushForced("aufklaerung", aTrig.rest);
+        continue;
+      }
       const trig = befundTrigger(t);
       if (trig) {
         mode = "befund";
-        if (trig.rest) routed.push({ text: trig.rest, forced: true });
+        pushForced("befund", trig.rest);
         continue;
       }
+      // Therapie-Handlung beendet Befund-Modus und landet in Therapie.
       if (mode === "befund" && isTherapyActionDone(t)) {
-        mode = null; // Therapie beginnt — ohne Trigger-Wort (Chef-Vorgabe)
-        routed.push({ text: t, forced: false });
+        mode = "therapie";
+        routed.push({ text: t, forced: true, box: "therapie" });
         continue;
       }
       if (mode === "befund" && SYSTEM_CHATTER_RE.test(t)) continue;
-      routed.push({ text: t, forced: mode === "befund" });
+      if (mode) {
+        routed.push({ text: t, forced: true, box: mode });
+        continue;
+      }
+      routed.push({ text: t, forced: false });
     }
     if (state) state.dictMode = mode;
     return routed;
@@ -918,14 +1010,21 @@
         break;
       }
     }
+    // Idempotenter Rebuild: Live-Boxen leeren, dann aus der VOLLEN Liste
+    // neu befuellen (sonst bleiben gestrichene Segmente in den Boxen).
+    clearLiveFields(state);
     if (!texts.length) {
       state.dictMode = null;
       return state;
     }
     const routed = routeSegments(state, texts);
-    // Block-/LA-/Plan-Scans nur ueber Auto-Segmente: "17 Fuellung insuffizient"
-    // im Befund-Diktat ist Bestand und darf keinen Fuellung-Block oeffnen.
-    const all = routed.filter((r) => !r.forced).map((r) => r.text).join("\n");
+    // Block-/LA-/Plan-Scans: Befund-Diktat (forced befund) darf keine Bloecke
+    // oeffnen ("17 Fuellung insuffizient" = Bestand). Therapie-Segmente schon.
+    const all = routed
+      .filter((r) => !r.forced || r.box === "therapie")
+      .map((r) => r.text)
+      .filter(Boolean)
+      .join("\n");
 
     // Chart idempotent neu aufbauen (volle Segmentliste), dann Text-Boxen.
     // UI der Doku-Seite zeigt das Schema nicht — Stand bleibt in state.chart
@@ -943,7 +1042,10 @@
     if (global.LenaVoiceChart) {
       state.chart = global.LenaVoiceChart.emptyChart();
       const chartSegs = routed.map((r) => (
-        r.del ? { del: r.del } : { text: r.text, forceLayer: r.forced ? "befund" : "" }
+        r.del ? { del: r.del } : {
+          text: r.text,
+          forceLayer: (r.forced && (!r.box || r.box === "befund")) ? "befund" : "",
+        }
       ));
       const last = buildChartWithDeletes(state.chart, chartSegs);
       if (last) {
@@ -965,41 +1067,65 @@
       }
     }
 
-    // Befund / Therapie / Diagnose
+    // Befund / Therapie / Diagnose / Aufklärung (+ Freitext-Fallback)
+    const DIAGNOSE_RE =
+      /diagnos|\bcap\b|abszess|abscess|parodontit|periodontit|gingivit|pulpit|\bcaries\b|apikal(?:e|er|es)?\s+parodont|fossa\s+canina|submuk[oö]s|chronisch\s+apikal|eitrig(?:e|er)?\s+entz[uü]nd/i;
+    const BEFUND_RE =
+      /\bbefund\b|perkussion|vitalit[aä]t|locker|fistel|schwellung|schmerz|beschwerden|sondier|druckdolent|aufbiss|entz[uü]nd|mobil|blutung.*sondier|rezession|furkation|anamnese|patient\s+(?:berichtet|schildert|gibt\s+an)|seit\s+\d+\s+tag|\bkaries\b|kari[oö]s|fehlt|fehlend|insuffizient/i;
+    const THERAPIE_RE =
+      /exkav|f[uü]ll|komposit|trepan|aufbereit|obturat|extrah|\bextraktion\b|naht|pr[aä]par|zement|einsetz|membran|knochenaufbau|augment|bio[- ]?oss|sinuslift|implant(?:at)?\s+(?:gesetzt|inseriert|gelegt)|(?:gesetzt|inseriert|gelegt)\w*\s+implant|gezogen|provisor|krone\s+(?:gesetzt|eingesetzt|zementiert)|ultracain|ubistesin|an[aä]sthes/i;
+    const AUFKL_RE =
+      /aufkl[aä]r|risiken?\s+besprochen|einverstanden|unterschr|aufgekl[aä]rt|patient\s+(?:ist\s+)?informiert/i;
+
     for (const r of routed) {
-      if (r.del) continue; // Loesch-Marker: nie Box-Inhalt
+      if (r.del) continue;
       const t = r.text;
-      if (r.forced) {
-        // Befund-Diktat: JEDES Segment in die Befund-Box (Chef 21.07.),
-        // Diagnose-Sprache zusaetzlich in die Diagnose-Box.
-        setField(state, "befund", t, "live");
-        if (/diagnos|caries|pulpitis|periodontitis|fractur|fraktur/i.test(t)) {
-          setField(state, "diagnose", t, "live");
-        }
+      if (!t) continue;
+      if (r.forced && r.box) {
+        setField(state, r.box, t, "live");
         continue;
       }
-      if (/\bkaries\b|kari[oö]s|befund|perkussion|vitalit[aä]t|locker|fistel|schwellung|schmerz|sondier|druckdolent|aufbiss|entz[uü]nd|eitr\w*|abszess|mobil|blutung.*sondier|rezession|furkation/i.test(t)) {
+      // Legacy: forced ohne box = Befund-Diktat
+      if (r.forced) {
         setField(state, "befund", t, "live");
+        if (DIAGNOSE_RE.test(t)) setField(state, "diagnose", t, "live");
+        continue;
       }
-      if (/diagnos|caries|pulpitis|periodontitis|fractur|fraktur/i.test(t)) {
+      let placed = false;
+      if (DIAGNOSE_RE.test(t)) {
         setField(state, "diagnose", t, "live");
+        placed = true;
       }
-      if (/exkav|f[uü]ll|komposit|trepan|aufbereit|obturat|extrah|naht|pr[aä]par|zement|einsetz/i.test(t)) {
-        // Soll-/Passiv-Form ("muss extrahiert werden") = Befund/Plan,
-        // nicht durchgefuehrte Therapie (Live 21.07.).
+      if (BEFUND_RE.test(t)) {
+        setField(state, "befund", t, "live");
+        placed = true;
+      }
+      if (THERAPIE_RE.test(t)) {
         if (THERAPY_NEED_RE.test(t) || THERAPY_PASSIVE_RE.test(t)) {
           setField(state, "befund", t, "live");
         } else {
           setField(state, "therapie", t, "live");
         }
+        placed = true;
       }
-      if (/kontrolle|wiedervorstellung|rezept|schonung|procedere|n[aä]chste/i.test(t)) {
+      if (AUFKL_RE.test(t)) {
+        setField(state, "aufklaerung", t, "live");
+        placed = true;
+      }
+      // Procedere nur bei explizitem Stichwort (keine Pflicht-Box / Souffleuse).
+      if (/kontrolle|wiedervorstellung|rezept|schonung|procedere|n[aä]chste\s+(?:woche|termin)|vorgehen/i.test(t)) {
         setField(state, "procedere", t, "live");
+        placed = true;
       }
       if (/keine komplikationen|komplikationslos|ohne besonderheit/i.test(t)) {
         setField(state, "komplikationen", "keine", "live");
-      } else if (/komplikation|blutung|fraktur.*wurzel|via falsa/i.test(t)) {
+        placed = true;
+      } else if (/\bkomplikation/i.test(t)) {
         setField(state, "komplikationen", t, "live");
+        placed = true;
+      }
+      if (!placed && !isDokuChatter(t)) {
+        setField(state, "befund", t, "live");
       }
     }
 
@@ -1058,10 +1184,13 @@
       }
     }
 
-    // Pflicht-Luecken fuer sichtbare Felder
-    const need = ["befund", "diagnose", "therapie", "komplikationen", "procedere"];
+    // Pflicht-Luecken fuer sichtbare Felder (ohne Komplikationen/Procedere)
+    const need = ["befund", "diagnose", "therapie", "aufklaerung"];
     for (const k of need) {
-      if (!state.values[k]) state.status[k] = "gap";
+      if (!state.values[k] && state.status[k] !== "pre") state.status[k] = "gap";
+    }
+    for (const k of ["komplikationen", "procedere"]) {
+      if (state.status[k] === "gap" && !state.values[k]) state.status[k] = "empty";
     }
     if (state.openBlocks.has("bildgebung")) {
       if (!state.values.roe_indikation) state.status.roe_indikation = "gap";
@@ -1160,8 +1289,12 @@
     }
 
     parts.push(fieldHtml("Aufklärung", "aufklaerung", state));
-    parts.push(fieldHtml("Komplikationen", "komplikationen", state));
-    parts.push(fieldHtml("Procedere", "procedere", state));
+    if (String(state.values.komplikationen || "").trim()) {
+      parts.push(fieldHtml("Komplikationen", "komplikationen", state));
+    }
+    if (String(state.values.procedere || "").trim()) {
+      parts.push(fieldHtml("Procedere", "procedere", state));
+    }
 
     container.innerHTML = parts.join("");
     focusLastTouched(container, state);

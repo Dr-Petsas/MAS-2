@@ -675,6 +675,20 @@ export function relativeDayLabel(dateStr) {
     const weekDiff = Math.floor((diff + isoDow(today) - 1) / 7);
     if (weekDiff === 0) return withHoliday(`am ${wd}`);
     if (weekDiff === 1) return withHoliday(`nächste Woche ${wd}`);
+    if (weekDiff === 2) return withHoliday(`in zwei Wochen ${wd}`);
+    if (weekDiff === 3) return withHoliday(`in drei Wochen ${wd}`);
+    if (weekDiff === 4) return withHoliday(`in vier Wochen ${wd}`);
+    if (weekDiff > 4) return withHoliday(`in ${weekDiff} Wochen ${wd}`);
+  }
+  if (diff < -2) {
+    const isoDow = (s) => { const n = new Date(`${s}T12:00:00Z`).getUTCDay(); return n === 0 ? 7 : n; };
+    const weekDiff = Math.floor((diff + isoDow(today) - 1) / 7);
+    if (weekDiff === 0) return withHoliday(`am vergangenen ${wd}`);
+    if (weekDiff === -1) return withHoliday(`letzte Woche ${wd}`);
+    if (weekDiff === -2) return withHoliday(`vor zwei Wochen ${wd}`);
+    if (weekDiff === -3) return withHoliday(`vor drei Wochen ${wd}`);
+    if (weekDiff === -4) return withHoliday(`vor vier Wochen ${wd}`);
+    if (weekDiff < -4) return withHoliday(`vor ${-weekDiff} Wochen ${wd}`);
   }
   const dm = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, day: "numeric", month: "long" }).format(d);
   return withHoliday(`am ${wd}, den ${dm}`);
@@ -1187,10 +1201,12 @@ export function buildSpokenPatientPrep(appointments = [], prepByPatientId = new 
       flagParts.push(texts.length ? `${cat}: ${[...new Set(texts)].join(", ")}` : cat);
     }
 
-    // Letzte Behandlung (Vorbehandlung): Datum + Behandlungsart.
+    // Letzte Behandlung: bevorzugt gewichtetes Lena-Snippet (8d), sonst Kalender.
     let lastSeg = "";
     const la = p.lastAppt;
-    if (la && la.startMs) {
+    if (p.lenaSnippet) {
+      lastSeg = `zuletzt ${String(p.lenaSnippet).trim()}`;
+    } else if (la && la.startMs) {
       const day = dayOfMs(la.startMs);
       let rel = relativeDayLabel(day);
       const year = day.slice(0, 4);

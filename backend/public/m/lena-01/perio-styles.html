@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lena · Odontogramm – 8 Farbschemata</title>
+  <meta name="theme-color" content="#0b0e13" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
+      background: #0b0e13; color: #e7edf3;
+    }
+    header {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 16px; padding: 22px clamp(16px, 4vw, 48px) 8px;
+    }
+    .eyebrow { font-size: 12px; letter-spacing: .14em; color: #7fa7c9; }
+    h1 { margin: 4px 0 0; font-size: clamp(20px, 2.6vw, 28px); }
+    header p { margin: 6px 0 0; color: #9fb0c0; max-width: 60ch; }
+    header a { color: #8fd0ff; text-decoration: none; white-space: nowrap; }
+    header a:hover { text-decoration: underline; }
+    .grid {
+      display: grid; gap: 18px; padding: 18px clamp(16px, 4vw, 48px) 48px;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    }
+    .card {
+      background: #121821; border: 1px solid #22303d; border-radius: 14px;
+      overflow: hidden; cursor: pointer; transition: transform .12s, border-color .12s;
+    }
+    .card:hover { transform: translateY(-3px); border-color: #3f5e79; }
+    .thumb { position: relative; aspect-ratio: 1376 / 620; overflow: hidden; }
+    .thumb .base {
+      position: absolute; inset: 0;
+      background-position: center top; background-size: 100% auto; background-repeat: no-repeat;
+      background-image: url("/m/lena-01/perio-preview.png?v=7");
+    }
+    .thumb .wash { position: absolute; inset: 0; mix-blend-mode: overlay; }
+    .meta { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; }
+    .meta b { font-size: 15px; }
+    .meta span { font-size: 12px; color: #93a3b3; }
+    .apply {
+      font: inherit; font-size: 13px; border: 1px solid #3f5e79; color: #cfe6ff;
+      background: #16222c; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    }
+    .apply:hover { background: #1d2c38; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <span class="eyebrow">LENA · 01-MODUS · PARODONTOLOGIE</span>
+      <h1>8 Farbschemata fürs Odontogramm</h1>
+      <p>Auf Basis der plastisch gebackenen Zähne (hellere Wurzeln, 3D-Glanz).
+         Karte anklicken → Schema wird im Editor angewendet.</p>
+    </div>
+    <a href="/m/lena-01/perio.html">← zum Editor</a>
+  </header>
+
+  <div class="grid" id="grid"></div>
+
+  <script>
+    // filter = CSS-Filter auf das Bild; wash = optionaler Overlay-Ton (blend "overlay")
+    const SCHEMES = [
+      { id: "warm",     name: "Warm Studio",   sub: "natürlich, warm",       filter: "saturate(1.05) contrast(1.03)",                 wash: null },
+      { id: "ivory",    name: "Elfenbein",     sub: "hell, cremig",          filter: "brightness(1.08) sepia(.18) saturate(1.1)",     wash: "rgba(255,244,214,.10)" },
+      { id: "blueprint",name: "Blueprint",     sub: "Bauplan-Blau",          filter: "grayscale(1) brightness(.9) contrast(1.2) sepia(1) hue-rotate(170deg) saturate(4)", wash: "rgba(20,80,150,.20)" },
+      { id: "mono",     name: "Monochrom Pro", sub: "sachlich grau",         filter: "grayscale(1) contrast(1.12) brightness(1.02)",  wash: null },
+      { id: "klinik",   name: "Klinik Kühl",   sub: "kühles Weiß",           filter: "saturate(.7) hue-rotate(-12deg) brightness(1.05) contrast(1.05)", wash: "rgba(150,200,230,.08)" },
+      { id: "sepia",    name: "Sepia Vintage", sub: "warmes Archiv",         filter: "sepia(.65) contrast(1.05) brightness(1.02)",    wash: "rgba(120,80,40,.10)" },
+      { id: "kontrast", name: "Kontrast Hoch", sub: "kräftig, klar",         filter: "contrast(1.28) saturate(1.25) brightness(1.02)", wash: null },
+      { id: "neon",     name: "Nacht Neon",    sub: "dunkel, kräftig",       filter: "brightness(.92) saturate(1.6) contrast(1.15) hue-rotate(300deg)", wash: "rgba(120,40,160,.14)" },
+    ];
+
+    const grid = document.getElementById("grid");
+    for (const s of SCHEMES) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML =
+        '<div class="thumb">' +
+          '<div class="base" style="filter:' + s.filter + '"></div>' +
+          (s.wash ? '<div class="wash" style="background:' + s.wash + '"></div>' : '') +
+        '</div>' +
+        '<div class="meta"><div><b>' + s.name + '</b><br><span>' + s.sub + '</span></div>' +
+          '<button class="apply">Anwenden</button></div>';
+      const go = () => {
+        localStorage.setItem("perioScheme", JSON.stringify({ id: s.id, filter: s.filter, wash: s.wash }));
+        location.href = "/m/lena-01/perio.html?scheme=" + s.id;
+      };
+      card.addEventListener("click", go);
+      grid.appendChild(card);
+    }
+  </script>
+</body>
+</html>

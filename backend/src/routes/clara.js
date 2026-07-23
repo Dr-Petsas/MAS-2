@@ -17,6 +17,7 @@ import { createSession, endSession, setOperator } from "../clara/sessions.js";
 import { identifyByPin, listOperators, saveOperators, OPERATOR_ROLES, roleLabel } from "../clara/operators.js";
 import { identifyByDevice, callOperator, consumePendingCallContext } from "../clara/devices.js";
 import { getGreetingContext } from "../clara/greetingContext.js";
+import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { runClaraHealth, statusPageHtml } from "../clara/health.js";
 import { loadProof, proofToSvg } from "../clara/proofCard.js";
 import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, qmRoute, resolveClientId } from "./_shared.js";
@@ -238,6 +239,38 @@ router.get("/clara/greeting-context", async (req, res) => {
     }
     const context = await getGreetingContext(clientId);
     res.json({ ok: true, context: context || null });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Voice-Worker: Patientennamen aus dem Kalenderfenster
+// (letzte 2 Wochen + diese + naechste Woche) als STT-Bias.
+// WICHTIG: Route steht VOR den /clara/:clientId-Catch-alls.
+router.get("/clara/stt-patient-names", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const force = String(req.query?.force || "") === "1";
+    const out = await listPatientNamesForStt(clientId, { force });
+    res.json({
+      ok: true,
+      clientId,
+      locationId: out.locationId || "",
+      from: out.from || "",
+      to: out.to || "",
+      source: out.source || "calendar",
+      count: out.count,
+      lastCount: out.lastCount || 0,
+      firstCount: out.firstCount || 0,
+      todayCount: out.todayCount || 0,
+      tomorrowCount: out.tomorrowCount || 0,
+      cached: !!out.cached,
+      names: out.names,
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

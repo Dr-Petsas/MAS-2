@@ -53,6 +53,9 @@
     LA: "Lokalanästhesie",
     Paro: "Parodontalbefund",
     Kief: "Kiefer / CMD",
+    rt: "retinierter Zahn",
+    imp: "impaktierter Zahn",
+    verl: "verlagerter Zahn",
   };
 
   /**
@@ -75,9 +78,18 @@
 
   /** Wohin im Tages-Schema (02): befund | therapie | paro | kiefer */
   const LAYER_OF = {
-    f: "befund", k: "befund", kw: "befund", b: "befund", bw: "befund",
-    ww: "befund", pw: "befund", x: "befund", sk: "befund", t: "befund",
-    pkw: "befund", ix: "befund", ")(": "befund",
+    f: "befund", e: "befund", ew: "befund", x: "befund",
+    ww: "befund", pw: "befund", ur: "befund",
+    k: "befund", kw: "befund", pkw: "befund",
+    t: "befund", tw: "befund", t2w: "befund",
+    b: "befund", bw: "befund",
+    a: "befund", ab: "befund", aw: "befund", abw: "befund",
+    ")(": "befund",
+    sk: "befund", skw: "befund", st: "befund", stw: "befund",
+    sb: "befund", sbw: "befund", se: "befund", sew: "befund",
+    so: "befund", sow: "befund", ix: "befund",
+    r: "befund", rw: "befund",
+    rt: "befund", imp: "befund", verl: "befund",
     Ka: "befund",
     Fu: "therapie", WF: "therapie", LA: "therapie",
     Paro: "befund",
@@ -97,53 +109,149 @@
   };
 
   /**
-   * Gesprochene Wörter → Kürzel (längere Phrasen zuerst matchen).
-   * Reihenfolge: spezifisch vor generisch.
+   * Gesprochene Wörter → Kürzel.
+   * Reihenfolge IST die Priorität: spezifisch vor generisch
+   * (z. B. Adhäsivbrücke vor Brücke, Implantat-Teleskop vor Implantat,
+   *  erneuerungsbedürftig vor Basis-Code).
+   *
+   * Speed: eine Regex pro Code (~45), linear in Textlänge — bewusst KEINE
+   * verschachtelten Quantoren. Genauigkeit: Wortgrenzen + ASCII/Umlaut-
+   * Alternation; Alltagswoerter ("so","se","ab") nur als freistehende
+   * Kuerzel im voice-chart-Scanner, nicht hier als Freitext.
+   *
+   * Varianten-Dokumentation: docs/LENA_BEFUND_SPRACHE.md + SPEECH_EXAMPLES.
    */
-  // WICHTIG: Jede Regel muss Umlaut- UND ASCII-Form treffen ("Brücke" wie
-  // "Bruecke") — der Parser matcht seit 21.07. nachts auf dem ASCII-
-  // gefalteten Text (Positions-Bindung), Garble-/Nachkorrektur-Pfade
-  // liefern ohnehin beide Schreibweisen.
+  // WICHTIG: Umlaut- UND ASCII-Form ("Bruecke"/"Brücke") — Parser matcht
+  // auf ASCII-gefaltetem Text (norm) und Rohtext.
   const SPEECH = [
+    // —— Krone / Teilkrone / Teleskop (Spezial vor Basis) ——
     { re: /teilkrone|\bpkw\b|\btk\b|\btee[\s.\-]*ka\b|\bt[\s.\-]+k\b(?!\w)/i, code: "pkw" },
-    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e|en)?\s+krone|krone\s+erneuern|\bkw\b/i, code: "kw" },
-    { re: /metallkeramik(?:krone)?|\bkm[\s.\-]*krone\b|\bkm\b|\bka[\s.\-]*em\b|\bk[\s.\-]+m\b(?!\w)/i, code: "k" },
-    { re: /\bkrone\b/i, code: "k" },
-    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e|en)?\s+br(?:[uü]|ue)ckenglied|\bbw\b/i, code: "bw" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+krone|krone\s+erneuern|krone\s+defekt|\bkw\b/i, code: "kw" },
+    { re: /metallkeramik(?:krone)?|vollkeramik(?:krone)?|zirkon(?:oxid)?(?:krone)?|\bkm[\s.\-]*krone\b|\bkm\b|\bka[\s.\-]*em\b|\bk[\s.\-]+m\b(?!\w)/i, code: "k" },
+    { re: /\bkrone\b|\bueberkron|\büberkron|\bcrown\b/i, code: "k" },
+    { re: /sekund(?:[aä]|ae)rteil|\bt2w\b/i, code: "t2w" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+teleskop|teleskop\s+erneuern|\btw\b/i, code: "tw" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+implantat[\s\-]*teleskop|implantat[\s\-]*teleskop\s+erneuern|\bstw\b/i, code: "stw" },
+    { re: /implantat[\s\-]*teleskop|\bst\b(?!\w)/i, code: "st" },
+    { re: /telesko|telesco|\bteleskop(?:krone)?\b|\bt\b(?!\w)/i, code: "t" },
+
+    // —— Brücke / Adhäsiv (Adhäsiv vor generischer Brücke) ——
+    // Kurz-Codes a/ab/aw/abw: freistehend nur via voice-chart tokenRe/nearRe
+    // (sonst trifft \bab\b die Präposition "ab").
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+adh(?:[aä]|ae)siv|adh(?:[aä]|ae)siv(?:br(?:[uü]|ue)cke)?\s+erneuern|\babw\b/i, code: "abw" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+adh(?:[aä]|ae)siv[\s\-]*anker|adh(?:[aä]|ae)siv[\s\-]*anker\s+erneuern|\baw\b/i, code: "aw" },
+    { re: /adh(?:[aä]|ae)siv(?:br(?:[uü]|ue)cke)?[\s\-]*(?:glied|pontic)|maryland(?:br(?:[uü]|ue)cke)?|klebebr(?:[uü]|ue)cke/i, code: "ab" },
+    { re: /adh(?:[aä]|ae)siv[\s\-]*anker|adh(?:[aä]|ae)siv(?:br(?:[uü]|ue)cke)?/i, code: "a" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+br(?:[uü]|ue)ckenglied|br(?:[uü]|ue)ckenglied\s+erneuern|\bbw\b/i, code: "bw" },
     { re: /br(?:[uü]|ue)ckenglied|pontic/i, code: "b" },
     { re: /\bbr(?:[uü]|ue)cke\b/i, code: "b" },
-    { re: /weitgehend(?:e|er)?\s+zerst(?:[oö]|oe)r|behandlungsbed(?:[uü]|ue)rftig|\bww\b/i, code: "ww" },
-    { re: /partiell(?:e|er)?\s+substanz|\bpw\b/i, code: "pw" },
-    // "muss extrahiert werden" = Befund x (Live 21.07.), nicht nur "Extraktion"
-    { re: /nicht\s+erhaltungsw(?:[uü]|ue)rdig|zu\s+extrah|\bextraktion\b|extrahiert\s+werden|muss\s+(?:\w+\s+)?extrahiert|\bmuss\s+raus\b/i, code: "x" },
-    // Plural/Voranstellung (Chef 21.07.: "13,14,15 fehlen", "es fehlen 23,24",
-    // "fehlend sind 31 32") — \bfehl(t|en|end[e|er|en]) faengt alle Formen;
-    // "Fehler"/"empfehlen" bleiben draussen (Wortgrenze + Suffix-Liste).
-    { re: /\bfehl(?:t|en|end(?:e[rn]?)?)\b|zahn\s+fehlt/i, code: "f" },
-    { re: /implantat\s+entfernen|\bix\b/i, code: "ix" },
+
+    // —— Status fehlend / ersetzt / zerstört ——
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+(?:ersetzt|ersatz)|ersatz\s+erneuern|\bew\b/i, code: "ew" },
+    { re: /\bersetzt(?:e[rn]?)?\b|\bprothesenzahn\b|\bkunststoffzahn\b/i, code: "e" },
+    { re: /\bfehl(?:t|en|end(?:e[rn]?)?)\b|zahn\s+fehlt|nicht\s+vorhanden|nicht\s+angelegt|bereits\s+gezogen|wurde\s+gezogen|ist\s+gezogen/i, code: "f" },
+    { re: /nicht\s+erhaltungsw(?:[uü]|ue)rdig|extraktionsw(?:[uü]|ue)rdig|zu\s+extrah|\bextraktion\b|extrahiert\s+werden|muss\s+(?:\w+\s+)?extrahiert|\bmuss\s+raus\b|hoffnungslos(?:er)?\s+zahn/i, code: "x" },
+    { re: /weitgehend(?:e|er)?\s+zerst(?:[oö]|oe)r|stark\s+zerst(?:[oö]|oe)r|behandlungsbed(?:[uü]|ue)rftig|destruier|\bww\b/i, code: "ww" },
+    { re: /partiell(?:e|er)?\s+substanz|substanzdefekt|kleiner\s+defekt|\bpw\b/i, code: "pw" },
+    { re: /unzureichende?\s+retention|retention\s+unzureichend|h(?:[aä]|ae)lt\s+nicht|\bur\b/i, code: "ur" },
+    { re: /l(?:[uü]|ue)ckenschluss|luecke\s+geschlossen|lücke\s+geschlossen/i, code: ")(" },
+
+    // —— Implantat-Familie (Spezial vor generischem Implantat) ——
+    { re: /implantat\s+(?:entfernen|raus|ex)|zu\s+entfernendes\s+implantat|\bix\b/i, code: "ix" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+implantat(?:krone)?|implantat(?:krone)?\s+erneuern|\bskw\b/i, code: "skw" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+implantat[\s\-]*br(?:[uü]|ue)cke|implantat[\s\-]*br(?:[uü]|ue)ckenglied\s+erneuern|\bsbw\b/i, code: "sbw" },
+    { re: /implantat[\s\-]*br(?:[uü]|ue)ckenglied|implantat[\s\-]*pontic|\bsb\b(?!\w)/i, code: "sb" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+implantat[\s\-]*ersatz|implantat[\s\-]*prothese\s+erneuern|implantat[\s\-]*ersatz\s+erneuern|\bsew\b/i, code: "sew" },
+    { re: /implantat[\s\-]*(?:getragen(?:e[rn]?)?\s+)?(?:ersatz|prothese)|implantatprothese/i, code: "se" },
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+(?:verbindungselement|locator|kugelkopf)|locator\s+erneuern|kugelkopf\s+erneuern|\bsow\b/i, code: "sow" },
+    { re: /(?:implantat[\s\-]*)?(?:verbindungselement|locator|kugelkopf|stegelement)/i, code: "so" },
     { re: /implantat\s*krone|\bsk\b/i, code: "sk" },
     { re: /\bimplantat\b/i, code: "sk" },
-    // "Telesco" / "Teleskopkrone" (Live 22.07. 01:38) — Garble-Pfad normalisiert
-    // zusaetzlich in speechGarbleCorrect; Regex faengt Restformen.
-    { re: /telesko|telesco|\bteleskop(?:krone)?\b|\bt\b(?!\w)/i, code: "t" },
-    { re: /l(?:[uü]|ue)ckenschluss/i, code: ")(" },
-    // Klinisch (kein EBZ-f) — Umlaute auch als ae/oe/ue (Garble-/ASCII-Pfad)
-    { re: /f(?:[uü]|ue)llung|komposit|inlay|onlay|\bfu\b/i, code: "Fu" },
-    { re: /\bkaries\b|kari(?:[oö]|oe)s|(?:^|[\s,;:])c(?=[\s,;:.]|$)/i, code: "Ka" },
-    { re: /wurzelf(?:[uü]|ue)ll|guttapercha|\bwf\b/i, code: "WF" },
-    { re: /lokalan(?:[aä]|ae)sthes|leitungsan(?:[aä]|ae)sthes|infiltrationsan|\ban(?:[aä]|ae)sthesie\b|\bultracain\b|\bubistesin\b/i, code: "LA" },
-    { re: /sondiertiefen|taschentiefe|parodont|\bparo\b|\bbop\b/i, code: "Paro" },
-    { re: /\bkiefergelenk\b|\bcmd\b|\bmyalgie\b/i, code: "Kief" },
+
+    // —— Wurzelstiftkappe (kein freistehendes \br\b — trifft zu viel) ——
+    { re: /erneuerungsbed(?:[uü]|ue)rftig(?:e[rnms]?)?\s+(?:wurzel)?stiftkappe|stiftkappe\s+erneuern|\brw\b/i, code: "rw" },
+    { re: /wurzelstiftkappe|stiftkappe/i, code: "r" },
+
+    // —— Lage (nicht EBZ) ——
+    { re: /\bretiniert(?:e[rn]?)?\b|nicht\s+durchgebrochen|retinierte[rn]?\s+zahn/i, code: "rt" },
+    { re: /\bimpaktiert(?:e[rn]?)?\b|impaktierte[rn]?\s+zahn|im\s+knochen\s+(?:liegend|steckt)/i, code: "imp" },
+    { re: /\bverlagert(?:e[rn]?)?\b|verlagerte[rn]?\s+zahn/i, code: "verl" },
+
+    // —— Klinisch ——
+    { re: /f(?:[uü]|ue)llung|komposit|inlay|onlay|amalga|\bfu\b/i, code: "Fu" },
+    { re: /\bkaries\b|kari(?:[oö]|oe)s|initial(?:e|er)?\s+karies|(?:^|[\s,;:])c(?=[\s,;:.]|$)/i, code: "Ka" },
+    { re: /wurzelf(?:[uü]|ue)ll|guttapercha|stiftaufbau|\bwf\b/i, code: "WF" },
+    { re: /lokalan(?:[aä]|ae)sthes|leitungsan(?:[aä]|ae)sthes|infiltrationsan|\ban(?:[aä]|ae)sthesie\b|\bultracain\b|\bubistesin\b|\bxylocain\b/i, code: "LA" },
+    { re: /sondiertiefen|taschentiefe|parodont|\bparo\b|\bbop\b|blutung\s+auf\s+sondieren/i, code: "Paro" },
+    { re: /\bkiefergelenk\b|\bcmd\b|\bmyalgie\b|knacken\s+im\s+gelenk/i, code: "Kief" },
   ];
+
+  /**
+   * Beispiel-Phrasen je Code (Tabelle + Regression). Kurz halten —
+   * je Phrase muss parseUtterance("16 "+phrase) den Code liefern.
+   */
+  const SPEECH_EXAMPLES = {
+    f: ["fehlt", "fehlend", "fehlen", "nicht vorhanden", "nicht angelegt", "wurde gezogen"],
+    e: ["ersetzt", "ersetzter Zahn", "Prothesenzahn", "Kunststoffzahn"],
+    ew: ["erneuerungsbedürftiger Ersatz", "Ersatz erneuern"],
+    x: ["nicht erhaltungswürdig", "Extraktion", "muss raus", "extraktionswürdig"],
+    ww: ["weitgehend zerstört", "stark zerstört", "behandlungsbedürftig"],
+    pw: ["partieller Substanzdefekt", "Substanzdefekt"],
+    ur: ["unzureichende Retention", "hält nicht"],
+    k: ["Krone", "Metallkeramik", "Vollkeramik", "Zirkonkrone"],
+    kw: ["erneuerungsbedürftige Krone", "Krone erneuern", "Krone defekt"],
+    pkw: ["Teilkrone", "tk", "tee ka"],
+    t: ["Teleskop", "Teleskopkrone"],
+    tw: ["erneuerungsbedürftige Teleskop", "Teleskop erneuern"],
+    t2w: ["Sekundärteil"],
+    b: ["Brücke", "Brückenglied", "Pontic"],
+    bw: ["erneuerungsbedürftiges Brückenglied"],
+    a: ["Adhäsivbrücke", "Adhäsivanker"],
+    ab: ["Adhäsivbrücke Glied", "Marylandbrücke", "Klebebrücke"],
+    aw: ["erneuerungsbedürftige Adhäsivanker"],
+    abw: ["erneuerungsbedürftige Adhäsivbrücke"],
+    ")(": ["Lückenschluss", "Lücke geschlossen"],
+    sk: ["Implantat", "Implantatkrone"],
+    skw: ["erneuerungsbedürftige Implantatkrone"],
+    st: ["Implantat-Teleskop"],
+    stw: ["Implantat-Teleskop erneuern"],
+    sb: ["Implantat-Brückenglied"],
+    sbw: ["Implantat-Brückenglied erneuern"],
+    se: ["Implantatprothese", "Implantat-Ersatz"],
+    sew: ["Implantat-Ersatz erneuern"],
+    so: ["Locator", "Kugelkopf", "Verbindungselement"],
+    sow: ["Locator erneuern"],
+    ix: ["Implantat entfernen", "Implantat raus"],
+    r: ["Wurzelstiftkappe", "Stiftkappe"],
+    rw: ["erneuerungsbedürftige Stiftkappe"],
+    rt: ["retiniert", "nicht durchgebrochen"],
+    imp: ["impaktiert", "im Knochen liegend"],
+    verl: ["verlagert"],
+    Ka: ["Karies", "kariös", "initiale Karies"],
+    Fu: ["Füllung", "Komposit", "Inlay", "Amalgam"],
+    WF: ["Wurzelfüllung", "Guttapercha", "Stiftaufbau"],
+    LA: ["Anästhesie", "Leitungsanästhesie", "Ultracain"],
+    Paro: ["Parodont", "Sondiertiefen", "BOP"],
+    Kief: ["Kiefergelenk", "CMD", "Myalgie"],
+  };
 
   const SURFACE_SPEECH = [
     { re: /\bmesial\b|\bm\b(?!\w)/i, code: "m" },
     { re: /\bokklusal\b|\bocclus|\binzisal\b|\bo\b(?!\w)/i, code: "o" },
     { re: /\bdistal\b|\bd\b(?!\w)/i, code: "d" },
     { re: /\bvestibul(?:[aä]|ae)r\b|\bbukkal\b|\blabial\b|\bv\b(?!\w)/i, code: "v" },
-    { re: /\blingual\b|\bpalatinal\b|\bl\b(?!\w)/i, code: "l" },
+    { re: /\blingual\b|\bpalatinal\b|\boral\b|\bl\b(?!\w)/i, code: "l" },
     { re: /\bzervikal\b|\bhals\b|\bz\b(?!\w)/i, code: "z" },
   ];
+
+  const SURFACE_EXAMPLES = {
+    m: ["mesial"],
+    o: ["okklusal", "inzisal"],
+    d: ["distal"],
+    v: ["vestibulär", "bukkal", "labial"],
+    l: ["lingual", "palatinal", "oral"],
+    z: ["zervikal", "Hals"],
+  };
 
   /** FDI Wortzahlen (deutsch). */
   const WORD_FDI = {
@@ -351,6 +459,9 @@
     rw: "Wurzelstiftkappe erneuerungsbedürftig",
     ur: "unzureichende Retention",
     ")(": "Lückenschluss",
+    rt: "retiniert",
+    imp: "impaktiert",
+    verl: "verlagert",
   };
 
   function shortLabelOf(code) {
@@ -387,6 +498,7 @@
   const LEGEND_COMMON = [
     "f", "c", "fu", "k", "kw", "t", "tw", "x", "ww", "pw",
     "e", "ew", "b", "bw", "sk", "st", "pkw", "ur", "ix",
+    ")(", "rt", "imp", "verl",
   ];
 
   /**
@@ -419,6 +531,11 @@
       id: "bruecke",
       title: "Brücke / Adhäsiv",
       codes: ["b", "bw", "a", "aw", "ab", "abw", ")("],
+    },
+    {
+      id: "lage",
+      title: "Lage",
+      codes: ["rt", "imp", "verl"],
     },
     {
       id: "implantat",
@@ -455,6 +572,7 @@
   /** Map KZBV/klinisch → 01-perio finding id (wenn vorhanden). */
   const TO_PERIO = {
     f: "zahn_fehlt",
+    e: "prothesenzahn",
     k: "krone",
     kw: "krone",
     b: "brueckenglied",
@@ -467,6 +585,10 @@
     WF: "wurzelfuellung",
     pkw: "teilkrone",
     t: "teleskop",
+    ")(": "lueckenschluss",
+    rt: "retiniert",
+    imp: "impaktiert",
+    verl: "verlagert",
   };
 
   global.LenaZahnstatusKatalog = {
@@ -474,7 +596,9 @@
     CLINICAL,
     SURFACES,
     SPEECH,
+    SPEECH_EXAMPLES,
     SURFACE_SPEECH,
+    SURFACE_EXAMPLES,
     WORD_FDI,
     FDI_OK,
     FDI_UK,

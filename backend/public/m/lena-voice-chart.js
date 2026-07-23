@@ -186,20 +186,50 @@
   // Implantate im rechten Unterkiefer" haengte live ein sk an Zahn 14.
   const BARE_NOUN_CODES = new Set(["sk", "k", "b", "t", "pkw"]);
 
-  // Zahnloser Kiefer (Live 13:12: "Alle Zaehne fehlend."): markiert alle
-  // Zaehne des Scopes mit f. Scope: Oberkiefer/Unterkiefer/alle.
-  const RE_EDENTULOUS = /alle\s+z[aä]hne\s+(?:fehlen(?:d)?|weg|entfernt)|zahnlos|unbezahnt/i;
+  // Massen-Befunde ohne Einzelzahn-Liste (Chef 22.07.):
+  //   "Alle Zähne fehlend." / "Oberkiefer zahnlos" / "alle OK Zähne fehlen"
+  //   "alle UK Zähne ersetzt" / "alle Achter fehlen" / "alle Weisheitszähne fehlen"
+  // Code: f = fehlend, e = ersetzt. Scope: OK / UK / Achter / alle.
+  const FDI_EIGHTS = [18, 28, 38, 48];
+  // Auf RAW-Text (Umlaute) UND ASCII-Fold ("zaehne") matchen — massArchEvents
+  // normalisiert danach fuer Scope-Erkennung.
+  const RE_MASS_ACTION =
+    /(?:fehlen(?:d)?|weg|entfernt|ersetzt(?:e|er|en)?|zahnlos|unbezahnt)/i;
+  const RE_TEETH_WORD = "z(?:ae|[aä])hne?";
+  const RE_MASS_SCOPE = new RegExp(
+    "(?:" +
+      "alle\\s+(?:ok|uk|oberkiefer|unterkiefer)?\\s*" + RE_TEETH_WORD + "\\s+" + RE_MASS_ACTION.source +
+      "|alle\\s+(?:achter|weisheitsz(?:ae|[aä])?hne?|8(?:er)?)\\s+" + RE_MASS_ACTION.source +
+      "|(?:oberkiefer|unterkiefer|\\bok\\b|\\buk\\b).{0,48}" + RE_MASS_ACTION.source +
+      "|" + RE_MASS_ACTION.source + ".{0,48}(?:oberkiefer|unterkiefer|\\bok\\b|\\buk\\b|achter|weisheitsz(?:ae|[aä])?hne?|8(?:er)?)" +
+      "|zahnlos|unbezahnt" +
+    ")",
+    "i",
+  );
 
-  function edentulousEvents(text) {
+  function massArchEvents(text) {
     const K = kat();
-    if (!K || !RE_EDENTULOUS.test(text)) return null;
+    if (!K || !RE_MASS_SCOPE.test(text)) return null;
     const low = norm(text).toLowerCase();
-    let list = K.FDI_OK.concat(K.FDI_UK);
+    const code = /\bersetzt/.test(low) ? "e" : "f";
+    const eights = /achter|weisheitsz|8(?:er)?\b/.test(low);
     const ok = /oberkiefer|\bok\b/.test(low);
     const uk = /unterkiefer|\buk\b/.test(low);
-    if (ok && !uk) list = K.FDI_OK.slice();
-    else if (uk && !ok) list = K.FDI_UK.slice();
-    return list.map((fdi) => ({ fdi, codes: ["f"], surfaces: [], text }));
+    let list;
+    if (eights) {
+      list = FDI_EIGHTS.slice();
+      if (ok && !uk) list = [18, 28];
+      else if (uk && !ok) list = [38, 48];
+    } else if (ok && !uk) {
+      list = K.FDI_OK.slice();
+    } else if (uk && !ok) {
+      list = K.FDI_UK.slice();
+    } else if (/zahnlos|unbezahnt|alle\s+zaehne|alle\s+zahne/.test(low)) {
+      list = K.FDI_OK.concat(K.FDI_UK);
+    } else {
+      return null;
+    }
+    return list.map((fdi) => ({ fdi, codes: [code], surfaces: [], text }));
   }
 
   // Fuellwoerter, die zwischen vorangestellten Befunden und der Zahnnummer
@@ -221,8 +251,8 @@
     if (!K) return [];
     // Dental-STT-Garbles (Telesco/Zülung/…) — sicher fuer Box+Schema.
     const t = K.speechGarbleCorrect ? K.speechGarbleCorrect(raw) : raw;
-    const eden = edentulousEvents(t);
-    if (eden) return eden;
+    const mass = massArchEvents(t);
+    if (mass) return mass;
 
     const low = norm(normTeeth(t)).toLowerCase();
     const teethToks = scanToothTokens(low, K);

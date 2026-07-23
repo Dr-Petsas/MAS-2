@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lena · Zahnschema-Zeichenstile</title>
+  <meta name="theme-color" content="#0b0e13" />
+  <link rel="stylesheet" href="/m/lena-01/zahnschema-styles.css?v=20260718a" />
+</head>
+<body>
+  <header>
+    <div>
+      <span class="eyebrow">LENA · 01-MODUS · ZEICHENSTIL-STUDIE</span>
+      <h1>Ein Odontogramm, fünfzehn Zeichenstile</h1>
+      <p>Gleiche Anatomie (korrekte Höckerzahl und Wurzeln), warm-studio-Farbwelt — nur die Zeichentechnik wechselt.</p>
+    </div>
+    <a href="/m/lena-01/index.html">← zurück</a>
+  </header>
+
+  <!-- Globale SVG-Ressourcen: Verläufe, Muster, Filter für die Stile -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="gEnamel" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fffdf4" />
+        <stop offset="0.55" stop-color="#efd9b8" />
+        <stop offset="1" stop-color="#c99a68" />
+      </linearGradient>
+      <linearGradient id="gRoot" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#7c5340" />
+        <stop offset="0.5" stop-color="#d7a074" />
+        <stop offset="1" stop-color="#7c5340" />
+      </linearGradient>
+
+      <pattern id="pHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="6" height="6" fill="#f6e7d4" />
+        <line x1="0" y1="0" x2="0" y2="6" stroke="#6b4a36" stroke-width="1.1" />
+      </pattern>
+      <pattern id="pCross" width="6" height="6" patternUnits="userSpaceOnUse">
+        <rect width="6" height="6" fill="#f6e7d4" />
+        <path d="M0 0 L6 6 M6 0 L0 6" stroke="#6b4a36" stroke-width="0.9" />
+      </pattern>
+      <pattern id="pStipple" width="5" height="5" patternUnits="userSpaceOnUse">
+        <rect width="5" height="5" fill="#f6e7d4" />
+        <circle cx="1.4" cy="1.4" r="0.9" fill="#6b4a36" />
+        <circle cx="3.8" cy="3.6" r="0.7" fill="#6b4a36" />
+      </pattern>
+
+      <filter id="fWater" x="-15%" y="-15%" width="130%" height="130%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="7" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="4" xChannelSelector="R" yChannelSelector="G" result="d" />
+        <feGaussianBlur in="d" stdDeviation="0.5" />
+      </filter>
+      <filter id="fRough" x="-15%" y="-15%" width="130%" height="130%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <filter id="fEmboss" x="-25%" y="-25%" width="150%" height="150%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="1.4" result="b" />
+        <feSpecularLighting in="b" surfaceScale="3" specularConstant="0.85" specularExponent="12"
+          lighting-color="#fff9ef" result="s">
+          <fePointLight x="28" y="18" z="60" />
+        </feSpecularLighting>
+        <feComposite in="s" in2="SourceAlpha" operator="in" result="s2" />
+        <feComposite in="SourceGraphic" in2="s2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" />
+      </filter>
+    </defs>
+  </svg>
+
+  <main id="gallery"></main>
+
+  <script src="/m/lena-01/zahnschema-styles.js?v=20260718a"></script>
+</body>
+</html>

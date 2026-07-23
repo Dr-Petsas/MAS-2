@@ -1,0 +1,94 @@
+:root {
+  color-scheme: dark;
+  /* Warm Studio Palette */
+  --paper: #f0dcc2;
+  --ink: #5b3f30;
+  --enamel-hi: #fffdf4;
+  --enamel-mid: #f0dec1;
+  --enamel-lo: #c79b69;
+  --root-hi: #d5a074;
+  --root-lo: #7c5340;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #0b0e13;
+  color: #eef2f4;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 26px;
+  border-bottom: 1px solid #262f39;
+  background: rgba(11, 14, 19, .92);
+}
+.eyebrow { color: #dda66e; font-size: .64rem; font-weight: 900; letter-spacing: .14em; }
+header h1 { margin: 3px 0 2px; font-size: 1.3rem; letter-spacing: -.025em; }
+header p { margin: 0; color: #92a0ac; font-size: .78rem; }
+header a {
+  flex: none;
+  border: 1px solid #3a4653;
+  border-radius: 999px;
+  padding: 9px 14px;
+  color: #e7edef;
+  font-size: .72rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+main {
+  max-width: 1600px;
+  margin: 22px auto 60px;
+  padding: 0 20px;
+}
+#chart {
+  padding: 26px 26px 30px;
+  border: 1px solid #2c3540;
+  border-radius: 22px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, #f7ecdc, transparent 60%),
+    var(--paper);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .5);
+}
+.jaw {
+  color: #8a6a4d;
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+  margin: 6px 2px 8px;
+}
+.jaw + .arch { margin-bottom: 16px; }
+.arch { display: flex; align-items: flex-end; gap: 5px; }
+.tk {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 264px;
+  overflow: visible;
+  filter: drop-shadow(1.5px 3px 2px rgba(60, 35, 20, .28));
+}
+.tk text { fill: #4a3324; font-weight: 800; font-size: 11px; }
+
+.tk-crown {
+  fill: url(#gEnamel);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.tk-root {
+  fill: url(#gRoot);
+  stroke: var(--ink);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.tk-root-behind { fill: url(#gRootDark); stroke-width: 1.1; opacity: .92; }
+.tk-groove { fill: none; stroke: #8a6a4d; stroke-width: 1.1; opacity: .42; stroke-linecap: round; }
+.tk-concav { fill: none; stroke: #6d4a34; stroke-width: 1.1; opacity: .3; stroke-linecap: round; }
+.tk-shine { fill: none; stroke: #fffdf3; stroke-width: 3.4; opacity: .5; stroke-linecap: round; }
+
+@media (max-width: 820px) {
+  header { flex-direction: column; align-items: flex-start; }
+  #chart { overflow-x: auto; }
+  .arch { min-width: 760px; }
+}

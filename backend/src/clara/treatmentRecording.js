@@ -320,7 +320,16 @@ export async function startRecordingSession(clientId, { locationId, appointmentI
   ]);
   const teeActive = forceTee === true || arztSource === "headset" || raumSource === "ipad";
   const lenaTee = teeActive
-    ? { active: true, clientId, locationId, appointmentId, channel: "arzt", lang: "de-DE" }
+    ? {
+        active: true,
+        clientId,
+        locationId,
+        appointmentId,
+        channel: "arzt",
+        lang: "de-DE",
+        // Headset-Doku: PCM → lena_stt Whisper (Clara-Parakeet bleibt Telefon-STT).
+        stt: "whisper",
+      }
     : { active: false };
 
   const who = patientName || "den Patienten";

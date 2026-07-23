@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lena · 32 einzelne Zahn-SVGs</title>
+  <meta name="theme-color" content="#0b0e13" />
+  <link rel="stylesheet" href="/m/lena-01/zahnschema-einzel-svg.css?v=20260718a" />
+</head>
+<body>
+  <header>
+    <div>
+      <span class="eyebrow">LENA · 01-MODUS · EINZEL-SVG-VERSION</span>
+      <h1>32 eigenständige Zahnformen</h1>
+      <p>Kurze Kronen, lange kräftige Wurzeln, Warm-Studio-Farbe – jeder Zahn liegt als separate SVG-Datei vor.</p>
+    </div>
+    <a href="/m/lena-01/index.html">← zurück</a>
+  </header>
+
+  <main>
+    <section class="paper">
+      <div class="jaw">Oberkiefer · 18 → 28</div>
+      <div class="arch" id="upper"></div>
+      <div class="jaw">Unterkiefer · 48 → 38</div>
+      <div class="arch" id="lower"></div>
+    </section>
+
+    <section class="focus">
+      <img id="focusImage" src="/m/lena-01/teeth/16.svg?v=20260718a" alt="Zahn 16" />
+      <div>
+        <h2 id="focusTitle">Zahn 16</h2>
+        <p>
+          Eigenständige Vektordatei: <code id="focusPath">/m/lena-01/teeth/16.svg</code><br />
+          Krone, Wurzeln, Anatomielinien und Lichtkante sind getrennte SVG-Schichten.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const upper = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28];
+    const lower = [48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38];
+    const focusImage = document.getElementById("focusImage");
+    const focusTitle = document.getElementById("focusTitle");
+    const focusPath = document.getElementById("focusPath");
+
+    function renderArch(id, teeth) {
+      const root = document.getElementById(id);
+      teeth.forEach((fdi) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "tooth" + (fdi === 16 ? " is-selected" : "");
+        button.innerHTML =
+          '<img src="/m/lena-01/teeth/' + fdi + '.svg?v=20260718a" alt="Zahn ' + fdi + '" />' +
+          "<span>" + fdi + "</span>";
+        button.addEventListener("click", () => {
+          document.querySelectorAll(".tooth.is-selected").forEach((el) => el.classList.remove("is-selected"));
+          button.classList.add("is-selected");
+          focusImage.src = "/m/lena-01/teeth/" + fdi + ".svg?v=20260718a";
+          focusImage.alt = "Zahn " + fdi;
+          focusTitle.textContent = "Zahn " + fdi;
+          focusPath.textContent = "/m/lena-01/teeth/" + fdi + ".svg";
+        });
+        root.appendChild(button);
+      });
+    }
+
+    renderArch("upper", upper);
+    renderArch("lower", lower);
+  </script>
+</body>
+</html>

@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lena – Doku-Template Zahnmedizin (Preview)</title>
+  <style>
+    :root {
+      --bg-1: #13203a; --bg-2: #0a1322; --bg-3: #060b16;
+      --ink: #e6edf6; --ink-soft: #8fa3bd;
+      --lena: #0f766e; --lena-soft: #7ec9c1;
+      --card: rgba(255,255,255,.045); --card-strong: rgba(255,255,255,.07);
+      --line: rgba(255,255,255,.10); --mute: #b3a6bf; --mute2: #7a6d86;
+      --amber: #f5c518; --red: #ff4d6d; --green: #34d399; --cyan: #7fd6ff;
+      --orange: #e9a24a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+      color: var(--ink);
+      background: #1a1a1e;
+      display: grid; place-items: center;
+      padding: 24px;
+    }
+    .stage { text-align: center; }
+    .stage h1 {
+      margin: 0 0 6px; font-size: .95rem; font-weight: 800;
+      letter-spacing: .04em; text-transform: uppercase; color: #9aa;
+    }
+    .stage p { margin: 0 0 18px; font-size: .8rem; color: #777; }
+
+    .ipad {
+      width: min(1100px, 96vw);
+      aspect-ratio: 4 / 3;
+      border-radius: 28px;
+      padding: 14px;
+      background: linear-gradient(145deg, #3a3a42, #1c1c22);
+      box-shadow: 0 40px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.12);
+      position: relative;
+    }
+    .ipad::before {
+      content: ""; position: absolute; top: 50%; left: 6px;
+      width: 4px; height: 48px; margin-top: -24px;
+      border-radius: 2px; background: #111;
+    }
+    .screen {
+      height: 100%; border-radius: 18px; overflow: hidden;
+      background: radial-gradient(130% 95% at 50% 0%, #0f2a28 0%, var(--bg-2) 55%, var(--bg-3) 100%);
+      display: flex; flex-direction: column;
+      text-align: left;
+    }
+
+    .chrome {
+      flex: none; display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px 10px; border-bottom: 1px solid var(--line);
+    }
+    .orb {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #fff 0%, transparent 35%),
+                  radial-gradient(circle at 50% 55%, var(--lena-soft), var(--lena));
+      box-shadow: 0 0 0 3px rgba(15,118,110,.22), 0 0 18px rgba(15,118,110,.35);
+    }
+    .brand-name { font-weight: 900; font-size: 1.05rem; letter-spacing: -.03em; line-height: 1; }
+    .brand-sub { font-size: .62rem; font-weight: 800; color: var(--lena-soft);
+      letter-spacing: .06em; text-transform: uppercase; margin-top: 3px; }
+    .live {
+      margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+      font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+      color: var(--lena-soft); background: rgba(15,118,110,.18);
+      border: 1px solid rgba(126,201,193,.35); padding: 7px 11px; border-radius: 999px;
+    }
+    .live i {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+      box-shadow: 0 0 8px var(--green); animation: blink 1.2s ease-in-out infinite;
+    }
+    @keyframes blink { 50% { opacity: .35; } }
+    .gaps {
+      font-size: .72rem; font-weight: 800; color: var(--amber);
+      background: rgba(245,197,24,.12); border: 1px solid rgba(245,197,24,.35);
+      padding: 7px 10px; border-radius: 999px;
+    }
+
+    .pat {
+      flex: none; display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; border-bottom: 1px solid var(--line);
+      background: rgba(0,0,0,.15);
+    }
+    .av {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(145deg, #2a9d8f, #0f766e);
+      display: grid; place-items: center; font-weight: 900; font-size: .75rem;
+    }
+    .pat-name { font-weight: 900; font-size: .95rem; }
+    .pat-meta { font-size: .72rem; color: var(--mute); font-weight: 600; margin-top: 2px; }
+    .pat-meta b { color: var(--lena-soft); }
+
+    .body {
+      flex: 1; min-height: 0; display: grid;
+      grid-template-columns: 1fr 200px;
+      gap: 0;
+    }
+    .doc {
+      min-height: 0; overflow-y: auto; padding: 12px 14px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .side {
+      border-left: 1px solid var(--line); padding: 12px 10px;
+      background: rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 8px;
+      font-size: .68rem; color: var(--mute);
+    }
+    .side h3 {
+      margin: 0 0 4px; font-size: .62rem; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--lena-soft);
+    }
+    .side button {
+      border: 1px solid var(--line); background: var(--card);
+      color: var(--ink); border-radius: 10px; padding: 8px 10px;
+      font: inherit; font-size: .7rem; font-weight: 700; cursor: pointer; text-align: left;
+    }
+    .side button:hover { background: var(--card-strong); border-color: var(--lena-soft); }
+
+    .tpl-title {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    }
+    .tpl-title h2 {
+      margin: 0; font-size: .78rem; font-weight: 900;
+      letter-spacing: .04em; text-transform: uppercase; color: var(--lena-soft);
+    }
+    .tpl-title span { font-size: .65rem; color: var(--mute2); font-weight: 600; }
+
+    .field {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 12px; padding: 10px 12px;
+    }
+    .field.is-gap { border-color: rgba(245,197,24,.45); background: rgba(245,197,24,.06); }
+    .field.is-pre { border-color: rgba(126,201,193,.25); }
+    .field.is-filled { border-color: rgba(52,211,153,.35); }
+    .field-lab {
+      display: flex; align-items: center; gap: 8px;
+      font-size: .65rem; font-weight: 800; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--mute); margin-bottom: 5px;
+    }
+    .badge {
+      font-size: .58rem; padding: 2px 6px; border-radius: 999px;
+      background: rgba(255,255,255,.06); color: var(--mute2); font-weight: 700;
+      letter-spacing: .02em; text-transform: none;
+    }
+    .badge.pre { color: var(--lena-soft); background: rgba(15,118,110,.2); }
+    .badge.live { color: var(--green); background: rgba(52,211,153,.12); }
+    .badge.gap { color: var(--amber); background: rgba(245,197,24,.12); }
+    .field-val {
+      font-size: .88rem; font-weight: 600; line-height: 1.35;
+      min-height: 1.2em;
+    }
+    .field-val.empty { color: var(--mute2); font-weight: 500; font-style: italic; }
+
+    .teeth {
+      display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px;
+    }
+    .tooth {
+      aspect-ratio: 1; border-radius: 5px; font-size: .55rem; font-weight: 800;
+      display: grid; place-items: center; background: rgba(255,255,255,.04);
+      border: 1px solid var(--line); color: var(--mute2);
+    }
+    .tooth.on {
+      background: rgba(15,118,110,.45); border-color: var(--lena-soft);
+      color: #fff; box-shadow: 0 0 10px rgba(15,118,110,.4);
+    }
+
+    .block {
+      border: 1px solid rgba(126,201,193,.35);
+      border-radius: 14px; overflow: hidden;
+      background: rgba(15,118,110,.08);
+      animation: slideIn .35s ease;
+    }
+    .block.hidden { display: none; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+    .block-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; background: rgba(15,118,110,.18);
+      font-size: .7rem; font-weight: 900; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--lena-soft);
+    }
+    .block-head em {
+      font-style: normal; margin-left: auto; font-size: .6rem;
+      color: var(--cyan); font-weight: 700; letter-spacing: 0; text-transform: none;
+    }
+    .block-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+
+    details.raw {
+      border: 1px solid var(--line); border-radius: 12px;
+      background: rgba(0,0,0,.2); margin-top: 4px;
+    }
+    details.raw summary {
+      cursor: pointer; padding: 10px 12px; font-size: .72rem; font-weight: 800;
+      color: var(--mute); letter-spacing: .03em; list-style: none;
+      display: flex; align-items: center; gap: 8px;
+    }
+    details.raw summary::-webkit-details-marker { display: none; }
+    details.raw summary::before { content: "▸"; color: var(--mute2); }
+    details.raw[open] summary::before { content: "▾"; }
+    .bubbles { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .bubble {
+      font-size: .72rem; line-height: 1.35; padding: 7px 10px; border-radius: 10px;
+      max-width: 92%;
+    }
+    .bubble.arzt { background: rgba(15,118,110,.25); align-self: flex-start; }
+    .bubble.pat { background: rgba(255,255,255,.06); align-self: flex-end; color: var(--ink-soft); }
+    .bubble b { font-size: .6rem; opacity: .7; display: block; margin-bottom: 2px; }
+
+    .foot {
+      flex: none; display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-top: 1px solid var(--line);
+      background: rgba(0,0,0,.25);
+    }
+    .foot .hint { font-size: .7rem; color: var(--mute); flex: 1; }
+    .btn {
+      border: 0; border-radius: 999px; padding: 10px 16px;
+      font: inherit; font-weight: 800; font-size: .78rem; cursor: pointer;
+    }
+    .btn-ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+    .btn-main {
+      background: linear-gradient(145deg, var(--lena-soft), var(--lena));
+      color: #042f2e; box-shadow: 0 6px 18px rgba(15,118,110,.4);
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <h1>Lena iPad Preview</h1>
+    <p>Interaktives Doku-Template Zahnmedizin — Demo-Trigger rechts</p>
+
+    <div class="ipad">
+      <div class="screen">
+        <div class="chrome">
+          <div class="orb"></div>
+          <div>
+            <div class="brand-name">pickadoc</div>
+            <div class="brand-sub">Lena · Dokumentation</div>
+          </div>
+          <div class="gaps" id="gapBadge">Lücken: 2</div>
+          <div class="live"><i></i> Aufnahme</div>
+        </div>
+
+        <div class="pat">
+          <div class="av">HM</div>
+          <div>
+            <div class="pat-name">Hans-Peter Müller</div>
+            <div class="pat-meta">Heute 09:20 · <b>Füllung / Restauration</b> · Zi. 2</div>
+          </div>
+        </div>
+
+        <div class="body">
+          <div class="doc" id="doc">
+            <div class="tpl-title">
+              <h2>Doku-Template · Zahnmedizin</h2>
+              <span>1 Vorlage · Blöcke passen sich an</span>
+            </div>
+
+            <div class="field is-pre">
+              <div class="field-lab">Anlass <span class="badge pre">Termin</span></div>
+              <div class="field-val">Füllung / Restauration</div>
+            </div>
+
+            <div class="field is-pre">
+              <div class="field-lab">Anamnese-Risiken <span class="badge pre">SignR · patient</span></div>
+              <div class="field-val">Penicillin-Allergie · ASS 100</div>
+            </div>
+
+            <div class="field is-filled" id="fZaehne">
+              <div class="field-lab">Zähne / Lokalisation <span class="badge live">visit · live</span></div>
+              <div class="teeth" id="teeth"></div>
+              <div class="field-val" style="margin-top:8px">Zahn 36 occlusal</div>
+            </div>
+
+            <div class="field is-filled" id="fBefund">
+              <div class="field-lab">Befund <span class="badge live">diktat</span></div>
+              <div class="field-val">Kariöse Läsion occlusal, Vitalität positiv, kein Perkussionsschmerz</div>
+            </div>
+
+            <div class="field is-gap" id="fDiagnose">
+              <div class="field-lab">Diagnose <span class="badge gap">Lücke</span></div>
+              <div class="field-val empty" id="vDiagnose">noch nicht erkannt …</div>
+            </div>
+
+            <div class="field is-filled" id="fTherapie">
+              <div class="field-lab">Therapie <span class="badge live">diktat</span></div>
+              <div class="field-val">Exkavation, adhäsive Kompositfüllung occlusal</div>
+            </div>
+
+            <div class="block" id="blkLa">
+              <div class="block-head">Lokalanästhesie <em>Block · Motiv/Inhalt</em></div>
+              <div class="block-body">
+                <div class="field is-filled">
+                  <div class="field-lab">Wirkstoff / Menge</div>
+                  <div class="field-val">Ultracain D-S forte 1,7 ml</div>
+                </div>
+                <div class="field is-filled">
+                  <div class="field-lab">Region</div>
+                  <div class="field-val">Leitungsanästhesie links</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="block" id="blkFuellung">
+              <div class="block-head">Füllung / Restauration <em>Block · Besuchsmotiv</em></div>
+              <div class="block-body">
+                <div class="field is-filled">
+                  <div class="field-lab">Material <span class="badge">billing</span></div>
+                  <div class="field-val">Komposit, Mehrschichttechnik</div>
+                </div>
+                <div class="field is-filled">
+                  <div class="field-lab">Flächen</div>
+                  <div class="field-val">O</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="block hidden" id="blkRoe">
+              <div class="block-head">Bildgebung <em>Block · Querschnitt (Rö erwähnt)</em></div>
+              <div class="block-body">
+                <div class="field is-gap">
+                  <div class="field-lab">Aufnahme / Region <span class="badge gap">Lücke</span></div>
+                  <div class="field-val">Zahnfilm 36</div>
+                </div>
+                <div class="field is-gap">
+                  <div class="field-lab">Rechtfertigende Indikation <span class="badge gap">StrlSchG</span></div>
+                  <div class="field-val empty">fehlt noch …</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="block hidden" id="blkEndo">
+              <div class="block-head">Endodontie <em>Block · Inhalt erkannt</em></div>
+              <div class="block-body">
+                <div class="field">
+                  <div class="field-lab">Kanäle / Medikation</div>
+                  <div class="field-val empty">wartet auf Diktat …</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="field is-pre">
+              <div class="field-lab">Aufklärung <span class="badge pre">SignR</span></div>
+              <div class="field-val">Einwilligung Füllung · signiert 18.07.2026</div>
+            </div>
+
+            <div class="field is-gap" id="fKompl">
+              <div class="field-lab">Komplikationen <span class="badge gap">Lücke</span></div>
+              <div class="field-val empty" id="vKompl">ausdrücklich „keine“ oder beschreiben …</div>
+            </div>
+
+            <div class="field is-filled">
+              <div class="field-lab">Procedere <span class="badge live">diktat</span></div>
+              <div class="field-val">Kontrolle in 6 Monaten · bei Beschwerden früher</div>
+            </div>
+
+            <details class="raw">
+              <summary>Rohdialog <span class="badge">§ 630f · eingeklappt</span></summary>
+              <div class="bubbles">
+                <div class="bubble arzt"><b>Arzt</b>Zahn sechsunddreißig, occlusal kariös, wir machen eine Kompositfüllung.</div>
+                <div class="bubble pat"><b>Patient</b>Ist das der, der manchmal zieht?</div>
+                <div class="bubble arzt"><b>Arzt</b>Ja. Ultracain, dann exkavieren. Keine Komplikationen erwartet.</div>
+                <div class="bubble arzt"><b>Arzt</b>Optional noch ein Zahnfilm zur Kontrolle.</div>
+              </div>
+            </details>
+          </div>
+
+          <aside class="side">
+            <h3>Demo-Trigger</h3>
+            <button type="button" id="btnRoe">„OPG / Rö“ → Block Bildgebung</button>
+            <button type="button" id="btnEndo">„Wurzelkanal“ → Block Endo</button>
+            <button type="button" id="btnDiag">Diagnose füllen</button>
+            <button type="button" id="btnKompl">„keine Komplikationen“</button>
+            <button type="button" id="btnReset">Reset Preview</button>
+            <p style="margin:8px 0 0;line-height:1.35">
+              Ein Doku-Template, adaptive Blöcke, Lücken-Badge, Rohdialog Accordion.
+            </p>
+          </aside>
+        </div>
+
+        <div class="foot">
+          <div class="hint">Felder bestätigt → structuredText + Abrechnungsvorschlag</div>
+          <button class="btn btn-ghost" type="button">Aufnahme stoppen</button>
+          <button class="btn btn-main" type="button">Doku bestätigen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const OK = new Set([36]);
+    const row = (nums) => nums.map((n) => {
+      const on = OK.has(n) ? " on" : "";
+      return `<div class="tooth${on}">${n}</div>`;
+    }).join("");
+    document.getElementById("teeth").innerHTML =
+      row([18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28]) +
+      row([48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38]);
+
+    const gaps = () => {
+      let c = 0;
+      document.querySelectorAll(".field.is-gap").forEach((el) => {
+        if (el.closest(".block.hidden")) return;
+        c++;
+      });
+      document.getElementById("gapBadge").textContent = "Lücken: " + c;
+    };
+
+    document.getElementById("btnRoe").onclick = () => {
+      document.getElementById("blkRoe").classList.remove("hidden");
+      gaps();
+    };
+    document.getElementById("btnEndo").onclick = () => {
+      document.getElementById("blkEndo").classList.remove("hidden");
+      gaps();
+    };
+    document.getElementById("btnDiag").onclick = () => {
+      const f = document.getElementById("fDiagnose");
+      f.classList.remove("is-gap"); f.classList.add("is-filled");
+      f.querySelector(".badge").className = "badge live";
+      f.querySelector(".badge").textContent = "diktat";
+      document.getElementById("vDiagnose").className = "field-val";
+      document.getElementById("vDiagnose").textContent = "Caries dentis 36 O";
+      gaps();
+    };
+    document.getElementById("btnKompl").onclick = () => {
+      const f = document.getElementById("fKompl");
+      f.classList.remove("is-gap"); f.classList.add("is-filled");
+      f.querySelector(".badge").className = "badge live";
+      f.querySelector(".badge").textContent = "diktat";
+      document.getElementById("vKompl").className = "field-val";
+      document.getElementById("vKompl").textContent = "keine";
+      gaps();
+    };
+    document.getElementById("btnReset").onclick = () => location.reload();
+    gaps();
+  </script>
+</body>
+</html>

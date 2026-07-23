@@ -295,6 +295,12 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       via `saveTreatmentDictation()`. Vorbild-Muster: `treatmentRecording.js`
       (`_recPropose`/`pickCurrentAppointment`/`startRecordingSession`) und der
       Lena-Tee (`worker_lena_tee.py`).
+      **Isolation (Chef 22.07.2026, FERTIG):** Clara/Lena Soft-Trennung im
+      Tool-Subsetting — Lena-Bridge-Tools (`lena_bridge`) nur bei Aufnahme/
+      Befund/Diktat-Intent; Unklar-Fallback ohne Bridge. Soft-Switch bleibt
+      („Befund fuer Meier“ → Lena-STT, iPad zurück → Clara). Regeln in
+      `Clara-Voice/AGENTS.md` + `tool_subsetting.py`. Lena-Weiterentwicklung
+      (iPad/Schema/STT) darf Claras Sprechpfad nicht mehr mitziehen.
       Vorstufe LIVE (12.07.): Browser-Erkenner `nachtragIntent.ts` (10 Sprach-
       varianten „Nachtrag/Dokumentation Frau X …") schneidet Kommando+Name vom
       Nachtrag-Diktat im Lena-Feld ab — das ist NUR der Browser, nicht Clara.
@@ -1061,6 +1067,18 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 22.07.2026: **Clara spricht IMMER relativ** — LLM-Zeitkontext sagte fälschlich
+  „nenne Termine als JJJJ-MM-TT“ (gesprochen). Jetzt: Tools = ISO, Mund =
+  heute/morgen/nächste Woche/in N Wochen. `response_guard` + MAS
+  `relativeDayLabel` erweitern Ferntermine; Profil-Sprechstil-Regel.
+- 22.07.2026: **Clara STT: Kalender-Patientennamen live** — kein Modell-
+  Retrain. MAS `GET /clara/stt-patient-names` liefert Vor-/Nachnamen aus
+  Terminen im Fenster letzte 2 Wochen + diese + naechste Woche (Heute/
+  Morgen zuerst, Cache 30 min). Worker mischt bei `set_profile` in
+  `stt_keywords`; Parakeet-Postcorrect mit Laengen-/Prefix-Buckets.
+- 22.07.2026: **Clara STT: alle Patientennamen live nachziehen** — ersetzt
+  durch Kalenderfenster (siehe Eintrag oben); Patientenstamm-Dump war zu
+  gross (~13k) und unscharf.
 - 21.07.2026: **Souffleuse am Stuhl** — iPad sendet `coach_speak` bei offenen
   Doku-Boxen („Denk noch an: Befund.“), Cooldown 45 s, erst ab 25 s Aufnahme;
   Worker-Pfad unveraendert (`_run_coach_speak`). Nachdiktat-Feintuning spaeter.

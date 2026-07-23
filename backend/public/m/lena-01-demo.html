@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lena · 01 auf einen Blick (Demo)</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1a1f2a;
+      --mute: #5c6575;
+      --line: #c8c2b6;
+      --paper: #fffcf6;
+      --sel: #0d6e6e;
+      --caries: #c62828;
+      --fill: #1565c0;
+      --crown: #f9a825;
+      --endo: #6a1b9a;
+      --belag: #795548;
+      --miss: #9e9e9e;
+      --ok: #2e7d32;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      padding: 16px;
+    }
+    header {
+      max-width: 1080px;
+      margin: 0 auto 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    header h1 { margin: 0; font-size: 1.1rem; font-weight: 900; }
+    header p { margin: 4px 0 0; font-size: .8rem; color: var(--mute); max-width: 52ch; line-height: 1.35; }
+    .pill {
+      font-size: .65rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+      border: 1px solid var(--line); background: var(--paper); padding: 6px 10px; border-radius: 999px; color: var(--mute);
+    }
+
+    .layout {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 14px;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 10px 28px rgba(40,30,10,.08);
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: .68rem;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--mute);
+    }
+
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 6px 10px;
+      margin-bottom: 12px; font-size: .72rem; font-weight: 700; color: var(--mute);
+    }
+    .legend b { color: var(--ink); }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+    /* ===== Klassisches 01-Schema: Zahn = Flächenkreuz ===== */
+    .schema { max-width: 520px; margin: 0 auto; }
+    .jaw-label {
+      text-align: center; font-size: .65rem; font-weight: 800;
+      letter-spacing: .06em; text-transform: uppercase; color: var(--mute); margin: 6px 0 8px;
+    }
+    .arch {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr) 10px repeat(8, 1fr);
+      gap: 4px;
+      align-items: center;
+    }
+    .mid {
+      width: 10px; height: 100%;
+      border-left: 1px solid var(--line);
+      justify-self: center;
+    }
+
+    .tooth {
+      border: 1.5px solid #8a8478;
+      border-radius: 6px;
+      background: #fff;
+      padding: 2px;
+      cursor: pointer;
+      min-width: 0;
+      aspect-ratio: 0.85;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 1px;
+      position: relative;
+    }
+    .tooth:hover { border-color: var(--sel); }
+    .tooth.is-sel {
+      border-color: var(--sel);
+      box-shadow: 0 0 0 2px rgba(13,110,110,.35);
+    }
+    .tooth.is-miss {
+      background: #eceff1;
+      border-style: dashed;
+      border-color: var(--miss);
+    }
+    .tooth.is-miss .surf-grid { opacity: .25; }
+    .tooth-num {
+      text-align: center;
+      font-size: .62rem;
+      font-weight: 900;
+      line-height: 1.1;
+      color: var(--ink);
+    }
+    .tooth.is-miss .tooth-num { color: var(--miss); text-decoration: line-through; }
+
+    /* 5 Flächen: M O D / B / L  — auf einen Blick wie 01 */
+    .surf-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr 1fr;
+      grid-template-rows: 1fr 1fr 1fr;
+      gap: 1px;
+      min-height: 0;
+      background: #d5d0c6;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .s {
+      background: #fff;
+      min-height: 7px;
+    }
+    .s.b { grid-column: 2; grid-row: 1; } /* bukkal / vestibulär oben im Schema */
+    .s.m { grid-column: 1; grid-row: 2; }
+    .s.o { grid-column: 2; grid-row: 2; }
+    .s.d { grid-column: 3; grid-row: 2; }
+    .s.l { grid-column: 2; grid-row: 3; } /* lingual / oral */
+
+    .s.caries { background: var(--caries); }
+    .s.fill { background: var(--fill); }
+    .s.belag { background: var(--belag); }
+    .s.facette { background: #ffcc80; }
+    .s.watch { background: #fff59d; }
+
+    .marks {
+      display: flex; justify-content: center; gap: 2px; min-height: 11px; align-items: center;
+    }
+    .mark {
+      font-size: .55rem; font-weight: 900; line-height: 1;
+      padding: 1px 3px; border-radius: 3px; border: 1px solid transparent;
+    }
+    .mark.crown { color: #5d4037; background: #ffe082; border-color: #f9a825; }
+    .mark.crown.bad { background: #ffcdd2; border-color: var(--caries); color: var(--caries); }
+    .mark.endo { color: #fff; background: var(--endo); }
+    .mark.endo.bad { outline: 1px solid #b71c1c; }
+    .mark.impl { color: #0d47a1; background: #bbdefb; border-color: #1976d2; }
+    .mark.bridge { color: #4a148c; background: #e1bee7; border-color: #8e24aa; }
+    .mark.x { color: var(--miss); }
+
+    /* Brückenband unter der Reihe — nicht überlappend */
+    .bridge-bar {
+      margin: 6px 0 2px;
+      height: 6px;
+      border-radius: 3px;
+      background: transparent;
+      position: relative;
+    }
+    .bridge-bar span {
+      position: absolute;
+      height: 6px;
+      border-radius: 3px;
+      background: #ce93d8;
+      border: 1px solid #8e24aa;
+      font-size: 0;
+    }
+
+    .uk .surf-grid { transform: none; }
+
+    /* Detail */
+    .hero {
+      display: flex; gap: 12px; align-items: center;
+      padding: 10px; border-radius: 12px;
+      background: #eef7f6; border: 1px solid #9cccc6;
+      margin-bottom: 10px;
+    }
+    .big-tooth {
+      width: 88px; height: 100px;
+      border: 2px solid var(--sel);
+      border-radius: 10px;
+      background: #fff;
+      padding: 4px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      flex: none;
+    }
+    .big-tooth .tooth-num { font-size: .85rem; }
+    .big-tooth .surf-grid { gap: 2px; }
+    .big-tooth .s { min-height: 14px; }
+    .hero h3 { margin: 0; font-size: 1.2rem; font-weight: 900; }
+    .hero .sub { margin: 3px 0 0; font-size: .78rem; color: var(--mute); font-weight: 600; }
+
+    .readout {
+      font-size: .88rem; font-weight: 700; line-height: 1.45;
+      margin: 0 0 10px; padding: 10px 12px;
+      background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    }
+    .readout li { margin: 3px 0; }
+    .bedarf {
+      padding: 10px 12px; border-radius: 10px;
+      border: 1px solid #ef9a9a; background: #ffebee;
+      font-size: .85rem; font-weight: 700; line-height: 1.35;
+    }
+    .bedarf.none { border-color: #a5d6a7; background: #e8f5e9; }
+    .bedarf small { display: block; margin-top: 5px; font-weight: 600; color: var(--mute); font-size: .72rem; }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .actions button {
+      border: 1px solid var(--line); background: #fff; color: var(--ink);
+      border-radius: 999px; padding: 7px 11px; font: inherit; font-size: .72rem; font-weight: 800; cursor: pointer;
+    }
+    .actions button.primary { background: var(--sel); color: #fff; border-color: var(--sel); }
+
+    .note {
+      max-width: 1080px; margin: 12px auto 0;
+      font-size: .75rem; color: var(--mute); line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>01 auf einen Blick</h1>
+      <p>
+        Wie gewohnt: Flächenkreuz pro Zahn (M·O·D / B / L), Farben für Karies/Füllung/Belag/Facette,
+        Zeichen darunter für Krone · WF · Implantat · Brücke. Tippen öffnet nur die Lesart.
+      </p>
+    </div>
+    <div class="pill">Demo</div>
+  </header>
+
+  <div class="layout">
+    <section class="card">
+      <h2>Befundschema</h2>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--caries)"></i><b>Karies</b></span>
+        <span><i class="dot" style="background:var(--fill)"></i><b>Füllung</b></span>
+        <span><i class="dot" style="background:var(--belag)"></i><b>Belag</b></span>
+        <span><i class="dot" style="background:#ffcc80"></i><b>Facette</b></span>
+        <span><b>K</b> Krone · <b>K!</b> insuff. · <b>WF</b> Wurzelfüllung · <b>WF!</b> insuff. · <b>I</b> Implantat · <b>B</b> Brücke</span>
+      </div>
+
+      <div class="schema">
+        <div class="jaw-label">Oberkiefer · 18 ← → 28</div>
+        <div class="arch" id="ok"></div>
+        <div class="bridge-bar" id="bridgeOk"></div>
+
+        <div class="jaw-label">Unterkiefer · 48 ← → 38</div>
+        <div class="arch uk" id="uk"></div>
+        <div class="bridge-bar" id="bridgeUk"></div>
+      </div>
+    </section>
+
+    <section class="card" id="detail"></section>
+  </div>
+
+  <p class="note">
+    Daten dahinter bleiben strukturiert (Typ/Fläche/Bewertung) — die <b>Darstellung</b> ist 01-lesbar.
+    Kein 3D, keine PVS-Hieroglyphen-Orgie: nur Flächenfarben + 1–2 Statuszeichen.
+  </p>
+
+  <script>
+    const OK = [18,17,16,15,14,13,12,11, null, 21,22,23,24,25,26,27,28];
+    const UK = [48,47,46,45,44,43,42,41, null, 31,32,33,34,35,36,37,38];
+
+    /** surfaces: m,o,d,b,l → caries|fill|belag|facette|watch */
+    const TEETH = {
+      18: { miss: true },
+      17: {},
+      16: { crown: "bad", note: "VMK-Krone insuffizient, Randundicht", bedarf: "ZE Krone 16 erneuern" },
+      15: {},
+      14: { surfaces: { o: "facette" }, note: "Schlifffacette occlusal — beobachten" },
+      13: {},
+      12: {},
+      11: {},
+      21: {},
+      22: {},
+      23: {},
+      24: { surfaces: { d: "caries" }, note: "Karies distal", bedarf: "KCH Füllung 24" },
+      25: {},
+      26: { impl: true, crown: "ok", note: "Implantat + Krone intakt" },
+      27: {},
+      28: { miss: true },
+
+      48: {},
+      47: {},
+      46: { endo: "bad", note: "Wurzelfüllung insuffizient / unterfüllt", bedarf: "KCH Revision Endo 46" },
+      45: {},
+      44: { surfaces: { l: "belag", b: "belag", o: "fill" }, note: "Zahnstein lingual/bukkal stark; Füllung O intakt", bedarf: "PRO PZR" },
+      43: {},
+      42: {},
+      41: {},
+      31: {},
+      32: {},
+      33: {},
+      34: { crown: "ok", bridge: true, note: "Pfeiler Brücke 34–36, Geschiebe distal" },
+      35: { miss: true, bridge: true, note: "Brückenglied (ersetzt 35)" },
+      36: { crown: "ok", bridge: true, note: "Pfeiler Brücke 34–36" },
+      37: { surfaces: { m: "caries", o: "caries", d: "caries" }, note: "Karies MOD", bedarf: "KCH Komposit 37 MOD" },
+      38: {},
+    };
+
+    let selected = 16;
+
+    function surfCell(surfaces, key) {
+      const v = (surfaces && surfaces[key]) || "";
+      return '<div class="s ' + key + (v ? " " + v : "") + '"></div>';
+    }
+
+    function marksHtml(t) {
+      if (!t || t.miss) return t && t.bridge ? '<span class="mark bridge">B</span><span class="mark x">×</span>' : (t && t.miss ? '<span class="mark x">×</span>' : "");
+      const parts = [];
+      if (t.bridge) parts.push('<span class="mark bridge">B</span>');
+      if (t.impl) parts.push('<span class="mark impl">I</span>');
+      if (t.crown === "bad") parts.push('<span class="mark crown bad">K!</span>');
+      else if (t.crown === "ok") parts.push('<span class="mark crown">K</span>');
+      if (t.endo === "bad") parts.push('<span class="mark endo bad">WF!</span>');
+      else if (t.endo === "ok") parts.push('<span class="mark endo">WF</span>');
+      return parts.join("") || '<span style="opacity:.25;font-size:.55rem">·</span>';
+    }
+
+    function toothBtn(n) {
+      if (n == null) return '<div class="mid" aria-hidden="true"></div>';
+      const t = TEETH[n] || {};
+      const miss = t.miss ? " is-miss" : "";
+      const sel = n === selected ? " is-sel" : "";
+      const surfaces = t.surfaces || {};
+      return (
+        '<button type="button" class="tooth' + miss + sel + '" data-n="' + n + '" title="Zahn ' + n + '">' +
+        '<div class="tooth-num">' + n + "</div>" +
+        '<div class="surf-grid">' +
+        surfCell(surfaces, "b") +
+        surfCell(surfaces, "m") +
+        surfCell(surfaces, "o") +
+        surfCell(surfaces, "d") +
+        surfCell(surfaces, "l") +
+        "</div>" +
+        '<div class="marks">' + marksHtml(t) + "</div>" +
+        "</button>"
+      );
+    }
+
+    function renderArch(elId, nums) {
+      document.getElementById(elId).innerHTML = nums.map(toothBtn).join("");
+    }
+
+    /** Brückenband unter UK: Spalten 34–36 (Index in UK-Array) */
+    function renderBridgeBars() {
+      document.getElementById("bridgeOk").innerHTML = "";
+      const uk = document.getElementById("bridgeUk");
+      // Grid: 8 + mid + 8 → Zähne 34,35,36 sind Positionen 12,13,14 (0-based in 17 slots with mid)
+      // UK = [48..41, null, 31..38] → 34=index 12, 35=13, 36=14
+      uk.innerHTML = '<span style="left:calc((12/17)*100% + 2%); width:calc((3/17)*100% - 4%);">brücke</span>';
+    }
+
+    function listSurfaces(t) {
+      const map = { caries: "Karies", fill: "Füllung", belag: "Belag", facette: "Schlifffacette", watch: "beobachten" };
+      const fl = { m: "M", o: "O", d: "D", b: "B", l: "L" };
+      const out = [];
+      Object.entries(t.surfaces || {}).forEach(([k, v]) => {
+        out.push((map[v] || v) + " " + (fl[k] || k));
+      });
+      return out;
+    }
+
+    function renderDetail(n) {
+      const t = TEETH[n] || {};
+      const lines = [];
+      if (t.miss && t.bridge) lines.push("Brückenglied (Zahn ersetzt)");
+      else if (t.miss) lines.push("Zahn fehlt");
+      listSurfaces(t).forEach((x) => lines.push(x));
+      if (t.crown === "bad") lines.push("Krone insuffizient");
+      else if (t.crown === "ok") lines.push("Krone intakt");
+      if (t.endo === "bad") lines.push("Wurzelfüllung insuffizient");
+      else if (t.endo === "ok") lines.push("Wurzelfüllung vorhanden");
+      if (t.impl) lines.push("Implantat");
+      if (t.bridge && !t.miss) lines.push("Teil der Brücke 34–36");
+      if (t.note) lines.push(t.note);
+      if (!lines.length) lines.push("unauffällig");
+
+      const surfaces = t.surfaces || {};
+      document.getElementById("detail").innerHTML =
+        "<h2>Zahn " + n + " · Lesart</h2>" +
+        '<div class="hero">' +
+        '<div class="big-tooth">' +
+        '<div class="tooth-num">' + n + "</div>" +
+        '<div class="surf-grid">' +
+        surfCell(surfaces, "b") + surfCell(surfaces, "m") + surfCell(surfaces, "o") +
+        surfCell(surfaces, "d") + surfCell(surfaces, "l") +
+        "</div>" +
+        '<div class="marks">' + marksHtml(t) + "</div>" +
+        "</div>" +
+        "<div><h3>Zahn " + n + "</h3>" +
+        '<div class="sub">Was du im Schema siehst — ausgeschrieben</div></div></div>' +
+        '<ul class="readout">' + lines.map((l) => "<li>" + l + "</li>").join("") + "</ul>" +
+        (t.bedarf
+          ? '<div class="bedarf">' + t.bedarf + "<small>→ später Termin / Aufklärung / Behandlung</small></div>"
+          : '<div class="bedarf none">Kein akuter Bedarf<small>beobachten oder Status ok</small></div>') +
+        '<div class="actions">' +
+        '<button type="button" class="primary" data-n="14">Facette 14</button>' +
+        '<button type="button" data-n="44">Belag 44</button>' +
+        '<button type="button" data-n="16">Krone K! 16</button>' +
+        '<button type="button" data-n="46">WF! 46</button>' +
+        '<button type="button" data-n="37">Karies MOD 37</button>' +
+        '<button type="button" data-n="34">Brücke 34</button>' +
+        "</div>";
+    }
+
+    function paint() {
+      renderArch("ok", OK);
+      renderArch("uk", UK);
+      renderBridgeBars();
+      renderDetail(selected);
+    }
+
+    document.body.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-n]");
+      if (!btn) return;
+      selected = Number(btn.dataset.n);
+      paint();
+    });
+
+    paint();
+  </script>
+</body>
+</html>

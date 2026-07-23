@@ -5,6 +5,7 @@ import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { kartePatient } from "./karten.js";
+import { loadWeightedVisitBriefing } from "./lenaBriefing.js";
 
 /**
  * "Nächste 2 Patienten"-Briefing
@@ -12,14 +13,11 @@ import { kartePatient } from "./karten.js";
  * Ergänzung zum Tages-Lagebild: Clara nennt pro anstehendem Patienten
  *   1) was für ein Termin das ist (visitMotive),
  *   2) was geplant ist (Termin-Notiz/comments, falls vorhanden),
- *   3) — am wichtigsten — was beim LETZTEN Termin war (Behandlungsart + Notiz).
+ *   3) — am wichtigsten — was beim LETZTEN Termin war (gewichtete Lena-
+ *      Template-Fakten, max. 2 Stichpunkte; Fallback Kalender).
  *
- * Datenquelle = Plattform-Kalender (read-only, admin SDK), exakt wie das
- * Tages-Lagebild. WICHTIG: Eine echte „geplante Behandlung" pro Termin
- * (treatmentSteps/Lena-Doku) liest MAS-2 noch NICHT — hier kommt heute nur
- * `visitMotive` + `comments` + die letzte Termin-Notiz. Sobald Lena-Doku in
- * Firestore liegt, kann der „letzte Termin"-Teil aus der Karteikarte gespeist
- * werden (TODO unten markiert).
+ * W-LENA-8d: Keine Romane — nur hoechstgewichtete Keys (Therapie / Plan /
+ * Komplikation / offen). SignR-Anamnese bleibt separat (kompakteAnamnese).
  *
  * Reine Lesefunktion. Keine Schreibvorgänge, keine Vertragsänderung.
  */
@@ -272,17 +270,27 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
         if (a.comments) s += `. Geplant: ${kurz(a.comments)}`;
 
         let letzterBesuch = null;
-        // Vorgeschichte — vor allem der LETZTE Termin (laut Chef das Wichtigste).
+        // Vorgeschichte — LETZTER Termin, gewichtet aus Lena-Template (8d).
         try {
             const hist = await getPatientAppointments(clientId, { patientId: a.patientId, lastName: a.patientLastName });
             if (hist?.ok && hist.last) {
-                // TODO(Lena-Doku): sobald treatment/main bzw. dictations pro Termin
-                // in Firestore stehen, hier die Karteikarte des letzten Termins lesen
-                // statt nur visitMotive + comments.
                 const lastMotive = hist.last.visitMotive || "ein Termin";
-                const lastNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 120)}` : "";
-                s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${lastMotive}${lastNote}`;
-                letzterBesuch = { motive: lastMotive, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
+                const weighted = await loadWeightedVisitBriefing(clientId, {
+                    lastAppt: hist.last,
+                    thisAppt: a.id ? a : null,
+                }).catch(() => null);
+                if (weighted?.spoken) {
+                    s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${weighted.spoken}`;
+                    letzterBesuch = {
+                        motive: lastMotive,
+                        startMs: hist.last.startMs || 0,
+                        note: weighted.cardNote || "",
+                    };
+                } else {
+                    const lastNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 80)}` : "";
+                    s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${lastMotive}${lastNote}`;
+                    letzterBesuch = { motive: lastMotive, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
+                }
             } else {
                 s += ". Kein früherer Termin bekannt";
             }
@@ -388,9 +396,18 @@ async function renderChartPatient(clientId, patientName) {
             }
             if (hist.last) {
                 const lMot = hist.last.visitMotive || "ein Termin";
-                const lNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 120)}` : "";
-                s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${lMot}${lNote}`;
-                letzterBesuch = { motive: lMot, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
+                const weighted = await loadWeightedVisitBriefing(clientId, {
+                    lastAppt: hist.last,
+                    thisAppt: hist.next || null,
+                }).catch(() => null);
+                if (weighted?.spoken) {
+                    s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${weighted.spoken}`;
+                    letzterBesuch = { motive: lMot, startMs: hist.last.startMs || 0, note: weighted.cardNote || "" };
+                } else {
+                    const lNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 80)}` : "";
+                    s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${lMot}${lNote}`;
+                    letzterBesuch = { motive: lMot, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
+                }
             }
             if (!hist.next && !hist.last) s += ". Kein Termin in der Historie";
         }

@@ -12,6 +12,7 @@ import { buildSpokenDayOverview } from "../clara/dayOverview.js";
 import { resolveDateRange } from "../clara/dateRange.js";
 import { buildSpokenRangeOverview, buildSpokenRangeList } from "../clara/rangeOverview.js";
 import { buildNextPatientsBriefing } from "../clara/nextPatientsBriefing.js";
+import { loadWeightedVisitBriefing } from "../clara/lenaBriefing.js";
 import { saveTreatmentDictation, strikeTreatmentDictation, readPatientTreatmentDocs, buildSpokenPatientDocs, resolveAppointmentInfo, readAppointmentSegments, combineActiveSegments } from "../clara/treatmentDoc.js";
 import { strukturiereKarteikarte } from "../clara/dokuNote.js";
 import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechnung, sophieMitSlotfill } from "../clara/dokuAbrechnung.js";
@@ -654,7 +655,15 @@ router.post("/tools/day-appointments", async (req, res) => {
         ]);
         const findings = (ana && ana.ok && ana.hasAnamnese) ? (ana.findings || []) : [];
         const lastAppt = (hist && hist.ok) ? (hist.last || null) : null;
-        if (findings.length || lastAppt) prepMap.set(pid, { findings, lastAppt });
+        // W-LENA-8d: kurzes gewichtetes Template-Snippet (kein Roman).
+        let lenaSnippet = "";
+        if (lastAppt?.id) {
+          const w = await loadWeightedVisitBriefing(clientId, { lastAppt }).catch(() => null);
+          if (w?.spoken) lenaSnippet = w.spoken;
+        }
+        if (findings.length || lastAppt || lenaSnippet) {
+          prepMap.set(pid, { findings, lastAppt, lenaSnippet });
+        }
       }));
       prep = buildSpokenPatientPrep(appts, prepMap);
     } catch (err) {

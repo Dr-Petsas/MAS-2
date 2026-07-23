@@ -17,12 +17,21 @@ import admin from "../firebase.js";
 import { chat, strongLlm } from "../mail/llm.js";
 import { inventsNumbers } from "../clara/summarize.js";
 import { writeTreatmentSummaryEvent } from "../clara/treatmentDoc.js";
+import { appendEvent } from "../brain/eventStore.js";
+import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import {
   buildGroundingContext,
   enrichCodesWithEvidence,
   expandBillingFromText,
   validateCatalogCodes,
 } from "./billingKnowledge.js";
+import { mergeCrossChannel } from "./crossChannel.js";
+import { acceptCorrection } from "./garbleCorrect.js";
+import {
+  llmExtractTemplateFields,
+  serializeTemplateFields,
+  composeStructuredFromTemplate,
+} from "./templateZahn.js";
 
 // MUSS mit LENA_SECTIONS im Frontend uebereinstimmen
 // (docgendaweb/src/services/treatmentDictationService.ts).
@@ -39,6 +48,17 @@ export const TREATMENT_SECTIONS = [
 ];
 const SECTION_KEYS = new Set(TREATMENT_SECTIONS.map((s) => s.key));
 const MAX_SEGMENTS = 200;
+
+/**
+ * Anzuzeigender/weiterzuverarbeitender Text eines Segments: die qwen-Korrektur
+ * (`textCorrected`) hat Vorrang, sonst der STT-Rohtext (`text`). Der Rohtext
+ * bleibt § 630f-konform IMMER erhalten; hier wird nur ausgewaehlt, was in
+ * Klassifikation, Dialog, Karteikarte und Abrechnung landet.
+ */
+export function segText(s) {
+  const c = s && typeof s.textCorrected === "string" ? s.textCorrected.trim() : "";
+  return c || String((s && s.text) || "").trim();
+}
 
 function apptRef(clientId, locationId, appointmentId) {
   return admin.firestore()
@@ -117,9 +137,14 @@ async function loadSegments(clientId, locationId, appointmentId) {
       segs.push({
         id: doc.id,
         text: t,
+        // qwen-korrigierter Text (falls vorhanden); Roh `text` bleibt Wahrheit.
+        textCorrected: typeof d.textCorrected === "string" ? d.textCorrected.trim() : "",
         source: typeof d.source === "string" ? d.source : "",
         section: typeof d.section === "string" ? d.section : "",
         smalltalk: d.smalltalk === true,
+        // Absolute Sprech-Zeit (0 = unbekannt/Alt-Segment) fuer den Cross-Channel-Merge.
+        startMs: Number(d.startMs) || 0,
+        endMs: Number(d.endMs) || 0,
         // "classified" = Smalltalk-Flag wurde schon einmal gesetzt (auch false).
         // Die Auto-Klassifikation fasst nur unklassifizierte Segmente an.
         classified: typeof d.smalltalk === "boolean",
@@ -145,7 +170,7 @@ function speakerLabel(source) {
 export async function classifySegments(segs, { timeoutMs = 90000 } = {}) {
   const keyList = TREATMENT_SECTIONS.map((s) => `${s.key} = ${s.title}`).join("; ");
   const numbered = segs
-    .map((s, idx) => `[${idx + 1}] (${speakerLabel(s.source)}) ${s.text.slice(0, 400)}`)
+    .map((s, idx) => `[${idx + 1}] (${speakerLabel(s.source)}) ${segText(s).slice(0, 400)}`)
     .join("\n");
 
   const messages = [
@@ -195,7 +220,7 @@ export async function classifySegments(segs, { timeoutMs = 90000 } = {}) {
  */
 export async function classifySmalltalk(segs, { timeoutMs = 60000 } = {}) {
   const numbered = segs
-    .map((s, idx) => `[${idx + 1}] (${speakerLabel(s.source)}) ${s.text.slice(0, 300)}`)
+    .map((s, idx) => `[${idx + 1}] (${speakerLabel(s.source)}) ${segText(s).slice(0, 300)}`)
     .join("\n");
   const messages = [
     {
@@ -287,7 +312,7 @@ function buildKarteikarte(conversationSegs, byId, nachdiktatSegs = []) {
   const bySection = new Map();
   const unclassified = [];
   for (const s of conversationSegs) {
-    if (isJunkSegment(s.text)) continue;
+    if (isJunkSegment(segText(s))) continue;
     const meta = byId.get(s.id) || { section: s.section, smalltalk: s.smalltalk };
     if (meta.smalltalk) continue;
     const key = meta.section && SECTION_KEYS.has(meta.section) ? meta.section : "";
@@ -302,16 +327,16 @@ function buildKarteikarte(conversationSegs, byId, nachdiktatSegs = []) {
     const list = bySection.get(sec.key);
     if (!list || !list.length) continue;
     htmlParts.push(`<h4>${escapeHtml(sec.title)}</h4>`);
-    htmlParts.push(`<ul>${list.map((s) => `<li>${escapeHtml(s.text)}</li>`).join("")}</ul>`);
+    htmlParts.push(`<ul>${list.map((s) => `<li>${escapeHtml(segText(s))}</li>`).join("")}</ul>`);
     textParts.push(sec.title.toUpperCase());
-    for (const s of list) textParts.push(`- ${s.text}`);
+    for (const s of list) textParts.push(`- ${segText(s)}`);
     textParts.push("");
   }
   if (unclassified.length) {
     htmlParts.push("<h4>Weitere Angaben</h4>");
-    htmlParts.push(`<ul>${unclassified.map((s) => `<li>${escapeHtml(s.text)}</li>`).join("")}</ul>`);
+    htmlParts.push(`<ul>${unclassified.map((s) => `<li>${escapeHtml(segText(s))}</li>`).join("")}</ul>`);
     textParts.push("WEITERE ANGABEN");
-    for (const s of unclassified) textParts.push(`- ${s.text}`);
+    for (const s of unclassified) textParts.push(`- ${segText(s)}`);
   }
   // Nachdiktat: wortwoertlich, kein Smalltalk-Filter, eigene Sektion.
   const nd = (nachdiktatSegs || []).filter((s) => String(s.text || "").trim());
@@ -351,7 +376,7 @@ function dialogueSpeaker(source) {
 export function buildDialogueDraft(conversationSegs, byId) {
   const turns = [];
   for (const s of conversationSegs || []) {
-    const text = String(s.text || "").trim();
+    const text = segText(s);
     if (!text) continue;
     if (isJunkSegment(text)) continue;
     const meta = (byId && byId.get(s.id)) || { smalltalk: s.smalltalk };
@@ -424,6 +449,135 @@ export async function polishDialogueSummary(draft, { timeoutMs = 90000 } = {}) {
   return { ok: true, text, model: res.model };
 }
 
+// ---------------------------------------------------------------------------
+// Fachbegriff-Korrektur (W-LENA-7, 17.07./21.07.2026): STT-Rohtext (Whisper
+// oder Parakeet-Tee) geht an qwen3.6, das NUR offensichtliche Spracherkennungs-
+// Verhoerer glaettet — v. a. Fachbegriffe ("Barottis"->"Parotis"). § 630f:
+// Roh-Wortlaut bleibt als `text`, Korrektur nur als `textCorrected`.
+// acceptCorrection() verwirft Erfindungen. Notaus: LENA_LLM_CORRECT=0.
+// ---------------------------------------------------------------------------
+
+/**
+ * Glaettet Fachbegriff-Verhoerer je Segment mit dem starken 5090-Modell
+ * (qwen3.6). Kontext der Nachbarzeilen hilft bei der Disambiguierung. Gibt eine
+ * Map segId -> korrigierter Text zurueck (nur die uebernommenen, guard-geprueft).
+ * (exportiert fuer Tests)
+ *
+ * @param {Array} segs  Gespraechs-Segmente ({id,text,source}), ohne Nachdiktat.
+ * @returns {Promise<{ok:boolean, byId:Map, model?:string, reason?:string}>}
+ */
+export async function correctGarbles(segs, { timeoutMs = 90000, chunk = 40 } = {}) {
+  const byId = new Map();
+  if (String(process.env.LENA_LLM_CORRECT || "1") === "0") return { ok: false, byId, reason: "disabled" };
+  const list = (segs || []).filter((s) => segText(s) && !isJunkSegment(segText(s)));
+  if (!list.length) return { ok: true, byId, model: "" };
+
+  const s = strongLlm();
+  let model = "";
+  let anyOk = false;
+  for (let start = 0; start < list.length; start += chunk) {
+    const part = list.slice(start, start + chunk);
+    const numbered = part
+      .map((seg, idx) => `[${idx + 1}] (${speakerLabel(seg.source)}) ${segText(seg).slice(0, 500)}`)
+      .join("\n");
+    const messages = [
+      {
+        role: "system",
+        content: [
+          "Du korrigierst SPRACHERKENNUNGS-Fehler im Transkript eines (zahn)aerztlichen Behandlungsgespraechs (STT).",
+          "Deine EINZIGE Aufgabe: offensichtlich falsch erkannte Woerter — vor allem zahnmedizinische Fachbegriffe — in die korrekte Schreibweise bringen.",
+          "Nutze den Gespraechskontext der Nachbarzeilen zur Disambiguierung.",
+          "Typische Verhoerer (Beispiele, nicht abschliessend): 'Barottis'/'Barotis'->'Parotis', 'in Blattat'/'Implantart'->'Implantat', 'Hauchzehe'->'Backenzahn', 'Approximat'->'Approximal', 'Karius'->'Karies', 'Paradontose'->'Parodontose', 'Kompositfuellung' korrekt lassen.",
+          "STRENG VERBOTEN: Inhalte hinzufuegen, entfernen, umformulieren oder zusammenfassen. Kein Satz wird im Sinn laenger oder kuerzer.",
+          "Aendere NIEMALS Zahlen, Zahnnummern, Mengen, Faktoren oder Abrechnungsziffern.",
+          "Aendere NICHT den Sprachstil: Umgangssprache des Patienten ('Loch', 'tut weh', 'kaputt') bleibt WOERTLICH stehen — nur echte Verhoerer korrigieren, nicht 'schoener' machen.",
+          "Ist eine Zeile bereits korrekt oder der Fehler unklar, gib sie UNVERAENDERT zurueck.",
+          'Antworte NUR mit JSON: {"fix":[{"i":1,"text":"korrigierte Zeile OHNE Sprecher-Praefix"}, ...]} — genau ein Eintrag pro Segment, gleiche Reihenfolge.',
+        ].join("\n"),
+      },
+      { role: "user", content: `Segmente (${part.length}):\n${numbered}` },
+    ];
+    let res;
+    try {
+      res = await chat(messages, {
+        temperature: 0,
+        maxTokens: Math.min(3500, 300 + part.length * 60),
+        timeoutMs,
+        baseUrl: s.base,
+        model: s.model,
+      });
+    } catch { continue; }
+    if (!res || !res.ok) continue;
+    const parsed = extractJson(res.text);
+    if (!parsed || !Array.isArray(parsed.fix)) continue;
+    anyOk = true;
+    model = res.model || model;
+    for (const c of parsed.fix) {
+      const i = typeof c?.i === "number" ? c.i : parseInt(c?.i, 10);
+      if (!Number.isFinite(i) || i < 1 || i > part.length) continue;
+      const seg = part[i - 1];
+      const fixed = typeof c?.text === "string" ? c.text.trim() : "";
+      if (acceptCorrection(segText(seg), fixed)) byId.set(seg.id, fixed);
+    }
+  }
+  return { ok: anyOk, byId, model };
+}
+
+// ---------------------------------------------------------------------------
+// W-LENA-8b/8c: Doku-Template-Felder aus den Segmenten robust per LLM fuellen
+// und unter treatment/main.templateFields PERSISTIEREN. Daraus wird 8c der
+// template-basierte structuredText + die Abrechnungshinweise abgeleitet (ohne
+// Ziffern — Sophie entscheidet), und 8d liest die gewichteten Felder fuer das
+// Clara-Briefing. Kein Umschreiben der Akte: llmExtractTemplateFields extrahiert
+// nur, mergeTemplateFields ist additiv (geplant bleibt geplant), und der
+// Roh-Dialog-structuredText (W-LENA-6) bleibt unangetastet.
+// ---------------------------------------------------------------------------
+
+/**
+ * Template-Felder eines Termins neu extrahieren (qwen), additiv mergen und unter
+ * treatment/main persistieren (templateFields + templateStructuredText +
+ * billingHints). Best-effort — der Aufrufer behandelt !ok tolerant.
+ *
+ * @param {object} opts.segs  optional vorbereitete Segmente (mit textCorrected),
+ *   sonst werden sie frisch geladen.
+ * @returns {Promise<{ok:boolean, templateFields?:object, structuredText?:string, billingHints?:string[], reason?:string, model?:string}>}
+ */
+export async function refreshTemplateFields(clientId, locationId, appointmentId, { updatedBy = "mas-lena", segs = null } = {}) {
+  const ref = apptRef(clientId, locationId, appointmentId);
+  const treatmentRef = ref.collection("treatment").doc("main");
+  const [apptSnap, mainSnap] = await Promise.all([ref.get(), treatmentRef.get()]);
+  const anlass = apptSnap.exists ? String(apptSnap.data()?.visitMotive?.name || "").trim() : "";
+
+  const allSegs = Array.isArray(segs) ? segs : await loadSegments(clientId, locationId, appointmentId);
+  const conversation = allSegs.filter(
+    (s) => String(s.source || "").toLowerCase() !== "nachdiktat" && !isJunkSegment(segText(s)),
+  );
+  const nachdiktatLines = allSegs
+    .filter((s) => String(s.source || "").toLowerCase() === "nachdiktat")
+    .map((s) => String(s.text || "").trim())
+    .filter(Boolean);
+  if (!conversation.length && !nachdiktatLines.length) return { ok: false, reason: "no_segments" };
+
+  const existing = mainSnap.exists ? (mainSnap.data()?.templateFields || null) : null;
+  const ex = await llmExtractTemplateFields(conversation, { anlass, existing });
+  if (!ex.ok) return { ok: false, reason: ex.reason || "llm" };
+
+  const templateFields = serializeTemplateFields(ex.fields, { model: ex.model, updatedBy });
+  const composed = composeStructuredFromTemplate(ex.fields, { nachdiktatLines });
+
+  await treatmentRef.set({
+    templateFields,
+    templateStructuredText: composed.structuredText,
+    billingHints: composed.billingHints,
+    templateUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy,
+  }, { merge: true });
+
+  const filled = Object.values(templateFields.values).filter(Boolean).length;
+  console.log(`[lena/template] appt=${appointmentId} felder=${filled} bloecke=[${templateFields.openBlocks.join(",")}] luecken=${templateFields.gapCount} hinweise=${composed.billingHints.length} (model=${ex.model || "qwen"})`);
+  return { ok: true, templateFields, structuredText: composed.structuredText, billingHints: composed.billingHints, model: ex.model };
+}
+
 /**
  * Strukturieren: klassifizieren (lokales LLM), Klassifikation auf die
  * Segment-Dokumente schreiben, Karteikarte deterministisch bauen und unter
@@ -435,8 +589,29 @@ export async function structureTreatment(clientId, locationId, appointmentId, { 
   if (!segs.length) return { ok: false, error: "no_segments" };
 
   const nachdiktatSegs = segs.filter((s) => String(s.source || "").toLowerCase() === "nachdiktat");
-  const conversationSegs = segs.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+  // Cross-Channel-Merge NUR auf dem Gespraech (Zwei-Mikro-Bleed); Nachdiktat ist
+  // einkanalig/wortwoertlich und wird nie zusammengefasst. Greift nur bei echten
+  // Zeitstempeln -> Alt-Termine ohne Timing bleiben unveraendert.
+  const conversationSegs = mergeCrossChannel(
+    segs.filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat"),
+  );
   if (!conversationSegs.length && !nachdiktatSegs.length) return { ok: false, error: "no_segments" };
+
+  // Fachbegriff-Garble per qwen3.6 glaetten (STT->qwen). Setzt nur
+  // `textCorrected` in-memory; der Roh-`text` bleibt unangetastet. Ab hier
+  // (Klassifikation, Dialog, Karteikarte) laeuft alles ueber segText().
+  let correctModel = "";
+  let correctedCount = 0;
+  if (conversationSegs.length) {
+    const corr = await correctGarbles(conversationSegs);
+    if (corr.ok && corr.byId.size) {
+      correctModel = corr.model || "";
+      for (const seg of conversationSegs) {
+        const fixed = corr.byId.get(seg.id);
+        if (fixed) { seg.textCorrected = fixed; correctedCount += 1; }
+      }
+    }
+  }
 
   const byId = new Map();
   let llmModel = "";
@@ -458,6 +633,10 @@ export async function structureTreatment(clientId, locationId, appointmentId, { 
   const segCol = apptRef(clientId, locationId, appointmentId).collection("dictations");
   for (const [id, meta] of byId.entries()) {
     batch.set(segCol.doc(id), { section: meta.section, smalltalk: meta.smalltalk }, { merge: true });
+  }
+  // qwen-Korrektur mitschreiben (§ 630f: Roh-`text` bleibt, `textCorrected` daneben).
+  for (const seg of conversationSegs) {
+    if (seg.textCorrected) batch.set(segCol.doc(seg.id), { textCorrected: seg.textCorrected }, { merge: true });
   }
   // Nachdiktat: nie als Smalltalk markieren (wortwoertlich fuer Akte).
   for (const s of nachdiktatSegs) {
@@ -493,7 +672,8 @@ export async function structureTreatment(clientId, locationId, appointmentId, { 
     segmentsCount: segs.length,
     sectionsMeta: TREATMENT_SECTIONS,
     classifiedCount: byId.size,
-    model: `local:${llmModel || "qwen"}${strongModel ? `+strong:${strongModel}` : ""}`,
+    correctedCount,
+    model: `local:${llmModel || "qwen"}${correctModel ? `+correct:${correctModel}` : ""}${strongModel ? `+strong:${strongModel}` : ""}`,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedBy,
   }, { merge: true });
@@ -503,12 +683,137 @@ export async function structureTreatment(clientId, locationId, appointmentId, { 
   // demselben Speicher). Best-effort, blockiert die Antwort nicht bei Fehler.
   await writeTreatmentSummaryEvent(clientId, { locationId, appointmentId, structuredText });
 
+  // W-LENA-8b/8c: Template-Felder robust per LLM extrahieren + persistieren
+  // (fuer das Clara-Briefing 8d und die Abrechnungshinweise). Nutzt die schon
+  // garble-korrigierten Segmente; best-effort — Fehler kippen die Struktur nie.
+  let templateFields = null;
+  let billingHints = [];
+  try {
+    const tf = await refreshTemplateFields(clientId, locationId, appointmentId, {
+      updatedBy,
+      segs: [...conversationSegs, ...nachdiktatSegs],
+    });
+    if (tf.ok) {
+      templateFields = tf.templateFields;
+      billingHints = tf.billingHints || [];
+    }
+  } catch (tfErr) {
+    console.warn(`[lena/template] appt=${appointmentId} uebersprungen: ${tfErr?.message || tfErr}`);
+  }
+
+  console.log(`[lena/structure] appt=${appointmentId} segmente=${segs.length} klassifiziert=${byId.size} korrigiert=${correctedCount}${correctModel ? ` (correct=${correctModel})` : ""}${strongModel ? ` (dialog=${strongModel})` : ""}${templateFields ? ` template=${templateFields.gapCount}luecken` : ""}`);
+
   return {
     ok: true,
     structuredHtml: karte.structuredHtml,
     structuredText,
     segmentsCount: segs.length,
     classifiedCount: byId.size,
+    correctedCount,
+    templateFields,
+    billingHints,
+  };
+}
+
+const DOKU_MEMORY_TAGE = 45;
+
+/**
+ * Abschluss eines Lena-Eintrags: Karteikarte + Shared Memory (lena_doc).
+ * Wird vom iPad-Button „Speichern“ ausgeloest — nicht waehrend der Live-Aufnahme.
+ * Clara kann die Doku danach vorlesen (dictations bleiben fuehrend; Summary-Event
+ * macht den Stand auch in MAS-Suche / Praxisgedaechtnis sichtbar).
+ */
+export async function finalizeTreatmentDoc(
+  clientId,
+  locationId,
+  appointmentId,
+  { structuredText: incomingText = "", updatedBy = "mas-lena" } = {},
+) {
+  const segs = await loadSegments(clientId, locationId, appointmentId);
+  const treatmentRef = apptRef(clientId, locationId, appointmentId).collection("treatment").doc("main");
+  const mainSnap = await treatmentRef.get();
+  const mainData = mainSnap.exists ? (mainSnap.data() || {}) : {};
+
+  let structuredText = String(incomingText || "").trim();
+  if (!structuredText) {
+    structuredText = String(mainData.structuredText || "").trim();
+  }
+  if (!structuredText) {
+    const clinical = [];
+    const nach = [];
+    for (const s of segs) {
+      if (s.smalltalk || isJunkSegment(segText(s))) continue;
+      const line = segText(s);
+      if (!line) continue;
+      if (String(s.source || "").toLowerCase() === "nachdiktat") nach.push(line);
+      else clinical.push(line);
+    }
+    const parts = [];
+    if (clinical.length) parts.push(clinical.join("\n"));
+    if (nach.length) parts.push("NACHDIKTAT\n" + nach.map((t) => "- " + t).join("\n"));
+    structuredText = parts.join("\n\n").trim();
+  }
+  if (!structuredText && !segs.length) {
+    return { ok: false, error: "no_content" };
+  }
+  if (!structuredText) {
+    structuredText = segs.map((s) => segText(s)).filter(Boolean).join("\n");
+  }
+
+  await treatmentRef.set({
+    structuredText: structuredText.slice(0, 40000),
+    finalizedAt: admin.firestore.FieldValue.serverTimestamp(),
+    finalizedBy: updatedBy,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy,
+  }, { merge: true });
+
+  await writeTreatmentSummaryEvent(clientId, {
+    locationId, appointmentId, structuredText,
+  });
+
+  // Segment-Events erst jetzt ins Praxisgedaechtnis (nicht live waehrend Aufnahme).
+  let memorySegments = 0;
+  try {
+    const apptSnap = await apptRef(clientId, locationId, appointmentId).get();
+    const ap = apptSnap.exists ? (apptSnap.data() || {}) : {};
+    const subjId = String(ap.patientId || ap.patient?.id || "").trim();
+    const subjName = `${ap.patient?.firstName || ""} ${ap.patient?.lastName || ""}`.trim();
+    for (const s of segs) {
+      const text = String(s.text || "").trim();
+      if (!text || !s.id) continue;
+      const source = String(s.source || "arzt").slice(0, 20) || "arzt";
+      const kurz = text.length > 420 ? text.slice(0, 417) + "..." : text;
+      await appendEvent(clientId, {
+        id: `lena-doc:${appointmentId}:${s.id}`,
+        channel: CHANNELS.LENA_DOC,
+        type: EVENT_TYPES.NOTE,
+        direction: DIRECTIONS.INTERNAL,
+        counterparty: { kind: "system", name: "Lena", ref: null },
+        subject: subjId
+          ? { patientId: subjId, name: subjName, matchStatus: "matched", matchMethod: "name" }
+          : { name: subjName, matchStatus: "unmatched" },
+        status: "none",
+        summary: `Behandlungsdokumentation (Lena, ${source}): ${kurz}`,
+        payloadRef: { kind: "dictation", id: s.id },
+        extractor: "lena@finalize",
+        tags: ["lena", "dokumentation", "behandlung"],
+        expiresAtMs: Date.now() + DOKU_MEMORY_TAGE * 86400000,
+      });
+      memorySegments += 1;
+    }
+  } catch (memErr) {
+    console.warn(`[lena/finalize] memory segments: ${memErr?.message || memErr}`);
+  }
+
+  console.log(
+    `[lena/finalize] appt=${appointmentId} chars=${structuredText.length} segs=${segs.length} memory=${memorySegments}`,
+  );
+  return {
+    ok: true,
+    structuredText,
+    segmentsCount: segs.length,
+    memorySegments,
   };
 }
 
@@ -520,6 +825,13 @@ export async function structureTreatment(clientId, locationId, appointmentId, { 
  */
 export async function billTreatment(clientId, locationId, appointmentId, { updatedBy = "mas-lena" } = {}) {
   const treatmentRef = apptRef(clientId, locationId, appointmentId).collection("treatment").doc("main");
+  // Doku-Stand einmal lesen: liefert (a) den structuredText-Notnagel fuer
+  // Alt-Termine ohne Segmente und (b) die 8c-Abrechnungshinweise aus dem
+  // Template (nur Richtung, keine Ziffern — als Grounding fuer die Ziffern-KI).
+  const mainSnap = await treatmentRef.get();
+  const mainData = mainSnap.exists ? (mainSnap.data() || {}) : {};
+  const billingHints = Array.isArray(mainData.billingHints) ? mainData.billingHints.slice(0, 12) : [];
+
   // Basis sind IMMER die echten Segmente (ohne Smalltalk/Gestrichenes) — eine
   // alte strukturierte Karteikarte darf neue Diktate nicht verschatten. Die
   // Struktur-Ansicht ist abgeschafft; structuredText bleibt nur Notnagel fuer
@@ -527,10 +839,9 @@ export async function billTreatment(clientId, locationId, appointmentId, { updat
   const segs = await loadSegments(clientId, locationId, appointmentId);
   // Junk (Zaehlen/Tests/Ausrufe) fliegt IMMER raus — auch wenn das Smalltalk-
   // Flag (noch) nicht/falsch gesetzt ist. So bekommt die Abrechnung nie Muell.
-  let basis = segs.filter((s) => !s.smalltalk && !isJunkSegment(s.text)).map((s) => s.text).join("\n");
+  let basis = segs.filter((s) => !s.smalltalk && !isJunkSegment(segText(s))).map(segText).join("\n");
   if (!basis) {
-    const treatmentSnap = await treatmentRef.get();
-    basis = typeof treatmentSnap.data()?.structuredText === "string" ? treatmentSnap.data().structuredText : "";
+    basis = typeof mainData.structuredText === "string" ? mainData.structuredText : "";
   }
   basis = String(basis || "").trim();
   if (!basis) return { ok: false, error: "no_content" };
@@ -565,6 +876,14 @@ export async function billTreatment(clientId, locationId, appointmentId, { updat
         "",
         "----------------------------------------",
         grounding.context.slice(0, 14000),
+        ...(billingHints.length
+          ? [
+            "",
+            "----------------------------------------",
+            "Hinweise aus dem Doku-Template (nur Richtung/Leistungsgruppe — KEINE Ziffern-Vorgabe, leite Ziffern weiter aus dem Behandlungstext ab):",
+            ...billingHints.map((h) => "- " + h),
+          ]
+          : []),
       ].join("\n"),
     },
   ];
@@ -620,6 +939,6 @@ export async function billTreatment(clientId, locationId, appointmentId, { updat
     updatedBy,
   }, { merge: true });
 
-  console.log(`[lena/billing] appt=${appointmentId} quelle=${quelle} jargon=[${grounding.matchedTerms.join(",")}] bema=${billing.bema.length} bemaPlus=${billing.bemaPlus.length} goz=${billing.goz.length}`);
-  return { ok: true, billing, quelle };
+  console.log(`[lena/billing] appt=${appointmentId} quelle=${quelle} jargon=[${grounding.matchedTerms.join(",")}] bema=${billing.bema.length} bemaPlus=${billing.bemaPlus.length} goz=${billing.goz.length} hinweise=${billingHints.length}`);
+  return { ok: true, billing, quelle, billingHints };
 }

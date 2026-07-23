@@ -101,7 +101,8 @@ W.LenaDokuZahn.applySegments(st3, [
   { text: "Anaesthesie gesetzt mit Ultracain" },
   { text: "Exkaviert und Kompositfuellung MOD an 35 gelegt" },
 ]);
-check("Therapie-Handlung beendet Modus", st3.dictMode === null, String(st3.dictMode));
+check("Therapie-Handlung beendet Befund-Modus", st3.dictMode !== "befund", String(st3.dictMode));
+check("Therapie-Handlung startet Therapie-Modus", st3.dictMode === "therapie", String(st3.dictMode));
 check("Therapie-Box gefuellt (ohne Trigger)", (st3.values.therapie || "").includes("Exkaviert"), st3.values.therapie);
 check("35: Therapie fMOD in T-Zeile", /f/i.test(st3.chart?.[35]?.therapie || ""), JSON.stringify(st3.chart?.[35]));
 check("LA-Block offen", st3.openBlocks.has("la"), [...st3.openBlocks].join(","));
@@ -115,7 +116,10 @@ W.LenaDokuZahn.applySegments(st4, [
   { text: "Patient wuenscht Beratung Implantat" },
 ]);
 check("Befund Ende beendet Modus", st4.dictMode === null, String(st4.dictMode));
-check("Nach Ende kein Zwangs-Befund", !(st4.values.befund || "").includes("Beratung"), st4.values.befund);
+// Nach Ende kein forced-Mode mehr — Freitext landet trotzdem in der Box
+// (Chef 22.07.: Doku-Seite sonst "nichts dokumentiert").
+check("Nach Ende Freitext trotzdem dokumentiert", /beratung/i.test(st4.values.befund || ""), st4.values.befund);
+check("Nach Ende nicht mehr im Befund-Diktat-Modus", st4.dictMode === null, String(st4.dictMode));
 
 // 8) setField-Fix: laengeres NEUES Diktat ersetzt gesammelte Eintraege nicht
 const st5 = W.LenaDokuZahn.emptyState("");
@@ -181,7 +185,7 @@ W.LenaDokuZahn.applySegments(stEnd, [
   { text: "46 muss extrahiert werden" },
   { text: "Ultracain gesetzt und 46 extrahiert" },
 ]);
-check("Ende: echte Handlung beendet Modus", stEnd.dictMode === null, String(stEnd.dictMode));
+check("Ende: echte Handlung -> Therapie-Modus", stEnd.dictMode === "therapie", String(stEnd.dictMode));
 check("Ende: Handlung in Therapie-Box", /extrahiert/i.test(stEnd.values.therapie || ""), stEnd.values.therapie);
 
 // 10) ECHTE Zeilen 13:12 (Patientin D., zahnlos): "Alle Zaehne fehlend",
@@ -202,13 +206,97 @@ check("13:12: zahnlos -> ALLE Zaehne f (Probe 25)", stD.chart?.[25]?.befund === 
 check("13:12: 18 f (aus '1,8 fehlt')", stD.chart?.[18]?.befund === "f", JSON.stringify(stD.chart?.[18]));
 check("13:12: Befund-Box hat 'Alle Zähne fehlend'", (stD.values.befund || "").includes("Alle Zähne fehlend"), (stD.values.befund || "").slice(0, 140));
 check("13:12: 'Hörst du nicht?' NICHT in Befund-Box", !/h[oö]rst du/i.test(stD.values.befund || ""), (stD.values.befund || "").slice(0, 140));
-check("13:12: 'Therapie.' beendet Modus", stD.dictMode === null, String(stD.dictMode));
+check("13:12: 'Therapie.' startet Therapie-Modus", stD.dictMode === "therapie", String(stD.dictMode));
 
 // Kiefer-Scope: nur Oberkiefer zahnlos
 const stOk = W.LenaDokuZahn.emptyState("");
 W.LenaDokuZahn.applySegments(stOk, [{ text: "Oberkiefer zahnlos" }]);
 check("OK zahnlos: 16 f", stOk.chart?.[16]?.befund === "f", JSON.stringify(stOk.chart?.[16]));
 check("OK zahnlos: 46 bleibt leer", (stOk.chart?.[46]?.befund || "") === "", JSON.stringify(stOk.chart?.[46]));
+
+// Massen-Phrasen (Chef 22.07.): Achter / OK-ersetzt / UK-fehlen / Lage
+const pAcht = W.LenaVoiceChart.parseUtterance("alle Achter fehlen");
+check("alle Achter fehlen -> 18/28/38/48 f",
+  pAcht.length === 4 && pAcht.every((e) => e.codes.includes("f")) &&
+  [18, 28, 38, 48].every((n) => pAcht.some((e) => e.fdi === n)),
+  JSON.stringify(pAcht.map((e) => e.fdi)));
+const pWeis = W.LenaVoiceChart.parseUtterance("alle Weisheitszähne fehlen");
+check("alle Weisheitszähne fehlen -> 4x f", pWeis.length === 4 && pWeis.every((e) => e.codes.includes("f")), String(pWeis.length));
+const pOkE = W.LenaVoiceChart.parseUtterance("alle OK Zähne ersetzt");
+check("alle OK Zähne ersetzt -> 16 e, 46 leer",
+  pOkE.some((e) => e.fdi === 16 && e.codes.includes("e")) &&
+  !pOkE.some((e) => e.fdi === 46),
+  JSON.stringify(pOkE.slice(0, 3)));
+const pUkF = W.LenaVoiceChart.parseUtterance("alle UK Zähne fehlen");
+check("alle UK Zähne fehlen -> 46 f, 16 leer",
+  pUkF.some((e) => e.fdi === 46 && e.codes.includes("f")) &&
+  !pUkF.some((e) => e.fdi === 16),
+  JSON.stringify(pUkF.slice(0, 3)));
+const pLuck = W.LenaVoiceChart.parseUtterance("35 Lückenschluss");
+check("Lückenschluss -> )(", pLuck.length && pLuck[0].fdi === 35 && pLuck[0].codes.includes(")("), JSON.stringify(pLuck));
+const pRt = W.LenaVoiceChart.parseUtterance("48 retiniert");
+check("48 retiniert -> rt", pRt.length && pRt[0].fdi === 48 && pRt[0].codes.includes("rt"), JSON.stringify(pRt));
+const pImp = W.LenaVoiceChart.parseUtterance("18 impaktiert");
+check("18 impaktiert -> imp", pImp.length && pImp[0].fdi === 18 && pImp[0].codes.includes("imp"), JSON.stringify(pImp));
+const pVer = W.LenaVoiceChart.parseUtterance("28 verlagert");
+check("28 verlagert -> verl", pVer.length && pVer[0].fdi === 28 && pVer[0].codes.includes("verl"), JSON.stringify(pVer));
+const pErsetzt = W.LenaVoiceChart.parseUtterance("36 ersetzt");
+check("36 ersetzt -> e", pErsetzt.length && pErsetzt[0].fdi === 36 && pErsetzt[0].codes.includes("e"), JSON.stringify(pErsetzt));
+
+// Doku-Freitext (Chef 22.07.): ohne Stichwort trotzdem in die Box
+{
+  const stF = W.LenaDokuZahn.emptyState("Kontrolle");
+  stF.page = "doku";
+  W.LenaDokuZahn.applySegments(stF, [
+    { text: "16 Karies." },
+    { text: "01 fertig." },
+    { text: "Patient berichtet über Beschwerden im Unterkiefer links." },
+    { text: "Das war alles soweit in Ordnung heute." },
+    { text: "ok" },
+  ]);
+  check("Freitext: Beschwerden -> befund", /beschwerden/i.test(stF.values.befund || ""), stF.values.befund);
+  check("Freitext: Narrative ohne Stichwort -> befund", /soweit in ordnung/i.test(stF.values.befund || ""), stF.values.befund);
+  check("Freitext: 'ok' nicht in Box", !/\bok\b/i.test(stF.values.befund || ""), stF.values.befund);
+  check("Freitext: Schema-Karies bleibt", /16 karies/i.test(stF.values.befund || ""), stF.values.befund);
+}
+
+// Speech-Katalog + Speed (Chef 22.07.)
+{
+  const ex = W.LenaZahnstatusKatalog.SPEECH_EXAMPLES || {};
+  let speechOk = 0;
+  let speechFail = 0;
+  const fails = [];
+  for (const [code, phrases] of Object.entries(ex)) {
+    for (const phrase of phrases) {
+      const ev = W.LenaVoiceChart.parseUtterance("16 " + phrase);
+      const hit = ev.some((e) => e.fdi === 16 && (e.codes || []).includes(code));
+      if (hit) speechOk++;
+      else {
+        speechFail++;
+        if (fails.length < 12) fails.push(`${code}←"${phrase}" got ${JSON.stringify(ev)}`);
+      }
+    }
+  }
+  check(`SPEECH_EXAMPLES: ${speechOk} Phrasen ok`, speechFail === 0, fails.join(" | ") || String(speechOk));
+  const neg = [
+    ["empfehlen wir Komposit", "f"],
+    ["das war ein Fehler", "f"],
+    ["ab Montag Wiedervorstellung", "ab"],
+    ["so ist das", "so"],
+  ];
+  for (const [txt, bad] of neg) {
+    const codes = W.LenaVoiceChart.extractCodes(txt);
+    check(`Negativ kein ${bad}: "${txt}"`, !codes.includes(bad), codes.join(","));
+  }
+  const t0 = Date.now();
+  const sample = [
+    "16 Karies mesial", "46 fehlt", "27 Teleskopkrone", "18 retiniert",
+    "alle Achter fehlen", "35 Lückenschluss", "24 Implantat", "36 ersetzt",
+  ];
+  for (let i = 0; i < 400; i++) W.LenaVoiceChart.parseUtterance(sample[i % sample.length]);
+  const ms = Date.now() - t0;
+  check(`Speed: 400 parses < 250ms (ist ${ms}ms)`, ms < 250, String(ms));
+}
 
 // 11) Ansage-Test (Chef 21.07.): nackte Zahnnummern "12", "15", "34" —
 //     jeder genannte Zahn wird im Schema AKTIVIERT (is-named), der letzte

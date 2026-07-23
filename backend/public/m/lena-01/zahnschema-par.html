@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lena · Parodontologie-Odontogramm</title>
+  <meta name="theme-color" content="#0b0e13" />
+  <link rel="stylesheet" href="/m/lena-01/zahnschema-par.css?v=20260718a" />
+</head>
+<body>
+  <header>
+    <div>
+      <span class="eyebrow">LENA · 01-MODUS · PARODONTOLOGIE</span>
+      <h1>Knochen- & Zahnfleischverlust darstellbar</h1>
+      <p>Gerade Reihen. Zahn klicken, dann Knochenabbau und Rezession setzen – die Wurzel wird sichtbar.</p>
+    </div>
+    <a href="/m/lena-01/index.html">← zurück</a>
+  </header>
+
+  <main>
+    <section class="charts">
+      <div class="jaw">Oberkiefer · 18 → 28</div>
+      <div class="arch-host" id="arch-ok"></div>
+      <div class="jaw">Unterkiefer · 48 → 38</div>
+      <div class="arch-host" id="arch-uk"></div>
+    </section>
+
+    <aside class="panel">
+      <h2 id="selLabel">Zahn 36</h2>
+      <p class="sub">Ausgewählter Zahn – Werte wirken sofort auf Knochen und Zahnfleisch.</p>
+
+      <div class="ctrl">
+        <label>Knochenabbau <span id="lossVal">0 mm</span></label>
+        <input type="range" id="loss" min="0" max="12" step="1" value="0" />
+      </div>
+      <div class="ctrl">
+        <label>Rezession (Zahnfleisch) <span id="recVal">0 mm</span></label>
+        <input type="range" id="rec" min="0" max="8" step="1" value="0" />
+      </div>
+      <label class="row"><input type="checkbox" id="miss" /> Zahn fehlt</label>
+
+      <div class="cal" id="calVal">Knochenabbau 0 mm · Rezession 0 mm · CAL≈ 0 mm</div>
+
+      <div class="presets">
+        <button type="button" id="presetDemo">Demo-Befund</button>
+        <button type="button" id="presetGen">Generalisiert</button>
+        <button type="button" id="presetReset">Gesund</button>
+      </div>
+
+      <div class="legend">
+        <span><i style="background:#3fae5a"></i>≤3 mm</span>
+        <span><i style="background:#e6a417"></i>4–5 mm</span>
+        <span><i style="background:#d33"></i>≥6 mm</span>
+        <span><i style="background:#e4c7a6"></i>Knochen</span>
+        <span><i style="background:#e8a0a0"></i>Zahnfleisch</span>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/m/lena-01/zahnschema-par.js?v=20260718a"></script>
+</body>
+</html>
