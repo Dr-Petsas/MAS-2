@@ -321,6 +321,17 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
+// Lena-Provider registrieren (GUARDED, 23.07.2026): ein defektes oder neu
+// gebautes Lena darf den Server-Boot NICHT verhindern. Schlaegt der Import fehl,
+// bleiben nur Lenas Doku-Funktionen deaktiviert (sichere Defaults ueber
+// shared/lenaBridge) — Clara und der restliche Server laufen unbeschadet weiter.
+try {
+  await import("./lena/register.js");
+  log.info("lena provider registered");
+} catch (e) {
+  log.warn("lena provider not loaded", { error: String(e?.message || e) });
+}
+
 server.listen(PORT, () => {
   assertLocalLlm();
   log.info("backend listening", { port: PORT, authEnforced: AUTH_ENFORCED, lenaSttProxy: LENA_STT_PORT });

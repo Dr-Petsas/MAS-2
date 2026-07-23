@@ -5,7 +5,10 @@ import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { kartePatient } from "./karten.js";
-import { loadWeightedVisitBriefing } from "./lenaBriefing.js";
+// Entkoppelt (23.07.2026): Clara zieht das gewichtete Besuchs-Briefing ueber die
+// neutrale Bruecke, NICHT mehr direkt aus Lena. Ist Lena nicht geladen, kommt ein
+// leeres Briefing zurueck — Clara laeuft unbeschadet weiter.
+import { loadWeightedVisitBriefing } from "../shared/lenaBridge.js";
 
 /**
  * "Nächste 2 Patienten"-Briefing

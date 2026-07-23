@@ -404,7 +404,8 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       - [x] **8d Clara Briefing (gewichtet, kurz) — FERTIG 19.07.** Heads-up
         (`nextPatientsBriefing`) und Tages-Prep (`day-appointments`) lesen
         `treatment/main.templateFields` des letzten Termins. Modul
-        `clara/lenaBriefing.js`: Feld-Gewichte (Komplikation/Planwechsel/
+        `lena/lenaBriefing.js` (23.07. aus clara/ nach lena/ verschoben, Clara
+        bezieht es entkoppelt ueber `shared/lenaBridge.js`): Feld-Gewichte (Komplikation/Planwechsel/
         Therapie/Diagnose/offen > Befund/Anlass), max. 2 Fakten, ≤140 Zeichen,
         „keine Komplikationen“ und Befund-Romane werden verworfen. Fallback
         Kalender-visitMotive. SignR-Anamnese unveraendert separat. Absicherung:

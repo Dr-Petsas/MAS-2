@@ -4,7 +4,7 @@ import {
   pickWeightedFacts,
   buildWeightedVisitBriefing,
   FIELD_WEIGHTS,
-} from "../src/clara/lenaBriefing.js";
+} from "../src/lena/lenaBriefing.js";
 
 function testPicksHighestWeights() {
   const fields = {
