@@ -292,7 +292,7 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
                 } else {
                     const lastNote = hist.last.comments ? `, Notiz: ${kurz(hist.last.comments, 80)}` : "";
                     s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${lastMotive}${lastNote}`;
-                    letzterBesuch = { motive: lastMotive, startMs: hist.last.startMs || 0, note: hist.last.comments ? kurz(hist.last.comments, 90) : "" };
+                    letzterBesuch = { motive: lastMotive, startMs: hist.last.startMs || 0, note: hist.last.comments || "" };
                 }
             } else {
                 s += ". Kein früherer Termin bekannt";
@@ -333,6 +333,7 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
             motive: a.visitMotive || "Termin",
             neupatient: !!a.newPatient,
             comments: a.comments ? kurz(a.comments, 90) : "",
+            commentsFull: a.comments || "",
             anamneseFindings: anaFindings,
             klinikHinweise: anaHints,
             letzterBesuch,

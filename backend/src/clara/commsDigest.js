@@ -4,6 +4,7 @@ import { todayBerlin, relativeDayLabel } from "./daySchedule.js";
 import { ensureBerlinTz } from "./booking.js";
 import { pick } from "./variation.js";
 import { summarizeForSpeech } from "./summarize.js";
+import { karteEingaenge } from "./karten.js";
 
 // ============================================================================
 // "Was ist heute reingekommen?" — EIN kombinierter Kommunikations-Digest
@@ -164,4 +165,36 @@ export async function buildSpokenComms(events, { day }) {
 export async function spokenCommsDigest(clientId, { date } = {}) {
   const { day, events } = await dayInboundComms(clientId, { date });
   return buildSpokenComms(events, { day });
+}
+
+/**
+ * Eingaenge-KARTE (W-FLIP-TIEFE WP8) aus denselben Ereignissen — DETERMINISTISCH
+ * (kein LLM): Zaehlung + alle Eingaenge mit vollem Inhalt fuer die Vertiefung.
+ * Additiv; die gesprochene Zusammenfassung (buildSpokenComms) bleibt unberuehrt.
+ */
+export function cardInboundComms(events, { day }) {
+  const rel = relativeDayLabel(day);
+  const dateLabel = rel.charAt(0).toUpperCase() + rel.slice(1);
+  const byKind = (k) => events.filter((e) => INBOUND.get(e.channel)?.kind === k);
+  const entries = events.map((e) => {
+    const meta = INBOUND.get(e.channel) || {};
+    return {
+      startMs: Number(e.ts) || 0,
+      kind: meta.kind || "email",
+      word: meta.word || "Eingang",
+      who: e.counterparty?.name || e.subject?.name || "",
+      text: String(e.summary || "").replace(/\s+/g, " ").trim(),
+      open: e.status === "open",
+    };
+  });
+  return karteEingaenge({
+    dateLabel,
+    total: events.length,
+    calls: byKind("call").length,
+    mails: byKind("email").length,
+    letters: byKind("letter").length,
+    front: byKind("frontdesk").length,
+    open: events.filter((e) => e.status === "open").length,
+    entries,
+  });
 }

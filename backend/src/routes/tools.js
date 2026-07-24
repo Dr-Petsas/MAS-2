@@ -35,7 +35,7 @@ import { planAbsence, approveAbsence, absenceStatusSpoken } from "../clara/absen
 import { lookupCaller, normalizePhone } from "../clara/callerLookup.js";
 import { spokenCallLog } from "../clara/callLog.js";
 import { summarizeForSpeech } from "../clara/summarize.js";
-import { spokenCommsDigest } from "../clara/commsDigest.js";
+import { dayInboundComms, buildSpokenComms, cardInboundComms } from "../clara/commsDigest.js";
 import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
@@ -2743,8 +2743,12 @@ router.post("/tools/comms-digest", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
-    const message = await spokenCommsDigest(clientId, { date: req.body?.date });
-    res.json({ ok: true, message });
+    const { day, events } = await dayInboundComms(clientId, { date: req.body?.date });
+    const message = await buildSpokenComms(events, { day });
+    // W-FLIP-TIEFE (WP8): additive Eingaenge-Karte (Flip + vertiefbares detail).
+    let card;
+    try { card = cardInboundComms(events, { day }); } catch { /* Karte ist Komfort */ }
+    res.json(card ? { ok: true, message, card } : { ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

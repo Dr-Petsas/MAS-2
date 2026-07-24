@@ -1000,6 +1000,57 @@ Kandidaten-Limit 8 parallel bleibt — durch Live-Buchung ist der Wettlauf
 jetzt fair (wer zuerst zusagt, bucht; alle anderen bekommen sofort
 Alternativen). Kein Terminwunsch wird verneint.
 
+## Phase W-FLIP-TIEFE - Angezeigte Inhalte vertiefbar machen (Chef 24.07.2026)
+
+**Auftrag (sinngemaess):** Clara flippt bereits das Handy-Display, um Themen
+zu zeigen ("was kannst du alles"). Das soll ueberall genutzt werden - UND Clara
+soll auf ALLES, was sie textlich/als Karte zeigt, bei einer Nachfrage fundiert
+und eloquent in die Tiefe gehen koennen (schriftliche Information neben dem
+Gesprochenen). Oberste Regel bleibt: harte Fakten, nichts halluziniert.
+
+**Architektur (systematisches Rueckgrat, danach jede Domaene "Karte + Detail"):**
+Jede Uebersichts-Karte fuehrt zusaetzlich zum (fuer die Anzeige gekappten)
+`items`-Chip einen reichen, deterministischen `detail`-Text mit. Der Worker
+haelt die zuletzt gezeigten Karten turn-uebergreifend in `displayed_context`
+(Session-Feld, Ringpuffer, gekappt) und speist sie als vertrauenswuerdigen
+"das steht gerade auf dem Display"-Block ins LLM (Vorbild `topic_context`). Der
+Fakten-Waechter behandelt durch `displayed_context` GEDECKTE Vertiefung als
+erlaubt (nur bei explizitem Vertief-Intent + vorhandenem Anzeige-Kontext);
+Halluzination OHNE Anzeige-Kontext bleibt strikt blockiert (Regression
+07.07.2026). Hybrid: reicht die angezeigte Tiefe nicht, ruft der elaborate-Pfad
+ein bestehendes Detail-Tool (volle Terminliste/Patientenhistorie).
+
+- [x] WP2 Anzeige-Kontextspeicher `push_displayed_context` in
+      `appointment_tools._stash_cards` (turn-uebergreifend, Ringpuffer, gekappt).
+- [x] WP3 Injektion als begrenzter Grounding-Block in `openai_compat_llm`
+      (`_format_displayed_context_block`, im Per-Turn-Kontext, ~3500 Zeichen).
+- [x] WP6 Pilot: Capabilities-Karte (`worker_human`) traegt `detail` + wird
+      gestasht -> "erklaer mir den Tagesueberblick genauer" wird tief
+      beantwortbar (End-to-End-Nachweis, self-contained).
+- [x] WP4 Fakten-Waechter: covered-by-display-Ausnahme, FLAG-gated
+      (`CLARA_DISPLAY_ELABORATE=0` = Notaus), separat getestet.
+- [x] WP1 MAS `karten.js`: Schema additiv um `detail`; alle 5 Builder
+      (`kartePatient`/`karteTag`/`karteDoku`/`karteLuecken`/`karteSophie`) +
+      `nextPatientsBriefing` reichen volle Quelldaten.
+- [x] WP5 Routing: kanonischer Vertief-Intent `is_elaboration_intent`
+      (`tool_subsetting`); Worker routet Vertiefung-auf-Angezeigtes auf den
+      regulaeren LLM-Turn statt in die Chat-Spur.
+- [x] WP7 Hybrid-Rest: Grounding-Block weist auf Detail-Tool-Aufruf hin, wenn
+      das Angezeigte nicht reicht (bestehende Fakten-Kern-Tools).
+- [x] WP8 Neue Flip-Domaene als Muster: `karteEingaenge` (Post/Anrufe/
+      Bewertungen) + `detail`, additiv am comms-digest. Weitere Domaenen
+      (Zeitraum, QM, Recall, Team, freie Slots) folgen demselben Muster.
+- [x] WP9 Tests: `test_facts_guard` (Vertiefung erlaubt / ohne Kontext
+      blockiert / Notaus / frische Tagesfrage geschuetzt + Grounding-Block),
+      `test_human_layer` (Capabilities-Detail + displayed_context-Ringpuffer);
+      Clara-Schnell-Gate gruen.
+
+**Definition of Done:** Rueckgrat (WP2/3) + Pilot (WP6) beweisen die Tiefe
+end-to-end; Fakten-Waechter bleibt gruen (WP4 flag-gated + getestet); MAS
+`detail` strikt additiv/vertragstreu; neue Flip-Domaene als Muster (WP8);
+Schnell-Gate gruen; kein Rueckbau der Sprech-/Isolation-/Verbatim-Garantien.
+Weitere Domaenen (WP8-Liste) sind "nach Bedarf" und folgen dem Muster.
+
 ## Reihenfolge
 
 1. Phase 0 (sofort) -> parallel Dens-Kickoff-Fragen raus + Hardware bestellen

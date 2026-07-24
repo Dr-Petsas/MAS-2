@@ -13,10 +13,19 @@
 //
 // Schema:
 //   { kind, tag, title, time, subtitle, heading,
-//     items: [{ level: "alert"|"warn"|"info"|"ok", icon, text }], footer }
+//     items: [{ level: "alert"|"warn"|"info"|"ok", icon, text }],
+//     detail?, footer }
 // Icons (Handy rendert Inline-SVG, Fallback nach level):
 //   alert droplet heart scissors mail phone pen note ray euro calendar
 //   check clock doc person tooth question mic
+//
+// `detail` (W-FLIP-TIEFE, additiv/optional): reicher, DETERMINISTISCHER
+// Fakten-Text hinter den (fuer die Anzeige gekappten) `items`-Chips. Der
+// Sprach-Worker legt ihn in seinen turn-uebergreifenden Anzeige-Kontext
+// (displayed_context) und speist ihn als gesicherten Grounding-Block ins LLM —
+// so kann Clara auf einen angezeigten Punkt fundiert & eloquent eingehen, ohne
+// zu halluzinieren (Fakten-Waechter behandelt Angezeigtes als gedeckt). `items`
+// bleibt unveraendert die Anzeige-Zusammenfassung; das Handy ignoriert `detail`.
 // ============================================================================
 
 const TZ = "Europe/Berlin";
@@ -58,6 +67,26 @@ function item(level, icon, text) {
   return { level, icon, text: clip(text, 110) };
 }
 
+/**
+ * Reicher, UNGEKAPPTER Fakten-Text fuer `detail` (W-FLIP-TIEFE). Anders als
+ * `items` (fuer die Anzeige geclippt/limitiert) traegt `detail` die VOLLEN
+ * Quelldaten, damit Clara auf Nachfrage vertiefen kann. Reine Anzeige-Fakten,
+ * additiv. Leere Zeilen fallen raus; einzelne Zeilen bleiben je eine Aussage.
+ */
+function detailText(lines) {
+  const out = (lines || [])
+    .map((l) => String(l == null ? "" : l).replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean);
+  return out.length ? out.join("\n") : "";
+}
+
+/** Volle Anamnese-Zeile (ohne Chip-Kappung) fuer den detail-Block. */
+function anamneseZeile(f) {
+  const cat = String(f?.category || "").trim();
+  if (!cat) return "";
+  return f?.text && f.text !== "ja" ? `${cat}: ${f.text}` : cat;
+}
+
 /** Anamnese-Kategorie -> Chip (Farbe + Icon) wie im Website-Hero. */
 function anamneseItem(f) {
   const cat = String(f?.category || "").toLowerCase();
@@ -80,6 +109,7 @@ export function kartePatient({
   name, startMs, motive, neupatient = false, comments = "",
   anamneseFindings = [], klinikHinweise = [], letzterBesuch = null,
   fallText = "", docsStatus = "", tag = "Nächster Patient", calendarName = "",
+  commentsFull = "",
 } = {}) {
   const items = [];
 
@@ -101,6 +131,25 @@ export function kartePatient({
   if (docsStatus === "red") items.push(item("alert", "pen", "Einwilligung fehlt"));
   else if (docsStatus === "yellow") items.push(item("warn", "pen", "Unterlagen verschickt, nicht unterschrieben"));
 
+  // W-FLIP-TIEFE: volle Fakten (alle Anamnese-Funde, ganze Letzter-Besuch-Notiz,
+  // kompletter Geplant-/Fall-Text) — ungekappt fuer die Tiefen-Nachfrage.
+  const dLines = [];
+  const wann = startMs ? zeitLabel(startMs) : "";
+  dLines.push(`${name || "Patient"}${wann ? ` — ${wann}` : ""}${motive ? `, ${motive}` : ""}${calendarName ? ` (bei ${calendarName})` : ""}.`);
+  if (neupatient) dLines.push("Neupatient.");
+  const anamnese = (anamneseFindings || []).map(anamneseZeile).filter(Boolean);
+  if (anamnese.length) dLines.push(`Anamnese: ${anamnese.join("; ")}.`);
+  for (const h of (klinikHinweise || [])) if (h) dLines.push(`Hinweis: ${h}`);
+  if (letzterBesuch?.motive) {
+    const lb = letzterBesuch.startMs ? ` am ${datumKurz(letzterBesuch.startMs)}` : "";
+    dLines.push(`Letzter Besuch${lb}: ${letzterBesuch.motive}.`);
+  }
+  if (letzterBesuch?.note) dLines.push(`Notiz vom letzten Besuch: ${letzterBesuch.note}`);
+  if (commentsFull || comments) dLines.push(`Für heute geplant: ${commentsFull || comments}`);
+  if (fallText) dLines.push(fallText);
+  if (docsStatus === "red") dLines.push("Einwilligung/Unterlagen fehlen noch komplett.");
+  else if (docsStatus === "yellow") dLines.push("Unterlagen wurden verschickt, sind aber noch nicht unterschrieben.");
+
   return {
     kind: "patient",
     tag,
@@ -109,6 +158,7 @@ export function kartePatient({
     subtitle: [motive || "", calendarName ? `bei ${calendarName}` : ""].filter(Boolean).join(" · "),
     heading: "Das Wichtigste",
     items: items.slice(0, 8),
+    detail: detailText(dLines),
     footer: "",
   };
 }
@@ -137,6 +187,24 @@ export function karteTag({
   if (!items.length && !total) items.push(item("ok", "check", "Keine Termine gebucht"));
 
   const spanne = firstMs && lastMs ? `${hhmm(firstMs)}–${hhmm(lastMs)} Uhr` : "";
+
+  // W-FLIP-TIEFE: vollstaendiges Lagebild (ALLE Luecken/Highlights/Attention),
+  // ungekappt — Grundlage fuer "geh genauer auf den Tag ein".
+  const dLines = [];
+  dLines.push(`${dateLabel}: ${total === 1 ? "1 Termin" : `${total} Termine`}${spanne ? `, ${spanne}` : ""}.`);
+  for (const h of (highlights || [])) if (h) dLines.push(`Wichtig: ${h}`);
+  if (newPatients) dLines.push(newPatients === 1 ? "1 Neupatient." : `${newPatients} Neupatienten.`);
+  if (unconfirmed) dLines.push(`${unconfirmed} Termin${unconfirmed === 1 ? "" : "e"} noch unbestätigt.`);
+  if (docsRed) dLines.push(`${docsRed}× Unterlagen fehlen komplett.`);
+  if (docsYellow) dLines.push(`${docsYellow}× Unterlagen nicht unterschrieben.`);
+  for (const g of (gaps || [])) dLines.push(`Freie Zeit: ${hhmm(g.startMs)}–${hhmm(g.endMs)} Uhr.`);
+  for (const a of (attention || [])) {
+    const wer = a.patientName || a.patientLastName || "";
+    if (a.comments) dLines.push(`${hhmm(a.startMs)} ${wer}: ${a.comments}`.trim());
+  }
+  if (mails) dLines.push(mails === 1 ? "1 E-Mail eingegangen." : `${mails} E-Mails eingegangen.`);
+  if (calls) dLines.push(calls === 1 ? "1 Anruf eingegangen." : `${calls} Anrufe eingegangen.`);
+
   return {
     kind: "tag",
     tag: "Tagesplan",
@@ -145,6 +213,7 @@ export function karteTag({
     subtitle: total === 1 ? "1 Termin" : `${total} Termine`,
     heading: "Auf einen Blick",
     items: items.slice(0, 8),
+    detail: detailText(dLines),
     footer: "",
   };
 }
@@ -181,6 +250,19 @@ export function karteDoku({
   if (!items.length) items.push(item("ok", "check", "Noch nichts dokumentiert"));
 
   const offen = (fragen || []).length + (abrechnung?.status === "needs_input" ? 1 : 0);
+
+  // W-FLIP-TIEFE: ganze Doku (ALLE Notiz-Zeilen, alle offenen Fragen/Luecken)
+  // ungekappt — die Anzeige zeigt nur die letzten 5 Zeilen.
+  const dLines = [];
+  dLines.push(`Doku-Memo${patientName ? ` für ${patientName}` : ""}${motiveName ? `, ${motiveName}` : ""}${apptStartMs ? ` (${datumKurz(apptStartMs)})` : ""}.`);
+  for (const z of zeilen) dLines.push(`• ${z}`);
+  if (gestrichen) dLines.push(`Gestrichen: ${gestrichen}`);
+  for (const f of (fragen || [])) { const q = f?.frage || f; if (q) dLines.push(`Offene Frage: ${q}`); }
+  if (abrechnung?.status === "needs_input" && abrechnung.frage) dLines.push(`Sophie fragt: ${abrechnung.frage}`);
+  else if (abrechnung?.status === "complete") dLines.push(`Abrechnung vollständig${abrechnung.label ? ` — ${abrechnung.label}` : ""}.`);
+  for (const l of (luecken || [])) dLines.push(`Doku fehlt: ${isoKurz(l.date)} ${l.motive || ""}`.trim());
+  if (lernVorschlag?.feldKey) dLines.push(`Vorschlag: künftig immer nach „${lernVorschlag.feldKey.replace(/_/g, " ")}" fragen?`);
+
   return {
     kind: "doku",
     tag: "Doku-Memo",
@@ -189,6 +271,7 @@ export function karteDoku({
     subtitle: motiveName || "",
     heading: "Notizen",
     items: items.slice(0, 9),
+    detail: detailText(dLines),
     footer: offen ? `${offen} Punkt${offen === 1 ? "" : "e"} offen` : "Doku vollständig",
   };
 }
@@ -200,6 +283,10 @@ export function karteLuecken(luecken = []) {
     `${isoKurz(l.date)} ${l.patientName || ""}${l.motive ? ` — ${l.motive}` : ""}`.trim(),
   ));
   if (!items.length) items.push(item("ok", "check", "Alle Termine sind dokumentiert"));
+  // W-FLIP-TIEFE: ALLE offenen Doku-Termine (Anzeige zeigt nur die ersten 7).
+  const dLines = (luecken || []).map((l) => (
+    `${isoKurz(l.date)} ${l.patientName || ""}${l.motive ? ` — ${l.motive}` : ""}`.trim()
+  ));
   return {
     kind: "luecken",
     tag: "Doku-Wächter",
@@ -208,7 +295,53 @@ export function karteLuecken(luecken = []) {
     subtitle: luecken?.length ? `${luecken.length} Termin${luecken.length === 1 ? "" : "e"} ohne Doku` : "Alles vollständig",
     heading: "Nachzutragen",
     items,
+    detail: dLines.length ? `Offene Dokumentationen (${luecken.length}):\n${detailText(dLines)}` : "",
     footer: "",
+  };
+}
+
+/**
+ * Eingaenge-Karte (Post/Anrufe/Bewertungen) fuer "Was ist heute reingekommen?"
+ * — W-FLIP-TIEFE (WP8). Anzeige: Zaehlung + die wichtigsten Eingaenge; `detail`:
+ * ALLE Eingaenge mit vollem Inhalt, damit Clara auf "geh auf die Mails ein"
+ * fundiert antworten kann. `entries`: {startMs, kind, word, who, text, open}.
+ */
+export function karteEingaenge({
+  dateLabel = "Heute", total = 0, calls = 0, mails = 0, letters = 0,
+  front = 0, open = 0, entries = [],
+} = {}) {
+  const iconFor = (kind) => (kind === "call" ? "phone" : kind === "frontdesk" ? "person" : "mail");
+  const zeile = (en) => (
+    `${hhmm(en.startMs)} ${en.word}${en.who ? ` von ${en.who}` : ""}${en.text ? `: ${en.text}` : ""}`.trim()
+  );
+
+  const items = [];
+  for (const en of (entries || []).slice(0, 6)) {
+    items.push(item(en.open ? "warn" : "info", iconFor(en.kind), zeile(en)));
+  }
+  if (!items.length) items.push(item("ok", "check", "Nichts reingekommen"));
+
+  const bits = [];
+  if (calls) bits.push(calls === 1 ? "1 Anruf" : `${calls} Anrufe`);
+  if (mails) bits.push(mails === 1 ? "1 E-Mail" : `${mails} E-Mails`);
+  if (letters) bits.push(letters === 1 ? "1 Brief" : `${letters} Briefe`);
+  if (front) bits.push(front === 1 ? "1 Besuch am Empfang" : `${front} Besuche am Empfang`);
+
+  // W-FLIP-TIEFE: ALLE Eingaenge ungekappt fuer die Tiefen-Nachfrage.
+  const dLines = [`${dateLabel}: ${total === 1 ? "1 Eingang" : `${total} Eingänge`}${bits.length ? ` (${bits.join(", ")})` : ""}.`];
+  for (const en of (entries || [])) dLines.push(`${zeile(en)}${en.open ? " [offen]" : ""}`);
+  if (open) dLines.push(open === 1 ? "1 Anliegen ist noch offen." : `${open} Anliegen sind noch offen.`);
+
+  return {
+    kind: "eingaenge",
+    tag: "Eingänge",
+    title: dateLabel,
+    time: "",
+    subtitle: bits.length ? bits.join(" · ") : "Nichts reingekommen",
+    heading: "Reingekommen",
+    items: items.slice(0, 8),
+    detail: detailText(dLines),
+    footer: open ? `${open} offen` : "",
   };
 }
 
@@ -229,6 +362,20 @@ export function karteSophie(r = {}) {
     items.push(item("warn", "question", "Behandlung nicht eindeutig — bitte genauer beschreiben"));
   }
   if (!items.length) return null;
+  // W-FLIP-TIEFE: volle Abrechnungs-Fakten (alle Summen/Meldungen) ungekappt.
+  const dLines = [];
+  dLines.push(`${r.label || "Abrechnungsvorschlag"} — ${r.status === "complete" ? "Sophie hat gerechnet" : "Sophie fragt nach"}.`);
+  if (r.status === "complete" && r.summen) {
+    const s = r.summen;
+    const eur = (n) => `${Math.round(Number(n) || 0).toLocaleString("de-DE")} €`;
+    if (s.goz23) dLines.push(`GOZ 2,3-fach: rund ${eur(s.goz23.gesamt)}.`);
+    if (s.goz35) dLines.push(`GOZ 3,5-fach: rund ${eur(s.goz35.gesamt)}.`);
+    if (s.bema) dLines.push(s.bema.gesamt > 0 ? `BEMA: rund ${eur(s.bema.gesamt)}.` : "BEMA: keine Kassenleistung.");
+    if (s.bemaplus) dLines.push(`BEMA plus: rund ${eur(s.bemaplus.gesamt)}.`);
+    dLines.push("Unverbindlicher Vorschlag, bitte fachlich prüfen.");
+  } else if (r.message) {
+    dLines.push(r.message);
+  }
   return {
     kind: "sophie",
     tag: "Abrechnung",
@@ -237,6 +384,7 @@ export function karteSophie(r = {}) {
     subtitle: r.status === "complete" ? "Sophie hat gerechnet" : "Sophie fragt nach",
     heading: r.status === "complete" ? "Endsummen" : "Offen",
     items: items.slice(0, 8),
+    detail: detailText(dLines),
     footer: "",
   };
 }
