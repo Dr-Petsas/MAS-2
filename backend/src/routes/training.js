@@ -202,19 +202,41 @@ router.post("/training/generate", async (req, res) => {
     const label = String(req.body?.category || "Zahnmedizin allgemein").slice(0, 80).trim() || "Zahnmedizin allgemein";
     const count = Math.min(12, Math.max(3, Number(req.body?.count || 8) || 8));
 
+    // Vorhandene (generierte) Saetze -> Dedup nach SATZ, und dem Modell die
+    // bekannten Saetze mitgeben, damit es bewusst ANDERE erzeugt (sonst kommt
+    // bei vollem Wortschatz nichts Neues -> "generiert nicht weiter").
+    const seenSentences = new Set();
+    const avoidSameTopic = [];
+    const cur = await vocabCol(actor.clientId).get().catch(() => null);
+    if (cur) {
+      cur.forEach((doc) => {
+        const d = doc.data() || {};
+        const ps = String(d.promptSentence || "").trim();
+        if (!ps) return;
+        seenSentences.add(normText(ps));
+        if (String(d.category || "") === label) avoidSameTopic.push(ps);
+      });
+    }
+    const avoidList = avoidSameTopic.slice(-18);
+
     const sys = [
-      "Du erstellst deutsche ÜBUNGS-Sätze, mit denen ein Zahnarzt einer",
+      "Du erstellst deutsche ÜBUNGS-Sätze, mit denen eine Ärztin/ein Arzt einer",
       "Spracherkennung schwierige Fachbegriffe VORSPRICHT.",
+      "Fachgebiet: " + label + ".",
       "Jeder Satz: 6-14 Wörter, natürliche Behandlungs-/Diktatsprache, und enthält",
       "GENAU EINEN schwer zu transkribierenden Begriff (Marke, Medikament,",
-      "Fachbegriff, Abkürzung oder Eigenname). KEINE echten Patientennamen.",
+      "Fachbegriff, Abkürzung oder Eigenname) passend zum Fachgebiet.",
+      "KEINE echten Patientennamen. Variiere Satzbau und Begriffe stark,",
+      "jeder Satz einzigartig.",
       "Antworte AUSSCHLIESSLICH als JSON-Array",
       '[{"sentence":"…","term":"…"}]. Der "term" MUSS wortwörtlich im "sentence"',
-      "vorkommen. Keine Dopplungen. Maximal " + count + " Einträge.",
+      "vorkommen. Maximal " + count + " Einträge.",
     ].join(" ");
+    const userMsg = "Fachgebiet: " + label + ". Erzeuge " + count + " NEUE Übungssätze." +
+      (avoidList.length ? " Diese Sätze gibt es schon, erzeuge ANDERE (andere Begriffe/Formulierungen):\n- " + avoidList.join("\n- ") : "");
     const llm = await chatSmart(
-      [{ role: "system", content: sys }, { role: "user", content: "Fachgebiet: " + label + ". Erzeuge " + count + " Übungssätze." }],
-      { temperature: 0.6, maxTokens: 1300, timeoutMs: 60000 },
+      [{ role: "system", content: sys }, { role: "user", content: userMsg }],
+      { temperature: 0.8, maxTokens: 1300, timeoutMs: 60000 },
     );
     if (!llm.ok) return res.status(502).json({ ok: false, error: "llm_" + (llm.reason || "error") });
 
@@ -227,10 +249,6 @@ router.post("/training/generate", async (req, res) => {
     }
     if (!Array.isArray(items)) items = [];
 
-    const existing = new Set();
-    const cur = await vocabCol(actor.clientId).get().catch(() => null);
-    if (cur) cur.forEach((doc) => existing.add(normText(doc.data()?.term)));
-
     const nowMs = Date.now();
     const batch = admin.firestore().batch();
     const added = [];
@@ -240,12 +258,14 @@ router.post("/training/generate", async (req, res) => {
       if (!term || term.length < 2 || !sentence) continue;
       // Sicherheit: der Begriff muss wirklich im Satz stehen (sonst unbrauchbar).
       if (!normText(sentence).includes(normText(term))) continue;
-      const norm = normText(term);
-      if (!norm || existing.has(norm)) continue;
-      existing.add(norm);
+      // Dedup nach SATZ: neue Formulierungen sind erwuenscht, auch wenn der
+      // Begriff schon existiert (mehr Vorlese-Material = besseres Training).
+      const sNorm = normText(sentence);
+      if (!sNorm || seenSentences.has(sNorm)) continue;
+      seenSentences.add(sNorm);
       const ref = vocabCol(actor.clientId).doc();
       batch.set(ref, {
-        id: ref.id, term, display: term, norm, aliases: [], category: "generiert",
+        id: ref.id, term, display: term, norm: normText(term), aliases: [], category: label,
         promptSentence: sentence, status: "candidate", source: "generated",
         attempts: 0, recognizedOk: 0, samples: 0,
         lastMisrecognition: "", lastHeardAtMs: 0, createdAtMs: nowMs,
@@ -260,7 +280,7 @@ router.post("/training/generate", async (req, res) => {
     await statsRef(actor.clientId).set(agg, { merge: true });
 
     res.set("Cache-Control", "no-store");
-    res.json({ ok: true, added: added.length, terms: added, stats: agg });
+    res.json({ ok: true, added: added.length, terms: added, stats: agg, note: added.length ? "" : "no_new" });
   } catch (e) {
     log.warn("training.generate_error", { error: String(e?.message || e) });
     res.status(500).json({ ok: false, error: String(e?.message || e) });

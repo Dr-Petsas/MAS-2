@@ -410,7 +410,7 @@
     $("addHint").textContent = "Lena schreibt Übungssätze für „" + label + "\" …";
     try {
       const d = await apiPost("/training/generate", { category: label });
-      toast(d.added ? (d.added + " Übungssätze erstellt!") : "Nichts erzeugt — bitte erneut versuchen.", d.added ? "ok" : "mis");
+      toast(d.added ? (d.added + " neue Übungssätze erstellt!") : "Für dieses Thema gibt es schon viele Sätze — wähle ein anderes Thema/Fachgebiet.", d.added ? "ok" : "mis");
       await loadAll();
     } catch (e) {
       toast("Generierung fehlgeschlagen: " + e.message, "mis");
