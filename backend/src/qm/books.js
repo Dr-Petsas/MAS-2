@@ -40,6 +40,15 @@ export async function saveProfile(clientId, profile = {}) {
     updatedAt: FieldValue.serverTimestamp(),
   };
   await profileRef(clientId).set(clean, { merge: true });
+  // Fachrichtung an den Mandanten spiegeln (Chef 24.07.): Lena/lena_stt lesen
+  // clients/{id}.fachrichtung, um die passende Fachwissens-Nachkorrektur zu
+  // waehlen. So koppelt das QM-Onboarding die Fachrichtung automatisch an Lena.
+  if (clean.fachrichtung) {
+    try {
+      await admin.firestore().collection("clients").doc(clientId)
+        .set({ fachrichtung: clean.fachrichtung }, { merge: true });
+    } catch { /* Spiegeln ist Bonus, nie kritisch */ }
+  }
   return { ok: true, profile: clean };
 }
 

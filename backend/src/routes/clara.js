@@ -6,8 +6,10 @@ import express from "express";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import QRCode from "qrcode";
-import admin from "../firebase.js";
 import { assertAppEnabled } from "../entitlements.js";
+import { getClientSpecialty } from "../lena/specialty.js";
+import { resolveSpec } from "../lena/domainKnowledge.js";
+import { loadOverlay } from "../lena/lenaLearn.js";
 import { createClaraSession } from "../clara/session.js";
 import { intakeToAbsichten } from "../clara/billingIntake.js";
 import { cacheSophieKatalog } from "../clara/sophieKatalog.js";
@@ -257,14 +259,14 @@ router.get("/clara/stt-patient-names", async (req, res) => {
     }
     const force = String(req.query?.force || "") === "1";
     const out = await listPatientNamesForStt(clientId, { force });
-    // Fachrichtung mitliefern (Chef 24.07.): lena_stt waehlt daraus die passende
-    // Fachwissens-Nachkorrektur. Freitext-Feld am Mandanten; leer = neutral.
+    // Fachrichtung + Auto-Lern-Overlay mitliefern (Chef 24.07.): lena_stt waehlt
+    // daraus die passende Fachwissens-Nachkorrektur und wendet zusaetzlich die
+    // automatisch gelernten Verhoerungs-Fixes an — alles in EINEM Call.
     let specialty = "";
-    try {
-      const snap = await admin.firestore().collection("clients").doc(clientId).get();
-      const d = snap.exists ? (snap.data() || {}) : {};
-      specialty = String(d.specialty || d.fachrichtung || d.fach || "").trim().slice(0, 60);
-    } catch { /* Fachrichtung ist optional */ }
+    try { specialty = await getClientSpecialty(clientId); } catch { /* optional */ }
+    const spec = resolveSpec(specialty);
+    let knowledge = { verhoerungen: [], begriffe: [] };
+    try { knowledge = await loadOverlay(spec); } catch { /* Overlay optional */ }
     res.json({
       ok: true,
       clientId,
@@ -279,6 +281,8 @@ router.get("/clara/stt-patient-names", async (req, res) => {
       tomorrowCount: out.tomorrowCount || 0,
       cached: !!out.cached,
       specialty,
+      spec,
+      knowledge,
       names: out.names,
     });
   } catch (e) {

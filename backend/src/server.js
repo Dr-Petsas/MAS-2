@@ -16,6 +16,7 @@ import { finalizeLisaCalls, callConfigured as lisaCallConfigured } from "./lisa/
 import { syncLisaAgentTools } from "./lisa/agentTools.js";
 import { ingestBiancaCalls, biancaConfigured } from "./bianca/ingest.js";
 import { backfillAddressBook } from "./brain/addressBook.js";
+import { runLenaLearnSweep } from "./lena/lenaLearn.js";
 import { startMailScheduler } from "./mail/scheduler.js";
 import { llmInfo } from "./mail/letterAI.js";
 import { isLocalLlm } from "./mail/llm.js";
@@ -491,5 +492,21 @@ server.listen(PORT, () => {
       }
     }, 5 * 60_000);
     log.info("proaktiv scheduler enabled", { intervalMs: 5 * 60_000 });
+  }
+
+  // Lena Auto-Lernpfad (Chef 24.07.2026): promotet wiederkehrende Live-Korrekturen
+  // vollautomatisch (kein human in the loop) in ein isoliertes Wissens-Overlay —
+  // mit strengen Gates + LLM-Validierung (qwen3.6/5090). Billig im Leerlauf
+  // (eine indizierte Query pro Takt). Not-Aus: MAS_LENA_LEARN=0.
+  if (DEFAULT_CLIENT_ID && process.env.MAS_LENA_LEARN !== "0") {
+    setInterval(async () => {
+      try {
+        const out = await runLenaLearnSweep(DEFAULT_CLIENT_ID, {});
+        if (out?.promoted) log.info("lena.learn_promoted", { promoted: out.promoted, list: out.promotedList });
+      } catch (e) {
+        log.warn("lena.learn_error", { error: String(e?.message || e) });
+      }
+    }, 10 * 60_000);
+    log.info("lena auto-learn scheduler enabled", { intervalMs: 10 * 60_000 });
   }
 });

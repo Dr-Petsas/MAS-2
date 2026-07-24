@@ -36,6 +36,8 @@ import { resolveChairAppointment, matchCalendarId } from "../clara/treatmentReco
 import { getPatientAnamnese, clip } from "../clara/anamnese.js";
 import { chat, strongLlm } from "../mail/llm.js";
 import { buildLlmContext as domainLlmContext, resolveSpec } from "../lena/domainKnowledge.js";
+import { getClientSpecialty } from "../lena/specialty.js";
+import { overlayContextBlock } from "../lena/lenaLearn.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 
 // React-Frontend (Firebase Hosting) — dort liegt /dictate/... fuer die Lena-iframe.
@@ -130,12 +132,9 @@ function liveSamplesCol(clientId) {
 function correctionsCol(clientId) {
   return admin.firestore().collection("clients").doc(clientId).collection("lenaCorrections");
 }
+// Fachrichtung des Mandanten (client-Doc + QM-Profil-Fallback, shared).
 async function clientSpecialty(clientId) {
-  try {
-    const snap = await admin.firestore().collection("clients").doc(clientId).get();
-    const d = snap.exists ? (snap.data() || {}) : {};
-    return String(d.specialty || d.fachrichtung || d.fach || "").trim().slice(0, 60);
-  } catch { return ""; }
+  try { return await getClientSpecialty(clientId); } catch { return ""; }
 }
 const looseEq = (a, b) =>
   String(a || "").trim().toLowerCase().replace(/\s+/g, " ") ===
@@ -944,6 +943,9 @@ router.post("/treatment/lena-suggest", async (req, res) => {
     // die Vorschlaege konsistent und fachlich richtig sind.
     let domainCtx = "";
     try { domainCtx = domainLlmContext(spec, 8000); } catch { /* Wissen darf nie blockieren */ }
+    // Auto-gelerntes Overlay (aus Live-Korrekturen, automatisch promotet) ergaenzt
+    // die kuratierte Basis — ohne sie zu veraendern.
+    try { const ov = await overlayContextBlock(spec); if (ov) domainCtx += `\n\n${ov}`; } catch { /* Overlay optional */ }
     // Patientennamen aus dem Kalender (letzte 2 Wochen + diese + naechste Woche,
     // shared/auto-aktualisiert via sttPatientNames). So korrigiert die KI auch
     // verhoerte Eigennamen auf echte Patienten dieser Praxis.
