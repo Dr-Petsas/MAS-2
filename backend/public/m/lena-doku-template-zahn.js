@@ -151,11 +151,16 @@
     new RegExp("^" + FINISH_DONE + "\\s+mit\\s+(?:dem\\s+|der\\s+)?(?:befund(?:aufnahme|erhebung)?|" + FINISH_NULL_EINS + ")" + FINISH_TAIL, "i"),
     // "weiter zur Doku" / "weiter mit der Doku" / "weiter zur Behandlungs-Doku"
     new RegExp("^weiter\\s+(?:zur?|mit)\\s+(?:der\\s+|die\\s+)?(?:behandlungs[\\s-]*)?doku(?:mentation)?" + FINISH_TAIL, "i"),
+    // "Lena weiter" / "weiter Lena" (Chef 24.07.2026): direkter Weiterschalt-
+    // Befehl an Lena. Der Name macht ihn eindeutig (blosses "weiter" bleibt
+    // bewusst KEIN Kommando — kommt im Diktat vor).
+    new RegExp("^lena" + FINISH_SEP + "weiter" + FINISH_TAIL, "i"),
+    new RegExp("^weiter" + FINISH_SEP + "lena" + FINISH_TAIL, "i"),
   ];
   // Quittungs-Echo ("Befund abgeschlossen — weiter zur Behandlungs-Doku."):
   // falls es trotz Worker-/Frontend-Echo-Schutz als Segment durchkommt,
   // hier ebenfalls als Steuer-Text erkennen -> nie Inhalt, nie Chart.
-  const RE_FINISH_ECHO = /^befund\s+abgeschlossen\b[\s.,!?;:—–-]*weiter\s+zur\s+behandlungs/i;
+  const RE_FINISH_ECHO = /(?:befund\s+abgeschlossen|los\s+geht'?s|alles\s+klar)[\s\S]{0,24}weiter\s+(?:zur?|mit)\s+(?:der\s+|die\s+)?(?:behandlungs[\s-]*)?doku/i;
 
   /** Segment ist ein "Befund fertig"-Kommando (ganzes Segment, strikt)? */
   function schemaFinishCommand(text) {

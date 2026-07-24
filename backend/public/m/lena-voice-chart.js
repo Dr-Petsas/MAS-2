@@ -199,7 +199,9 @@
   const RE_MASS_SCOPE = new RegExp(
     "(?:" +
       "alle\\s+(?:ok|uk|oberkiefer|unterkiefer)?\\s*" + RE_TEETH_WORD + "\\s+" + RE_MASS_ACTION.source +
-      "|alle\\s+(?:achter|weisheitsz(?:ae|[aä])?hne?|8(?:er)?)\\s+" + RE_MASS_ACTION.source +
+      // "alle Achter fehlen" UND "die Achter fehlen" / "die 8er fehlen"
+      // (Chef 24.07.2026): Artikel "alle" ODER "die" akzeptieren.
+      "|(?:alle|die)\\s+(?:achter|weisheitsz(?:ae|[aä])?hne?|8(?:er)?)\\s+" + RE_MASS_ACTION.source +
       "|(?:oberkiefer|unterkiefer|\\bok\\b|\\buk\\b).{0,48}" + RE_MASS_ACTION.source +
       "|" + RE_MASS_ACTION.source + ".{0,48}(?:oberkiefer|unterkiefer|\\bok\\b|\\buk\\b|achter|weisheitsz(?:ae|[aä])?hne?|8(?:er)?)" +
       "|zahnlos|unbezahnt" +
@@ -679,21 +681,40 @@
       if (fdi.charAt(0) === "_") return;
       const c = chart[fdi];
       if (!c || !Array.isArray(c.codes) || !c.codes.length) return;
-      snap[fdi] = c.codes.slice().sort().join(",");
+      const codes = c.codes.slice().sort().join(",");
+      // Flaechen mit in den Snapshot (Chef 24.07.: Fuellung-Flaechen sollen ins
+      // Echo). So erkennt der Diff auch nachtraeglich diktierte Flaechen. Ohne
+      // Flaechen bleibt das Format wie zuvor ("f", "Fu,k") -> byte-identisch.
+      const surf = (Array.isArray(c.surfaces) ? c.surfaces.slice().sort() : []).join("");
+      snap[fdi] = surf ? codes + "#" + surf : codes;
     });
     return snap;
   }
 
   /** Diff zweier Snapshots + genannte Zaehne: was ist NEU dazugekommen? */
+  // Flaechen-tragende Codes: nur bei diesen wird eine Flaeche mitgesprochen.
+  const SURFACE_BEARING = new Set(["Fu", "Ka"]);
+
   function diffChartForEcho(prevSnap, chart, prevNamed, named) {
     const added = [];
     const snap = chartEchoSnapshot(chart);
     Object.keys(snap).forEach((fdi) => {
-      const prevSet = new Set(
-        prevSnap && prevSnap[fdi] ? String(prevSnap[fdi]).split(",") : [],
-      );
-      const neu = snap[fdi].split(",").filter((c) => c && !prevSet.has(c));
-      if (neu.length) added.push({ fdi: Number(fdi), codes: neu });
+      const prevRaw = prevSnap && prevSnap[fdi] ? String(prevSnap[fdi]) : "";
+      const [prevCodesStr, prevSurfStr] = prevRaw.split("#");
+      const prevCodes = new Set(prevCodesStr ? prevCodesStr.split(",") : []);
+      const prevSurf = new Set(prevSurfStr ? prevSurfStr.split("") : []);
+      const cell = chart[fdi] || {};
+      const codesNow = Array.isArray(cell.codes) ? cell.codes.slice() : [];
+      const surfNow = Array.isArray(cell.surfaces) ? cell.surfaces.slice() : [];
+      const newCodes = codesNow.filter((c) => c && !prevCodes.has(c));
+      const bearing = codesNow.filter((c) => SURFACE_BEARING.has(c));
+      const newSurf = surfNow.filter((s) => s && !prevSurf.has(s));
+      // Neu ist: ein neuer Code ODER neue Flaeche(n) auf Fuellung/Karies
+      // (dann die vorhandene Fuellung/Karies mit Flaeche nachsprechen).
+      if (newCodes.length || (newSurf.length && bearing.length)) {
+        const codes = newCodes.length ? newCodes : bearing;
+        added.push({ fdi: Number(fdi), codes, surfaces: surfNow });
+      }
     });
     const namedOnly = [];
     (named ? Array.from(named) : []).forEach((fdi) => {
@@ -715,12 +736,15 @@
     const byFdi = new Map();
     (a.added || []).concat(b.added || []).forEach((e) => {
       if (!e || !e.fdi) return;
-      const cur = byFdi.get(Number(e.fdi)) || [];
-      (e.codes || []).forEach((c) => { if (c && !cur.includes(c)) cur.push(c); });
+      const cur = byFdi.get(Number(e.fdi)) || { codes: [], surfaces: [] };
+      (e.codes || []).forEach((c) => { if (c && !cur.codes.includes(c)) cur.codes.push(c); });
+      // Flaechen mituebernehmen, sonst faellt die Fuellung-Flaeche im
+      // gebuendelten Echo weg (Chef 24.07.).
+      (e.surfaces || []).forEach((s) => { if (s && !cur.surfaces.includes(s)) cur.surfaces.push(s); });
       byFdi.set(Number(e.fdi), cur);
     });
     const added = [...byFdi.entries()]
-      .map(([fdi, codes]) => ({ fdi, codes }))
+      .map(([fdi, v]) => ({ fdi, codes: v.codes, surfaces: v.surfaces }))
       .sort((x, y) => x.fdi - y.fdi);
     const namedSet = new Set(
       (a.namedOnly || []).concat(b.namedOnly || []).map(Number),
@@ -756,19 +780,40 @@
    * Viele verstreute Zaehne -> "Mehrere Zähne: fehlt." (NIE Zahlwoerter
    * wie "sechzehn Zaehne" — die wuerden beim Wieder-Einspeisen als FDI parsen).
    */
+  // Flaechenbuchstabe -> gesprochenes Wort (BMV-Z). "o" = okklusal/inzisal.
+  const SURFACE_WORD = {
+    m: "mesial", o: "okklusal", d: "distal",
+    v: "vestibulär", l: "lingual", z: "zervikal",
+  };
+
   function buildEchoText(diff) {
     const K = kat();
     if (!K || !diff) return "";
     const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+    const bearing = (codes) => (codes || []).some((c) => SURFACE_BEARING.has(c));
+    const surfWords = (surfaces) => (surfaces || [])
+      .map((s) => SURFACE_WORD[String(s).toLowerCase()])
+      .filter(Boolean)
+      .join(", ");
     const parts = [];
-    const groups = new Map(); // codes-Key -> { codes, teeth[] }
+    const groups = new Map(); // codes(+Flaechen)-Key -> { codes, surfaces, teeth[] }
     (diff.added || []).forEach((a) => {
-      const key = a.codes.join("+");
-      if (!groups.has(key)) groups.set(key, { codes: a.codes, teeth: [] });
+      // Flaechen nur bei Fuellung/Karies in den Gruppenschluessel — sonst
+      // wuerden Zaehne mit gleichem Code, aber anderen Flaechen faelschlich
+      // gebuendelt (fehlt/Krone bleiben wie bisher gruppierbar).
+      const surfKey = bearing(a.codes)
+        ? (a.surfaces || []).slice().sort().join("")
+        : "";
+      const key = a.codes.join("+") + "#" + surfKey;
+      if (!groups.has(key)) groups.set(key, { codes: a.codes, surfaces: a.surfaces || [], teeth: [] });
       groups.get(key).teeth.push(a.fdi);
     });
     groups.forEach((g) => {
-      const label = g.codes.map((c) => K.speechLabelOf(c)).join(" und ");
+      let label = g.codes.map((c) => K.speechLabelOf(c)).join(" und ");
+      if (bearing(g.codes)) {
+        const sw = surfWords(g.surfaces);
+        if (sw) label += " " + sw; // "Füllung mesial, okklusal, distal"
+      }
       const spoken = spokenTeethParts(K, g.teeth);
       // Bis zu 2 Bereichs-/Einzel-Teile immer sprechen; sonst ab 7 Zaehnen
       // zusammenfassen (zahnloser Kiefer bleibt "Mehrere Zähne: fehlt.").

@@ -2021,11 +2021,53 @@
     }
     async function releaseWakeLock() { try { if (wakeLock) await wakeLock.release(); } catch {} wakeLock = null; }
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "visible" || !connected) return;
+      if (document.visibilityState !== "visible") return;
+      healStaleConnection();
+      if (!connected) return;
       requestWakeLock();
       try { if (micCtx && micCtx.state === "suspended") micCtx.resume(); } catch {}
       if (!chatPipeline) tryPlayAudio();
     });
+    // Aus dem bfcache/eingefrorenen PWA-Kontext zurueck: toten Room erkennen.
+    window.addEventListener("pageshow", (e) => { if (e.persisted) healStaleConnection(); });
+    // ECHTES Entladen: Mic/WebRTC freigeben, damit iPadOS die Aufnahme-Ressource
+    // nicht in die naechste Sitzung mitschleppt (Reboot-Ursache). NICHT bei
+    // bfcache/Backgrounding (persisted=true) -> BT-schonender Soft-Switch bleibt.
+    window.addEventListener("pagehide", (e) => {
+      if (e.persisted) return;
+      try { room?.disconnect(); } catch {}
+    });
+
+    // Sauberer Abbau: Mic-Track + WebRTC hart freigeben und Zustand nullen.
+    // iPadOS friert eine installierte PWA im Hintergrund ein (statt sie zu
+    // entladen) und haelt dabei die belegte Mic-/WebRTC-Ressource. Ohne diesen
+    // Abbau blieb sie ueber den eingefrorenen Kontext belegt -> naechster
+    // Verbindungsversuch hing, nur ein Geraete-Neustart half (23./24.07.2026).
+    async function teardownRoom() {
+      const r = room;
+      room = null;
+      connected = false; connecting = false; audioAttached = false;
+      window.__claraActiveMicId = "";
+      if (!r) return;
+      try { r.localParticipant?.trackPublications?.forEach((p) => { try { p.track?.stop?.(); } catch {} }); } catch {}
+      try { await r.disconnect(); } catch {}
+    }
+
+    // Selbstheilung nach Wiedereintritt aus dem eingefrorenen Kontext: einen
+    // TOTEN Room (state==="disconnected") oder ein haengendes "connecting"
+    // erkennen und zuruecksetzen, damit ein sauberer Reconnect moeglich ist.
+    // Absichtlich NICHT bei "reconnecting"/"connected" eingreifen -> der
+    // BT-schonende In-App-Soft-Switch bleibt unberuehrt.
+    function healStaleConnection() {
+      const st = room?.state;
+      const dead = room && st === "disconnected";
+      const stuckConnecting = connecting && (!room || st === "disconnected");
+      if (!dead && !stuckConnecting) return;
+      teardownRoom();
+      phase = "idle"; voice = "listening";
+      setStatus("");
+      render();
+    }
 
     async function connect({ textOnly = false } = {}) {
       if (connecting || connected) return;
@@ -2103,7 +2145,14 @@
           } catch {}
         });
 
-        await room.connect(cfg.url, cfg.token, { autoSubscribe: true });
+        // Timeout: haengt das Verbinden (belegtes Mic aus altem Kontext), nicht
+        // ewig in "connecting" festsitzen -> Fehlerpfad raeumt auf, Retry moeglich.
+        let connWatchdog;
+        await Promise.race([
+          room.connect(cfg.url, cfg.token, { autoSubscribe: true }),
+          new Promise((_, reject) => { connWatchdog = setTimeout(() => reject(new Error("Zeitueberschreitung beim Verbinden (15 s)")), 15000); }),
+        ]);
+        clearTimeout(connWatchdog);
         await room.localParticipant.setMicrophoneEnabled(!forChat);
         connected = true; connecting = false;
         requestWakeLock();
@@ -2132,7 +2181,9 @@
           await room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true });
         } catch {}
       } catch (e) {
-        connecting = false;
+        // Halb-verbundenen Room abbauen, damit Mic/WebRTC frei sind und der
+        // naechste Versuch nicht am belegten Geraet haengt.
+        await teardownRoom();
         brandOrbErrorUntil = Date.now() + 4000;
         setStatus("Verbindung fehlgeschlagen: " + String(e.message || e));
         phase = "idle";
@@ -2468,6 +2519,10 @@
       let echoLastText = "";
       let echoLastAt = 0;
       let echoTimer = 0;
+      // Doppel-Ansage vermeiden (Chef 24.07.): der nackte Zahn ("27") wird
+      // GAR NICHT mehr vorab quittiert. Lena spricht ausschliesslich den
+      // fertigen Befund einmalig ("Zwei sieben: Füllung."), nie erst den Zahn
+      // und dann Zahn+Befund.
       const ECHO_DIGIT_WORD = {
         null: "0", eins: "1", zwei: "2", zwo: "2", drei: "3", vier: "4",
         fuenf: "5", funf: "5", sechs: "6", sieben: "7", acht: "8", neun: "9",
@@ -2540,8 +2595,8 @@
         }
         lenaEchoSend(text);
       }
-      /** Befund-Diff quittieren — Wartendes wird GEMERGT, nie verworfen. */
-      function lenaEchoQueueDiff(diff) {
+      /** Einen Diff sprechen ODER hinter laufendem Echo mergen (nie verwerfen). */
+      function lenaEchoEmitDiff(diff) {
         if (!diff || (!(diff.added || []).length && !(diff.namedOnly || []).length)) return;
         if (echoSpeaking) {
           try {
@@ -2552,6 +2607,14 @@
         let text = "";
         try { text = window.LenaVoiceChart?.buildEchoText?.(diff) || ""; } catch (_) {}
         if (text) lenaEchoSend(text);
+      }
+      /** Befund-Diff quittieren — NUR echte Befunde (added). Blosse
+          Zahn-Nennungen (namedOnly) werden bewusst NICHT gesprochen, damit
+          Lena nicht erst den Zahn und dann Zahn+Befund wiederholt (Chef 24.07.). */
+      function lenaEchoQueueDiff(diff) {
+        if (!diff) return;
+        const added = diff.added || [];
+        if (added.length) lenaEchoEmitDiff({ added, namedOnly: [] });
       }
       // Sprech-Ende vom Worker (audio_state idle): Verwurf-Fenster ab
       // Sprech-ENDE zaehlen, dann wartendes Echo nachschieben.
@@ -2653,8 +2716,28 @@
         lenaFinishSwitchedAt = Date.now();
         // Quittung ueber die Echo-Queue (bricht laufende Echos nicht ab;
         // Schleifenschutz: Worker-Echo-Guard + lenaEchoGuardHit).
-        try { lenaEchoSpeak("Befund abgeschlossen — weiter zur Behandlungs-Doku."); } catch (_) {}
+        try { lenaEchoSpeak("Los geht's, weiter mit der Doku."); } catch (_) {}
         showStep(4);
+        return true;
+      }
+
+      /* ── "Clara Start" / "zurueck zu Clara" (Chef 24.07.2026): per Sprache
+         aus dem Lena-Doku-Modus zurueck zu Clara. Der Name macht den Befehl
+         eindeutig; blosses "Clara" oder "weiter" schaltet NICHT. Klick auf den
+         Clara-Modus-Button loest den bestehenden Soft-Switch (set_app_mode:
+         clara + Clara-Begruessung) aus — BT/LiveKit bleiben. */
+      const RE_RETURN_CLARA = /^(?:und\s+|ok(?:ay)?\s+|so\s+)?(?:clara\s+start|clara\s+modus|clara\s+(?:ü|ue)bernimm(?:st\s+du)?|zur(?:ü|ue)ck\s+zu\s+clara|wechsel\s+zu\s+clara)[\s.,!?;:]*$/i;
+      let lenaReturnedToClaraAt = 0;
+      function maybeLenaReturnToClara(text) {
+        const s = String(text || "").trim();
+        if (!s || s.length > 48 || !RE_RETURN_CLARA.test(s)) return false;
+        if (Date.now() - lenaReturnedToClaraAt < 4000) return true;
+        lenaReturnedToClaraAt = Date.now();
+        try {
+          const claraBtn = modeSwitch?.querySelector?.('button[data-mode="clara"]');
+          if (claraBtn) claraBtn.click();
+          else window.__claraIpad?.resumeFromLena?.();
+        } catch (_) {}
         return true;
       }
 
@@ -2693,6 +2776,9 @@
         if (src === "arzt") {
           lastArztSpeechAt = Date.now();
           try { appendBubble("Arzt", text, id, Number(obj?.startMs) || Date.now()); } catch (_) {}
+          // Steuer-Segment "Clara Start"/"zurueck zu Clara": zurueck zu Clara,
+          // kein Diktat-Echo/Paint mehr noetig.
+          if (maybeLenaReturnToClara(text)) return;
           // Steuer-Segment "01 fertig": Quittung + Seitenwechsel, kein
           // Befund-Echo/Schema-Paint mehr noetig (showStep(4) rendert Doku).
           if (maybeLenaSchemaFinish(text, Number(obj?.startMs) || 0)) return;

@@ -39,7 +39,7 @@ import { spokenCommsDigest } from "../clara/commsDigest.js";
 import { spokenRatings } from "../clara/ratings.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
-import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName } from "../clara/treatmentRecording.js";
+import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
@@ -1058,6 +1058,56 @@ router.post("/tools/start-findings-for-patient", async (req, res) => {
     const hint = String(req.body?.hint || "").trim();
     const name = cleanSpokenPersonName(rawName) || rawName;
     if (!name) {
+      // "nehmen wir die 01 auf" / "die 01" OHNE Namen (Chef 24.07.2026): kein
+      // Nachfragen, sondern den aktuellen Stuhl-Termin oeffnen.
+      // 1) zuletzt gewaehlter Patient, 2) laufende Aufnahme / Termin "jetzt".
+      const day0 = await getDayAppointments(clientId, { date: todayBerlin() });
+      let cur = null;
+      const selPat0 = await getSelectedPatient(clientId).catch(() => null);
+      if (selPat0?.id && day0?.ok) {
+        cur = (day0.appointments || []).find(
+          (a) => String(a.patientId || "") === String(selPat0.id),
+        ) || null;
+      }
+      if (!cur && day0?.ok) {
+        const active0 = await getActiveRecording(clientId).catch(() => null);
+        const resv = resolveChairAppointment(
+          active0, day0.appointments || [], Date.now(), day0.locationId || "",
+        );
+        if (resv?.ok && resv.appointmentId) {
+          cur = (day0.appointments || []).find(
+            (a) => String(a.id) === String(resv.appointmentId),
+          ) || {
+            id: resv.appointmentId, patientId: resv.patientId,
+            patientName: resv.patientName, startMs: resv.startMs,
+            locationId: resv.locationId,
+          };
+        } else if (resv?.reason === "ambiguous") {
+          return res.json({
+            ok: true,
+            needsConfirm: true,
+            message: "Es laufen gerade mehrere Behandlungen. Für welchen Patienten soll ich den Befund öffnen?",
+          });
+        }
+      }
+      const loc0 = String((day0 && day0.locationId) || (cur && cur.locationId) || "").trim();
+      if (cur?.id && loc0) {
+        const who0 = cur.patientName || "dem aktuellen Patienten";
+        const when0 = spokenApptWhen(cur.startMs);
+        return res.json({
+          ok: true,
+          appointmentId: cur.id,
+          patientId: cur.patientId || "",
+          patientName: who0,
+          lenaOpenFindings: {
+            appointmentId: cur.id,
+            locationId: loc0,
+            patientId: cur.patientId || "",
+            patientName: who0,
+          },
+          message: `Ich öffne den Befund für ${who0}${when0}.`,
+        });
+      }
       return res.json({
         ok: true,
         needsConfirm: true,

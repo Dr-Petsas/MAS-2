@@ -536,6 +536,40 @@ const echoBsp = W.LenaVoiceChart.buildEchoText(
   W.LenaVoiceChart.diffChartForEcho(snapVor, stE1.chart, new Set(), stE1.teeth),
 );
 check("Echo: '27 Füllung' -> 'Zwei sieben: Füllung.'", echoBsp === "Zwei sieben: Füllung.", echoBsp);
+// Flaechen im Echo (Chef 24.07.: "Fuellung notiert, aber ohne Flaechen")
+const stE2 = W.LenaDokuZahn.emptyState("");
+stE2.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stE2, [{ text: "27 Füllung mesial okklusal distal" }]);
+const echoSurf = W.LenaVoiceChart.buildEchoText(
+  W.LenaVoiceChart.diffChartForEcho(snapVor, stE2.chart, new Set(), stE2.teeth),
+);
+check("Echo: Fuellung nennt die Flaechen",
+  /^Zwei sieben: Füllung /.test(echoSurf) &&
+  /mesial/.test(echoSurf) && /okklusal/.test(echoSurf) && /distal/.test(echoSurf), echoSurf);
+// Schleifen-Sicherheit MIT Flaechen: Flaechen-Echo erzeugt keine neuen Marks
+const stE2b = W.LenaDokuZahn.emptyState("");
+stE2b.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stE2b, [
+  { text: "27 Füllung mesial okklusal distal" },
+  { text: echoSurf },
+]);
+check("Echo-Loop: Flaechen-Echo erzeugt KEINE neuen Marks",
+  W.LenaVoiceChart.buildEchoText(W.LenaVoiceChart.diffChartForEcho(
+    W.LenaVoiceChart.chartEchoSnapshot(stE2.chart), stE2b.chart, new Set(stE2.teeth), stE2b.teeth)) === "",
+  "");
+// Nachtraeglich diktierte Flaeche wird nachgesprochen (getrennte Segmente)
+const stE3a = W.LenaDokuZahn.emptyState("");
+stE3a.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stE3a, [{ text: "36 Füllung" }]);
+const snapFu = W.LenaVoiceChart.chartEchoSnapshot(stE3a.chart);
+const stE3b = W.LenaDokuZahn.emptyState("");
+stE3b.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stE3b, [{ text: "36 Füllung" }, { text: "36 distal" }]);
+const echoLate = W.LenaVoiceChart.buildEchoText(
+  W.LenaVoiceChart.diffChartForEcho(snapFu, stE3b.chart, new Set(stE3a.teeth), stE3b.teeth),
+);
+check("Echo: nachtraegliche Flaeche -> 'Drei sechs: Füllung distal.'",
+  /^Drei sechs: Füllung /.test(echoLate) && /distal/.test(echoLate), echoLate);
 
 // Schleifen-Sicherheit: Echo-Text als neues Segment darf KEINE neuen Marks
 // erzeugen (Mikro nimmt Lautsprecher auf; Worker/Frontend verwerfen zwar,
@@ -1000,6 +1034,56 @@ check("mergeEchoDiffs exportiert", typeof MRG === "function");
   check("Buendel-Echo: 32x fehlt -> 'Mehrere Zähne: fehlt.'",
     W.LenaVoiceChart.buildEchoText({ added: all, namedOnly: [] }) === "Mehrere Zähne: fehlt.", "");
 }
+
+// 23) AP1 (Chef 24.07.2026): Diktat-Kombis A/B als Minimum festnageln.
+const codesOf = (evts, fdi) => {
+  const e = (evts || []).find((x) => x.fdi === fdi);
+  return e ? (e.codes || []).slice().sort().join(",") : "(fehlt)";
+};
+// CLASS A: mehrere Zaehne + EIN Befund
+const cA1 = W.LenaVoiceChart.parseUtterance("24 25 26 x");
+check("A: '24 25 26 x' -> 24/25/26 je x",
+  codesOf(cA1, 24) === "x" && codesOf(cA1, 25) === "x" && codesOf(cA1, 26) === "x",
+  JSON.stringify(cA1));
+const cA2 = W.LenaVoiceChart.parseUtterance("24 25 26 Füllung");
+check("A: '24 25 26 Füllung' -> 24/25/26 je Fu",
+  codesOf(cA2, 24) === "Fu" && codesOf(cA2, 25) === "Fu" && codesOf(cA2, 26) === "Fu",
+  JSON.stringify(cA2));
+const cA3 = W.LenaVoiceChart.parseUtterance("zwei vier zwei fünf zwei sechs fehlt");
+check("A: Zahlwoerter '24 25 26 fehlt' -> je f",
+  codesOf(cA3, 24) === "f" && codesOf(cA3, 25) === "f" && codesOf(cA3, 26) === "f",
+  JSON.stringify(cA3));
+// CLASS B: EIN Befund an mehreren benannten Zaehnen
+const cB1 = W.LenaVoiceChart.parseUtterance("Füllung an den Zähnen 24 25 26");
+check("B: 'Füllung an den Zähnen 24 25 26' -> je Fu",
+  codesOf(cB1, 24) === "Fu" && codesOf(cB1, 25) === "Fu" && codesOf(cB1, 26) === "Fu",
+  JSON.stringify(cB1));
+const cB2 = W.LenaVoiceChart.parseUtterance("fehlt an 18 28 38 48");
+check("B: 'fehlt an 18 28 38 48' -> je f",
+  [18, 28, 38, 48].every((f) => codesOf(cB2, f) === "f"), JSON.stringify(cB2));
+// CLASS C optional: "die Achter/8er fehlen" (ohne "alle")
+const cC1 = W.LenaVoiceChart.parseUtterance("die Achter fehlen");
+check("C: 'die Achter fehlen' -> 18/28/38/48 f",
+  [18, 28, 38, 48].every((f) => codesOf(cC1, f) === "f"), JSON.stringify(cC1.map((e) => e.fdi)));
+const cC2 = W.LenaVoiceChart.parseUtterance("die 8er fehlen");
+check("C: 'die 8er fehlen' -> 18/28/38/48 f",
+  [18, 28, 38, 48].every((f) => codesOf(cC2, f) === "f"), JSON.stringify(cC2.map((e) => e.fdi)));
+
+// 24) "Lena weiter" schaltet Schema->Doku; "weiter" allein NICHT.
+const SFC = W.LenaDokuZahn.schemaFinishCommand;
+check("Weiter: 'Lena weiter' ist Kommando", SFC("Lena weiter") === true, "");
+check("Weiter: 'weiter Lena' ist Kommando", SFC("weiter Lena") === true, "");
+check("Weiter: 'weiter zur Doku' ist Kommando", SFC("weiter zur Doku") === true, "");
+check("Weiter: blosses 'weiter' ist KEIN Kommando", SFC("weiter") === false, "");
+check("Weiter: '41 fertig praepariert' ist KEIN Kommando", SFC("41 fertig präpariert") === false, "");
+// Neue Quittung 'Los geht's, weiter mit der Doku.' bleibt Steuer-Text (kein Inhalt).
+const stW = W.LenaDokuZahn.emptyState("");
+stW.page = "schema";
+W.LenaDokuZahn.applySchemaSegments(stW, [
+  { text: "27 Füllung", startMs: 1000 },
+  { text: "Los geht's, weiter mit der Doku.", startMs: 2000 },
+]);
+check("Weiter-Quittung: keine Geister-Zaehne", stW.teeth.size === 1 && stW.teeth.has(27), [...stW.teeth].join(","));
 
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;
