@@ -181,6 +181,81 @@ router.post("/training/extract", async (req, res) => {
   }
 });
 
+// ── POST /training/generate — Uebungssaetze generieren (statt PDF-Upload) ────
+// Fachgebiet-Dropdown -> lokales LLM erzeugt vorsprechbare Saetze mit je EINEM
+// schweren Begriff im Kontext (Satz > Einzelwort = besseres Trainingssignal).
+router.post("/training/generate", async (req, res) => {
+  try {
+    const actor = await trainingActor(req);
+    if (!actor.ok) return res.status(403).json({ ok: false, error: "forbidden" });
+    const label = String(req.body?.category || "Zahnmedizin allgemein").slice(0, 48).trim() || "Zahnmedizin allgemein";
+    const count = Math.min(12, Math.max(3, Number(req.body?.count || 8) || 8));
+
+    const sys = [
+      "Du erstellst deutsche ÜBUNGS-Sätze, mit denen ein Zahnarzt einer",
+      "Spracherkennung schwierige Fachbegriffe VORSPRICHT.",
+      "Jeder Satz: 6-14 Wörter, natürliche Behandlungs-/Diktatsprache, und enthält",
+      "GENAU EINEN schwer zu transkribierenden Begriff (Marke, Medikament,",
+      "Fachbegriff, Abkürzung oder Eigenname). KEINE echten Patientennamen.",
+      "Antworte AUSSCHLIESSLICH als JSON-Array",
+      '[{"sentence":"…","term":"…"}]. Der "term" MUSS wortwörtlich im "sentence"',
+      "vorkommen. Keine Dopplungen. Maximal " + count + " Einträge.",
+    ].join(" ");
+    const llm = await chat(
+      [{ role: "system", content: sys }, { role: "user", content: "Fachgebiet: " + label + ". Erzeuge " + count + " Übungssätze." }],
+      { temperature: 0.6, maxTokens: 1300, timeoutMs: 45000 },
+    );
+    if (!llm.ok) return res.status(502).json({ ok: false, error: "llm_" + (llm.reason || "error") });
+
+    let items = [];
+    try {
+      const m = llm.text.match(/\[[\s\S]*\]/);
+      items = JSON.parse(m ? m[0] : llm.text);
+    } catch {
+      return res.status(502).json({ ok: false, error: "llm_parse" });
+    }
+    if (!Array.isArray(items)) items = [];
+
+    const existing = new Set();
+    const cur = await vocabCol(actor.clientId).get().catch(() => null);
+    if (cur) cur.forEach((doc) => existing.add(normText(doc.data()?.term)));
+
+    const nowMs = Date.now();
+    const batch = admin.firestore().batch();
+    const added = [];
+    for (const it of items.slice(0, count)) {
+      const term = String(it?.term || "").trim().slice(0, 80);
+      const sentence = String(it?.sentence || "").trim().slice(0, 200);
+      if (!term || term.length < 2 || !sentence) continue;
+      // Sicherheit: der Begriff muss wirklich im Satz stehen (sonst unbrauchbar).
+      if (!normText(sentence).includes(normText(term))) continue;
+      const norm = normText(term);
+      if (!norm || existing.has(norm)) continue;
+      existing.add(norm);
+      const ref = vocabCol(actor.clientId).doc();
+      batch.set(ref, {
+        id: ref.id, term, display: term, norm, aliases: [], category: "generiert",
+        promptSentence: sentence, status: "candidate", source: "generated",
+        attempts: 0, recognizedOk: 0, samples: 0,
+        lastMisrecognition: "", lastHeardAtMs: 0, createdAtMs: nowMs,
+      });
+      added.push({ id: ref.id, term, promptSentence: sentence, status: "candidate" });
+    }
+    if (added.length) await batch.commit();
+
+    const agg = await loadStats(actor.clientId);
+    await recountTerms(actor.clientId, agg);
+    agg.badges = computeBadges(agg);
+    await statsRef(actor.clientId).set(agg, { merge: true });
+
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, added: added.length, terms: added, stats: agg });
+  } catch (e) {
+    log.warn("training.generate_error", { error: String(e?.message || e) });
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 // ── GET /training/terms — Liste + Statistik ─────────────────────────────────
 router.get("/training/terms", async (req, res) => {
   try {
@@ -196,6 +271,7 @@ router.get("/training/terms", async (req, res) => {
         status: d.status || "candidate", attempts: Number(d.attempts || 0),
         recognizedOk: Number(d.recognizedOk || 0), samples: Number(d.samples || 0),
         lastMisrecognition: d.lastMisrecognition || "",
+        promptSentence: d.promptSentence || "",
       });
     });
     terms.sort((a, b) => {

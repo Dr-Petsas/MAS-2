@@ -76,6 +76,11 @@
   .btn.file { position: relative; overflow: hidden; }
   .btn.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   .hint { color: var(--muted); font-size: .78rem; margin-top: 8px; }
+  .or { text-align: center; color: var(--muted); font-size: .76rem; margin: 12px 0 8px; letter-spacing: .02em; }
+  select {
+    flex: 1 1 180px; background: #150b34; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 12px; font-size: .95rem; font-family: inherit;
+  }
 
   /* Begriffskarten */
   .listhead { display: flex; justify-content: space-between; align-items: center; margin: 4px 2px 8px; }
@@ -91,6 +96,9 @@
   .term[data-s="hard"] { border-left-color: var(--hard); }
   .term .info { flex: 1 1 auto; min-width: 0; }
   .term .w { font-weight: 800; font-size: 1.02rem; }
+  .term .w.small { font-size: .78rem; color: var(--muted); font-weight: 700; margin-top: 3px; }
+  .term .say { font-size: 1.02rem; line-height: 1.35; font-weight: 600; }
+  .term .say .hl { color: var(--gold); font-weight: 900; }
   .term .meta { font-size: .74rem; color: var(--muted); margin-top: 2px; }
   .term .meta .mis { color: var(--hard); }
   .tag { font-size: .64rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; }
@@ -171,7 +179,25 @@
         <input type="text" id="manualTerm" placeholder="oder einzelnen Begriff eintippen (z. B. Straumann BLX)" style="flex:1 1 200px">
         <button class="btn ghost" id="manualBtn">+ hinzufügen</button>
       </div>
-      <div class="hint" id="addHint">Die Begriffe bleiben in Ihrer Praxis. Extraktion läuft auf dem lokalen Praxis-Server.</div>
+
+      <div class="or">— oder kein Material zur Hand? —</div>
+      <div class="row" style="align-items:center">
+        <select id="genCat" aria-label="Fachgebiet">
+          <option>Zahnmedizin allgemein</option>
+          <option>Implantologie</option>
+          <option>Endodontie</option>
+          <option>Parodontologie</option>
+          <option>Prothetik / Zahnersatz</option>
+          <option>Kieferorthopädie</option>
+          <option>Oralchirurgie</option>
+          <option>Röntgen &amp; Befund</option>
+          <option>Materialien &amp; Marken</option>
+          <option>Medikamente</option>
+          <option>Überweiser &amp; Labore</option>
+        </select>
+        <button class="btn" id="genBtn">✨ Übungssätze generieren</button>
+      </div>
+      <div class="hint" id="addHint">Die Begriffe bleiben in Ihrer Praxis. Extraktion &amp; Generierung laufen auf dem lokalen Praxis-Server.</div>
     </div>
 
     <div class="listhead">
@@ -261,9 +287,13 @@
       el.className = "term"; el.dataset.s = t.status; el.dataset.id = t.id;
       const mis = t.status === "hard" && t.lastMisrecognition
         ? ` · <span class="mis">gehört: „${escapeHtml(t.lastMisrecognition)}"</span>` : "";
+      // Übungssatz vorhanden -> Satz vorlesen (Begriff hervorgehoben), sonst nur das Wort.
+      const head = t.promptSentence
+        ? '<div class="say">🗣️ ' + highlightTerm(t.promptSentence, t.term) + '</div>' +
+          '<div class="w small">Begriff: ' + escapeHtml(t.term) + '</div>'
+        : '<div class="w">' + escapeHtml(t.term) + '</div>';
       el.innerHTML =
-        '<div class="info">' +
-          '<div class="w">' + escapeHtml(t.term) + '</div>' +
+        '<div class="info">' + head +
           '<div class="meta"><span class="tag ' + t.status + '">' + (STATUS_TAG[t.status] || t.status) + '</span> ' +
           (CAT_LABEL[t.category] || t.category) +
           (t.attempts ? " · " + t.recognizedOk + "/" + t.attempts + " erkannt" : "") + mis + '</div>' +
@@ -275,6 +305,15 @@
   }
   function escapeHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+  function highlightTerm(sentence, term) {
+    const s = escapeHtml(sentence);
+    const t = escapeHtml(term);
+    if (!t) return s;
+    try {
+      const re = new RegExp("(" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "i");
+      return s.replace(re, '<b class="hl">$1</b>');
+    } catch (_) { return s; }
   }
 
   async function loadAll() {
@@ -297,6 +336,22 @@
     if (!text) return toast("Bitte Text einfügen.", "mis");
     await runExtract(text, "paste");
     $("pasteText").value = "";
+  });
+  $("genBtn").addEventListener("click", async () => {
+    const cat = $("genCat").value;
+    const btn = $("genBtn");
+    btn.disabled = true;
+    $("addHint").textContent = "Lena schreibt Übungssätze für „" + cat + "\" …";
+    try {
+      const d = await apiPost("/training/generate", { category: cat });
+      toast(d.added ? (d.added + " Übungssätze erstellt!") : "Nichts erzeugt — bitte erneut versuchen.", d.added ? "ok" : "mis");
+      await loadAll();
+    } catch (e) {
+      toast("Generierung fehlgeschlagen: " + e.message, "mis");
+    } finally {
+      btn.disabled = false;
+      $("addHint").textContent = "Die Begriffe bleiben in Ihrer Praxis. Extraktion & Generierung laufen auf dem lokalen Praxis-Server.";
+    }
   });
   $("manualBtn").addEventListener("click", async () => {
     const term = $("manualTerm").value.trim();
