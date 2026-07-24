@@ -541,7 +541,7 @@
     $("addHint").textContent = "Lena liest den Text und sucht die Fachbegriffe …";
     try {
       const d = await apiPost("/training/extract", { text, source });
-      toast(d.added ? (d.added + " neue Begriffe gefunden!") : "Keine neuen Begriffe gefunden.", d.added ? "ok" : "");
+      toast(d.added ? (d.added + " Begriffe + Übungssätze erstellt!") : "Keine neuen Begriffe gefunden.", d.added ? "ok" : "");
       $("addHint").textContent = "Die Begriffe bleiben in Ihrer Praxis. Extraktion läuft auf dem lokalen Praxis-Server.";
       await loadAll();
     } catch (e) {

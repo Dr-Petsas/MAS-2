@@ -129,18 +129,20 @@ router.post("/training/extract", async (req, res) => {
     if (!raw) return res.status(400).json({ ok: false, error: "empty_text" });
 
     const sys = [
-      "Du extrahierst aus einem deutschen zahnmedizinischen/medizinischen Text NUR",
+      "Du liest einen deutschen medizinischen/zahnmedizinischen Text und findest",
       "die Begriffe, die eine Spracherkennung wahrscheinlich falsch versteht:",
       "Eigennamen (Ärzte, Labore, Orte), Marken/Produkte (Implantatsysteme,",
       "Materialien, Medikamente), seltene Fachbegriffe und Abkürzungen.",
-      "KEINE Alltagswörter, keine Sätze, keine Patientennamen.",
+      "KEINE Alltagswörter, KEINE Patientennamen.",
+      "Bilde zu JEDEM Begriff EINEN natürlichen deutschen Übungssatz (6-14 Wörter,",
+      "Behandlungs-/Diktatsprache), der den Begriff WORTWÖRTLICH enthält.",
       "Antworte AUSSCHLIESSLICH als JSON-Array von Objekten",
-      '{"term":"…","category":"eigenname|marke|medikament|fachbegriff|abkuerzung"}.',
+      '{"term":"…","category":"eigenname|marke|medikament|fachbegriff|abkuerzung","sentence":"…"}.',
       "Maximal 40 Einträge, jeder Begriff kurz (1-4 Wörter).",
     ].join(" ");
     const llm = await chatSmart(
       [{ role: "system", content: sys }, { role: "user", content: raw }],
-      { temperature: 0.1, maxTokens: 1200, timeoutMs: 45000 },
+      { temperature: 0.3, maxTokens: 1800, timeoutMs: 60000 },
     );
     if (!llm.ok) return res.status(502).json({ ok: false, error: "llm_" + (llm.reason || "error") });
 
@@ -168,14 +170,17 @@ router.post("/training/extract", async (req, res) => {
       if (!norm || existing.has(norm)) continue;
       existing.add(norm);
       const category = String(it?.category || "fachbegriff").toLowerCase().slice(0, 20);
+      // Uebungssatz zum Begriff (falls das Modell einen brauchbaren lieferte).
+      const sentence = String(it?.sentence || "").trim().slice(0, 200);
+      const promptSentence = (sentence && normText(sentence).includes(norm)) ? sentence : "";
       const ref = vocabCol(actor.clientId).doc();
       batch.set(ref, {
         id: ref.id, term, display: term, norm, aliases: [], category,
-        status: "candidate", source,
+        promptSentence, status: "candidate", source,
         attempts: 0, recognizedOk: 0, samples: 0,
         lastMisrecognition: "", lastHeardAtMs: 0, createdAtMs: nowMs,
       });
-      added.push({ id: ref.id, term, category, status: "candidate" });
+      added.push({ id: ref.id, term, category, promptSentence, status: "candidate" });
     }
     if (added.length) await batch.commit();
 
