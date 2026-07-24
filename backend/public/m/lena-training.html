@@ -66,6 +66,10 @@
   .tp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .tp-title { font-weight: 800; }
   .tp-count { color: var(--muted); font-weight: 800; font-size: .92rem; }
+  .tp-mode { display: inline-flex; gap: 4px; background: #150b34; border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+  .tp-mode button { border: 0; background: transparent; color: var(--muted); font-weight: 800; font-size: .76rem;
+    padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+  .tp-mode button.on { background: linear-gradient(180deg, var(--accent), var(--accent2)); color: #1a0b2e; }
   .tp-stage { min-height: 104px; display: grid; place-items: center; text-align: center;
     background: #150b34; border: 1px solid var(--line); border-radius: 14px; padding: 16px 14px; }
   .tp-stage.ok { animation: flashOk 1s ease-out; } .tp-stage.mis { animation: flashMis 1s ease-out; }
@@ -663,10 +667,19 @@
 
   function tpToggleVisible() { $("tp").style.display = (terms.length || tp.on) ? "block" : "none"; }
   function tpBuildQueue() {
+    // Fest vorgegeben: jeder Begriff zuerst als EINZELWORT (hilft dem schwachen
+    // Kurz-Fall), danach im SATZ (Kontext). Kein manueller Umschalter.
     const order = { hard: 0, candidate: 1, confirmed: 2 };
-    return terms.slice()
-      .sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1))
-      .map((t) => ({ id: t.id, term: t.term, prompt: t.promptSentence || t.term }));
+    const base = terms.slice().sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1));
+    const q = [];
+    for (const t of base) {
+      q.push({ id: t.id, term: t.term, prompt: t.term, kind: "wort" });
+      const s = t.promptSentence || "";
+      if (s && s.trim().toLowerCase() !== String(t.term).trim().toLowerCase()) {
+        q.push({ id: t.id, term: t.term, prompt: s, kind: "satz" });
+      }
+    }
+    return q;
   }
   function tpRender() {
     const n = tp.queue.length, i = tp.idx;
@@ -675,6 +688,7 @@
     $("tpCur").innerHTML = cur ? highlightTerm(cur.prompt, cur.term) : "Alles geübt! 🎉";
     const nx = tp.queue[i + 1];
     $("tpNext").innerHTML = nx ? ("weiter: " + highlightTerm(nx.prompt, nx.term)) : "";
+    if (tp.on && cur) $("tpStatus").textContent = cur.kind === "wort" ? "Sprich nur das Wort." : "Sprich den ganzen Satz.";
   }
   function tpResetSeg() { tp.buf = []; tp.hadSpeech = false; tp.speechMs = 0; tp.silenceMs = 0; }
 
