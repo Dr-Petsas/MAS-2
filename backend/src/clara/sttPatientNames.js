@@ -7,9 +7,28 @@
 // Quelle: dieselbe appointments-Collection wie daySchedule (getRangeAppointments).
 
 import { getRangeAppointments, todayBerlin } from "./daySchedule.js";
+import { queryLatest } from "../brain/eventStore.js";
+import { listRecentContactNames } from "../brain/addressBook.js";
 
 export const STT_NAMES_CACHE_MS = 30 * 60 * 1000; // 30 min — Kalender aendert sich
 const MIN_LEN = 3;
+
+// Korrespondenz-/Kontaktnamen aus dem Praxisgedaechtnis (Chef 25.07.2026):
+// Clara muss auch Anrufer/Absender aus Briefen/E-Mails/Kartei verstehen, die
+// KEINEN Termin im Kalenderfenster haben. Bewusst beschraenkt (Recency + Cap),
+// damit die Liste scharf bleibt (der 22.07.-Patientenstamm-Dump war zu gross).
+const MEMORY_WINDOW_DAYS = Number(process.env.CLARA_STT_MEMORY_DAYS || 45);
+const MEMORY_EVENT_CAP = 800;   // hoechstens so viele Ereignisse scannen
+const CONTACT_SCAN_CAP = 600;   // hoechstens so viele Adressbuch-Kontakte lesen
+const MEMORY_NAME_CAP = 500;    // hoechstens so viele Namen ergaenzen (Gedaechtnis+Kontakte)
+
+// Anreden/Titel vorne wegschneiden, damit "Herr Dr. Meier" -> "Meier".
+const HONORIFICS = new Set([
+  "herr", "herrn", "frau", "dr", "dr.", "prof", "prof.", "med", "med.",
+  "dipl", "dipl.", "herr.", "fr", "fr.",
+]);
+// Offensichtliche Organisationen NICHT als Personennamen aufnehmen.
+const ORG_RE = /\b(gmbh|ag|kg|ohg|e\.?\s?v|mbh|labor|klinik|klinikum|versicherung|krankenkasse|apotheke|praxis|verlag|inkasso|kanzlei)\b/i;
 
 /** @type {Map<string, object>} */
 const cache = new Map();
@@ -80,6 +99,47 @@ function collectFromAppts(appts, lastSet, firstSet) {
   }
 }
 
+// Einen vollen Namen ("Herr Dr. Anna Meier") in { last, first } zerlegen.
+// Reine Funktion (Firebase-frei, testbar): Anreden/Titel vorne weg, Orgs raus,
+// unbrauchbares -> null.
+export function personNameToParts(raw) {
+  const n = cleanName(raw);
+  if (!isUsableName(n) || ORG_RE.test(n)) return null;
+  const parts = n.split(/\s+/).filter((p) => !HONORIFICS.has(p.toLowerCase()));
+  if (!parts.length) return null;
+  if (parts.length === 1) return { last: parts[0], first: "" };
+  return { last: parts[parts.length - 1], first: parts.slice(0, -1).join(" ") };
+}
+
+function pushPersonName(raw, lastSet, firstSet) {
+  const p = personNameToParts(raw);
+  if (!p) return;
+  addName(lastSet, p.last);
+  if (p.first) addName(firstSet, p.first);
+}
+
+// Namen aus dem Praxisgedaechtnis: (a) juengste Ereignisse (Anrufe/E-Mails/
+// Briefe) — die betroffene Person (subject.name) und der Gespraechs-/Absender-
+// partner (counterparty.name); (b) das geteilte Adressbuch (Labor, Anrufer,
+// Lieferanten). Best-effort, beschraenkt; Orgs filtert pushPersonName.
+async function collectFromMemory(cid, lastSet, firstSet) {
+  const since = Date.now() - MEMORY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const [events, contactNames] = await Promise.all([
+    queryLatest(cid, since, MEMORY_EVENT_CAP).catch(() => []),
+    listRecentContactNames(cid, { limit: CONTACT_SCAN_CAP }).catch(() => []),
+  ]);
+  for (const ev of events || []) {
+    if (!ev) continue;
+    pushPersonName(ev.subject?.name, lastSet, firstSet);
+    if (ev.counterparty?.kind !== "organization") {
+      pushPersonName(ev.counterparty?.name, lastSet, firstSet);
+    }
+  }
+  for (const name of contactNames || []) {
+    pushPersonName(name, lastSet, firstSet);
+  }
+}
+
 function orderedNames(priorityLast, priorityFirst, restLast, restFirst) {
   const seen = new Set();
   const out = [];
@@ -108,7 +168,7 @@ export async function listPatientNamesForStt(clientId, opts = {}) {
   const cid = String(clientId || "").trim();
   const empty = {
     names: [], count: 0, locationId: "", cached: false,
-    lastCount: 0, firstCount: 0, from: "", to: "", source: "calendar",
+    lastCount: 0, firstCount: 0, memoryCount: 0, from: "", to: "", source: "calendar",
   };
   if (!cid) return empty;
 
@@ -150,10 +210,32 @@ export async function listPatientNamesForStt(clientId, opts = {}) {
   collectFromAppts(tomorrowAppts, priLast, priFirst);
   collectFromAppts(restAppts, restLast, restFirst);
 
-  const names = orderedNames(priLast, priFirst, restLast, restFirst);
+  const calendarNames = orderedNames(priLast, priFirst, restLast, restFirst);
   const lastCount = new Set([...priLast, ...restLast]).size;
-  const firstCount = names.length - lastCount;
+  const firstCount = calendarNames.length - lastCount;
 
+  // Korrespondenz-/Kontaktnamen anhaengen — best-effort, beschraenkt, dedupt
+  // gegen die Kalendernamen. Faellt der Gedaechtnis-Scan aus, bleibt exakt das
+  // bisherige Kalender-Verhalten (kein Regress).
+  const memLast = new Set();
+  const memFirst = new Set();
+  try {
+    await collectFromMemory(cid, memLast, memFirst);
+  } catch (e) {
+    // Gedaechtnis optional — Kalendernamen genuegen.
+  }
+  const seen = new Set(calendarNames.map((n) => n.toLowerCase()));
+  const memoryNames = [];
+  const sortDe = (a, b) => a.localeCompare(b, "de");
+  for (const n of [...memLast].sort(sortDe).concat([...memFirst].sort(sortDe))) {
+    if (memoryNames.length >= MEMORY_NAME_CAP) break;
+    const k = n.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    memoryNames.push(n);
+  }
+
+  const names = calendarNames.concat(memoryNames);
   const row = {
     at: Date.now(),
     names,
@@ -161,9 +243,10 @@ export async function listPatientNamesForStt(clientId, opts = {}) {
     locationId: data.locationId || "",
     lastCount,
     firstCount: Math.max(0, firstCount),
+    memoryCount: memoryNames.length,
     from: data.from || win.from,
     to: data.to || win.to,
-    source: "calendar",
+    source: memoryNames.length ? "calendar+memory" : "calendar",
     todayCount: todayAppts.length,
     tomorrowCount: tomorrowAppts.length,
   };

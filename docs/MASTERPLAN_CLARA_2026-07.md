@@ -1115,10 +1115,34 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Stimme → FDI-Schema mit Zeilen Befund/Therapie/Paro/Kiefer (OK oben,
   UK unten). 01-Modus bleibt Erstuntersuchung (spaeter). Beispiel:
   „34 Karies distal“ → Befund KaD; „Füllung inzisal distal“ → Therapie FuOD.
-- (frei)
+- 25.07.2026: **W-DATEN — Clara als Datenassistentin schaerfen (Chef, NICHT
+  Zahnmedizin).** Drei aufeinander aufbauende Pakete: (1) **Namen & Kontakte
+  verstehen** — STT-Bias zusaetzlich aus Korrespondenz/Kartei (Anrufer/Absender
+  aus dem Praxisgedaechtnis), nicht nur Kalenderfenster; beschraenkt (Recency +
+  Cap, kein 13k-Dump). (2) **Anrufe wann + Inhalt** — call_log liest Zeitpunkt
+  UND Inhalt/Zusammenfassung je Anruf, gedeckt aus dem Ereignis (Fakten-Waechter
+  bleibt). (3) **Dringende Rueckruf-Warnung** — verlaesslich in Briefing/Heads-up
+  + proaktiv (baut auf asapQueue/interruptPolicy). START mit (1): Fundament, ist
+  Voraussetzung fuer (2)+(3). Fuzzy-Anlaut-Schaerfung (T/D/Z, P/B, K/G, F/V/W) in
+  Clara-Voice `stt_postcorrect` bereits erledigt (Gate gruen).
 
 ## Aenderungslog
 
+- 25.07.2026: **W-DATEN-1 GEBAUT — Namen & Kontakte im STT-Bias (Chef).**
+  `listPatientNamesForStt` (MAS `src/clara/sttPatientNames.js`) haengt jetzt
+  additiv Korrespondenz-/Kontaktnamen an die Kalendernamen: (a) juengste
+  `mas_events` (letzte 45 Tage, `queryLatest`) — `subject.name` + Nicht-Org-
+  `counterparty.name`; (b) geteiltes Adressbuch `mas_contacts` (neue
+  `listRecentContactNames`, neueste zuerst). Beschraenkt: 800 Events / 600
+  Kontakte gescannt, max. 500 Namen ergaenzt, Anreden/Titel weg, Orgs raus
+  (GmbH/Labor/Kasse…), dedupt gegen Kalender. Faellt der Scan aus -> exakt das
+  alte Kalender-Verhalten (kein Regress). Route liefert `memoryCount` +
+  `source=calendar+memory` (additiv, Vertrag gewahrt). Clara-Voice-Worker
+  unveraendert (konsumiert `names`). Zusatz Clara-Voice `stt_postcorrect`:
+  Anlaut-Verwechslungen (T/D/Z, P/B, K/G, F/V/W) im Fuzzy-Abgleich. Tests:
+  `scripts/test-stt-memory-names.mjs` (pur) + `test_facts_guard.py` (Anlaut) +
+  Clara-Gate gruen; `node --check` sauber. Wirkt nach MAS-Neustart + neuer
+  Clara-Session.
 - 24.07.2026: **Clara-Beschimpfungs-Konter (W-HUMAN-Zusatz, Chef)** — Clara
   kontert direkte Beleidigungen/Anmachen mit derb-humorvollen Spruechen
   (`services/worker_human.py`: `_ROAST_INSULT_RE`/`_ROAST_COMEON_RE` +

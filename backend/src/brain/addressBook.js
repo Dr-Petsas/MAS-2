@@ -151,6 +151,34 @@ export async function upsertSharedContact(clientId, c = {}) {
 }
 
 /**
+ * Namen der zuletzt gesehenen Kontakte (fuer Claras STT-Bias, Chef 25.07.2026).
+ * Beschraenkt (neueste zuerst, gedeckelt); der Backfill-Marker traegt kein
+ * lastSeenAt und faellt aus der Sortierung. Best-effort, wirft nie.
+ *
+ * @param {string} clientId
+ * @param {{limit?:number}} [opts]
+ * @returns {Promise<string[]>}
+ */
+export async function listRecentContactNames(clientId, { limit = 600 } = {}) {
+  try {
+    const snap = await contacts(clientId)
+      .orderBy("lastSeenAt", "desc")
+      .limit(Math.max(1, Math.min(2000, limit)))
+      .get();
+    const names = [];
+    for (const d of snap.docs) {
+      if (d.id === BACKFILL_MARKER) continue;
+      const n = String(d.data()?.name || "").trim();
+      if (n) names.push(n);
+    }
+    return names;
+  } catch (e) {
+    log.warn("addressbook.list_recent_failed", { clientId, error: String(e?.message || e) });
+    return [];
+  }
+}
+
+/**
  * "Wer ist das?" — Kontakte zur Rufnummer, fürs Klingeln und für lookup_caller.
  */
 export async function findContactsByPhone(clientId, phone) {

@@ -277,6 +277,7 @@ router.get("/clara/stt-patient-names", async (req, res) => {
       count: out.count,
       lastCount: out.lastCount || 0,
       firstCount: out.firstCount || 0,
+      memoryCount: out.memoryCount || 0,
       todayCount: out.todayCount || 0,
       tomorrowCount: out.tomorrowCount || 0,
       cached: !!out.cached,
