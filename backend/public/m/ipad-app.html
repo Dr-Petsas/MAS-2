@@ -1061,6 +1061,24 @@
       padding: 2px 7px; border-radius: 6px; cursor: pointer;
     }
     .bubble .bubble-ops button:active { transform: scale(.96); }
+    /* Live-Korrektur-Overlay: Arzt tippt ein verhoertes Segment an, waehlt einen
+       LLM-Vorschlag (qwen3.6/5090) oder tippt selbst — Audio↔Text-Paar wird beim
+       Speichern serverseitig gesichert. */
+    .corr-ov { position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center; background: rgba(4,10,12,.62); backdrop-filter: blur(3px); }
+    .corr-ov.open { display: flex; }
+    .corr-card { width: min(560px, 94vw); max-height: 88vh; overflow: auto; background: #0f1c1f; border: 1px solid rgba(46,230,200,.35); border-radius: 16px; padding: 16px 16px 14px; box-shadow: 0 18px 60px rgba(0,0,0,.55); }
+    .corr-card h3 { margin: 0 0 4px; font-size: 1rem; color: #c8fff4; }
+    .corr-card .corr-hint { font-size: .72rem; opacity: .7; margin: 0 0 10px; }
+    .corr-card textarea { width: 100%; box-sizing: border-box; min-height: 74px; resize: vertical; background: rgba(255,255,255,.05); color: #eafffb; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; font-size: .95rem; line-height: 1.4; }
+    .corr-sugs { display: flex; flex-wrap: wrap; gap: 7px; margin: 11px 0 4px; min-height: 8px; }
+    .corr-sug { border: 1px solid rgba(46,230,200,.4); background: rgba(46,230,200,.1); color: #c8fff4; border-radius: 999px; padding: 6px 12px; font-size: .82rem; cursor: pointer; }
+    .corr-sug:active { transform: scale(.97); }
+    .corr-sug.busy, .corr-sug.muted { opacity: .6; border-style: dashed; cursor: default; }
+    .corr-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    .corr-actions button { border: 0; border-radius: 10px; padding: 9px 15px; font-size: .85rem; font-weight: 700; cursor: pointer; }
+    .corr-btn-save { background: #2ee6c8; color: #04211d; }
+    .corr-btn-sug { background: rgba(255,255,255,.1); color: #eafffb; }
+    .corr-btn-cancel { background: transparent; color: #9fb4b0; }
     .rec-bar {
       display: flex; align-items: center; gap: 6px; flex: none; padding-top: 2px;
       position: relative; z-index: 6; /* ueber Schema-Zoom, sonst verschluckt Touch den Stop */
@@ -3320,6 +3338,19 @@
           return false;
         }
       }
+      async function fetchLenaSuggestions(text, focus) {
+        const ids = treatmentIds();
+        if (!ids || !ids.deviceKey) return [];
+        try {
+          const data = await masPost("/treatment/lena-suggest", {
+            text: String(text || ""), focus: String(focus || ""),
+          });
+          return Array.isArray(data?.suggestions) ? data.suggestions : [];
+        } catch (e) {
+          console.warn("lena-suggest", e);
+          return [];
+        }
+      }
       async function deleteLenaSegment(dictationId) {
         const ids = treatmentIds();
         if (!ids || !dictationId || !ids.deviceKey) return false;
@@ -3442,24 +3473,108 @@
         });
         box.scrollTop = box.scrollHeight;
       }
-      async function onBubbleEdit(btn) {
-        const bubble = btn.closest(".bubble");
-        const id = bubble?.dataset?.segId || "";
-        const textEl = bubble?.querySelector(".bubble-text");
-        if (!id || !textEl) return;
-        const next = window.prompt("Text bearbeiten:", textEl.textContent || "");
-        if (next == null) return;
-        const t = String(next).trim();
-        if (!t || t === textEl.textContent) return;
+      // ── Live-Korrektur-Overlay ────────────────────────────────────────────
+      let corrOv = null;
+      function ensureCorrOverlay() {
+        if (corrOv) return corrOv;
+        const ov = document.createElement("div");
+        ov.className = "corr-ov";
+        ov.innerHTML =
+          '<div class="corr-card">' +
+            '<h3>Transkript korrigieren</h3>' +
+            '<p class="corr-hint">Vor der Akte korrigieren. Vorschlag antippen oder selbst tippen \u2014 Lena lernt daraus.</p>' +
+            '<textarea class="corr-ta" rows="3"></textarea>' +
+            '<div class="corr-sugs"></div>' +
+            '<div class="corr-actions">' +
+              '<button type="button" class="corr-btn-cancel">Abbrechen</button>' +
+              '<button type="button" class="corr-btn-sug">Vorschl\u00e4ge</button>' +
+              '<button type="button" class="corr-btn-save">Speichern</button>' +
+            '</div>' +
+          '</div>';
+        document.body.appendChild(ov);
+        ov.addEventListener("click", (e) => { if (e.target === ov) closeCorrOverlay(); });
+        corrOv = {
+          ov,
+          ta: ov.querySelector(".corr-ta"),
+          sugs: ov.querySelector(".corr-sugs"),
+          btnCancel: ov.querySelector(".corr-btn-cancel"),
+          btnSug: ov.querySelector(".corr-btn-sug"),
+          btnSave: ov.querySelector(".corr-btn-save"),
+          segId: "",
+          orig: "",
+        };
+        corrOv.btnCancel.addEventListener("click", closeCorrOverlay);
+        corrOv.btnSug.addEventListener("click", () => void loadCorrSuggestions());
+        corrOv.btnSave.addEventListener("click", () => void saveCorrOverlay());
+        return corrOv;
+      }
+      function closeCorrOverlay() {
+        if (corrOv) corrOv.ov.classList.remove("open");
+      }
+      function renderCorrSugs(items, state) {
+        const c = ensureCorrOverlay();
+        c.sugs.innerHTML = "";
+        if (state === "busy") {
+          const s = document.createElement("span");
+          s.className = "corr-sug busy"; s.textContent = "Lena denkt \u2026";
+          c.sugs.appendChild(s); return;
+        }
+        if (!items || !items.length) {
+          const s = document.createElement("span");
+          s.className = "corr-sug muted";
+          s.textContent = state === "none" ? "Keine Vorschl\u00e4ge \u2014 bitte tippen" : "";
+          c.sugs.appendChild(s); return;
+        }
+        items.forEach((txt) => {
+          const b = document.createElement("span");
+          b.className = "corr-sug";
+          b.textContent = txt;
+          b.addEventListener("click", () => { c.ta.value = txt; c.ta.focus(); });
+          c.sugs.appendChild(b);
+        });
+      }
+      async function loadCorrSuggestions() {
+        const c = ensureCorrOverlay();
+        renderCorrSugs(null, "busy");
+        const sel = String(window.getSelection?.().toString() || "").trim();
+        const items = await fetchLenaSuggestions(c.ta.value || c.orig, sel);
+        renderCorrSugs(items, items.length ? "ok" : "none");
+      }
+      async function saveCorrOverlay() {
+        const c = ensureCorrOverlay();
+        const id = c.segId;
+        const t = String(c.ta.value || "").trim();
+        if (!id) { closeCorrOverlay(); return; }
+        if (!t || t === c.orig) { closeCorrOverlay(); return; }
+        c.btnSave.disabled = true;
         const ok = await updateLenaSegment(id, t);
+        c.btnSave.disabled = false;
         if (!ok) { window.alert("Speichern fehlgeschlagen."); return; }
-        textEl.textContent = t;
+        const bubble = document.querySelector('.bubble[data-seg-id="' + id + '"]');
+        const textEl = bubble?.querySelector(".bubble-text");
+        if (textEl) textEl.textContent = t;
         const seg = savedSegments.find((s) => s.id === id);
         if (seg) seg.text = t;
         structuredText = "";
         dokuState = null;
         refreshLivePage(savedSegments);
         updateMerge();
+        closeCorrOverlay();
+      }
+      async function onBubbleEdit(btn) {
+        const bubble = btn.closest(".bubble");
+        const id = bubble?.dataset?.segId || "";
+        const textEl = bubble?.querySelector(".bubble-text");
+        if (!id || !textEl) return;
+        const c = ensureCorrOverlay();
+        c.segId = id;
+        c.orig = textEl.textContent || "";
+        c.ta.value = c.orig;
+        renderCorrSugs(null, "idle");
+        c.ov.classList.add("open");
+        c.ta.focus();
+        // Vorschlaege sofort im Hintergrund holen (5090/qwen3.6).
+        void loadCorrSuggestions();
       }
       async function onBubbleDelete(btn) {
         const bubble = btn.closest(".bubble");

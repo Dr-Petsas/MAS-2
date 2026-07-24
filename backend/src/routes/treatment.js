@@ -34,6 +34,7 @@ import { getActiveRecording } from "../clara/sessions.js";
 import { getDayAppointments, todayBerlin } from "../clara/daySchedule.js";
 import { resolveChairAppointment, matchCalendarId } from "../clara/treatmentRecording.js";
 import { getPatientAnamnese, clip } from "../clara/anamnese.js";
+import { chat, strongLlm } from "../mail/llm.js";
 
 // React-Frontend (Firebase Hosting) — dort liegt /dictate/... fuer die Lena-iframe.
 const PLATFORM_WEB_URL = (process.env.PLATFORM_WEB_URL || "https://docgenda.web.app").replace(/\/+$/, "");
@@ -41,6 +42,12 @@ const PLATFORM_WEB_URL = (process.env.PLATFORM_WEB_URL || "https://docgenda.web.
 const router = express.Router();
 
 const ID_RE = /^[A-Za-z0-9_-]{1,200}$/;
+
+// lena_stt (Live-Korrektur-Korpus): dort liegt das kurzlebige WAV je Aeusserung.
+// Gleiche Annahme wie routes/training.js — MAS laeuft neben lena_stt (127.0.0.1).
+const LENA_STT_PORT = Number(process.env.LENA_STT_PORT || 8140);
+const LENA_STT_BASE = (process.env.LENA_STT_BASE || `http://127.0.0.1:${LENA_STT_PORT}`).replace(/\/+$/, "");
+const AUDIO_ID_RE = /^[0-9a-f]{8,64}$/;
 
 function apptRef(clientId, locationId, appointmentId) {
   return admin.firestore()
@@ -108,6 +115,88 @@ const tsToMs = (v) => {
   if (typeof v._seconds === "number") return v._seconds * 1000;
   return 0;
 };
+
+// ── Live-Korrektur-Korpus (Chef 24.07.2026) ─────────────────────────────────
+// Jedes ARZT-Segment (Diktat/Gespraech) wird als Audio↔Text-Paar gesichert.
+// So kann der Arzt eine Verhoerung im Live-Transkript EINMAL korrigieren, bevor
+// es in die Akte geht — und Lena lernt daraus (Export -> lena_stt Hotwords/
+// Postkorrektur + spaeteres Fine-Tuning). Patiententext (source=raum) wird NUR
+// als Text gespeichert (kein Patienten-Audio — DSGVO/Datensparsamkeit).
+function liveSamplesCol(clientId) {
+  return admin.firestore().collection("clients").doc(clientId).collection("lenaLiveSamples");
+}
+function correctionsCol(clientId) {
+  return admin.firestore().collection("clients").doc(clientId).collection("lenaCorrections");
+}
+async function clientSpecialty(clientId) {
+  try {
+    const snap = await admin.firestore().collection("clients").doc(clientId).get();
+    const d = snap.exists ? (snap.data() || {}) : {};
+    return String(d.specialty || d.fachrichtung || d.fach || "").trim().slice(0, 60);
+  } catch { return ""; }
+}
+const looseEq = (a, b) =>
+  String(a || "").trim().toLowerCase().replace(/\s+/g, " ") ===
+  String(b || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+// Holt das WAV zu einer audioId aus lena_stt und legt es als Live-Sample ab.
+// Fire-and-forget: darf den Live-Doku-Pfad NIE verzoegern oder brechen.
+async function storeLiveSampleFromAudioId({ clientId, locationId, appointmentId, dictationId, audioId, text, source }) {
+  try {
+    if (!AUDIO_ID_RE.test(String(audioId || ""))) return;
+    const resp = await fetch(`${LENA_STT_BASE}/capture/${audioId}`, { cache: "no-store" });
+    if (!resp.ok) return;
+    const buf = Buffer.from(await resp.arrayBuffer());
+    if (!buf.length) return;
+    const sampleRef = liveSamplesCol(clientId).doc();
+    const audioPath = `clients/${clientId}/lena-live/${sampleRef.id}.wav`;
+    await admin.storage().bucket().file(audioPath).save(buf, {
+      contentType: "audio/wav",
+      resumable: false,
+      metadata: { metadata: { clientId, appointmentId, dictationId } },
+    });
+    const specialty = await clientSpecialty(clientId);
+    await sampleRef.set({
+      id: sampleRef.id,
+      appointmentId, locationId, dictationId,
+      source: source || "arzt",
+      targetText: text, recognizedText: text,
+      corrected: false,
+      audioPath, specialty, subcategory: "",
+      createdAtMs: Date.now(),
+    });
+  } catch (e) {
+    console.warn("lena-live-sample store failed:", e?.message || e);
+  }
+}
+
+// Verankert eine Live-Korrektur: aktualisiert das Sample (targetText/corrected)
+// und legt ein deterministisches Korrekturpaar (from->to) fuer den Export an.
+async function anchorLiveCorrection({ clientId, dictationId, oldText, newText }) {
+  try {
+    if (looseEq(oldText, newText)) return;
+    let specialty = "", subcategory = "";
+    const q = await liveSamplesCol(clientId).where("dictationId", "==", dictationId).limit(5).get().catch(() => null);
+    if (q && !q.empty) {
+      for (const doc of q.docs) {
+        const d = doc.data() || {};
+        specialty = specialty || String(d.specialty || "");
+        subcategory = subcategory || String(d.subcategory || "");
+        await doc.ref.set({ targetText: newText, corrected: true, correctedAtMs: Date.now() }, { merge: true });
+      }
+    }
+    if (String(oldText || "").trim()) {
+      await correctionsCol(clientId).add({
+        from: String(oldText).trim().slice(0, 2000),
+        to: String(newText).trim().slice(0, 2000),
+        dictationId, specialty, subcategory,
+        createdAtMs: Date.now(),
+      });
+    }
+  } catch (e) {
+    console.warn("anchorLiveCorrection failed:", e?.message || e);
+  }
+}
 
 function normalizeRecorder(raw) {
   const o = raw || {};
@@ -626,6 +715,17 @@ router.post("/treatment/lena-segment", async (req, res) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
+    // Live-Korrektur-Korpus: nur Arzt-Audio (Diktat/Nachtrag) sichern. audioId
+    // kommt vom Worker (lena_stt hat das WAV kurz gehalten). Fire-and-forget,
+    // damit das Live-Doku-Tempo unberuehrt bleibt.
+    const audioId = String(req.body?.audioId || "").trim();
+    if (audioId && (source === "arzt" || source === "nachdiktat")) {
+      storeLiveSampleFromAudioId({
+        clientId: k.clientId, locationId: k.locationId, appointmentId: k.appointmentId,
+        dictationId: segRef.id, audioId, text, source,
+      }).catch(() => {});
+    }
+
     // Shared Memory (lena_doc) erst beim Abschluss „Speichern“
     // (`/treatment/finalize`) — nicht live pro Segment (Chef 21.07.2026).
     // Fuehrende Quelle bleibt dictations/* (Clara liest dort beim Vorlesen).
@@ -797,6 +897,7 @@ router.post("/treatment/lena-segment-update", async (req, res) => {
       .collection("dictations").doc(actor.dictationId);
     const snap = await segRef.get();
     if (!snap.exists) return res.status(404).json({ ok: false, error: "not_found" });
+    const oldText = String(snap.data()?.text || "").trim();
     await segRef.set({
       text,
       // Nach Edit neu klassifizieren lassen (Strukturierung).
@@ -804,8 +905,53 @@ router.post("/treatment/lena-segment-update", async (req, res) => {
       section: admin.firestore.FieldValue.delete(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
+    // Korrektur verankern: Audio↔Text-Paar aktualisieren + Korrekturpaar
+    // fuer den Export sichern (damit dieselbe Verhoerung nicht wiederkehrt).
+    anchorLiveCorrection({
+      clientId: actor.k.clientId, dictationId: actor.dictationId, oldText, newText: text,
+    }).catch(() => {});
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, dictationId: actor.dictationId, text });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/lena-suggest — Korrekturvorschlaege fuer ein (verhoertes)
+// Live-Segment. IMMER qwen3.6 auf dem RTX-5090 (Chef 24.07.2026) — kein
+// Fallback aufs kleine Modell; klappt es nicht, tippt der Arzt manuell.
+router.post("/treatment/lena-suggest", async (req, res) => {
+  try {
+    const dev = await companionDeviceOk(req);
+    if (!dev) return res.status(403).json({ ok: false, error: "forbidden" });
+    const full = String(req.body?.text || "").trim().slice(0, 2000);
+    const focus = String(req.body?.focus || "").trim().slice(0, 200);
+    if (!full && !focus) return res.status(400).json({ ok: false, error: "empty" });
+
+    const strong = strongLlm();
+    const sys = "Du bist ein Korrekturassistent fuer deutsche ZAHNMEDIZINISCHE Spracherkennung (Diktat am Behandlungsstuhl). Ein Wort oder kurzer Ausdruck wurde vermutlich verhoert. Antworte AUSSCHLIESSLICH mit einem JSON-Array aus bis zu 5 plausiblen, fachlich korrekten Alternativen (Strings), beste zuerst. Keine Erklaerung, kein weiterer Text.";
+    const user = focus
+      ? `Satz: "${full}"\nZu korrigierender Ausdruck: "${focus}"\nGib Alternativen NUR fuer diesen Ausdruck (als JSON-Array von Strings).`
+      : `Vermutlich verhoerter Satz: "${full}"\nGib korrigierte Fassungen des ganzen Satzes (als JSON-Array von Strings).`;
+
+    const r = await chat(
+      [{ role: "system", content: sys }, { role: "user", content: user }],
+      { baseUrl: strong.base, model: strong.model, temperature: 0.3, maxTokens: 300, timeoutMs: 20000 },
+    );
+    let suggestions = [];
+    if (r.ok) {
+      const m = /\[[\s\S]*\]/.exec(r.text || "");
+      if (m) {
+        try {
+          const arr = JSON.parse(m[0]);
+          if (Array.isArray(arr)) {
+            suggestions = arr.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 5);
+          }
+        } catch { /* kein valides JSON -> keine Vorschlaege */ }
+      }
+    }
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, suggestions, llmOk: !!r.ok });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

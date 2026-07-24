@@ -560,18 +560,36 @@ router.get("/training/export", async (req, res) => {
     const snap = await vocabCol(clientId).get();
     const hotwords = [];
     const corrections = [];
+    const seen = new Set();
+    const addCorrection = (from, to, specialty) => {
+      const f = String(from || "").trim();
+      const t = String(to || "").trim();
+      if (!f || !t || normText(f) === normText(t)) return;
+      const key = normText(f) + "→" + normText(t);
+      if (seen.has(key)) return;
+      seen.add(key);
+      corrections.push(specialty ? { from: f, to: t, specialty } : { from: f, to: t });
+    };
     snap.forEach((doc) => {
       const d = doc.data() || {};
       if (d.status === "retired") return;
       hotwords.push(String(d.term || ""));
       // Reale Verhoerung -> deterministische Korrektur (nur wenn eindeutig).
-      const mis = normText(d.lastMisrecognition);
-      if (d.status === "hard" && mis && mis !== normText(d.term)) {
-        corrections.push({ from: d.lastMisrecognition, to: d.term });
-      }
+      if (d.status === "hard") addCorrection(d.lastMisrecognition, d.term);
     });
+    // Live-Korrekturen (Arzt hat im Diktat korrigiert) — echte Verhoerungen aus
+    // dem laufenden Betrieb, gruppiert nach Fachrichtung.
+    try {
+      const csnap = await clientRef(clientId).collection("lenaCorrections").get();
+      csnap.forEach((doc) => {
+        const d = doc.data() || {};
+        addCorrection(d.from, d.to, String(d.specialty || ""));
+        const to = String(d.to || "").trim();
+        if (to) hotwords.push(to);
+      });
+    } catch { /* Live-Korrekturen sind optional */ }
     res.set("Cache-Control", "no-store");
-    res.json({ ok: true, clientId, hotwords: hotwords.filter(Boolean), corrections });
+    res.json({ ok: true, clientId, hotwords: [...new Set(hotwords.filter(Boolean))], corrections });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
