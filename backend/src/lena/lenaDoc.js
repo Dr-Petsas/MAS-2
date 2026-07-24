@@ -26,7 +26,7 @@ import {
   validateCatalogCodes,
 } from "./billingKnowledge.js";
 import { mergeCrossChannel } from "./crossChannel.js";
-import { acceptCorrection } from "./garbleCorrect.js";
+import { acceptCorrection, acceptLiveCorrection } from "./garbleCorrect.js";
 import {
   llmExtractTemplateFields,
   serializeTemplateFields,
@@ -524,6 +524,123 @@ export async function correctGarbles(segs, { timeoutMs = 90000, chunk = 40 } = {
 }
 
 // ---------------------------------------------------------------------------
+// Bench-Korrektur (Chef 24.07.2026, "overwrite"): die Lena-Doku transkribiert
+// jetzt EXAKT wie der Conformer-Bench (stt.pickadoc-tunnel.com). qwen3.6 (5090)
+// bereinigt pro Segment LIVE: Fachbegriffe kontextuell, korrekte Gross-/
+// Kleinschreibung, Zahnbezeichnungen im FDI-Format ("drei sechs"->"36"),
+// Messwerte als Ziffern, Selbstkorrektur/Versprecher aufgeloest. Der Roh-Text
+// bleibt als `text` erhalten (verstecktes Backup), angezeigt wird `textCorrected`.
+// Notaus: LENA_LLM_CORRECT=0. Guard: acceptLiveCorrection (erlaubt Ziffern).
+// ---------------------------------------------------------------------------
+
+const _BENCH_CORRECT_SYSTEM = [
+  "Du bist Korrektor fuer deutschsprachige zahnaerztliche/medizinische Diktate",
+  "(Spracherkennung am Behandlungsstuhl). Du bekommst EIN Roh-Segment und gibst",
+  "NUR die bereinigte Fassung zurueck.",
+  "Regeln:",
+  "- Korrigiere offensichtliche Erkennungsfehler und Fachbegriffe sinngemaess aus",
+  "  dem Kontext (z. B. 'hapikale paronditis' -> 'apikale Parodontitis', 'lenthin'",
+  "  -> 'Dentin', 'fossa kannina' -> 'Fossa canina', 'Barottis' -> 'Parotis').",
+  "- Korrekte deutsche Gross-/Kleinschreibung und sinnvolle Zeichensetzung.",
+  "- Gesprochene Zahnbezeichnungen ins FDI-Format als ZWEISTELLIGE Zahl:",
+  "  'drei sechs' -> '36', 'zwei vier' -> '24', 'vier fuenf' -> '45'.",
+  "- Gesprochene Zahlen und Messwerte als Ziffern: 'sechs Millimeter' -> '6 mm'.",
+  "- SELBSTKORREKTUREN/VERSPRECHER AUFLOESEN: Korrigiert sich der Sprecher",
+  "  ('drei sechs, aeh nein, vier sechs', 'also nicht 36 sondern 46', 'streich das',",
+  "  'ich meinte', 'Quatsch'), gib NUR die zuletzt gemeinte Fassung wieder und",
+  "  entferne das Zurueckgenommene samt Fuellwoertern (aeh, aehm, halt, quasi).",
+  "- ERFINDE NICHTS: keine zusaetzlichen Befunde, Zaehne, Werte oder Woerter, die",
+  "  nicht gesagt wurden (ausser der Aufloesung einer Selbstkorrektur). Im Zweifel",
+  "  nah am Original bleiben.",
+  "- Antworte AUSSCHLIESSLICH mit dem korrigierten Text. Keine Anfuehrungszeichen,",
+  "  keine Erklaerung, kein Vorspann.",
+].join("\n");
+
+/**
+ * Live-Korrektur EINES Segments mit dem Bench-Prompt (qwen3.6 auf dem 5090).
+ * Kontextzeilen (vorherige Segmente) helfen bei der Disambiguierung. Gibt den
+ * korrigierten Text zurueck (guard-geprueft) oder ok:false.
+ * (exportiert fuer Tests)
+ *
+ * @param {string} text          STT-Rohtext des Segments.
+ * @param {string[]} contextLines vorherige (Roh-)Segmente zur Orientierung.
+ * @returns {Promise<{ok:boolean, text:string, model?:string, reason?:string}>}
+ */
+export async function correctSegmentLive(text, contextLines = [], { timeoutMs = 30000 } = {}) {
+  if (String(process.env.LENA_LLM_CORRECT || "1") === "0") return { ok: false, text: "", reason: "disabled" };
+  const raw = String(text || "").trim();
+  if (!raw || isJunkSegment(raw)) return { ok: false, text: "", reason: "empty" };
+  const ctx = (contextLines || []).map((x) => String(x || "").trim()).filter(Boolean).slice(-5).join("\n");
+  const s = strongLlm();
+  const messages = [
+    { role: "system", content: _BENCH_CORRECT_SYSTEM },
+    {
+      role: "user",
+      content: (ctx ? `Bisheriger Kontext (nur zur Orientierung, NICHT mit ausgeben):\n${ctx}\n\n` : "")
+        + `Zu korrigierendes Segment:\n${raw}`,
+    },
+  ];
+  let res;
+  try {
+    res = await chat(messages, { temperature: 0.2, maxTokens: 400, timeoutMs, baseUrl: s.base, model: s.model });
+  } catch (e) {
+    return { ok: false, text: "", reason: "llm_throw" };
+  }
+  if (!res || !res.ok) return { ok: false, text: "", reason: res?.reason || "llm" };
+  const out = String(res.text || "").trim().replace(/^["']+|["']+$/g, "").trim();
+  if (!acceptLiveCorrection(raw, out)) return { ok: false, text: "", reason: "guard" };
+  return { ok: true, text: out, model: res.model };
+}
+
+const _REINSCHRIFT_SYSTEM = [
+  "Du bist medizinische Schreibkraft in einer Zahnarztpraxis. Du bekommst die der",
+  "Reihe nach diktierten Befund-Segmente einer Behandlung (bereits grob korrigiert)",
+  "und erzeugst daraus EINE saubere Reinschrift.",
+  "Regeln:",
+  "- Loese SEGMENTUEBERGREIFENDE Selbstkorrekturen auf: sagt der Sprecher spaeter",
+  "  'das war 46, nicht 36', 'streich den letzten Befund', 'Korrektur zu Zahn ...',",
+  "  dann korrigiere bzw. entferne den betroffenen FRUEHEREN Eintrag entsprechend.",
+  "- Entferne Fehlstarts, Dopplungen und Fuellwoerter (aeh, aehm, halt).",
+  "- Behalte JEDEN eigenstaendigen Befund; fasse nur zusammen, was klar",
+  "  zusammengehoert. Reihenfolge beibehalten.",
+  "- Korrekte Gross-/Kleinschreibung, FDI-Zahnnummern, Ziffern fuer Messwerte,",
+  "  Zeichensetzung.",
+  "- ERFINDE NICHTS Neues: keine zusaetzlichen Befunde, Zaehne oder Werte.",
+  "- Gib NUR die Reinschrift zurueck (kurze Befund-Zeilen, je Befund eine Zeile),",
+  "  ohne Ueberschrift, ohne Erklaerung, ohne Nummerierung.",
+].join("\n");
+
+/**
+ * Gesamt-Reinschrift ueber alle (korrigierten) Segment-Texte: loest auch spaete,
+ * SEGMENTUEBERGREIFENDE Selbstkorrekturen auf (Bench-Verhalten beim "Speichern").
+ * (exportiert fuer Tests)
+ *
+ * @param {string[]} segTexts  behaltene Segment-Texte in Diktier-Reihenfolge.
+ * @returns {Promise<{ok:boolean, text:string, model?:string, reason?:string}>}
+ */
+export async function consolidateReinschrift(segTexts, { timeoutMs = 90000 } = {}) {
+  if (String(process.env.LENA_LLM_CORRECT || "1") === "0") return { ok: false, text: "", reason: "disabled" };
+  const segs = (segTexts || []).map((s) => String(s || "").trim()).filter(Boolean);
+  if (!segs.length) return { ok: false, text: "", reason: "empty" };
+  const listed = segs.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  const s = strongLlm();
+  const messages = [
+    { role: "system", content: _REINSCHRIFT_SYSTEM },
+    { role: "user", content: `Diktierte Segmente (in Reihenfolge):\n${listed}` },
+  ];
+  let res;
+  try {
+    res = await chat(messages, { temperature: 0.2, maxTokens: 1400, timeoutMs, baseUrl: s.base, model: s.model });
+  } catch (e) {
+    return { ok: false, text: "", reason: "llm_throw" };
+  }
+  if (!res || !res.ok) return { ok: false, text: "", reason: res?.reason || "llm" };
+  const out = String(res.text || "").trim();
+  if (out.length < 3) return { ok: false, text: "", reason: "empty" };
+  return { ok: true, text: out, model: res.model };
+}
+
+// ---------------------------------------------------------------------------
 // W-LENA-8b/8c: Doku-Template-Felder aus den Segmenten robust per LLM fuellen
 // und unter treatment/main.templateFields PERSISTIEREN. Daraus wird 8c der
 // template-basierte structuredText + die Abrechnungshinweise abgeleitet (ohne
@@ -603,12 +720,19 @@ export async function structureTreatment(clientId, locationId, appointmentId, { 
   let correctModel = "";
   let correctedCount = 0;
   if (conversationSegs.length) {
-    const corr = await correctGarbles(conversationSegs);
-    if (corr.ok && corr.byId.size) {
-      correctModel = corr.model || "";
-      for (const seg of conversationSegs) {
-        const fixed = corr.byId.get(seg.id);
-        if (fixed) { seg.textCorrected = fixed; correctedCount += 1; }
+    // Bench-Korrektur (Chef 24.07.) laeuft schon LIVE pro Segment und legt
+    // `textCorrected` ab. Diese Segmente NICHT erneut durch die alte
+    // konservative Batch schicken — nur die (noch) unkorrigierten nachziehen.
+    const needCorrect = conversationSegs.filter((s) => !String(s.textCorrected || "").trim());
+    correctedCount = conversationSegs.length - needCorrect.length;
+    if (needCorrect.length) {
+      const corr = await correctGarbles(needCorrect);
+      if (corr.ok && corr.byId.size) {
+        correctModel = corr.model || "";
+        for (const seg of needCorrect) {
+          const fixed = corr.byId.get(seg.id);
+          if (fixed) { seg.textCorrected = fixed; correctedCount += 1; }
+        }
       }
     }
   }
@@ -760,8 +884,41 @@ export async function finalizeTreatmentDoc(
     structuredText = segs.map((s) => segText(s)).filter(Boolean).join("\n");
   }
 
+  // Reinschrift (Chef 24.07., "overwrite"): qwen3.6 konsolidiert alle behaltenen
+  // (bereits korrigierten) Befund-Segmente zu EINER sauberen Fassung und loest
+  // SEGMENTUEBERGREIFENDE Selbstkorrekturen auf ("das war 46, nicht 36"). Der
+  // korrigierte Text wird der Akteninhalt; die Roh-Segmente bleiben als
+  // verstecktes Backup in dictations/*. Nachdiktat bleibt wortwoertlich (kein
+  // Konsolidieren). Best-effort — bei Notaus/Fehler bleibt der bisherige Text.
+  let reinschrift = "";
+  let reinschriftModel = "";
+  try {
+    const clinicalKept = [];
+    const nachKept = [];
+    for (const s of segs) {
+      if (s.smalltalk || isJunkSegment(segText(s))) continue;
+      const line = segText(s);
+      if (!line) continue;
+      if (String(s.source || "").toLowerCase() === "nachdiktat") nachKept.push(line);
+      else clinicalKept.push(line);
+    }
+    if (clinicalKept.length) {
+      const cons = await consolidateReinschrift(clinicalKept);
+      if (cons.ok && cons.text) {
+        reinschriftModel = cons.model || "";
+        const parts = [cons.text.trim()];
+        if (nachKept.length) parts.push("NACHDIKTAT\n" + nachKept.map((t) => "- " + t).join("\n"));
+        reinschrift = parts.join("\n\n").trim();
+      }
+    }
+  } catch (consErr) {
+    console.warn(`[lena/finalize] reinschrift uebersprungen: ${consErr?.message || consErr}`);
+  }
+  if (reinschrift) structuredText = reinschrift;
+
   await treatmentRef.set({
     structuredText: structuredText.slice(0, 40000),
+    ...(reinschrift ? { reinschrift: reinschrift.slice(0, 40000), reinschriftModel } : {}),
     finalizedAt: admin.firestore.FieldValue.serverTimestamp(),
     finalizedBy: updatedBy,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -812,6 +969,7 @@ export async function finalizeTreatmentDoc(
   return {
     ok: true,
     structuredText,
+    reinschrift: reinschrift || "",
     segmentsCount: segs.length,
     memorySegments,
   };

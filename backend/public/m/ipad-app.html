@@ -980,6 +980,16 @@
       100% { background: inherit; box-shadow: none; }
     }
     .lena-flash { animation: lenaFlash .45s ease-in-out 3; border-radius: 10px; }
+    /* Angekommen, wartet auf die qwen-Korrektur (noch nicht in eine Box verteilt):
+       dezentes Pulsieren als Hinweis "wird gerade bereinigt". */
+    @keyframes lenaPending {
+      0%, 100% { opacity: .72; }
+      50% { opacity: 1; }
+    }
+    .doku-dialog .bubble.lena-pending {
+      animation: lenaPending 1s ease-in-out infinite; border-radius: 10px;
+      box-shadow: inset 3px 0 0 0 #ffcf33;
+    }
     /* Aufklaerungs-Dokumentliste mit PDF-Links */
     .tpl-docs { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
     .tpl-docs li { font-size: .92rem; font-weight: 600; color: #222; }
@@ -2548,7 +2558,10 @@
         if (!ensureDokuState()) return;
         dokuState.page = "schema";
         const list = Array.isArray(segs) ? segs : savedSegments;
-        const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        // Nur reife (qwen-korrigierte oder Kulanz-abgelaufene) Segmente ins Schema,
+        // mit der korrigierten Fassung (segForBoxes) -> FDI schon als Ziffern.
+        const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat")
+          .filter(segReady).map(segForBoxes);
         Zahn.applySchemaSegments(dokuState, clinical);
         const partial = String(livePartial != null ? livePartial : liveDokuPartial || "").trim();
         if (partial && window.LenaVoiceChart?.extractFdi) {
@@ -2575,14 +2588,16 @@
         dokuState.page = "doku";
         const list = Array.isArray(segs) ? segs : savedSegments;
         // Arzt/Doku-Diktat -> Doku-Boxen; Raum/Patient -> Patientenanliegen (AP3).
+        // Nur REIFE (qwen-korrigierte oder Kulanz-abgelaufene) Segmente verteilen,
+        // und mit der korrigierten Fassung als `text` (segForBoxes).
         const clinical = (list || []).filter((s) => {
           const sc = String(s.source || "").toLowerCase();
           return sc !== "nachdiktat" && sc !== "raum" && sc !== "patient";
-        });
+        }).filter(segReady).map(segForBoxes);
         const raum = (list || []).filter((s) => {
           const sc = String(s.source || "").toLowerCase();
           return sc === "raum" || sc === "patient";
-        });
+        }).filter(segReady).map(segForBoxes);
         Zahn.applySegments(dokuState, clinical);
         Zahn.applyAnliegenSegments?.(dokuState, raum);
         Zahn.ensureGaps?.(dokuState);
@@ -2602,6 +2617,32 @@
          selbst macht applySegments. ─────────────────────────────────────── */
       const dokuConsumedSegIds = new Set();
       let dokuTranscriptInit = false;
+      // Bench-Korrektur (Chef 24.07.): die qwen3.6-Fassung (textCorrected) kommt
+      // asynchron ~1 s nach dem Roh-Segment. Der Text ERSCHEINT sofort in der
+      // Ankunftsbox (Transkript); die VERTEILUNG auf die Unterboxen + der
+      // Box-Flash warten kurz auf die Korrektur, damit FDI/Fachbegriffe schon
+      // bereinigt in die richtige Box wandern. Danach (oder bei Notaus/Timeout)
+      // wird die Roh-Fassung verteilt.
+      const dokuSeenAt = new Map();
+      const DOKU_CORRECT_WAIT_MS = 3500;
+      function segCorrected(s) {
+        return !!(s && typeof s.textCorrected === "string" && s.textCorrected.trim());
+      }
+      function segShow(s) {
+        const c = s && typeof s.textCorrected === "string" ? s.textCorrected.trim() : "";
+        return c || String((s && s.text) || "");
+      }
+      /** Ist ein Segment reif fuer die Box-Verteilung (korrigiert oder Kulanz aus)? */
+      function segReady(s) {
+        if (!s || !s.id) return true;
+        if (segCorrected(s)) return true;
+        if (!dokuSeenAt.has(s.id)) dokuSeenAt.set(s.id, Date.now());
+        return (Date.now() - dokuSeenAt.get(s.id)) >= DOKU_CORRECT_WAIT_MS;
+      }
+      /** Segment-Kopie, deren `text` die angezeigte (korrigierte) Fassung ist. */
+      function segForBoxes(s) {
+        return Object.assign({}, s, { text: segShow(s) });
+      }
       const byStartMs = (a, b) => {
         const sa = Number(a.startMs) || 0, sb = Number(b.startMs) || 0;
         if (sa && sb) return sa - sb;
@@ -2651,15 +2692,19 @@
           const div = document.createElement("div");
           div.className = "bubble " + (who === "Arzt" ? "a" : "p");
           if (s.id) div.dataset.segId = s.id;
-          div.innerHTML = bubbleHtml(who, s.text, "");
+          div.innerHTML = bubbleHtml(who, segShow(s), "");
           const clinical = src !== "nachdiktat";
           if (clinical && s.id) {
             if (dokuConsumedSegIds.has(s.id)) {
               div.classList.add("is-consumed");
-            } else {
+            } else if (segReady(s)) {
+              // Reif: jetzt in die Zielbox verteilen + Box aufleuchten lassen.
               div.classList.add("lena-flash");
               dokuConsumedSegIds.add(s.id);
-              freshBoxes.push((src === "raum" || src === "patient") ? "anliegen" : dokuTargetBox(s.text));
+              freshBoxes.push((src === "raum" || src === "patient") ? "anliegen" : dokuTargetBox(segShow(s)));
+            } else {
+              // Angekommen, wartet auf die qwen-Korrektur — noch keine Verteilung.
+              div.classList.add("lena-pending");
             }
           }
           box.appendChild(div);
@@ -3468,7 +3513,7 @@
           div.className = "bubble " + (who === "Arzt" ? "a" : "p");
           if (s.id) div.dataset.segId = s.id;
           if (Number(s.startMs)) div.dataset.start = String(Number(s.startMs));
-          div.innerHTML = bubbleHtml(who, s.text, s.id || "");
+          div.innerHTML = bubbleHtml(who, segShow(s), s.id || "");
           box.appendChild(div);
         });
         box.scrollTop = box.scrollHeight;
@@ -3554,7 +3599,7 @@
         const textEl = bubble?.querySelector(".bubble-text");
         if (textEl) textEl.textContent = t;
         const seg = savedSegments.find((s) => s.id === id);
-        if (seg) seg.text = t;
+        if (seg) { seg.text = t; seg.textCorrected = t; }
         structuredText = "";
         dokuState = null;
         refreshLivePage(savedSegments);

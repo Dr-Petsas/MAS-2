@@ -6,6 +6,10 @@
   "use strict";
 
   let known = new Set();
+  // Erstsichtung je Segment: Bench-Korrektur (textCorrected) laeuft asynchron in
+  // MAS. Wir warten kurz darauf (FDI dann als "36" statt "drei sechs"), sonst Roh.
+  let seen = new Map();
+  const CORRECT_WAIT_MS = 3000;
   let lastFdi = null;
   let timer = null;
 
@@ -50,10 +54,20 @@
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok || !Array.isArray(data.segments)) return;
       for (const s of data.segments) {
-        if (!s || s.struck || !s.text || !s.id) continue;
+        if (!s || s.struck || !s.id) continue;
+        const corrected = typeof s.textCorrected === "string" ? s.textCorrected.trim() : "";
+        const raw = typeof s.text === "string" ? s.text.trim() : "";
+        const text = corrected || raw;
+        if (!text) continue;
         if (known.has(s.id)) continue;
+        // Auf die qwen-Korrektur warten, solange sie fehlt und die Kulanzzeit
+        // laeuft — danach Roh nehmen (Korrektur aus/langsam blockiert nie).
+        if (!corrected) {
+          if (!seen.has(s.id)) seen.set(s.id, Date.now());
+          if (Date.now() - seen.get(s.id) < CORRECT_WAIT_MS) continue;
+        }
         known.add(s.id);
-        const events = window.LenaVoiceChart.parseUtterance(s.text);
+        const events = window.LenaVoiceChart.parseUtterance(text);
         events.forEach((ev) => {
           if (ev.fdi) {
             lastFdi = ev.fdi;

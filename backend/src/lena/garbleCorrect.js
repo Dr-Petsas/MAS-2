@@ -36,3 +36,25 @@ export function acceptCorrection(original, fixed) {
   if (o.length >= 12 && f.length < o.length * 0.5) return false;
   return true;
 }
+
+/**
+ * Relaxierter Guard fuer die BENCH-Korrektur (Chef 24.07.2026, "overwrite"):
+ * qwen darf hier gesprochene Zahlen in Ziffern wandeln ("drei sechs"->"36",
+ * "sechs Millimeter"->"6 mm") und Selbstkorrekturen aufloesen. Deshalb wird
+ * ``inventsNumbers`` bewusst NICHT angewandt (das wuerde jede FDI-Umwandlung
+ * verwerfen). Es bleibt eine Sanity-Grenze gegen Aufblaehung/Leere — komplett
+ * neue Inhalte/Halluzinationen fangen wir ueber die Laenge ab.
+ *
+ * @param {string} original  STT-Rohtext des Segments.
+ * @param {string} fixed     Vorschlag von qwen (Bench-Prompt).
+ * @returns {boolean}
+ */
+export function acceptLiveCorrection(original, fixed) {
+  const o = String(original || "").trim();
+  const f = String(fixed || "").trim();
+  if (!f || f.length < 2) return false;                 // leer/Schrott
+  if (f === o) return false;                            // nichts geaendert
+  if (f.length > o.length * 2.2 + 40) return false;     // Aufblaehung/Halluzination
+  if (o.length >= 12 && f.length < o.length * 0.35) return false; // zu viel verloren
+  return true;
+}

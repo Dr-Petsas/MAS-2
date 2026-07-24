@@ -27,6 +27,7 @@ import {
   flagSmalltalk,
   refreshTemplateFields,
   finalizeTreatmentDoc,
+  correctSegmentLive,
 } from "../lena/lenaDoc.js";
 import { deleteEventsByIdPrefix } from "../brain/eventStore.js";
 import { identifyByDevice } from "../clara/devices.js";
@@ -570,6 +571,9 @@ router.post("/treatment/heartbeat", async (req, res) => {
       return {
         id: d.id,
         text: typeof s.text === "string" ? s.text : "",
+        // Bench-Korrektur (Chef 24.07.): angezeigt wird `textCorrected`, sofern
+        // qwen3.6 schon bereinigt hat; `text` bleibt Roh-Backup (§ 630f).
+        textCorrected: typeof s.textCorrected === "string" ? s.textCorrected : "",
         source: typeof s.source === "string" ? s.source : "",
         struck: s.struck === true,
         createdAtMs: tsToMs(s.createdAt),
@@ -725,6 +729,33 @@ router.post("/treatment/lena-segment", async (req, res) => {
         clientId: k.clientId, locationId: k.locationId, appointmentId: k.appointmentId,
         dictationId: segRef.id, audioId, text, source,
       }).catch(() => {});
+    }
+
+    // Bench-Korrektur LIVE (Chef 24.07.2026): qwen3.6 bereinigt das Segment
+    // (Fachbegriffe/Casing/FDI-Zahnformat/Messwerte/Versprecher) und legt das
+    // Ergebnis als `textCorrected` daneben. Best-effort/asynchron — die Antwort
+    // wartet NICHT darauf (Live-Doku-Tempo bleibt). Notaus: LENA_LLM_CORRECT=0.
+    if (String(process.env.LENA_LLM_CORRECT || "1") !== "0") {
+      (async () => {
+        try {
+          const prevSnap = await ref.collection("dictations")
+            .orderBy("createdAt", "desc").limit(6).get();
+          const ctx = [];
+          prevSnap.forEach((d) => {
+            if (d.id === segRef.id) return;
+            const t = String(d.data()?.text || "").trim();
+            if (t) ctx.push(t);
+          });
+          ctx.reverse();
+          const r = await correctSegmentLive(text, ctx);
+          if (r && r.ok && r.text) {
+            await segRef.set({
+              textCorrected: r.text,
+              correctedAt: admin.firestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
+          }
+        } catch { /* Korrektur ist best-effort, blockt die Doku nie */ }
+      })();
     }
 
     // Shared Memory (lena_doc) erst beim Abschluss „Speichern“
@@ -901,6 +932,10 @@ router.post("/treatment/lena-segment-update", async (req, res) => {
     const oldText = String(snap.data()?.text || "").trim();
     await segRef.set({
       text,
+      // Manueller Edit ist autoritativ: als korrigierten Text verankern, damit
+      // die Anzeige (bevorzugt textCorrected) den Edit zeigt und die spaetere
+      // Live-Korrektur ihn nicht ueberschreibt.
+      textCorrected: text,
       // Nach Edit neu klassifizieren lassen (Strukturierung).
       smalltalk: admin.firestore.FieldValue.delete(),
       section: admin.firestore.FieldValue.delete(),
