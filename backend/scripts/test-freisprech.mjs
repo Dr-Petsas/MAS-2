@@ -54,4 +54,9 @@ check("Varianz: umformulierte Laeufe sind nicht alle woertlich identisch",
   texte.size >= Math.min(2, laeufe.filter((r) => r.ok).length) || laeufe.filter((r) => r.ok).length <= 1);
 
 console.log(fehler === 0 ? "\nALLE CHECKS BESTANDEN" : `\n${fehler} CHECK(S) FEHLGESCHLAGEN`);
-process.exit(fehler === 0 ? 0 : 1);
+// Undici (Node-fetch) Keep-Alive-Pool schliessen und den Prozess NATUERLICH
+// auslaufen lassen (exitCode statt process.exit()). Ein abruptes process.exit()
+// kracht sonst auf Windows/Node 24 in einer libuv-Assertion (async.c:
+// UV_HANDLE_CLOSING), NACHDEM alle Checks bestanden sind -> falscher Roter.
+try { await globalThis[Symbol.for("undici.globalDispatcher.1")]?.destroy?.(); } catch { /* egal */ }
+process.exitCode = fehler === 0 ? 0 : 1;

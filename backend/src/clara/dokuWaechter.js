@@ -34,7 +34,12 @@ import { log } from "../log.js";
 // ============================================================================
 
 const _BERLIN = "Europe/Berlin";
-const TREATED = 2; // PatientStatus.treated (Plattform-Enum)
+// PatientStatus-Enum der Plattform: 0 none (Default/ungepflegt), 1 inTreatment,
+// 2 treated, 3 inWaitingRoom, 4 absentUnexcused, 5 absentExcused. Ausschliessen
+// duerfen wir NUR die explizit als "nicht erschienen" markierten Termine (4/5) —
+// none(0) ist der Default, den die meisten Praxen nie umstellen, und muss (wie
+// im Kommentar unten beschrieben) als dokupflichtig zaehlen.
+const ABSENT_STATUS = new Set([4, 5]); // absentUnexcused, absentExcused
 
 function _tsToMs(ts) {
   if (!ts) return 0;
@@ -64,8 +69,10 @@ function tagDeutsch(ms) {
 function istDokupflichtig(a, nowMs) {
   if (!a || !a.patientId || a.isAbsence || a.isMultiDay) return false;
   if (a.startMs >= nowMs) return false; // noch nicht behandelt
-  // Explizit gepflegtes "nicht behandelt/nicht erschienen" respektieren.
-  if (a.patientStatus !== null && a.patientStatus !== undefined && a.patientStatus !== TREATED) return false;
+  // Nur explizit als "nicht erschienen" markierte Termine ausschliessen.
+  // none(0)/ungepflegt zaehlt (Default vieler Praxen), treated(2) sowieso, und
+  // ein VERGANGENER Termin mit inTreatment/inWaitingRoom ist faktisch behandelt.
+  if (ABSENT_STATUS.has(Number(a.patientStatus))) return false;
   return true;
 }
 

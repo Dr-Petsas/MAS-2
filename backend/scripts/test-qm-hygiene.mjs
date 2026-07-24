@@ -36,7 +36,7 @@ async function run() {
   check(plans.length === 9, "9 Hygienepläne erzeugt");
   const flaechenPlan = plans.find((p) => p.key === "flaechen");
   check(/Kohrsolin FF/.test(JSON.stringify(flaechenPlan)), "Plan enthält gewähltes Produkt (Kohrsolin FF)");
-  check(/EWZ 15 min/.test(JSON.stringify(flaechenPlan)), "Plan enthält Einwirkzeit");
+  check(/Einwirkzeit: 15 min/.test(JSON.stringify(flaechenPlan)), "Plan enthält Einwirkzeit");
   check(TASK_TEMPLATES.some((t) => t.cycle === "daily"), "tägliche Aufgaben definiert");
 
   await cleanup();

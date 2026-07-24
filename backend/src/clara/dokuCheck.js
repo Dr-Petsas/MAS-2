@@ -36,10 +36,30 @@ const GERUEST_DIKTAT_PFLICHT = [
 function extractJson(text) {
   if (!text) return null;
   try { return JSON.parse(text); } catch { /* weiter */ }
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) {
-    try { return JSON.parse(text.slice(start, end + 1)); } catch { /* weiter */ }
+  // Robuste Bergung: ab JEDER '{'-Position das erste balancierte Objekt suchen
+  // und parsen. Kleine Modelle (qwen3:4b) haengen gern eine ueberzaehlige
+  // schliessende Klammer an ("...}}") oder umrahmen das JSON mit Prosa/<think>;
+  // die alte first-'{'/last-'}'-Scheibe scheiterte daran (Log: parse_failed ->
+  // gar keine Rueckfragen). Anfuehrungszeichen/Escapes werden respektiert.
+  const s = String(text);
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== "{") continue;
+    let depth = 0, inStr = false, esc = false;
+    for (let j = i; j < s.length; j++) {
+      const c = s[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === "\\") esc = true;
+        else if (c === '"') inStr = false;
+      } else if (c === '"') inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          try { return JSON.parse(s.slice(i, j + 1)); } catch { break; }
+        }
+      }
+    }
   }
   return null;
 }
