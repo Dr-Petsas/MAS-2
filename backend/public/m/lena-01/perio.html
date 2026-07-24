@@ -771,6 +771,12 @@
       }
 
       /* ── Anzeige-Helfer ────────────────────────────────────────────────── */
+      // Bench-Korrektur (Chef 24.07.): angezeigt wird die qwen3.6-Fassung
+      // (textCorrected), sofern vorhanden; sonst der STT-Rohtext (Backup).
+      function segShow(s) {
+        const c = s && typeof s.textCorrected === "string" ? s.textCorrected.trim() : "";
+        return c || String((s && s.text) || "");
+      }
       function bubbleHtml(who, text) {
         return '<span class="who">' + who + '</span><span class="bubble-text">' + esc(text) + "</span>";
       }
@@ -795,7 +801,7 @@
           const who = src === "arzt" ? "Arzt" : "Gespräch";
           const div = document.createElement("div");
           div.className = "bubble " + (who === "Arzt" ? "a" : "p");
-          div.innerHTML = bubbleHtml(who, s.text);
+          div.innerHTML = bubbleHtml(who, segShow(s));
           box.appendChild(div);
         });
         box.scrollTop = box.scrollHeight;
@@ -1057,7 +1063,7 @@
           el.classList.add("empty");
           return;
         }
-        el.textContent = nd.map((s) => s.text).join(" ");
+        el.textContent = nd.map((s) => segShow(s)).join(" ");
         el.classList.remove("empty");
       }
       function medicalDraftFromSegments() {
@@ -1065,7 +1071,7 @@
         const lines = [];
         (savedSegments || []).forEach((s) => {
           const src = String(s.source || "").toLowerCase();
-          const t = String(s.text || "").trim();
+          const t = segShow(s).trim();
           if (!t || src === "nachdiktat") return;
           if (clinicish.test(t)) lines.push("- " + t);
         });
