@@ -450,8 +450,8 @@ export async function polishDialogueSummary(draft, { timeoutMs = 90000 } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Fachbegriff-Korrektur (W-LENA-7, 17.07./21.07.2026): STT-Rohtext (Whisper
-// oder Parakeet-Tee) geht an qwen3.6, das NUR offensichtliche Spracherkennungs-
+// Fachbegriff-Korrektur (W-LENA-7, 17.07./21.07./25.07.2026): STT-Rohtext
+// (Conformer, ggf. Parakeet-Hybrid) geht an qwen3.6, das NUR offensichtliche Spracherkennungs-
 // Verhoerer glaettet — v. a. Fachbegriffe ("Barottis"->"Parotis"). § 630f:
 // Roh-Wortlaut bleibt als `text`, Korrektur nur als `textCorrected`.
 // acceptCorrection() verwirft Erfindungen. Notaus: LENA_LLM_CORRECT=0.

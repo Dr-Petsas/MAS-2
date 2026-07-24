@@ -273,8 +273,8 @@
   const ALL_FDI = new Set([...FDI_OK, ...FDI_UK]);
 
   /* ── FDI-Normalisierung (Live-Befund 21.07., Patientin N.) ────────────────
-     Diktiert wird Quadrant+Zahn als EINZELNE Ziffern: Parakeet/Whisper
-     schreiben "1,6" / "1, 4" / "vier, sechs" / kompakt "16x14x".
+     Diktiert wird Quadrant+Zahn als EINZELNE Ziffern: das STT (Parakeet/Conformer)
+     schreibt "1,6" / "1, 4" / "vier, sechs" / kompakt "16x14x".
      Der Parser sah nur \b[1-4][1-8]\b und WORD_FDI-Komposita — alles
      andere ging verloren. Diese Normalisierung laeuft VOR jeder Extraktion. */
 
@@ -343,7 +343,7 @@
   }
 
   /* ── Schema-Diktat: Garble-Aliasse (Live-Diktate 21.07. abends) ──────────
-     Parakeet/Whisper verhoeren einzelne Zahl-Woerter systematisch, wenn der
+     Das STT (Parakeet/Conformer) verhoert einzelne Zahl-Woerter systematisch, wenn der
      Anlaut fehlt: "vier" -> "hier/wir/fear", "drei" -> "right/frei/bei",
      "zwei" -> "zeit/why". NUR im Schema-Schritt anwenden (dort werden
      ausschliesslich Ziffern + Befunde erwartet) — in den Text-Boxen sind

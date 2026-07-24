@@ -14,7 +14,7 @@ function pcmSine(ms, hz = 220, rate = 16000, amp = 0.25) {
 }
 
 // Echte Sprache statt Sinus: WAV (16 kHz mono int16) -> rohes PCM.
-// Sinus wird vom Silero-VAD (korrekt) verworfen und erreicht Whisper nie.
+// Sinus wird vom Silero-VAD (korrekt) verworfen und erreicht das STT nie.
 function pcmFromWav(path) {
   const b = readFileSync(path);
   const idx = b.indexOf(Buffer.from("data"));

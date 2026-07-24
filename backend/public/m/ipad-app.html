@@ -4566,7 +4566,7 @@
       const ctx = canvas && typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
       const histA = new Array(120).fill(0), histP = new Array(120).fill(0);
       let micMode = (typeof lenaLoadMicMode === "function") ? lenaLoadMicMode() : "ipad";
-      // Alle drei Mic-Modi: Claras Parakeet (kein Whisper/Canary mehr in der Doku).
+      // Alle drei Mic-Modi: Doku ueber Conformer (kein Whisper/Canary mehr).
       // recording/paused/recCapture/micPreview: oben im IIFE deklariert.
       function usesParakeetDoc() { return true; }
       function micModeLabel() {
@@ -4678,7 +4678,7 @@
         const swapBtn = $("btnStereoSwap");
         const meters = $("metersBox");
         if (meters) meters.classList.toggle("is-mono", false);
-        // L/R-Tausch war Whisper-Stereo — mit Parakeet entfallen.
+        // L/R-Tausch war Alt-Stereo — mit der Conformer-Doku entfallen.
         if (swapBtn) swapBtn.hidden = true;
         if ($("meterLabelArzt")) $("meterLabelArzt").textContent = "Arzt";
         if ($("meterLabelPat")) $("meterLabelPat").textContent = "Patient";
@@ -4787,7 +4787,7 @@
         if (st) div.dataset.start = String(st);
         div.innerHTML = bubbleHtml(who, text, segId || "");
         // Nach Sprech-Zeit (startMs) einsortieren statt stur unten anhaengen: zwei
-        // Kanaele (Arzt/Patient) + unterschiedliche Whisper-Decode-Latenz ergeben
+        // Kanaele (Arzt/Patient) + unterschiedliche STT-Decode-Latenz ergeben
         // sonst falsche Chronologie (spaeter gesprochener Satz erscheint frueher).
         let inserted = false;
         if (st) {
@@ -4866,8 +4866,8 @@
           lang: "de-DE",
           channel: "arzt",
           source: src,
-          // Doku = Whisper (lena_stt); Clara-Telefon bleibt Parakeet.
-          stt: "whisper",
+          // Doku = Conformer (lena_stt); Clara-Telefon bleibt Parakeet.
+          stt: "conformer",
         });
       }
       function waitLenaTeeAck(wantAppt, ms) {
@@ -5016,7 +5016,7 @@
         $("recLive")?.classList.add("is-on");
         {
           const liveEl = $("recLive")?.querySelector("span");
-          if (liveEl) liveEl.textContent = "live · Whisper";
+          if (liveEl) liveEl.textContent = "live · Conformer";
         }
         clearInterval(timerId);
         timerId = setInterval(() => {
@@ -5058,13 +5058,13 @@
         };
         setMicActiveLabel(
           teeOk
-            ? "Aktiv: Whisper · " + micLab + " — sprechen (Doku)"
+            ? "Aktiv: Conformer · " + micLab + " — sprechen (Doku)"
             : "KEIN Tee — Clara-Worker: CLARA_LENA_TEE=1 und neu starten?",
           !teeOk || !!micPick.warning,
         );
         if ($("recLive")) {
           const liveEl = $("recLive").querySelector("span");
-          if (liveEl) liveEl.textContent = teeOk ? "live · Whisper" : "Tee fehlt";
+          if (liveEl) liveEl.textContent = teeOk ? "live · Conformer" : "Tee fehlt";
         }
         applyMicToggleUi();
         syncRecChrome();

@@ -327,8 +327,8 @@ export async function startRecordingSession(clientId, { locationId, appointmentI
         appointmentId,
         channel: "arzt",
         lang: "de-DE",
-        // Headset-Doku: PCM → lena_stt Whisper (Clara-Parakeet bleibt Telefon-STT).
-        stt: "whisper",
+        // Headset-Doku: PCM → lena_stt Conformer (Clara-Parakeet bleibt Telefon-STT).
+        stt: "conformer",
       }
     : { active: false };
 

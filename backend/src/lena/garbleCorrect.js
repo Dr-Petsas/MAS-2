@@ -1,8 +1,8 @@
 // Lena — qwen-Fachbegriff-Korrektor: reine Guard-Logik (17.07.2026)
 // ------------------------------------------------------------------
-// Chef 17.07./21.07.: parakeet_de_med und Canary aus der lena_stt-Pipeline.
-// USB/iPad = Whisper; Headset = Claras Parakeet-Tee. qwen3.6 glaettet NUR
-// offensichtliche Spracherkennungs-Verhoerer (z. B. "Barottis"->"Parotis").
+// Chef 17.07./21.07./25.07.: parakeet_de_med, Canary und Whisper aus der
+// lena_stt-Pipeline. USB/iPad + Headset-Doku = Conformer-Transducer. qwen3.6
+// glaettet NUR offensichtliche Spracherkennungs-Verhoerer ("Barottis"->"Parotis").
 //
 // Diese Datei ist bewusst FIREBASE-FREI, damit die Guard ohne Emulator/Prod
 // getestet werden kann (scripts/test-lena-correct.mjs). Der eigentliche

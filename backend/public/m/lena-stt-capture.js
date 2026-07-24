@@ -162,7 +162,7 @@
 
   // Auf sauberes Schliessen der WS warten (bis timeoutMs). Beim Stoppen MUSS der
   // Client warten, bis der Server seinen Decode-Rueckstau abgearbeitet und alle
-  // Finals gesendet hat — Whisper ist langsamer als der Audio-Stream, sonst gehen
+  // Finals gesendet hat — das STT ist langsamer als der Audio-Stream, sonst gehen
   // die letzten Saetze verloren ("send after close"). Server schliesst nach bye.
   function awaitWsClose(ws, timeoutMs) {
     return new Promise((resolve) => {
