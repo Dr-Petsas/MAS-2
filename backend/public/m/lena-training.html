@@ -171,6 +171,10 @@
   .rec.recording { background: radial-gradient(circle at 30% 30%, #ff6b8b, #d61f4c); animation: recPulse .9s infinite; }
   @keyframes recPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(214,31,76,.5);} 50% { box-shadow: 0 0 0 12px rgba(214,31,76,0);} }
   .rec:disabled { opacity: .5; }
+  .term-actions { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+  .ic { border: 1px solid var(--line); background: transparent; border-radius: 10px; padding: 4px 8px;
+    font-size: .9rem; cursor: pointer; line-height: 1; }
+  .ic:active { transform: translateY(1px); }
   @keyframes flashOk { 0%{ background:#0f5138 } 100%{ background: var(--card) } }
   @keyframes flashMis { 0%{ background:#5a3a10 } 100%{ background: var(--card) } }
   .term.ok { animation: flashOk 1s ease-out; }
@@ -438,8 +442,14 @@
           (CAT_LABEL[t.category] || t.category) +
           (t.attempts ? " · " + t.recognizedOk + "/" + t.attempts + " erkannt" : "") + mis + '</div>' +
         '</div>' +
+        '<div class="term-actions">' +
+          '<button class="ic" data-a="edit" title="Korrigieren" aria-label="Korrigieren">✏️</button>' +
+          '<button class="ic" data-a="del" title="Entfernen" aria-label="Entfernen">🗑️</button>' +
+        '</div>' +
         '<button class="rec" title="Vorsprechen" aria-label="Aufnehmen">🎙️</button>';
       el.querySelector(".rec").addEventListener("click", () => recordFor(t, el));
+      el.querySelector('[data-a="edit"]').addEventListener("click", () => editTerm(t));
+      el.querySelector('[data-a="del"]').addEventListener("click", () => deleteTerm(t));
       box.appendChild(el);
     }
   }
@@ -454,6 +464,27 @@
       const re = new RegExp("(" + t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "i");
       return s.replace(re, '<b class="hl">$1</b>');
     } catch (_) { return s; }
+  }
+
+  async function editTerm(t) {
+    const nt = window.prompt("Eintrag korrigieren (falscher/verhörter Begriff):", t.term);
+    if (nt === null) return;
+    const term = nt.trim();
+    if (term.length < 2) return toast("Zu kurz.", "mis");
+    if (term === t.term) return;
+    try {
+      await apiPost("/training/term-edit", { termId: t.id, term });
+      toast("Korrigiert: „" + term + "\"", "ok");
+      await loadAll();
+    } catch (e) { toast("Fehler: " + e.message, "mis"); }
+  }
+  async function deleteTerm(t) {
+    if (!window.confirm("„" + t.term + "\" entfernen?")) return;
+    try {
+      await apiPost("/training/term-delete", { termId: t.id });
+      toast("Entfernt.", "ok");
+      await loadAll();
+    } catch (e) { toast("Fehler: " + e.message, "mis"); }
   }
 
   async function loadAll() {

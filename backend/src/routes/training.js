@@ -350,6 +350,57 @@ router.post("/training/term", async (req, res) => {
   }
 });
 
+// ── POST /training/term-edit — falschen Eintrag korrigieren (Begriff/Satz) ───
+// Fuer Muell-Eintraege wie "Penitio Delfin Chilies": Begriff neu schreiben.
+// Beim Umbenennen werden Verhoerung + Status zurueckgesetzt (bezogen sich auf
+// den alten, falschen Begriff).
+router.post("/training/term-edit", async (req, res) => {
+  try {
+    const actor = await trainingActor(req);
+    if (!actor.ok) return res.status(403).json({ ok: false, error: "forbidden" });
+    const termId = String(req.body?.termId || "").trim();
+    if (!ID_RE.test(termId)) return res.status(400).json({ ok: false, error: "bad_id" });
+    const ref = vocabCol(actor.clientId).doc(termId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ ok: false, error: "term_not_found" });
+    const cur = snap.data() || {};
+
+    const patch = {};
+    const hasTerm = Object.prototype.hasOwnProperty.call(req.body || {}, "term");
+    if (hasTerm) {
+      const term = String(req.body?.term || "").trim().slice(0, 80);
+      if (!term || term.length < 2) return res.status(400).json({ ok: false, error: "bad_term" });
+      patch.term = term;
+      patch.display = term;
+      patch.norm = normText(term);
+      // Umbenennung -> alte Verhoerung/Bewertung passt nicht mehr.
+      if (normText(term) !== normText(cur.term)) {
+        patch.lastMisrecognition = "";
+        patch.status = "candidate";
+        patch.attempts = 0;
+        patch.recognizedOk = 0;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "promptSentence")) {
+      const s = String(req.body?.promptSentence || "").trim().slice(0, 200);
+      const t = patch.term || cur.term || "";
+      patch.promptSentence = (s && normText(s).includes(normText(t))) ? s : "";
+    }
+    if (!Object.keys(patch).length) return res.status(400).json({ ok: false, error: "nothing_to_edit" });
+    await ref.set(patch, { merge: true });
+
+    const agg = await loadStats(actor.clientId);
+    await recountTerms(actor.clientId, agg);
+    agg.badges = computeBadges(agg);
+    await statsRef(actor.clientId).set(agg, { merge: true });
+
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, id: termId, term: patch.term || cur.term });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 // ── POST /training/term-delete — Begriff stilllegen (retire) ─────────────────
 router.post("/training/term-delete", async (req, res) => {
   try {
