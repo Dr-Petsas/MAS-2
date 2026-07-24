@@ -4,6 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
 <meta name="theme-color" content="#160a2e" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <title>Lena Trainingscenter</title>
 <style>
   :root {
@@ -180,6 +183,47 @@
   .empty { color: var(--muted); text-align: center; padding: 30px 10px; font-size: .9rem; }
   .gate { text-align: center; padding: 50px 20px; color: var(--muted); }
   a.back { color: var(--accent); text-decoration: none; font-weight: 700; font-size: .85rem; }
+
+  /* ── iPad Vollbild: alles auf einen Screen, kein Scrollen (Quer + Hoch) ── */
+  html, body { height: 100%; overflow: hidden; }
+  body { padding: 0; }
+  .wrap {
+    max-width: 1024px; margin: 0 auto;
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column; gap: 8px; overflow: hidden;
+    padding: calc(env(safe-area-inset-top) + 8px) 12px calc(env(safe-area-inset-bottom) + 8px);
+  }
+  .wrap > div:first-child { margin: 0 !important; flex: 0 0 auto; }
+  .hero { margin: 0; flex: 0 0 auto; }
+  #gate { flex: 1 1 auto; }
+  #main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .cover, .stats, .badges, .add { margin: 0; flex: 0 0 auto; }
+  .tp { margin: 0; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .tp-stage { flex: 1 1 auto; min-height: 84px; }
+  .listwrap { flex: 0 0 auto; min-height: 0; }
+  .listwrap .cards { max-height: 34vh; overflow: auto; }
+
+  /* kurze Hoehe (iPad quer): Nebensaechliches ausblenden/verkleinern */
+  @media (max-height: 760px) {
+    .hero .sub { display: none; }
+    .badges { display: none; }
+    .method .md { display: none; }
+    .handadd { display: none; }
+    .hint { display: none; }
+    .orb { width: 42px; height: 42px; }
+    .hero h1 { font-size: 1.06rem; }
+    .cover { padding: 8px 12px; }
+    .cover .pct { font-size: 1.25rem; }
+    .bar { height: 10px; margin-top: 6px; }
+    .stat { padding: 6px; }
+    .stat .n { font-size: 1.05rem; }
+    .add { padding: 10px; }
+    .add h2 { font-size: .9rem; margin: 0 0 6px; }
+    select, .btn { padding: 8px 12px; }
+    .method { padding: 10px; gap: 6px; }
+    .tp { padding: 10px 12px; }
+    .tp-cur { font-size: 1.2rem; }
+  }
 </style>
 </head>
 <body>
@@ -212,22 +256,6 @@
       <div class="stat"><div class="n" id="stSamples">0</div><div class="t">Aufnahmen</div></div>
     </div>
     <div class="badges" id="badges"></div>
-
-    <div class="tp" id="tp" style="display:none">
-      <div class="tp-head">
-        <span class="tp-title">🎬 Vorlese-Modus</span>
-        <span class="tp-count" id="tpCount">0 / 0</span>
-      </div>
-      <div class="tp-stage" id="tpStage">
-        <div class="tp-cur" id="tpCur">Übungssätze generieren, dann „Starten".</div>
-      </div>
-      <div class="tp-next" id="tpNext"></div>
-      <div class="tp-ctl">
-        <button class="tp-btn" id="tpBtn"><span class="tp-dot"></span><span id="tpBtnLbl">▶︎ Starten</span></button>
-        <button class="btn ghost" id="tpSkip">Überspringen ›</button>
-      </div>
-      <div class="tp-status" id="tpStatus">Mikro läuft durch — du sprichst, Lena blättert automatisch weiter.</div>
-    </div>
 
     <div class="add">
       <h2>Übungsstoff wählen</h2>
@@ -274,6 +302,22 @@
         <button class="btn ghost" id="manualBtn">+ hinzufügen</button>
       </div>
       <div class="hint" id="addHint">Alles bleibt in Ihrer Praxis. Extraktion &amp; Generierung laufen auf dem lokalen Praxis-Server.</div>
+    </div>
+
+    <div class="tp" id="tp" style="display:none">
+      <div class="tp-head">
+        <span class="tp-title">🎬 Vorlese-Modus</span>
+        <span class="tp-count" id="tpCount">0 / 0</span>
+      </div>
+      <div class="tp-stage" id="tpStage">
+        <div class="tp-cur" id="tpCur">Übungssätze generieren, dann „Starten".</div>
+      </div>
+      <div class="tp-next" id="tpNext"></div>
+      <div class="tp-ctl">
+        <button class="tp-btn" id="tpBtn"><span class="tp-dot"></span><span id="tpBtnLbl">▶︎ Starten</span></button>
+        <button class="btn ghost" id="tpSkip">Überspringen ›</button>
+      </div>
+      <div class="tp-status" id="tpStatus">Mikro läuft durch — du sprichst, Lena blättert automatisch weiter.</div>
     </div>
 
     <details class="listwrap">
