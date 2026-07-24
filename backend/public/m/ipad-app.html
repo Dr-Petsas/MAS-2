@@ -1086,6 +1086,48 @@
     .rec-bar .btn { padding: 9px 12px; font-size: .8rem; }
     .timer { font-variant-numeric: tabular-nums; font-weight: 800; font-size: .95rem; min-width: 56px; }
     .spacer { flex: 1; }
+    /* Raummikro-Umschaltung (AP: Chef 25.07.2026) — gross, hochkontrastig,
+       barrierefrei. Nicht nur Farbe: Icon + Text + Zustandswort. */
+    .roommic-bar {
+      display: flex; align-items: stretch; gap: 10px; flex: none;
+      margin: 4px 0 2px; z-index: 6;
+    }
+    .roommic-toggle {
+      flex: 1; min-height: 60px; border: 2px solid var(--line); border-radius: 16px;
+      background: var(--card-strong); color: #fff; cursor: pointer;
+      display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+      text-align: left; font: inherit; transition: background .15s, border-color .15s;
+    }
+    .roommic-toggle .rm-icon {
+      flex: none; width: 40px; height: 40px; border-radius: 12px;
+      display: grid; place-items: center; font-size: 1.4rem; line-height: 1;
+      background: rgba(255,255,255,.08);
+    }
+    .roommic-toggle .rm-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .roommic-toggle .rm-title { font-weight: 850; font-size: .95rem; letter-spacing: -.01em; }
+    .roommic-toggle .rm-state { font-size: .8rem; font-weight: 800; }
+    /* AUS = nur Headset (neutral/grau). */
+    .roommic-toggle[aria-pressed="false"] .rm-state { color: var(--mute); }
+    /* AN = Headset + Raummikro (kraeftiges Gruen, hoher Kontrast). */
+    .roommic-toggle[aria-pressed="true"] {
+      background: linear-gradient(135deg, #1a9b8e, var(--lena));
+      border-color: var(--turq);
+      box-shadow: 0 8px 22px rgba(15,118,110,.4);
+    }
+    .roommic-toggle[aria-pressed="true"] .rm-icon { background: rgba(0,0,0,.22); }
+    .roommic-toggle[aria-pressed="true"] .rm-state { color: #eafff9; }
+    /* Kein Geraet: sichtbar deaktiviert + Warnfarbe. */
+    .roommic-toggle[data-device="none"] {
+      opacity: .6; border-style: dashed; border-color: var(--amber);
+    }
+    .roommic-toggle[data-device="none"] .rm-state { color: var(--amber); }
+    .roommic-toggle:focus-visible {
+      outline: 3px solid var(--turq); outline-offset: 3px;
+    }
+    .roommic-status {
+      flex: none; align-self: center; font-size: .74rem; font-weight: 800;
+      color: var(--mute); max-width: 40%;
+    }
     .nd-page { display: grid; grid-template-rows: auto 1fr auto; gap: 8px; flex: 1; min-height: 0; overflow: hidden; }
     .nd-head { display: flex; align-items: center; gap: 12px; flex: none; }
     .nd-head h2 { margin: 0; font-size: 1.1rem; font-weight: 900; letter-spacing: -.02em; }
@@ -1518,10 +1560,10 @@
               </div>
               <div class="rec-card rec-card-mic">
                 <div class="meters" id="metersBox" aria-label="Pegel">
-                  <div class="mic-toggle" id="micToggle" data-mode="ipad" role="group" aria-label="Mikrofonquelle">
-                    <button type="button" data-mic="ipad" class="is-on">iPad</button>
-                    <button type="button" data-mic="usb">USB</button>
-                    <button type="button" data-mic="bluetooth">Bluetooth</button>
+                  <div class="mic-toggle" id="micToggle" data-mode="ipad" role="radiogroup" aria-label="Mikrofonquelle">
+                    <button type="button" data-mic="ipad" class="is-on" role="radio" aria-checked="true" aria-label="Mikrofon: iPad">iPad</button>
+                    <button type="button" data-mic="usb" role="radio" aria-checked="false" aria-label="Mikrofon: USB">USB</button>
+                    <button type="button" data-mic="bluetooth" role="radio" aria-checked="false" aria-label="Mikrofon: Bluetooth">Bluetooth</button>
                   </div>
                   <div class="meter-cards">
                     <div class="meter-card meter-card-arzt">
@@ -1563,12 +1605,24 @@
                 </div>
               </details>
             </div>
+            <div class="roommic-bar">
+              <button type="button" class="roommic-toggle" id="btnRoomMic"
+                      role="switch" aria-pressed="false" data-device="unknown"
+                      aria-describedby="roomMicStatus">
+                <span class="rm-icon" aria-hidden="true">🎙️</span>
+                <span class="rm-txt">
+                  <span class="rm-title">Raummikro (Patient hören)</span>
+                  <span class="rm-state" id="roomMicState">AUS · nur Headset</span>
+                </span>
+              </button>
+              <span class="roommic-status" id="roomMicStatus" role="status" aria-live="assertive"></span>
+            </div>
             <div class="rec-bar">
               <button type="button" class="btn btn-ghost" data-back="2">Termin</button>
               <div class="timer" id="timer">00:00</div>
               <div class="spacer"></div>
-              <button type="button" class="btn btn-ghost" id="btnPause" disabled>Pause</button>
-              <button type="button" class="btn btn-rec" id="btnRec">● Aufnehmen</button>
+              <button type="button" class="btn btn-ghost" id="btnPause" disabled aria-label="Aufnahme pausieren">Pause</button>
+              <button type="button" class="btn btn-rec" id="btnRec" aria-pressed="false" aria-label="Aufnahme starten">● Aufnehmen</button>
               <button type="button" class="btn btn-primary" data-next="4">Weiter · Doku</button>
             </div>
           </div>
@@ -1597,12 +1651,24 @@
               </div>
               <div class="doku-tpl" id="dokuTpl"></div>
             </div>
+            <div class="roommic-bar">
+              <button type="button" class="roommic-toggle" id="btnRoomMic2"
+                      role="switch" aria-pressed="false" data-device="unknown"
+                      aria-describedby="roomMicStatus2">
+                <span class="rm-icon" aria-hidden="true">🎙️</span>
+                <span class="rm-txt">
+                  <span class="rm-title">Raummikro (Patient hören)</span>
+                  <span class="rm-state" id="roomMicState2">AUS · nur Headset</span>
+                </span>
+              </button>
+              <span class="roommic-status" id="roomMicStatus2" role="status" aria-live="assertive"></span>
+            </div>
             <div class="rec-bar">
               <button type="button" class="btn btn-ghost" data-back="3">Schema</button>
               <div class="timer" id="timer2">00:00</div>
               <div class="spacer"></div>
-              <button type="button" class="btn btn-ghost" id="btnPause2">Pause</button>
-              <button type="button" class="btn btn-rec" id="btnRec2">● Aufnehmen</button>
+              <button type="button" class="btn btn-ghost" id="btnPause2" aria-label="Aufnahme pausieren">Pause</button>
+              <button type="button" class="btn btn-rec" id="btnRec2" aria-pressed="false" aria-label="Aufnahme starten">● Aufnehmen</button>
               <button type="button" class="btn btn-primary" data-next="5">Weiter · Nachdiktat</button>
             </div>
           </div>
@@ -2955,19 +3021,20 @@
          Das iPad hoert wegen des iPadOS-Ein-Mikro-Limits NICHT selbst per USB —
          es setzt nur das Flag (POST /treatment/room-capture), den der Capture-
          Daemon pollt. Der Befehl kommt ueber das Headset (arzt-Segment). */
-      const RE_ROOM_MIC_ON = /^(?:und\s+|ok(?:ay)?\s+|so\s+)?(?:raum[\s-]*mikro(?:f(?:o|ø)n)?|mikro(?:fon)?\s*(?:2|zwei))[\s.,!?;:]*$/i;
-      const RE_ROOM_MIC_OFF = /^(?:und\s+|ok(?:ay)?\s+|so\s+)?(?:head[\s-]*set(?:\s*mikro)?|kopf[\s-]*h(?:ö|oe)rer|mikro(?:fon)?\s*(?:1|eins))[\s.,!?;:]*$/i;
+      const RE_ROOM_MIC_ON = /^(?:und\s+|ok(?:ay)?\s+|so\s+|clara[\s,]+)?(?:das\s+)?(?:raum[\s-]*mikro(?:f(?:o|ø)n)?(?:\s*an|\s*ein)?|mikro(?:fon)?\s*(?:2|zwei)(?:\s*an|\s*ein)?|patient(?:en)?[\s-]*mikro(?:f(?:o|ø)n)?)[\s.,!?;:]*$/i;
+      const RE_ROOM_MIC_OFF = /^(?:und\s+|ok(?:ay)?\s+|so\s+|clara[\s,]+)?(?:nur\s+)?(?:head[\s-]*set(?:\s*mikro)?|kopf[\s-]*h(?:ö|oe)rer|mikro(?:fon)?\s*(?:1|eins)|raum[\s-]*mikro(?:f(?:o|ø)n)?\s*(?:aus|ab))[\s.,!?;:]*$/i;
       let lenaRoomMicAt = 0;
-      let lenaRoomMicOn = false;
-      function maybeLenaRoomMic(text) {
-        const s = String(text || "").trim();
-        if (!s || s.length > 40) return false;
-        const on = RE_ROOM_MIC_ON.test(s);
-        const off = RE_ROOM_MIC_OFF.test(s);
-        if (!on && !off) return false;
-        if (Date.now() - lenaRoomMicAt < 3000) return true;
+      let lenaRoomMicOn = false;        // GEWUENSCHTER Zustand (Button/Voice)
+      let roomMicDevicePresent = null;  // aus /treatment/heartbeat: Daemon/Geraet da? (true/false/null)
+
+      /* EIN gemeinsamer Schaltpfad fuer Button UND Sprachbefehl (Chef 25.07.).
+         Setzt optimistisch den gewuenschten Zustand + spricht Bestaetigung; der
+         ECHTE Zustand kommt ueber /treatment/heartbeat (roomCapture) nach. */
+      function toggleRoomMic(on) {
+        on = !!on;
         lenaRoomMicAt = Date.now();
         lenaRoomMicOn = on;
+        renderRoomMicUi();
         (async () => {
           try { await masPost("/treatment/room-capture", { on }); } catch (_) {}
         })();
@@ -2977,6 +3044,60 @@
             : "Zurück auf Headset.");
         } catch (_) {}
         return true;
+      }
+
+      /* Spiegelt den Zustand auf BEIDE Buttons (Schema + Doku), barrierefrei:
+         aria-pressed + Zustandswort + Geraete-Hinweis (kein stiller Fehlschlag). */
+      function renderRoomMicUi() {
+        const on = lenaRoomMicOn;
+        const dev = roomMicDevicePresent; // true | false | null
+        [["btnRoomMic", "roomMicState", "roomMicStatus"],
+         ["btnRoomMic2", "roomMicState2", "roomMicStatus2"]].forEach(([bid, sid, stid]) => {
+          const btn = $(bid);
+          if (!btn) return;
+          btn.setAttribute("aria-pressed", on ? "true" : "false");
+          const stateEl = $(sid);
+          const statusEl = $(stid);
+          if (dev === false) {
+            btn.dataset.device = "none";
+            btn.setAttribute("aria-label",
+              "Raummikro einschalten — kein Raummikro-Gerät gefunden");
+            if (stateEl) stateEl.textContent = "Kein Raummikro-Gerät";
+            if (statusEl) statusEl.textContent = "kein Gerät am PC";
+          } else {
+            btn.dataset.device = dev === true ? "ok" : "unknown";
+            btn.setAttribute("aria-label", on
+              ? "Raummikro ausschalten — zurück auf nur Headset"
+              : "Raummikro einschalten — Patient zusätzlich hören");
+            if (stateEl) stateEl.textContent = on ? "AN · Headset + Raummikro" : "AUS · nur Headset";
+            if (statusEl) statusEl.textContent = on ? "Patient wird gehört" : "";
+          }
+        });
+      }
+
+      function maybeLenaRoomMic(text) {
+        const s = String(text || "").trim();
+        if (!s || s.length > 44) return false;
+        const on = RE_ROOM_MIC_ON.test(s);
+        const off = RE_ROOM_MIC_OFF.test(s);
+        if (!on && !off) return false;
+        if (Date.now() - lenaRoomMicAt < 3000) return true;
+        toggleRoomMic(on);
+        return true;
+      }
+
+      /* Echten Raummikro-Zustand aus /treatment/heartbeat uebernehmen: Daemon-
+         Presence + tatsaechliches An/Aus. Eine gerade lokal ausgeloeste
+         Umschaltung (< 4 s) gewinnt kurz (optimistic UI), damit der Button nicht
+         zwischen Tap und Server-Echo zurueckspringt. */
+      function applyRoomCaptureState(rc) {
+        if (!rc || typeof rc !== "object") return;
+        if (rc.devicePresent === true) roomMicDevicePresent = true;
+        else if (rc.devicePresent === false) roomMicDevicePresent = false;
+        if (Date.now() - lenaRoomMicAt > 4000 && typeof rc.on === "boolean") {
+          lenaRoomMicOn = rc.on;
+        }
+        renderRoomMicUi();
       }
 
       /** LiveKit-Push vom Worker: Final sofort (vor Firestore). */
@@ -3449,6 +3570,7 @@
             : [];
           segmentsForApptId = wantAppt;
           if (typeof data.structuredText === "string") serverSummary = data.structuredText;
+          if (data.roomCapture) applyRoomCaptureState(data.roomCapture);
           return savedSegments;
         } catch (_) {
           if (String(selectedAppt?.appointmentId || "") !== wantAppt) return [];
@@ -4501,6 +4623,7 @@
           if (!resp.ok || !data.ok || !Array.isArray(data.segments)) return;
           if (data.appointmentId && String(data.appointmentId) !== String(ids.appointmentId)) return;
           if (String(selectedAppt?.appointmentId || "") !== String(ids.appointmentId)) return;
+          if (data.roomCapture) applyRoomCaptureState(data.roomCapture);
           const known = new Set(savedSegments.map((s) => s.id).filter(Boolean));
           const knownText = new Set(
             savedSegments
@@ -4671,8 +4794,10 @@
         if (!box) return;
         box.dataset.mode = micMode;
         box.querySelectorAll("button").forEach((b) => {
-          b.classList.toggle("is-on", b.dataset.mic === micMode);
+          const on = b.dataset.mic === micMode;
+          b.classList.toggle("is-on", on);
           b.disabled = recording;
+          b.setAttribute("aria-checked", on ? "true" : "false");
         });
         const note = $("meterMonoNote");
         const swapBtn = $("btnStereoSwap");
@@ -4683,11 +4808,11 @@
         if ($("meterLabelArzt")) $("meterLabelArzt").textContent = "Arzt";
         if ($("meterLabelPat")) $("meterLabelPat").textContent = "Patient";
         if (!recording && !micPreview) {
-          setMicActiveLabel(micModeLabel() + " · Parakeet über Clara", false);
+          setMicActiveLabel(micModeLabel() + " · Conformer über Clara", false);
         }
         if (note) {
           note.hidden = false;
-          note.textContent = "Arzt-Doku = Claras Parakeet (" + micModeLabel() + ")";
+          note.textContent = "Arzt-Doku = Conformer über Clara (" + micModeLabel() + ")";
         }
       }
       $("micToggle")?.querySelectorAll("button").forEach((btn) => {
@@ -4710,6 +4835,10 @@
         if (micPreview && typeof micPreview.setSwap === "function") micPreview.setSwap(next);
         applyMicToggleUi();
       });
+      // Raummikro-Buttons (Schema + Doku): EIN Schaltpfad wie der Sprachbefehl.
+      $("btnRoomMic")?.addEventListener("click", () => toggleRoomMic(!lenaRoomMicOn));
+      $("btnRoomMic2")?.addEventListener("click", () => toggleRoomMic(!lenaRoomMicOn));
+      renderRoomMicUi();
       applyMicToggleUi();
       // Geräteliste vorwärmen (Labels nach Permission).
       if (typeof lenaListAudioInputs === "function") {
@@ -4901,12 +5030,14 @@
       let recToggleGen = 0;
 
       function setRecButtonsLive(live) {
-        const b1 = $("btnRec");
-        if (b1) {
-          b1.textContent = live ? "■ Stop" : "● Aufnehmen";
-          b1.classList.toggle("is-live", !!live);
-          b1.disabled = false;
-        }
+        [$("btnRec"), $("btnRec2")].forEach((b) => {
+          if (!b) return;
+          b.textContent = live ? "■ Stop" : "● Aufnehmen";
+          b.classList.toggle("is-live", !!live);
+          b.disabled = false;
+          b.setAttribute("aria-pressed", live ? "true" : "false");
+          b.setAttribute("aria-label", live ? "Aufnahme stoppen" : "Aufnahme starten");
+        });
         syncRecChrome();
       }
 
@@ -4917,7 +5048,13 @@
         docReleaseWakeLock();
         clearInterval(timerId); timerId = null;
         setRecButtonsLive(false);
-        if ($("btnPause")) { $("btnPause").disabled = true; $("btnPause").textContent = "Pause"; }
+        [$("btnPause"), $("btnPause2")].forEach((b) => {
+          if (!b) return;
+          b.textContent = "Pause";
+          b.setAttribute("aria-pressed", "false");
+          b.setAttribute("aria-label", "Aufnahme pausieren");
+        });
+        if ($("btnPause")) $("btnPause").disabled = true;
         $("recLive")?.classList.remove("is-on");
         const liveSpan = $("recLive")?.querySelector("span");
         if (liveSpan) liveSpan.textContent = "bereit";
@@ -5083,7 +5220,12 @@
       $("btnPause")?.addEventListener("click", () => {
         if (!recording) return;
         paused = !paused;
-        if ($("btnPause")) $("btnPause").textContent = paused ? "Weiter" : "Pause";
+        [$("btnPause"), $("btnPause2")].forEach((b) => {
+          if (!b) return;
+          b.textContent = paused ? "Weiter" : "Pause";
+          b.setAttribute("aria-pressed", paused ? "true" : "false");
+          b.setAttribute("aria-label", paused ? "Aufnahme fortsetzen" : "Aufnahme pausieren");
+        });
         const liveSpan = $("recLive")?.querySelector("span");
         if (liveSpan) liveSpan.textContent = paused ? "pause" : "live";
         patchRecorder(paused ? "paused" : "recording", {

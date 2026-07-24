@@ -556,7 +556,7 @@ router.post("/treatment/heartbeat", async (req, res) => {
         .set({ deviceLabel, lastSeenMs: Date.now() }, { merge: true });
     }
 
-    const [recSnap, segSnap, setSnap, noteSnap] = await Promise.all([
+    const [recSnap, segSnap, setSnap, noteSnap, rcSnap] = await Promise.all([
       ref.collection("treatment").doc("recorder").get(),
       ref.collection("dictations").orderBy("createdAt", "asc").limit(200).get(),
       admin.firestore()
@@ -564,6 +564,7 @@ router.post("/treatment/heartbeat", async (req, res) => {
         .collection("locations").doc(k.locationId)
         .collection("settings").doc("lenaRecorder").get(),
       ref.collection("treatment").doc("main").get(),
+      roomCapturePointerRef(k.clientId).get(),
     ]);
 
     const segments = segSnap.docs.map((d) => {
@@ -595,6 +596,20 @@ router.post("/treatment/heartbeat", async (req, res) => {
     // kann (Web-Lena lauscht ohnehin per Firestore-Listener auf treatment/main).
     const note = noteSnap.exists ? (noteSnap.data() || {}) : {};
 
+    // Raummikro-Zustand fuer den barrierefreien iPad-Button (AP 25.07.): echter
+    // An/Aus-Zustand + Daemon-Presence, damit der Button nicht fire-and-forget
+    // ist und "kein Raummikro-Geraet" ehrlich anzeigen kann.
+    const rc = rcSnap && rcSnap.exists ? (rcSnap.data() || {}) : {};
+    const daemonFresh = Number(rc.daemonSeenMs || 0) > Date.now() - 15000;
+    const roomCapture = {
+      on: rc.on === true
+        && Number(rc.updatedAtMs || 0) > Date.now() - 120000
+        && String(rc.appointmentId || "") === k.appointmentId,
+      devicePresent: daemonFresh,
+      deviceLabel: String(rc.daemonDeviceLabel || ""),
+      capturing: daemonFresh && rc.daemonCapturing === true,
+    };
+
     res.set("Cache-Control", "no-store");
     res.json({
       ok: true,
@@ -610,6 +625,7 @@ router.post("/treatment/heartbeat", async (req, res) => {
       structuredHtml: typeof note.structuredHtml === "string" ? note.structuredHtml : "",
       raumSource,
       arztSource,
+      roomCapture,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -828,6 +844,17 @@ router.get("/treatment/room-capture-state", async (req, res) => {
     const d = snap.exists ? (snap.data() || {}) : {};
     const fresh = Number(d.updatedAtMs || 0) > Date.now() - 120000;
     const on = d.on === true && fresh;
+    // Daemon-Presence fuer den iPad-Button: der Capture-Daemon meldet sich hier
+    // zyklisch (per Publish-Token). deviceLabel/capturing kommen als Query mit,
+    // damit das iPad "kein Raummikro-Geraet" ehrlich anzeigen kann.
+    if (tokenOk) {
+      const patch = { daemonSeenMs: Date.now() };
+      const lbl = String(req.query?.deviceLabel || "").slice(0, 60);
+      if (lbl) patch.daemonDeviceLabel = lbl;
+      const cap = String(req.query?.capturing || "");
+      patch.daemonCapturing = cap === "1" || cap === "true";
+      try { await roomCapturePointerRef(clientId).set(patch, { merge: true }); } catch (_) {}
+    }
     res.set("Cache-Control", "no-store");
     res.json({
       ok: true,
