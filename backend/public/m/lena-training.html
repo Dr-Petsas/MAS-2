@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#160a2e" />
+<title>Lena Trainingscenter</title>
+<style>
+  :root {
+    --bg: #12082a; --bg2: #1e0f42; --card: #241452; --card2: #2c1a63;
+    --ink: #f3edff; --muted: #b9a9e6; --line: #3a2670;
+    --accent: #b98bff; --accent2: #7c4dff; --gold: #ffcf4a;
+    --ok: #38d39f; --okbg: #10432f; --hard: #ffb24a; --hardbg: #4a3410;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 800px at 50% -10%, #2a1560 0%, var(--bg) 55%);
+    color: var(--ink); padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    overscroll-behavior: none;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 14px 14px 60px; }
+
+  /* Kopf: Lena lernt bei dir */
+  .hero { display: flex; align-items: center; gap: 14px; margin: 6px 0 14px; }
+  .orb {
+    width: 62px; height: 62px; border-radius: 50%; flex: 0 0 auto;
+    background: conic-gradient(from 220deg, var(--accent), var(--accent2), var(--gold), var(--accent));
+    box-shadow: 0 0 0 3px rgba(185,139,255,.25), 0 8px 30px rgba(124,77,255,.4);
+    animation: orbPulse 3.4s ease-in-out infinite;
+  }
+  @keyframes orbPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  .hero h1 { font-size: 1.35rem; margin: 0; letter-spacing: .2px; }
+  .hero .sub { color: var(--muted); font-size: .84rem; margin-top: 2px; }
+  .hero .lvl { font-size: .8rem; color: var(--gold); font-weight: 800; }
+
+  /* Fortschritt: Lena versteht Sie zu X % */
+  .cover {
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; margin-bottom: 12px;
+  }
+  .cover .lab { display: flex; justify-content: space-between; align-items: baseline; }
+  .cover .lab b { font-size: 1.05rem; }
+  .cover .pct { font-size: 1.7rem; font-weight: 900; color: var(--accent); }
+  .bar { height: 14px; background: #1a0f3d; border-radius: 10px; margin-top: 8px; overflow: hidden; border: 1px solid var(--line); }
+  .bar > i { display: block; height: 100%; width: 0%; border-radius: 10px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent), var(--gold));
+    transition: width .8s cubic-bezier(.2,.8,.2,1); }
+
+  /* Statuszeile */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; text-align: center; }
+  .stat .n { font-size: 1.25rem; font-weight: 900; }
+  .stat .t { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; min-height: 8px; }
+  .badge { font-size: .72rem; font-weight: 800; padding: 5px 10px; border-radius: 999px;
+    background: rgba(255,207,74,.14); color: var(--gold); border: 1px solid rgba(255,207,74,.35); }
+
+  /* Begriffe hinzufuegen */
+  .add { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin-bottom: 14px; }
+  .add h2 { font-size: .95rem; margin: 0 0 8px; }
+  .add .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  textarea, input[type=text] {
+    width: 100%; background: #150b34; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px 12px; font-size: .95rem; font-family: inherit; resize: vertical;
+  }
+  textarea { min-height: 64px; }
+  .btn {
+    appearance: none; border: 0; border-radius: 12px; padding: 11px 16px; font-size: .92rem;
+    font-weight: 800; color: #1a0b2e; background: linear-gradient(180deg, var(--accent), var(--accent2));
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  .btn.file { position: relative; overflow: hidden; }
+  .btn.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .hint { color: var(--muted); font-size: .78rem; margin-top: 8px; }
+
+  /* Begriffskarten */
+  .listhead { display: flex; justify-content: space-between; align-items: center; margin: 4px 2px 8px; }
+  .listhead h2 { font-size: 1rem; margin: 0; }
+  .listhead .cnt { color: var(--muted); font-size: .82rem; }
+  .cards { display: grid; gap: 8px; }
+  .term {
+    display: flex; align-items: center; gap: 12px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px;
+    border-left: 5px solid var(--line);
+  }
+  .term[data-s="confirmed"] { border-left-color: var(--ok); }
+  .term[data-s="hard"] { border-left-color: var(--hard); }
+  .term .info { flex: 1 1 auto; min-width: 0; }
+  .term .w { font-weight: 800; font-size: 1.02rem; }
+  .term .meta { font-size: .74rem; color: var(--muted); margin-top: 2px; }
+  .term .meta .mis { color: var(--hard); }
+  .tag { font-size: .64rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; }
+  .tag.confirmed { background: var(--okbg); color: var(--ok); }
+  .tag.hard { background: var(--hardbg); color: var(--hard); }
+  .tag.candidate { background: #2a1a5c; color: var(--muted); }
+  .rec {
+    flex: 0 0 auto; width: 52px; height: 52px; border-radius: 50%; border: 0; cursor: pointer;
+    background: radial-gradient(circle at 30% 30%, var(--accent), var(--accent2));
+    color: #fff; font-size: 1.4rem; display: grid; place-items: center;
+    box-shadow: 0 4px 16px rgba(124,77,255,.4);
+  }
+  .rec.recording { background: radial-gradient(circle at 30% 30%, #ff6b8b, #d61f4c); animation: recPulse .9s infinite; }
+  @keyframes recPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(214,31,76,.5);} 50% { box-shadow: 0 0 0 12px rgba(214,31,76,0);} }
+  .rec:disabled { opacity: .5; }
+  @keyframes flashOk { 0%{ background:#0f5138 } 100%{ background: var(--card) } }
+  @keyframes flashMis { 0%{ background:#5a3a10 } 100%{ background: var(--card) } }
+  .term.ok { animation: flashOk 1s ease-out; }
+  .term.mis { animation: flashMis 1s ease-out; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    background: #241452; border: 1px solid var(--line); color: var(--ink); padding: 12px 18px;
+    border-radius: 14px; font-weight: 700; box-shadow: 0 12px 40px rgba(0,0,0,.5);
+    opacity: 0; pointer-events: none; transition: all .3s; max-width: 90vw; text-align: center; z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.ok { border-color: var(--ok); } .toast.mis { border-color: var(--hard); }
+  .empty { color: var(--muted); text-align: center; padding: 30px 10px; font-size: .9rem; }
+  .gate { text-align: center; padding: 50px 20px; color: var(--muted); }
+  a.back { color: var(--accent); text-decoration: none; font-weight: 700; font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div style="margin-bottom:10px"><a class="back" href="./ipad-app.html">‹ zurück</a></div>
+
+  <div class="hero">
+    <div class="orb"></div>
+    <div>
+      <h1>Lena Trainingscenter</h1>
+      <div class="sub">Lena lernt <b>Ihren</b> Wortschatz — sprechen Sie ihr die Fachbegriffe vor.</div>
+      <div class="lvl" id="lvlTitle">Level 1 · Anwärterin</div>
+    </div>
+  </div>
+
+  <div id="gate" class="gate" style="display:none">
+    Dieses Gerät ist nicht mit einer Praxis gekoppelt.<br>Bitte zuerst das iPad koppeln.
+  </div>
+
+  <div id="main">
+    <div class="cover">
+      <div class="lab"><b>Lena versteht Sie zu</b><span class="pct" id="coverPct">0 %</span></div>
+      <div class="bar"><i id="coverBar"></i></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="stStreak">0</div><div class="t">🔥 Streak</div></div>
+      <div class="stat"><div class="n" id="stLevel">1</div><div class="t">Level</div></div>
+      <div class="stat"><div class="n" id="stXp">0</div><div class="t">XP</div></div>
+      <div class="stat"><div class="n" id="stSamples">0</div><div class="t">Aufnahmen</div></div>
+    </div>
+    <div class="badges" id="badges"></div>
+
+    <div class="add">
+      <h2>Neue Begriffe holen</h2>
+      <div class="row">
+        <button class="btn file">📄 PDF/Brief hochladen<input type="file" id="pdfFile" accept="application/pdf"></button>
+        <button class="btn ghost" id="pasteBtn">Text einfügen</button>
+      </div>
+      <div id="pasteArea" style="display:none; margin-top:8px">
+        <textarea id="pasteText" placeholder="Text aus einem Brief/Befund hier einfügen — Lena extrahiert die wichtigen Fachbegriffe."></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="extractBtn">Begriffe extrahieren</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="manualTerm" placeholder="oder einzelnen Begriff eintippen (z. B. Straumann BLX)" style="flex:1 1 200px">
+        <button class="btn ghost" id="manualBtn">+ hinzufügen</button>
+      </div>
+      <div class="hint" id="addHint">Die Begriffe bleiben in Ihrer Praxis. Extraktion läuft auf dem lokalen Praxis-Server.</div>
+    </div>
+
+    <div class="listhead">
+      <h2>Ihr Wortschatz</h2>
+      <span class="cnt" id="termCount">0 Begriffe</span>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div class="empty" id="emptyMsg">Noch keine Begriffe — lade oben einen Brief hoch oder tippe einen Begriff ein.</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+<script type="module">
+  const $ = (id) => document.getElementById(id);
+  let creds = null;
+  try { creds = JSON.parse(localStorage.getItem("pickadoc.ipad.v1") || "null"); } catch (_) {}
+  if (!creds || !creds.clientId || !creds.deviceId || !creds.deviceKey) {
+    $("gate").style.display = "block";
+    $("main").style.display = "none";
+  }
+
+  function credsBody(extra) {
+    return Object.assign({
+      clientId: creds?.clientId || "", deviceId: creds?.deviceId || "", deviceKey: creds?.deviceKey || "",
+    }, extra || {});
+  }
+  async function apiGet(path) {
+    const q = new URLSearchParams({ clientId: creds?.clientId || "", deviceId: creds?.deviceId || "", deviceKey: creds?.deviceKey || "" });
+    const r = await fetch(path + "?" + q.toString(), { cache: "no-store" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || String(r.status));
+    return d;
+  }
+  async function apiPost(path, body) {
+    const r = await fetch(path, {
+      method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
+      body: JSON.stringify(credsBody(body)),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || String(r.status));
+    return d;
+  }
+
+  let toastTimer = 0;
+  function toast(msg, kind) {
+    const t = $("toast");
+    t.textContent = msg; t.className = "toast show" + (kind ? " " + kind : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = "toast"; }, 2600);
+  }
+
+  const BADGE_LABELS = {
+    erstfluesterer: "🎤 Erstflüsterer", "fleissig-50": "💪 Fleißig (50)", "hundert-club": "💯 Hundert-Club",
+    "wortschatz-25": "📚 Wortschatz 25", dranbleiber: "🔥 Dranbleiber", wochenstreak: "🏆 Wochenstreak",
+    "verstanden-80": "✨ 80 % verstanden",
+  };
+
+  function renderStats(s) {
+    if (!s) return;
+    $("coverPct").textContent = (s.coveragePct || 0) + " %";
+    $("coverBar").style.width = Math.max(2, Math.min(100, s.coveragePct || 0)) + "%";
+    $("stStreak").textContent = s.streakDays || 0;
+    $("stLevel").textContent = s.level || 1;
+    $("stXp").textContent = s.xp || 0;
+    $("stSamples").textContent = s.samples || 0;
+    $("lvlTitle").textContent = "Level " + (s.level || 1) + " · " + (s.levelTitle || "");
+    const bx = $("badges"); bx.innerHTML = "";
+    (s.badges || []).forEach((b) => {
+      const el = document.createElement("span");
+      el.className = "badge"; el.textContent = BADGE_LABELS[b] || b;
+      bx.appendChild(el);
+    });
+  }
+
+  const CAT_LABEL = { eigenname: "Eigenname", marke: "Marke", medikament: "Medikament", fachbegriff: "Fachbegriff", abkuerzung: "Abkürzung" };
+  const STATUS_TAG = { confirmed: "sitzt", hard: "üben", candidate: "neu" };
+  let terms = [];
+
+  function renderTerms() {
+    const box = $("cards");
+    box.innerHTML = "";
+    $("termCount").textContent = terms.length + (terms.length === 1 ? " Begriff" : " Begriffe");
+    $("emptyMsg").style.display = terms.length ? "none" : "block";
+    for (const t of terms) {
+      const el = document.createElement("div");
+      el.className = "term"; el.dataset.s = t.status; el.dataset.id = t.id;
+      const mis = t.status === "hard" && t.lastMisrecognition
+        ? ` · <span class="mis">gehört: „${escapeHtml(t.lastMisrecognition)}"</span>` : "";
+      el.innerHTML =
+        '<div class="info">' +
+          '<div class="w">' + escapeHtml(t.term) + '</div>' +
+          '<div class="meta"><span class="tag ' + t.status + '">' + (STATUS_TAG[t.status] || t.status) + '</span> ' +
+          (CAT_LABEL[t.category] || t.category) +
+          (t.attempts ? " · " + t.recognizedOk + "/" + t.attempts + " erkannt" : "") + mis + '</div>' +
+        '</div>' +
+        '<button class="rec" title="Vorsprechen" aria-label="Aufnehmen">🎙️</button>';
+      el.querySelector(".rec").addEventListener("click", () => recordFor(t, el));
+      box.appendChild(el);
+    }
+  }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  async function loadAll() {
+    if (!creds) return;
+    try {
+      const d = await apiGet("/training/terms");
+      terms = d.terms || [];
+      renderTerms();
+      renderStats(d.stats);
+    } catch (e) { toast("Laden fehlgeschlagen: " + e.message, "mis"); }
+  }
+
+  /* ── Text einfügen ── */
+  $("pasteBtn").addEventListener("click", () => {
+    const a = $("pasteArea");
+    a.style.display = a.style.display === "none" ? "block" : "none";
+  });
+  $("extractBtn").addEventListener("click", async () => {
+    const text = $("pasteText").value.trim();
+    if (!text) return toast("Bitte Text einfügen.", "mis");
+    await runExtract(text, "paste");
+    $("pasteText").value = "";
+  });
+  $("manualBtn").addEventListener("click", async () => {
+    const term = $("manualTerm").value.trim();
+    if (!term) return;
+    try {
+      await apiPost("/training/term", { term });
+      $("manualTerm").value = "";
+      toast("„" + term + "\" hinzugefügt.", "ok");
+      await loadAll();
+    } catch (e) { toast("Fehler: " + e.message, "mis"); }
+  });
+
+  async function runExtract(text, source) {
+    $("addHint").textContent = "Lena liest den Text und sucht die Fachbegriffe …";
+    try {
+      const d = await apiPost("/training/extract", { text, source });
+      toast(d.added ? (d.added + " neue Begriffe gefunden!") : "Keine neuen Begriffe gefunden.", d.added ? "ok" : "");
+      $("addHint").textContent = "Die Begriffe bleiben in Ihrer Praxis. Extraktion läuft auf dem lokalen Praxis-Server.";
+      await loadAll();
+    } catch (e) {
+      $("addHint").textContent = "Extraktion nicht möglich (lokales Sprachmodell offline?).";
+      toast("Extraktion fehlgeschlagen: " + e.message, "mis");
+    }
+  }
+
+  /* ── PDF -> Text (pdf.js, im Browser) ── */
+  $("pdfFile").addEventListener("change", async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!file) return;
+    $("addHint").textContent = "PDF wird gelesen …";
+    try {
+      const pdfjs = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs");
+      pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjs.getDocument({ data: buf }).promise;
+      let text = "";
+      for (let p = 1; p <= Math.min(pdf.numPages, 30); p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        text += content.items.map((i) => i.str).join(" ") + "\n";
+      }
+      if (!text.trim()) { toast("Kein Text im PDF gefunden (Scan?).", "mis"); $("addHint").textContent = ""; return; }
+      await runExtract(text.slice(0, 40000), "pdf");
+    } catch (e) {
+      toast("PDF konnte nicht gelesen werden.", "mis");
+      $("addHint").textContent = "";
+    }
+  });
+
+  /* ── Mikro-Aufnahme -> 16 kHz PCM -> /training/attempt ── */
+  let audioCtx = null, activeRec = null;
+  function floatTo16kPCM(float32, srcRate) {
+    const ratio = srcRate / 16000;
+    const outLen = Math.floor(float32.length / ratio);
+    const out = new Int16Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const idx = i * ratio;
+      const lo = Math.floor(idx), hi = Math.min(float32.length - 1, lo + 1);
+      const s = float32[lo] + (float32[hi] - float32[lo]) * (idx - lo); // lineare Interpolation
+      const v = Math.max(-1, Math.min(1, s));
+      out[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+    return out;
+  }
+  function int16ToB64(int16) {
+    const bytes = new Uint8Array(int16.buffer);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  async function recordFor(term, el) {
+    // Laeuft schon eine Aufnahme? -> diese stoppen (Umschalter).
+    if (activeRec) { stopRecording(); return; }
+    const btn = el.querySelector(".rec");
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    } catch (e) { toast("Mikrofon nicht verfügbar.", "mis"); return; }
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") await audioCtx.resume();
+    const src = audioCtx.createMediaStreamSource(stream);
+    const proc = audioCtx.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    proc.onaudioprocess = (e) => { chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+    src.connect(proc); proc.connect(audioCtx.destination);
+    btn.classList.add("recording"); btn.textContent = "⏹";
+
+    const maxStop = setTimeout(() => stopRecording(), 5000);
+    activeRec = { stream, src, proc, chunks, btn, term, el, maxStop, srcRate: audioCtx.sampleRate };
+  }
+
+  async function stopRecording() {
+    const r = activeRec; activeRec = null;
+    if (!r) return;
+    clearTimeout(r.maxStop);
+    try { r.proc.disconnect(); r.src.disconnect(); } catch (_) {}
+    try { r.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    r.btn.classList.remove("recording"); r.btn.textContent = "🎙️"; r.btn.disabled = true;
+
+    const total = r.chunks.reduce((n, c) => n + c.length, 0);
+    if (total < r.srcRate * 0.3) { toast("Zu kurz — bitte den Begriff deutlich sprechen.", "mis"); r.btn.disabled = false; return; }
+    const merged = new Float32Array(total);
+    let off = 0; for (const c of r.chunks) { merged.set(c, off); off += c.length; }
+    const pcm = floatTo16kPCM(merged, r.srcRate);
+    const b64 = int16ToB64(pcm);
+
+    toast("Lena hört zu …");
+    try {
+      const d = await apiPost("/training/attempt", { termId: r.term.id, pcm16: b64, sampleRate: 16000 });
+      r.el.classList.remove("ok", "mis");
+      void r.el.offsetWidth; // Reflow, damit die Animation neu startet
+      r.el.classList.add(d.match ? "ok" : "mis");
+      if (d.match) toast("✅ „" + d.target + "\" sitzt!", "ok");
+      else toast("👂 Gehört: „" + (d.recognized || "—") + "\" — gemerkt, weiter üben.", "mis");
+      if (d.leveledUp) setTimeout(() => toast("🎉 Level " + d.stats.level + " · " + d.stats.levelTitle + "!", "ok"), 1400);
+      if (d.newBadges && d.newBadges.length) {
+        setTimeout(() => toast("🏅 Neues Abzeichen: " + (BADGE_LABELS[d.newBadges[0]] || d.newBadges[0]), "ok"), 2200);
+      }
+      renderStats(d.stats);
+      await loadAll();
+    } catch (e) {
+      toast("Aufnahme fehlgeschlagen: " + e.message, "mis");
+    } finally {
+      r.btn.disabled = false;
+    }
+  }
+
+  if (creds) loadAll();
+</script>
+</body>
+</html>

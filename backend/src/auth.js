@@ -89,6 +89,10 @@ function isPublic(req) {
     || p === "/treatment/structure" || p === "/treatment/billing"
   ) return true;
   if (p === "/treatment/lena-stt-url" && req.method === "GET") return true;
+  // Lena Trainingscenter (Chef 24.07.2026): laeuft auf dem gekoppelten iPad
+  // (nicht eingeloggt) — jede Route prueft selbst deviceKey ODER Bearer
+  // (trainingActor). Reine additive STT-Personalisierung, Clara unberuehrt.
+  if (p.startsWith("/training/")) return true;
   return false;
 }
 
