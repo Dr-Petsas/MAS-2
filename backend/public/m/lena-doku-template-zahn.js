@@ -11,6 +11,9 @@
     title: "Doku-Template · Zahnmedizin",
     fields: [
       { key: "anlass", label: "Anlass", persistence: "visit", quelle: "termin" },
+      // Patientenanliegen heute (Chef 24.07.2026): was der Patient HEUTE
+      // moechte/berichtet. Wird per Raummikro (source=raum, AP3) gefuellt.
+      { key: "anliegen", label: "Patientenanliegen heute", persistence: "visit", quelle: "patient" },
       { key: "anamnese", label: "Anamnese-Risiken", persistence: "patient", quelle: "signr_anamnese" },
       { key: "zaehne", label: "Zähne / Lokalisation", persistence: "visit", quelle: "diktat", type: "teeth" },
       { key: "befund", label: "Befund", persistence: "visit", quelle: "diktat" },
@@ -572,6 +575,28 @@
   }
 
   /** Box-Doku ohne grosses Schema (Schema war eigene Seite). */
+  /** Aufklaerungs-Box: gesprochener Text + Liste der unterschriebenen
+      Dokumente mit PDF-Link (falls vom Backend geliefert). */
+  function aufklaerungBodyHtml(state) {
+    const val = String(state.values.aufklaerung || "").trim();
+    const docs = Array.isArray(state.aufklaerungDocs) ? state.aufklaerungDocs : [];
+    let html = val
+      ? '<div class="tpl-val">' + escapeHtml(val) + "</div>"
+      : (docs.length ? "" : '<div class="tpl-val empty">—</div>');
+    if (docs.length) {
+      html += '<ul class="tpl-docs">';
+      for (const d of docs) {
+        const name = escapeHtml(String(d.name || "Dokument"));
+        const when = d.signedAtMs ? " · " + new Date(d.signedAtMs).toLocaleDateString("de-DE") : "";
+        html += d.url
+          ? '<li><a href="' + escapeAttr(d.url) + '" target="_blank" rel="noopener">📄 ' + name + "</a>" + when + "</li>"
+          : "<li>📄 " + name + when + " <em>(kein Link)</em></li>";
+      }
+      html += "</ul>";
+    }
+    return html;
+  }
+
   function renderBoxesOnly(container, state) {
     if (!container || !state) return;
     state.page = "doku";
@@ -580,14 +605,10 @@
       '<div class="tpl-title"><h2>Dokumentation</h2>' +
       '<span class="tpl-gaps" id="tplGaps">Lücken: ' + (state.gapCount || 0) + "</span></div>"
     );
-    if (state.values.zaehne) {
-      parts.push(
-        '<div class="tpl-field is-pre tpl-field--wide" data-key="zaehne">' +
-        '<div class="tpl-lab">Zähne / Status <span class="tpl-badge pre">aus Schema</span></div>' +
-        '<div class="tpl-val">' + escapeHtml(state.values.zaehne) + "</div></div>"
-      );
-    }
-    parts.push(fieldHtml("Anlass", "anlass", state));
+    // Reihenfolge (Chef 24.07.2026): oben Termingrund + Patientenanliegen,
+    // dann die diktierten Boxen. "Zähne / Status" hier bewusst raus.
+    parts.push(fieldHtml("Termingrund", "anlass", state));
+    parts.push(fieldHtml("Patientenanliegen heute", "anliegen", state));
     parts.push(fieldHtml("Anamnese-Risiken", "anamnese", state));
     parts.push(fieldHtml("Befund", "befund", state));
     parts.push(fieldHtml("Diagnose", "diagnose", state));
@@ -603,7 +624,7 @@
       for (const f of b.fields) parts.push(fieldHtml(f.label, f.key, state));
       parts.push("</div></div>");
     }
-    parts.push(fieldHtml("Aufklärung", "aufklaerung", state));
+    parts.push(fieldHtml("Aufklärung", "aufklaerung", state, aufklaerungBodyHtml(state)));
     // Komplikationen / Procedere: vorerst ausgeblendet (Chef 23.07.) —
     // nur anzeigen, wenn doch etwas diktiert wurde.
     if (String(state.values.komplikationen || "").trim()) {
@@ -620,7 +641,7 @@
    * SignR-/Akte-Anamnese in die Anamnese-Box legen (status=pre).
    * findings: [{ category, text }] von /treatment/current.
    */
-  function applySignrPrefill(state, { findings, docsStatus } = {}) {
+  function applySignrPrefill(state, { findings, docsStatus, aufklaerungDocs } = {}) {
     if (!state) return state;
     const lines = [];
     (Array.isArray(findings) ? findings : []).forEach((f) => {
@@ -634,12 +655,21 @@
       state.values.anamnese = lines.join(" · ");
       state.status.anamnese = "pre";
     }
-    const ds = String(docsStatus || "").toLowerCase();
-    if (ds === "green" || ds === "signed" || ds === "ok") {
-      if (!state.values.aufklaerung) {
-        state.values.aufklaerung = "Aufklärungsdokumente unterschrieben (SignR)";
+    // Unterschriebene Aufklaerungsdokumente (mit PDF-Link) an den State haengen
+    // -> aufklaerungBodyHtml rendert sie als Liste. Nur setzen, wenn geliefert;
+    // spaeter live diktierter Aufklaerungstext bleibt daneben erhalten.
+    if (Array.isArray(aufklaerungDocs) && aufklaerungDocs.length) {
+      state.aufklaerungDocs = aufklaerungDocs.slice(0, 12);
+      if (state.status.aufklaerung === "empty" || state.status.aufklaerung === "gap") {
         state.status.aufklaerung = "pre";
       }
+    }
+    const ds = String(docsStatus || "").toLowerCase();
+    if ((ds === "green" || ds === "signed" || ds === "ok") &&
+        !String(state.values.aufklaerung || "").trim() &&
+        !(Array.isArray(state.aufklaerungDocs) && state.aufklaerungDocs.length)) {
+      state.values.aufklaerung = "Aufklärungsdokumente unterschrieben (SignR)";
+      state.status.aufklaerung = "pre";
     }
     return state;
   }
@@ -748,6 +778,9 @@
       .replace(/&/g, "&amp;").replace(/</g, "&lt;")
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  // Attribut-Escape (href): escapeHtml maskiert bereits & < > " -> genuegt fuer
+  // doppelt gequotete Attribute.
+  const escapeAttr = escapeHtml;
 
   function setField(state, key, text, st) {
     const v = String(text || "").trim();
@@ -1273,6 +1306,7 @@
     if (state.dictMode === "befund" && !state.lastTouchedKey) state.lastTouchedKey = "befund";
 
     parts.push(fieldHtml("Anlass", "anlass", state));
+    parts.push(fieldHtml("Patientenanliegen heute", "anliegen", state));
     parts.push(fieldHtml("Anamnese-Risiken", "anamnese", state));
     parts.push(fieldHtml("Zähne / Status (KZBV)", "zaehne", state, teethHtml(state) +
       (state.values.zaehne ? '<div class="tpl-val" style="margin-top:6px">' + escapeHtml(state.values.zaehne) + "</div>" : ""),
@@ -1293,7 +1327,7 @@
       parts.push("</div></div>");
     }
 
-    parts.push(fieldHtml("Aufklärung", "aufklaerung", state));
+    parts.push(fieldHtml("Aufklärung", "aufklaerung", state, aufklaerungBodyHtml(state)));
     if (String(state.values.komplikationen || "").trim()) {
       parts.push(fieldHtml("Komplikationen", "komplikationen", state));
     }
@@ -1313,6 +1347,7 @@
       if (v) lines.push(lab + ": " + v);
     };
     push("Anlass", "anlass");
+    push("Patientenanliegen", "anliegen");
     push("Anamnese", "anamnese");
     push("Zähne", "zaehne");
     push("Befund", "befund");

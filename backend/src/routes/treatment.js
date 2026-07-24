@@ -371,6 +371,81 @@ router.post("/treatment/current", async (req, res) => {
   }
 });
 
+// Aufklaerungs-/Einwilligungs-Dokumente (SignR) am Namen erkennen. Anamnese
+// bleibt aussen vor (die fuellt die Anamnese-Box separat).
+const AUFKLAERUNG_NAME_RE =
+  /aufkl(?:ä|ae)r|einwillig|einverst(?:ä|ae)nd|consent|behandlungsvertrag|datenschutz|schweige/i;
+
+// POST /treatment/patient-docs — Prefill-Kontext fuer den AKTUELL am iPad
+// gewaehlten Termin (Chef 24.07.2026): strukturierte Anamnese (robust auch bei
+// manuell gewaehltem Termin, nicht nur Stuhl-Termin) UND die unterschriebenen
+// Aufklaerungsdokumente mit zeitlich begrenztem PDF-Link. Bewusst EIGENER,
+// selten (bei Termin-/Seitenwechsel) aufgerufener Endpunkt — nicht im Heartbeat,
+// damit der Poll keine pdocuments-Reads + signierten URLs pro Sekunde erzeugt.
+router.post("/treatment/patient-docs", async (req, res) => {
+  try {
+    const who = await companionDeviceOk(req);
+    if (!who) return res.status(401).json({ ok: false, error: "device_auth_failed" });
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+
+    let patientId = String(req.body?.patientId || "").trim();
+    if (!patientId) {
+      const snap = await apptRef(k.clientId, k.locationId, k.appointmentId).get().catch(() => null);
+      const o = snap?.exists ? (snap.data() || {}) : {};
+      patientId = String(o.patient?.id || o.patientId || "").trim();
+    }
+
+    const anamneseFindings = [];
+    let aufklaerungDocs = [];
+    if (patientId) {
+      const [ana, docs] = await Promise.all([
+        getPatientAnamnese(k.clientId, { patientId }).catch(() => null),
+        admin.firestore()
+          .collection("clients").doc(k.clientId)
+          .collection("locations").doc(k.locationId)
+          .collection("patients").doc(patientId)
+          .collection("pdocuments").get()
+          .then((s) => s.docs.map((d) => ({ id: d.id, ...(d.data() || {}) })))
+          .catch(() => []),
+      ]);
+      if (ana?.ok && Array.isArray(ana.findings)) {
+        for (const f of ana.findings.slice(0, 20)) {
+          const text = String(f?.text || "").trim().slice(0, 400);
+          if (text) anamneseFindings.push({ category: String(f?.category || "").trim().slice(0, 80), text });
+        }
+      }
+      const signed = (docs || []).filter((d) =>
+        AUFKLAERUNG_NAME_RE.test(String(d.name || "")) &&
+        (d.status === "signed" || d.pdfCreatedAt));
+      signed.sort((a, b) => tsToMs(b.pdfCreatedAt) - tsToMs(a.pdfCreatedAt));
+      const bucket = admin.storage().bucket();
+      aufklaerungDocs = await Promise.all(signed.slice(0, 12).map(async (d) => {
+        const path = `clients/${k.clientId}/locations/${k.locationId}/patients/${patientId}/documents/${d.id}.pdf`;
+        let url = "";
+        try {
+          const [signedUrl] = await bucket.file(path).getSignedUrl({
+            version: "v4", action: "read", expires: Date.now() + 15 * 60 * 1000,
+          });
+          url = signedUrl;
+        } catch { /* PDF fehlt/kein Zugriff -> Eintrag ohne Link */ }
+        return {
+          id: String(d.id),
+          name: String(d.name || "Dokument").slice(0, 120),
+          status: d.status === "signed" ? "signed" : (d.pdfCreatedAt ? "signed" : String(d.status || "")),
+          signedAtMs: tsToMs(d.pdfCreatedAt) || 0,
+          url,
+        };
+      }));
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, patientId, anamneseFindings, aufklaerungDocs });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 // POST /treatment/heartbeat — EIN Poll fuer alles: schreibt die Presence des
 // Geraets (LED auf der Lena-Seite) und liefert Termin-Metadaten, Aufnahme-
 // Zustand und Diktat-Segmente zurueck. presence:false = nur lesen (z. B.

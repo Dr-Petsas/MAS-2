@@ -1085,5 +1085,23 @@ W.LenaDokuZahn.applySchemaSegments(stW, [
 ]);
 check("Weiter-Quittung: keine Geister-Zaehne", stW.teeth.size === 1 && stW.teeth.has(27), [...stW.teeth].join(","));
 
+// 25) AP2 (Chef 24.07.2026): neue Box "anliegen", Layout, Aufklaerungsdokumente.
+const stAp2 = W.LenaDokuZahn.emptyState("Kontrolle");
+check("AP2: Feld 'anliegen' existiert", "anliegen" in stAp2.values, JSON.stringify(Object.keys(stAp2.values)));
+W.LenaDokuZahn.applySignrPrefill(stAp2, {
+  findings: [{ category: "Allergie", text: "Penicillin" }],
+  aufklaerungDocs: [
+    { id: "d1", name: "Aufklärung PA-Behandlung", status: "signed", signedAtMs: 1720000000000, url: "https://x/y.pdf?sig=1" },
+  ],
+});
+check("AP2: Anamnese-Prefill gesetzt", /Penicillin/.test(stAp2.values.anamnese), stAp2.values.anamnese);
+check("AP2: aufklaerungDocs am State", Array.isArray(stAp2.aufklaerungDocs) && stAp2.aufklaerungDocs.length === 1, "");
+const boxAp2 = { innerHTML: "" };
+W.LenaDokuZahn.renderBoxesOnly(boxAp2, stAp2);
+check("AP2: Layout zeigt Termingrund", /Termingrund/.test(boxAp2.innerHTML), "");
+check("AP2: Layout zeigt Patientenanliegen heute", /Patientenanliegen heute/.test(boxAp2.innerHTML), "");
+check("AP2: 'Zähne / Status'-Vorabox raus", !/Zähne \/ Status/.test(boxAp2.innerHTML), "");
+check("AP2: Aufklaerung-PDF verlinkt", /href="https:\/\/x\/y\.pdf/.test(boxAp2.innerHTML) && /Aufklärung PA-Behandlung/.test(boxAp2.innerHTML), "");
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

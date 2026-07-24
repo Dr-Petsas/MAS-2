@@ -959,6 +959,32 @@
     .tpl-badge.pre { color: #0f5c54; background: #b8e6df; }
     .tpl-badge.live { color: #0d5c32; background: #b8e6c8; }
     .tpl-badge.gap { color: #7a5500; background: #ffe08a; }
+    /* Rohtranskript auf Schritt 4 (Chef 24.07.) */
+    .doku-transcript-wrap {
+      flex: 0 0 auto; max-height: 26vh; display: flex; flex-direction: column;
+      gap: 4px; min-height: 0;
+    }
+    .doku-transcript-lab {
+      font-size: .68rem; font-weight: 900; letter-spacing: .04em;
+      text-transform: uppercase; color: #3d3a34;
+    }
+    .doku-dialog {
+      flex: 1 1 auto; min-height: 0; overflow-y: auto;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    }
+    .doku-dialog .bubble.is-consumed { opacity: .38; filter: grayscale(.5); }
+    /* Aufleuchten beim Erkennen/Eintragen (Transkript-Bubble + Zielbox) */
+    @keyframes lenaFlash {
+      0% { background: #fff3b0; box-shadow: 0 0 0 2px #ffd54a; }
+      50% { background: #fff8d6; box-shadow: 0 0 0 3px #ffcf33; }
+      100% { background: inherit; box-shadow: none; }
+    }
+    .lena-flash { animation: lenaFlash .45s ease-in-out 3; border-radius: 10px; }
+    /* Aufklaerungs-Dokumentliste mit PDF-Links */
+    .tpl-docs { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+    .tpl-docs li { font-size: .92rem; font-weight: 600; color: #222; }
+    .tpl-docs a { color: #0b5cff; text-decoration: none; font-weight: 800; }
+    .tpl-docs a:active { opacity: .7; }
     .tpl-val {
       font-size: 1.02rem; font-weight: 700; line-height: 1.4;
       min-height: 1.25em; color: #111;
@@ -1540,6 +1566,10 @@
               <p class="mic-active" id="micActiveLabel2">Weiter diktieren füllt die Boxen. Schema bleibt unverändert.</p>
             </div>
             <div class="doku-wrap">
+              <div class="doku-transcript-wrap">
+                <div class="doku-transcript-lab">Rohtranskript</div>
+                <div class="dialog doku-dialog" id="dialog4"></div>
+              </div>
               <div class="doku-tpl" id="dokuTpl"></div>
             </div>
             <div class="rec-bar">
@@ -2412,18 +2442,50 @@
       // Letzte Arzt-Aktivitaet (Partial/Final) — Souffleuse nur in Pausen.
       let lastArztSpeechAt = 0;
 
+      // Per-Termin nachgeladene Anamnese/Aufklaerung (POST /treatment/patient-docs),
+      // damit der Prefill auch bei MANUELL gewaehltem Termin stimmt (Chef 24.07.).
+      let patientDocsByAppt = {};
+      let patientDocsInflight = {};
       function anamnesePrefillSource() {
         const chair = chairCurrent || {};
         const appt = selectedAppt || {};
         const same =
           chair.appointmentId && appt.appointmentId &&
           String(chair.appointmentId) === String(appt.appointmentId);
-        return {
-          findings: same
+        const cached = patientDocsByAppt[String(appt.appointmentId || "")] || {};
+        const findings = (cached.anamneseFindings && cached.anamneseFindings.length)
+          ? cached.anamneseFindings
+          : (same
             ? (chair.anamneseFindings || [])
-            : (appt.anamneseFindings || chair.anamneseFindings || []),
+            : (appt.anamneseFindings || chair.anamneseFindings || []));
+        return {
+          findings,
           docsStatus: appt.docsStatus || chair.docsStatus || "",
+          aufklaerungDocs: cached.aufklaerungDocs || [],
         };
+      }
+      /** Anamnese-Findings + Aufklaerungsdokumente fuer den AKTUELL gewaehlten
+          Termin nachladen (einmal pro Termin), dann Prefill + Seite auffrischen. */
+      async function loadPatientDocs(force) {
+        const apptId = String(selectedAppt?.appointmentId || "");
+        if (!apptId) return;
+        if (!force && (patientDocsByAppt[apptId] || patientDocsInflight[apptId])) return;
+        patientDocsInflight[apptId] = true;
+        try {
+          const data = await masPost("/treatment/patient-docs", { patientId: selectedAppt?.patientId || "" });
+          patientDocsByAppt[apptId] = {
+            anamneseFindings: Array.isArray(data.anamneseFindings) ? data.anamneseFindings : [],
+            aufklaerungDocs: Array.isArray(data.aufklaerungDocs) ? data.aufklaerungDocs : [],
+          };
+          if (String(selectedAppt?.appointmentId || "") === apptId && dokuState) {
+            window.LenaDokuZahn?.applySignrPrefill?.(dokuState, anamnesePrefillSource());
+            if (isDokuBoxesStep()) refreshLivePage(savedSegments, "");
+          }
+        } catch (e) {
+          console.warn("patient-docs", e);
+        } finally {
+          delete patientDocsInflight[apptId];
+        }
       }
       function isSchemaStep() { return !!$("wiz3")?.classList.contains("is-show"); }
       function isDokuBoxesStep() { return !!$("wiz4")?.classList.contains("is-show"); }
@@ -2448,6 +2510,8 @@
           dokuState.appointmentId = apptId;
           Zahn.applySignrPrefill(dokuState, anamnesePrefillSource());
         }
+        // Anamnese/Aufklaerung fuer diesen Termin nachladen (einmal, gecached).
+        loadPatientDocs();
         return dokuState;
       }
 
@@ -2489,12 +2553,86 @@
         Zahn.applySegments(dokuState, clinical);
         Zahn.ensureGaps?.(dokuState);
         Zahn.renderBoxesOnly(box, dokuState);
+        renderDokuTranscript(list);
         if (recording && !paused) {
           const liveSpan = $("recLive2")?.querySelector("span");
           if (liveSpan) {
             liveSpan.textContent = dokuState.dictMode === "befund" ? "Befund-Diktat" : "live · Boxen";
           }
         }
+      }
+
+      /* ── Rohtranskript auf Schritt 4 (Chef 24.07.2026): erkannte Segmente
+         leuchten kurz auf, wandern in die Box (Box leuchtet) und werden dann im
+         Transkript ausgegraut. Rein visuell/read-only — die Boxen-Fuellung
+         selbst macht applySegments. ─────────────────────────────────────── */
+      const dokuConsumedSegIds = new Set();
+      let dokuTranscriptInit = false;
+      const byStartMs = (a, b) => {
+        const sa = Number(a.startMs) || 0, sb = Number(b.startMs) || 0;
+        if (sa && sb) return sa - sb;
+        if (sa) return -1;
+        if (sb) return 1;
+        return 0;
+      };
+      /** Zielbox eines Segments bestimmen (fuer den Box-Flash). */
+      function dokuTargetBox(text) {
+        const t = String(text || "");
+        try {
+          const routed = window.LenaDokuZahn?.routeSegments?.(null, [t]) || [];
+          const r = routed.find((x) => x && x.box);
+          if (r) return r.box;
+        } catch (_) {}
+        try {
+          const fdis = window.LenaVoiceChart?.extractFdi?.(t) || [];
+          if (fdis.length) return "zaehne";
+        } catch (_) {}
+        return "befund";
+      }
+      function flashBox(key) {
+        const el = $("dokuTpl")?.querySelector('.tpl-field[data-key="' + key + '"]');
+        if (!el) return;
+        el.classList.remove("lena-flash");
+        void el.offsetWidth; // Reflow: Animation auch bei erneutem Treffer neu starten
+        el.classList.add("lena-flash");
+        setTimeout(() => el.classList.remove("lena-flash"), 1400);
+      }
+      function renderDokuTranscript(segs) {
+        const box = $("dialog4");
+        if (!box) return;
+        const ordered = (segs || []).slice().sort(byStartMs);
+        // Erst-Rendern: vorhandene Segmente OHNE Flash als konsumiert setzen
+        // (kein Flash-Gewitter beim Oeffnen der Seite).
+        if (!dokuTranscriptInit) {
+          ordered.forEach((s) => {
+            if (s.id && String(s.source || "").toLowerCase() !== "nachdiktat") dokuConsumedSegIds.add(s.id);
+          });
+          dokuTranscriptInit = true;
+        }
+        const freshBoxes = [];
+        box.innerHTML = "";
+        ordered.forEach((s) => {
+          const src = String(s.source || "raum").toLowerCase();
+          const who = src === "arzt" ? "Arzt" : "Gespräch";
+          const div = document.createElement("div");
+          div.className = "bubble " + (who === "Arzt" ? "a" : "p");
+          if (s.id) div.dataset.segId = s.id;
+          div.innerHTML = bubbleHtml(who, s.text, "");
+          const clinical = src !== "nachdiktat";
+          if (clinical && s.id) {
+            if (dokuConsumedSegIds.has(s.id)) {
+              div.classList.add("is-consumed");
+            } else {
+              div.classList.add("lena-flash");
+              dokuConsumedSegIds.add(s.id);
+              freshBoxes.push(dokuTargetBox(s.text));
+            }
+          }
+          box.appendChild(div);
+        });
+        box.scrollTop = box.scrollHeight;
+        // Zielboxen der frisch erkannten Segmente kurz aufleuchten lassen.
+        [...new Set(freshBoxes)].forEach(flashBox);
       }
 
       function refreshLivePage(segs, livePartial) {
