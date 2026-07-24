@@ -197,6 +197,7 @@
   .hero { margin: 0; flex: 0 0 auto; }
   #gate { flex: 1 1 auto; }
   #main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  .mcol-a { display: contents; }
   .cover, .stats, .badges, .add { margin: 0; flex: 0 0 auto; }
   .tp { margin: 0; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .tp-stage { flex: 1 1 auto; min-height: 84px; }
@@ -224,6 +225,20 @@
     .tp { padding: 10px 12px; }
     .tp-cur { font-size: 1.2rem; }
   }
+
+  /* Querformat: zwei Spalten (Generierung links, Teleprompter rechts), volle Breite */
+  @media (min-aspect-ratio: 1/1) {
+    .wrap { max-width: none; }
+    #main { flex-direction: row; align-items: stretch; gap: 12px; }
+    .mcol-a {
+      display: flex; flex-direction: column; gap: 8px;
+      flex: 1 1 0; min-width: 0; min-height: 0; overflow: auto;
+    }
+    .tp { flex: 1 1 0; min-width: 0; }
+    details.listwrap { display: none; }
+    .badges { display: none; }
+    .hero .sub { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -244,6 +259,7 @@
   </div>
 
   <div id="main">
+    <div class="mcol-a">
     <div class="cover">
       <div class="lab"><b>Lena versteht Sie zu</b><span class="pct" id="coverPct">0 %</span></div>
       <div class="bar"><i id="coverBar"></i></div>
@@ -302,6 +318,7 @@
         <button class="btn ghost" id="manualBtn">+ hinzufügen</button>
       </div>
       <div class="hint" id="addHint">Alles bleibt in Ihrer Praxis. Extraktion &amp; Generierung laufen auf dem lokalen Praxis-Server.</div>
+    </div>
     </div>
 
     <div class="tp" id="tp" style="display:none">
