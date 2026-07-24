@@ -3619,7 +3619,7 @@
         if (!ta) return;
         const nd = (segs || []).filter((s) => String(s.source || "").toLowerCase() === "nachdiktat");
         if (!nd.length) return;
-        ta.value = nd.map((s) => s.text).join(" ");
+        ta.value = nd.map((s) => segShow(s)).join(" ");
       }
 
       function showStep(n) {
@@ -4035,7 +4035,7 @@
             if (ta) {
               ta.value = (ta.value || "") + ((ta.value.trim() ? " " : "") + s.text);
             }
-            savedSegments.push({ id: s.id, text: s.text, source: "nachdiktat" });
+            savedSegments.push({ id: s.id, text: s.text, textCorrected: s.textCorrected || "", source: "nachdiktat" });
             added = true;
           }
           if (added) {
