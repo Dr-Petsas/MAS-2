@@ -2549,8 +2549,17 @@
         if (!ensureDokuState()) return;
         dokuState.page = "doku";
         const list = Array.isArray(segs) ? segs : savedSegments;
-        const clinical = (list || []).filter((s) => String(s.source || "").toLowerCase() !== "nachdiktat");
+        // Arzt/Doku-Diktat -> Doku-Boxen; Raum/Patient -> Patientenanliegen (AP3).
+        const clinical = (list || []).filter((s) => {
+          const sc = String(s.source || "").toLowerCase();
+          return sc !== "nachdiktat" && sc !== "raum" && sc !== "patient";
+        });
+        const raum = (list || []).filter((s) => {
+          const sc = String(s.source || "").toLowerCase();
+          return sc === "raum" || sc === "patient";
+        });
         Zahn.applySegments(dokuState, clinical);
+        Zahn.applyAnliegenSegments?.(dokuState, raum);
         Zahn.ensureGaps?.(dokuState);
         Zahn.renderBoxesOnly(box, dokuState);
         renderDokuTranscript(list);
@@ -2625,7 +2634,7 @@
             } else {
               div.classList.add("lena-flash");
               dokuConsumedSegIds.add(s.id);
-              freshBoxes.push(dokuTargetBox(s.text));
+              freshBoxes.push((src === "raum" || src === "patient") ? "anliegen" : dokuTargetBox(s.text));
             }
           }
           box.appendChild(div);
@@ -2679,6 +2688,24 @@
           out.push(t);
         }
         return out;
+      }
+      /** AP3-Diarisierung: Raum-Segment ist Uebersprechen eines KUERZLICH
+          gesprochenen Arzt-Segments? (Token-Overlap gegen die letzten Arzt-
+          Segmente, 8-s-Fenster). Dann NICHT als Patientenanliegen fuehren. */
+      function raumEchoesArzt(text) {
+        const seg = echoTokens(text);
+        if (seg.length < 2) return false;
+        const now = Date.now();
+        const recentArzt = savedSegments.filter((s) =>
+          String(s.source || "").toLowerCase() === "arzt" &&
+          now - (Number(s.startMs) || 0) < 8000);
+        for (const a of recentArzt) {
+          const ref = new Set(echoTokens(a.text));
+          const hits = seg.filter((t) => ref.has(t)).length;
+          const tol = seg.length >= 4 ? 1 : 0;
+          if (hits >= 2 && hits >= seg.length - tol) return true;
+        }
+        return false;
       }
       /** Segment sieht aus wie das zuletzt gesprochene Echo? -> verwerfen.
           Einzel-Token nie verwerfen (Einzelziffern-Paarung "Vier."/"Sechs."). */
@@ -2879,6 +2906,36 @@
         return true;
       }
 
+      /* ── "Raummikro" / "Mikro 2" (Chef 24.07.2026, AP3): schaltet die
+         Raummikro-Capture auf dem ZWEITEN Geraet (Computer) an. "Headset" /
+         "Mikro 1" schaltet sie wieder aus (dann laeuft nur das BT-Headset).
+         Das iPad hoert wegen des iPadOS-Ein-Mikro-Limits NICHT selbst per USB —
+         es setzt nur das Flag (POST /treatment/room-capture), den der Capture-
+         Daemon pollt. Der Befehl kommt ueber das Headset (arzt-Segment). */
+      const RE_ROOM_MIC_ON = /^(?:und\s+|ok(?:ay)?\s+|so\s+)?(?:raum[\s-]*mikro(?:f(?:o|ø)n)?|mikro(?:fon)?\s*(?:2|zwei))[\s.,!?;:]*$/i;
+      const RE_ROOM_MIC_OFF = /^(?:und\s+|ok(?:ay)?\s+|so\s+)?(?:head[\s-]*set(?:\s*mikro)?|kopf[\s-]*h(?:ö|oe)rer|mikro(?:fon)?\s*(?:1|eins))[\s.,!?;:]*$/i;
+      let lenaRoomMicAt = 0;
+      let lenaRoomMicOn = false;
+      function maybeLenaRoomMic(text) {
+        const s = String(text || "").trim();
+        if (!s || s.length > 40) return false;
+        const on = RE_ROOM_MIC_ON.test(s);
+        const off = RE_ROOM_MIC_OFF.test(s);
+        if (!on && !off) return false;
+        if (Date.now() - lenaRoomMicAt < 3000) return true;
+        lenaRoomMicAt = Date.now();
+        lenaRoomMicOn = on;
+        (async () => {
+          try { await masPost("/treatment/room-capture", { on }); } catch (_) {}
+        })();
+        try {
+          lenaEchoSpeak(on
+            ? "Raummikro ist an, ich höre den Patienten."
+            : "Zurück auf Headset.");
+        } catch (_) {}
+        return true;
+      }
+
       /** LiveKit-Push vom Worker: Final sofort (vor Firestore). */
       function ingestLenaDokuSegment(obj) {
         if (!recording || paused) return;
@@ -2888,10 +2945,20 @@
         const wantAppt = String(selectedAppt?.appointmentId || "");
         const gotAppt = String(obj?.appointmentId || "");
         if (wantAppt && gotAppt && wantAppt !== gotAppt) return;
-        const src = String(obj?.source || "arzt").toLowerCase() || "arzt";
-        if (src !== "arzt" && src !== "nachdiktat") return;
+        let src = String(obj?.source || "arzt").toLowerCase() || "arzt";
+        // AP3 (Chef 24.07.2026): Raummikro-Segmente (Patient) zulassen und in die
+        // Box "Patientenanliegen" leiten; Arzt-Segmente weiter in die Doku-Boxen.
+        if (src === "patient") src = "raum";
+        if (src !== "arzt" && src !== "nachdiktat" && src !== "raum") return;
         // Rueckkopplungs-Schutz: eigenes Echo nicht als Diktat committen.
         if (src === "arzt" && lenaEchoGuardHit(text)) {
+          liveDokuPartial = "";
+          return;
+        }
+        // Diarisierungs-Dedup (AP3): das Raummikro hoert den Arzt mit. Ein
+        // Raum-Segment, das einem KUERZLICH gesprochenen Arzt-Segment entspricht,
+        // ist Uebersprechen und darf NICHT als Patientenanliegen landen.
+        if (src === "raum" && raumEchoesArzt(text)) {
           liveDokuPartial = "";
           return;
         }
@@ -2911,12 +2978,22 @@
         });
         if (wantAppt) segmentsForApptId = wantAppt;
         liveDokuPartial = "";
+        if (src === "raum") {
+          // Patientensprache: Transkript-Bubble "Gespräch" + Box-Rebuild
+          // (routeSegments/applyAnliegenSegments legt sie in "anliegen").
+          try { appendBubble("Gespräch", text, id, Number(obj?.startMs) || Date.now()); } catch (_) {}
+          refreshLivePage(savedSegments, "");
+          return;
+        }
         if (src === "arzt") {
           lastArztSpeechAt = Date.now();
           try { appendBubble("Arzt", text, id, Number(obj?.startMs) || Date.now()); } catch (_) {}
           // Steuer-Segment "Clara Start"/"zurueck zu Clara": zurueck zu Clara,
           // kein Diktat-Echo/Paint mehr noetig.
           if (maybeLenaReturnToClara(text)) return;
+          // Steuer-Segment "Raummikro"/"Mikro 2": 2. Geraet an/aus (AP3). Nur in
+          // der Gespraechs-/Doku-Phase sinnvoll (nicht im Schema-Diktat).
+          if (!isSchemaStep() && maybeLenaRoomMic(text)) return;
           // Steuer-Segment "01 fertig": Quittung + Seitenwechsel, kein
           // Befund-Echo/Schema-Paint mehr noetig (showStep(4) rendert Doku).
           if (maybeLenaSchemaFinish(text, Number(obj?.startMs) || 0)) return;

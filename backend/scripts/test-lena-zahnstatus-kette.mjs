@@ -1103,5 +1103,22 @@ check("AP2: Layout zeigt Patientenanliegen heute", /Patientenanliegen heute/.tes
 check("AP2: 'Zähne / Status'-Vorabox raus", !/Zähne \/ Status/.test(boxAp2.innerHTML), "");
 check("AP2: Aufklaerung-PDF verlinkt", /href="https:\/\/x\/y\.pdf/.test(boxAp2.innerHTML) && /Aufklärung PA-Behandlung/.test(boxAp2.innerHTML), "");
 
+// 26) AP3 (Chef 24.07.2026): Raum-/Patienten-Segmente -> Box "anliegen".
+const stAp3 = W.LenaDokuZahn.emptyState("Kontrolle");
+W.LenaDokuZahn.applyAnliegenSegments(stAp3, [
+  { text: "Mir tut der linke Backenzahn weh", startMs: 1000 },
+  { text: "seit drei Tagen", startMs: 2000 },
+  { text: "Mir tut der linke Backenzahn weh", startMs: 3000 },
+]);
+check("AP3: Patientensprache landet in 'anliegen'",
+  /Backenzahn/.test(stAp3.values.anliegen) && /drei Tagen/.test(stAp3.values.anliegen),
+  stAp3.values.anliegen);
+check("AP3: Dublette wird nicht doppelt eingetragen",
+  (stAp3.values.anliegen.match(/Backenzahn/g) || []).length === 1, stAp3.values.anliegen);
+check("AP3: Raum-Segment beruehrt Zahn-Chart NICHT", stAp3.teeth.size === 0, [...stAp3.teeth].join(","));
+const boxAp3 = { innerHTML: "" };
+W.LenaDokuZahn.renderBoxesOnly(boxAp3, stAp3);
+check("AP3: 'anliegen' erscheint im Layout", /Backenzahn/.test(boxAp3.innerHTML), "");
+
 console.log(fail ? "FAZIT: " + fail + " Fehler" : "FAZIT: Kette OK");
 process.exitCode = fail ? 1 : 0;

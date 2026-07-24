@@ -637,6 +637,78 @@ router.post("/treatment/lena-segment", async (req, res) => {
   }
 });
 
+// AP3 (Chef 24.07.2026) — Raummikro auf einem ZWEITEN Geraet (Computer). Das
+// iPad kann per BT-Headset + USB-Raummikro nicht GLEICHZEITIG hoeren (iPadOS
+// Ein-Mikro-Limit), darum laeuft die Patientensprache ueber einen separaten
+// Capture-Daemon (lena_stt/room_capture.py). Steuerung:
+//   POST /treatment/room-capture        (iPad, deviceKey)  -> Flag an/aus
+//   GET  /treatment/room-capture-state  (Daemon, x-lena-token) -> aktiver Termin
+// Der Zustand liegt am Termin UND als Client-Zeiger (clients/{id}/clara/
+// roomCapture), damit der Daemon (kennt nur clientId) den Termin findet.
+function roomCapturePointerRef(clientId) {
+  return admin.firestore()
+    .collection("clients").doc(clientId)
+    .collection("clara").doc("roomCapture");
+}
+
+// POST /treatment/room-capture — Raummikro-Capture an-/ausschalten (iPad-Sprachbefehl).
+router.post("/treatment/room-capture", async (req, res) => {
+  try {
+    const dev = await companionDeviceOk(req);
+    if (!dev) return res.status(403).json({ ok: false, error: "forbidden" });
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const on = req.body?.on === true || String(req.body?.on || "") === "true";
+    const nowMs = Date.now();
+    const ref = apptRef(k.clientId, k.locationId, k.appointmentId);
+    await ref.collection("treatment").doc("roomCapture")
+      .set({ on, updatedAtMs: nowMs }, { merge: true });
+    await roomCapturePointerRef(k.clientId).set({
+      on,
+      clientId: k.clientId,
+      locationId: k.locationId,
+      appointmentId: k.appointmentId,
+      updatedAtMs: nowMs,
+    }, { merge: true });
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, on });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// GET /treatment/room-capture-state — der Capture-Daemon fragt hier, ob und
+// fuer welchen Termin er das Raummikro streamen soll. Auth: Publish-Token
+// (LENA_STT_PUBLISH_TOKEN) ODER gekoppeltes Geraet. Alter Zustand (>2 min ohne
+// Update) gilt als aus — schuetzt vor haengendem Flag nach App-Absturz.
+router.get("/treatment/room-capture-state", async (req, res) => {
+  try {
+    const want = String(process.env.LENA_STT_PUBLISH_TOKEN || "").trim();
+    const got = String(req.get("x-lena-token") || req.query?.token || "").trim();
+    const tokenOk = !!(want && got && got === want);
+    const clientId = String(req.query?.clientId || "").trim();
+    if (!ID_RE.test(clientId)) return res.status(400).json({ ok: false, error: "bad_ids" });
+    if (want && !tokenOk) {
+      const dev = await companionDeviceOk(req);
+      if (!dev) return res.status(403).json({ ok: false, error: "forbidden" });
+    }
+    const snap = await roomCapturePointerRef(clientId).get();
+    const d = snap.exists ? (snap.data() || {}) : {};
+    const fresh = Number(d.updatedAtMs || 0) > Date.now() - 120000;
+    const on = d.on === true && fresh;
+    res.set("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      on,
+      clientId,
+      locationId: on ? String(d.locationId || "") : "",
+      appointmentId: on ? String(d.appointmentId || "") : "",
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 // POST /treatment/finalize — Eintrag abschliessen: Karteikarte + Shared Memory.
 // iPad-Button „Speichern“. Auth wie structure (deviceKey oder Bearer).
 router.post("/treatment/finalize", async (req, res) => {

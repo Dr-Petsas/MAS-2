@@ -674,6 +674,29 @@
     return state;
   }
 
+  /** Patientenanliegen (AP3, Chef 24.07.2026): Raum-/Patienten-Segmente in die
+      Box "anliegen" buendeln (dedupe, Reihenfolge erhalten). Idempotent — beim
+      Voll-Rebuild wird die Box aus der kompletten Raum-Liste neu aufgebaut. */
+  function applyAnliegenSegments(state, segs) {
+    if (!state || !Array.isArray(segs) || !segs.length) return state;
+    const seen = new Set();
+    const parts = [];
+    for (const s of segs) {
+      const t = String(s?.text || "").trim();
+      if (!t) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      parts.push(t);
+    }
+    const joined = parts.join(" ");
+    if (joined) {
+      state.values.anliegen = joined;
+      if (state.status.anliegen !== "pre") state.status.anliegen = "live";
+    }
+    return state;
+  }
+
   /** Pflicht-Lücken setzen (auch ohne Segmente — für Souffleuse).
    * Komplikationen/Procedere vorerst NICHT pflichtig (Chef 23.07.) —
    * nur Aufklärung neben Befund/Diagnose/Therapie. */
@@ -1378,6 +1401,7 @@
     nextSouffleHint,
     openGapPrompts,
     applySegments,
+    applyAnliegenSegments,
     applySchemaSegments,
     routeSegments,
     schemaFinishCommand,
