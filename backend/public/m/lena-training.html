@@ -75,11 +75,31 @@
   .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
   .btn.file { position: relative; overflow: hidden; }
   .btn.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-  .hint { color: var(--muted); font-size: .78rem; margin-top: 8px; }
-  .or { text-align: center; color: var(--muted); font-size: .76rem; margin: 12px 0 8px; letter-spacing: .02em; }
+  .hint { color: var(--muted); font-size: .78rem; margin-top: 10px; }
   select {
-    flex: 1 1 180px; background: #150b34; color: var(--ink); border: 1px solid var(--line);
+    width: 100%; background: #150b34; color: var(--ink); border: 1px solid var(--line);
     border-radius: 12px; padding: 10px 12px; font-size: .95rem; font-family: inherit;
+  }
+
+  /* Zwei gleichrangige Wege: eigenes Material ODER generieren */
+  .methods { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch; margin-top: 4px; }
+  .method {
+    background: #1b0f40; border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .method .mh { font-weight: 800; font-size: .95rem; }
+  .method .md { color: var(--muted); font-size: .77rem; margin-top: -2px; line-height: 1.35; }
+  .method .spacer { flex: 1 1 auto; }
+  .orsep { display: grid; place-items: center; }
+  .orsep span {
+    font-size: .7rem; font-weight: 900; color: var(--muted); letter-spacing: .1em;
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 9px;
+  }
+  .handadd { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;
+    padding-top: 12px; border-top: 1px dashed var(--line); }
+  @media (max-width: 640px) {
+    .methods { grid-template-columns: 1fr; }
+    .orsep span { padding: 4px 14px; }
   }
 
   /* Begriffskarten */
@@ -164,40 +184,50 @@
     <div class="badges" id="badges"></div>
 
     <div class="add">
-      <h2>Neue Begriffe holen</h2>
-      <div class="row">
-        <button class="btn file">📄 PDF/Brief hochladen<input type="file" id="pdfFile" accept="application/pdf"></button>
-        <button class="btn ghost" id="pasteBtn">Text einfügen</button>
-      </div>
-      <div id="pasteArea" style="display:none; margin-top:8px">
-        <textarea id="pasteText" placeholder="Text aus einem Brief/Befund hier einfügen — Lena extrahiert die wichtigen Fachbegriffe."></textarea>
-        <div class="row" style="margin-top:8px">
-          <button class="btn" id="extractBtn">Begriffe extrahieren</button>
+      <h2>Übungsstoff wählen</h2>
+      <div class="methods">
+        <!-- Weg A: eigenes Material -->
+        <div class="method">
+          <div class="mh">📄 Eigenes Material</div>
+          <div class="md">Aus Ihren Briefen &amp; Befunden holt Lena die Fachbegriffe.</div>
+          <div class="spacer"></div>
+          <div class="row">
+            <button class="btn file">PDF/Brief hochladen<input type="file" id="pdfFile" accept="application/pdf"></button>
+            <button class="btn ghost" id="pasteBtn">Text einfügen</button>
+          </div>
+          <div id="pasteArea" style="display:none">
+            <textarea id="pasteText" placeholder="Text aus einem Brief/Befund hier einfügen — Lena extrahiert die wichtigen Fachbegriffe."></textarea>
+            <div class="row" style="margin-top:8px">
+              <button class="btn" id="extractBtn">Begriffe extrahieren</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trenner: gleichrangige Alternative -->
+        <div class="orsep"><span>ODER</span></div>
+
+        <!-- Weg B: Übungssätze generieren (nach Fachrichtung) -->
+        <div class="method">
+          <div class="mh">✨ Übungssätze generieren</div>
+          <div class="md">Kein Material nötig — passend zu Ihrer Fachrichtung.</div>
+          <div class="spacer"></div>
+          <div class="row">
+            <select id="specialty" aria-label="Fachrichtung"></select>
+          </div>
+          <div class="row">
+            <select id="genCat" aria-label="Thema"></select>
+          </div>
+          <div class="row">
+            <button class="btn" id="genBtn" style="flex:1 1 auto">Sätze generieren</button>
+          </div>
         </div>
       </div>
-      <div class="row" style="margin-top:8px">
-        <input type="text" id="manualTerm" placeholder="oder einzelnen Begriff eintippen (z. B. Straumann BLX)" style="flex:1 1 200px">
+
+      <div class="handadd">
+        <input type="text" id="manualTerm" placeholder="Einzelnen Begriff direkt eintippen (z. B. Straumann BLX)" style="flex:1 1 200px">
         <button class="btn ghost" id="manualBtn">+ hinzufügen</button>
       </div>
-
-      <div class="or">— oder kein Material zur Hand? —</div>
-      <div class="row" style="align-items:center">
-        <select id="genCat" aria-label="Fachgebiet">
-          <option>Zahnmedizin allgemein</option>
-          <option>Implantologie</option>
-          <option>Endodontie</option>
-          <option>Parodontologie</option>
-          <option>Prothetik / Zahnersatz</option>
-          <option>Kieferorthopädie</option>
-          <option>Oralchirurgie</option>
-          <option>Röntgen &amp; Befund</option>
-          <option>Materialien &amp; Marken</option>
-          <option>Medikamente</option>
-          <option>Überweiser &amp; Labore</option>
-        </select>
-        <button class="btn" id="genBtn">✨ Übungssätze generieren</button>
-      </div>
-      <div class="hint" id="addHint">Die Begriffe bleiben in Ihrer Praxis. Extraktion &amp; Generierung laufen auf dem lokalen Praxis-Server.</div>
+      <div class="hint" id="addHint">Alles bleibt in Ihrer Praxis. Extraktion &amp; Generierung laufen auf dem lokalen Praxis-Server.</div>
     </div>
 
     <div class="listhead">
@@ -205,7 +235,7 @@
       <span class="cnt" id="termCount">0 Begriffe</span>
     </div>
     <div class="cards" id="cards"></div>
-    <div class="empty" id="emptyMsg">Noch keine Begriffe — lade oben einen Brief hoch oder tippe einen Begriff ein.</div>
+    <div class="empty" id="emptyMsg">Noch keine Begriffe — oben eigenes Material hochladen <b>oder</b> Übungssätze generieren.</div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -337,20 +367,56 @@
     await runExtract(text, "paste");
     $("pasteText").value = "";
   });
+  /* ── Fachrichtung -> Themen (die Seite haengt an der Fachrichtung) ── */
+  const SPECIALTIES = {
+    "Zahnmedizin": ["Allgemein", "Implantologie", "Endodontie", "Parodontologie", "Prothetik / Zahnersatz", "Kieferorthopädie", "Oralchirurgie", "Röntgen & Befund", "Materialien & Marken", "Medikamente", "Überweiser & Labore"],
+    "Dermatologie": ["Allgemein", "Ekzeme & Dermatitis", "Psoriasis", "Hauttumoren / Onkologie", "Ästhetik & Laser", "Allergologie", "Mykologie", "Externa & Medikamente", "Überweiser & Labore"],
+    "Orthopädie": ["Allgemein", "Wirbelsäule", "Knie", "Schulter", "Hüfte", "Fuß & Sprunggelenk", "Sportmedizin", "Rheumatologie", "Bildgebung / Röntgen", "Medikamente", "Überweiser & Labore"],
+    "Allgemeinmedizin": ["Allgemein", "Herz-Kreislauf", "Diabetologie", "Infektiologie", "Impfungen", "Schmerztherapie", "Labor", "Medikamente", "Überweiser"],
+    "Innere Medizin": ["Allgemein", "Kardiologie", "Gastroenterologie", "Pneumologie", "Nephrologie", "Endokrinologie", "Labor", "Medikamente", "Überweiser"],
+    "HNO": ["Allgemein", "Ohr / Otologie", "Nase & Nasennebenhöhlen", "Hals / Larynx", "Allergologie", "Audiologie", "Schwindel", "Medikamente", "Überweiser & Labore"],
+    "Augenheilkunde": ["Allgemein", "Katarakt", "Glaukom", "Netzhaut", "Refraktion", "Entzündungen", "Medikamente", "Überweiser & Labore"],
+    "Gynäkologie": ["Allgemein", "Schwangerschaft & Geburt", "Onkologie", "Endokrinologie", "Kontrazeption", "Urogynäkologie", "Labor", "Medikamente", "Überweiser"],
+    "Neurologie": ["Allgemein", "Kopfschmerz & Migräne", "Epilepsie", "Schlaganfall", "Parkinson", "Multiple Sklerose", "Medikamente", "Überweiser & Labore"],
+    "Urologie": ["Allgemein", "Prostata", "Steinleiden", "Onkologie", "Andrologie", "Blase / Inkontinenz", "Medikamente", "Überweiser & Labore"],
+    "Pädiatrie": ["Allgemein", "Infekte", "Impfungen", "Allergien", "Entwicklung", "Neonatologie", "Medikamente", "Überweiser"],
+    "Andere Fachrichtung": ["Allgemein", "Diagnosen", "Medikamente", "Materialien & Geräte", "Überweiser & Labore"],
+  };
+  const SPEC_KEY = "pickadoc.lena.specialty";
+  function fillCats() {
+    const spec = $("specialty").value;
+    const cats = SPECIALTIES[spec] || SPECIALTIES["Andere Fachrichtung"];
+    $("genCat").innerHTML = cats.map((c) => '<option>' + escapeHtml(c) + '</option>').join("");
+  }
+  (function initSpecialty() {
+    const sel = $("specialty");
+    sel.innerHTML = Object.keys(SPECIALTIES).map((s) => '<option>' + escapeHtml(s) + '</option>').join("");
+    let saved = "";
+    try { saved = localStorage.getItem(SPEC_KEY) || ""; } catch (_) {}
+    if (saved && SPECIALTIES[saved]) sel.value = saved;
+    fillCats();
+    sel.addEventListener("change", () => {
+      try { localStorage.setItem(SPEC_KEY, sel.value); } catch (_) {}
+      fillCats();
+    });
+  })();
+
   $("genBtn").addEventListener("click", async () => {
-    const cat = $("genCat").value;
+    const spec = $("specialty").value;
+    const sub = $("genCat").value;
+    const label = sub && sub !== "Allgemein" ? (spec + " · " + sub) : (spec + " allgemein");
     const btn = $("genBtn");
     btn.disabled = true;
-    $("addHint").textContent = "Lena schreibt Übungssätze für „" + cat + "\" …";
+    $("addHint").textContent = "Lena schreibt Übungssätze für „" + label + "\" …";
     try {
-      const d = await apiPost("/training/generate", { category: cat });
+      const d = await apiPost("/training/generate", { category: label });
       toast(d.added ? (d.added + " Übungssätze erstellt!") : "Nichts erzeugt — bitte erneut versuchen.", d.added ? "ok" : "mis");
       await loadAll();
     } catch (e) {
       toast("Generierung fehlgeschlagen: " + e.message, "mis");
     } finally {
       btn.disabled = false;
-      $("addHint").textContent = "Die Begriffe bleiben in Ihrer Praxis. Extraktion & Generierung laufen auf dem lokalen Praxis-Server.";
+      $("addHint").textContent = "Alles bleibt in Ihrer Praxis. Extraktion & Generierung laufen auf dem lokalen Praxis-Server.";
     }
   });
   $("manualBtn").addEventListener("click", async () => {

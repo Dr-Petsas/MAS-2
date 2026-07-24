@@ -188,7 +188,7 @@ router.post("/training/generate", async (req, res) => {
   try {
     const actor = await trainingActor(req);
     if (!actor.ok) return res.status(403).json({ ok: false, error: "forbidden" });
-    const label = String(req.body?.category || "Zahnmedizin allgemein").slice(0, 48).trim() || "Zahnmedizin allgemein";
+    const label = String(req.body?.category || "Zahnmedizin allgemein").slice(0, 80).trim() || "Zahnmedizin allgemein";
     const count = Math.min(12, Math.max(3, Number(req.body?.count || 8) || 8));
 
     const sys = [
