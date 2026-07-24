@@ -212,40 +212,37 @@
   .listwrap { flex: 0 0 auto; min-height: 0; }
   .listwrap .cards { max-height: 34vh; overflow: auto; }
 
-  /* kurze Hoehe (iPad quer): Nebensaechliches ausblenden/verkleinern */
-  @media (max-height: 760px) {
+  /* Querformat ODER wenig Hoehe: Generierung oben (beide Wege nebeneinander),
+     Teleprompter unten, alles auf EINE Seite -> Nebensaechliches ausblenden
+     und kompaktieren. Hochformat bleibt unveraendert. */
+  @media (orientation: landscape), (max-height: 760px) {
+    .wrap { max-width: none; }
     .hero .sub { display: none; }
     .badges { display: none; }
     .method .md { display: none; }
     .handadd { display: none; }
     .hint { display: none; }
-    .orb { width: 42px; height: 42px; }
-    .hero h1 { font-size: 1.06rem; }
-    .cover { padding: 8px 12px; }
-    .cover .pct { font-size: 1.25rem; }
-    .bar { height: 10px; margin-top: 6px; }
-    .stat { padding: 6px; }
-    .stat .n { font-size: 1.05rem; }
-    .add { padding: 10px; }
-    .add h2 { font-size: .9rem; margin: 0 0 6px; }
-    select, .btn { padding: 8px 12px; }
-    .method { padding: 10px; gap: 6px; }
-    .tp { padding: 10px 12px; }
-    .tp-cur { font-size: 1.2rem; }
-  }
-
-  /* Querformat: zwei Spalten (Generierung links, Teleprompter rechts), volle Breite */
-  @media (min-aspect-ratio: 1/1) {
-    .wrap { max-width: none; }
-    #main { flex-direction: row; align-items: stretch; gap: 12px; }
-    .mcol-a {
-      display: flex; flex-direction: column; gap: 8px;
-      flex: 1 1 0; min-width: 0; min-height: 0; overflow: auto;
-    }
-    .tp { flex: 1 1 0; min-width: 0; }
     details.listwrap { display: none; }
-    .badges { display: none; }
-    .hero .sub { display: none; }
+    .orb { width: 40px; height: 40px; }
+    .hero h1 { font-size: 1.02rem; }
+    .hero { gap: 10px; }
+    .cover { padding: 7px 12px; }
+    .cover .lab b { font-size: .92rem; }
+    .cover .pct { font-size: 1.15rem; }
+    .bar { height: 9px; margin-top: 5px; }
+    .stats { gap: 6px; }
+    .stat { padding: 5px; }
+    .stat .n { font-size: 1rem; }
+    .stat .t { font-size: .6rem; }
+    .add { padding: 9px 10px; }
+    .add h2 { font-size: .88rem; margin: 0 0 6px; }
+    .methods { gap: 8px; }
+    .method { padding: 9px; gap: 5px; }
+    .method .row { margin: 0; }
+    select, .btn, .tp-btn { padding: 8px 12px; }
+    .tp { padding: 9px 12px; }
+    .tp-cur { font-size: 1.18rem; }
+    .tp-stage { min-height: 70px; }
   }
 </style>
 </head>
@@ -310,10 +307,8 @@
           <div class="md">Kein Material nötig — passend zu Ihrer Fachrichtung.</div>
           <div class="spacer"></div>
           <div class="row">
-            <select id="specialty" aria-label="Fachrichtung"></select>
-          </div>
-          <div class="row">
-            <select id="genCat" aria-label="Thema"></select>
+            <select id="specialty" aria-label="Fachrichtung" style="flex:1 1 140px"></select>
+            <select id="genCat" aria-label="Thema" style="flex:1 1 140px"></select>
           </div>
           <div class="row">
             <button class="btn" id="genBtn" style="flex:1 1 auto">Sätze generieren</button>
