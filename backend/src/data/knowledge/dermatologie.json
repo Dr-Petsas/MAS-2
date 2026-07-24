@@ -1,0 +1,125 @@
+{
+  "meta": {
+    "domain": "Dermatologie (DE)",
+    "fachrichtung": "dermatologie",
+    "label": "Dermatologie",
+    "aliases": ["derma", "haut", "hautarzt", "hautaerztin", "dermatolog", "allergologie", "phlebologie", "venerologie"],
+    "geprueft": false,
+    "version": "1.0-entwurf",
+    "stand": "2026-07-24",
+    "zweck": "Domaenenwissen der Lena-Verstehens-/Korrekturschicht fuer die Dermatologie: Effloreszenzen, Lokalisationen, Abkuerzungen, Diagnosen und typische Verhoerungen. Genutzt fuer STT-Hotword-Biasing, deterministische Korrektur-Map und als LLM-Grounding fuer die Qwen-Korrektur.",
+    "hinweise": [
+      "ENTWURF (geprueft=false): KI-erstellte v1. Bevor sie als kuratiert gilt, muss ein Dermatologe die Begriffe/Verhoerungen freigeben. Bis dahin wirkt sie nur additiv (Hotwords + enge Verhoerungs-Fixes).",
+      "Wie Zahnmedizin: mehrdeutige Alltagswoerter NICHT ins Hotword-Biasing; Mehrdeutiges gehoert in verhoerungen (eng, kontextgebunden) oder in den LLM-Kontext.",
+      "Abrechnung (GOAe/EBM) wird NIE aus dem Transkript geraten."
+    ]
+  },
+
+  "begriffe": [
+    "Effloreszenz", "Makula", "Papel", "Plaque", "Nodus", "Vesikel", "Bulla", "Pustel", "Quaddel", "Urtika",
+    "Erythem", "Erosion", "Ulkus", "Rhagade", "Schuppe", "Kruste", "Lichenifikation", "Exkoriation", "Atrophie",
+    "Naevus", "Naevuszellnaevus", "Basalzellkarzinom", "Basaliom", "Plattenepithelkarzinom", "Spinaliom",
+    "malignes Melanom", "aktinische Keratose", "seborrhoische Keratose", "Keratoakanthom", "Dermatofibrom",
+    "Ekzem", "atopische Dermatitis", "Kontaktdermatitis", "seborrhoisches Ekzem", "Psoriasis", "Psoriasis vulgaris",
+    "Rosazea", "periorale Dermatitis", "Akne", "Akne vulgaris", "Komedo", "Urtikaria", "Angiooedem",
+    "Tinea", "Tinea corporis", "Tinea pedis", "Onychomykose", "Candidose", "Herpes simplex", "Herpes zoster",
+    "Verruca", "Verruca vulgaris", "Condyloma", "Molluscum contagiosum", "Impetigo", "Erysipel", "Follikulitis",
+    "Furunkel", "Karbunkel", "Abszess", "Vitiligo", "Melasma", "Lichen ruber planus", "Lichen sclerosus",
+    "Pruritus", "Exanthem", "Erythrodermie", "Teleangiektasie", "Petechien", "Purpura", "Hyperkeratose",
+    "Dermatoskopie", "Auflichtmikroskopie", "Kuerettage", "Kryotherapie", "Exzision", "Shave-Exzision",
+    "Probeexzision", "Stanzbiopsie", "Elektrokoagulation", "photodynamische Therapie", "Lichttherapie",
+    "Basalzellschicht", "Epidermis", "Dermis", "Subkutis", "subkutan", "intrakutan", "kutan"
+  ],
+
+  "abkuerzungen": [
+    {"kurz": "PE", "lang": "Probeexzision (Biopsie)"},
+    {"kurz": "BCC", "lang": "Basalzellkarzinom (Basaliom)"},
+    {"kurz": "SCC", "lang": "Plattenepithelkarzinom (Spinaliom)"},
+    {"kurz": "MM", "lang": "malignes Melanom"},
+    {"kurz": "AK", "lang": "aktinische Keratose"},
+    {"kurz": "NMSC", "lang": "heller Hautkrebs (non-melanoma skin cancer)"},
+    {"kurz": "SK", "lang": "seborrhoische Keratose"},
+    {"kurz": "NZN", "lang": "Naevuszellnaevus"},
+    {"kurz": "AD", "lang": "atopische Dermatitis"},
+    {"kurz": "PUVA", "lang": "Psoralen plus UV-A"},
+    {"kurz": "UVB", "lang": "Ultraviolett-B (Schmalspektrum 311 nm)"},
+    {"kurz": "PDT", "lang": "photodynamische Therapie"},
+    {"kurz": "TBE", "lang": "Tumordicke (Breslow)"},
+    {"kurz": "Z.n.", "lang": "Zustand nach"},
+    {"kurz": "DD", "lang": "Differentialdiagnose"},
+    {"kurz": "i.c.", "lang": "intrakutan"},
+    {"kurz": "s.c.", "lang": "subkutan"},
+    {"kurz": "GOAe", "lang": "Gebuehrenordnung fuer Aerzte"}
+  ],
+
+  "diagnosen": [
+    {"begriff": "malignes Melanom", "gruppe": "Onkologie", "aliases": ["melanon", "malignes melanon", "melanoma malignum"], "bedeutung": "boesartiger Tumor der Pigmentzellen"},
+    {"begriff": "Basalzellkarzinom", "gruppe": "Onkologie", "aliases": ["basaliom", "basalzell karzinom", "basalzellkarzinon"], "bedeutung": "haeufigster heller Hautkrebs, lokal invasiv"},
+    {"begriff": "Plattenepithelkarzinom", "gruppe": "Onkologie", "aliases": ["spinaliom", "platten epithel karzinom"], "bedeutung": "heller Hautkrebs mit Metastasierungspotenzial"},
+    {"begriff": "aktinische Keratose", "gruppe": "Praekanzerose", "aliases": ["aktinische keratosen", "actinische keratose", "aktinische keradose"], "bedeutung": "lichtbedingte Praekanzerose"},
+    {"begriff": "Psoriasis vulgaris", "gruppe": "entzuendlich", "aliases": ["soriasis", "psoriasis vulgaris", "schuppenflechte"], "bedeutung": "chronisch-entzuendliche Schuppenflechte"},
+    {"begriff": "atopische Dermatitis", "gruppe": "entzuendlich", "aliases": ["neurodermitis", "atopisches ekzem", "atopische dermatitis"], "bedeutung": "chronisches Ekzem bei Atopie"},
+    {"begriff": "Rosazea", "gruppe": "entzuendlich", "aliases": ["rosacea", "rosazea", "kupferrose"], "bedeutung": "chronische Gesichtsroetung mit Papeln/Pusteln"},
+    {"begriff": "Herpes zoster", "gruppe": "Infektion", "aliases": ["herpes zooster", "guertelrose", "zoster"], "bedeutung": "Reaktivierung des Varizella-Zoster-Virus"},
+    {"begriff": "Tinea pedis", "gruppe": "Mykose", "aliases": ["tinea pedis", "fusspilz"], "bedeutung": "Dermatophyten-Infektion der Fuesse"},
+    {"begriff": "Urtikaria", "gruppe": "allergisch", "aliases": ["urticaria", "nesselsucht"], "bedeutung": "Quaddelbildung, oft allergisch"}
+  ],
+
+  "verhoerungen": [
+    {"falsch": "Melanon", "richtig": "Melanom", "kontext": "Onkologie (malignes Melanom)"},
+    {"falsch": "Soriasis", "richtig": "Psoriasis", "kontext": "Schuppenflechte"},
+    {"falsch": "Basalzellkarzinon", "richtig": "Basalzellkarzinom", "kontext": "heller Hautkrebs"},
+    {"falsch": "aktinische Keradose", "richtig": "aktinische Keratose", "kontext": "Praekanzerose"},
+    {"falsch": "Effoloreszenz", "richtig": "Effloreszenz", "kontext": "Hautbefund"},
+    {"falsch": "Erytem", "richtig": "Erythem", "kontext": "Roetung"},
+    {"falsch": "Prurigo Delfin", "richtig": "Pruritus", "kontext": "Juckreiz (Latein-Halluzination)"},
+    {"falsch": "Naevus Zellnaevus", "richtig": "Naevuszellnaevus", "kontext": "Muttermal"},
+    {"falsch": "Rosacea", "richtig": "Rosazea", "kontext": "Gesichtsdermatose"}
+  ],
+
+  "befund_muster": [
+    "<Lokalisation> <Effloreszenz> <Groesse/Farbe/Begrenzung>  z. B. 'am Ruecken 8 mm asymmetrische braun-schwarze Makula'",
+    "Dermatoskopie: <Muster>  z. B. 'atypisches Pigmentnetz, blau-weisser Schleier'",
+    "Z.n. <Eingriff> Regio <Lokalisation>  z. B. 'Z.n. Exzision BCC Regio Nase'",
+    "ABCDE-Regel bei Pigmentmal (Asymmetrie, Begrenzung, Colorit, Durchmesser, Entwicklung)"
+  ],
+
+  "reasoning": [
+    "Ordne Groessenangaben (mm/cm) und Lokalisationen dem beschriebenen Hautbefund zu.",
+    "Bevorzuge die dermatologische Fachschreibung (Effloreszenz, Erythem, Naevus, Psoriasis) gegenueber lautaehnlichen Alltagswoertern.",
+    "Loese Abkuerzungen kontextabhaengig auf (PE, BCC, SCC, MM, AK, PUVA, PDT ...).",
+    "Mappe naheliegende Verhoerungen auf den Fachbegriff im gleichen semantischen Feld (Melanon->Melanom, Soriasis->Psoriasis).",
+    "Latein/Fachlatein nur wenn eindeutig gemeint (Tinea pedis, Lichen ruber planus); sonst deutschen Begriff bevorzugen.",
+    "Rate NIEMALS Abrechnungsziffern und erfinde keine Diagnosen — bei Unsicherheit markieren statt raten.",
+    "Aendere ausserhalb der Fachbegriffe nichts an korrektem Deutsch."
+  ],
+
+  "strukturiert": [
+    {
+      "titel": "Effloreszenzen (Grundelemente)",
+      "erklaerung": "Primaer- und Sekundaereffloreszenzen sind das Vokabular des Hautbefunds.",
+      "paare": {
+        "Makula": "Fleck (Farbaenderung im Hautniveau)",
+        "Papel": "erhabene Verdickung < 1 cm",
+        "Plaque": "flaechige Erhabenheit > 1 cm",
+        "Nodus": "Knoten (tastbar, > 1 cm)",
+        "Vesikel/Bulla": "Blaeschen / Blase",
+        "Pustel": "mit Eiter gefuelltes Blaeschen",
+        "Quaddel (Urtika)": "fluechtige oedematoese Erhabenheit",
+        "Erosion/Ulkus": "oberflaechlicher / tiefer Substanzdefekt",
+        "Schuppe/Kruste": "Verhornung / eingetrocknetes Sekret",
+        "Lichenifikation": "vergroeberte Hautfelderung bei chronischem Kratzen"
+      }
+    },
+    {
+      "titel": "Dermatoskopie-Muster (Auswahl)",
+      "liste": [
+        "Pigmentnetz (typisch/atypisch)",
+        "blau-weisser Schleier (Melanom-Hinweis)",
+        "Ahornblattstrukturen / radiaere Auslaeufer (Basalzellkarzinom)",
+        "Komedo-aehnliche Oeffnungen, Milien-artige Zysten (seborrhoische Keratose)",
+        "Gefaessmuster: Glomerulaer, arboriform, Haarnadel"
+      ]
+    }
+  ]
+}

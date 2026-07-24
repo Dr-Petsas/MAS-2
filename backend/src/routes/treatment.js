@@ -35,7 +35,7 @@ import { getDayAppointments, todayBerlin } from "../clara/daySchedule.js";
 import { resolveChairAppointment, matchCalendarId } from "../clara/treatmentRecording.js";
 import { getPatientAnamnese, clip } from "../clara/anamnese.js";
 import { chat, strongLlm } from "../mail/llm.js";
-import { buildLlmContext as dentalLlmContext } from "../lena/dentalKnowledge.js";
+import { buildLlmContext as domainLlmContext, resolveSpec } from "../lena/domainKnowledge.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 
 // React-Frontend (Firebase Hosting) — dort liegt /dictate/... fuer die Lena-iframe.
@@ -931,15 +931,22 @@ router.post("/treatment/lena-suggest", async (req, res) => {
     if (!full && !focus) return res.status(400).json({ ok: false, error: "empty" });
 
     const strong = strongLlm();
-    // Fachwissen als Grounding (FDI/Flaechen/Abkuerzungen/Verhoerungen/Reasoning)
-    // — dieselbe Wissensbasis wie die lena_stt-Postkorrektur, damit die
-    // Vorschlaege konsistent und fachlich richtig sind.
-    let dentalCtx = "";
-    try { dentalCtx = dentalLlmContext(8000); } catch { /* Wissen darf nie blockieren */ }
+    const clientId = String(req.body?.clientId || req.query?.clientId || "").trim();
+    // Fachrichtung des Mandanten (Chef 24.07.): waehlt die passende
+    // Wissensbasis, damit ein Dermatologe/Radiologe genauso gut korrigiert wird
+    // wie ein Zahnarzt. Freitext-Feld -> KB-Key (Default: zahnmedizin).
+    let spec = resolveSpec("");
+    if (clientId) {
+      try { spec = resolveSpec(await clientSpecialty(clientId)); } catch { /* Default behalten */ }
+    }
+    // Fachwissen als Grounding (Begriffe/Abkuerzungen/Verhoerungen/Reasoning der
+    // Fachrichtung) — dieselbe Wissensbasis wie die lena_stt-Postkorrektur, damit
+    // die Vorschlaege konsistent und fachlich richtig sind.
+    let domainCtx = "";
+    try { domainCtx = domainLlmContext(spec, 8000); } catch { /* Wissen darf nie blockieren */ }
     // Patientennamen aus dem Kalender (letzte 2 Wochen + diese + naechste Woche,
     // shared/auto-aktualisiert via sttPatientNames). So korrigiert die KI auch
     // verhoerte Eigennamen auf echte Patienten dieser Praxis.
-    const clientId = String(req.body?.clientId || req.query?.clientId || "").trim();
     let names = [];
     if (clientId) {
       try {
@@ -950,8 +957,8 @@ router.post("/treatment/lena-suggest", async (req, res) => {
     const namesBlock = names.length
       ? `\n\n## Bekannte Eigennamen (Patienten dieser Praxis aus dem Kalender)\nWenn der verhoerte Ausdruck einem dieser Namen aehnelt, schlage den Namen EXAKT so geschrieben vor:\n${names.join(", ")}`
       : "";
-    const sys = "Du bist ein Korrekturassistent fuer deutsche ZAHNMEDIZINISCHE Spracherkennung (Diktat am Behandlungsstuhl). Ein Wort oder kurzer Ausdruck wurde vermutlich verhoert. Antworte AUSSCHLIESSLICH mit einem JSON-Array aus bis zu 5 plausiblen, fachlich korrekten Alternativen (Strings), beste zuerst. Keine Erklaerung, kein weiterer Text."
-      + (dentalCtx ? `\n\n${dentalCtx}` : "")
+    const sys = "Du bist ein Korrekturassistent fuer deutsche MEDIZINISCHE Spracherkennung (Diktat am Behandlungsstuhl bzw. am Patienten). Ein Wort oder kurzer Ausdruck wurde vermutlich verhoert. Nutze das folgende Fachwissen der jeweiligen Fachrichtung. Antworte AUSSCHLIESSLICH mit einem JSON-Array aus bis zu 5 plausiblen, fachlich korrekten Alternativen (Strings), beste zuerst. Keine Erklaerung, kein weiterer Text."
+      + (domainCtx ? `\n\n${domainCtx}` : "")
       + namesBlock;
     const user = focus
       ? `Satz: "${full}"\nZu korrigierender Ausdruck: "${focus}"\nGib Alternativen NUR fuer diesen Ausdruck (als JSON-Array von Strings).`

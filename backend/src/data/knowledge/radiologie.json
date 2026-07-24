@@ -1,0 +1,130 @@
+{
+  "meta": {
+    "domain": "Radiologie (DE)",
+    "fachrichtung": "radiologie",
+    "label": "Radiologie",
+    "aliases": ["radiolog", "roentgen", "radiologe", "radiologin", "nuklearmedizin", "neuroradiologie"],
+    "geprueft": false,
+    "version": "1.0-entwurf",
+    "stand": "2026-07-24",
+    "zweck": "Domaenenwissen der Lena-Verstehens-/Korrekturschicht fuer die Radiologie: Modalitaeten, Schnittebenen/Richtungen, MRT-Sequenzen, Befund-Vokabular, Abkuerzungen und typische Verhoerungen. Genutzt fuer STT-Hotword-Biasing, deterministische Korrektur-Map und als LLM-Grounding.",
+    "hinweise": [
+      "ENTWURF (geprueft=false): KI-erstellte v1. Freigabe durch einen Radiologen ausstehend; bis dahin additiv (Hotwords + enge Verhoerungs-Fixes).",
+      "Seitenangaben (rechts/links) und Zahlen (Groesse, HU, Segmente) NIE erfinden — nur uebernehmen.",
+      "Mehrdeutige Alltagswoerter nicht ins Hotword-Biasing."
+    ]
+  },
+
+  "begriffe": [
+    "Computertomographie", "Magnetresonanztomographie", "Sonographie", "Mammographie", "Szintigraphie",
+    "Angiographie", "Durchleuchtung", "Projektionsradiographie", "Kontrastmittel", "nativ", "portalvenoes",
+    "arteriell", "Aufhellung", "Verschattung", "Transparenzminderung", "Verkalkung", "Sklerose", "Osteolyse",
+    "Fraktur", "Frakturlinie", "Dislokation", "Erguss", "Pleuraerguss", "Perikarderguss", "Infiltrat",
+    "Rundherd", "Raumforderung", "Laesion", "Oedem", "Knochenmarksoedem", "Stenose", "Okklusion", "Aneurysma",
+    "Dissektion", "Embolie", "Thrombose", "Haematom", "Metastase", "Lymphknoten", "Lymphadenopathie",
+    "Atelektase", "Emphysem", "Milchglastruebung", "Konsolidierung", "Bronchiektasen", "Kavernen",
+    "Hydronephrose", "Konkrement", "Zyste", "Adenom", "Struma", "Spondylophyt", "Bandscheibenprotrusion",
+    "Bandscheibenprolaps", "Signalanhebung", "Signalminderung", "Diffusionsrestriktion", "Kontrastmittelaufnahme",
+    "kranial", "kaudal", "ventral", "dorsal", "medial", "lateral", "proximal", "distal", "axial", "koronar",
+    "sagittal", "transversal", "Hounsfield-Einheiten", "Tesla", "Schichtdicke", "Rekonstruktion", "PACS"
+  ],
+
+  "abkuerzungen": [
+    {"kurz": "CT", "lang": "Computertomographie"},
+    {"kurz": "MRT", "lang": "Magnetresonanztomographie"},
+    {"kurz": "MR", "lang": "Magnetresonanz"},
+    {"kurz": "US", "lang": "Ultraschall (Sonographie)"},
+    {"kurz": "KM", "lang": "Kontrastmittel"},
+    {"kurz": "HU", "lang": "Hounsfield-Einheiten"},
+    {"kurz": "DD", "lang": "Differentialdiagnose"},
+    {"kurz": "Z.n.", "lang": "Zustand nach"},
+    {"kurz": "i.v.", "lang": "intravenoes"},
+    {"kurz": "HWS", "lang": "Halswirbelsaeule"},
+    {"kurz": "BWS", "lang": "Brustwirbelsaeule"},
+    {"kurz": "LWS", "lang": "Lendenwirbelsaeule"},
+    {"kurz": "OSG", "lang": "oberes Sprunggelenk"},
+    {"kurz": "USG", "lang": "unteres Sprunggelenk"},
+    {"kurz": "TIRADS", "lang": "Thyroid Imaging Reporting and Data System"},
+    {"kurz": "BIRADS", "lang": "Breast Imaging Reporting and Data System"},
+    {"kurz": "DWI", "lang": "diffusionsgewichtete Bildgebung"},
+    {"kurz": "ADC", "lang": "Apparent Diffusion Coefficient"},
+    {"kurz": "FLAIR", "lang": "Fluid Attenuated Inversion Recovery"},
+    {"kurz": "PACS", "lang": "Picture Archiving and Communication System"},
+    {"kurz": "LE", "lang": "Lungenembolie"}
+  ],
+
+  "diagnosen": [
+    {"begriff": "Lungenembolie", "gruppe": "Gefaess", "aliases": ["lungen embolie", "pulmonalembolie"], "bedeutung": "Verschluss einer Pulmonalarterie durch Embolus"},
+    {"begriff": "Pneumonie", "gruppe": "Thorax", "aliases": ["pneumonie", "lungenentzuendung"], "bedeutung": "entzuendliches Infiltrat der Lunge"},
+    {"begriff": "Pleuraerguss", "gruppe": "Thorax", "aliases": ["pleura erguss", "pleuraerguss"], "bedeutung": "Fluessigkeit im Pleuraspalt"},
+    {"begriff": "Bandscheibenprolaps", "gruppe": "Wirbelsaeule", "aliases": ["bandscheiben prolaps", "bandscheibenvorfall", "nph"], "bedeutung": "Austritt von Bandscheibengewebe"},
+    {"begriff": "Osteolyse", "gruppe": "Skelett", "aliases": ["osteo lyse", "osteolyse"], "bedeutung": "umschriebener Knochenabbau"},
+    {"begriff": "Nierenzellkarzinom", "gruppe": "Onkologie", "aliases": ["nieren zell karzinom"], "bedeutung": "boesartiger Nierentumor"},
+    {"begriff": "Cholezystolithiasis", "gruppe": "Abdomen", "aliases": ["cholezysto lithiasis", "gallensteine"], "bedeutung": "Steine in der Gallenblase"},
+    {"begriff": "Hirninfarkt", "gruppe": "Neuro", "aliases": ["hirn infarkt", "ischaemischer insult"], "bedeutung": "ischaemischer Schlaganfall"}
+  ],
+
+  "verhoerungen": [
+    {"falsch": "Auffaellung", "richtig": "Aufhellung", "kontext": "Roentgen (radiologische Aufhellung)"},
+    {"falsch": "Verschmattung", "richtig": "Verschattung", "kontext": "Roentgen (Transparenzminderung)"},
+    {"falsch": "Hounsfeld", "richtig": "Hounsfield", "kontext": "CT-Dichtewerte"},
+    {"falsch": "Ateraktase", "richtig": "Atelektase", "kontext": "Lungenkollaps"},
+    {"falsch": "Milchglas Truebung", "richtig": "Milchglastruebung", "kontext": "CT-Thorax"},
+    {"falsch": "Osteo Lyse", "richtig": "Osteolyse", "kontext": "Knochenabbau"},
+    {"falsch": "Diffusionsredriktion", "richtig": "Diffusionsrestriktion", "kontext": "MRT/DWI"},
+    {"falsch": "flair Sequenz", "richtig": "FLAIR-Sequenz", "kontext": "MRT"}
+  ],
+
+  "befund_muster": [
+    "<Modalitaet> <Region> <nativ/KM>  z. B. 'CT Thorax mit KM'",
+    "<Lokalisation> <Groesse> <Dichte/Signal> <Befund>  z. B. 'im rechten Oberlappen 12 mm solider Rundherd'",
+    "<Ebene>: <Beschreibung>  z. B. 'axial: Diffusionsrestriktion links parietal'",
+    "Beurteilung: <Zusammenfassung + DD>"
+  ],
+
+  "reasoning": [
+    "Ordne Modalitaet, Koerperregion und Kontrastphase (nativ/arteriell/portalvenoes) korrekt zu.",
+    "Uebernimm Seitenangaben (rechts/links) und Messwerte (mm/cm, HU, Tesla, Segmente) exakt — nie erfinden.",
+    "Loese Abkuerzungen kontextabhaengig auf (CT, MRT, KM, HU, DWI, FLAIR, LWS ...).",
+    "Bevorzuge radiologische Fachschreibung (Aufhellung, Verschattung, Osteolyse, Milchglastruebung).",
+    "Mappe naheliegende Verhoerungen auf den Fachbegriff im gleichen semantischen Feld (Auffaellung->Aufhellung, Hounsfeld->Hounsfield).",
+    "Rate keine Diagnosen; bei Unsicherheit die Stelle markieren.",
+    "Aendere ausserhalb der Fachbegriffe nichts an korrektem Deutsch."
+  ],
+
+  "strukturiert": [
+    {
+      "titel": "Modalitaeten",
+      "paare": {
+        "CT": "Computertomographie (Roentgen-Schnittbild, Dichte in HU)",
+        "MRT": "Magnetresonanztomographie (Weichteilkontrast, Sequenzen)",
+        "US": "Sonographie (Ultraschall)",
+        "Roentgen": "Projektionsradiographie",
+        "Mammographie": "Roentgen der Brust",
+        "Szintigraphie": "nuklearmedizinische Funktionsbildgebung"
+      }
+    },
+    {
+      "titel": "Schnittebenen & Richtungen",
+      "paare": {
+        "axial/transversal": "quer (von oben)",
+        "koronar/frontal": "von vorne",
+        "sagittal": "von der Seite",
+        "kranial/kaudal": "kopfwaerts/fusswaerts",
+        "ventral/dorsal": "bauchwaerts/rueckenwaerts",
+        "medial/lateral": "zur Mitte/zur Seite",
+        "proximal/distal": "rumpfnah/rumpffern"
+      }
+    },
+    {
+      "titel": "MRT-Sequenzen (Auswahl)",
+      "liste": [
+        "T1 (anatomisch; Fett hell)",
+        "T2 (Fluessigkeit hell)",
+        "FLAIR (Liquor unterdrueckt; Marklaesionen)",
+        "DWI/ADC (Diffusion; frische Ischaemie)",
+        "T1 nach Kontrastmittel (Enhancement)"
+      ]
+    }
+  ]
+}

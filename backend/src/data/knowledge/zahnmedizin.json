@@ -1,0 +1,182 @@
+{
+  "meta": {
+    "domain": "Zahnmedizin (DE)",
+    "fachrichtung": "zahnmedizin",
+    "label": "Zahnmedizin / Oralchirurgie",
+    "aliases": ["zahn", "zahnarzt", "zahnarztpraxis", "dental", "oralchirurgie", "mkg", "kieferchirurgie", "kieferorthopaedie", "kfo", "endodontie", "parodontologie", "implantologie"],
+    "geprueft": true,
+    "version": "1.0",
+    "stand": "2026-07-24",
+    "zweck": "Domaenenwissen der Lena-Verstehens-/Korrekturschicht: FDI-Zahnschema, Zahnflaechen, Abkuerzungen, Befund-/Diagnose-Muster und typische Verhoerungen. Wird genutzt fuer (1) STT-Hotword-Biasing, (2) deterministische Korrektur-Map (alias->kanonisch) und (3) als LLM-Grounding-Kontext fuer die Qwen-3.6-Korrektur auf dem 5090-Server.",
+    "hinweise": [
+      "Fachvokabular (kanonische Begriffe) bleibt in medical_terms_de.txt. Diese Datei ist die STRUKTUR-/SCHLUSSFOLGERUNGS-Ebene darueber und ergaenzt sie, statt sie zu duplizieren.",
+      "Die Fuzzy-Korrektur NICHT mit mehrdeutigen Alltagswoertern fuettern (vgl. Notiz Aufhellung/Aufhebung in medical_terms_de.txt). Mehrdeutiges gehoert nur in verhoerungen (eng, kontextgebunden) oder in den LLM-Kontext, nicht in die Hotword-Liste.",
+      "Praxis-/Personen-Eigennamen (Behandler, Patienten) sind NICHT hier — die gehoeren in eine mandantenspezifische Namensliste. Diese Datei ist mandantenneutrales Fachwissen.",
+      "Abrechnungsziffern (BEMA/GOZ) werden NIE aus dem Transkript geraten — dafuer ist billingKnowledge.js zustaendig."
+    ]
+  },
+
+  "fdi_schema": {
+    "erklaerung": "FDI-Zahnnotation ist zweistellig: die erste Ziffer nennt den Quadranten, die zweite die Position 1-8 von der Mitte (Schneidezahn) nach hinten (Weisheitszahn). Beispiel 46 = Unterkiefer rechts, erster Molar.",
+    "quadranten": {
+      "1": "Oberkiefer rechts (bleibend)",
+      "2": "Oberkiefer links (bleibend)",
+      "3": "Unterkiefer links (bleibend)",
+      "4": "Unterkiefer rechts (bleibend)",
+      "5": "Oberkiefer rechts (Milchgebiss)",
+      "6": "Oberkiefer links (Milchgebiss)",
+      "7": "Unterkiefer links (Milchgebiss)",
+      "8": "Unterkiefer rechts (Milchgebiss)"
+    },
+    "positionen": {
+      "1": "mittlerer Schneidezahn (zentraler Inzisivus)",
+      "2": "seitlicher Schneidezahn (lateraler Inzisivus)",
+      "3": "Eckzahn (Caninus)",
+      "4": "erster Praemolar",
+      "5": "zweiter Praemolar",
+      "6": "erster Molar (Sechsjahrmolar)",
+      "7": "zweiter Molar",
+      "8": "Weisheitszahn (dritter Molar)"
+    },
+    "bleibend_alle": [11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48],
+    "milch_alle": [51, 52, 53, 54, 55, 61, 62, 63, 64, 65, 71, 72, 73, 74, 75, 81, 82, 83, 84, 85],
+    "positionsgruppen": {
+      "einser": [11, 21, 31, 41],
+      "zweier": [12, 22, 32, 42],
+      "dreier": [13, 23, 33, 43],
+      "vierer": [14, 24, 34, 44],
+      "fuenfer": [15, 25, 35, 45],
+      "sechser": [16, 26, 36, 46],
+      "siebener": [17, 27, 37, 47],
+      "achter": [18, 28, 38, 48]
+    },
+    "namensgruppen": {
+      "weisheitszaehne": [18, 28, 38, 48],
+      "molaren": [16, 17, 18, 26, 27, 28, 36, 37, 38, 46, 47, 48],
+      "praemolaren": [14, 15, 24, 25, 34, 35, 44, 45],
+      "eckzaehne": [13, 23, 33, 43],
+      "schneidezaehne": [11, 12, 21, 22, 31, 32, 41, 42],
+      "frontzaehne": [13, 12, 11, 21, 22, 23, 33, 32, 31, 41, 42, 43],
+      "oberkiefer": [11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28],
+      "unterkiefer": [31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48]
+    },
+    "zahlwort_zu_ziffer": {
+      "eins": 1, "ein": 1, "eine": 1, "zwei": 2, "drei": 3, "vier": 4,
+      "fuenf": 5, "fünf": 5, "sechs": 6, "sieben": 7, "acht": 8
+    },
+    "kombinations_grammatik": [
+      "'alle Achter' / 'die Achter' = 18, 28, 38, 48 (Position 8 in allen vier Quadranten). Analog Siebener/Sechser/... = Position in allen Quadranten.",
+      "'alle Weisheitszaehne' = 18, 28, 38, 48.",
+      "'24 bis 26' bzw. '24-26' = 24, 25, 26 (fortlaufend im selben Quadranten).",
+      "'24, 25, 26 x' = die Zaehne 24 bis 26; 'x' markiert fehlend/extrahiert.",
+      "'Zahn 46 MOD Fuellung' = Zahn 46, Flaechen mesial-okklusal-distal, Fuellung.",
+      "'<Befund> an den Zaehnen <Liste>' = der Befund gilt fuer alle genannten Zaehne.",
+      "Zwei einzeln gesprochene Ziffern hintereinander ('zwei sieben') = die zusammengesetzte Zahnzahl 27.",
+      "'oben rechts/links, unten rechts/links' = Quadrant 1/2/4/3 (Patientensicht)."
+    ]
+  },
+
+  "flaechen": {
+    "erklaerung": "Zahnflaechen werden als Buchstabenkuerzel oder ausgeschrieben diktiert.",
+    "codes": {
+      "m": "mesial (zur Mitte hin)",
+      "d": "distal (von der Mitte weg)",
+      "o": "okklusal (Kaauflaeche der Seitenzaehne)",
+      "i": "inzisal (Schneidekante der Frontzaehne)",
+      "b": "bukkal (wangenseitig)",
+      "v": "vestibulaer (lippen-/wangenseitig)",
+      "l": "lingual (zungenseitig, Unterkiefer)",
+      "p": "palatinal (gaumenseitig, Oberkiefer)",
+      "c": "zervikal (am Zahnhals)"
+    },
+    "kombis": {
+      "MO": "mesial-okklusal",
+      "OD": "okklusal-distal",
+      "MOD": "mesial-okklusal-distal",
+      "MOB": "mesial-okklusal-bukkal",
+      "BOL": "bukkal-okklusal-lingual"
+    },
+    "sprechformen": [
+      "'em oh de' / 'M O D' = MOD",
+      "'mesial okklusal distal' = MOD",
+      "einzelne Buchstaben ('em', 'oh', 'de') im Zahnkontext = Flaechenkuerzel, nicht Wortanfaenge."
+    ]
+  },
+
+  "abkuerzungen": [
+    {"kurz": "WK", "lang": "Wurzelkanal"},
+    {"kurz": "WKB", "lang": "Wurzelkanalbehandlung"},
+    {"kurz": "WSR", "lang": "Wurzelspitzenresektion"},
+    {"kurz": "PZR", "lang": "professionelle Zahnreinigung"},
+    {"kurz": "PA", "lang": "Parodontitis / Parodontalbehandlung"},
+    {"kurz": "CAP", "lang": "chronische apikale Parodontitis"},
+    {"kurz": "AAP", "lang": "akute apikale Parodontitis"},
+    {"kurz": "OPG", "lang": "Orthopantomogramm (Panoramaschichtaufnahme)"},
+    {"kurz": "DVT", "lang": "digitale Volumentomographie"},
+    {"kurz": "PSA", "lang": "Panoramaschichtaufnahme"},
+    {"kurz": "HKP", "lang": "Heil- und Kostenplan"},
+    {"kurz": "KVA", "lang": "Kostenvoranschlag"},
+    {"kurz": "BEMA", "lang": "Bewertungsmassstab zahnaerztlicher Leistungen"},
+    {"kurz": "GOZ", "lang": "Gebuehrenordnung fuer Zahnaerzte"},
+    {"kurz": "GOAe", "lang": "Gebuehrenordnung fuer Aerzte"},
+    {"kurz": "ZE", "lang": "Zahnersatz"},
+    {"kurz": "KCH", "lang": "Konservierend-chirurgische Behandlung"},
+    {"kurz": "KB", "lang": "kieferorthopaedische Behandlung"},
+    {"kurz": "CMD", "lang": "craniomandibulaere Dysfunktion"},
+    {"kurz": "PRF", "lang": "Platelet Rich Fibrin (Eigenblutkonzentrat)"},
+    {"kurz": "PRGF", "lang": "Plasma Rich in Growth Factors (Eigenblutkonzentrat)"},
+    {"kurz": "PA-Status", "lang": "Parodontalstatus"},
+    {"kurz": "UPT", "lang": "unterstuetzende Parodontitistherapie"},
+    {"kurz": "Vipr", "lang": "Vitalitaetspruefung"},
+    {"kurz": "L1", "lang": "Leitungsanaesthesie"},
+    {"kurz": "I", "lang": "Infiltrationsanaesthesie"},
+    {"kurz": "SLM", "lang": "Scan / digitale Abformung (praxisspezifisch)"}
+  ],
+
+  "diagnosen": [
+    {"begriff": "apikale Parodontitis", "gruppe": "Endodontie", "aliases": ["apicale parodontitis", "apikale paradontitis", "apikale parodontose"], "bedeutung": "Entzuendung an der Wurzelspitze"},
+    {"begriff": "Dentitio difficilis", "gruppe": "Chirurgie", "aliases": ["dentitio dificilis", "dentition difficilis", "penitio delfin chilies", "dentizio difficilis"], "bedeutung": "erschwerter Zahndurchbruch, meist Weisheitszahn"},
+    {"begriff": "Pulpitis", "gruppe": "Endodontie", "aliases": ["pulpits", "bulbitis"], "bedeutung": "Entzuendung des Zahnnervs"},
+    {"begriff": "Gingivitis", "gruppe": "Parodontologie", "aliases": ["gingi vitis", "gingivits", "gingevitis"], "bedeutung": "Zahnfleischentzuendung"},
+    {"begriff": "Parodontitis", "gruppe": "Parodontologie", "aliases": ["paradontitis", "parodentitis"], "bedeutung": "Entzuendung des Zahnhalteapparats"},
+    {"begriff": "Periimplantitis", "gruppe": "Implantologie", "aliases": ["peri implantitis", "periimplantits"], "bedeutung": "Entzuendung um ein Implantat"},
+    {"begriff": "Approximalkaries", "gruppe": "Kariologie", "aliases": ["approximal karies", "aproximalkaries"], "bedeutung": "Karies im Zahnzwischenraum"},
+    {"begriff": "Sekundaerkaries", "gruppe": "Kariologie", "aliases": ["sekundär karies"], "bedeutung": "Karies am Rand einer bestehenden Fuellung"},
+    {"begriff": "Dentitio", "gruppe": "Chirurgie", "aliases": [], "bedeutung": "Zahndurchbruch"},
+    {"begriff": "submukoeser Abszess", "gruppe": "Chirurgie", "aliases": ["submucosa abscessosa", "submukoese absess"], "bedeutung": "Abszess unter der Schleimhaut"},
+    {"begriff": "Fossa canina", "gruppe": "Anatomie", "aliases": ["fossa kannina", "fossa canina abszess"], "bedeutung": "Grube am Oberkiefer, typische Abszesslokalisation"}
+  ],
+
+  "verhoerungen": [
+    {"falsch": "Auffaellung", "richtig": "Aufhellung", "kontext": "Roentgen (radiologische Aufhellung)"},
+    {"falsch": "Argumentation", "richtig": "Augmentation", "kontext": "Knochenaufbau (Knochenargumentation -> Knochenaugmentation)"},
+    {"falsch": "Bio-Ausloesung", "richtig": "Bio-Oss", "kontext": "Knochenersatzmaterial"},
+    {"falsch": "Karius", "richtig": "Karies", "kontext": "Kariologie"},
+    {"falsch": "Penitio Delfin Chilies", "richtig": "Dentitio difficilis", "kontext": "Weisheitszahn"},
+    {"falsch": "an Zahlen", "richtig": "an Zahn", "kontext": "Lokalisation"},
+    {"falsch": "Amtszahlen", "richtig": "an Zahn", "kontext": "Lokalisation"},
+    {"falsch": "MOD-Amtszahlen-Gesetz", "richtig": "MOD an Zahn", "kontext": "Flaeche + Lokalisation (DFN-Muell)"},
+    {"falsch": "kariries", "richtig": "kariös", "kontext": "Befundadjektiv (karriös/furriös/gradiös -> kariös)"},
+    {"falsch": "submucosa abscessosa canina", "richtig": "submukoeser Abszess Fossa canina", "kontext": "Latein-Halluzination statt deutscher Diagnose"}
+  ],
+
+  "befund_muster": [
+    "<Zahn> <Flaechen?> <Befund/Behandlung>  z. B. '36 MOD Komposit', '27 fehlend'",
+    "<Befund/Behandlung> an den Zaehnen <Zahnliste>  z. B. 'Karies an den Zaehnen 24, 25, 26'",
+    "alle <Positionswort> <Zustand>  z. B. 'alle Achter fehlen'",
+    "<Zahnliste> x  — 'x' markiert fehlend/extrahiert",
+    "<Zahn> <Vitalitaet/Perkussion>  z. B. '46 avital, perkussionsempfindlich'",
+    "<Regio> <chirurgischer Befund>  z. B. 'Regio 36 submukoeser Abszess'"
+  ],
+
+  "reasoning": [
+    "Interpretiere alleinstehende zweistellige Zahlen im Bereich 11-48 als FDI-Zaehne (11-18/21-28/31-38/41-48); zwei einzeln gesprochene Ziffern ('zwei sieben') zu einer Zahnzahl (27) zusammenziehen.",
+    "Expandiere Positions-/Gruppenworte anhand fdi_schema.namensgruppen und positionsgruppen ('alle Achter' -> 18,28,38,48).",
+    "Erkenne Flaechenkuerzel (m/d/o/b/l/p/i/v, MOD ...) im Zahnkontext und ordne sie dem genannten Zahn zu.",
+    "Loese Abkuerzungen kontextabhaengig auf (WKB, WSR, PZR, OPG, DVT, HKP, KVA, PRGF ...).",
+    "Mappe naheliegende Verhoerungen auf den Fachbegriff im gleichen semantischen Feld (Argumentation->Augmentation, Auffaellung->Aufhellung, Penitio Delfin Chilies->Dentitio difficilis).",
+    "Bevorzuge deutsche Fachbegriffe; Latein nur wenn eindeutig gemeint (Dentitio difficilis, Fossa canina).",
+    "Rate NIEMALS Abrechnungsziffern und erfinde keine Zaehne/Diagnosen — bei Unsicherheit die Stelle markieren statt raten.",
+    "Aendere ausserhalb der genannten Fachbegriffe nichts an korrektem Deutsch (haeufige Alltagswoerter bleiben unangetastet)."
+  ]
+}

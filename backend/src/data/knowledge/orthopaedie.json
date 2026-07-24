@@ -1,0 +1,117 @@
+{
+  "meta": {
+    "domain": "Orthopaedie / Unfallchirurgie (DE)",
+    "fachrichtung": "orthopaedie",
+    "label": "Orthopaedie / Unfallchirurgie",
+    "aliases": ["orthop", "orthopaed", "orthopaedie", "unfallchirurgie", "unfallchirurg", "chirurgie orthopaedie", "sportmedizin"],
+    "geprueft": false,
+    "version": "1.0-entwurf",
+    "stand": "2026-07-24",
+    "zweck": "Domaenenwissen der Lena-Verstehens-/Korrekturschicht fuer Orthopaedie/Unfallchirurgie: Gelenke/Regionen, Bewegungsrichtungen (Neutral-Null), Befund-Vokabular, Abkuerzungen, Diagnosen und typische Verhoerungen. Genutzt fuer STT-Hotword-Biasing, deterministische Korrektur-Map und als LLM-Grounding.",
+    "hinweise": [
+      "ENTWURF (geprueft=false): KI-erstellte v1. Freigabe durch einen Orthopaeden/Unfallchirurgen ausstehend; bis dahin additiv.",
+      "Seitenangaben (rechts/links) und Gradzahlen (Neutral-Null, ROM) exakt uebernehmen — nie erfinden.",
+      "Abrechnung (EBM/GOAe) wird NIE aus dem Transkript geraten."
+    ]
+  },
+
+  "begriffe": [
+    "Fraktur", "Grünholzfraktur", "Trümmerfraktur", "Luxation", "Subluxation", "Distorsion", "Kontusion",
+    "Ruptur", "Teilruptur", "Zerrung", "Prellung", "Arthrose", "Arthritis", "Osteoarthrose", "Gonarthrose",
+    "Koxarthrose", "Omarthrose", "Rhizarthrose", "Bandscheibenvorfall", "Bandscheibenprotrusion", "Spinalkanalstenose",
+    "Spondylolisthesis", "Spondylarthrose", "Osteochondrose", "Skoliose", "Kyphose", "Meniskuslaesion",
+    "Innenmeniskus", "Aussenmeniskus", "Kreuzbandruptur", "vorderes Kreuzband", "hinteres Kreuzband",
+    "Rotatorenmanschette", "Supraspinatussehne", "Impingement", "Impingement-Syndrom", "Epicondylitis",
+    "Epicondylitis radialis", "Karpaltunnelsyndrom", "Bakerzyste", "Bursitis", "Tendinitis", "Tendinose",
+    "Enthesiopathie", "Osteoporose", "Osteomyelitis", "Pseudarthrose", "Kallus", "Osteosynthese", "Osteotomie",
+    "Endoprothese", "Totalendoprothese", "Arthroskopie", "Arthrodese", "Reposition", "Retention", "Osteophyt",
+    "Gips", "Orthese", "Infiltration", "Punktion", "Flexion", "Extension", "Abduktion", "Adduktion",
+    "Innenrotation", "Aussenrotation", "Pronation", "Supination", "Dorsalextension", "Plantarflexion",
+    "Inversion", "Eversion", "Valgus", "Varus", "plantar", "palmar", "dorsal", "volar"
+  ],
+
+  "abkuerzungen": [
+    {"kurz": "TEP", "lang": "Totalendoprothese"},
+    {"kurz": "HTEP", "lang": "Huefttotalendoprothese"},
+    {"kurz": "KTEP", "lang": "Knietotalendoprothese"},
+    {"kurz": "VKB", "lang": "vorderes Kreuzband"},
+    {"kurz": "HKB", "lang": "hinteres Kreuzband"},
+    {"kurz": "RM", "lang": "Rotatorenmanschette"},
+    {"kurz": "OSG", "lang": "oberes Sprunggelenk"},
+    {"kurz": "USG", "lang": "unteres Sprunggelenk"},
+    {"kurz": "ACG", "lang": "Akromioklavikulargelenk"},
+    {"kurz": "HWS", "lang": "Halswirbelsaeule"},
+    {"kurz": "BWS", "lang": "Brustwirbelsaeule"},
+    {"kurz": "LWS", "lang": "Lendenwirbelsaeule"},
+    {"kurz": "ROM", "lang": "Bewegungsausmass (range of motion)"},
+    {"kurz": "NNM", "lang": "Neutral-Null-Methode"},
+    {"kurz": "BSV", "lang": "Bandscheibenvorfall"},
+    {"kurz": "Z.n.", "lang": "Zustand nach"},
+    {"kurz": "DD", "lang": "Differentialdiagnose"},
+    {"kurz": "ORIF", "lang": "offene Reposition, interne Fixation"}
+  ],
+
+  "diagnosen": [
+    {"begriff": "Gonarthrose", "gruppe": "Degeneration", "aliases": ["gon arthrose", "kniearthrose"], "bedeutung": "Kniegelenksarthrose"},
+    {"begriff": "Koxarthrose", "gruppe": "Degeneration", "aliases": ["cox arthrose", "coxarthrose", "hueftarthrose"], "bedeutung": "Hueftgelenksarthrose"},
+    {"begriff": "Bandscheibenvorfall", "gruppe": "Wirbelsaeule", "aliases": ["bandscheiben vorfall", "nucleus pulposus prolaps", "bsv"], "bedeutung": "Prolaps von Bandscheibengewebe mit moeglicher Nervenkompression"},
+    {"begriff": "Impingement-Syndrom", "gruppe": "Schulter", "aliases": ["impingement syndrom", "in pinsch ment"], "bedeutung": "schmerzhafte Enge unter dem Schulterdach"},
+    {"begriff": "Kreuzbandruptur", "gruppe": "Knie", "aliases": ["kreuzband ruptur", "vkb ruptur"], "bedeutung": "Riss des Kreuzbandes"},
+    {"begriff": "Meniskuslaesion", "gruppe": "Knie", "aliases": ["meniskus laesion", "meniskusriss"], "bedeutung": "Schaedigung des Meniskus"},
+    {"begriff": "Epicondylitis radialis", "gruppe": "Ellenbogen", "aliases": ["epicondylitis radialis", "tennisellenbogen", "epikondylitis"], "bedeutung": "Reizung der Streckersehnen am Ellenbogen"},
+    {"begriff": "Karpaltunnelsyndrom", "gruppe": "Hand", "aliases": ["karpal tunnel syndrom", "kts"], "bedeutung": "Kompression des Nervus medianus im Karpaltunnel"}
+  ],
+
+  "verhoerungen": [
+    {"falsch": "Arttrose", "richtig": "Arthrose", "kontext": "Gelenkverschleiss"},
+    {"falsch": "Meniskus Laesion", "richtig": "Meniskuslaesion", "kontext": "Knie"},
+    {"falsch": "in Pinschment", "richtig": "Impingement", "kontext": "Schulter"},
+    {"falsch": "Kox Arthrose", "richtig": "Koxarthrose", "kontext": "Huefte"},
+    {"falsch": "Osteo Synthese", "richtig": "Osteosynthese", "kontext": "operative Frakturversorgung"},
+    {"falsch": "Rotatoren Manschette", "richtig": "Rotatorenmanschette", "kontext": "Schulter"},
+    {"falsch": "Spondylo Listhese", "richtig": "Spondylolisthesis", "kontext": "Wirbelgleiten"},
+    {"falsch": "Neutral Null", "richtig": "Neutral-Null-Methode", "kontext": "Bewegungsmessung"}
+  ],
+
+  "befund_muster": [
+    "<Region/Gelenk> <Seite> <Befund>  z. B. 'Knie rechts Erguss, Meniskuszeichen positiv'",
+    "Bewegungsausmass nach Neutral-Null: <Ext/Flex Grad>  z. B. 'Knie 0-0-120, Huefte 10-0-90'",
+    "Z.n. <Eingriff> <Region>  z. B. 'Z.n. KTEP rechts'",
+    "<Fraktur> <Klassifikation/Dislokation>  z. B. 'distale Radiusfraktur, dorsal disloziert'"
+  ],
+
+  "reasoning": [
+    "Ordne Seite (rechts/links), Gelenk/Region und Befund korrekt zu; Seitenangaben nie erfinden.",
+    "Interpretiere Zahlentripel im Gelenkkontext als Neutral-Null-Werte (z. B. '0-0-120' = Extension-0-Flexion).",
+    "Loese Abkuerzungen kontextabhaengig auf (TEP, VKB, RM, OSG, LWS, ROM, NNM ...).",
+    "Bevorzuge orthopaedische Fachschreibung (Arthrose, Meniskuslaesion, Impingement, Osteosynthese).",
+    "Mappe naheliegende Verhoerungen auf den Fachbegriff im gleichen semantischen Feld (Arttrose->Arthrose, in Pinschment->Impingement).",
+    "Rate keine Diagnosen; bei Unsicherheit markieren.",
+    "Aendere ausserhalb der Fachbegriffe nichts an korrektem Deutsch."
+  ],
+
+  "strukturiert": [
+    {
+      "titel": "Bewegungsrichtungen (Neutral-Null-Methode)",
+      "paare": {
+        "Flexion/Extension": "Beugung/Streckung",
+        "Abduktion/Adduktion": "Abspreizen/Heranfuehren",
+        "Innenrotation/Aussenrotation": "Einwaerts-/Auswaertsdrehung",
+        "Pronation/Supination": "Unterarm einwaerts/auswaerts",
+        "Dorsalextension/Plantarflexion": "Fuss heben/senken",
+        "Inversion/Eversion": "Fussrand innen/aussen",
+        "Valgus/Varus": "X-Stellung/O-Stellung"
+      }
+    },
+    {
+      "titel": "Gelenke & Regionen (Abkuerzungen)",
+      "paare": {
+        "OSG/USG": "oberes/unteres Sprunggelenk",
+        "ACG": "Akromioklavikulargelenk (Schultereckgelenk)",
+        "HWS/BWS/LWS": "Hals-/Brust-/Lendenwirbelsaeule",
+        "VKB/HKB": "vorderes/hinteres Kreuzband",
+        "RM": "Rotatorenmanschette"
+      }
+    }
+  ]
+}
