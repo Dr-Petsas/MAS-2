@@ -57,6 +57,36 @@
   .badge { font-size: .72rem; font-weight: 800; padding: 5px 10px; border-radius: 999px;
     background: rgba(255,207,74,.14); color: var(--gold); border: 1px solid rgba(255,207,74,.35); }
 
+  /* Teleprompter / Vorlese-Modus */
+  .tp { background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line);
+    border-radius: 18px; padding: 14px 16px; margin-bottom: 14px; }
+  .tp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .tp-title { font-weight: 800; }
+  .tp-count { color: var(--muted); font-weight: 800; font-size: .92rem; }
+  .tp-stage { min-height: 104px; display: grid; place-items: center; text-align: center;
+    background: #150b34; border: 1px solid var(--line); border-radius: 14px; padding: 16px 14px; }
+  .tp-stage.ok { animation: flashOk 1s ease-out; } .tp-stage.mis { animation: flashMis 1s ease-out; }
+  .tp-cur { font-size: 1.5rem; line-height: 1.35; font-weight: 700; }
+  .tp-cur .hl { color: var(--gold); font-weight: 900; }
+  .tp-next { color: var(--muted); font-size: .9rem; text-align: center; margin-top: 10px; min-height: 1.2em; }
+  .tp-next .hl { color: var(--accent); font-weight: 800; }
+  .tp-ctl { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 12px; }
+  .tp-btn { display: inline-flex; align-items: center; gap: 10px; border: 0; border-radius: 999px;
+    padding: 12px 24px; font-weight: 800; font-size: 1rem; color: #1a0b2e; cursor: pointer;
+    background: linear-gradient(180deg, var(--accent), var(--accent2)); }
+  .tp-btn:active { transform: translateY(1px); }
+  .tp-btn.live { background: #2a1a5c; color: #fff; }
+  .tp-dot { width: 14px; height: 14px; border-radius: 50%; background: transparent; }
+  .tp-btn.live .tp-dot { background: #ff3b5c; animation: recPulse .9s infinite; }
+  .tp-status { color: var(--muted); font-size: .78rem; text-align: center; margin-top: 8px; min-height: 1em; }
+
+  /* Wortschatz-Liste einklappbar -> Seite bleibt kurz */
+  details.listwrap { margin-top: 4px; }
+  details.listwrap > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between;
+    align-items: center; padding: 8px 2px; font-weight: 800; }
+  details.listwrap > summary::-webkit-details-marker { display: none; }
+  details.listwrap > summary .cnt { color: var(--muted); font-size: .82rem; font-weight: 700; }
+
   /* Begriffe hinzufuegen */
   .add { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin-bottom: 14px; }
   .add h2 { font-size: .95rem; margin: 0 0 8px; }
@@ -183,6 +213,22 @@
     </div>
     <div class="badges" id="badges"></div>
 
+    <div class="tp" id="tp" style="display:none">
+      <div class="tp-head">
+        <span class="tp-title">🎬 Vorlese-Modus</span>
+        <span class="tp-count" id="tpCount">0 / 0</span>
+      </div>
+      <div class="tp-stage" id="tpStage">
+        <div class="tp-cur" id="tpCur">Übungssätze generieren, dann „Starten".</div>
+      </div>
+      <div class="tp-next" id="tpNext"></div>
+      <div class="tp-ctl">
+        <button class="tp-btn" id="tpBtn"><span class="tp-dot"></span><span id="tpBtnLbl">▶︎ Starten</span></button>
+        <button class="btn ghost" id="tpSkip">Überspringen ›</button>
+      </div>
+      <div class="tp-status" id="tpStatus">Mikro läuft durch — du sprichst, Lena blättert automatisch weiter.</div>
+    </div>
+
     <div class="add">
       <h2>Übungsstoff wählen</h2>
       <div class="methods">
@@ -230,12 +276,11 @@
       <div class="hint" id="addHint">Alles bleibt in Ihrer Praxis. Extraktion &amp; Generierung laufen auf dem lokalen Praxis-Server.</div>
     </div>
 
-    <div class="listhead">
-      <h2>Ihr Wortschatz</h2>
-      <span class="cnt" id="termCount">0 Begriffe</span>
-    </div>
-    <div class="cards" id="cards"></div>
-    <div class="empty" id="emptyMsg">Noch keine Begriffe — oben eigenes Material hochladen <b>oder</b> Übungssätze generieren.</div>
+    <details class="listwrap">
+      <summary><span>Ihr Wortschatz</span><span class="cnt" id="termCount">0 Begriffe</span></summary>
+      <div class="cards" id="cards"></div>
+      <div class="empty" id="emptyMsg">Noch keine Begriffe — oben eigenes Material hochladen <b>oder</b> Übungssätze generieren.</div>
+    </details>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -353,6 +398,7 @@
       terms = d.terms || [];
       renderTerms();
       renderStats(d.stats);
+      tpToggleVisible();
     } catch (e) { toast("Laden fehlgeschlagen: " + e.message, "mis"); }
   }
 
@@ -546,6 +592,111 @@
       r.btn.disabled = false;
     }
   }
+
+  /* ── Teleprompter / Vorlese-Modus: laufendes Mikro + Auto-Advance per VAD ── */
+  const TP_THRESH = 0.014, TP_SILENCE_END = 1100, TP_MIN_SPEECH = 400, TP_MAX = 10000;
+  const tp = {
+    on: false, idx: 0, queue: [], stream: null, ctx: null, src: null, proc: null,
+    buf: [], srcRate: 0, hadSpeech: false, speechMs: 0, silenceMs: 0, busy: false,
+  };
+
+  function tpToggleVisible() { $("tp").style.display = (terms.length || tp.on) ? "block" : "none"; }
+  function tpBuildQueue() {
+    const order = { hard: 0, candidate: 1, confirmed: 2 };
+    return terms.slice()
+      .sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1))
+      .map((t) => ({ id: t.id, term: t.term, prompt: t.promptSentence || t.term }));
+  }
+  function tpRender() {
+    const n = tp.queue.length, i = tp.idx;
+    $("tpCount").textContent = n ? (Math.min(i + 1, n) + " / " + n) : "0 / 0";
+    const cur = tp.queue[i];
+    $("tpCur").innerHTML = cur ? highlightTerm(cur.prompt, cur.term) : "Alles geübt! 🎉";
+    const nx = tp.queue[i + 1];
+    $("tpNext").innerHTML = nx ? ("weiter: " + highlightTerm(nx.prompt, nx.term)) : "";
+  }
+  function tpResetSeg() { tp.buf = []; tp.hadSpeech = false; tp.speechMs = 0; tp.silenceMs = 0; }
+
+  async function tpStart() {
+    if (tp.on) { tpStop(); return; }
+    tp.queue = tpBuildQueue();
+    if (!tp.queue.length) { toast("Erst Übungssätze generieren.", "mis"); return; }
+    try {
+      tp.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    } catch (e) { toast("Mikrofon nicht verfügbar.", "mis"); return; }
+    tp.ctx = tp.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (tp.ctx.state === "suspended") await tp.ctx.resume();
+    tp.srcRate = tp.ctx.sampleRate;
+    tp.src = tp.ctx.createMediaStreamSource(tp.stream);
+    tp.proc = tp.ctx.createScriptProcessor(4096, 1, 1);
+    tp.proc.onaudioprocess = tpOnAudio;
+    tp.src.connect(tp.proc); tp.proc.connect(tp.ctx.destination);
+    tp.on = true; tp.idx = 0; tp.busy = false; tpResetSeg();
+    $("tpBtn").classList.add("live"); $("tpBtnLbl").textContent = "Stopp";
+    $("tpStatus").textContent = "Sprich den Satz — ich blättere automatisch weiter.";
+    tpRender();
+  }
+  function tpStop() {
+    tp.on = false; tp.busy = false;
+    try { if (tp.proc) tp.proc.disconnect(); if (tp.src) tp.src.disconnect(); } catch (_) {}
+    try { if (tp.stream) tp.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    tp.stream = null; tp.proc = null; tp.src = null;
+    $("tpBtn").classList.remove("live"); $("tpBtnLbl").textContent = "▶︎ Starten";
+    loadAll();
+  }
+  function tpOnAudio(e) {
+    if (!tp.on || tp.busy) return;
+    const d = e.inputBuffer.getChannelData(0);
+    tp.buf.push(new Float32Array(d));
+    let sum = 0; for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
+    const rms = Math.sqrt(sum / d.length);
+    const frameMs = (d.length / tp.srcRate) * 1000;
+    if (rms > TP_THRESH) { tp.speechMs += frameMs; tp.silenceMs = 0; if (tp.speechMs > 120) tp.hadSpeech = true; }
+    else { tp.silenceMs += frameMs; }
+    const totalMs = (tp.buf.reduce((n, c) => n + c.length, 0) / tp.srcRate) * 1000;
+    if ((tp.hadSpeech && tp.speechMs >= TP_MIN_SPEECH && tp.silenceMs >= TP_SILENCE_END) ||
+        (tp.hadSpeech && totalMs >= TP_MAX)) {
+      tpFinalize();
+    }
+  }
+  async function tpFinalize() {
+    tp.busy = true;
+    const cur = tp.queue[tp.idx];
+    const frames = tp.buf; tpResetSeg();
+    const total = frames.reduce((n, c) => n + c.length, 0);
+    const merged = new Float32Array(total);
+    let off = 0; for (const c of frames) { merged.set(c, off); off += c.length; }
+    const pcm = floatTo16kPCM(merged, tp.srcRate);
+    const b64 = int16ToB64(pcm);
+    const stage = $("tpStage");
+    try {
+      const d = await apiPost("/training/attempt", { termId: cur.id, pcm16: b64, sampleRate: 16000 });
+      stage.classList.remove("ok", "mis"); void stage.offsetWidth;
+      stage.classList.add(d.match ? "ok" : "mis");
+      $("tpStatus").textContent = d.match
+        ? ("✅ „" + d.target + "\" sitzt!")
+        : ("👂 gehört: „" + (d.recognized || "—") + "\" — gemerkt, weiter.");
+      renderStats(d.stats);
+      if (d.leveledUp) setTimeout(() => toast("🎉 Level " + d.stats.level + " · " + d.stats.levelTitle + "!", "ok"), 300);
+      if (d.newBadges && d.newBadges.length) setTimeout(() => toast("🏅 " + (BADGE_LABELS[d.newBadges[0]] || d.newBadges[0]), "ok"), 900);
+    } catch (e) {
+      $("tpStatus").textContent = "Aufnahme fehlgeschlagen — weiter.";
+    }
+    setTimeout(() => {
+      if (!tp.on) return;
+      tp.idx++;
+      if (tp.idx >= tp.queue.length) { tpRender(); $("tpStatus").textContent = "Alles geübt! 🎉"; tpStop(); return; }
+      tpRender(); tp.busy = false;
+    }, 1100);
+  }
+  $("tpBtn").addEventListener("click", tpStart);
+  $("tpSkip").addEventListener("click", () => {
+    if (!tp.on) return;
+    tpResetSeg();
+    tp.idx++;
+    if (tp.idx >= tp.queue.length) { $("tpStatus").textContent = "Alles geübt! 🎉"; tpStop(); return; }
+    tpRender();
+  });
 
   if (creds) loadAll();
 </script>
