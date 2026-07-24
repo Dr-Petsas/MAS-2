@@ -1068,6 +1068,20 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 24.07.2026: **Clara-Beschimpfungs-Konter (W-HUMAN-Zusatz, Chef)** — Clara
+  kontert direkte Beleidigungen/Anmachen mit derb-humorvollen Spruechen
+  (`services/worker_human.py`: `_ROAST_INSULT_RE`/`_ROAST_COMEON_RE` +
+  Pools `roast_insult`/`roast_comeon`). Sicherheitsrahmen: laeuft NUR in der
+  menschlichen Schicht (Clara intern, nie Bianca/Patient), erst NACH Ja/Nein-,
+  Vent-, Ops-Gruppen- und Personen-Check (Arbeit gewinnt immer), nur bei
+  klarer 2.-Person-Beleidigung ueber enges festes Lexikon. Plattformweit AUS,
+  aktiv nur per Profil-Flag `banter.roast` (nur `clara_meddent`); Env-Notaus
+  `CLARA_ROAST_LAYER=0`. Optionale Mini-LLM-Roast-Spur (`ROAST_PERSONA_PROMPT`
+  + `_roast_lane_reply` + Nach-Guard `roast_reply_ok`) gebaut, aber hinter
+  `banter.roast_llm` default AUS (Fallback immer auf Pool). Tests:
+  `testsuite/test_human_layer.py` (Roast an/aus, Gegenprobe normale Saetze,
+  Katalog auch mit `allow_roast=True` unangetastet) + Schnell-Gate gruen.
+  Live-Wirkung nach Worker-Neustart (Chef).
 - 22.07.2026: **Clara spricht IMMER relativ** — LLM-Zeitkontext sagte fälschlich
   „nenne Termine als JJJJ-MM-TT“ (gesprochen). Jetzt: Tools = ISO, Mund =
   heute/morgen/nächste Woche/in N Wochen. `response_guard` + MAS
