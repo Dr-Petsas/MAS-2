@@ -20,7 +20,7 @@
 import express from "express";
 import admin from "./../firebase.js";
 import { identifyByDevice } from "../clara/devices.js";
-import { chat } from "../mail/llm.js";
+import { chat, strongLlm } from "../mail/llm.js";
 import { log } from "../log.js";
 import {
   XP_OK, XP_TEACH, normText, isMatch, levelForXp, levelTitle,
@@ -29,6 +29,17 @@ import {
 
 const router = express.Router();
 
+// Begriffs-Extraktion & Satz-Generierung wollen das STARKE Modell (RTX-5090,
+// qwen3.6) fuer brauchbare, fachspezifische Ergebnisse. Ist der 5090 nicht
+// erreichbar, faellt es auf das lokale Modell zurueck (besser als gar nichts).
+async function chatSmart(messages, opts = {}) {
+  const strong = strongLlm();
+  const first = await chat(messages, { ...opts, baseUrl: strong.base, model: strong.model });
+  if (first.ok) return first;
+  log.warn("training.strong_llm_unreachable_fallback_local", { reason: first.reason || "error" });
+  return chat(messages, opts);
+}
+
 const ID_RE = /^[A-Za-z0-9_-]{1,200}$/;
 const LENA_STT_PORT = Number(process.env.LENA_STT_PORT || 8140);
 const FieldValue = admin.firestore.FieldValue;
@@ -36,8 +47,8 @@ const FieldValue = admin.firestore.FieldValue;
 // ── Auth: gekoppeltes Geraet (deviceKey) ODER eingeloggter Nutzer (Bearer) ──
 async function trainingActor(req) {
   const clientId = String(req.body?.clientId || req.query?.clientId || "").trim();
-  const deviceId = String(req.body?.deviceId || "").trim();
-  const deviceKey = String(req.body?.deviceKey || "").trim();
+  const deviceId = String(req.body?.deviceId || req.query?.deviceId || "").trim();
+  const deviceKey = String(req.body?.deviceKey || req.query?.deviceKey || "").trim();
   if (ID_RE.test(clientId) && deviceId && deviceKey) {
     const who = await identifyByDevice(clientId, deviceId, deviceKey).catch(() => null);
     if (who) {
@@ -127,7 +138,7 @@ router.post("/training/extract", async (req, res) => {
       '{"term":"…","category":"eigenname|marke|medikament|fachbegriff|abkuerzung"}.',
       "Maximal 40 Einträge, jeder Begriff kurz (1-4 Wörter).",
     ].join(" ");
-    const llm = await chat(
+    const llm = await chatSmart(
       [{ role: "system", content: sys }, { role: "user", content: raw }],
       { temperature: 0.1, maxTokens: 1200, timeoutMs: 45000 },
     );
@@ -201,9 +212,9 @@ router.post("/training/generate", async (req, res) => {
       '[{"sentence":"…","term":"…"}]. Der "term" MUSS wortwörtlich im "sentence"',
       "vorkommen. Keine Dopplungen. Maximal " + count + " Einträge.",
     ].join(" ");
-    const llm = await chat(
+    const llm = await chatSmart(
       [{ role: "system", content: sys }, { role: "user", content: "Fachgebiet: " + label + ". Erzeuge " + count + " Übungssätze." }],
-      { temperature: 0.6, maxTokens: 1300, timeoutMs: 45000 },
+      { temperature: 0.6, maxTokens: 1300, timeoutMs: 60000 },
     );
     if (!llm.ok) return res.status(502).json({ ok: false, error: "llm_" + (llm.reason || "error") });
 
