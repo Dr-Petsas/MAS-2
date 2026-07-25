@@ -204,6 +204,27 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
       `set_app_mode:doku` = kein Clara-LLM, Parakeet AN. Aufnahme + Nachdiktat
       = `lena_tee` source arzt|nachdiktat. Zurueck: Soft-Return-Begruessung.
       Aufnahme-Kopf als Box-Karten statt Zeilenleiste.
+      NACHTRAG Mic-Leiste 3 Modi (25.07.2026): fixe Kopf-Mic-Leiste mit genau
+      DREI Modi als EIN Umschalter — `headset` (BT, Arzt-Spur), `headset_room`
+      (BT + PC-USB-Raummikro, 2 Spuren) `ipad_room` (iPad-Mikro, 1 gemischter
+      Stream); Single-Source `captureMode` in localStorage; alte
+      `#micToggle`/`.roommic-bar` ausgeblendet; durchgaengige Zurueck/Weiter-
+      Navigation im schlanken Header (auch im Schema-Schritt). AP2: robuster
+      BT-Rueck-Wechsel (BT<->iPad) — `pickAudioInput(mode,{waitMs})` pollt nach
+      iOS-Routenwechsel bis zu 3 s auf das wiederkehrende BT-Mikro (kein
+      getUserMedia), `switchMic` mit 1 Retry; iPad-Zurueck-Geste bleibt via
+      History (`pushState` je Modus/Schritt, `popstate`->`showStep`) IN der App.
+      AP3: `room_capture.py` zuverlaessig (Auto-Geraetewahl gehaertet, Mapper/
+      Stereomix ausgeschlossen; Single-Instance-Start); Modus-2-Kette
+      verdrahtet+verifiziert (WS /stt auf 8140 = Conformer, Finals). AP4:
+      Modus-3-Heuristik in `ingestLenaDokuSegment` — Ein-Stream-"arzt"-Segmente
+      werden bei klarer Laien-/Fragesprache (ohne klinische Marker) als
+      Patientenanliegen (`raum`) umgelabelt, nur bei `ipad_room`, nie im
+      Schema-Diktat, im Zweifel Arzt; in der UI korrigierbar. Clara-isoliert
+      (nur Doku-Capture/UI); Clara-Release-Gate gruen, `node --check`/`vm`
+      Inline-Syntax gruen. Fix nebenbei: Live-Clara-Worker lief mit veralteter
+      `engine=whisper` -> Tee lieferte nichts; Worker neu gestartet auf
+      `CLARA_LENA_TEE_ENGINE=conformer`.
 - [x] **W-LENA-3 Live-UI (Layout erhalten).** LIVE (11.07.2026). Datepicker/
       Arztfilter/Patientenliste bleiben. Rechts jetzt Umschalter Dialog<->Struktur:
       Dialog = chronologischer Verlauf (Patient links / Arzt rechts, Kanal=Sprecher

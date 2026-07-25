@@ -117,16 +117,11 @@
       }));
   }
 
-  /**
-   * Waehlt deviceId fuer micMode "ipad" | "usb" | "bluetooth".
-   */
-  async function pickAudioInput(micMode) {
-    const mode = normalizeMicMode(micMode);
-    const inputs = await listAudioInputs();
+  /** Aus einer bereits gelesenen Geraeteliste die deviceId fuer den Modus waehlen. */
+  function pickFromInputs(mode, inputs) {
     if (!inputs.length) {
       return { ok: false, error: "Kein Mikrofon gefunden.", inputs };
     }
-
     if (mode === "usb") {
       const usb = inputs.find((d) => d.usb)
         || inputs.find((d) => !d.builtin && !d.bluetooth && d.label && d.label !== "(ohne Namen)");
@@ -139,7 +134,6 @@
       }
       return { ok: true, deviceId: usb.deviceId, device: usb, inputs };
     }
-
     if (mode === "bluetooth") {
       const bt = inputs.find((d) => d.bluetooth)
         || inputs.find((d) => !d.builtin && !d.usb && d.label && d.label !== "(ohne Namen)");
@@ -152,12 +146,35 @@
       }
       return { ok: true, deviceId: bt.deviceId, device: bt, inputs };
     }
-
     // iPad Built-in
     const builtin = inputs.find((d) => d.builtin)
       || inputs.find((d) => d.deviceId === "default")
       || inputs[0];
     return { ok: true, deviceId: builtin.deviceId, device: builtin, inputs };
+  }
+
+  /**
+   * Waehlt deviceId fuer micMode "ipad" | "usb" | "bluetooth".
+   *
+   * opts.waitMs: Fuer EXTERNE Geraete (BT/USB) ein kurzes Warte-/Retry-Fenster.
+   * Nach einem iOS-Routenwechsel (BT -> iPad -> BT) verschwindet das BT-Mikro
+   * kurz aus der Geraeteliste (HFP-Re-Handshake). Ohne Wartefenster meldet der
+   * erste enumerateDevices "nicht gefunden" und das Headset gilt faelschlich als
+   * verloren. Mit waitMs>0 pollen wir enumerateDevices (billig, KEIN getUserMedia)
+   * bis das Geraet auftaucht. Default 0 = altes Verhalten fuer alle Aufrufer.
+   */
+  async function pickAudioInput(micMode, opts) {
+    const mode = normalizeMicMode(micMode);
+    const waitMs = Math.max(0, Number(opts?.waitMs) || 0);
+    const external = mode === "bluetooth" || mode === "usb";
+    const deadline = Date.now() + waitMs;
+    let res = pickFromInputs(mode, await listAudioInputs());
+    // Nur externe Geraete pollen — Built-in ist immer sofort da.
+    while (!res.ok && external && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 300));
+      res = pickFromInputs(mode, await listAudioInputs());
+    }
+    return res;
   }
 
   // Auf sauberes Schliessen der WS warten (bis timeoutMs). Beim Stoppen MUSS der

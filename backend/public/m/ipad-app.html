@@ -157,6 +157,30 @@
     }
     .clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .82rem; color: var(--mute); min-width: 42px; text-align: right; }
     .gear { color: var(--ink-soft); text-decoration: none; font-size: 18px; padding: 6px; opacity: .65; flex: none; }
+    /* Durchgaengige Navigation (nur Doku): EIN Zurueck/Weiter, immer sichtbar. */
+    .chrome-nav { display: flex; align-items: center; gap: 6px; flex: none; }
+    .chrome-nav[hidden] { display: none; }
+    .chrome-nav button {
+      border: 0; border-radius: 10px; background: rgba(255,255,255,.08);
+      color: var(--ink); width: 34px; height: 34px; font-size: 20px; font-weight: 800;
+      line-height: 1; cursor: pointer; display: grid; place-items: center;
+    }
+    .chrome-nav button:active { background: rgba(255,255,255,.16); }
+    .chrome-nav button:disabled { opacity: .35; cursor: default; }
+    .chrome-nav-label { font-size: .72rem; font-weight: 700; color: var(--mute); min-width: 92px; text-align: center; }
+    /* Fester 3-Modi-Mikrofon-Umschalter (Doku). */
+    .capture-bar { display: inline-flex; gap: 3px; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.06); flex: none; }
+    .capture-bar[hidden] { display: none; }
+    .capture-bar button {
+      border: 0; background: transparent; color: var(--ink-soft); font: inherit;
+      font-size: .74rem; font-weight: 700; padding: 6px 11px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+    }
+    .capture-bar button.is-on { background: rgba(46,230,200,.18); color: var(--turq); }
+    .capture-bar button:disabled { opacity: .38; cursor: default; }
+    .capture-bar button[data-device="none"]:not(.is-on) { color: var(--amber); }
+    /* Alte Einzelsteuerungen: durch den festen 3-Modi-Umschalter ersetzt (EINE Wahrheit). */
+    #micToggle { display: none !important; }
+    .roommic-bar { display: none !important; }
 
     /* â”€â”€ Panes (Clara-Modus â†” Dokumentation-Modus) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     .app-body { flex: 1; min-height: 0; position: relative; }
@@ -910,7 +934,11 @@
        zu NULL und die Patient/Mikro-Karten zu EINER schmalen Zeile — das
        Zahnschema bekommt die Hoehe. Tap auf ▾ (body.head-open) klappt alles
        wieder auf. Andere Schritte/Modi/Portrait bleiben unveraendert. */
-    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) .chrome { display: none; }
+    /* Schema-Schritt: Kopf NICHT mehr ausblenden (Nav muss durchgaengig bleiben,
+       Chef 25.07.) - stattdessen schlank: sperriges Marken-Element weg, die
+       schlanke Leiste mit Modus-Umschalter + globaler Zurueck/Weiter bleibt. */
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) .chrome { padding-bottom: 4px; }
+    body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) .brand { display: none; }
     body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #paneDoku .steps { display: none; }
     body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) .lena-wrap { padding-top: 4px; }
     body:has(#paneDoku.is-active #wiz3.is-show):not(.head-open) #wiz3 .rec-top { display: flex; align-items: center; gap: 8px; }
@@ -1352,6 +1380,18 @@
     <div class="mode-switch" id="modeSwitch" data-active="clara" role="tablist">
       <button type="button" class="is-on" data-mode="clara">Clara</button>
       <button type="button" data-mode="doku">Dokumentation</button>
+    </div>
+    <!-- Durchgaengige Navigation (nur Doku-Modus): EIN Zurueck/Weiter, immer sichtbar. -->
+    <div class="chrome-nav" id="chromeNav" hidden>
+      <button type="button" id="navBack" aria-label="Zurück">&#8249;</button>
+      <span class="chrome-nav-label" id="navStepLabel"></span>
+      <button type="button" id="navNext" aria-label="Weiter">&#8250;</button>
+    </div>
+    <!-- Fester 3-Modi-Mikrofon-Umschalter (nur Doku-Modus), EINE Wahrheit fuer alle Seiten. -->
+    <div class="capture-bar" id="captureBar" hidden role="radiogroup" aria-label="Mikrofon-Modus">
+      <button type="button" data-capmode="headset" role="radio" aria-checked="false" title="Nur Headset — Arztspur (Nachdiktat)">Headset</button>
+      <button type="button" data-capmode="headset_room" role="radio" aria-checked="false" title="Headset + PC-Raummikro — Arzt + Patient (2 Spuren)">Headset + Raum</button>
+      <button type="button" data-capmode="ipad_room" role="radio" aria-checked="false" title="iPad-Raummikro — Arzt + Patient (1 Stream)">iPad-Raum</button>
     </div>
     <div class="clock" id="clock">--:--</div>
     <a class="gear" href="/m/ipad.html?manage=1" aria-label="Einstellungen">&#9881;</a>
@@ -2363,13 +2403,18 @@
         const id = String(deviceId || "").trim();
         if (!id || !room || !connected) return false;
         if (window.__claraActiveMicId && window.__claraActiveMicId === id) return true;
-        try {
-          if (typeof room.switchActiveDevice === "function") {
+        if (typeof room.switchActiveDevice !== "function") return false;
+        // Ein Retry: Beim Zurueckschalten auf BT kann der Track-Wechsel dem
+        // iOS-HFP-Handshake zuvorkommen und werfen — kurz warten, dann nochmal.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
             await room.switchActiveDevice("audioinput", id);
             window.__claraActiveMicId = id;
             return true;
+          } catch (_) {
+            if (attempt === 0) await new Promise((r) => setTimeout(r, 500));
           }
-        } catch (_) {}
+        }
         return false;
       },
       publishCmd(obj) {
@@ -2400,7 +2445,7 @@
     };
   </script>
 
-  <script src="/m/lena-stt-capture.js?v=20260721pk1"></script>
+  <script src="/m/lena-stt-capture.js?v=20260725bt1"></script>
   <script src="/m/lena-zahnstatus-katalog.js?v=20260722i"></script>
   <script src="/m/lena-voice-chart.js?v=20260722i"></script>
   <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
@@ -2487,6 +2532,10 @@
           brand.dataset.mode = isClara ? "clara" : "lena";
           brandName.textContent = isClara ? "Clara" : "Lena";
           brandSub.textContent = isClara ? "Vollinformiert in 10 Sekunden" : "Behandlungs-Doku";
+          // Durchgaengige Navigation + Mikrofon-Umschalter nur im Doku-Modus zeigen.
+          const _cn = $("chromeNav"); if (_cn) _cn.hidden = isClara;
+          const _cb = $("captureBar"); if (_cb) _cb.hidden = isClara;
+          if (!isClara) { try { syncWizNav(); } catch (_) {} }
 
           if (!isClara) {
             // Soft: nur TTS stumm — Session + BT-Mic + Parakeet bleiben.
@@ -2501,6 +2550,8 @@
           }
           activeMode = mode;
           try { window.__claraIpad?.syncBrandOrb?.(); } catch (_) {}
+          // In-App-History: Moduswechsel = ein Zurueck-Ziel (AP2).
+          try { pkPushView(mode, currentWizStep); } catch (_) {}
         });
       });
 
@@ -2809,6 +2860,24 @@
         }
         return false;
       }
+      /** AP4 (Modus 3, iPad-Raummikro): EIN gemischter Stream kommt als "arzt".
+          Heuristik OHNE Modell: klingt das Segment klar nach Patient (Laien-/
+          Fragesatz, keine klinischen Marker), als Patientenanliegen behandeln.
+          KONSERVATIV — im Zweifel bleibt es Arzt (Fehl-Label wuerde Befunde in
+          die Patientenbox ziehen). Best effort, in der UI korrigierbar. */
+      function mode3GuessPatient(text) {
+        const t = String(text || "").toLowerCase().trim();
+        if (t.split(/\s+/).length < 2) return false;   // Einzelworte nie umlabeln
+        // Klinische/fachliche Marker -> immer Arzt.
+        try { if (window.LenaVoiceChart?.extractFdi?.(text)?.length) return false; } catch (_) {}
+        const arzt = /(karies|füllung|fuellung|sondier|röntgen|roentgen|distal|mesial|okklusal|palatinal|bukkal|lingual|approximal|befund|diagnose|extrakt|wurzel|krone|inlay|komposit|composite|millimeter|lockerungsgrad|taschentiefe|\bbop\b|sensibilit|anästhes|anaesthes|präpar|praepar)/;
+        if (arzt.test(t)) return false;
+        // Patient: Laien-/Frage-/Beschwerde-Sprache.
+        const frage = /\?\s*$/.test(t)
+          || /^(wie|was|warum|wieso|wann|wo|kann ich|darf ich|muss ich|muss das|tut das|ist das|wird das|kommt das|und wie|und was)\b/.test(t);
+        const laie = /(tut (mir |es |das )?weh|schmerz|aua|ziept|zieht|empfindlich|druckgefühl|seit (gestern|heute|tagen|wochen|ein paar)|kann ich (wieder |dann |noch )?(essen|trinken|rauchen|arbeiten)|wie lange|blutet|geschwollen|angst|betäubung|betaeubung|spritze|dumpf|pochend|kalt und warm)/;
+        return frage || laie.test(t);
+      }
       /** Segment sieht aus wie das zuletzt gesprochene Echo? -> verwerfen.
           Einzel-Token nie verwerfen (Einzelziffern-Paarung "Vier."/"Sechs."). */
       function lenaEchoGuardHit(text) {
@@ -3091,6 +3160,7 @@
           lenaRoomMicOn = rc.on;
         }
         renderRoomMicUi();
+        try { applyCaptureBar(); } catch (_) {}
       }
 
       /** LiveKit-Push vom Worker: Final sofort (vor Firestore). */
@@ -3111,6 +3181,13 @@
         if (src === "arzt" && lenaEchoGuardHit(text)) {
           liveDokuPartial = "";
           return;
+        }
+        // AP4 (Modus 3): iPad-Raum liefert EINEN gemischten Stream als "arzt".
+        // Klingt das Segment klar nach Patient, als Patientenanliegen (raum)
+        // umlabeln — nur in diesem Modus, nie im Schema-Diktat, im Zweifel Arzt.
+        if (src === "arzt" && captureMode === "ipad_room" && !isSchemaStep()
+            && mode3GuessPatient(text)) {
+          src = "raum";
         }
         // Diarisierungs-Dedup (AP3): das Raummikro hoert den Arzt mit. Ein
         // Raum-Segment, das einem KUERZLICH gesprochenen Arzt-Segment entspricht,
@@ -3394,6 +3471,62 @@
       let billingBusy = false;
       const wiz = [null, $("wiz1"), $("wiz2"), $("wiz3"), $("wiz4"), $("wiz5"), $("wiz6"), $("wiz7")];
       const chips = [...document.querySelectorAll(".step-chip[data-step]")];
+      // Durchgaengige Navigation (Chef 25.07.): EIN globaler Zurueck/Weiter in
+      // der Kopfleiste statt uneinheitlicher pro-Schritt-Footer. Schritt 3
+      // (Schema) existiert nur bei Zahnmedizin -> dental-bewusste Reihenfolge.
+      let currentWizStep = 1;
+      function wizStepOrder() { return lenaIsDental ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 4, 5, 6, 7]; }
+      function goWizBack() {
+        const o = wizStepOrder(); const i = o.indexOf(currentWizStep);
+        if (i > 0) showStep(o[i - 1]);
+      }
+      function goWizNext() {
+        const o = wizStepOrder(); const i = o.indexOf(currentWizStep);
+        if (i >= 0 && i < o.length - 1) showStep(o[i + 1]);
+      }
+      function syncWizNav() {
+        const o = wizStepOrder(); const i = o.indexOf(currentWizStep);
+        const back = $("navBack"); const next = $("navNext"); const lbl = $("navStepLabel");
+        if (back) back.disabled = i <= 0;
+        if (next) next.disabled = i < 0 || i >= o.length - 1;
+        if (lbl) {
+          const names = { 1: "Arzt", 2: "Termin", 3: "Schema", 4: "Doku", 5: "Nachdiktat", 6: "Summary", 7: "OK" };
+          const pos = i >= 0 ? i + 1 : 1;
+          lbl.textContent = (names[currentWizStep] || "") + " · " + pos + "/" + o.length;
+        }
+      }
+
+      // ── iPad-Zurueck-Geste: In-App-History (AP2) ─────────────────────────
+      // Jede vom Nutzer ausgeloeste Ansicht (Modus clara/doku + Wizard-Schritt)
+      // legt einen History-Eintrag an. Die iPad-Zurueck-Wischgeste / der
+      // Zurueck-Pfeil poppen dann INNERHALB der App zurueck statt sie zu
+      // verlassen. popstate wendet den Zustand an, OHNE neu zu pushen.
+      let navApplying = false;
+      function pkPushView(mode, step) {
+        if (navApplying) return;
+        try {
+          history.pushState({ pkNav: true, mode: mode || activeMode, step: step || currentWizStep }, "");
+        } catch (_) {}
+      }
+      function pkApplyView(state) {
+        if (!state || !state.pkNav) return;
+        navApplying = true;
+        try {
+          const targetMode = state.mode === "doku" ? "doku" : "clara";
+          if (activeMode !== targetMode) {
+            modeSwitch?.querySelector('button[data-mode="' + targetMode + '"]')?.click();
+          }
+          if (targetMode === "doku") {
+            const s = Number(state.step) || 1;
+            if (s !== currentWizStep) showStep(s);
+          }
+        } finally { navApplying = false; }
+      }
+      window.addEventListener("popstate", (e) => {
+        if (e.state && e.state.pkNav) pkApplyView(e.state);
+        // Kein Re-Push: Basis-Ansicht (Clara) darf die App regulaer verlassen.
+      });
+      try { history.replaceState({ pkNav: true, mode: activeMode, step: currentWizStep }, ""); } catch (_) {}
 
       function treatmentIds() {
         const locationId = selectedAppt.locationId || chairCurrent?.locationId || dayLocationId || "";
@@ -3741,6 +3874,11 @@
       function showStep(n) {
         // Nicht-Zahnmedizin: Schema-Schritt (3) existiert nicht -> direkt Doku (4).
         if (n === 3 && !lenaIsDental) n = 4;
+        const stepChanged = currentWizStep !== n;
+        currentWizStep = n;
+        try { syncWizNav(); } catch (_) {}
+        // In-App-History: echter Schrittwechsel = ein Zurueck-Ziel (AP2).
+        if (stepChanged) { try { pkPushView("doku", n); } catch (_) {} }
         wiz.forEach((w, i) => { if (w) w.classList.toggle("is-show", i === n); });
         chips.forEach((c) => {
           const s = Number(c.dataset.step);
@@ -4214,6 +4352,10 @@
       document.querySelectorAll("[data-next]").forEach((b) => b.addEventListener("click", () => showStep(Number(b.dataset.next))));
       document.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("click", () => showStep(Number(b.dataset.back))));
       chips.forEach((c) => c.addEventListener("click", () => showStep(Number(c.dataset.step))));
+      // Globale, durchgaengige Navigation in der Kopfleiste (Doku-Modus).
+      $("navBack")?.addEventListener("click", goWizBack);
+      $("navNext")?.addEventListener("click", goWizNext);
+      try { syncWizNav(); } catch (_) {}
 
       /* Datepicker + echte Termine via POST /treatment/current */
       const TODAY = new Date();
@@ -4740,9 +4882,15 @@
           ? lenaPickAudioInput
           : (typeof pickAudioInput === "function" ? pickAudioInput : null);
         if (!pickFn) return { ok: true };
-        const pick = await pickFn(micMode);
+        // BT/USB koennen nach einem iOS-Routenwechsel (BT<->iPad) kurz aus der
+        // Geraeteliste fallen (HFP-Re-Handshake). Fuer externe Modi ein kurzes
+        // Warte-Fenster + ehrlicher Status, damit das Headset zuverlaessig
+        // wiederkommt statt als "verloren" zu gelten (iPad-Built-in ist sofort da).
+        const external = micMode === "bluetooth" || micMode === "usb";
+        if (external) setMicActiveLabel(micModeLabel() + " · verbinde …", false);
+        const pick = await pickFn(micMode, external ? { waitMs: 3000 } : undefined);
         if (!pick?.ok || !pick.deviceId) {
-          return { ok: false, warning: pick?.warning || (micModeLabel() + "-Mikro nicht gefunden") };
+          return { ok: false, warning: pick?.warning || pick?.error || (micModeLabel() + "-Mikro nicht gefunden") };
         }
         const switched = await window.__claraIpad?.switchMic?.(pick.deviceId);
         return {
@@ -4852,7 +5000,68 @@
           note.hidden = false;
           note.textContent = "Arzt-Doku = Conformer über Clara (" + micModeLabel() + ")";
         }
+        try { applyCaptureBar(); } catch (_) {}
       }
+
+      /* ── Fester 3-Modi-Umschalter (Chef 25.07.): EIN captureMode als Wahrheit,
+         orchestriert die bewaehrten micMode + Raummikro-Daemon. KEIN Capture-
+         Rewrite (Ein-Mikro-Limit: Doku laeuft ueber Claras LiveKit-Stream). ──
+         headset      -> BT-Mic, Raum-Daemon aus  (1 Spur Arzt/Nachdiktat)
+         headset_room -> BT-Mic, Raum-Daemon an   (2 Spuren Arzt + Patient)
+         ipad_room    -> iPad-Mic, Raum-Daemon aus (1 Stream, Heuristik AP4) */
+      const CAPTURE_MODES = ["headset", "headset_room", "ipad_room"];
+      function loadCaptureMode() {
+        try { return localStorage.getItem("pickadoc.ipad.captureMode") || ""; } catch (_) { return ""; }
+      }
+      function saveCaptureMode(m) {
+        try { localStorage.setItem("pickadoc.ipad.captureMode", m); } catch (_) {}
+      }
+      function captureModeToMic(m) { return m === "ipad_room" ? "ipad" : "bluetooth"; }
+      let captureMode = loadCaptureMode();
+      if (!CAPTURE_MODES.includes(captureMode)) {
+        captureMode = micMode === "ipad" ? "ipad_room" : (lenaRoomMicOn ? "headset_room" : "headset");
+      }
+      function applyCaptureBar() {
+        const bar = $("captureBar");
+        if (!bar) return;
+        bar.querySelectorAll("button").forEach((b) => {
+          const m = b.dataset.capmode;
+          const on = m === captureMode;
+          b.classList.toggle("is-on", on);
+          b.setAttribute("aria-checked", on ? "true" : "false");
+          // Waehrend der Aufnahme nur Modi mit GLEICHER Mic-Quelle erlauben
+          // (Raum-Daemon an/aus ist sicher; BT<->iPad-Wechsel nicht mitten drin).
+          const changesMic = captureModeToMic(m) !== captureModeToMic(captureMode);
+          b.disabled = recording && changesMic && !on;
+          // PC-Raummikro-Presence auf den "Headset + Raum"-Modus spiegeln
+          // (ersetzt die "kein Gerät"-Warnung der alten .roommic-bar).
+          if (m === "headset_room") {
+            const absent = roomMicDevicePresent === false;
+            b.dataset.device = absent ? "none" : "ok";
+            b.title = absent
+              ? "Headset + PC-Raummikro — aktuell KEIN Raummikro am PC gefunden"
+              : "Headset + PC-Raummikro — Arzt + Patient (2 Spuren)";
+          }
+        });
+      }
+      function setCaptureMode(mode) {
+        if (!CAPTURE_MODES.includes(mode)) return;
+        const changesMic = captureModeToMic(mode) !== captureModeToMic(captureMode);
+        if (recording && changesMic) return;   // Mic-Quelle nicht mitten in der Aufnahme wechseln
+        captureMode = mode;
+        saveCaptureMode(mode);
+        const wantMic = captureModeToMic(mode);
+        if (micMode !== wantMic && !recording) {
+          micMode = wantMic;
+          if (typeof lenaSaveMicMode === "function") lenaSaveMicMode(micMode);
+          applyMicToggleUi();
+          void startMicPreview();
+        }
+        const wantRoom = mode === "headset_room";
+        if (lenaRoomMicOn !== wantRoom) toggleRoomMic(wantRoom);
+        applyCaptureBar();
+      }
+
       $("micToggle")?.querySelectorAll("button").forEach((btn) => {
         btn.addEventListener("click", () => {
           if (recording) return;
@@ -4876,8 +5085,13 @@
       // Raummikro-Buttons (Schema + Doku): EIN Schaltpfad wie der Sprachbefehl.
       $("btnRoomMic")?.addEventListener("click", () => toggleRoomMic(!lenaRoomMicOn));
       $("btnRoomMic2")?.addEventListener("click", () => toggleRoomMic(!lenaRoomMicOn));
+      // Fester 3-Modi-Umschalter verdrahten.
+      $("captureBar")?.querySelectorAll("button").forEach((btn) => {
+        btn.addEventListener("click", () => setCaptureMode(btn.dataset.capmode));
+      });
       renderRoomMicUi();
       applyMicToggleUi();
+      applyCaptureBar();
       // Geräteliste vorwärmen (Labels nach Permission).
       if (typeof lenaListAudioInputs === "function") {
         void lenaListAudioInputs().then((list) => {
