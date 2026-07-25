@@ -1,4 +1,4 @@
-import { chat } from "../mail/llm.js";
+import { chat, strongLlm } from "../mail/llm.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -25,11 +25,17 @@ import { log } from "../log.js";
 // der deterministische Text unveraendert gesprochen — erreichte Funktionen
 // gehen nie verloren, schlimmstenfalls klingt es wie bisher.
 //
-// Qwen-3.6-Kopplung: Standard ist das lokale MAS-LLM (Ollama qwen3:4b). Fuer
-// den grossen Sprung auf den RTX-5090-Server (vLLM, qwen3.6:35b-a3b) reicht:
-//   MAS_FREISPRECH_BASE_URL=http://100.77.30.98:8000/v1
-//   MAS_FREISPRECH_MODEL=qwen3.6:35b-a3b
-// Kill-Switch: MAS_FREISPRECH=0 (alles bleibt deterministisch).
+// Qwen-3.6-Kopplung (25.07.2026 geaendert): Standard ist jetzt das STARKE
+// Modell (RTX-5090-Server, vLLM qwen3.6:35b-a3b, strongLlm()). Zuvor lief die
+// Umformulierung auf dem schwachen lokalen qwen3:4b — das scheiterte zu oft am
+// strengen Fakten-Guard (jede Zahl/jeder Name muss EXAKT erhalten bleiben) und
+// fiel dann STILL auf den deterministischen Text zurueck: Briefings klangen
+// "immer gleich steif". qwen3.6 haelt die Fakten zuverlaessig und formuliert
+// variantenreich. Ist der 5090 nicht erreichbar, greift wie bisher der
+// deterministische Fallback (kein Fakten-/Funktionsverlust, nur wieder steifer).
+// Override/Notaus unveraendert:
+//   MAS_FREISPRECH_BASE_URL / MAS_FREISPRECH_MODEL (anderer Server/Modell)
+//   MAS_FREISPRECH=0 (alles bleibt deterministisch).
 // ============================================================================
 
 // Stil-Losungen: pro Aufruf wird EINE zufaellig gezogen — das ist die
@@ -186,10 +192,12 @@ export function guardOk(quelle, ausgabe) {
 // --- Umformulierung ----------------------------------------------------------
 
 function freiSprechCfg() {
+    // Default = starkes Modell (siehe Kopf-Kommentar). Env-Override sticht.
+    const strong = strongLlm();
     return {
         enabled: process.env.MAS_FREISPRECH !== "0",
-        baseUrl: (process.env.MAS_FREISPRECH_BASE_URL || "").trim() || undefined,
-        model: (process.env.MAS_FREISPRECH_MODEL || "").trim() || undefined,
+        baseUrl: (process.env.MAS_FREISPRECH_BASE_URL || "").trim() || strong.base,
+        model: (process.env.MAS_FREISPRECH_MODEL || "").trim() || strong.model,
     };
 }
 

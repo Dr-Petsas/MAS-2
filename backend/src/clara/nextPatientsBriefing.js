@@ -1,4 +1,4 @@
-import { getDayAppointments, getPatientAppointments, todayBerlin } from "./daySchedule.js";
+import { getDayAppointments, getPatientAppointments, todayBerlin, relativeDayLabel, dayOfMs } from "./daySchedule.js";
 import { getPatientAnamnese, bogenStand } from "./anamnese.js";
 import { vary, clinicalHints } from "./speech.js";
 import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
@@ -394,7 +394,7 @@ async function renderChartPatient(clientId, patientName) {
         if (hist?.ok) {
             if (hist.next) {
                 const nMot = hist.next.visitMotive || "ein Termin";
-                s += `. Nächster Termin: ${nMot}${hist.next.startMs ? ` am ${new Date(hist.next.startMs).toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" })}` : ""}`;
+                s += `. Nächster Termin: ${nMot}${hist.next.startMs ? ` ${relativeDayLabel(dayOfMs(hist.next.startMs))}` : ""}`;
                 naechsterMs = hist.next.startMs || 0;
                 naechsterMotive = nMot;
             }

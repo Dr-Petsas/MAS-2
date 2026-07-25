@@ -856,7 +856,7 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
 // der Plattform-Collection (per patientId, Fallback ueber den Namen) und
 // blendet virtuelle Platzhalter genauso aus wie der Kalender (Eiserne Regel 4).
 
-function dayOfMs(ms) {
+export function dayOfMs(ms) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
 }
 
