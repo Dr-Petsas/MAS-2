@@ -3564,6 +3564,7 @@
           segmentsForApptId = wantAppt;
           if (typeof data.structuredText === "string") serverSummary = data.structuredText;
           if (data.roomCapture) applyRoomCaptureState(data.roomCapture);
+          if (data.specialty !== undefined) applySpecialty(data.specialty);
           return savedSegments;
         } catch (_) {
           if (String(selectedAppt?.appointmentId || "") !== wantAppt) return [];
@@ -3738,6 +3739,8 @@
       }
 
       function showStep(n) {
+        // Nicht-Zahnmedizin: Schema-Schritt (3) existiert nicht -> direkt Doku (4).
+        if (n === 3 && !lenaIsDental) n = 4;
         wiz.forEach((w, i) => { if (w) w.classList.toggle("is-show", i === n); });
         chips.forEach((c) => {
           const s = Number(c.dataset.step);
@@ -4269,10 +4272,50 @@
         syncRecHeader();
         syncLena01Links();
       }
+      /* Fachrichtungs-Gating (Chef 25.07.2026): Zahnschema (Schritt 3) + 01-Modus
+         sind zahnmedizinisch. Bei einer NICHT-zahnmedizinischen Praxis (z. B.
+         Dermatologie/Blessing) werden sie ausgeblendet und die Doku startet
+         direkt. Fachrichtung kommt aus /treatment/current + heartbeat (specialty).
+         Default (leer) = Zahnmedizin -> bestehende Praxen unveraendert. */
+      let lenaIsDental = true;
+      function applySpecialty(sp) {
+        const s = String(sp || "").trim().toLowerCase();
+        // Zahn-nah (Schema sinnvoll): Zahnmedizin, KFO/Kieferorthopaedie, MKG,
+        // Oralchirurgie, Parodontologie. Alles andere = kein Zahnschema.
+        const dental = !s
+          || /zahn|dental|kfo|kiefer|mkg|oralchir|parodont|prophyl/.test(s);
+        if (dental === lenaIsDental) return;
+        lenaIsDental = dental;
+        applySpecialtyUi();
+      }
+      function applySpecialtyUi() {
+        const dental = lenaIsDental;
+        // Schema-Schritt-Chip in der Kopfleiste.
+        const chip3 = document.querySelector('.step-chip[data-step="3"]');
+        if (chip3) chip3.hidden = !dental;
+        // 01-Modus-Chips bei Nicht-Zahnmedizin hart aus (sonst regelt syncLena01Links).
+        if (!dental) {
+          ["btnLena01", "btnLena01Panel"].forEach((id) => { const a = $(id); if (a) a.hidden = true; });
+        }
+        // Navigation umbiegen: Termin -> direkt Doku; Doku-Zurueck -> Termin.
+        const toNext = document.querySelector('#wiz2 [data-next]');
+        if (toNext) {
+          toNext.dataset.next = dental ? "3" : "4";
+          toNext.textContent = dental ? "Schema starten" : "Weiter · Doku";
+        }
+        const dokuBack = document.querySelector('#wiz4 [data-back]');
+        if (dokuBack) {
+          dokuBack.dataset.back = dental ? "3" : "2";
+          dokuBack.textContent = dental ? "Schema" : "Termin";
+        }
+        // Falls wir gerade faelschlich im Schema-Schritt stehen: raus in die Doku.
+        if (!dental && $("wiz3")?.classList.contains("is-show")) showStep(4);
+      }
       function syncLena01Links() {
         // 01-Modus erst anbieten, wenn ein Patient/Termin ausgewaehlt ist —
         // der Patientenname wandert mit in den Seitentitel des 01-Schemas.
-        const name = (selectedAppt && selectedAppt.name && selectedAppt.name !== "—")
+        // Bei Nicht-Zahnmedizin bleibt der 01-Modus grundsaetzlich aus.
+        const name = (lenaIsDental && selectedAppt && selectedAppt.name && selectedAppt.name !== "—")
           ? selectedAppt.name
           : "";
         const loc = selectedAppt?.locationId || chairCurrent?.locationId || dayLocationId || "";
@@ -4478,6 +4521,7 @@
             if ($("arztStatus")) $("arztStatus").textContent = data.error || ("HTTP " + resp.status);
             return null;
           }
+          applySpecialty(data.specialty);
           dayCalendars = Array.isArray(data.calendars) ? data.calendars : [];
           dayAppointments = Array.isArray(data.appointments) ? data.appointments : [];
           if (data.locationId) dayLocationId = data.locationId;
@@ -4617,6 +4661,7 @@
           if (data.appointmentId && String(data.appointmentId) !== String(ids.appointmentId)) return;
           if (String(selectedAppt?.appointmentId || "") !== String(ids.appointmentId)) return;
           if (data.roomCapture) applyRoomCaptureState(data.roomCapture);
+          if (data.specialty !== undefined) applySpecialty(data.specialty);
           const known = new Set(savedSegments.map((s) => s.id).filter(Boolean));
           const knownText = new Set(
             savedSegments

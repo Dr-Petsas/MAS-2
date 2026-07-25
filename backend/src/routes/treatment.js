@@ -383,9 +383,14 @@ router.post("/treatment/current", async (req, res) => {
     const resolved = resolveChairAppointment(active, appts, Date.now(), locationId);
     res.set("Cache-Control", "no-store");
 
+    // Fachrichtung fuer die iPad-UI: Nicht-Zahnmedizin blendet Schema/01-Modus
+    // aus und startet direkt in der Doku. Leer = zahnmedizin (Default).
+    const specialty = await clientSpecialty(clientId);
+
     const base = {
       ok: true,
       day: date,
+      specialty,
       locationId: locationId || resolved.locationId || "",
       operatorName: who.name || "",
       doctorName: who.doctorName || resolved.doctorName || "",
@@ -556,7 +561,7 @@ router.post("/treatment/heartbeat", async (req, res) => {
         .set({ deviceLabel, lastSeenMs: Date.now() }, { merge: true });
     }
 
-    const [recSnap, segSnap, setSnap, noteSnap, rcSnap] = await Promise.all([
+    const [recSnap, segSnap, setSnap, noteSnap, rcSnap, specialty] = await Promise.all([
       ref.collection("treatment").doc("recorder").get(),
       ref.collection("dictations").orderBy("createdAt", "asc").limit(200).get(),
       admin.firestore()
@@ -565,6 +570,7 @@ router.post("/treatment/heartbeat", async (req, res) => {
         .collection("settings").doc("lenaRecorder").get(),
       ref.collection("treatment").doc("main").get(),
       roomCapturePointerRef(k.clientId).get(),
+      clientSpecialty(k.clientId),
     ]);
 
     const segments = segSnap.docs.map((d) => {
@@ -626,6 +632,7 @@ router.post("/treatment/heartbeat", async (req, res) => {
       raumSource,
       arztSource,
       roomCapture,
+      specialty: specialty || "",
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
