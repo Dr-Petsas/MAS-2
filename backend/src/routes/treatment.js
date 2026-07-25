@@ -49,7 +49,7 @@ const router = express.Router();
 const ID_RE = /^[A-Za-z0-9_-]{1,200}$/;
 
 // lena_stt (Live-Korrektur-Korpus): dort liegt das kurzlebige WAV je Aeusserung.
-// Gleiche Annahme wie routes/training.js — MAS laeuft neben lena_stt (127.0.0.1).
+// Annahme: MAS laeuft neben lena_stt (127.0.0.1).
 const LENA_STT_PORT = Number(process.env.LENA_STT_PORT || 8140);
 const LENA_STT_BASE = (process.env.LENA_STT_BASE || `http://127.0.0.1:${LENA_STT_PORT}`).replace(/\/+$/, "");
 const AUDIO_ID_RE = /^[0-9a-f]{8,64}$/;
