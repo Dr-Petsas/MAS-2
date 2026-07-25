@@ -615,7 +615,7 @@
     parts.push(fieldHtml("Anamnese-Risiken", "anamnese", state));
     parts.push(fieldHtml("Befund", "befund", state));
     parts.push(fieldHtml("Diagnose", "diagnose", state));
-    parts.push(fieldHtml("Therapie", "therapie", state));
+    parts.push(fieldHtml("Therapie / Behandlung", "therapie", state));
     for (const b of TEMPLATE.blocks) {
       if (!state.openBlocks.has(b.id)) continue;
       parts.push('<div class="tpl-block" data-block="' + b.id + '">');
@@ -628,13 +628,10 @@
       parts.push("</div></div>");
     }
     parts.push(fieldHtml("Aufklärung & Dokumente", "aufklaerung", state, aufklaerungBodyHtml(state)));
-    // Komplikationen / Procedere: vorerst ausgeblendet (Chef 23.07.) —
-    // nur anzeigen, wenn doch etwas diktiert wurde.
+    // Komplikationen: nur anzeigen, wenn diktiert. Procedere/Plan laeuft in der
+    // Therapie-/Behandlungs-Box mit (Chef 26.07.2026 — eine Box).
     if (String(state.values.komplikationen || "").trim()) {
       parts.push(fieldHtml("Komplikationen", "komplikationen", state));
-    }
-    if (String(state.values.procedere || "").trim()) {
-      parts.push(fieldHtml("Procedere", "procedere", state));
     }
     container.innerHTML = parts.join("");
     focusLastTouched(container, state);
@@ -998,7 +995,11 @@
   // Trigger-Modus. Nur diese Schluessel sind gueltige Ziel-Boxen.
   const SECTION_BOX = new Set(["anamnese", "befund", "diagnose", "therapie", "aufklaerung", "procedere"]);
   function normSection(x) {
-    const s = String(x || "").toLowerCase().trim();
+    let s = String(x || "").toLowerCase().trim();
+    // Procedere/Plan laeuft mit der Therapie in EINER Box "Therapie / Behandlung"
+    // (Chef 26.07.2026) — LLM darf weiter "procedere" liefern, es landet aber
+    // in der Therapie-Box.
+    if (s === "procedere") s = "therapie";
     return SECTION_BOX.has(s) ? s : "";
   }
 
@@ -1239,9 +1240,10 @@
         setField(state, "aufklaerung", t, "live");
         placed = true;
       }
-      // Procedere nur bei explizitem Stichwort (keine Pflicht-Box / Souffleuse).
+      // Procedere/Plan (Kontrolle, Rezept, Wiedervorstellung ...) laeuft mit in
+      // die Therapie-/Behandlungs-Box (Chef 26.07.2026 — eine Box).
       if (/kontrolle|wiedervorstellung|rezept|schonung|procedere|n[aä]chste\s+(?:woche|termin)|vorgehen/i.test(t)) {
-        setField(state, "procedere", t, "live");
+        setField(state, "therapie", t, "live");
         placed = true;
       }
       if (/keine komplikationen|komplikationslos|ohne besonderheit/i.test(t)) {
@@ -1402,7 +1404,7 @@
       { wide: true }));
     parts.push(fieldHtml("Befund", "befund", state));
     parts.push(fieldHtml("Diagnose", "diagnose", state));
-    parts.push(fieldHtml("Therapie", "therapie", state));
+    parts.push(fieldHtml("Therapie / Behandlung", "therapie", state));
 
     for (const b of TEMPLATE.blocks) {
       if (!state.openBlocks.has(b.id)) continue;
@@ -1419,9 +1421,6 @@
     parts.push(fieldHtml("Aufklärung & Dokumente", "aufklaerung", state, aufklaerungBodyHtml(state)));
     if (String(state.values.komplikationen || "").trim()) {
       parts.push(fieldHtml("Komplikationen", "komplikationen", state));
-    }
-    if (String(state.values.procedere || "").trim()) {
-      parts.push(fieldHtml("Procedere", "procedere", state));
     }
 
     container.innerHTML = parts.join("");
