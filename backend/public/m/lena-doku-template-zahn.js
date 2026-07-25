@@ -109,6 +109,8 @@
       lastTouchedKey: "",
       dictMode: null, // null = auto | "befund" = Befund-Diktat (Trigger-Wort)
       page: "doku", // "schema" = nur Zahnschema | "doku" = Text-Boxen
+      befund01: "", // qwen3.6-Reinschrift des 01-Befunds (Uebergang Schema->Doku)
+      befund01Until: 0, // startMs-Grenze der 01-Phase (Rohtext-Unterdrueckung)
     };
   }
 
@@ -990,13 +992,36 @@
    * wenn der State zwischendurch frisch aufgebaut wird.
    * @returns Array<{ text: string, forced: boolean, box?: string }>
    */
+  // Live-Themen-Boxen (Chef 26.07.2026): qwen3.6 klassifiziert jedes Segment
+  // (Feld `section`); diese LLM-Zuordnung hat Vorrang vor der Heuristik/dem
+  // Trigger-Modus. Nur diese Schluessel sind gueltige Ziel-Boxen.
+  const SECTION_BOX = new Set(["anamnese", "befund", "diagnose", "therapie", "aufklaerung", "procedere"]);
+  function normSection(x) {
+    const s = String(x || "").toLowerCase().trim();
+    return SECTION_BOX.has(s) ? s : "";
+  }
+
+  /**
+   * Segmente -> Ziel-Boxen. Eingabe: Strings ODER {text, section}. Eine
+   * gueltige LLM-Sektion setzt die Box hart (forced) und hat Vorrang vor der
+   * Trigger-/Modus-Heuristik; Steuerbefehle werden weiterhin abgefangen.
+   * Segmente OHNE Sektion (Klassifikation noch unterwegs / LLM aus) laufen wie
+   * bisher ueber Trigger-Woerter + Modus + Freitext-Fallback.
+   */
   function routeSegments(state, texts) {
     let mode = null; // befund | diagnose | therapie | aufklaerung | null
     const routed = [];
+    const items = (texts || []).map((x) => (
+      (x && typeof x === "object")
+        ? { text: String(x.text || ""), section: normSection(x.section) }
+        : { text: String(x || ""), section: "" }
+    ));
     const pushForced = (box, rest) => {
       if (rest) routed.push({ text: rest, forced: true, box });
     };
-    for (const t of texts) {
+    for (const it of items) {
+      const t = it.text;
+      const sec = it.section; // "" oder gueltiger Box-Key (LLM)
       if (befundEndCommand(t)) {
         mode = null;
         continue;
@@ -1009,28 +1034,20 @@
         routed.push({ text: "", forced: false, del: delCmd });
         continue;
       }
+      // Trigger-Woerter: Praefix strippen (Rest ist Inhalt). Zielbox = LLM-
+      // Sektion, sonst die vom Trigger gemeinte Box.
       const dTrig = diagnoseTrigger(t);
-      if (dTrig) {
-        mode = "diagnose";
-        pushForced("diagnose", dTrig.rest);
-        continue;
-      }
+      if (dTrig) { mode = sec || "diagnose"; pushForced(mode, dTrig.rest); continue; }
       const thTrig = therapieTrigger(t);
-      if (thTrig) {
-        mode = "therapie";
-        pushForced("therapie", thTrig.rest);
-        continue;
-      }
+      if (thTrig) { mode = sec || "therapie"; pushForced(mode, thTrig.rest); continue; }
       const aTrig = aufklaerungTrigger(t);
-      if (aTrig) {
-        mode = "aufklaerung";
-        pushForced("aufklaerung", aTrig.rest);
-        continue;
-      }
+      if (aTrig) { mode = sec || "aufklaerung"; pushForced(mode, aTrig.rest); continue; }
       const trig = befundTrigger(t);
-      if (trig) {
-        mode = "befund";
-        pushForced("befund", trig.rest);
+      if (trig) { mode = sec || "befund"; pushForced(mode, trig.rest); continue; }
+      // LLM-Sektion vorhanden -> sie bestimmt die Box (Vorrang vor Heuristik).
+      if (sec) {
+        routed.push({ text: t, forced: true, box: sec });
+        mode = sec;
         continue;
       }
       // Therapie-Handlung beendet Befund-Modus und landet in Therapie.
@@ -1060,25 +1077,55 @@
     if (state.page === "schema") {
       return applySchemaSegments(state, segments);
     }
-    let texts = (segments || [])
-      .map((s) => String(s.text || s.textCorrected || "").trim())
-      .filter(Boolean);
+    // {text, section}: section = qwen3.6-Live-Klassifikation (Chef 26.07.),
+    // bestimmt in routeSegments die Ziel-Box. segForBoxes hat `text` bereits auf
+    // die korrigierte Fassung gehoben; `section` wird durchgereicht.
+    let items = (segments || [])
+      .map((s) => ({
+        text: String(s.text || s.textCorrected || "").trim(),
+        section: normSection(s.section),
+        startMs: Number(s.startMs) || 0,
+      }))
+      .filter((x) => x.text);
     // Globales Reset ("lösch alles") gilt auch fuer den Doku-Rebuild:
     // alles vor dem juengsten Reset verfaellt (Chart UND Boxen).
-    for (let i = texts.length - 1; i >= 0; i--) {
-      if (schemaResetCommand(texts[i])) {
-        texts = texts.slice(i + 1);
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (schemaResetCommand(items[i].text)) {
+        items = items.slice(i + 1);
         break;
       }
     }
     // Idempotenter Rebuild: Live-Boxen leeren, dann aus der VOLLEN Liste
     // neu befuellen (sonst bleiben gestrichene Segmente in den Boxen).
     clearLiveFields(state);
-    if (!texts.length) {
+    if (!items.length) {
       state.dictMode = null;
       return state;
     }
-    const routed = routeSegments(state, texts);
+    // 01-Befund-Reinschrift (Chef 26.07.2026): liegt eine konsolidierte
+    // 01-Fassung vor (state.befund01, beim Uebergang einmal per qwen3.6
+    // erzeugt), fuellen die Segmente der BEFUNDPHASE die Befund-Box NICHT mehr
+    // einzeln (kein "vier, vier Krone") — sie sind durch die Reinschrift
+    // ersetzt. Grenze: bis inkl. letztem Finish-Kommando ODER startMs bis zum
+    // Uebergangs-Zeitpunkt (befund01Until). Das ZAHN-CHART nutzt weiter ALLE
+    // Segmente (Zahnstatus bleibt vollstaendig). Ohne befund01: Verhalten
+    // unveraendert (treatItems === items).
+    let treatItems = items;
+    if (state.befund01) {
+      const until = Number(state.befund01Until) || 0;
+      let bnd = -1;
+      for (let i = items.length - 1; i >= 0; i--) {
+        if (isFinishControlText(items[i].text)) { bnd = i; break; }
+      }
+      treatItems = items.filter((it, i) => {
+        if (bnd >= 0 && i <= bnd) return false;
+        if (until && it.startMs && it.startMs <= until) return false;
+        return true;
+      });
+    }
+    // Boxen aus der Behandlungsphase (dictMode folgt ihr); Chart aus allem.
+    const routed = routeSegments(state, treatItems);
+    const routedChart = (treatItems === items) ? routed : routeSegments(null, items);
     // Block-/LA-/Plan-Scans: Befund-Diktat (forced befund) darf keine Bloecke
     // oeffnen ("17 Fuellung insuffizient" = Bestand). Therapie-Segmente schon.
     const all = routed
@@ -1092,7 +1139,7 @@
     // fuer Summary / "aus Schema"-Zeile.
     state.teeth = new Set();
     state.lastChartFdi = null;
-    for (const r of routed) {
+    for (const r of routedChart) {
       if (r.del) {
         state.teeth.delete(r.del.fdi);
         if (r.del.rebind) state.teeth.add(r.del.fdi);
@@ -1102,7 +1149,7 @@
     }
     if (global.LenaVoiceChart) {
       state.chart = global.LenaVoiceChart.emptyChart();
-      const chartSegs = routed.map((r) => (
+      const chartSegs = routedChart.map((r) => (
         r.del ? { del: r.del } : {
           text: r.text,
           forceLayer: (r.forced && (!r.box || r.box === "befund")) ? "befund" : "",
@@ -1128,15 +1175,29 @@
       }
     }
 
-    // Befund / Therapie / Diagnose / Aufklärung (+ Freitext-Fallback)
+    // Anamnese / Befund / Therapie / Diagnose / Aufklärung (+ Freitext-Fallback).
+    // NB: Das ist nur noch der Uebergangs-Fallback — die qwen3.6-Live-Sektion
+    // (routeSegments, forced/box) hat Vorrang. Anamnestische Patienten-
+    // Schilderungen (frueher pauschal Befund) bekommen hier endlich eine Box.
+    const ANAMNESE_RE =
+      /\banamnese\b|patient(?:in)?\s+(?:berichtet|schildert|gibt\s+an|klagt|erz[aä]hlt|meint|sagt)|\b(?:seit|vor)\s+(?:\d+|einigen?|ein\s+paar|mehreren|wenigen)\s+(?:tag|woch|monat|jahr)|\bseit\s+(?:gestern|vorgestern|heute|letzter?\s+woche)|beschwerden\s+seit|schmerz(?:en)?\s+seit|vorerkrank|\ballergi|blutverd[uü]nn|marcumar|bisphosphonat|schwanger|\braucht\b|nichtraucher/i;
     const DIAGNOSE_RE =
       /diagnos|\bcap\b|abszess|abscess|parodontit|periodontit|gingivit|pulpit|\bcaries\b|apikal(?:e|er|es)?\s+parodont|fossa\s+canina|submuk[oö]s|chronisch\s+apikal|eitrig(?:e|er)?\s+entz[uü]nd/i;
     const BEFUND_RE =
-      /\bbefund\b|perkussion|vitalit[aä]t|locker|fistel|schwellung|schmerz|beschwerden|sondier|druckdolent|aufbiss|entz[uü]nd|mobil|blutung.*sondier|rezession|furkation|anamnese|patient\s+(?:berichtet|schildert|gibt\s+an)|seit\s+\d+\s+tag|\bkaries\b|kari[oö]s|fehlt|fehlend|insuffizient/i;
+      /\bbefund\b|perkussion|vitalit[aä]t|locker|fistel|schwellung|sondier|druckdolent|aufbiss|entz[uü]nd|mobil|blutung.*sondier|rezession|furkation|\bkaries\b|kari[oö]s|fehlt|fehlend|insuffizient/i;
     const THERAPIE_RE =
       /exkav|f[uü]ll|komposit|trepan|aufbereit|obturat|extrah|\bextraktion\b|naht|pr[aä]par|zement|einsetz|membran|knochenaufbau|augment|bio[- ]?oss|sinuslift|implant(?:at)?\s+(?:gesetzt|inseriert|gelegt)|(?:gesetzt|inseriert|gelegt)\w*\s+implant|gezogen|provisor|krone\s+(?:gesetzt|eingesetzt|zementiert)|ultracain|ubistesin|an[aä]sthes/i;
     const AUFKL_RE =
       /aufkl[aä]r|risiken?\s+besprochen|einverstanden|unterschr|aufgekl[aä]rt|patient\s+(?:ist\s+)?informiert/i;
+
+    // 01-Befund-Reinschrift zuerst in die Befund-Box (qwen3.6, FDI + Recht-
+    // schreibung). Spaeter im Behandlungsverlauf diktierte Befunde haengen sich
+    // darunter an (setField). Kompakt (eine Zeile je Befund -> " · ").
+    if (state.befund01) {
+      const clean = String(state.befund01)
+        .split(/\r?\n+/).map((l) => l.trim()).filter(Boolean).join(" · ");
+      if (clean) setField(state, "befund", clean, "live");
+    }
 
     for (const r of routed) {
       if (r.del) continue;
@@ -1153,6 +1214,10 @@
         continue;
       }
       let placed = false;
+      if (ANAMNESE_RE.test(t)) {
+        setField(state, "anamnese", t, "live");
+        placed = true;
+      }
       if (DIAGNOSE_RE.test(t)) {
         setField(state, "diagnose", t, "live");
         placed = true;

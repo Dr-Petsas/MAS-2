@@ -592,6 +592,84 @@ export async function correctSegmentLive(text, contextLines = [], { timeoutMs = 
   return { ok: true, text: out, model: res.model };
 }
 
+// ---------------------------------------------------------------------------
+// Live-Themen-Trennung (Chef 26.07.2026): qwen3.6 ordnet JEDES Segment live
+// GENAU EINER Doku-Box zu, damit anamnestische/diagnostische Inhalte nicht mehr
+// pauschal im Befund landen. Der Schluessel wird als `section` neben dem Segment
+// gespeichert; das iPad routet danach (Heuristik nur noch als Uebergangs-
+// Fallback, bis die Sektion eintrifft). Notaus: LENA_LLM_CLASSIFY=0.
+// Box-Keys spiegeln EXAKT die Frontend-Boxen (lena-doku-template-zahn.js).
+// ---------------------------------------------------------------------------
+export const LIVE_SECTION_KEYS = ["anamnese", "befund", "diagnose", "therapie", "aufklaerung", "procedere"];
+const _LIVE_SECTION_SET = new Set(LIVE_SECTION_KEYS);
+
+const _CLASSIFY_SYSTEM = [
+  "Du ordnest EIN Segment aus einem zahnaerztlichen Behandlungsgespraech GENAU",
+  "EINER Doku-Box zu. Antworte NUR mit dem Box-Schluessel (ein Wort, klein,",
+  "ohne Punkt, ohne Erklaerung).",
+  "Box-Schluessel:",
+  "- anamnese: was der Patient an Vorgeschichte/Beschwerden BERICHTET (seit wann",
+  "  Schmerzen, Allergien, Medikamente, Vorerkrankungen, Rauchen/Schwangerschaft,",
+  "  'tut seit drei Tagen weh', 'ist beim Kauen empfindlich').",
+  "- befund: klinischer Ist-Zustand/Untersuchung (Zahnstatus, Sondierungstiefe,",
+  "  Perkussion, Vitalitaet/Kaeltetest, Lockerungsgrad, Roentgenbefund,",
+  "  'Zahn 36 kariös', 'insuffiziente Füllung', 'Zahn fehlt').",
+  "- diagnose: Beurteilung/Diagnose (Pulpitis, Parodontitis, apikale Parodontitis,",
+  "  Caries profunda, Gingivitis).",
+  "- therapie: durchgefuehrte Behandlung inkl. Vorbereitung/Material (Anaesthesie,",
+  "  Exkavation, Praeparation, Fuellung gelegt, Extraktion, Naht, Ultracain, Krone",
+  "  eingesetzt).",
+  "- aufklaerung: Aufklaerung/Einwilligung/Risiken besprochen, Patient einverstanden.",
+  "- procedere: Plan/naechste Schritte/Empfehlung/Recall/Rezept/Wiedervorstellung.",
+  "- none: Smalltalk, Steuerbefehl, Geraetetest, Hoerfehler ohne Klinikbezug.",
+  "Gib GENAU einen dieser Schluessel zurueck.",
+].join("\n");
+
+/**
+ * Live-Klassifikation EINES Segments in eine Doku-Box (qwen3.6, 5090).
+ * Kontextzeilen (vorherige Segmente) helfen bei der Zuordnung. Gibt den
+ * Box-Schluessel zurueck ("" = none/unsicher -> Heuristik entscheidet).
+ * (exportiert fuer Tests)
+ *
+ * @param {string} text           STT-/korrigierter Text des Segments.
+ * @param {string[]} contextLines vorherige Segmente zur Orientierung.
+ * @returns {Promise<{ok:boolean, section:string, model?:string, reason?:string}>}
+ */
+export async function classifySegmentLive(text, contextLines = [], { timeoutMs = 20000 } = {}) {
+  if (String(process.env.LENA_LLM_CLASSIFY || "1") === "0") return { ok: false, section: "", reason: "disabled" };
+  const raw = String(text || "").trim();
+  if (!raw || isJunkSegment(raw)) return { ok: false, section: "", reason: "empty" };
+  const ctx = (contextLines || []).map((x) => String(x || "").trim()).filter(Boolean).slice(-4).join("\n");
+  const messages = [
+    { role: "system", content: _CLASSIFY_SYSTEM },
+    {
+      role: "user",
+      content: (ctx ? `Bisheriger Kontext (nur zur Orientierung):\n${ctx}\n\n` : "")
+        + `Zu klassifizierendes Segment:\n${raw}`,
+    },
+  ];
+  let res;
+  try {
+    res = await chat(messages, { temperature: 0, maxTokens: 12, timeoutMs, baseUrl: strongLlm().base, model: strongLlm().model });
+  } catch (e) {
+    return { ok: false, section: "", reason: "llm_throw" };
+  }
+  if (!res || !res.ok) return { ok: false, section: "", reason: res?.reason || "llm" };
+  const section = normalizeLiveSection(res.text);
+  if (!section) return { ok: false, section: "", reason: "none" };
+  return { ok: true, section, model: res.model };
+}
+
+/** qwen-Rohantwort -> gueltiger Box-Schluessel oder "" (none/unbekannt). */
+export function normalizeLiveSection(out) {
+  const t = String(out || "").toLowerCase();
+  // Erstes bekanntes Schluesselwort im Text (robust gegen "Box: befund." o.ae.).
+  const m = t.match(/anamnese|befund|diagnose|therapie|aufkl(?:ae|ä)rung|procedere/);
+  if (!m) return "";
+  const hit = m[0].replace("ä", "ae");
+  return _LIVE_SECTION_SET.has(hit) ? hit : "";
+}
+
 const _REINSCHRIFT_SYSTEM = [
   "Du bist medizinische Schreibkraft in einer Zahnarztpraxis. Du bekommst die der",
   "Reihe nach diktierten Befund-Segmente einer Behandlung (bereits grob korrigiert)",
@@ -631,6 +709,68 @@ export async function consolidateReinschrift(segTexts, { timeoutMs = 90000 } = {
   let res;
   try {
     res = await chat(messages, { temperature: 0.2, maxTokens: 1400, timeoutMs, baseUrl: s.base, model: s.model });
+  } catch (e) {
+    return { ok: false, text: "", reason: "llm_throw" };
+  }
+  if (!res || !res.ok) return { ok: false, text: "", reason: res?.reason || "llm" };
+  const out = String(res.text || "").trim();
+  if (out.length < 3) return { ok: false, text: "", reason: "empty" };
+  return { ok: true, text: out, model: res.model };
+}
+
+// ---------------------------------------------------------------------------
+// 01-Befund-Reinschrift (Chef 26.07.2026): Der Arzt diktiert die eingehende
+// Untersuchung (01) Ziffer fuer Ziffer ins Zahnschema ("vier ... vier ...
+// Krone"). Beim UEBERGANG zur Behandlungs-Doku wird der gesammelte 01-Befund
+// EINMAL an qwen3.6 geschickt, damit FDI-Zahnnummern (zweistellig) und
+// Rechtschreibung stimmen — es gab keinen Verhoerer, nur Politur. Kein
+// Erfinden, keine neuen Zaehne/Befunde. Notaus: LENA_LLM_CORRECT=0.
+// ---------------------------------------------------------------------------
+const _BEFUND01_SYSTEM = [
+  "Du bist medizinische Schreibkraft in einer Zahnarztpraxis und erstellst die",
+  "Reinschrift der 01-Befundaufnahme (eingehende Untersuchung). Du bekommst die",
+  "der Reihe nach diktierten Befund-Segmente und erzeugst daraus EINEN sauberen,",
+  "zahnaerztlichen Befund.",
+  "Regeln:",
+  "- ZAHNNUMMERN: Der Arzt diktiert Zaehne oft Ziffer fuer Ziffer (Quadrant, dann",
+  "  Zahn). Paare aufeinanderfolgende Einzelziffern zu FDI-Zahnnummern (zweistellig,",
+  "  11–48): 'vier ... vier ... Krone' -> 'Zahn 44: Krone'; 'eins sechs fehlt' ->",
+  "  'Zahn 16: fehlt'. Schreibe Zahnnummern IMMER als zweistellige FDI-Ziffern.",
+  "- Selbstkorrekturen aufloesen: 'nein, 46' / 'Korrektur zu Zahn ...' -> den",
+  "  betroffenen frueheren Eintrag entsprechend anpassen bzw. entfernen.",
+  "- Fehlstarts, Dopplungen und Fuellwoerter (aeh, aehm, halt) entfernen.",
+  "- Korrekte deutsche Rechtschreibung, Gross-/Kleinschreibung und zahnaerztliche",
+  "  Fachbegriffe (Krone, Fuellung, insuffizient, kariös, Wurzelrest, fehlt ...).",
+  "- ERFINDE NICHTS: keine zusaetzlichen Zaehne, Befunde oder Werte. Nur was",
+  "  diktiert wurde.",
+  "- Format: je Zahn/Befund EINE Zeile, wenn moeglich 'Zahn NN: <Befund>'.",
+  "  Befunde ohne Zahnbezug als eigene Zeile. Reihenfolge beibehalten.",
+  "- Gib NUR die Reinschrift zurueck — ohne Ueberschrift, ohne Nummerierung,",
+  "  ohne Erklaerung.",
+].join("\n");
+
+/**
+ * Reinschrift des gesammelten 01-Befunds beim Uebergang zur Behandlungs-Doku.
+ * Einziger LLM-Durchlauf ueber die Befundphase (FDI + Rechtschreibung).
+ * (exportiert fuer Tests)
+ *
+ * @param {string[]} texts  Segment-Texte der 01-Phase in Diktier-Reihenfolge
+ *   (bereits korrigierte Fassung bevorzugt).
+ * @returns {Promise<{ok:boolean, text:string, model?:string, reason?:string}>}
+ */
+export async function consolidateBefund01(texts, { timeoutMs = 60000 } = {}) {
+  if (String(process.env.LENA_LLM_CORRECT || "1") === "0") return { ok: false, text: "", reason: "disabled" };
+  const segs = (texts || []).map((s) => String(s || "").trim()).filter(Boolean);
+  if (!segs.length) return { ok: false, text: "", reason: "empty" };
+  const listed = segs.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  const s = strongLlm();
+  const messages = [
+    { role: "system", content: _BEFUND01_SYSTEM },
+    { role: "user", content: `Diktierte 01-Befund-Segmente (in Reihenfolge):\n${listed}` },
+  ];
+  let res;
+  try {
+    res = await chat(messages, { temperature: 0.2, maxTokens: 1200, timeoutMs, baseUrl: s.base, model: s.model });
   } catch (e) {
     return { ok: false, text: "", reason: "llm_throw" };
   }

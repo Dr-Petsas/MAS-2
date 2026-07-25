@@ -3631,6 +3631,47 @@
           return false;
         }
       }
+      /* ── 01-Befund-Reinschrift (Chef 26.07.2026): Beim Uebergang Zahnschema
+         -> Doku wird der gesammelte 01-Befund EINMAL an qwen3.6 geschickt,
+         damit FDI-Zahnnummern (zweistellig) und Rechtschreibung stimmen (es gab
+         keinen Verhoerer, nur Politur). Ergebnis -> dokuState.befund01; die
+         Befund-Box zeigt dann die Reinschrift statt "vier, vier Krone". Das
+         Zahn-Chart bleibt aus ALLEN Segmenten vollstaendig. ───────────────── */
+      let befund01InFlight = false;
+      async function consolidateBefund01() {
+        if (befund01InFlight) return;
+        const ids = treatmentIds();
+        if (!ids || !ids.deviceKey) return;
+        if (!ensureDokuState()) return;
+        const clinical = (savedSegments || []).filter((s) => {
+          const sc = String(s.source || "").toLowerCase();
+          return sc !== "nachdiktat" && sc !== "raum" && sc !== "patient";
+        });
+        if (!clinical.length) return;
+        let until = 0;
+        for (const s of clinical) { const t = Number(s.startMs) || 0; if (t > until) until = t; }
+        if (!until) until = Date.now();
+        const texts = clinical
+          .filter((s) => { const t = Number(s.startMs) || 0; return !t || t <= until; })
+          .map(segShow).map((x) => String(x || "").trim()).filter(Boolean);
+        if (!texts.length) return;
+        // Fuer diesen Stand schon konsolidiert? Kein zweiter LLM-Aufruf.
+        if (dokuState.befund01 && dokuState._b01Count === texts.length) return;
+        befund01InFlight = true;
+        try {
+          const data = await masPost("/treatment/lena-consolidate-01", { texts });
+          if (data && data.ok && String(data.text || "").trim()) {
+            dokuState.befund01 = String(data.text).trim();
+            dokuState.befund01Until = until;
+            dokuState._b01Count = texts.length;
+            if (isDokuBoxesStep()) refreshDokuTemplate(savedSegments);
+          }
+        } catch (e) {
+          console.warn("consolidate-01", e);
+        } finally {
+          befund01InFlight = false;
+        }
+      }
       async function patchRecorder(status, extra) {
         const ids = treatmentIds();
         if (!ids || !ids.deviceKey) return;
@@ -3878,6 +3919,7 @@
       function showStep(n) {
         // Nicht-Zahnmedizin: Schema-Schritt (3) existiert nicht -> direkt Doku (4).
         if (n === 3 && !lenaIsDental) n = 4;
+        const prevWizStep = currentWizStep;
         const stepChanged = currentWizStep !== n;
         currentWizStep = n;
         try { syncWizNav(); } catch (_) {}
@@ -3930,6 +3972,12 @@
           if (dokuState) dokuState.page = "doku";
           else ensureDokuState();
           refreshDokuTemplate(savedSegments);
+          // Uebergang Zahnschema -> Doku: den 01-Befund EINMAL per qwen3.6 in
+          // FDI-Reinschrift bringen (Chef 26.07.2026). Nur bei Zahnmedizin und
+          // nur beim echten Wechsel aus dem Schema-Schritt.
+          if (lenaIsDental && prevWizStep === 3 && stepChanged) {
+            consolidateBefund01().catch(() => {});
+          }
           syncRecChrome();
         }
         if (n === 5) {
@@ -4809,17 +4857,43 @@
           if (data.roomCapture) applyRoomCaptureState(data.roomCapture);
           if (data.specialty !== undefined) applySpecialty(data.specialty);
           const known = new Set(savedSegments.map((s) => s.id).filter(Boolean));
+          const byId = new Map(savedSegments.filter((s) => s.id).map((s) => [s.id, s]));
           const knownText = new Set(
             savedSegments
               .filter((s) => String(s.source || "").toLowerCase() === "arzt")
               .map((s) => String(s.text || "").trim().toLowerCase())
               .filter(Boolean),
           );
+          // Bubble-Text auf die (spaeter eintreffende) qwen-Fassung heben.
+          const paintBubbleCorrection = (segId, show) => {
+            const el = document.querySelector('.bubble[data-seg-id="' + segId + '"] .bubble-text');
+            if (el && show && el.textContent !== show) el.textContent = show;
+          };
           let added = false;
+          let corrected = false; // qwen-Korrektur nachgezogen -> Boxen neu bauen
           for (const s of data.segments) {
             if (!s || s.struck || !s.text || !s.id) continue;
             if (String(s.source || "").toLowerCase() !== "arzt") continue;
-            if (known.has(s.id)) continue;
+            const corr = typeof s.textCorrected === "string" ? s.textCorrected.trim() : "";
+            const sec = typeof s.section === "string" ? s.section.trim() : "";
+            // Bereits bekannt: NUR die asynchron nachgelieferte qwen-Korrektur
+            // UND die Themen-Sektion nachziehen (Chef 26.07.2026). Ohne das
+            // erreichen Bereinigung (Gross/Klein, FDI-Zahlen, mm) und Box-
+            // Zuordnung die Boxen waehrend der Aufnahme NIE — der
+            // loadSavedSegments-Poll ist waehrend recording=true aus.
+            if (known.has(s.id)) {
+              const ex = byId.get(s.id);
+              if (ex && corr && String(ex.textCorrected || "") !== corr) {
+                ex.textCorrected = corr;
+                paintBubbleCorrection(s.id, corr);
+                corrected = true;
+              }
+              if (ex && sec && String(ex.section || "") !== sec) {
+                ex.section = sec;
+                corrected = true;
+              }
+              continue;
+            }
             const norm = String(s.text).trim().toLowerCase();
             // Live-Push hatte denselben Text schon — Firestore-ID uebernehmen,
             // kein zweites Bubble / kein Doppel-Refresh.
@@ -4831,20 +4905,27 @@
               savedSegments[liveIdx].id = s.id;
               savedSegments[liveIdx].livePush = false;
               savedSegments[liveIdx].startMs = Number(s.startMs) || savedSegments[liveIdx].startMs;
+              if (corr) savedSegments[liveIdx].textCorrected = corr;
+              if (sec) savedSegments[liveIdx].section = sec;
               known.add(s.id);
+              byId.set(s.id, savedSegments[liveIdx]);
               knownText.add(norm);
               const bub = document.querySelector('.bubble[data-seg-id="' + oldId + '"]');
               if (bub) bub.dataset.segId = s.id;
+              if (corr) { paintBubbleCorrection(s.id, corr); corrected = true; }
+              if (sec) corrected = true;
               continue;
             }
             if (knownText.has(norm)) continue;
-            savedSegments.push({
-              id: s.id, text: s.text, source: "arzt",
+            const seg = {
+              id: s.id, text: s.text, textCorrected: corr, section: sec, source: "arzt",
               startMs: Number(s.startMs) || 0,
-            });
+            };
+            savedSegments.push(seg);
             segmentsForApptId = String(ids.appointmentId);
-            appendBubble("Arzt", s.text, s.id, Number(s.startMs) || 0);
+            appendBubble("Arzt", corr || s.text, s.id, Number(s.startMs) || 0);
             known.add(s.id);
+            byId.set(s.id, seg);
             knownText.add(norm);
             added = true;
             // Fallback-Pfad fuer "01 fertig" + Loesch-Quittungen, falls der
@@ -4856,7 +4937,7 @@
               }
             } catch (_) {}
           }
-          if (added) refreshLivePage(savedSegments);
+          if (added || corrected) refreshLivePage(savedSegments);
         } catch (_) {}
       }
       setInterval(() => {

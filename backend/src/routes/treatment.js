@@ -28,6 +28,8 @@ import {
   refreshTemplateFields,
   finalizeTreatmentDoc,
   correctSegmentLive,
+  classifySegmentLive,
+  consolidateBefund01,
 } from "../lena/lenaDoc.js";
 import { deleteEventsByIdPrefix } from "../brain/eventStore.js";
 import { identifyByDevice } from "../clara/devices.js";
@@ -581,6 +583,9 @@ router.post("/treatment/heartbeat", async (req, res) => {
         // Bench-Korrektur (Chef 24.07.): angezeigt wird `textCorrected`, sofern
         // qwen3.6 schon bereinigt hat; `text` bleibt Roh-Backup (§ 630f).
         textCorrected: typeof s.textCorrected === "string" ? s.textCorrected : "",
+        // Live-Themen-Box (Chef 26.07.): qwen3.6-Klassifikation; das iPad routet
+        // danach (leer -> Heuristik entscheidet, bis die Sektion eintrifft).
+        section: typeof s.section === "string" ? s.section : "",
         source: typeof s.source === "string" ? s.source : "",
         struck: s.struck === true,
         createdAtMs: tsToMs(s.createdAt),
@@ -758,7 +763,15 @@ router.post("/treatment/lena-segment", async (req, res) => {
     // (Fachbegriffe/Casing/FDI-Zahnformat/Messwerte/Versprecher) und legt das
     // Ergebnis als `textCorrected` daneben. Best-effort/asynchron — die Antwort
     // wartet NICHT darauf (Live-Doku-Tempo bleibt). Notaus: LENA_LLM_CORRECT=0.
-    if (String(process.env.LENA_LLM_CORRECT || "1") !== "0") {
+    // Themen-Trennung LIVE (Chef 26.07.2026): parallel zur Korrektur ordnet
+    // qwen3.6 das Segment einer Doku-Box zu (`section`) — anamnestische/
+    // diagnostische Inhalte landen so nicht mehr pauschal im Befund. Beide
+    // Laeufe teilen denselben Kontext. Notaus: LENA_LLM_CORRECT=0 /
+    // LENA_LLM_CLASSIFY=0. Nur fuer die klinische Gespraechs-/Doku-Strecke
+    // (arzt/raum) — Nachdiktat bleibt wortwoertlich und unklassifiziert.
+    if (String(process.env.LENA_LLM_CORRECT || "1") !== "0"
+        || String(process.env.LENA_LLM_CLASSIFY || "1") !== "0") {
+      const classifiable = source === "arzt" || source === "raum";
       (async () => {
         try {
           const prevSnap = await ref.collection("dictations")
@@ -770,14 +783,22 @@ router.post("/treatment/lena-segment", async (req, res) => {
             if (t) ctx.push(t);
           });
           ctx.reverse();
-          const r = await correctSegmentLive(text, ctx);
-          if (r && r.ok && r.text) {
-            await segRef.set({
-              textCorrected: r.text,
-              correctedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
+          const [corr, cls] = await Promise.all([
+            String(process.env.LENA_LLM_CORRECT || "1") !== "0"
+              ? correctSegmentLive(text, ctx).catch(() => null)
+              : null,
+            classifiable && String(process.env.LENA_LLM_CLASSIFY || "1") !== "0"
+              ? classifySegmentLive(text, ctx).catch(() => null)
+              : null,
+          ]);
+          const patch = {};
+          if (corr && corr.ok && corr.text) patch.textCorrected = corr.text;
+          if (cls && cls.ok && cls.section) patch.section = cls.section;
+          if (Object.keys(patch).length) {
+            patch.correctedAt = admin.firestore.FieldValue.serverTimestamp();
+            await segRef.set(patch, { merge: true });
           }
-        } catch { /* Korrektur ist best-effort, blockt die Doku nie */ }
+        } catch { /* Korrektur/Klassifikation best-effort, blockt die Doku nie */ }
       })();
     }
 
@@ -1053,6 +1074,30 @@ router.post("/treatment/lena-suggest", async (req, res) => {
     }
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, suggestions, llmOk: !!r.ok });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/lena-consolidate-01 — beim Uebergang Zahnschema -> Doku wird
+// der gesammelte 01-Befund EINMAL an qwen3.6 gegeben (FDI zweistellig +
+// Rechtschreibung). Stateless wie /lena-suggest: der Aufrufer (iPad) haelt das
+// Ergebnis und legt es in die Befund-Box. Auth: gekoppeltes Companion-Geraet.
+router.post("/treatment/lena-consolidate-01", async (req, res) => {
+  try {
+    const dev = await companionDeviceOk(req);
+    if (!dev) return res.status(403).json({ ok: false, error: "forbidden" });
+    const raw = Array.isArray(req.body?.texts) ? req.body.texts : [];
+    const texts = raw
+      .map((t) => String(t || "").trim())
+      .filter(Boolean)
+      .slice(0, 200)
+      .map((t) => t.slice(0, 2000));
+    if (!texts.length) return res.status(400).json({ ok: false, error: "empty" });
+    const r = await consolidateBefund01(texts).catch(() => null);
+    res.set("Cache-Control", "no-store");
+    if (!r || !r.ok) return res.json({ ok: false, text: "", reason: r?.reason || "llm" });
+    res.json({ ok: true, text: r.text, model: r.model || "" });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
