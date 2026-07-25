@@ -1191,6 +1191,13 @@
       /exkav|f[uü]ll|komposit|trepan|aufbereit|obturat|extrah|\bextraktion\b|naht|pr[aä]par|zement|einsetz|membran|knochenaufbau|augment|bio[- ]?oss|sinuslift|implant(?:at)?\s+(?:gesetzt|inseriert|gelegt)|(?:gesetzt|inseriert|gelegt)\w*\s+implant|gezogen|provisor|krone\s+(?:gesetzt|eingesetzt|zementiert)|ultracain|ubistesin|an[aä]sthes/i;
     const AUFKL_RE =
       /aufkl[aä]r|risiken?\s+besprochen|einverstanden|unterschr|aufgekl[aä]rt|patient\s+(?:ist\s+)?informiert/i;
+    // Fuellungsflaechen = Behandlung (Chef 26.07.2026): die Flaechen einer
+    // GELEGTEN Fuellung gehoeren in die Therapie-Box. NUR Karies/insuffiziente
+    // Fuellung an der Flaeche ist Befund (CARIES_RE hat dann Vorrang).
+    const SURFACE_RE =
+      /\b(?:mesial|okklusal|occlusal|distal|zervikal|bukkal|vestibul(?:aer|är)?|lingual|palatinal|approximal|inzisal|mesiookklusal|okklusodistal|mesiodistal)\b/i;
+    const FILL_CTX_RE = /f[uü]ll|komposit|restaurat|inlay|onlay|overlay|adh[aä]siv|kavit[aä]t/i;
+    const CARIES_RE = /\bkaries\b|kari[oö]s|insuffizient|undicht|randspalt|sekund[aä]rkaries/i;
 
     // 01-Befund-Reinschrift zuerst in die Befund-Box (qwen3.6, FDI + Recht-
     // schreibung). Spaeter im Behandlungsverlauf diktierte Befunde haengen sich
@@ -1238,6 +1245,14 @@
       }
       if (AUFKL_RE.test(t)) {
         setField(state, "aufklaerung", t, "live");
+        placed = true;
+      }
+      // Fuellungsflaechen einer gelegten Fuellung -> Therapie/Behandlung, sofern
+      // NICHT von Karies/insuffizienter Fuellung die Rede ist (dann Befund) und
+      // es kein Plan ("muss gefuellt werden") ist (THERAPY_NEED/PASSIVE = Befund).
+      if (!CARIES_RE.test(t) && !THERAPY_NEED_RE.test(t) && !THERAPY_PASSIVE_RE.test(t)
+          && (FILL_CTX_RE.test(t) || SURFACE_RE.test(t))) {
+        setField(state, "therapie", t, "live");
         placed = true;
       }
       // Procedere/Plan (Kontrolle, Rezept, Wiedervorstellung ...) laeuft mit in
