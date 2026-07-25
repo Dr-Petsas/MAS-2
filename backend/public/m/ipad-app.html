@@ -2868,6 +2868,10 @@
       function mode3GuessPatient(text) {
         const t = String(text || "").toLowerCase().trim();
         if (t.split(/\s+/).length < 2) return false;   // Einzelworte nie umlabeln
+        // Steuerbefehle NIE umlabeln — sonst wird das arzt-Segment zu "raum" und
+        // die Steuer-Handler (zurueck zu Clara / Raummikro / 01 fertig / loeschen)
+        // im arzt-Zweig werden uebersprungen.
+        if (/\bclara\b|raummikro|mikro\s*2|zurück zu clara|zurueck zu clara|\b01\b|fertig|nochmal|lösch|loesch/.test(t)) return false;
         // Klinische/fachliche Marker -> immer Arzt.
         try { if (window.LenaVoiceChart?.extractFdi?.(text)?.length) return false; } catch (_) {}
         const arzt = /(karies|füllung|fuellung|sondier|röntgen|roentgen|distal|mesial|okklusal|palatinal|bukkal|lingual|approximal|befund|diagnose|extrakt|wurzel|krone|inlay|komposit|composite|millimeter|lockerungsgrad|taschentiefe|\bbop\b|sensibilit|anästhes|anaesthes|präpar|praepar)/;
