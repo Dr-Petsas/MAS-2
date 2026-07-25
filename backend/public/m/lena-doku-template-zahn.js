@@ -586,6 +586,7 @@
       ? '<div class="tpl-val">' + escapeHtml(val) + "</div>"
       : (docs.length ? "" : '<div class="tpl-val empty">—</div>');
     if (docs.length) {
+      html += '<div class="tpl-docs-cap">Unterschriebene Dokumente (' + docs.length + ")</div>";
       html += '<ul class="tpl-docs">';
       for (const d of docs) {
         const name = escapeHtml(String(d.name || "Dokument"));
@@ -626,7 +627,7 @@
       for (const f of b.fields) parts.push(fieldHtml(f.label, f.key, state));
       parts.push("</div></div>");
     }
-    parts.push(fieldHtml("Aufklärung", "aufklaerung", state, aufklaerungBodyHtml(state)));
+    parts.push(fieldHtml("Aufklärung & Dokumente", "aufklaerung", state, aufklaerungBodyHtml(state)));
     // Komplikationen / Procedere: vorerst ausgeblendet (Chef 23.07.) —
     // nur anzeigen, wenn doch etwas diktiert wurde.
     if (String(state.values.komplikationen || "").trim()) {
@@ -661,7 +662,7 @@
     // -> aufklaerungBodyHtml rendert sie als Liste. Nur setzen, wenn geliefert;
     // spaeter live diktierter Aufklaerungstext bleibt daneben erhalten.
     if (Array.isArray(aufklaerungDocs) && aufklaerungDocs.length) {
-      state.aufklaerungDocs = aufklaerungDocs.slice(0, 12);
+      state.aufklaerungDocs = aufklaerungDocs.slice(0, 40);
       if (state.status.aufklaerung === "empty" || state.status.aufklaerung === "gap") {
         state.status.aufklaerung = "pre";
       }
@@ -1415,7 +1416,7 @@
       parts.push("</div></div>");
     }
 
-    parts.push(fieldHtml("Aufklärung", "aufklaerung", state, aufklaerungBodyHtml(state)));
+    parts.push(fieldHtml("Aufklärung & Dokumente", "aufklaerung", state, aufklaerungBodyHtml(state)));
     if (String(state.values.komplikationen || "").trim()) {
       parts.push(fieldHtml("Komplikationen", "komplikationen", state));
     }

@@ -513,12 +513,17 @@ router.post("/treatment/patient-docs", async (req, res) => {
           if (text) anamneseFindings.push({ category: String(f?.category || "").trim().slice(0, 80), text });
         }
       }
+      // ALLE unterschriebenen/finalisierten Dokumente (Chef 26.07.2026) — nicht
+      // mehr nur Aufklaerung/Consent nach Namensmuster. Der Arzt am Stuhl will
+      // sehen, was der Patient tatsaechlich alles unterschrieben hat
+      // (Behandlungsvertrag, Heil- und Kostenplan, Formr-Formulare, individuell
+      // benannte Dokumente ...). isAufklaerung markiert weiter die Aufklaerungs-
+      // Typen (fuer Gruppierung/Ampel), filtert aber nichts mehr weg.
       const signed = (docs || []).filter((d) =>
-        AUFKLAERUNG_NAME_RE.test(String(d.name || "")) &&
-        (d.status === "signed" || d.pdfCreatedAt));
+        d.status === "signed" || d.pdfCreatedAt);
       signed.sort((a, b) => tsToMs(b.pdfCreatedAt) - tsToMs(a.pdfCreatedAt));
       const bucket = admin.storage().bucket();
-      aufklaerungDocs = await Promise.all(signed.slice(0, 12).map(async (d) => {
+      aufklaerungDocs = await Promise.all(signed.slice(0, 40).map(async (d) => {
         const path = `clients/${k.clientId}/locations/${k.locationId}/patients/${patientId}/documents/${d.id}.pdf`;
         let url = "";
         try {
@@ -533,6 +538,7 @@ router.post("/treatment/patient-docs", async (req, res) => {
           status: d.status === "signed" ? "signed" : (d.pdfCreatedAt ? "signed" : String(d.status || "")),
           signedAtMs: tsToMs(d.pdfCreatedAt) || 0,
           url,
+          isAufklaerung: AUFKLAERUNG_NAME_RE.test(String(d.name || "")),
         };
       }));
     }
