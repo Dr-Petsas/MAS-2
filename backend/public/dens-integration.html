@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Pickadoc × DENS · KI- und sprachgesteuerte Praxis</title>
+<meta name="theme-color" content="#0a1322" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg-1: #13203a; --bg-2: #0a1322; --bg-3: #060b16;
+    --ink: #e6edf6; --ink-soft: #8fa3bd; --ink-faint: #5f719a;
+    --turq: #2ee6c8; --amber: #ffb347; --red: #ff4d6d;
+    --pink: #ff4ddb; --purple: #b84dff; --green: #34d399; --blue: #4d9bff;
+    --line: #22324f; --card: #101b30;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+    margin: 0; color: var(--ink);
+    background: radial-gradient(130% 90% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 52%, var(--bg-3) 100%);
+    background-attachment: fixed; min-height: 100vh; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--turq); text-decoration: none; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 26px 20px 90px; }
+
+  /* Brand / Hero */
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark {
+    width: 36px; height: 36px; border-radius: 10px; flex: none; display: grid; place-items: center;
+    background: linear-gradient(140deg, color-mix(in srgb, var(--turq) 30%, transparent), color-mix(in srgb, var(--purple) 22%, transparent));
+    border: 1px solid color-mix(in srgb, var(--turq) 45%, transparent);
+    box-shadow: 0 0 22px color-mix(in srgb, var(--turq) 28%, transparent);
+  }
+  .brand .word { font-size: 21px; font-weight: 700; letter-spacing: .3px; }
+  .brand .word b { color: var(--turq); }
+  .brand .x { color: var(--ink-faint); font-weight: 500; margin: 0 2px; }
+  .brand .dens { color: var(--amber); }
+  .brand .pill { margin-left: auto; font-size: 11.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+    color: var(--amber); background: color-mix(in srgb, var(--amber) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); padding: 5px 12px; border-radius: 999px; }
+
+  .hero { margin-top: 34px; }
+  .hero h1 { font-size: clamp(34px, 6.4vw, 56px); line-height: 1.03; margin: 0 0 14px; font-weight: 900; letter-spacing: -.8px; }
+  .hero h1 .accent { background: linear-gradient(100deg, var(--turq), var(--green)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p { color: var(--ink-soft); font-size: 17.5px; max-width: 720px; margin: 0; }
+  .hero .disc { margin-top: 14px; font-size: 13px; color: var(--ink-faint); border-left: 2px solid color-mix(in srgb, var(--amber) 60%, transparent); padding-left: 12px; max-width: 720px; }
+
+  /* Cycle ribbon */
+  .ribbon { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 26px 0 4px; }
+  .ribbon .step { font-size: 12.5px; font-weight: 700; color: var(--ink); background: var(--card);
+    border: 1px solid var(--line); border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
+  .ribbon .arr { color: var(--turq); font-weight: 800; }
+
+  /* Nav */
+  .nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 32px 0 6px; }
+  .nav a { color: var(--ink-soft); font-size: 13.5px; font-weight: 600; border: 1px solid var(--line);
+    border-radius: 999px; padding: 7px 14px; transition: all .2s ease; }
+  .nav a:hover { color: var(--ink); border-color: color-mix(in srgb, var(--turq) 55%, transparent); background: color-mix(in srgb, var(--turq) 8%, transparent); }
+
+  section { margin-top: 52px; scroll-margin-top: 18px; }
+  .sec-head { display: flex; align-items: center; gap: 13px; margin-bottom: 22px; flex-wrap: wrap; }
+  .sec-head .dot { width: 15px; height: 15px; border-radius: 50%; flex: none; box-shadow: 0 0 18px currentColor; align-self: center; }
+  .sec-head h2 { font-size: clamp(25px, 3.5vw, 35px); margin: 0; font-weight: 900; letter-spacing: -.5px; line-height: 1.07; }
+  .sec-head .desc { color: var(--ink-soft); font-size: 14.5px; margin: 0; flex-basis: 100%; line-height: 1.5; }
+
+  /* Ecosystem diagram */
+  .eco { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 16px; align-items: stretch; }
+  @media (max-width: 860px) { .eco { grid-template-columns: 1fr; } }
+  .pillar { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+  .pillar .cap { font-size: 12px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 12px; }
+  .pillar.dens { border-color: color-mix(in srgb, var(--amber) 40%, transparent); box-shadow: inset 0 0 40px color-mix(in srgb, var(--amber) 6%, transparent); }
+  .pillar.dens .cap { color: var(--amber); }
+  .pillar.hub { border-color: color-mix(in srgb, var(--turq) 45%, transparent); box-shadow: 0 0 34px color-mix(in srgb, var(--turq) 12%, transparent); text-align: center; display: flex; flex-direction: column; justify-content: center; }
+  .pillar.hub .cap { color: var(--turq); }
+  .node { background: rgba(255,255,255,.02); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; margin-bottom: 9px; font-size: 13.5px; font-weight: 600; }
+  .node small { display: block; color: var(--ink-soft); font-weight: 500; font-size: 12px; margin-top: 2px; }
+  .node:last-child { margin-bottom: 0; }
+  .hub-core { font-size: 18px; font-weight: 800; margin: 6px 0 4px; }
+  .hub-sub { color: var(--ink-soft); font-size: 13px; }
+  .hub-chip { display: inline-block; margin: 10px 4px 0; font-size: 11.5px; font-weight: 700; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--turq) 34%, transparent); color: var(--turq); background: color-mix(in srgb, var(--turq) 8%, transparent); }
+  .hub-chip.read { border-color: color-mix(in srgb, var(--green) 40%, transparent); color: var(--green); background: color-mix(in srgb, var(--green) 8%, transparent); }
+
+  /* Interface list */
+  .ifaces { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+  @media (max-width: 720px) { .ifaces { grid-template-columns: 1fr; } }
+  .iface { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 15px 16px; position: relative; overflow: hidden; }
+  .iface::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--acc, var(--turq)); }
+  .iface .no { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; font-size: 13px; font-weight: 800;
+    color: #06121f; background: var(--acc, var(--turq)); margin-right: 8px; }
+  .iface h4 { display: flex; align-items: center; margin: 0 0 6px; font-size: 15px; font-weight: 800; }
+  .iface .dir { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+  .iface p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+  .iface .meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 7px; border: 1px solid var(--line); color: var(--ink-soft); }
+  .tag.tbd { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: color-mix(in srgb, var(--amber) 10%, transparent); }
+  .tag.done { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, transparent); background: color-mix(in srgb, var(--green) 10%, transparent); }
+
+  /* Lifecycle */
+  .life { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 900px) { .life { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .life { grid-template-columns: 1fr; } }
+  .phase { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 15px; position: relative; }
+  .phase .n { font-size: 12px; font-weight: 800; color: var(--turq); }
+  .phase h4 { margin: 4px 0 6px; font-size: 15px; font-weight: 800; }
+  .phase p { margin: 0; color: var(--ink-soft); font-size: 12.5px; }
+  .phase .who { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .who .a { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; letter-spacing: .3px; }
+  .a.clara { color: var(--turq); background: color-mix(in srgb, var(--turq) 12%, transparent); }
+  .a.lena { color: var(--purple); background: color-mix(in srgb, var(--purple) 14%, transparent); }
+  .a.sophie { color: var(--amber); background: color-mix(in srgb, var(--amber) 13%, transparent); }
+  .a.nadine { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); }
+  .a.bianca { color: var(--pink); background: color-mix(in srgb, var(--pink) 13%, transparent); }
+  .a.dens { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); }
+  .a.if { color: var(--ink); background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+
+  /* Call scenario */
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .fstep { background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 14px; position: relative; }
+  .fstep .k { font-size: 11px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: var(--ink-faint); }
+  .fstep h4 { margin: 5px 0 5px; font-size: 14.5px; font-weight: 800; }
+  .fstep p { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
+  .lane-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-bottom: 12px; }
+  .lane-tag.bg { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); border: 1px solid color-mix(in srgb, var(--green) 32%, transparent); }
+  .lane-tag.rt { color: var(--pink); background: color-mix(in srgb, var(--pink) 12%, transparent); border: 1px solid color-mix(in srgb, var(--pink) 32%, transparent); }
+  .quote { margin-top: 16px; background: linear-gradient(150deg, rgba(46,230,200,.10), rgba(184,77,255,.08)); border: 1px solid color-mix(in srgb, var(--turq) 30%, transparent);
+    border-radius: 14px; padding: 16px 18px; font-size: 15.5px; }
+  .quote b { color: var(--pink); }
+  .code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--turq);
+    background: #0b1524; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; overflow-x: auto; margin-top: 14px; white-space: pre; }
+  .code .k { color: var(--ink-faint); }
+  .code .s { color: var(--amber); }
+
+  /* generic cards */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; position: relative; overflow: hidden;
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+  .card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--acc, var(--turq)); opacity: .6; }
+  .card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--acc, var(--turq)) 50%, transparent);
+    box-shadow: 0 14px 34px rgba(0,0,0,.35), 0 0 26px color-mix(in srgb, var(--acc, var(--turq)) 14%, transparent); }
+  .card .role { font-size: 11px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: var(--acc, var(--turq)); }
+  .card h3 { margin: 5px 0 7px; font-size: 17px; font-weight: 800; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 13.5px; }
+
+  /* two-column ist/vision */
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+  .col { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+  .col.ist { border-color: color-mix(in srgb, var(--green) 34%, transparent); }
+  .col.vis { border-color: color-mix(in srgb, var(--purple) 34%, transparent); }
+  .col h3 { margin: 0 0 12px; font-size: 16px; font-weight: 800; }
+  .col.ist h3 { color: var(--green); }
+  .col.vis h3 { color: var(--purple); }
+  .col ul { margin: 0; padding-left: 18px; }
+  .col li { color: var(--ink-soft); font-size: 13.5px; margin-bottom: 7px; }
+
+  /* ask */
+  .ask { background: linear-gradient(150deg, rgba(255,179,71,.10), rgba(10,19,34,.5)); border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+    border-radius: 18px; padding: 22px; }
+  .ask h3 { margin: 0 0 14px; font-size: 18px; font-weight: 800; color: var(--amber); }
+  .ask ol { margin: 0; padding-left: 20px; }
+  .ask li { font-size: 14px; margin-bottom: 10px; color: var(--ink); }
+  .ask li b { color: var(--amber); }
+  .ask li span { color: var(--ink-soft); }
+
+  footer { margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 12.5px; text-align: center; }
+
+  /* Worksheet mockup ("screenshot") */
+  .appwin { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: #0b1524;
+    box-shadow: 0 30px 70px rgba(0,0,0,.5), 0 0 46px color-mix(in srgb, var(--turq) 9%, transparent); }
+  .appbar { display: flex; align-items: center; gap: 12px; padding: 11px 14px; background: linear-gradient(180deg, #12203a, #0d1830); border-bottom: 1px solid var(--line); }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .dots .r { background: #ff5f57; } .dots .y { background: #febc2e; } .dots .g { background: #28c840; }
+  .appttl { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+  .appttl b { color: var(--ink); }
+  .pchip { font-size: 12px; font-weight: 700; color: var(--turq); background: color-mix(in srgb, var(--turq) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--turq) 30%, transparent); padding: 3px 10px; border-radius: 999px; }
+  .seg { margin-left: auto; display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; font-size: 11.5px; font-weight: 700; }
+  .seg span { padding: 5px 12px; color: var(--ink-soft); }
+  .seg span.on { background: color-mix(in srgb, var(--turq) 16%, transparent); color: var(--turq); }
+  .ws-meta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 11px 16px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--ink-soft); background: #0a1322; }
+  .ws-meta b { color: var(--ink); }
+  .ws-prog { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 8px; }
+  .ws-prog .bar { flex: 1; height: 6px; border-radius: 999px; background: #16233c; overflow: hidden; }
+  .ws-prog .bar i { display: block; height: 100%; width: 50%; background: linear-gradient(90deg, var(--turq), var(--green)); }
+  .ws-grid { display: grid; grid-template-columns: 1.55fr .95fr; gap: 0; }
+  @media (max-width: 820px) { .ws-grid { grid-template-columns: 1fr; } }
+  .ws-plan { padding: 16px; display: flex; flex-direction: column; gap: 13px; border-right: 1px solid var(--line); }
+  @media (max-width: 820px) { .ws-plan { border-right: 0; border-bottom: 1px solid var(--line); } }
+  .ws-item { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 15px; position: relative; }
+  .ws-item.hot::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--red); border-radius: 3px 0 0 3px; }
+  .ws-item h4 { margin: 0 0 9px; font-size: 15.5px; font-weight: 800; }
+  .ws-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .c { font-size: 10.5px; font-weight: 800; letter-spacing: .3px; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; }
+  .c.hot { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+  .c.ok { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
+  .c.time { color: var(--ink-soft); background: rgba(255,255,255,.05); }
+  .c.ses { color: var(--blue); background: color-mix(in srgb, var(--blue) 14%, transparent); }
+  .why { font-size: 13px; color: #cbd8ec; background: rgba(46,230,200,.06); border-left: 2px solid color-mix(in srgb, var(--turq) 55%, transparent);
+    padding: 8px 11px; border-radius: 0 10px 10px 0; margin-bottom: 11px; }
+  .why b { color: var(--turq); }
+  .kvid { display: flex; gap: 11px; align-items: center; margin-bottom: 11px; padding: 10px 12px; border-radius: 12px;
+    background: linear-gradient(120deg, color-mix(in srgb, var(--turq) 16%, transparent), color-mix(in srgb, var(--purple) 16%, transparent));
+    border: 1px solid color-mix(in srgb, var(--turq) 26%, transparent); }
+  .kvid .play { width: 38px; height: 38px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 13px;
+    background: rgba(6,18,31,.6); border: 1px solid color-mix(in srgb, var(--turq) 50%, transparent); color: var(--turq); }
+  .kvid .kt { font-size: 13px; font-weight: 700; }
+  .kvid .kt small { display: block; color: var(--ink-soft); font-weight: 500; font-size: 11.5px; }
+  .kvid .dur { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ink-soft); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 11px; }
+  @media (max-width: 520px) { .row2 { grid-template-columns: 1fr; } }
+  .mini { border: 1px solid var(--line); border-radius: 11px; padding: 9px 11px; font-size: 12px; color: var(--ink-soft); }
+  .mini .lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-faint); margin-bottom: 3px; }
+  .mini.tip { background: color-mix(in srgb, var(--amber) 8%, transparent); border-color: color-mix(in srgb, var(--amber) 28%, transparent); }
+  .mini.tip .lbl { color: var(--amber); }
+  .mini.evi .ebar { height: 6px; border-radius: 999px; background: #16233c; margin-top: 6px; overflow: hidden; }
+  .mini.evi .ebar i { display: block; height: 100%; width: 90%; background: linear-gradient(90deg, var(--green), var(--turq)); }
+  .cost { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--ink-soft);
+    border-top: 1px dashed var(--line); padding-top: 10px; margin-bottom: 11px; }
+  .cost b { color: var(--ink); font-size: 15px; }
+  .cost .mkv { font-size: 10.5px; color: var(--amber); }
+  .askrow { display: flex; gap: 8px; align-items: center; }
+  .askrow .inp { flex: 1; font-size: 12.5px; color: var(--ink-faint); background: #0a1322; border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; }
+  .askrow .mic { width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 14px; color: var(--pink);
+    background: color-mix(in srgb, var(--pink) 12%, transparent); border: 1px solid color-mix(in srgb, var(--pink) 34%, transparent); }
+  .askrow .go { font-size: 12px; font-weight: 800; color: #06121f; background: var(--turq); border: 0; border-radius: 999px; padding: 9px 15px; cursor: pointer; }
+  .ws-rail { padding: 16px; display: flex; flex-direction: column; gap: 11px; background: #0a1322; }
+  .rc { border: 1px solid var(--line); border-radius: 13px; padding: 13px; }
+  .rc .rl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 5px; color: var(--ink-soft); }
+  .rc p { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
+  .rc.sign { border-color: color-mix(in srgb, var(--green) 34%, transparent); } .rc.sign .rl { color: var(--green); }
+  .rc.fin .rl { color: var(--amber); } .rc.q .rl { color: var(--pink); }
+  .rc .cta { display: inline-block; margin-top: 9px; font-size: 11.5px; font-weight: 800; padding: 6px 12px; border-radius: 999px; }
+  .rc.sign .cta { color: #06121f; background: var(--green); }
+  .caption { text-align: center; font-size: 12px; color: var(--ink-faint); margin-top: 12px; }
+
+  /* Warum jetzt / Disruption */
+  .whynow { margin: 26px 0 10px; padding: 28px 26px; border-radius: 18px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--pink) 15%, transparent), color-mix(in srgb, var(--purple) 12%, transparent) 55%, color-mix(in srgb, var(--turq) 12%, transparent));
+    border: 1px solid color-mix(in srgb, var(--pink) 30%, transparent);
+    box-shadow: 0 0 50px color-mix(in srgb, var(--pink) 8%, transparent); }
+  .whynow .kicker { font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--pink); margin-bottom: 9px; }
+  .whynow h2 { font-size: clamp(26px, 3.9vw, 44px); line-height: 1.07; margin: 0 0 12px; font-weight: 900; }
+  .whynow h2 .u { color: var(--turq); }
+  .whynow .lead { font-size: 15.5px; line-height: 1.55; color: var(--ink-soft); max-width: 62ch; margin: 0 0 22px; }
+  .claims { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 780px) { .claims { grid-template-columns: 1fr; } }
+  .claim { background: rgba(6,14,26,.5); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .claim .big { font-size: 26px; font-weight: 800; line-height: 1; margin-bottom: 9px; }
+  .claim.d .big { color: var(--pink); } .claim.m .big { color: var(--turq); } .claim.p .big { color: var(--amber); }
+  .claim h4 { margin: 0 0 6px; font-size: 15px; font-weight: 800; }
+  .claim p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+  .painline { margin-top: 18px; padding: 15px 17px; border-radius: 12px; background: rgba(255,77,109,.10);
+    border-left: 3px solid var(--red); font-size: 14.5px; line-height: 1.55; color: #ffdfe6; }
+  .painline b { color: #fff; }
+
+  /* Technische DENS-Schnittstellen */
+  .tag.tech { color: var(--blue); background: color-mix(in srgb, var(--blue) 14%, transparent); }
+  .diagram { border: 1px solid var(--line); border-radius: 16px; background: #0a1322; padding: 16px; margin: 4px 0 18px; overflow-x: auto; }
+  .diagram svg { display: block; width: 100%; height: auto; min-width: 660px; font-family: inherit; }
+  .apis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+  @media (max-width: 780px) { .apis { grid-template-columns: 1fr; } }
+  .api { border: 1px solid var(--line); border-radius: 13px; padding: 14px; background: var(--card); }
+  .api h4 { margin: 0 0 4px; font-size: 14.5px; font-weight: 800; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .api .sub { font-size: 11.5px; color: var(--ink-faint); margin-bottom: 8px; font-weight: 600; }
+  .api p { margin: 0; font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; }
+  .api p b { color: var(--ink); }
+  .pill { font-size: 10px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+  .pill.use { color: var(--green); background: color-mix(in srgb, var(--green) 15%, transparent); }
+  .pill.part { color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); }
+  .pill.no { color: var(--red); background: color-mix(in srgb, var(--red) 15%, transparent); }
+  .code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55;
+    background: #060d18; border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; overflow-x: auto; color: #cbe3ff; margin: 14px 0 0; white-space: pre; }
+  .code .c1 { color: #5f719a; } .code .h { color: var(--pink); font-weight: 700; } .code .v { color: var(--amber); }
+
+  /* Screenshots / gallery */
+  .hero-shot { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin: 0 0 16px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+  .hero-shot img { display: block; width: 100%; height: auto; }
+  .shots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 780px) { .shots { grid-template-columns: 1fr; } }
+  .shot { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: #0a1322; }
+  .shot img { display: block; width: 100%; height: auto; }
+  .shot .cap { padding: 11px 14px; font-size: 12.5px; color: var(--ink-soft); border-top: 1px solid var(--line); }
+  .shot .cap b { color: var(--ink); }
+  .voiceshot { border: 1px solid color-mix(in srgb, var(--turq) 28%, transparent); border-radius: 16px; overflow: hidden;
+    box-shadow: 0 0 50px color-mix(in srgb, var(--turq) 10%, transparent); }
+  .voiceshot img { display: block; width: 100%; height: auto; }
+
+  /* Clara voice bar */
+  .clarabar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 13px; border-radius: 14px;
+    background: linear-gradient(120deg, color-mix(in srgb, var(--turq) 18%, transparent), color-mix(in srgb, var(--pink) 14%, transparent));
+    border: 1px solid color-mix(in srgb, var(--turq) 30%, transparent); }
+  .clarabar .cmic { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 16px; color: #06121f; background: var(--turq); box-shadow: 0 0 0 6px color-mix(in srgb, var(--turq) 16%, transparent); }
+  .clarabar .wave { flex: 1; display: flex; align-items: center; gap: 3px; height: 26px; }
+  .clarabar .wave i { flex: 1; background: color-mix(in srgb, var(--turq) 75%, transparent); border-radius: 2px; }
+  .clarabar .ct { font-size: 12.5px; color: var(--ink); font-weight: 700; min-width: 128px; }
+  .clarabar .ct small { display: block; font-weight: 500; color: var(--ink-soft); font-size: 11px; }
+
+  /* Worksheet extras */
+  .seg3 { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; font-size: 11px; font-weight: 700; }
+  .seg3 span { padding: 5px 11px; color: var(--ink-soft); } .seg3 span.on { background: color-mix(in srgb, var(--turq) 16%, transparent); color: var(--turq); }
+  .langchip { font-size: 11px; font-weight: 700; color: var(--ink-soft); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
+  .risks { list-style: none; margin: 0 0 11px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .risks li { font-size: 12.5px; color: var(--ink-soft); display: flex; gap: 8px; align-items: center; }
+  .risks li .box { width: 16px; height: 16px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--green) 50%, transparent); color: var(--green); font-size: 11px; display: grid; place-items: center; flex: none; }
+  .risks li.done .box { background: color-mix(in srgb, var(--green) 20%, transparent); }
+  .risks .lbl2 { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-faint); margin-bottom: 2px; }
+  .matsel { display: flex; gap: 8px; margin: 4px 0 4px; }
+  .matsel .m { flex: 1; text-align: center; font-size: 12px; font-weight: 700; padding: 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--ink-soft); }
+  .matsel .m.on { border-color: color-mix(in srgb, var(--turq) 45%, transparent); background: color-mix(in srgb, var(--turq) 12%, transparent); color: var(--turq); }
+  .slider { position: relative; height: 6px; border-radius: 999px; background: #16233c; margin: 16px 6px 8px; }
+  .slider i { position: absolute; left: 0; top: 0; height: 100%; width: 58%; border-radius: 999px; background: linear-gradient(90deg, var(--turq), var(--pink)); }
+  .slider .knob { position: absolute; left: 58%; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: #fff; transform: translate(-50%,-50%); box-shadow: 0 0 0 4px color-mix(in srgb, var(--pink) 25%, transparent); }
+  .slabels { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--ink-faint); font-weight: 700; }
+
+  /* Journey / Motivation */
+  .roadmap { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+  .rstop { flex: 1; min-width: 92px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px; text-align: center; }
+  .rstop .n { width: 26px; height: 26px; border-radius: 50%; margin: 0 auto 6px; display: grid; place-items: center; font-size: 12px; font-weight: 800; border: 1px solid var(--line); color: var(--ink-soft); }
+  .rstop b { font-size: 11px; }
+  .rstop.done .n { background: var(--turq); color: #06121f; border-color: var(--turq); }
+  .rstop.now { border-color: color-mix(in srgb, var(--pink) 50%, transparent); box-shadow: 0 0 22px color-mix(in srgb, var(--pink) 14%, transparent); }
+  .rstop.now .n { border-color: var(--pink); color: var(--pink); }
+  .rstop small { font-size: 10.5px; color: var(--ink-soft); display: block; line-height: 1.3; margin-top: 2px; }
+  .motiv { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+  @media (max-width: 780px) { .motiv { grid-template-columns: 1fr 1fr; } }
+  .mstep { border: 1px solid var(--line); border-radius: 13px; padding: 13px; background: var(--card); }
+  .mstep .d { font-size: 11px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase; color: var(--pink); margin-bottom: 5px; }
+  .mstep h4 { margin: 0 0 5px; font-size: 13.5px; }
+  .mstep p { margin: 0; font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+
+  /* Zwei Behandlungsmodi */
+  .modewrap { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 820px) { .modewrap { grid-template-columns: 1fr; } }
+  .mode { border: 1px solid var(--line); border-radius: 16px; padding: 18px; background: var(--card); }
+  .mode.s { border-color: color-mix(in srgb, var(--turq) 34%, transparent); }
+  .mode.f { border-color: color-mix(in srgb, var(--pink) 34%, transparent); }
+  .mode .badge { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
+  .mode.s .badge { color: var(--turq); background: color-mix(in srgb, var(--turq) 14%, transparent); }
+  .mode.f .badge { color: var(--pink); background: color-mix(in srgb, var(--pink) 14%, transparent); }
+  .mode h3 { margin: 0 0 4px; font-size: 20px; }
+  .mode .tag2 { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 12px; line-height: 1.5; }
+  .mode .when { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 13px; }
+  .mflow { display: flex; flex-direction: column; gap: 8px; }
+  .mrow { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: var(--ink-soft); line-height: 1.45; }
+  .mrow .k2 { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--ink); background: rgba(255,255,255,.06); margin-top: 1px; }
+
+  /* KI-Video-Platzhalter */
+  .videoph { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--pink) 30%, transparent);
+    box-shadow: 0 20px 55px rgba(0,0,0,.5), 0 0 46px color-mix(in srgb, var(--pink) 10%, transparent); cursor: pointer; }
+  .videoph img { display: block; width: 100%; height: auto; }
+  .videoph .vfx { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,14,26,.15) 0%, rgba(6,14,26,.55) 62%, rgba(6,14,26,.9) 100%); }
+  .videoph .badge2 { position: absolute; top: 14px; left: 14px; z-index: 2; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    color: #06121f; background: var(--pink); padding: 4px 11px; border-radius: 999px; }
+  .videoph .trg { position: absolute; top: 14px; right: 14px; z-index: 2; font-size: 11px; font-weight: 700; color: var(--ink);
+    background: rgba(6,14,26,.55); border: 1px solid var(--line); padding: 4px 11px; border-radius: 999px; }
+  .videoph .playbtn { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 2;
+    width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; color: #06121f;
+    background: rgba(46,230,200,.95); box-shadow: 0 0 0 10px rgba(46,230,200,.18), 0 0 40px rgba(46,230,200,.5); }
+  .videoph .vcap { position: absolute; left: 16px; right: 16px; bottom: 14px; z-index: 2; }
+  .videoph .vcap h4 { margin: 0 0 3px; font-size: clamp(16px, 2.2vw, 21px); font-weight: 900; color: #fff; }
+  .videoph .vcap p { margin: 0; font-size: 13px; color: #d7e2f2; }
+  .videoph .dur2 { position: absolute; right: 14px; bottom: 14px; z-index: 3; font-size: 11px; font-weight: 800; color: #fff; background: rgba(6,14,26,.7); padding: 2px 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#2ee6c8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v18M5 8l7-5 7 5M5 8v8l7 5 7-5V8" />
+      </svg>
+    </div>
+    <div class="word"><b>Pickadoc</b><span class="x">×</span><span class="dens">DENS</span></div>
+    <div class="pill">Vision · Schnittstellen</div>
+  </div>
+
+  <div class="hero">
+    <h1>Die Praxis, <span class="accent">per Sprache und KI</span> gesteuert.</h1>
+    <p>Vom vollständigen 01-Befund über den genehmigten Behandlungsplan bis zur Abrechnung — ohne
+      Medienbruch. Clara, Lena, Sophie und Nadine übernehmen die Arbeit, DENS Office bleibt das
+      abrechnende System. Diese Seite zeigt die Vision und die konkreten Übergabepunkte dazwischen.</p>
+    <div class="disc">Entwurf zur gemeinsamen Abstimmung mit Dr. Heckner / DENS. Die Schnittstellen ①–⑥ sind
+      <b>Vorschläge</b> — Formate und Richtung legen wir gemeinsam fest. Kein DENS-Systemzwang, sondern eine Landkarte.</div>
+  </div>
+
+  <div class="ribbon">
+    <span class="step">01-Befund</span><span class="arr">›</span>
+    <span class="step">Behandlungsbedarf</span><span class="arr">›</span>
+    <span class="step">Behandlungsplan</span><span class="arr">›</span>
+    <span class="step">HKP / Pläne</span><span class="arr">›</span>
+    <span class="step">Genehmigung</span><span class="arr">›</span>
+    <span class="step">Aufklärung</span><span class="arr">›</span>
+    <span class="step">Termin</span><span class="arr">›</span>
+    <span class="step">Doku</span><span class="arr">›</span>
+    <span class="step">Abrechnung</span>
+  </div>
+
+  <nav class="nav">
+    <a href="#whynow">Warum jetzt</a>
+    <a href="#voice">Sprachsteuerung</a>
+    <a href="#eco">Ökosystem</a>
+    <a href="#ifaces">Schnittstellen</a>
+    <a href="#modes">2 Modi</a>
+    <a href="#plan">Behandlungsplan</a>
+    <a href="#worksheet">Worksheet</a>
+    <a href="#journey">Ihr Weg</a>
+    <a href="#aufklaerung">Aufklärungen</a>
+    <a href="#call">Anruf-Szenario</a>
+    <a href="#nadine">Nadine &amp; KIM</a>
+    <a href="#actors">Akteure</a>
+    <a href="#ask">Was wir von DENS brauchen</a>
+  </nav>
+
+  <!-- WARUM JETZT / DISRUPTION -->
+  <section id="whynow" class="whynow">
+    <div class="kicker">Warum jetzt · Warum wir</div>
+    <h2>Das ist kein besseres Formular.<br><span class="u">Das ist ein neuer Markt.</span></h2>
+    <p class="lead">Eine sprach- und KI-gesteuerte Praxis, die selbst telefoniert, dokumentiert, plant, aufklärt und abrechnet — Ende zu Ende. Dafür gibt es heute kein Produkt. Wir öffnen diesen Markt, statt in einen bestehenden einzutreten.</p>
+    <div class="claims">
+      <div class="claim d">
+        <div class="big">Disruptiv</div>
+        <h4>Sprache statt Software-Bedienung</h4>
+        <p>Nicht noch ein Klick-Modul am PVS, sondern ein Team aus KI-Assistenten, das die eigentliche Arbeit übernimmt. Ein Kategoriewechsel — keine neue Funktion.</p>
+      </div>
+      <div class="claim m">
+        <div class="big">Kein Markt</div>
+        <h4>Es gibt noch keinen Wettbewerber</h4>
+        <p>Einzellösungen (Anrufannahme, Diktat, Abrechnung) existieren — die durchgängige, sprachgesteuerte Praxis nicht. First Mover in einem offenen Blue Ocean.</p>
+      </div>
+      <div class="claim p">
+        <div class="big">Größter Schmerz</div>
+        <h4>Personalmangel &amp; Zeitfresser</h4>
+        <p>Telefon, Doku, Abrechnung, Recall verschlingen das knappste Gut: Personal und Zeit. Genau dort setzen wir an — und heilen den Punkt, der jede Praxis am stärksten drückt.</p>
+      </div>
+    </div>
+    <div class="painline"><b>Der Schmerzpunkt Nr. 1:</b> Fachkräftemangel. Das Telefon klingelt ungehört, Doku bleibt liegen, Abrechnungsziffern verpuffen, Recalls versanden — Umsatz und Nerven gehen verloren. <b>Clara, Bianca, Lena, Sophie und Nadine übernehmen genau diese Arbeit</b> — rund um die Uhr, ohne Krankheitstage, ohne Einarbeitung.</div>
+  </section>
+
+  <!-- SPRACHSTEUERUNG / CLARA & MAS -->
+  <section id="voice">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--turq)"></span>
+      <h2>Sprachgesteuert: Clara &amp; das MAS-Gehirn</h2>
+      <p class="desc">Kein Klicken, kein Suchen — gesprochen. Clara versteht, das MAS-Gehirn weiß Bescheid, die Assistenten handeln.</p>
+    </div>
+    <div class="voiceshot"><img src="/img/ws-clara-voice.png" alt="Sprachgesteuerte Praxis: Clara-Mikrofon, MAS-Gehirn, Kalender, Zahnschema, Patientenkarte"></div>
+    <div class="two" style="margin-top:16px">
+      <div class="col" style="border-color: color-mix(in srgb, var(--turq) 34%, transparent)">
+        <h3 style="color:var(--turq)">Sprache statt Bedienung</h3>
+        <ul>
+          <li>„Zeig mir Frau Meiers Zahnschema" — Clara öffnet es</li>
+          <li>„Trag Implantat 36 ins Protokoll" — Ziffern folgen automatisch</li>
+          <li>„Ist der Plan genehmigt?" — Antwort aus dem Gedächtnis, sofort</li>
+          <li>Freihändig am Stuhl, am Telefon, am Worksheet</li>
+        </ul>
+      </div>
+      <div class="col" style="border-color: color-mix(in srgb, var(--purple) 34%, transparent)">
+        <h3 style="color:var(--purple)">Das MAS-Gehirn dahinter</h3>
+        <ul>
+          <li>Jeder Anruf, jede Doku, jeder Status als Ereignis pro Patient</li>
+          <li>Clara, Bianca, Lena, Sophie, Nadine lesen dieselbe Wahrheit</li>
+          <li>Kontext in Echtzeit — ohne Live-Abfrage ins PVS</li>
+          <li>Deterministische Ziffern (Sophie), nie erfunden</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ÖKOSYSTEM -->
+  <section id="eco">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--turq)"></span>
+      <h2>Das Ökosystem</h2>
+      <p class="desc">DENS schreibt und liest. Dazwischen liegt das geteilte Gedächtnis als Nabe.</p>
+    </div>
+    <div class="eco">
+      <div class="pillar dens">
+        <div class="cap">DENS Office · PVS</div>
+        <div class="node">Stammdaten &amp; 01-Befund<small>Patient, Versicherung, Zahnstatus</small></div>
+        <div class="node">HKP / Pläne<small>Empfängt Pläne, sendet an die Kasse</small></div>
+        <div class="node">Genehmigung &amp; Abrechnung<small>Telematik → Kasse / KZV</small></div>
+        <div class="node">KIM-Postfach<small>Sichere Nachrichten (Genehmigungen)</small></div>
+      </div>
+      <div class="pillar hub">
+        <div class="cap">Geteiltes Gedächtnis</div>
+        <div class="hub-core">MAS-Brain</div>
+        <div class="hub-sub">mas_events · pro Patient, ereignisbasiert</div>
+        <div>
+          <span class="hub-chip">↓ Sync hinein (Nadine / Bridge)</span>
+          <span class="hub-chip read">↑ Lesen (Clara · Bianca · Nadine)</span>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="cap">Pickadoc · KI &amp; Sprache</div>
+        <div class="node">Lena<small>01-Befund per Audio · Termin-Doku</small></div>
+        <div class="node">Clara / MAS<small>Bedarf · Plan · Coach · Auskunft</small></div>
+        <div class="node">Sophie<small>Ziffern · HKP · Kostenvoranschlag</small></div>
+        <div class="node">Nadine<small>KIM-Adressen · Eingänge · Meldung</small></div>
+        <div class="node">Bianca<small>Patiententelefon · Auskunft</small></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCHNITTSTELLEN -->
+  <section id="ifaces">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--amber)"></span>
+      <h2>Die sechs Schnittstellen</h2>
+      <p class="desc">Jeder Übergabepunkt mit Richtung, Auslöser und Format — die Agenda für DENS.</p>
+    </div>
+    <div class="ifaces">
+      <div class="iface" style="--acc:var(--amber)">
+        <h4><span class="no">1</span>01-Export / Stammdaten<span class="dir">DENS → Pickadoc</span></h4>
+        <p>Zu Beginn: Patient, Versicherung, vorhandener Zahnstatus/Befund und Vorbehandlungen. Pickadoc baut darauf auf und vervollständigt (vieles fehlt erfahrungsgemäß).</p>
+        <div class="meta"><span class="tag">Auslöser: Neuer Patient / 01</span><span class="tag tbd">Format: gemeinsam (GDT/BDT? XML?)</span></div>
+      </div>
+      <div class="iface" style="--acc:var(--turq)">
+        <h4><span class="no">2</span>Plan-Dokumente<span class="dir">Pickadoc → DENS</span></h4>
+        <p>HKP, Kostenvoranschlag, PAR-Status/-Plan, MKV, Funktionsanalyse — KI-erstellt, als strukturierte Positionen und/oder Dokument.</p>
+        <div class="meta"><span class="tag">Auslöser: Plan fertig</span><span class="tag tbd">Format: gemeinsam</span></div>
+      </div>
+      <div class="iface" style="--acc:var(--green)">
+        <h4><span class="no">3</span>Genehmigung / Status<span class="dir">DENS → Gedächtnis</span></h4>
+        <p>Genehmigt/abgelehnt (via KIM) fließt als Ereignis ins geteilte Gedächtnis — sofort abrufbar am Telefon, ohne Live-Abfrage.</p>
+        <div class="meta"><span class="tag">Auslöser: Kassen-Antwort</span><span class="tag tbd">Quelle: KIM / Export / API?</span></div>
+      </div>
+      <div class="iface" style="--acc:var(--blue)">
+        <h4><span class="no">4</span>Aufklärungen<span class="dir">Pickadoc → DENS</span></h4>
+        <p>Digital unterschriebene Aufklärungsbögen (SignR) samt Metadaten — Bogen &amp; Version, Datum, Behandler, Behandlung/Ziffer — wandern in die DENS-Patientenakte. Voraussetzung fürs Protokoll ⑤.</p>
+        <div class="meta"><span class="tag">Auslöser: Unterschrift</span><span class="tag tbd">Ablage: gemeinsam (Import/Hotfolder/GDT?)</span></div>
+      </div>
+      <div class="iface" style="--acc:var(--purple)">
+        <h4><span class="no">5</span>Termin-Protokoll<span class="dir">Pickadoc → DENS</span></h4>
+        <p>Nach jedem Termin: Behandlungsprotokoll + BEMA/GOZ-Positionen aus der Gesprächsdoku.</p>
+        <div class="meta"><span class="tag">Auslöser: Termin dokumentiert</span><span class="tag tbd">Format: gemeinsam</span></div>
+      </div>
+      <div class="iface" style="--acc:var(--red)">
+        <h4><span class="no">6</span>Abrechnung<span class="dir">DENS → Kasse/KZV</span></h4>
+        <p>Die eigentliche Abrechnung übernimmt DENS via Telematik. Pickadoc liefert nur das saubere Protokoll zu.</p>
+        <div class="meta"><span class="tag done">DENS-intern (bestehend)</span></div>
+      </div>
+    </div>
+
+    <div class="hero-shot" style="margin-top:18px"><img src="/img/ws-billing-sophie.png" alt="Sophie erzeugt BEMA/GOZ-Positionen automatisch aus der Dokumentation"></div>
+    <div class="caption" style="margin:0">Sophie erzeugt die BEMA/GOZ-Positionen automatisch aus der Doku — Grundlage für das Termin-Protokoll ⑤. Ziffern werden nie erfunden.</div>
+  </section>
+
+  <!-- ZWEI BEHANDLUNGSMODI -->
+  <section id="modes">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--purple)"></span>
+      <h2>Zwei Behandlungsmodi — kein Zwang zur Akribie</h2>
+      <p class="desc">Die volle Struktur, wenn es sich lohnt. Der schnelle Weg, wenn es einfach nur erledigt werden muss. Beide speisen dasselbe MAS-Gehirn und DENS.</p>
+    </div>
+
+    <div class="modewrap">
+      <div class="mode s">
+        <span class="badge">Struktur · 01-Modus</span>
+        <h3>Der vollständige, ausgeklügelte Weg</h3>
+        <p class="tag2">Für Neuaufnahme, großen Recall-Befund und komplexe Sanierungen — akribisch und vollständig.</p>
+        <div class="when">
+          <span class="c ses">Neuaufnahme</span><span class="c ses">Vollbefund</span><span class="c ses">Sanierung / HKP</span><span class="c ses">PAR · ZE · Implantologie</span>
+        </div>
+        <div class="mflow">
+          <div class="mrow"><span class="k2">1</span>01-Befund per Audio über alle Fachbereiche (Kons, PAR, ZE, KB …)</div>
+          <div class="mrow"><span class="k2">2</span>Behandlungsbedarf fällt heraus → hierarchisiert nach Dringlichkeit</div>
+          <div class="mrow"><span class="k2">3</span>Interaktives Worksheet + HKP / KVA / PAR-Plan</div>
+          <div class="mrow"><span class="k2">4</span>Terminierte Kette mit Ziffern, Aufklärung und „Ihr Weg"-Recall</div>
+        </div>
+        <div class="quote" style="margin:13px 0 0">Die komplette Kette dieser Seite — Worksheet, Roadmap, Ketten &amp; Ziffern.</div>
+      </div>
+
+      <div class="mode f">
+        <span class="badge">Fast-Modus · Ad-hoc</span>
+        <h3>Nur dokumentieren &amp; behandeln, was ansteht</h3>
+        <p class="tag2">Für den Moment gedacht: schnell rein, sauber raus — ohne den ganzen Plan-Apparat.</p>
+        <div class="when">
+          <span class="c hot">Schmerzfall</span><span class="c hot">Krone wieder einsetzen</span><span class="c hot">Fremdpatient</span><span class="c hot">Provisorium</span><span class="c hot">Notfall</span>
+        </div>
+        <div class="mflow">
+          <div class="mrow"><span class="k2">1</span>Patient auf — Lena dokumentiert das Gespräch</div>
+          <div class="mrow"><span class="k2">2</span>Sophie zieht die passenden BEMA/GOZ-Ziffern automatisch</div>
+          <div class="mrow"><span class="k2">3</span>Besuchsgrund wird bei Bedarf korrigiert (Overwatch · SMS-sicher)</div>
+          <div class="mrow"><span class="k2">4</span>Fertig — kein erzwungener Vollbefund, keine Pflicht-Kette</div>
+        </div>
+        <div class="quote" style="margin:13px 0 0">Fällt dabei größerer Bedarf auf? <b>Ein Klick → in Struktur 01 überführen.</b></div>
+      </div>
+    </div>
+
+    <div class="shots" style="margin-top:16px">
+      <div class="shot"><img src="/img/ws-01-befund.png" alt="Struktur 01: Vollbefund per Sprache mit Zahnschema und Behandlungsbedarf"><div class="cap"><b>Struktur 01:</b> Vollbefund per Sprache — Zahnschema, PSI und Behandlungsbedarf fallen automatisch heraus.</div></div>
+      <div class="shot"><img src="/img/ws-fast-mode.png" alt="Fast-Modus: schnelle Akut-Doku mit automatischen Ziffern-Vorschlägen"><div class="cap"><b>Fast-Modus:</b> Akutfall diktiert, Ziffern vorgeschlagen, ein Klick „Fertig" — ohne Plan-Apparat.</div></div>
+    </div>
+
+    <div class="ribbon" style="margin-top:16px">
+      <span class="step">Ein Schalter</span><span class="arr">›</span>
+      <span class="step">Struktur 01 (akribisch)</span><span class="arr">·</span>
+      <span class="step">oder Fast (ad-hoc)</span><span class="arr">›</span>
+      <span class="step">gleiches Gedächtnis · gleiches DENS</span>
+    </div>
+  </section>
+
+  <!-- BEHANDLUNGSPLAN / WORKSHEET -->
+  <section id="plan">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--pink)"></span>
+      <h2>Zwischen ① und ②: der interaktive Behandlungsplan</h2>
+      <p class="desc">Hier entsteht der eigentliche Wert — aus dem Befund wird ein gemeinsames Worksheet.</p>
+    </div>
+
+    <div class="flow">
+      <div class="fstep"><div class="k">Schritt A</div><h4>Bedarf ermitteln</h4><p>Aus dem 01-Befund über alle Fachbereiche fällt der Behandlungsbedarf automatisch heraus — je Position mit Kette und Ziffern.</p></div>
+      <div class="fstep"><div class="k">Schritt B</div><h4>Hierarchisieren</h4><p>Reihenfolge nach Dringlichkeit und Abhängigkeiten (erst PA-Vorbehandlung, dann Endo, dann ZE). Der Arzt ordnet, die KI schlägt vor.</p></div>
+      <div class="fstep"><div class="k">Schritt C</div><h4>Worksheet</h4><p>Der geordnete Bedarf wird zum interaktiven, crossmedialen Behandlungsplan — editierbar und für beide Seiten verständlich.</p></div>
+    </div>
+
+    <div class="quote">Ein <b>gemeinsames Worksheet</b> für Behandler und Patient: dieselbe Wahrheit, zwei Sichten — die Grundlage für Aufklärung, Zustimmung, Dokumente (②) und Terminierung.</div>
+
+    <div class="hero-shot" style="margin-top:16px"><img src="/img/ws-shared-worksheet.png" alt="Arzt in der Klinik und Patient zu Hause blicken gemeinsam auf einen Monitor mit dem Behandlungsplan-Worksheet"></div>
+    <div class="caption" style="margin:0 0 4px">Ein Bildschirm, zwei Welten: der Behandler in der Praxis, der Patient zu Hause — beide sehen denselben interaktiven Behandlungsplan.</div>
+
+    <div class="two" style="margin-top:18px">
+      <div class="col" style="border-color: color-mix(in srgb, var(--turq) 34%, transparent)">
+        <h3 style="color:var(--turq)">Der Behandler sieht</h3>
+        <ul>
+          <li>Zahnschema mit Befund und Behandlungsbedarf je Region</li>
+          <li>Behandlungsketten mit BEMA/GOZ-Ziffern und Alternativen</li>
+          <li>Dringlichkeit, Abhängigkeiten, geschätzte Sitzungen</li>
+          <li>Ein Klick → HKP / KVA / PAR-Plan (②) und nächster Termin</li>
+        </ul>
+      </div>
+      <div class="col" style="border-color: color-mix(in srgb, var(--pink) 34%, transparent)">
+        <h3 style="color:var(--pink)">Der Patient sieht</h3>
+        <ul>
+          <li>Verständliche Sprache statt Fachjargon, mit Bildern</li>
+          <li>Optionen und was sie bedeuten — Nutzen und Kosten</li>
+          <li>Eigenanteil / MKV transparent und nachvollziehbar</li>
+          <li>Zustimmung direkt am gemeinsamen Bildschirm</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="ribbon" style="margin-top:16px">
+      <span class="step">Bedarf</span><span class="arr">›</span>
+      <span class="step">Hierarchie</span><span class="arr">›</span>
+      <span class="step">Worksheet</span><span class="arr">›</span>
+      <span class="step">Pläne / Dokumente ②</span><span class="arr">›</span>
+      <span class="step">Terminierung (nur nächster)</span>
+    </div>
+  </section>
+
+  <!-- WORKSHEET MOCKUP -->
+  <section id="worksheet">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--pink)"></span>
+      <h2>So sieht das Worksheet aus</h2>
+      <p class="desc">Ein gemeinsamer Bildschirm für Behandler &amp; Patient — sprachgesteuert von Clara, gespeist vom MAS-Gehirn, voller KI-Videos, 3D, Evidenz und Kosten.</p>
+    </div>
+
+    <div class="hero-shot"><img src="/img/ws-worksheet-tablet.png" alt="Worksheet auf dem Tablet: Zahnschema, 3D Vorher/Nachher, Clara-Sprachassistent, Kosten-/Leistungs-Regler"></div>
+
+    <div class="appwin">
+      <div class="appbar">
+        <div class="dots"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+        <div class="appttl">Pickadoc · <b>Behandlungsplan</b></div>
+        <div class="pchip">Frau Meier · 54</div>
+        <span class="langchip">🌐 DE ▾</span>
+        <div class="seg3"><span>Laie</span><span class="on">Standard</span><span>Fachlich</span></div>
+      </div>
+
+      <div class="clarabar">
+        <div class="cmic">🎙</div>
+        <div class="wave"><i style="height:30%"></i><i style="height:65%"></i><i style="height:95%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:40%"></i><i style="height:70%"></i><i style="height:100%"></i><i style="height:50%"></i><i style="height:75%"></i><i style="height:35%"></i><i style="height:60%"></i></div>
+        <div class="ct">„Clara, erklär mir das Implantat"<small>MAS hört mit · antwortet aus dem Gedächtnis</small></div>
+      </div>
+
+      <div class="ws-meta">
+        <div><b>Gesamtplan:</b> 4 Sitzungen · ~6 Wochen</div>
+        <div><b>Ihr Weg:</b> Schritt 3 von 8</div>
+        <div class="ws-prog"><span>Fortschritt</span><span class="bar"><i></i></span><span>50 %</span></div>
+      </div>
+
+      <div class="ws-grid">
+        <div class="ws-plan">
+
+          <div class="ws-item hot">
+            <h4>Sitzung 1 · Zahn 36 — Implantat mit Knochenaufbau</h4>
+            <div class="ws-chips">
+              <span class="c hot">Dringlich</span>
+              <span class="c ok">✓ genehmigt</span>
+              <span class="c ok">Aufklärung ✓</span>
+              <span class="c time">~90 min</span>
+              <span class="c ses">Nächster Termin</span>
+            </div>
+            <div class="why"><b>Warum sinnvoll:</b> Die Lücke lässt Nachbarzähne kippen und den Kieferknochen abbauen — ein Implantat erhält Knochen und Kaukraft dauerhaft.</div>
+            <div class="kvid">
+              <div class="play">▶</div>
+              <div class="kt">Implantat einfach erklärt · 3D<small>KI-Video · Vorher / Nachher · von Dr. Heckner vertont</small></div>
+              <div class="dur">1:20</div>
+            </div>
+            <div class="row2">
+              <div class="mini tip"><div class="lbl">💡 Tipp</div>24 h vorher nicht rauchen, danach kühlen — das beschleunigt die Heilung.</div>
+              <div class="mini evi"><div class="lbl">Erfahrung</div>9 von 10 Implantaten halten über 10 Jahre.<div class="ebar"><i></i></div></div>
+            </div>
+            <div class="mini" style="margin-bottom:11px">
+              <div class="lbl2">Materialwahl</div>
+              <div class="matsel"><span class="m on">Titan</span><span class="m">Keramik</span></div>
+              <div class="lbl2">Kosten- / Leistungs-Regler</div>
+              <div class="slider"><i></i><span class="knob"></span></div>
+              <div class="slabels"><span>Basis</span><span>Empfohlen</span><span>Premium</span></div>
+            </div>
+            <div class="mini" style="margin-bottom:11px">
+              <div class="lbl2">Risiken &amp; Aufklärung</div>
+              <ul class="risks">
+                <li class="done"><span class="box">✓</span>Ablauf &amp; Betäubung verstanden</li>
+                <li class="done"><span class="box">✓</span>Risiken (Schwellung, Nachblutung) erklärt</li>
+                <li><span class="box"></span>Alternativen besprochen</li>
+              </ul>
+            </div>
+            <div class="cost"><span>Eigenanteil <span class="mkv">inkl. MKV</span></span><b>1.480 €</b></div>
+            <div class="askrow"><div class="inp">Ihre Frage zur Betäubung …</div><div class="mic">🎙</div><button class="go">Clara fragen</button></div>
+          </div>
+
+          <div class="ws-item">
+            <h4>Sitzung 2 · Parodontitis-Therapie (PAR)</h4>
+            <div class="ws-chips"><span class="c ok">✓ genehmigt</span><span class="c time">~60 min</span></div>
+            <div class="why"><b>Warum zuerst:</b> Gesundes Zahnfleisch ist die Basis — ohne PAR-Vorbehandlung hält kein Zahnersatz.</div>
+            <div class="kvid"><div class="play">▶</div><div class="kt">Was ist eine PAR-Behandlung?<small>KI-Video · 3D-Animation</small></div><div class="dur">0:55</div></div>
+            <div class="cost"><span>Kassenleistung</span><b>0 €</b></div>
+          </div>
+
+          <div class="ws-item">
+            <h4>Sitzung 3 · Zahnersatz 24–26 — Ihre Optionen</h4>
+            <div class="ws-chips"><span class="c ses">Zur Auswahl</span><span class="c hot">Aufklärung offen</span><span class="c time">Beratung offen</span></div>
+            <div class="row2">
+              <div class="mini"><div class="lbl">Option A · Brücke</div>Fest, bewährt, günstiger. Nachbarzähne werden beschliffen.</div>
+              <div class="mini"><div class="lbl">Option B · Implantate</div>Schont Nachbarzähne, langlebiger — höherer Eigenanteil.</div>
+            </div>
+            <div class="askrow"><div class="inp">Was empfehlen Sie mir?</div><div class="mic">🎙</div><button class="go">Clara fragen</button></div>
+          </div>
+
+        </div>
+
+        <div class="ws-rail">
+          <div class="rc sign"><div class="rl">Zustimmung</div><p>HKP &amp; Aufklärung digital bestätigen — per SignR.</p><span class="cta">Jetzt unterschreiben</span></div>
+          <div class="rc"><div class="rl">Zeitachse</div><p>Nur der <b>nächste</b> Termin: Do 30.07., 09:00. Weitere Sitzungen folgen automatisch.</p></div>
+          <div class="rc fin"><div class="rl">Finanzierungs-Rechner</div><p>1.480 € → ab <b>~62 €/Monat</b>, 0 % über 24 Monate. Regler anpassen.</p></div>
+          <div class="rc q"><div class="rl">Zweitmeinung &amp; Clara-Chat</div><p>Direkt am Plan mit Clara chatten oder eine Zweitmeinung anfordern.</p></div>
+          <div class="rc"><div class="rl">Garantie &amp; Gewährleistung</div><p>Implantat &amp; Zahnersatz mit dokumentierter Gewährleistung.</p></div>
+          <div class="rc"><div class="rl">Angehörigen-Freigabe</div><p>Plan sicher teilen — Link/QR für Partner oder Betreuer.</p></div>
+          <div class="rc"><div class="rl">Sprache &amp; Verständlichkeit</div><p>Ein Klick: Sprache wechseln, Laie ⇄ Fachlich umschalten.</p></div>
+          <div class="rc"><div class="rl">Nachsorge &amp; Recall</div><p>Automatische Erinnerung — Teil von „Ihr Weg zur Mundgesundheit".</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">Mockup · Clara steuert per Sprache, MAS liefert den Kontext, jede Behandlung wird automatisch mit Video, 3D, Evidenz, Material, Kosten und Frage-Zeile bestückt.</div>
+  </section>
+
+  <!-- IHR WEG / MOTIVATION -->
+  <section id="journey">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--turq)"></span>
+      <h2>Ihr Weg zur Mundgesundheit</h2>
+      <p class="desc">Der Plan motiviert: Der Patient sieht, wie weit er ist — und die KI holt ihn zurück, wenn die Kette zu reißen droht.</p>
+    </div>
+
+    <div class="quote" style="margin-top:0">Schritt <b>3 von 8</b> geschafft — „Ihr Weg zu einem gesunden Lächeln". Jeder erreichte Meilenstein wird gefeiert, der nächste steht schon bereit. Das hält Patienten in Behandlung.</div>
+
+    <div class="roadmap">
+      <div class="rstop done"><div class="n">✓</div><b>01</b><small>Beratung</small></div>
+      <div class="rstop done"><div class="n">✓</div><b>02</b><small>PAR-Vorbeh.</small></div>
+      <div class="rstop done"><div class="n">✓</div><b>03</b><small>Implantat 36</small></div>
+      <div class="rstop now"><div class="n">4</div><b>Jetzt</b><small>Einheilung</small></div>
+      <div class="rstop"><div class="n">5</div><b>05</b><small>Krone 36</small></div>
+      <div class="rstop"><div class="n">6</div><b>06</b><small>ZE 24–26</small></div>
+      <div class="rstop"><div class="n">7</div><b>07</b><small>Kontrolle</small></div>
+      <div class="rstop"><div class="n">8</div><b>08</b><small>Recall</small></div>
+    </div>
+
+    <div class="shots" style="margin-top:16px">
+      <div class="shot"><img src="/img/ws-journey-phone.png" alt="Patienten-App: Ihr Weg zur Mundgesundheit, Fortschritt 3 von 8"><div class="cap"><b>Patienten-App:</b> Fortschritt 3/8, jeder Schritt verständlich erklärt und gefeiert.</div></div>
+      <div class="shot"><img src="/img/ws-motivation-sms.png" alt="Motivations-SMS, KI-Video und Reaktivierung"><div class="cap"><b>Reaktivierung:</b> thematisch platzierte SMS, E-Mail und KI-Videos — je nach Position in der Roadmap.</div></div>
+    </div>
+
+    <div class="sec-head" style="margin-top:26px">
+      <span class="dot" style="color:var(--pink)"></span>
+      <h2>Wenn die Kette reißt: die Motivations-Maschinerie</h2>
+      <p class="desc">Bleibt ein nötiger Termin aus, startet — passend zur Position im Plan — eine sanfte Reaktivierung. Gesteuert von MAS &amp; Clara, bis der nächste Termin steht.</p>
+    </div>
+
+    <div class="videoph">
+      <img src="/img/ws-reactivation-video.png" alt="KI-Video-Platzhalter: persönliche Reaktivierung, wenn die Behandlungskette reißt">
+      <div class="vfx"></div>
+      <span class="badge2">▶ KI-Video</span>
+      <span class="trg">Auslöser: Kette reißt</span>
+      <div class="playbtn">▶</div>
+      <span class="dur2">1:12</span>
+      <div class="vcap">
+        <h4>„Schön, dass wir wieder von Ihnen hören" — Ihr nächster Schritt</h4>
+        <p>Persönliches, thematisch passendes KI-Video statt Mahnung. Pickadoc verliert Patienten nicht — es heilt Behandlungsabbrüche.</p>
+      </div>
+    </div>
+
+    <div class="motiv">
+      <div class="mstep"><div class="d">Tag 0</div><h4>Sanfter Reminder</h4><p>SMS/Push: „Ihr nächster Schritt (Krone 36) wartet — jetzt Termin sichern." Ein Tippen → Clara terminiert.</p></div>
+      <div class="mstep"><div class="d">Tag 7</div><h4>Warum es zählt</h4><p>E-Mail + KI-Video passend zur Position: „Ohne Krone bleibt das Implantat ungeschützt." Nutzen statt Druck.</p></div>
+      <div class="mstep"><div class="d">Tag 21</div><h4>Persönlich</h4><p>Landingpage mit dem eigenen Fortschritt (3/8) und Wunschzeit-Angebot. Bianca ruft auf Wunsch zurück.</p></div>
+      <div class="mstep"><div class="d">Kette droht zu reißen</div><h4>Aktive Rückholung</h4><p>Clara meldet der Praxis den Abbruch-Kandidaten; gezielte, thematisch richtige Ansprache — bis der Termin steht.</p></div>
+    </div>
+  </section>
+
+  <!-- AUFKLAERUNGEN -->
+  <section id="aufklaerung">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--blue)"></span>
+      <h2>Aufklärungen: erklärt, unterschrieben, in DENS abgelegt</h2>
+      <p class="desc">Jede Behandlung bringt ihre nötigen Aufklärungsbögen automatisch mit — bis in die DENS-Akte.</p>
+    </div>
+
+    <div class="hero-shot"><img src="/img/ws-aufklaerung-signr.png" alt="Digitale Aufklärung zur Implantatbehandlung mit Unterschrift per SignR"></div>
+    <div class="caption" style="margin:0 0 16px">Digitale Aufklärung mit verständlicher Checkliste und rechtssicherer Unterschrift (SignR) — das signierte PDF wandert in die DENS-Akte.</div>
+
+    <div class="flow">
+      <div class="fstep"><div class="k">① Ableiten</div><h4>Aus der Behandlungskette</h4><p>Jeder Schritt (Implantat, OP, Endo, PAR, Anästhesie …) zieht automatisch die passenden Aufklärungsbögen — nichts wird vergessen.</p></div>
+      <div class="fstep"><div class="k">② Erklären</div><h4>Verständlich am Worksheet</h4><p>KI-Video und Klartext statt Fachjargon, Fragen direkt in der Frage-Zeile — der Patient versteht, worin er einwilligt.</p></div>
+      <div class="fstep"><div class="k">③ Unterschreiben</div><h4>Digital per SignR</h4><p>Am gemeinsamen Bildschirm oder vorab per Link/QR von zu Hause. Rechtssicher mit Zeitstempel, Behandler und Bogen-Version.</p></div>
+      <div class="fstep"><div class="k">④ Ablegen</div><h4>Verknüpft gespeichert</h4><p>Signiertes PDF im Dokumentenspeicher — verknüpft mit Termin, Behandlung und Ziffer. Status „aufgeklärt ✓" fließt ins Gedächtnis.</p></div>
+    </div>
+
+    <div class="two" style="margin-top:14px">
+      <div class="col" style="border-color: color-mix(in srgb, var(--blue) 34%, transparent)">
+        <h3 style="color:var(--blue)">Typische Bögen — KI-vorgeschlagen</h3>
+        <ul>
+          <li>Implantation · Knochenaufbau / Augmentation</li>
+          <li>Extraktion / operative Entfernung · Weisheitszähne</li>
+          <li>Wurzelbehandlung (Endo) · PAR-Therapie</li>
+          <li>Lokalanästhesie · Sedierung / Lachgas</li>
+          <li>Zahnersatz / Prothetik · privat vereinbarte Leistungen (MKV)</li>
+        </ul>
+      </div>
+      <div class="col" style="border-color: color-mix(in srgb, var(--purple) 34%, transparent)">
+        <h3 style="color:var(--purple)">Verarbeitung in DENS ④</h3>
+        <ul>
+          <li>Signiertes PDF → DENS-Patientenakte (Dokumentenverwaltung)</li>
+          <li>+ Metadaten: Bogen &amp; Version, Datum, Behandler, Behandlung/Ziffer</li>
+          <li>Zuordnung zur Karteikarte / Kategorie in DENS</li>
+          <li>Voraussetzung fürs Termin-Protokoll ⑤ — kein Eingriff ohne Einwilligung</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="quote">Offen mit DENS: <b>Ablageweg für unterschriebene Dokumente</b> — Dokumentenimport-API, Hotfolder, GDT-Anhang oder DENS-eigenes Dokumentenmodul? Und: nutzen wir DENS-eigene Bögen oder Pickadoc-Bögen?</div>
+  </section>
+
+  <!-- ANRUF-SZENARIO -->
+  <section id="call">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--pink)"></span>
+      <h2>Anruf-Szenario: „Ist mein Plan genehmigt?"</h2>
+      <p class="desc">Warum das Gedächtnis die Antwort schon kennt, bevor der Patient fragt.</p>
+    </div>
+
+    <span class="lane-tag bg">Hintergrund · läuft ständig</span>
+    <div class="flow">
+      <div class="fstep"><div class="k">DENS / Kasse</div><h4>Genehmigung</h4><p>HKP genehmigt — als KIM-Nachricht im Postfach.</p></div>
+      <div class="fstep"><div class="k">Nadine</div><h4>KIM-Eingang</h4><p>Liest die Nachricht, ordnet sie dem Patienten zu.</p></div>
+      <div class="fstep"><div class="k">MAS-Brain</div><h4>Ereignis</h4><p>Schreibt <code>plan_status</code> mit Patient + Rufnummer ins Gedächtnis.</p></div>
+    </div>
+
+    <div style="height:14px"></div>
+    <span class="lane-tag rt">Echtzeit · beim Klingeln</span>
+    <div class="flow">
+      <div class="fstep"><div class="k">Patient</div><h4>ruft an</h4><p>Die Rufnummer klingelt in der Praxis.</p></div>
+      <div class="fstep"><div class="k">Plattform</div><h4>Kontext</h4><p><code>buildCallerContext</code> sucht die Nummer im Gedächtnis.</p></div>
+      <div class="fstep"><div class="k">Treffer</div><h4>„HKP genehmigt"</h4><p>Das Ereignis der letzten Tage wird gefunden.</p></div>
+      <div class="fstep"><div class="k">Bianca / Clara</div><h4>antwortet</h4><p>Kennt die Antwort im ersten Satz.</p></div>
+    </div>
+
+    <div class="quote">Bianca: <b>„Schön, dass Sie anrufen — Ihr Heil- und Kostenplan wurde genehmigt. Sollen wir gleich den nächsten Termin einplanen?"</b></div>
+
+    <div class="code"><span class="k">// Normalisiertes Ereignis im geteilten Gedächtnis (mas_events)</span>
+{
+  <span class="s">"channel"</span>: <span class="s">"dens"</span>,
+  <span class="s">"type"</span>: <span class="s">"plan_status"</span>,
+  <span class="s">"counterparty"</span>: { <span class="s">"kind"</span>: <span class="s">"patient"</span>, <span class="s">"ref"</span>: <span class="s">"0177…"</span> },
+  <span class="s">"subject"</span>: { <span class="s">"patientId"</span>: <span class="s">"abc123"</span>, <span class="s">"name"</span>: <span class="s">"Meier"</span> },
+  <span class="s">"summary"</span>: <span class="s">"HKP (Implantat regio 36) am 24.07. von der Kasse genehmigt."</span>,
+  <span class="s">"tags"</span>: [<span class="s">"dens"</span>, <span class="s">"hkp"</span>, <span class="s">"genehmigung"</span>]
+}</div>
+  </section>
+
+  <!-- NADINE & KIM -->
+  <section id="nadine">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--green)"></span>
+      <h2>Nadine &amp; die KIM-Verwaltung</h2>
+      <p class="desc">Die Poststelle der Praxis — sie verwaltet die sicheren Adressen und übersetzt Eingänge in Wissen.</p>
+    </div>
+    <div class="grid">
+      <div class="card" style="--acc:var(--green)">
+        <div class="role">Adressbuch</div>
+        <h3>KIM-Adressen verwalten</h3>
+        <p>Nadine pflegt das Verzeichnis der KIM-Adressen — Kassen, Labore, überweisende Praxen und Zuweiser. Neue Kontakte werden erkannt, zugeordnet und wiederverwendet.</p>
+      </div>
+      <div class="card" style="--acc:var(--turq)">
+        <div class="role">Senden</div>
+        <h3>Pläne sicher rausschicken</h3>
+        <p>HKP, PAR-Pläne und Anträge gehen über die passende KIM-Adresse an den richtigen Empfänger (Schnittstelle ②) — Nadine wählt Adresse und Betreff.</p>
+      </div>
+      <div class="card" style="--acc:var(--amber)">
+        <div class="role">Empfangen</div>
+        <h3>Genehmigungen lesen</h3>
+        <p>Eingehende KIM-Nachrichten (Genehmigung, Rückfrage, Ablehnung) werden erkannt, dem Patienten/Plan zugeordnet und ins geteilte Gedächtnis geschrieben (Schnittstelle ③).</p>
+      </div>
+      <div class="card" style="--acc:var(--pink)">
+        <div class="role">Melden</div>
+        <h3>Das Team informieren</h3>
+        <p>Jeder relevante Eingang wird zur Meldung: „HKP von Herrn Meier genehmigt." So bleibt nichts liegen — und Clara/Bianca kennen den Stand am Telefon.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- AKTEURE -->
+  <section id="actors">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--turq)"></span>
+      <h2>Die Akteure</h2>
+      <p class="desc">Ein Team aus spezialisierten KI-Assistenten auf einem geteilten Gedächtnis.</p>
+    </div>
+    <div class="grid">
+      <div class="card" style="--acc:var(--turq)"><div class="role">Assistenz &amp; Coach</div><h3>Clara</h3><p>Steuert per Sprache, leitet Bedarf und Plan ab, gibt Auskunft aus dem Praxisgedächtnis und coacht durch den Ablauf.</p></div>
+      <div class="card" style="--acc:var(--purple)"><div class="role">Dokumentation</div><h3>Lena</h3><p>Nimmt den 01-Befund und jeden Behandlungstermin per Audio auf und strukturiert die Doku samt abrechenbarer Schritte.</p></div>
+      <div class="card" style="--acc:var(--amber)"><div class="role">Abrechnung</div><h3>Sophie</h3><p>Übersetzt Behandlung in BEMA/GOZ — deterministisch. Erstellt HKP und Kostenvoranschläge, erfindet nie eine Ziffer.</p></div>
+      <div class="card" style="--acc:var(--green)"><div class="role">Poststelle</div><h3>Nadine</h3><p>Verwaltet KIM-Adressen, sendet Pläne, liest Genehmigungen und macht daraus Meldungen und Gedächtnis-Einträge.</p></div>
+      <div class="card" style="--acc:var(--pink)"><div class="role">Telefon</div><h3>Bianca</h3><p>Nimmt Patientenanrufe an — mit vollem Kontext aus dem Gedächtnis, inklusive Plan-Status, bevor gefragt wird.</p></div>
+      <div class="card" style="--acc:var(--blue)"><div class="role">Fundament</div><h3>MAS</h3><p>Das Backend und geteilte Gedächtnis (mas_events). Eine Wahrheit, aus der alle lesen und in die alle schreiben.</p></div>
+    </div>
+  </section>
+
+  <!-- IST / VISION -->
+  <section>
+    <div class="sec-head">
+      <span class="dot" style="color:var(--green)"></span>
+      <h2>Ehrlich getrennt: heute vs. Ziel</h2>
+      <p class="desc">Was bereits läuft — und was für die DENS-Integration neu entsteht.</p>
+    </div>
+    <div class="two">
+      <div class="col ist">
+        <h3>Läuft heute</h3>
+        <ul>
+          <li>Behandlungsdoku per Sprache (Lena, Termin für Termin)</li>
+          <li>Abrechnungs-Engine Sophie (BEMA/GOZ, deterministisch)</li>
+          <li>Besuchsgrund-Korrektur für den richtigen Recall (Overwatch)</li>
+          <li>Geteiltes Gedächtnis + Anruf-Kontext (Bianca kennt die Historie)</li>
+          <li>Behandlungsketten mit Ziffern &amp; Rückfragen (Katalog)</li>
+        </ul>
+      </div>
+      <div class="col vis">
+        <h3>Entsteht für DENS</h3>
+        <ul>
+          <li>01-Befund über alle Fachbereiche → Behandlungsbedarf</li>
+          <li>Behandlungsplan (fix, editierbar) + Schieberegler im Termin</li>
+          <li>Automatische HKP / KVA / PAR-Pläne</li>
+          <li>DENS-Bridge: Import ①, Export ②/④, Status ③ via KIM</li>
+          <li>Nadine als KIM-Verwaltung &amp; Meldungsstelle</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ASK -->
+  <section id="ask">
+    <div class="sec-head">
+      <span class="dot" style="color:var(--amber)"></span>
+      <h2>Was wir von DENS brauchen</h2>
+      <p class="desc">Die Punkte, an denen DENS mitentscheidet — die eigentliche Gesprächsagenda.</p>
+    </div>
+    <div class="ask">
+      <ol>
+        <li><b>01-Export (①):</b> <span>In welchem Format liefert DENS Stammdaten + Zahnstatus? Datei (GDT/BDT/XML) oder Schnittstelle? Wir bauen darauf auf und vervollständigen.</span></li>
+        <li><b>Plan-Rückschreibung (②):</b> <span>Wie nimmt DENS HKP/Kostenvoranschlag/PAR-Plan entgegen — als strukturierte Ziffern, als Dokument, oder beides?</span></li>
+        <li><b>Status-Quelle (③):</b> <span>Woraus lesen wir die Genehmigung? KIM-Nachricht, Statusexport oder API? Und: darf Nadine die KIM-Adressen verwalten?</span></li>
+        <li><b>Aufklärungs-Ablage (④):</b> <span>Wie nimmt DENS unterschriebene Aufklärungs-PDFs entgegen — Dokumentenimport-API, Hotfolder, GDT-Anhang oder eigenes Modul? Braucht DENS eine Karteikarten-/Kategorie-Zuordnung, und nutzen wir DENS-Bögen oder Pickadoc-Bögen?</span></li>
+        <li><b>Termin-Protokoll (⑤):</b> <span>Welche Felder erwartet DENS für den Reimport der Behandlung samt BEMA/GOZ-Positionen?</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    Pickadoc × DENS — Vision &amp; Schnittstellen · Entwurf zur Abstimmung mit Dr. Heckner.
+    Alle Formate und Richtungen sind Vorschläge, gemeinsam festzulegen.
+  </footer>
+
+</div>
+</body>
+</html>

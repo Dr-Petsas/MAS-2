@@ -2760,12 +2760,17 @@
       function segForBoxes(s) {
         return Object.assign({}, s, { text: segShow(s) });
       }
-      const byStartMs = (a, b) => {
-        const sa = Number(a.startMs) || 0, sb = Number(b.startMs) || 0;
-        if (sa && sb) return sa - sb;
-        if (sa) return -1;
-        if (sb) return 1;
-        return 0;
+      // Stabile Reihenfolge = Erstell-/Ankunftsreihenfolge (Chef 26.07.2026):
+      // Segmente werden NUR nach unten angehaengt. startMs (Sprech-Zeit) war
+      // ueber zwei Kanaele + Stop/Start unzuverlaessig (mal relativ zum Aufnahme-
+      // start, mal Wall-Clock) -> das Transkript sprang oben/unten. createdAtMs
+      // (Firestore-Persistenz) ist monoton; noch nicht persistierte Live-/Tee-
+      // Segmente ohne createdAtMs bleiben in Push-Reihenfolge ganz unten
+      // (Array.sort ist stabil).
+      const byCreatedStable = (a, b) => {
+        const ka = Number(a.createdAtMs) || Number.MAX_SAFE_INTEGER;
+        const kb = Number(b.createdAtMs) || Number.MAX_SAFE_INTEGER;
+        return ka - kb;
       };
       /** Zielbox eines Segments bestimmen (fuer den Box-Flash). */
       function dokuTargetBox(text) {
@@ -2792,7 +2797,7 @@
       function renderDokuTranscript(segs) {
         const box = $("dialog4");
         if (!box) return;
-        const ordered = (segs || []).slice().sort(byStartMs);
+        const ordered = (segs || []).slice().sort(byCreatedStable);
         // Erst-Rendern: vorhandene Segmente OHNE Flash als konsumiert setzen
         // (kein Flash-Gewitter beim Oeffnen der Seite).
         if (!dokuTranscriptInit) {
@@ -3793,17 +3798,8 @@
         if (!box) return;
         box.innerHTML = "";
         dialogCleared = true;
-        // Nach Sprech-Zeit (startMs, Wall-Clock) sortieren — echte Chronologie
-        // ueber beide Kanaele. Ohne startMs (Alt-Segmente) ans Ende, Reihenfolge
-        // bleibt stabil.
-        const ordered = (segs || []).slice().sort((a, b) => {
-          const sa = Number(a.startMs) || 0;
-          const sb = Number(b.startMs) || 0;
-          if (sa && sb) return sa - sb;
-          if (sa) return -1;
-          if (sb) return 1;
-          return 0;
-        });
+        // Stabile Erstell-/Ankunftsreihenfolge (nur nach unten anhaengen).
+        const ordered = (segs || []).slice().sort(byCreatedStable);
         ordered.forEach((s) => {
           const src = String(s.source || "raum").toLowerCase();
           const who = (src === "arzt") ? "Arzt" : "Gespräch";
@@ -5283,17 +5279,10 @@
         const st = Number(startMs) || 0;
         if (st) div.dataset.start = String(st);
         div.innerHTML = bubbleHtml(who, text, segId || "");
-        // Nach Sprech-Zeit (startMs) einsortieren statt stur unten anhaengen: zwei
-        // Kanaele (Arzt/Patient) + unterschiedliche STT-Decode-Latenz ergeben
-        // sonst falsche Chronologie (spaeter gesprochener Satz erscheint frueher).
-        let inserted = false;
-        if (st) {
-          const nodes = box.querySelectorAll(".bubble[data-start]");
-          for (const n of nodes) {
-            if (Number(n.dataset.start) > st) { box.insertBefore(div, n); inserted = true; break; }
-          }
-        }
-        if (!inserted) box.appendChild(div);
+        // Immer NUR unten anhaengen (Chef 26.07.2026): frueher wurde nach
+        // startMs einsortiert, das liess Segmente beim Stop/Start oben/unten
+        // springen. Ankunftsreihenfolge = eine Richtung, nach unten.
+        box.appendChild(div);
         box.scrollTop = box.scrollHeight;
         return div;
       }
