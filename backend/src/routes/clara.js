@@ -24,6 +24,7 @@ import { getGreetingContext } from "../clara/greetingContext.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { runClaraHealth, statusPageHtml } from "../clara/health.js";
 import { runMorgenlauf } from "../clara/morgenlauf.js";
+import { recordToolError, recentToolErrors } from "../clara/toolErrors.js";
 import { loadProof, proofToSvg } from "../clara/proofCard.js";
 import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, qmRoute, resolveClientId } from "./_shared.js";
 
@@ -477,6 +478,38 @@ router.get("/clara/health", async (req, res) => {
     res.status(h.overall === "green" ? 200 : 503).json(h);
   } catch (e) {
     res.status(500).json({ overall: "red", error: String(e?.message || e), checks: [] });
+  }
+});
+
+
+// W-STABIL-4 "Fehler-als-Zustand": der Voice-Worker meldet technische
+// Tool-Ausfaelle (Route tot, 500, Netzwerkfehler) — roter Eintrag statt
+// leiser Leere. Die Status-Seite zeigt Stoerungen der letzten Stunde rot.
+router.post("/clara/tool-error", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const tool = String(req.body?.tool || "").trim();
+    if (!tool) return res.status(400).json({ ok: false, error: "tool_required" });
+    const out = await recordToolError(clientId, {
+      tool,
+      error: String(req.body?.error || ""),
+      source: String(req.body?.source || "worker"),
+    });
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+// Stoerungen der letzten Stunde (Diagnose, read-only).
+router.get("/clara/tool-errors", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const errors = await recentToolErrors(clientId, {});
+    res.json({ ok: true, count: errors.length, errors });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 

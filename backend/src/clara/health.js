@@ -292,6 +292,31 @@ export async function checkElevenLabs() {
   return result;
 }
 
+/**
+ * Tool-Stoerungen der letzten Stunde (W-STABIL-4 "Fehler-als-Zustand"):
+ * vom Voice-Worker gemeldete technische Tool-Ausfaelle. Rot solange die
+ * juengste Stoerung < 60 min her ist — heilt sich danach selbst.
+ */
+export async function checkToolErrors() {
+  const clientId = (process.env.DEFAULT_CLIENT_ID || "MEe4ZQHEzOPzLcexyhdT").trim();
+  try {
+    const { recentToolErrors } = await import("./toolErrors.js");
+    const errors = await recentToolErrors(clientId, {});
+    if (!errors.length) {
+      return { ok: true, detail: "keine gemeldeten Tool-Stoerungen in der letzten Stunde", fix: "" };
+    }
+    const jungste = errors[0];
+    const vorMin = Math.max(0, Math.round((Date.now() - Number(jungste.tsMs || 0)) / 60_000));
+    const namen = [...new Set(errors.map((e) => e.tool))].slice(0, 4).join(", ");
+    return { ok: false,
+      detail: `${errors.length} Stoerung(en) in der letzten Stunde: ${namen} (zuletzt vor ${vorMin} min)`,
+      fix: "MAS-Log pruefen (clara.tool_error); GET /clara/tool-errors zeigt Details" };
+  } catch (e) {
+    return { ok: false, detail: `Stoerungs-Abfrage fehlgeschlagen: ${String(e?.message || e).slice(0, 60)}`,
+      fix: "Firestore/MAS pruefen" };
+  }
+}
+
 /** Lena-STT-Dienst (Doku-Diktat, Behandlungs-Doku). */
 export async function checkLena() {
   const url = (process.env.LENA_STT_HEALTH_URL || "http://127.0.0.1:8140/health").trim();
@@ -378,6 +403,7 @@ export async function runClaraHealth() {
   checks.push({ name: "Plattform Cloud Functions", ...(await checkCloudFunctions()) });
   checks.push({ name: "ElevenLabs (Lisa/TTS)", ...(await checkElevenLabs()) });
   checks.push({ name: "Lena-STT (Doku)", ...(await checkLena()) });
+  checks.push({ name: "Tool-Stoerungen (60 min)", ...(await checkToolErrors()) });
 
   const overall = checks.every((c) => c.ok) ? "green" : "red";
   return { overall, ts: new Date().toISOString(), model, checks };
