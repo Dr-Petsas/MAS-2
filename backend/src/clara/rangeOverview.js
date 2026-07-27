@@ -109,6 +109,7 @@ export async function buildSpokenRangeOverview(clientId, { from, to, calendarId,
       ok: true, from: data.from, to: data.to, days: days.length,
       message: `Im Zeitraum ${spanLabel} sind keine Termine gebucht.`,
       counts: { total: 0, newPatients: 0 },
+      dayStats: [],
     };
   }
 
@@ -143,6 +144,7 @@ export async function buildSpokenRangeOverview(clientId, { from, to, calendarId,
     clamped: data.clamped === true,
     message: parts.join(" "),
     counts: { total, newPatients },
+    dayStats: days,
   };
 }
 
@@ -168,14 +170,14 @@ export async function buildSpokenRangeList(clientId, { from, to, calendarId, ran
     : `von ${germanDate(data.from)} bis ${germanDate(data.to)}`;
 
   if (total === 0) {
-    return { ok: true, from: data.from, to: data.to, count: 0,
+    return { ok: true, from: data.from, to: data.to, count: 0, dayStats: [],
       message: `Im Zeitraum ${spanLabel} sind keine Termine gebucht.` };
   }
 
   // Zu viele Termin-Tage -> kompaktes Lagebild statt endloser Aufzaehlung.
   if (days.length > 12) {
     const overview = await buildSpokenRangeOverview(clientId, { from, to, calendarId, rangeLabel });
-    return { ok: true, from: data.from, to: data.to, count: total, message: overview.message };
+    return { ok: true, from: data.from, to: data.to, count: total, message: overview.message, dayStats: days };
   }
 
   const verb = haveVerb(data.to);
@@ -185,5 +187,5 @@ export async function buildSpokenRangeList(clientId, { from, to, calendarId, ran
   const message = `Im Zeitraum ${spanLabel} ${verb}: ${dayBits.join("; ")}. `
     + `Insgesamt ${total} ${total === 1 ? "Termin" : "Termine"}.`;
 
-  return { ok: true, from: data.from, to: data.to, count: total, message };
+  return { ok: true, from: data.from, to: data.to, count: total, message, dayStats: days };
 }

@@ -5,7 +5,7 @@ import express from "express";
 import { completeTask } from "../tools/createTask.js";
 import { assertAppEnabled } from "../entitlements.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot, ensureBerlinTz } from "../clara/booking.js";
-import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory, findSameTimeCompanions, buildSpokenCompanionQuestion, dayOfMs } from "../clara/daySchedule.js";
+import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, relativeDayLabel, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory, findSameTimeCompanions, buildSpokenCompanionQuestion, dayOfMs } from "../clara/daySchedule.js";
 import { searchContacts } from "../brain/entityProfile.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "../clara/anamnese.js";
 import { polishForChannel } from "../clara/dictation.js";
@@ -20,7 +20,7 @@ import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechn
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken } from "../clara/dokuWaechter.js";
 import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
 import { freiFormulieren } from "../clara/freiSprech.js";
-import { karteDoku, karteLuecken, karteSophie } from "../clara/karten.js";
+import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt } from "../clara/karten.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
@@ -539,7 +539,17 @@ router.post("/tools/day-briefing", async (req, res) => {
       if (!r.ok) return res.json({ ok: false, message: r.message });
       let rmsg = r.message;
       try { rmsg = (await freiFormulieren(rmsg, { kontext: "Zeitraum-Lagebild fuer den Chef" })).text; } catch { /* deterministisch weiter */ }
-      return res.json({ ok: true, date: r.from, from: r.from, to: r.to, days: r.days, message: rmsg, counts: r.counts, card: null });
+      // 27.07.2026: stand hier fest auf card:null — der Flip blieb bei jeder
+      // Zeitraum-Frage leer. Jetzt die Tages-Aufschluesselung als Karte.
+      let rcard = null;
+      try {
+        rcard = karteZeitraum({
+          label: range.label || "Zeitraum", from: r.from, to: r.to,
+          days: (r.dayStats || []).map((d) => ({ date: d.day, count: d.total })),
+          total: r.counts?.total || 0,
+        });
+      } catch { /* Karte ist Komfort */ }
+      return res.json({ ok: true, date: r.from, from: r.from, to: r.to, days: r.days, message: rmsg, counts: r.counts, card: rcard });
     }
 
     const op = await getOperator(clientId);
@@ -607,7 +617,15 @@ router.post("/tools/day-appointments", async (req, res) => {
         from: range.from, to: range.to, calendarId, rangeLabel: range.label,
       });
       if (!r.ok) return res.json({ ok: false, message: r.message });
-      return res.json({ ok: true, date: r.from, from: r.from, to: r.to, message: r.message, count: r.count });
+      let rcard = null;
+      try {
+        rcard = karteZeitraum({
+          label: range.label || "Zeitraum", from: r.from, to: r.to,
+          days: (r.dayStats || []).map((d) => ({ date: d.day, count: d.total })),
+          total: r.count || 0,
+        });
+      } catch { /* Karte ist Komfort */ }
+      return res.json({ ok: true, date: r.from, from: r.from, to: r.to, message: r.message, count: r.count, card: rcard });
     }
 
     const day = await getDayAppointments(clientId, { date, calendarId });
@@ -627,6 +645,46 @@ router.post("/tools/day-appointments", async (req, res) => {
     // "Sie haben morgen ..." only when the asking operator IS that doctor.
     const op = await getOperator(clientId);
     const operatorDoctorName = operatorDoctorNameOf(op);
+
+    // ZAEHLFRAGE (27.07.2026): "Wie viele Termine habe ich heute?" wurde bisher
+    // mit der KOMPLETTEN Vorleseliste beantwortet — der Chef fragte dreimal
+    // nach und bekam dreimal dieselbe Aufzaehlung, am Ende eine erfundene Zahl
+    // ("insgesamt fuenf Termine", es waren elf). countOnly liefert genau die
+    // Zahl; die Einzelheiten stehen auf der Flip-Karte, die ohnehin mitfaehrt.
+    const wantCountOnly = req.body?.countOnly === true
+      || String(req.body?.countOnly || "").toLowerCase() === "true";
+    if (wantCountOnly) {
+      const echte = appts.filter((a) => !a.isAbsence);
+      const n = echte.length;
+      const wer = String(req.body?.doctorName || "").trim() || operatorDoctorName || "";
+      const werBit = wer && wer !== operatorDoctorName ? `${wer} hat` : "Sie haben";
+      const rel = relativeDayLabel(day.date);
+      const vergangen = day.date < todayBerlin();
+      const verb = vergangen ? werBit.replace(/\bhat\b/, "hatte").replace(/\bhaben\b/, "hatten") : werBit;
+      const spanne = n
+        ? `, von ${new Date(echte[0].startMs).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr bis ${new Date(echte[n - 1].startMs).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr`
+        : "";
+      const zahlSatz = n === 0
+        ? `${rel} ${verb} keine Termine.`
+        : `${rel} ${verb} ${n === 1 ? "einen Termin" : `${n} Termine`}${remaining ? " noch vor sich" : ""}${spanne}.`;
+      const countMessage = `${zahlSatz.charAt(0).toUpperCase()}${zahlSatz.slice(1)} Die Namen lese ich auf Zuruf vor.`;
+      let ccard = null;
+      try {
+        ccard = karteTerminliste({
+          dateIso: day.date,
+          appointments: echte.map((a) => ({
+            id: a.id, startMs: a.startMs, endMs: a.endMs,
+            patientName: a.patientName, patientLastName: a.patientLastName,
+            visitMotive: a.visitMotive, calendarName: a.calendarName,
+            comments: a.comments || "", docsStatus: a.docsStatus || "",
+          })),
+          remaining,
+          doctorName: String(req.body?.doctorName || "").trim(),
+        });
+      } catch { /* Karte ist Komfort */ }
+      return res.json({ ok: true, date: day.date, message: countMessage, count: n, countOnly: true, card: ccard });
+    }
+
     const list = buildSpokenDayList(appts, { date: day.date, calendars: day.calendars, operatorDoctorName, remaining });
 
     // Shared brain: surface open cases (e.g. the e-mail Nadine threaded) for
@@ -689,10 +747,24 @@ router.post("/tools/day-appointments", async (req, res) => {
         comments: a.comments || "",
         docsStatus: a.docsStatus || "",
       }));
+    // Flip-Karte (27.07.2026): dieselben Fakten wie der gesprochene Text.
+    // Ohne sie blieb die Karten-Rueckseite bei der haeufigsten Frage ueberhaupt
+    // ("Was habe ich heute fuer Termine?") leer.
+    let card = null;
+    try {
+      card = karteTerminliste({
+        dateIso: day.date,
+        appointments,
+        remaining,
+        doctorName: String(req.body?.doctorName || "").trim(),
+      });
+    } catch { /* Karte ist Komfort — die gesprochene Antwort steht auch ohne */ }
+
     return res.json({
       ok: true, date: day.date, message,
       count: appointments.length,
       appointments,
+      card,
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -4456,7 +4528,11 @@ router.post("/tools/contact-card", async (req, res) => {
     parts.push(pushed
       ? "Ich habe dir die Kontaktkarte aufs Handy geschickt — antippen und du kannst direkt anrufen."
       : "Die Karte konnte ich nicht aufs Handy schicken — kein gekoppeltes Gerät erreichbar.");
-    return res.json({ ok: true, message: parts.join(" ") });
+    // 27.07.2026: bisher ging NUR eine Push-Nachricht raus; auf der Flip-
+    // Rueckseite stand nichts, obwohl Clara "Karte aufs Handy geschickt" sagte.
+    let card = null;
+    try { card = karteKontakt({ name: who, mobile, phone, email, pushed }); } catch { /* Karte ist Komfort */ }
+    return res.json({ ok: true, message: parts.join(" "), card });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

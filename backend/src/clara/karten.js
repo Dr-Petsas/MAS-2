@@ -218,6 +218,140 @@ export function karteTag({
   };
 }
 
+/** ISO-Tag -> kurzes Kartenlabel ("Heute", "Morgen", sonst "Do 23.07."). */
+export function tagLabelKurz(iso) {
+  const s = String(iso || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+  const heute = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+  const diff = Math.round((Date.parse(`${s}T12:00:00Z`) - Date.parse(`${heute}T12:00:00Z`)) / 86400000);
+  if (diff === 0) return "Heute";
+  if (diff === 1) return "Morgen";
+  if (diff === -1) return "Gestern";
+  const d = new Date(`${s}T12:00:00Z`);
+  const wt = new Intl.DateTimeFormat("de-DE", { weekday: "short", timeZone: TZ }).format(d);
+  return `${wt} ${isoKurz(s)}`;
+}
+
+/**
+ * Terminlisten-Karte (27.07.2026, Chef-Befund "das Flippen gibt keine
+ * Informationen mehr"): Die meistgestellte Frage — "Was habe ich heute für
+ * Termine?" — landet deterministisch bei list_day_appointments, und genau
+ * dieses Tool hatte als einziges Kalender-Tool KEINE Karte. Die Flip-Rückseite
+ * blieb deshalb im Alltag leer, obwohl gesprochen alles kam. Diese Karte zeigt
+ * dieselben Fakten wie der gesprochene Text: Uhrzeit, Name, Motiv, Unterlagen.
+ *
+ * `appointments`: {startMs, patientName, patientLastName, visitMotive,
+ * calendarName, comments, docsStatus}.
+ */
+export function karteTerminliste({
+  dateIso = "", appointments = [], remaining = false, doctorName = "",
+} = {}) {
+  const liste = (appointments || []).filter(Boolean);
+  const label = tagLabelKurz(dateIso) || "Termine";
+  const zeile = (a) => {
+    const wer = a.patientName || a.patientLastName || "Patient";
+    const was = a.visitMotive ? ` — ${a.visitMotive}` : "";
+    return `${hhmm(a.startMs)} ${wer}${was}`.trim();
+  };
+  const levelOf = (a) => (a.docsStatus === "red" ? "alert" : a.docsStatus === "yellow" ? "warn" : "info");
+  const iconOf = (a) => (a.docsStatus === "red" || a.docsStatus === "yellow" ? "pen" : "clock");
+
+  const items = liste.slice(0, 8).map((a) => item(levelOf(a), iconOf(a), zeile(a)));
+  if (!items.length) items.push(item("ok", "check", remaining ? "Keine weiteren Termine" : "Keine Termine an diesem Tag"));
+
+  const firstMs = liste.length ? liste[0].startMs : 0;
+  const lastMs = liste.length ? liste[liste.length - 1].startMs : 0;
+
+  // W-FLIP-TIEFE: ALLE Termine mit Notiz und Unterlagen-Stand (die Anzeige
+  // zeigt nur die ersten 8) — Grundlage für "geh auf den Dritten ein".
+  const dLines = [`${label}${doctorName ? ` (${doctorName})` : ""}: ${
+    liste.length === 1 ? "1 Termin" : `${liste.length} Termine`}${remaining ? " (nur noch anstehende)" : ""}.`];
+  for (const a of liste) {
+    const zusatz = [];
+    if (a.calendarName) zusatz.push(`bei ${a.calendarName}`);
+    if (a.comments) zusatz.push(`Notiz: ${a.comments}`);
+    if (a.docsStatus === "red") zusatz.push("Unterlagen fehlen komplett");
+    else if (a.docsStatus === "yellow") zusatz.push("Unterlagen nicht unterschrieben");
+    dLines.push(`${zeile(a)}${zusatz.length ? ` (${zusatz.join("; ")})` : ""}`);
+  }
+
+  return {
+    kind: "terminliste",
+    tag: remaining ? "Noch anstehend" : "Terminliste",
+    title: label,
+    time: firstMs && lastMs && liste.length > 1 ? `${hhmm(firstMs)}–${hhmm(lastMs)} Uhr` : (firstMs ? `${hhmm(firstMs)} Uhr` : ""),
+    subtitle: [
+      liste.length === 1 ? "1 Termin" : `${liste.length} Termine`,
+      doctorName ? `bei ${doctorName}` : "",
+    ].filter(Boolean).join(" · "),
+    heading: "Der Reihe nach",
+    items,
+    detail: detailText(dLines),
+    footer: liste.length > 8 ? `${liste.length - 8} weitere` : "",
+  };
+}
+
+/**
+ * Zeitraum-Karte ("Wie war letzte Woche?", "Termine nächsten Monat") — die
+ * Tages-Aufschlüsselung, die gesprochen ohnehin kommt, auch auf dem Flip.
+ * `days`: {date, count}.
+ */
+export function karteZeitraum({ label = "Zeitraum", from = "", to = "", days = [], total = 0 } = {}) {
+  const tage = (days || []).filter((d) => d && d.date);
+  const zeile = (d) => `${tagLabelKurz(d.date) || isoKurz(d.date)}: ${
+    Number(d.count) === 1 ? "1 Termin" : `${Number(d.count) || 0} Termine`}`;
+  const items = tage.slice(0, 8).map((d) => item(Number(d.count) ? "info" : "ok", "calendar", zeile(d)));
+  if (!items.length) items.push(item("ok", "check", "Keine Termine im Zeitraum"));
+
+  const dLines = [`${label}${from && to ? ` (${isoKurz(from)}–${isoKurz(to)})` : ""}: ${
+    total === 1 ? "1 Termin" : `${total} Termine`}.`];
+  for (const d of tage) dLines.push(zeile(d));
+
+  return {
+    kind: "zeitraum",
+    tag: "Zeitraum",
+    title: label,
+    time: from && to ? `${isoKurz(from)}–${isoKurz(to)}` : "",
+    subtitle: total === 1 ? "1 Termin" : `${total} Termine`,
+    heading: "Tag für Tag",
+    items,
+    detail: detailText(dLines),
+    footer: tage.length > 8 ? `${tage.length - 8} weitere Tage` : "",
+  };
+}
+
+/**
+ * Kontaktkarte auf dem Flip (27.07.2026): contact_card sagt "Ich habe dir die
+ * Kontaktkarte aufs Handy geschickt" und verschickt dafür eine Push-Nachricht.
+ * Auf der Flip-Rückseite stand trotzdem nichts — deshalb dieselben Daten auch
+ * als Karte. Die Nummer bleibt als ZIFFERN stehen (Ablesen/Abtippen), der
+ * gesprochene Text nennt sie weiterhin in Gruppen.
+ */
+export function karteKontakt({ name = "", mobile = "", phone = "", email = "", pushed = false } = {}) {
+  const items = [];
+  if (mobile) items.push(item("info", "phone", `Mobil: ${mobile}`));
+  if (phone) items.push(item("info", "phone", `Festnetz: ${phone}`));
+  if (email) items.push(item("info", "mail", email));
+  if (!items.length) items.push(item("warn", "question", "Keine Kontaktdaten hinterlegt"));
+
+  const dLines = [`Kontakt ${name}:`];
+  if (mobile) dLines.push(`Mobil ${mobile}`);
+  if (phone) dLines.push(`Festnetz ${phone}`);
+  if (email) dLines.push(`E-Mail ${email}`);
+
+  return {
+    kind: "kontakt",
+    tag: "Kontakt",
+    title: clip(name, 40) || "Kontakt",
+    time: "",
+    subtitle: mobile || phone || email || "",
+    heading: "Erreichbar über",
+    items,
+    detail: detailText(dLines),
+    footer: pushed ? "Auch als Push aufs Handy geschickt" : "",
+  };
+}
+
 /**
  * Doku-Memo-Karte — die "geflippte Rückseite" beim Diktieren: gespeicherte
  * Notiz-Punkte + was für die lückenlose Doku/Abrechnung noch fehlt.
