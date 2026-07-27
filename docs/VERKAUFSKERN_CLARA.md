@@ -125,6 +125,17 @@ Bianca-Arbeit in Clara-Sessions.
   Modell-Roulette). Worker um 23:39 neu gestartet — der Stand ist LIVE
   (Tag `stabil-2026-07-27-nacht`). Offen fuer den Chef: begleiteter
   Ende-zu-Ende-Livetest (Lisa ruft Testnummer an, Bericht kommt zurueck).
+- **28.07.2026 01:05: W-STABIL-7 (Konfig ins Tag) gebaut, getestet, LIVE.**
+  Der Lisa-Prompt (lebte NUR in der ElevenLabs-Konsole), die Firestore-
+  Settings und die Env-Schluessel-Namen liegen jetzt als Snapshot im Repo
+  (`backend/config-snapshots/`, ohne Secrets). Der Health-Ping prueft ab
+  sofort "Konfig-Drift": aendert jemand den Agenten-Prompt an Git vorbei,
+  ist die Status-Seite rot und der Morgenlauf meldet es. "Versionsstand"
+  zeigt, welcher MAS-/Clara-Stand wirklich laeuft. Clara startet NICHT mehr
+  mit fehlender Pflicht-Konfiguration (harter Abbruch mit roter Liste statt
+  stillem Fehlstart). Rollback wurde einmal WIRKLICH geuebt (Stabil-Tag
+  ausgecheckt, Tests dort gruen, zurueck — HEAD byte-identisch). Health:
+  13/13 Checks gruen.
 - **28.07.2026 00:50: W-STABIL-5 (Protokolle) gebaut, getestet, LIVE.**
   Jeder Gespraechszug hinterlaesst ab jetzt EINE Protokollzeile
   (`Clara-Voice\.run\protokoll\turns-JJJJMMTT.jsonl`): was Clara gehoert

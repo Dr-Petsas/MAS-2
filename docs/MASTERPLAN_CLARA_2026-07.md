@@ -1351,10 +1351,24 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
   Link auf die Statusseite). Handausloesung: POST /clara/morgenlauf/run
   (?push=0 fuer stumm). Live bewiesen 28.07. 00:14 Uhr: Ping gruen,
   Register 28/28, Laufzeit ~2,5 min.
-- **W-STABIL-7 Konfig ins Tag:** ElevenLabs-Prompt, Profil, Firestore-Config,
-  Env-Whitelist als Export im Repo, Abgleich beim Start; Release =
-  Versionspaar (Clara-Tag + MAS-Tag + Konfig), harter Startabbruch statt
-  gelber Warnung; Rollback einmal WIRKLICH ueben.
+- **W-STABIL-7 Konfig ins Tag: FERTIG (28.07.2026).** (1) Export:
+  `scripts/konfig-export.mjs` schreibt den wirksamen Zustand ausserhalb von
+  Git als committete Snapshots nach `backend/config-snapshots/` — ElevenLabs-
+  Agenten Lisa+Bianca (Prompt/erste Ansage/Stimme/Tools; Secrets rekursiv
+  entfernt), Firestore `settings/lenaStt`+`sophieKatalog` (Inhalt+Hash),
+  Env-Schluessel-NAMEN beider Repos (nie Werte). `--check` vergleicht nur.
+  (2) Drift-Wache: Health-Check "Konfig-Drift" laesst den Exporter im
+  Vergleichsmodus laufen — aendert jemand z. B. den Lisa-Prompt in der
+  ElevenLabs-Konsole, wird die Status-Seite rot und der Morgenlauf meldet es
+  aufs Handy. (3) Versionspaar: Health-Check "Versionsstand" zeigt
+  `git describe` von MAS UND Clara (inkl. -dirty) + Konfig-Snapshot-Datum.
+  (4) Harter Startabbruch: start-clara.ps1 bricht ohne .env bzw. ohne die
+  7 Pflichtschluessel mit roter Liste ab (vorher: stiller Fallback auf
+  lokale SFU-Dev-Creds = Telefon tot ohne Fehlerbild); Abgleich gegen die
+  exportierte Schluessel-Liste; Notaus CLARA_START_TROTZDEM=1. Abbruch- und
+  Normalpfad beide bewiesen. (5) Rollback WIRKLICH geuebt: checkout
+  `stabil-2026-07-27-nacht` -> Kernmodule kompilieren + Sprech-Schicht gruen
+  auf dem alten Stand -> zurueck auf `v5.4-speed`, HEAD byte-identisch.
 - **W-STABIL-8 Neubau aus dem Verkaufskern:** Fristen-/Rechnungs-Waechter
   (Punkte 24/25) — EIN Waechter, EINE Wiedervorlage-Liste, drei Quellen
   (Mail, Scan via `mail/ocr.js`, Telefon-Transkripte).
