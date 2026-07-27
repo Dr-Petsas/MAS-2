@@ -1329,9 +1329,20 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
   Seite ("Tool-Stoerungen (60 min)", heilt sich nach 1 h selbst).
   Geschaefts-Antworten ("Termin bereits vergeben") sind KEIN Ausfall.
   Test: testsuite/test_error_state.py (im Gate). Notaus: CLARA_FEHLER_EHRLICH=0.
-- **W-STABIL-5 Protokolle:** Worker-Logs anhaengen statt ueberschreiben;
-  pro Gespraechszug ein Entscheidungsprotokoll (Transkript, Tool, Argumente,
-  Ergebnisstatus, eingegriffene Waechter, gesprochener Satz).
+- **W-STABIL-5 Protokolle: FERTIG (28.07.2026).** (1) Entscheidungsprotokoll:
+  der Worker schreibt pro Gespraechszug EINE JSONL-Zeile nach
+  `Clara-Voice/.run/protokoll/turns-JJJJMMTT.jsonl` — gehoerter Satz, jedes
+  Tool mit Argumenten und Status (ok/fehler/system), eingegriffene Waechter
+  (action-claim/appt-claim/call-outcome/call-promise/loop/fehler-als-zustand),
+  gesprochene Antwort, abgebrochen ja/nein, Dauer. 14 Tage Aufbewahrung,
+  Notaus CLARA_TURN_PROTOKOLL=0, darf nie werfen (services/turn_protocol.py,
+  Test testsuite/test_turn_protokoll.py im Gate). "Um 14:12 hat Clara Unsinn
+  geredet" ist damit in einer Zeile aufklaerbar. (2) Neustart-feste Logs:
+  clara-switch.ps1 schrieb Start-Process-Redirects immer in DIESELBEN Dateien
+  (ueberschreiben) — jetzt pro Start `<ziel>-JJJJMMTT-HHMMSS.log/.err.log`,
+  die letzten 30 Starts bleiben liegen; die Absturz-Ursache von gestern
+  ueberlebt den Neustart von heute. Gate + Register 28/28 gruen, Worker
+  28.07. 00:44 neu gestartet.
 - **W-STABIL-6 Morgenlauf: FERTIG (28.07.2026).** Scheduler im MAS: taeglich
   ab 06:30 (CLARA_MORGENLAUF_ZEIT, Not-Aus CLARA_MORGENLAUF=0) laufen
   Faehigkeits-Ping + Verkaufskern-Register (SAFE-Modus, 28 Faelle, keine

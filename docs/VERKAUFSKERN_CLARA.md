@@ -125,6 +125,16 @@ Bianca-Arbeit in Clara-Sessions.
   Modell-Roulette). Worker um 23:39 neu gestartet — der Stand ist LIVE
   (Tag `stabil-2026-07-27-nacht`). Offen fuer den Chef: begleiteter
   Ende-zu-Ende-Livetest (Lisa ruft Testnummer an, Bericht kommt zurueck).
+- **28.07.2026 00:50: W-STABIL-5 (Protokolle) gebaut, getestet, LIVE.**
+  Jeder Gespraechszug hinterlaesst ab jetzt EINE Protokollzeile
+  (`Clara-Voice\.run\protokoll\turns-JJJJMMTT.jsonl`): was Clara gehoert
+  hat, welches Tool mit welchen Argumenten lief (und ob es technisch
+  scheiterte), welche Waechter eingriffen, was wirklich gesprochen wurde.
+  "Um 14:12 hat sie Unsinn geredet" ist damit in einer Zeile aufklaerbar —
+  ohne Log-Raten. Zusaetzlich ueberschreibt der Clara-Umschalter die
+  Start-Logs nicht mehr (pro Start eine Zeitstempel-Datei, 30 Starts
+  Rueckschau). Gate + Register 28/28 gruen, Worker 00:44 neu gestartet.
+  Notaus: CLARA_TURN_PROTOKOLL=0.
 - **28.07.2026 00:40: W-STABIL-4 (Fehler-als-Zustand) gebaut, getestet,
   LIVE.** Faellt ein Werkzeug technisch aus, sagt Clara ab jetzt ehrlich
   "Das kann ich gerade nicht nachsehen — der Zugriff darauf ist technisch
