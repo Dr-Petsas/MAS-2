@@ -1328,6 +1328,15 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
 - **W-STABIL-8 Neubau aus dem Verkaufskern:** Fristen-/Rechnungs-Waechter
   (Punkte 24/25) — EIN Waechter, EINE Wiedervorlage-Liste, drei Quellen
   (Mail, Scan via `mail/ocr.js`, Telefon-Transkripte).
+- **W-STABIL-9 Lueckenfueller Ende-zu-Ende (Audit 27.07., Befund im
+  Verkaufskern-Dokument):** Die Kette ist GEBAUT und der Maschinenraum
+  gruen (Modultest `test-gap-fill.mjs` inkl. Abwesenheits-Block; Cloud
+  Functions `masSearchPatients`/`masBookAppointment` deployt; Scheduler
+  fuer Ergebnis-Sweep und Initiative-Scan laufen). Kein Neubau noetig —
+  fehlend sind NUR die Beweise: (a) Register-Dialog `vk-18b` (gezieltes
+  Einbestellen) gruen, (b) EIN begleiteter Livetest mit dem Chef:
+  Testliste freigeben -> Lisa ruft eine Testnummer an -> Buchung/Bericht
+  kommen nachweisbar zurueck. Erst dann gilt Block C als verkaufsfertig.
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.

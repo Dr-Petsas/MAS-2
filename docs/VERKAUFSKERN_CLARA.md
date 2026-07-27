@@ -55,8 +55,8 @@ Status-Legende:
 |----|------------|-----------|--------|----------|
 | 16 | "Wo habe ich morgen Luecken?" | `gap_briefing` | OK | vk-16 |
 | 17 | "Wen koennen wir dafuer anrufen?" — Kandidaten aus den Recall-Toepfen (CampaignR) | `list_recall_candidates` | OK | vk-17 |
-| 18 | Recall-Anruf NUR nach Freigabe — und dann passiert er wirklich | `approve_recall` / `gapfill_call_patient` | OK | vk-18 (Dialog) |
-| 19 | An Abwesenheitstagen KEINE Lueckenfueller-Vorschlaege | Abwesenheits-Filter in `gapFill`/`daySchedule` | REP-2707 | INTEGRATION |
+| 18 | Recall-Anruf NUR nach Freigabe — und dann passiert er wirklich | `approve_recall` / `gapfill_call_patient` | OK | vk-18 (Dialog), vk-18b (Einbestellen) |
+| 19 | An Abwesenheitstagen KEINE Lueckenfueller-Vorschlaege | Abwesenheits-Filter in `gapFill` (praxisweite + Teil-Abwesenheit) | OK (27.07.) | MAS: `scripts/test-gap-fill.mjs` (Abwesenheits-Block) |
 
 ## D. Abwesenheiten
 
@@ -106,6 +106,41 @@ Bianca-Arbeit in Clara-Sessions.
      aber kein `list_recall_candidates`.
   5. `reg-04` Zug 2 — "Schick sie mir aufs Handy" (Name fiel im Satz
      davor) bleibt ohne Tool — exakt die Karten-Beschwerde vom 27.07.
+- **27.07.2026 23:00: alle 5 roten Faelle gefixt und einzeln gruen
+  nachgewiesen** (deterministische Umleitungen/Synthesen im Provider,
+  je Fix ein Commit in Clara-Voice). Voll-Gate (Katalog + Register +
+  Flip-Sperre) laeuft. Neu dazu: `vk-18b` (gezieltes Einbestellen ueber
+  `search_patient` -> `gapfill_call_patient`, Beweis faellig) und der
+  Abwesenheits-Block im Gap-Fill-Modultest (Punkt 19 gruen).
+
+## Befund Lueckenfueller-Kette (Audit 27.07.2026 abends)
+
+Sorge des Chefs: "Luecken fuellen hat garantiert noch keinen guten Workflow,
+geschweige denn die richtigen Cloud Functions oder Tools." Befund: **die Kette
+existiert vollstaendig und der Maschinenraum ist gruen** — was fehlt, ist der
+Ende-zu-Ende-Beweis am Telefon, nicht der Bau:
+
+1. Lücken erkennen: `gapFill.runGapFill` rechnet echte Luecken aus
+   Oeffnungszeiten minus Belegung minus Abwesenheiten (Modultest gruen,
+   inkl. Idempotenz, Drossel, Einwilligung, Ranking).
+2. Kandidaten: CampaignR-Buckets + faellige virtuelle Recalls, gedrosselt
+   und dedupliziert (`list_recall_candidates` fuer die Stimme).
+3. Freigabe: `approve_recall` -> `recallCoach.approveAndExecute` ->
+   Lisa ruft an (ElevenLabs outbound), AB-Skript ohne Medizin-Details.
+4. Live-Buchung im Lisa-Gespraech: `offer_slots`/`book_slot` (Webhooks) ->
+   Cloud Functions `masSearchPatients` + `masBookAppointment` — BEIDE
+   deployt (v2, europe-west3, geprueft 27.07.). ENV fuer Lisa vollstaendig.
+5. Rueckmeldung: `sweepRecallOutcomes` laeuft jede Minute im Scheduler,
+   `recall_status`/`lisa_call_result` liefern den Bericht; taeglicher
+   Initiative-Scan 7:30/18:00 ist im Server verdrahtet.
+6. Gezieltes Einbestellen: `gapfill_call_patient` mit Kalender-Vorpruefung
+   (keine erfundenen Zeiten), Zwei-Schritt-Bestaetigung, Auto-Botschaft
+   aus dem Outreach-Katalog, Override nur auf ausdrueckliche Ansage.
+
+Offen (der eigentliche Rest): (a) `vk-18b` im Register gruen kriegen,
+(b) EIN Ende-zu-Ende-Livetest mit dem Chef (Testliste freigeben, Lisa ruft
+eine Testnummer an, Bericht kommt zurueck) — erst danach gilt C komplett
+als verkaufsfertig.
 
 ## Offene Punkte zum Neubau (24/25)
 

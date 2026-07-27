@@ -206,6 +206,32 @@ async function run() {
   check(/Frau Klein/.test(spoken) && /Lücke/.test(spoken) && /Freigabe/.test(spoken), "Sprechtext nennt Lücken + Freigabe");
   console.log("  spoken: " + spoken);
 
+  console.log("\n=== Firestore: Abwesenheit blockt Lückenfüller (Verkaufskern Punkt 19) ===");
+  // Praxisweite Abwesenheit (kein Kalender gesetzt) muss die Lückensuche
+  // blocken — Vorfall 17.07./27.07.2026: Urlaubstag wurde als "frei" gewertet
+  // und Clara schlug Recall-Kandidaten für einen Abwesenheitstag vor.
+  const plusDays = (n) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" })
+    .format(new Date(new Date(`${DATE}T12:00:00Z`).getTime() + n * 86400000));
+  const DATE2 = plusDays(1);
+  const DATE3 = plusDays(2);
+  const atDay = (day, h, m) => new Date(ensureBerlinTz(`${day}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`));
+  await locRef().collection("appointments").doc("absFull").set({
+    start: atDay(DATE2, 8, 0), end: atDay(DATE2, 12, 0),
+    calendarItemType: "absence", title: "Praxis geschlossen", status: "confirmed", isMultiDay: false,
+  });
+  const runAbsFull = await runGapFill(C, { date: DATE2, horizonDays: 1 });
+  check(runAbsFull.ok, "Abwesenheits-Lauf ok");
+  check(runAbsFull.gaps.length === 0, `ganztägige Abwesenheit -> KEINE Lücken (war ${runAbsFull.gaps.length}: ${runAbsFull.gaps.map((g) => g.label).join(", ")})`);
+  check(runAbsFull.callLists.length === 0, "ganztägige Abwesenheit -> KEINE Anruflisten");
+
+  await locRef().collection("appointments").doc("absPart").set({
+    start: atDay(DATE3, 8, 0), end: atDay(DATE3, 11, 0),
+    calendarItemType: "absence", title: "Fortbildung", status: "confirmed", isMultiDay: false,
+  });
+  const runAbsPart = await runGapFill(C, { date: DATE3, horizonDays: 1 });
+  const partLabels = runAbsPart.gaps.map((g) => g.label).join("|");
+  check(runAbsPart.gaps.length === 1 && partLabels === "11:00–12:00", `teilweise Abwesenheit -> nur Restlücke 11:00–12:00 (war ${partLabels || "keine"})`);
+
   console.log("\n=== Firestore: Caller-ID-Lookup ===");
   const hit = await lookupCaller(C, { phone: "0170 111 11 11" });
   check(hit.found === true, "Anrufliste-Kandidatin über Rufnummer gefunden");
