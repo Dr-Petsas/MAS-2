@@ -529,6 +529,19 @@ export async function notifyProofToDevices(clientId, proof) {
   return { ok: sent > 0, sent, failed };
 }
 
+/** Info-Push an ALLE gekoppelten Geräte der Praxis (z. B. Morgenlauf-Status). */
+export async function notifyAllDevices(clientId, { title = "", body = "", url = "" } = {}) {
+  const snap = await devicesCol(clientId).get();
+  if (snap.empty) return { ok: false, reason: "no_devices", sent: 0, failed: 0 };
+  let sent = 0;
+  let failed = 0;
+  for (const doc of snap.docs) {
+    const r = await sendNoteToDevice(clientId, doc.data(), { title, body, url });
+    if (r.ok) sent++; else failed++;
+  }
+  return { ok: sent > 0, sent, failed };
+}
+
 /** Info-Push an ALLE Geräte eines Teammitglieds. */
 export async function notifyOperator(clientId, operatorId, { title = "", body = "", url = "" } = {}) {
   const snap = await devicesCol(clientId).where("operatorId", "==", s(operatorId)).get();

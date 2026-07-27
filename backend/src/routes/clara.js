@@ -23,6 +23,7 @@ import { identifyByDevice, callOperator, consumePendingCallContext } from "../cl
 import { getGreetingContext } from "../clara/greetingContext.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { runClaraHealth, statusPageHtml } from "../clara/health.js";
+import { runMorgenlauf } from "../clara/morgenlauf.js";
 import { loadProof, proofToSvg } from "../clara/proofCard.js";
 import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, qmRoute, resolveClientId } from "./_shared.js";
 
@@ -476,6 +477,21 @@ router.get("/clara/health", async (req, res) => {
     res.status(h.overall === "green" ? 200 : 503).json(h);
   } catch (e) {
     res.status(500).json({ overall: "red", error: String(e?.message || e), checks: [] });
+  }
+});
+
+
+// Morgenlauf von Hand ausloesen (W-STABIL-6): Ping + Verkaufskern-Register,
+// Ergebnis optional als Push. NICHT oeffentlich (Service-Token/Login noetig).
+// ?push=0 bzw. body {push:false} unterdrueckt den Push (Handtest nachts).
+router.post("/clara/morgenlauf/run", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    const push = !(req.query?.push === "0" || req.body?.push === false);
+    const out = await runMorgenlauf(clientId, { publicBaseUrl: PUBLIC_BASE_URL, push });
+    res.status(out.ok ? 200 : 503).json(out);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 

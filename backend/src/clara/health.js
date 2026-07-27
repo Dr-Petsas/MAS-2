@@ -9,10 +9,27 @@
 // ============================================================================
 import net from "node:net";
 import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const OLLAMA_DEFAULT_BASE = "http://127.0.0.1:11434/v1";
 const OLLAMA_DEFAULT_MODEL = "qwen3:4b-instruct";
 const CLARA_ENV = "F:/Clara-Voice/.env";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Faehigkeits-Ping (W-STABIL-3, 28.07.2026): Quelle fuer den Abgleich
+// "Profil-Tool -> existiert die MAS-Route wirklich?". Der Abwesenheits-Vorfall
+// (Tool zeigte WOCHEN auf eine nie gemountete Route, Antwort blieb hoeflich
+// leer) waere damit am ersten Tag aufgefallen.
+const CLARA_PROFILE_PATH = (process.env.CLARA_PROFILE_PATH
+  || "F:/Clara-Voice/profiles/clara_meddent/profile.json").trim();
+// Alle Cloud Functions, die das MAS wirklich aufruft (cfProxy, agentBooking,
+// sophieBilling). OPTIONS-Anfrage = keine Ausfuehrung, nur Erreichbarkeit.
+const CF_NAMES = [
+  "getFreeTimeSlots", "createAppointment", "updateOrCancelAppointment",
+  "agentGetDoctorAbsences", "agentFindPatientAppointments",
+  "agentCancelAppointmentById", "masSearchPatients", "masBookAppointment",
+  "masSophieBilling",
+];
 const WORKER_LOG_DIRS = [
   { dir: "F:/MAS-2/logs", re: /^clara_.*\.err\.log$/ },
   { dir: "F:/Clara-Voice", re: /^_worker.*\.err\.log$/ },
@@ -58,11 +75,25 @@ async function checkLlmModel(model, base) {
     if (isLocalOllama(base)) {
       const r = await fetch("http://127.0.0.1:11434/api/ps", { signal: AbortSignal.timeout(6000) });
       const j = await r.json();
-      const names = (j?.models || []).map((m) => m.name);
-      const ok = names.includes(model);
+      const entries = j?.models || [];
+      const names = entries.map((m) => m.name);
+      const entry = entries.find((m) => m.name === model);
+      let ok = !!entry;
       const loaded = names.length ? names.join(", ") : "(keins)";
-      return { ok, detail: `erwartet '${model}'; geladen: ${loaded}`,
-        fix: `ollama run ${model}  (laedt + haelt warm); .env LIVEAVATAR_LLM_MODEL pruefen` };
+      let detail = `erwartet '${model}'; geladen: ${loaded}`;
+      let fix = `ollama run ${model}  (laedt + haelt warm); .env LIVEAVATAR_LLM_MODEL pruefen`;
+      // Kontextfenster-Wache (Vorfall 16.06.2026): Fenster < Prompt => Ollama
+      // schneidet System-Prompt + Tools ab, Clara antwortet nur noch leer.
+      const ctx = Number(entry?.context_length || 0);
+      if (entry && ctx) {
+        detail += `; Kontextfenster ${ctx}`;
+        if (ctx < 32768) {
+          ok = false;
+          detail += " (< 32768 - Leer-Turn-Gefahr, Vorfall 16.06.)";
+          fix = "setx OLLAMA_CONTEXT_LENGTH 32768 und Ollama neu starten";
+        }
+      }
+      return { ok, detail, fix };
     }
     const r = await fetch(`${base.replace(/\/+$/, "")}/models`, { signal: AbortSignal.timeout(8000) });
     const j = await r.json();
@@ -128,6 +159,156 @@ async function checkToolCalling(model, base) {
   }
 }
 
+// ── Faehigkeits-Ping (W-STABIL-3) ───────────────────────────────────────────
+
+/** Alle im Quelltext gemounteten Routen (Methode+Pfad), wie route-inventory. */
+async function mountedRoutes() {
+  const src = path.join(__dirname, "..");
+  const files = [path.join(src, "server.js")];
+  try {
+    for (const f of await fs.readdir(path.join(src, "routes"))) {
+      if (f.endsWith(".js")) files.push(path.join(src, "routes", f));
+    }
+  } catch { /* routes-Ordner fehlt nie */ }
+  const rx = /^\s*(?:app|router)\.(get|post|put|patch|delete|all)\(\s*["'`]([^"'`]+)["'`]/;
+  const out = [];
+  for (const file of files) {
+    let txt = "";
+    try { txt = await fs.readFile(file, "utf8"); } catch { continue; }
+    for (const line of txt.split(/\r?\n/)) {
+      const m = line.match(rx);
+      if (m) out.push({ method: m[1].toUpperCase(), path: m[2] });
+    }
+  }
+  return out;
+}
+
+function compileRoute(r) {
+  const rxPath = r.path.split("/").map((seg) => {
+    if (seg.startsWith(":")) return "[^/]+";
+    return seg.replace(/[.*+?^${}()|[\]\\]/g, (c) => (c === "*" ? ".*" : `\\${c}`));
+  }).join("/");
+  return { method: r.method, rx: new RegExp(`^${rxPath}/?$`) };
+}
+
+/** Jedes aktivierte Profil-Tool muss auf eine wirklich gemountete Route zeigen. */
+export async function checkToolRoutes(profilePath = CLARA_PROFILE_PATH) {
+  let prof;
+  try {
+    prof = JSON.parse(await fs.readFile(profilePath, "utf8"));
+  } catch (e) {
+    return { ok: false, detail: `Clara-Profil nicht lesbar: ${profilePath}`,
+      fix: "CLARA_PROFILE_PATH pruefen (Clara-Voice-Repo vorhanden?)" };
+  }
+  const tools = (prof?.custom_tools || []).filter((t) => t && t.enabled !== false && t.url);
+  if (!tools.length) {
+    return { ok: false, detail: "Profil enthaelt keine Tools mit URL", fix: "profile.json pruefen" };
+  }
+  const routes = (await mountedRoutes()).map(compileRoute);
+  const missing = [];
+  for (const t of tools) {
+    let u;
+    try { u = new URL(String(t.url)); } catch { missing.push(`${t.name}: URL unlesbar`); continue; }
+    const meth = String(t.method || "POST").toUpperCase();
+    const hit = routes.some((r) => (r.method === meth || r.method === "ALL") && r.rx.test(u.pathname));
+    if (!hit) missing.push(`${t.name} -> ${meth} ${u.pathname}`);
+  }
+  const ok = missing.length === 0;
+  return { ok,
+    detail: ok ? `${tools.length}/${tools.length} Tool-Routen im MAS vorhanden`
+      : `FEHLT im MAS: ${missing.join("; ")}`,
+    fix: ok ? "" : "Route in src/routes/* anlegen bzw. Tool-URL im Profil korrigieren" };
+}
+
+let cfCache = { ts: 0, result: null };
+/** Erreichbarkeit der Plattform-Cloud-Functions (OPTIONS = keine Ausfuehrung). */
+export async function checkCloudFunctions() {
+  if (cfCache.result && Date.now() - cfCache.ts < 10 * 60_000) return cfCache.result;
+  const base = (process.env.PICKADOC_REAL_CF_BASE_URL
+    || "https://europe-west3-docgenda.cloudfunctions.net").replace(/\/+$/, "");
+  const bad = [];
+  await Promise.all(CF_NAMES.map(async (name) => {
+    // Kaltstart kann > 10 s dauern (masBookAppointment live gemessen):
+    // grosszuegiges Zeitfenster + EIN Wiederholungsversuch, sonst Fehlalarm.
+    for (let versuch = 0; versuch < 2; versuch++) {
+      try {
+        const r = await fetch(`${base}/${name}`, { method: "OPTIONS", signal: AbortSignal.timeout(20000) });
+        // 404 = nicht deployt. Alles andere (204/200/400/403/405) = Function da.
+        if (r.status === 404) bad.push(`${name} (404, nicht deployt)`);
+        return;
+      } catch (e) {
+        if (versuch === 1) bad.push(`${name} (${String(e?.message || e).slice(0, 40)})`);
+      }
+    }
+  }));
+  const ok = bad.length === 0;
+  const result = { ok,
+    detail: ok ? `${CF_NAMES.length}/${CF_NAMES.length} Cloud Functions erreichbar`
+      : `Problem: ${bad.join(", ")}`,
+    fix: ok ? "" : "aus F:\\pickadoc-live-base deployen: firebase deploy --only functions:<name>" };
+  cfCache = { ts: Date.now(), result };
+  return result;
+}
+
+let elCache = { ts: 0, result: null };
+/**
+ * ElevenLabs-API (Lisa-Anrufe): Key gueltig UND Lisa-Agent abrufbar.
+ * WICHTIG: unser Key ist auf ConvAI-Endpunkte beschraenkt (/v1/user liefert
+ * 401, obwohl Lisa einwandfrei anruft - live gemessen 28.07.2026). Deshalb
+ * wird GENAU der Endpunkt geprueft, den Lisa wirklich braucht: der Agent.
+ */
+export async function checkElevenLabs() {
+  if (elCache.result && Date.now() - elCache.ts < 5 * 60_000) return elCache.result;
+  const key = (process.env.ELEVENLABS_API_KEY || "").trim();
+  const agent = (process.env.LISA_AGENT_ID || "").trim();
+  let result;
+  if (!key) {
+    result = { ok: false, detail: "ELEVENLABS_API_KEY fehlt", fix: "backend/.env pruefen" };
+  } else if (!agent) {
+    result = { ok: false, detail: "LISA_AGENT_ID fehlt (Lisa kann nicht anrufen)",
+      fix: "LISA_AGENT_ID in backend/.env setzen" };
+  } else {
+    try {
+      const r = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agent)}`, {
+        headers: { "xi-api-key": key }, signal: AbortSignal.timeout(8000),
+      });
+      if (r.ok) {
+        result = { ok: true, detail: "API erreichbar, Lisa-Agent abrufbar", fix: "" };
+      } else if (r.status === 401 || r.status === 403) {
+        result = { ok: false, detail: `API-Antwort ${r.status}: Key ungueltig/abgelaufen`,
+          fix: "ElevenLabs-Konto: API-Key pruefen" };
+      } else if (r.status === 404) {
+        result = { ok: false, detail: "Lisa-Agent nicht gefunden (LISA_AGENT_ID falsch?)",
+          fix: "LISA_AGENT_ID gegen ElevenLabs-Konsole pruefen" };
+      } else {
+        result = { ok: false, detail: `API-Antwort ${r.status}`, fix: "ElevenLabs-Status pruefen" };
+      }
+    } catch (e) {
+      result = { ok: false, detail: `nicht erreichbar: ${String(e?.message || e).slice(0, 60)}`,
+        fix: "Internet-Verbindung pruefen" };
+    }
+  }
+  elCache = { ts: Date.now(), result };
+  return result;
+}
+
+/** Lena-STT-Dienst (Doku-Diktat, Behandlungs-Doku). */
+export async function checkLena() {
+  const url = (process.env.LENA_STT_HEALTH_URL || "http://127.0.0.1:8140/health").trim();
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    const j = await r.json().catch(() => null);
+    const ok = r.ok && j?.ok !== false;
+    return { ok,
+      detail: ok ? `laeuft (${j?.primary || j?.engine || "?"}, ${j?.device || "?"})`
+        : `Antwort ${r.status}`,
+      fix: ok ? "" : "F:\\Lena-Voice: Lena-STT-Dienst starten" };
+  } catch {
+    return { ok: false, detail: "kein Dienst auf 8140 (Doku-Diktat waere tot)",
+      fix: "F:\\Lena-Voice: Lena-STT-Dienst starten" };
+  }
+}
+
 async function newestWorkerLog() {
   let newest = null;
   for (const { dir, re } of WORKER_LOG_DIRS) {
@@ -185,9 +366,18 @@ export async function runClaraHealth() {
   checks.push({ name: "LiveKit SFU (7880)", ok: sfu, detail: sfu ? "lauscht" : "kein Listener",
     fix: "livekit-server.exe via start-mas-stack.ps1 starten" });
 
-  checks.push({ name: isLocalOllama(base) ? "LLM Modell (lokal)" : "LLM Modell (remote)", ...(await checkLlmModel(model, base)) });
+  // Tool-Calling ZUERST: der Aufruf laedt das Modell, danach zeigt /api/ps
+  // verlaesslich Modell + Kontextfenster (sonst Fehlalarm nach Leerlauf).
   checks.push({ name: "Tool-Calling (LLM)", ...(await checkToolCalling(model, base)) });
+  checks.push({ name: isLocalOllama(base) ? "LLM Modell (lokal)" : "LLM Modell (remote)", ...(await checkLlmModel(model, base)) });
   checks.push({ name: "Clara Worker", ...(await checkWorker()) });
+
+  // Faehigkeits-Ping (W-STABIL-3): klopft alles an, woran Clara-Funktionen
+  // wirklich haengen - Profil-Tool-Routen, Plattform-CFs, ElevenLabs, Lena.
+  checks.push({ name: "Tool-Routen (Profil -> MAS)", ...(await checkToolRoutes()) });
+  checks.push({ name: "Plattform Cloud Functions", ...(await checkCloudFunctions()) });
+  checks.push({ name: "ElevenLabs (Lisa/TTS)", ...(await checkElevenLabs()) });
+  checks.push({ name: "Lena-STT (Doku)", ...(await checkLena()) });
 
   const overall = checks.every((c) => c.ok) ? "green" : "red";
   return { overall, ts: new Date().toISOString(), model, checks };

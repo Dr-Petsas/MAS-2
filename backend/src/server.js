@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import { todayBerlin } from "./clara/daySchedule.js";
 import { dokuAbendlauf } from "./clara/dokuWaechter.js";
+import { runMorgenlauf } from "./clara/morgenlauf.js";
 import { runProaktivSweep } from "./clara/interruptPolicy.js";
 import { sweepRecallOutcomes, dailyInitiativeScan } from "./clara/recallCoach.js";
 import { sweepAbsenceRebookings } from "./clara/absencePlanner.js";
@@ -445,6 +446,32 @@ server.listen(PORT, () => {
       }
     }, 5 * 60_000);
     log.info("recall initiative scheduler enabled");
+  }
+
+  // Morgenlauf (W-STABIL-6, 28.07.2026): vor Praxisbeginn Faehigkeits-Ping +
+  // Verkaufskern-Register (SAFE-Modus, keine echten Pushes/SMS aus den Tests),
+  // Ergebnis als EIN Push aufs Handy. Einmal pro Tag, Fenster bis 12 Uhr,
+  // damit ein spaeter MAS-Start den Lauf nachholt. Not-Aus: CLARA_MORGENLAUF=0.
+  if (DEFAULT_CLIENT_ID && process.env.CLARA_MORGENLAUF !== "0") {
+    const zeit = /^(\d{1,2}):(\d{2})$/.exec((process.env.CLARA_MORGENLAUF_ZEIT || "06:30").trim());
+    const zH = zeit ? Number(zeit[1]) : 6;
+    const zM = zeit ? Number(zeit[2]) : 30;
+    let lastMorgenlauf = "";
+    setInterval(async () => {
+      try {
+        const berlinHM = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+        const [hh, mm] = berlinHM.split(":").map(Number);
+        const today = todayBerlin();
+        if ((hh > zH || (hh === zH && mm >= zM)) && hh < 12 && lastMorgenlauf !== today) {
+          lastMorgenlauf = today;
+          const out = await runMorgenlauf(DEFAULT_CLIENT_ID, { publicBaseUrl: PUBLIC_BASE_URL });
+          log.info("morgenlauf.scheduled_run", { ok: out.ok, body: out.body || "", pushed: out.pushed?.ok });
+        }
+      } catch (e) {
+        log.warn("morgenlauf.scheduler_error", { error: String(e?.message || e) });
+      }
+    }, 5 * 60_000);
+    log.info("morgenlauf scheduler enabled", { zeit: `${String(zH).padStart(2, "0")}:${String(zM).padStart(2, "0")}` });
   }
 
   // QM (Julia): wiederkehrende Erinnerungen zu fälligen Jobs materialisieren und
