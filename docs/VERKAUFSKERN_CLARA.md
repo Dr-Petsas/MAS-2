@@ -112,6 +112,19 @@ Bianca-Arbeit in Clara-Sessions.
   Flip-Sperre) laeuft. Neu dazu: `vk-18b` (gezieltes Einbestellen ueber
   `search_patient` -> `gapfill_call_patient`, Beweis faellig) und der
   Abwesenheits-Block im Gap-Fill-Modultest (Punkt 19 gruen).
+- **27.07.2026 23:45: Register auf 28 Faelle erweitert und KOMPLETT gruen;
+  zwei Voll-Gates gruen (23:00 Uhr 27/27, 23:38 Uhr 28/28; Quote 91,2 %,
+  Flip-Sperre 0 gekippt).** `vk-18b` deckte beim ersten Messlauf einen
+  ECHTEN Live-Fehler auf: "Bestell sie fuer morgen um zehn ein. Sag ihr
+  ..." buchte STILL einen Termin (`book_for_patient`) und behauptete, die
+  Patientin sei informiert. Jetzt deterministisch: Einbestell-Intent ->
+  `gapfill_call_patient` (Umleitung falscher Tools, Synthese bei Text,
+  confirm-Stufe nach dem Ja; Subsetting-Fenster "bestell..ein" 30->80
+  Zeichen). Dazu `vk-05`-Backstop: naechster-freier-Termin-Frage ohne
+  Tool synthetisiert `next_free_slot` (kippte im Messlauf durch
+  Modell-Roulette). Worker um 23:39 neu gestartet — der Stand ist LIVE
+  (Tag `stabil-2026-07-27-nacht`). Offen fuer den Chef: begleiteter
+  Ende-zu-Ende-Livetest (Lisa ruft Testnummer an, Bericht kommt zurueck).
 
 ## Befund Lueckenfueller-Kette (Audit 27.07.2026 abends)
 
