@@ -411,8 +411,13 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   // laengst alles vorbei ist. Ist der eigene Kalender-Tag durch, sprechen wir
   // im Rueckblick und lassen vergangene Freislots/Vorbereitungs-Hinweise weg.
   // nowMs ist injizierbar (Tests) — Default ist die echte Uhr.
+  // 27.07.2026 (Chef): Auch VERGANGENE Tage gehoeren in den Rueckblick. Fuer
+  // "letzten Mittwoch" kam bisher "Letzte Woche Mittwoch haben Sie 5 Termine"
+  // samt Freislot-Angebot — Gegenwartsform und Vorschau fuer einen Tag, der
+  // laengst vorbei ist. dayOver deckt das jetzt mit ab.
   const isToday = day === todayBerlin();
-  const dayOver = Boolean(isToday && briefing?.lastMs && nowMs > briefing.lastMs);
+  const isPast = day < todayBerlin();
+  const dayOver = Boolean(isPast || (isToday && briefing?.lastMs && nowMs > briefing.lastMs));
   const futureGaps = (gaps) => (isToday ? (gaps || []).filter((x) => (x.endMs || x.startMs || 0) > nowMs) : (gaps || []));
   if (!briefing || briefing.total === 0) {
     const blocks = briefing?.absences?.length
@@ -420,12 +425,14 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       : "";
     // Lockerheit 1 (10.07.2026): auch die Leer-Meldung rotiert. Fakten-frei —
     // alle Varianten sagen dasselbe: kein Termin an diesem Tag.
-    const leer = vary("brief.leer", [
-      `${rel} sind keine Termine gebucht.`,
-      `${rel} ist der Kalender leer.`,
-      `${rel} steht nichts im Kalender.`,
-      `${rel} sind keine Termine gebucht — freie Bahn.`,
-    ]);
+    const leer = isPast
+      ? `${rel} waren keine Termine gebucht.`
+      : vary("brief.leer", [
+        `${rel} sind keine Termine gebucht.`,
+        `${rel} ist der Kalender leer.`,
+        `${rel} steht nichts im Kalender.`,
+        `${rel} sind keine Termine gebucht — freie Bahn.`,
+      ]);
     return cap(`${leer}${blocks}${closedDayReason(day)}`).trim();
   }
 
@@ -545,7 +552,11 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   // Tag ist durch: kurzer Rueckblick, KEINE vorausschauenden Hinweise mehr
   // (Freislots, Vorzubereiten, Unbestaetigtes ergeben abends keinen Sinn).
   if (dayOver) {
-    const recap = pick([
+    const recap = pick(isPast ? [
+      "Das war der Tag.",
+      "Mehr stand an dem Tag nicht im Kalender.",
+      "Damit war der Tag durch.",
+    ] : [
       "Das war Ihr Tag.",
       "Der Tag ist damit durch.",
       "Für heute war das alles.",

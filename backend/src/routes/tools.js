@@ -657,17 +657,29 @@ router.post("/tools/day-appointments", async (req, res) => {
       const echte = appts.filter((a) => !a.isAbsence);
       const n = echte.length;
       const wer = String(req.body?.doctorName || "").trim() || operatorDoctorName || "";
-      const werBit = wer && wer !== operatorDoctorName ? `${wer} hat` : "Sie haben";
       const rel = relativeDayLabel(day.date);
-      const vergangen = day.date < todayBerlin();
-      const verb = vergangen ? werBit.replace(/\bhat\b/, "hatte").replace(/\bhaben\b/, "hatten") : werBit;
+      // Rueckblick auch fuer HEUTE, sobald der letzte Termin durch ist —
+      // abends "Heute haben Sie 3 Termine" klingt nach Zukunft.
+      const letzterDurch = n > 0
+        && (echte[n - 1].endMs || echte[n - 1].startMs) < Date.now();
+      const vergangen = day.date < todayBerlin()
+        || (day.date === todayBerlin() && !remaining && letzterDurch);
+      // Wortstellung (27.07.2026): die Zeitangabe steht vorn, also MUSS das
+      // Verb vor das Subjekt ("Letzte Woche Mittwoch hatten Sie ..."). Vorher
+      // kam "Letzte Woche Mittwoch Sie hatten 5 Termine" heraus.
+      const fremd = wer && wer !== operatorDoctorName;
+      const verb = fremd
+        ? `${vergangen ? "hatte" : "hat"} ${wer}`
+        : `${vergangen ? "hatten" : "haben"} Sie`;
       const spanne = n
         ? `, von ${new Date(echte[0].startMs).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr bis ${new Date(echte[n - 1].startMs).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr`
         : "";
+      // Abends mit remaining=true heisst 0 nicht "keine Termine" (der Tag hatte
+      // welche), sondern "nichts mehr".
       const zahlSatz = n === 0
-        ? `${rel} ${verb} keine Termine.`
+        ? (remaining ? `${rel} steht nichts mehr an.` : `${rel} ${verb} keine Termine.`)
         : `${rel} ${verb} ${n === 1 ? "einen Termin" : `${n} Termine`}${remaining ? " noch vor sich" : ""}${spanne}.`;
-      const countMessage = `${zahlSatz.charAt(0).toUpperCase()}${zahlSatz.slice(1)} Die Namen lese ich auf Zuruf vor.`;
+      const countMessage = `${zahlSatz.charAt(0).toUpperCase()}${zahlSatz.slice(1)}${n ? " Die Namen lese ich auf Zuruf vor." : ""}`;
       let ccard = null;
       try {
         ccard = karteTerminliste({
