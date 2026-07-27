@@ -36,6 +36,18 @@ check("Guard: fehlendes Zahlwort faellt durch (dreizehn weg)",
 check("Guard: Zahlwoerter unveraendert ok",
   guardOk(quelleWorte, "Kurzer Blick auf heute: sechs Termine, los geht es um neun Uhr, Schluss gegen vierzehn Uhr dreissig. Zwischen zwoelf Uhr zwanzig und dreizehn Uhr bleibt Luft. Ein Neupatient ist dabei.").ok);
 
+// Live 27.07.2026, Heads-up: "... drei Termine ... Damit ist der Kalender fuer
+// heute ABGEARBEITET" kam als "... damit ist der Kalender fuer heute LEER"
+// zurueck. Zahlen und Namen stimmten, die Aussage war das Gegenteil.
+const quelleTagEnde = "Heute hatten Sie drei Termine, zwischen 9 Uhr und 10 Uhr 30. Damit ist der Kalender fuer heute abgearbeitet. Es sind sechs E-Mails eingegangen.";
+check("Guard: dazuerfundene Verneinung faellt durch (abgearbeitet -> leer)",
+  !guardOk(quelleTagEnde, "Du hast heute zwischen 9 Uhr und 10 Uhr 30 drei Termine, damit ist der Kalender fuer heute leer. Es sind sechs E-Mails reingekommen.").ok);
+check("Guard: gleiche Aussage anders gesagt bleibt ok",
+  guardOk(quelleTagEnde, "Du hattest heute drei Termine, zwischen 9 Uhr und 10 Uhr 30 - damit ist der Kalender fuer heute abgearbeitet. Reingekommen sind sechs E-Mails.").ok);
+check("Guard: Verneinung aus der Quelle darf bleiben",
+  guardOk("Heute sind keine Termine gebucht, der Kalender ist leer. Es sind sechs E-Mails eingegangen.",
+    "Heute ist nichts gebucht, der Kalender bleibt leer - dafuer liegen sechs E-Mails da.").ok);
+
 // --- 2) Echte Umformulierung -------------------------------------------------
 const laeufe = [];
 for (let i = 0; i < 3; i++) {

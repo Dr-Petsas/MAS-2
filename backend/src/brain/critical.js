@@ -136,6 +136,34 @@ export function extractDeadlineMs(text) {
   return null;
 }
 
+// 27.07.2026 (Live 17:15, Heads-up): Im Tages-Lagebild standen als
+// Auffälligkeiten "Post von Kammer oder Behörde" — einmal von
+// „Hörgerät-Sensation 2026", einmal von prepaid@reichelt.de, dazu 26 weitere
+// Punkte. Werbemails also. Ursache ist die PFLICHT-FUSSZEILE deutscher
+// Geschäftsmails: „Registergericht: Amtsgericht München HRB 12345",
+// „zuständige Kammer: IHK …". Das Eskalations-Radar las das als Behördenpost.
+// Der Rechtsanhang gehört nicht zur Nachricht — er wird vor der Bewertung
+// abgeschnitten. Der eigentliche Text (und damit jede echte Drohung, Mahnung
+// oder Kammer-Anfrage im Fließtext) bleibt unangetastet.
+const FUSSZEILEN_RE = new RegExp(
+  "^\\s*(?:-{2,}\\s*$|_{3,}\\s*$"
+  + "|impressum\\b|registergericht\\b|handelsregister\\b|amtsgericht\\s+\\w+\\s+hr"
+  + "|sitz\\s+der\\s+gesellschaft\\b|gesch(?:ä|ae)ftsf(?:ü|ue)hrer\\b"
+  + "|ust[-\\s]?idnr\\b|umsatzsteuer-?identifikationsnummer\\b"
+  + "|steuernummer\\b|zust(?:ä|ae)ndige\\s+kammer\\b|aufsichtsbeh(?:ö|oe)rde\\b"
+  + "|diese\\s+e-?mail\\s+(?:und|enth)|newsletter\\s+abbestellen\\b"
+  + "|vom\\s+newsletter\\s+abmelden\\b|unsubscribe\\b|abmelden\\b)",
+  "i");
+
+/** Rechts-/Werbe-Fusszeile abschneiden (ab der ersten Marker-Zeile). */
+export function ohneFusszeile(text) {
+  const zeilen = String(text || "").split(/\r?\n/);
+  const i = zeilen.findIndex((z) => FUSSZEILEN_RE.test(z));
+  // Nur schneiden, wenn noch echter Text davor steht — sonst bewerten wir nichts.
+  if (i <= 0) return String(text || "");
+  return zeilen.slice(0, i).join("\n");
+}
+
 /**
  * Brisanz-Einschätzung über Betreff + Text (Mail) bzw. Patienten-Turns
  * (Telefonat). Deterministisch, keywords-basiert, mit Beleg-Zitat.
@@ -144,7 +172,7 @@ export function extractDeadlineMs(text) {
  * @returns {{critical: boolean, category: string|null, label: string|null, quote: string, deadlineMs: number|null}}
  */
 export function assessCritical({ subject = "", text = "" } = {}) {
-  const raw = `${subject}\n${text}`;
+  const raw = ohneFusszeile(`${subject}\n${text}`);
   const haystack = fold(raw).replace(/\s+/g, " ");
 
   let hitCat = null;

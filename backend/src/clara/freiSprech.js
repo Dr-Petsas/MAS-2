@@ -171,6 +171,26 @@ function namenOk(quelle, ausgabe) {
     return { ok: true };
 }
 
+// 27.07.2026 (Live 17:15, Heads-up fuer heute): Aus dem deterministischen
+// "Heute hatten Sie drei Termine ... Damit ist der Kalender fuer heute
+// ABGEARBEITET." machte die Umformulierung "... damit ist der Kalender fuer
+// heute LEER." — dieselbe Zahl, gegenteilige Aussage. Zahlen, Namen und Laenge
+// stimmten, der Guard war blind. Eine Verneinung, die in der Quelle NICHT
+// steht, darf die Umformulierung nicht einfuehren.
+const VERNEINUNG_RE = /\b(leer|keine[nmrs]?|kein|nichts|niemand|nie)\b/i;
+
+function verneinungOk(quelle, ausgabe) {
+    if (!VERNEINUNG_RE.test(String(ausgabe || ""))) return { ok: true };
+    if (VERNEINUNG_RE.test(String(quelle || ""))) return { ok: true };
+    return { ok: false, warum: "Verneinung dazuerfunden" };
+}
+
+// "10 Uhr 30 Uhr" — das Modell haengt beim Umbauen gern ein zweites "Uhr" an.
+// Reine Kosmetik am Wortlaut, keine Fakten-Aenderung.
+function entdoppleUhr(text) {
+    return String(text || "").replace(/(\d{1,2}\s*Uhr\s*\d{1,2})\s*Uhr\b/gi, "$1");
+}
+
 /** Deterministischer Fakten-Check der Umformulierung. Exportiert fuer Tests. */
 export function guardOk(quelle, ausgabe) {
     const q = String(quelle || "").trim();
@@ -186,6 +206,8 @@ export function guardOk(quelle, ausgabe) {
     if (!zw.ok) return zw;
     const n = namenOk(q, a);
     if (!n.ok) return n;
+    const v = verneinungOk(q, a);
+    if (!v.ok) return v;
     return { ok: true };
 }
 
@@ -247,7 +269,7 @@ export async function freiFormulieren(text, { kontext = "interne Team-Ansage", t
                 [{ role: "system", content: bauePrompt(ziehStil(), streng) }, { role: "user", content: user }],
                 { temperature: streng ? 0.6 : 0.9, maxTokens: 700, timeoutMs: budget, baseUrl: conf.baseUrl, model: conf.model }
             );
-            const neu = strip(res?.text);
+            const neu = entdoppleUhr(strip(res?.text));
             if (!res?.ok || !neu) { letzterGrund = res?.reason || "leer"; continue; }
             const g = guardOk(quelle, neu);
             if (!g.ok) {
