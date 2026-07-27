@@ -672,7 +672,27 @@ router.post("/tools/day-appointments", async (req, res) => {
 
     const message = [list, memory, prep].filter(Boolean).join(" ");
     try { await emitCommand(clientId, { type: "navigate", date: day.date, calendarId: calendarId || null }); } catch { /* no live session */ }
-    return res.json({ ok: true, date: day.date, message, count: appts.filter((a) => !a.isAbsence).length });
+    // W-DIALOG: strukturierte Termine mitliefern, damit Clara sie turn-
+    // uebergreifend merken kann ("verschieb den" / "den um 14 Uhr"). Der
+    // gesprochene Text (message) bleibt unveraendert.
+    const appointments = appts
+      .filter((a) => !a.isAbsence)
+      .map((a) => ({
+        id: a.id,
+        startMs: a.startMs,
+        endMs: a.endMs,
+        patientName: a.patientName,
+        patientLastName: a.patientLastName,
+        visitMotive: a.visitMotive,
+        calendarName: a.calendarName,
+        comments: a.comments || "",
+        docsStatus: a.docsStatus || "",
+      }));
+    return res.json({
+      ok: true, date: day.date, message,
+      count: appointments.length,
+      appointments,
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -757,6 +777,24 @@ router.post("/tools/patient-appointments", async (req, res) => {
     const rawName = String(req.body?.name || "").trim();
     const hint = String(req.body?.hint || "").trim();
 
+    const packPatientAppts = (result, who, patient) => {
+      // W-DIALOG: strukturierte Termine mitliefern (Merkzettel / Rueckbezuege).
+      const next = result?.next || null;
+      const upcoming = Array.isArray(result?.upcoming) ? result.upcoming : (next ? [next] : []);
+      const named = (a) => a ? {
+        ...a,
+        patientName: a.patientName || who,
+        patientLastName: a.patientLastName || patient?.lastName || "",
+        lastName: patient?.lastName || a.patientLastName || "",
+      } : null;
+      return {
+        ok: true,
+        message: buildSpokenPatientAppointments(result, { who }),
+        next: named(next),
+        upcoming: upcoming.map(named).filter(Boolean),
+      };
+    };
+
     const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
     if (ordinalSource) {
       const remembered = await getPatientCandidates(clientId);
@@ -765,7 +803,7 @@ router.post("/tools/patient-appointments", async (req, res) => {
         await setPatientCandidates(clientId, [byOrd], byOrd);
         const who = `${byOrd.firstName || ""} ${byOrd.lastName || ""}`.trim() || "der Patient";
         const result = await getPatientAppointments(clientId, { patientId: byOrd.id, firstName: byOrd.firstName, lastName: byOrd.lastName });
-        return res.json({ ok: true, message: buildSpokenPatientAppointments(result, { who }) });
+        return res.json(packPatientAppts(result, who, byOrd));
       }
     }
 
@@ -797,7 +835,7 @@ router.post("/tools/patient-appointments", async (req, res) => {
     await setPatientCandidates(clientId, candidates, sel);
     const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
     const result = await getPatientAppointments(clientId, { patientId: sel.id, firstName: sel.firstName, lastName: sel.lastName });
-    return res.json({ ok: true, message: buildSpokenPatientAppointments(result, { who }) });
+    return res.json(packPatientAppts(result, who, sel));
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

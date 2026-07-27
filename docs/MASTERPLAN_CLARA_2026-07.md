@@ -1177,6 +1177,111 @@ hat eine einfrierbare Basislinie mit Zuruecksetzen; Ausgaenge gehen im Testlauf
 NIE an echte Patienten; `run_tests.py`-Verhalten fuer das Release-Gate bleibt
 byte-identisch (Labor ist additiv); Clara-Gate gruen.
 
+## Phase W-DIALOG - Clara fuehrt Gespraeche statt Ansagen (Chef 27.07.2026)
+
+**Auftrag (sinngemaess):** "Auf jede Frage kommt eine Antwort - aber kein Mensch
+redet so. Es muessen Rueckfragen kommen." Beispiel Chef: "Loesch den Termin
+morgen von Herrn Meier" soll fuehren zu "Moment, ich schau nach ... ich habe
+einen um 14 Uhr, meinen Sie den?" - und weiter: "Er kommt mit seiner Frau, soll
+ich die auch absagen?", "Er hat heute frueh eine Mail geschickt, dass er absagen
+will." Ebenso beim Briefing: NICHT 20 Sekunden Ansage, sondern rauszoomen
+("Beginn 8 Uhr Herr Meier, Schluss 17 Uhr, Luecke um 12 - was brauchen Sie?")
+und dann Schritt fuer Schritt vertiefen. Ebenso bei Fehlschlaegen: "Moment,
+finde ich nicht ... wann war der denn da?" - "kein Patient, der hat eine Mail
+geschrieben" - "ah, gefunden". Kurz: **turnuebergreifendes Verstaendnis.**
+
+**Befund der Bestandsaufnahme (27.07.):** Das Einstufige ist KEIN Modell-Defizit
+und keine Prompt-Frage. Der Prompt verlangt Rueckfragen bei Mehrdeutigkeit
+bereits, und der Katalog prueft sie (`response_question`). Drei Stellen
+verhindern sie deterministisch:
+- **Intent-Router** (`openai_compat_llm.py` ~2217): das Modell ruft
+  `search_patient` (nachschauen), der Router schreibt es bei Storno-Intent in
+  `cancelAppointment` um. Der Schritt "erst schauen" wird aktiv gestrichen.
+- **Fakten-Fast-Route**: ueberspringt bei Kalenderfragen den Pass-1-Lauf und
+  setzt den Tool-Call selbst - es gibt keinen Moment fuer eine Rueckfrage.
+- **`speak_result: verbatim`** (37 von 64 Werkzeugen): MAS baut den fertigen
+  Sprechtext, Clara liest ihn wortwoertlich, der Zug endet OHNE weiteren
+  LLM-Pass. Deshalb ist das Briefing zwingend ein Monolog.
+Dazu fehlt der Kern: **Clara hat keinen Zustand, der einen Zug ueberlebt.**
+Bianca hat ihn (`booking_state`/`manage_state`, `awaiting_cancel_confirm`),
+Clara laeuft mit `assistant_mode: internal` daran vorbei. Symptome, die der
+Chef live hatte: vergessene Angaben im Verlauf (= Zustand fehlt) und wechselnde
+Antworten auf dieselbe Frage (= Werkzeug fehlt, z. B. "wann habe ich frei":
+`plan_absence`/`approve_absence`/`absence_status` gibt es, ein LESE-Werkzeug
+fuer eigene Abwesenheiten nicht). Messbarer Beleg fuer den Architekturfehler:
+10 von 21 Dialogen fallen durch, fast immer im ZWEITEN Zug - das ist keine
+Testschuld, das ist die Architektur.
+
+**Architektur-Entscheidungen (27.07.):**
+1. **EIN Arbeitszustand** pro Sitzung mit drei Inhalten, statt drei Loesungen:
+   geladener Kontext (Tag/Suche, mit Verfallsdatum), zuletzt genannte
+   adressierbare Liste (echte IDs), offene Handlung. Absage-Bestaetigung,
+   Briefing-Nachfassen und Such-Verengung sind derselbe Zustand.
+2. **Rueckbezuege deterministisch**: "den", "die Zweite", "der um 14 Uhr" werden
+   gegen die zuletzt genannte Liste aufgeloest, nicht vom Modell geraten -
+   Ergebnis ist eine echte Termin-ID statt eines Nachnamens (sicherer als heute).
+3. **Zustand lebt in der Sitzung, NICHT im Prompt.** Pro Zug geht nur ein
+   knapper, zur Frage passender Auszug mit harter Obergrenze hinein. Grund:
+   Vorfall 16.06. (Prompt > Kontextfenster -> Ollama schnitt den System-Prompt
+   ab -> Leer-Turns "das habe ich nicht verstanden").
+4. **Zusammenfassen passiert in MAS, nie im Modell.** Die Kurzform des Briefings
+   (Beginn/Ende/Luecke/Anzahl) rechnet MAS und bleibt `verbatim` - damit bleibt
+   die Zusage "jede gesprochene Zahl kommt aus dem Kalender" erhalten
+   (Vorfall 07.07.: erfundene Termine/Patienten).
+5. **Ersatz fuer die Verbatim-Garantie, wo frei formuliert wird:
+   Deckungspruefung.** Liegt ein geladener Kontext vor, darf keine Zahl, kein
+   Name und keine Uhrzeit gesprochen werden, die nicht darin steht. Erst durch
+   den gehaltenen Kontext gibt es ueberhaupt etwas, wogegen man pruefen kann -
+   damit ist freies Formulieren sicherer als das heutige Durchreichen.
+6. **Rueckfragen entstehen aus Befunden, nicht aus Hoeflichkeit.** Nicht das
+   Modell entscheidet, ob es etwas zu fragen gibt, sondern eine Regel ueber dem
+   geholten Umfeld. Kein Befund -> handeln wie heute (Latenz!). Sonst erfindet
+   das Modell Relevanz, so wie es fruher Termine erfunden hat.
+7. **Umfeld-Scan haengt am GEGENSTAND, nicht am Werkzeug.** 64 Werkzeuge, aber
+   nur Patient/Termin/Vorgang/Nachricht/Zeitfenster. Zuordnung deklarativ im
+   Profil wie die `group`-Felder des Tool-Subsettings.
+8. **Vorschlag vs. Ausfuehrung:** Das Blockieren ist Code (Schreib-Werkzeuge
+   verweigern ohne bestaetigten Vorschlag), die Formulierung darf das Modell
+   machen. Unbekanntes Werkzeug -> lieber einmal zu viel fragen (Lehre
+   W-LABOR WP6). Nur-Prompt-Loesungen sind hier verboten: sie wirken sporadisch,
+   und sporadisch falsch ist im Praxisbetrieb das schlechteste Verhalten.
+9. **Rueckfrage darf raten, Handlung nicht.** Die Ehefrau-Erkennung ist eine
+   Heuristik (gleiche Startzeit + gleicher Nachname; ein Familien-/Haushalts-
+   Feld gibt es im Datenmodell NICHT). Als Frage zulaessig, als automatische
+   Doppelabsage niemals.
+
+- [x] WP1 Arbeitszustand pro Sitzung + Rueckbezuege deterministisch aufloesen
+      (`services/dialog_state.py`, Einhaengung Worker + Suite + LLM-Provider).
+      Notaus `CLARA_DIALOG_STATE=0` => byte-identisches Altverhalten.
+      Absicherung: `testsuite/test_dialog_state.py` im Release-Gate.
+- [x] WP1b Labor-Mehrzug: `/ask` akzeptiert `sessionId` + haelt history/
+      session_state (Chatfenster-Anschluss vorbereitet; UI folgt).
+- [x] WP2 Abwesenheits-LESE-Werkzeug: `getDoctorVacation` (Builtin) aktiviert +
+      Katalog `abs-06` + Routing "wann habe ich Urlaub/frei".
+- [ ] WP3 Deckungspruefung in `response_guard.sanitize_reply` (Sicherung VOR
+      der Lockerung). Kein Kontext -> keine Pruefung, im Zweifel behalten.
+- [x] WP4 Briefing rauszoomen: `day_briefing` liefert bereits Lagebild
+      (`overview: true` + Nachfrage); `list_day_appointments` und
+      `patient_next_appointment` liefern jetzt strukturierte Termine fuer den
+      Merkzettel (Nachfassen ohne zweiten Backend-Weg).
+- [x] WP5 Vorschlag/Bestaetigung statt blinder Absage: Storno/Verschieben geht
+      erst ueber `patient_next_appointment`, setzt offene Handlung, "ja"/"den"
+      loest aus. Intent-Router schreibt nicht mehr search→cancel um.
+      Umfeld-Scan (Ehefrau/Mail) noch offen — braucht denselben Scan-Schritt.
+- [ ] WP6 Suche mit Herkunft ("wo habe ich geschaut, was war beinahe") +
+      Verengung desselben Laufs statt Neustart.
+
+**Definition of Done:** Die 10 heute durchfallenden Dialoge laufen gruen, OHNE
+dass eine Erwartung aufgeweicht wird; die Einzelfragen-Quote bleibt >= 89 %;
+jedes Paket hat Notaus + Test im Release-Gate; Sprech-Schicht, Fakten-Waechter,
+Erledigt-Waechter, Begruessungs-Pools, Tool-Subsetting-Kern, Lena/iPad und
+Biancas Pfad bleiben unberuehrt (Bianca wird ohnehin neu gebaut).
+
+**Nicht Teil dieses Pakets (Warteliste):** Rueckgaengig-Werkzeug, proaktives
+Warteliste-Angebot beim freigewordenen Slot, echtes Familien-/Haushalts-Feld in
+der Plattform, Laborauftrags-Status (Daten existieren nicht), Anrufernummer ->
+Patient bei Bianca.
+
 ## Reihenfolge
 
 1. Phase 0 (sofort) -> parallel Dens-Kickoff-Fragen raus + Hardware bestellen
@@ -1251,6 +1356,35 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   + proaktiv (baut auf asapQueue/interruptPolicy). START mit (1): Fundament, ist
   Voraussetzung fuer (2)+(3). Fuzzy-Anlaut-Schaerfung (T/D/Z, P/B, K/G, F/V/W) in
   Clara-Voice `stt_postcorrect` bereits erledigt (Gate gruen).
+- 27.07.2026: **Rueckgaengig-Werkzeug** ("nee, doch nicht") — haeufigster
+  menschlicher Gesprächszug, existiert bei Clara gar nicht. Strategisch
+  interessant: je verlaesslicher das Rueckgaengig, desto WENIGER
+  Bestaetigungsfragen braucht man. Aus W-DIALOG ausgeklammert.
+- 27.07.2026: **Freigewordenen Slot proaktiv anbieten** — nach einer Absage
+  "der Platz um 14 Uhr ist frei, Frau Yildiz wartet auf so einen - soll ich
+  fragen?". Daten liegen vor (Recall-Kandidaten, Luecken-Briefing). Erst nach
+  W-DIALOG, sonst zwei Baustellen gleichzeitig.
+- 27.07.2026: **Echtes Familien-/Haushalts-Feld in der Plattform** — es gibt
+  KEINE Verknuepfung zwischen Patienten (kein household/relative/Begleitperson;
+  `familyDoctorName` ist der Hausarzt). W-DIALOG faehrt zunaechst die Heuristik
+  (gleiche Startzeit + gleicher Nachname) als FRAGE. Bewaehrt sie sich, ist das
+  die Begruendung fuer das richtige Feld (Datenmigration + Oberflaeche).
+- 27.07.2026: **Laborauftrags-Status** ("die Prothese ist noch nicht fertig") —
+  im System nicht vorhanden, Labor existiert nur als Mail-Kategorie und
+  Adressbuch-Kontakt. Braucht eine neue Datenquelle, kein KI-Thema.
+- 27.07.2026: **Anrufernummer -> Patient bei Bianca** — die Rufnummer kommt
+  nirgends aus der Telefonie in die Sitzung (`callerPhone` ist nur ein
+  optionaler Tool-Parameter, den niemand fuellt), deshalb fragt Bianca Name und
+  Nummer ab, die die Anlage beim Klingeln mitliefert. Wichtig: Nummer ist ein
+  Anhaltspunkt, KEIN Ausweis (am Handy geht auch die Ehefrau ran) — also
+  "Spreche ich mit Herrn Meier?" statt Formular. Zurueckgestellt, weil Bianca
+  gerade neu gebaut wird (Chef 27.07.).
+- 27.07.2026: **Lisa fragt trotz vorhandenem Kontext nach Name/Nummer** — ihre
+  Architektur ist richtig (Buchungswerkzeuge nehmen nur `slot_iso`, der Task ist
+  die Autoritaet, Name/Nummer gehen als Dynamic Variables). Also entweder nutzt
+  der ElevenLabs-Agenten-Prompt die Variablen nicht, oder `bookingContext` war
+  leer (Patient nicht per ID aufloesbar -> Rueckfallmodus ohne Werkzeuge). An
+  einem konkreten Anruf pruefbar: Task traegt `transcriptText` + `bookingContext`.
 
 ## Aenderungslog
 
