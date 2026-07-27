@@ -175,7 +175,7 @@ export async function sophieBill(clientId, args = {}, opts = {}) {
     return {
       ok: true,
       status: "no_match",
-      message: "Ich konnte die Behandlung nicht eindeutig zuordnen. Magst du sie etwas genauer beschreiben?",
+      message: "Ich konnte die Behandlung nicht eindeutig zuordnen. Mögen Sie sie etwas genauer beschreiben?",
     };
   }
 

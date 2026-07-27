@@ -611,13 +611,13 @@ export function buildSpokenGapBriefing(run, { operatorName } = {}) {
   const anyShort = run.gaps.some((g) => isShortNoticeGap(g));
   if (allCandShort || (!candGaps.length && anyShort)) {
     parts.push("Die Lücken liegen allerdings sehr kurzfristig — für einen klassischen Recall ist das oft zu knapp.");
-    parts.push("Wenn du jemand Bestimmten einbestellen möchtest, nenne mir einfach den Namen, dann lasse ich ihn von Lisa anrufen.");
+    parts.push("Wenn Sie jemand Bestimmten einbestellen möchten, nenne mir einfach den Namen, dann lasse ich ihn von Lisa anrufen.");
   }
 
   const lists = run.callLists?.length || 0;
   if (lists) {
     parts.push(`${lists} Anrufliste${lists === 1 ? " wartet" : "n warten"} auf Ihre Freigabe im Monitor.`);
-    parts.push("Wenn du wissen möchtest, wen ich vorschlage, sag: wer sind die Kandidaten.");
+    parts.push("Wenn Sie wissen möchten, wen ich vorschlage, sag: wer sind die Kandidaten.");
   }
   return parts.join(" ");
 }

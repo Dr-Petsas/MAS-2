@@ -342,7 +342,7 @@ export function buildSpokenAnamnese(result, { who = "der Patient" } = {}) {
   // KEIN Humor ueber die Befunde selbst.
   const meldung = vary("anamnese.befunde", [
     `In der Anamnese von ${who}${standEinschub} gibt es auffällige Einträge: ${befunde}.`,
-    `Kurz zur Anamnese von ${who}${standEinschub}: Da steht etwas, das du wissen solltest — ${befunde}.`,
+    `Kurz zur Anamnese von ${who}${standEinschub}: Da steht etwas, das Sie wissen sollten — ${befunde}.`,
     `Wichtig für die Behandlung von ${who}${standEinschub}: ${befunde}.`,
     `Ich habe den Bogen von ${who} durchgesehen${standEinschub} — dabei sind mir diese Punkte aufgefallen: ${befunde}.`,
     `Bei ${who} bitte auf dem Schirm haben${standEinschub}: ${befunde}.`,
@@ -357,9 +357,9 @@ export function buildSpokenAnamnese(result, { who = "der Patient" } = {}) {
   const frage = vary("anamnese.notizfrage", [
     "Soll ich das als Notiz festhalten?",
     "Soll ich Ihnen das an den Termin schreiben?",
-    "Möchtest du, dass ich das als Notiz hinterlege?",
+    "Möchten Sie, dass ich das als Notiz hinterlege?",
     "Sag Bescheid, wenn ich das als Notiz speichern soll.",
-    "Wenn du willst, halte ich das direkt als Notiz fest.",
+    "Wenn Sie wollen, halte ich das direkt als Notiz fest.",
     "Soll ich das für den Termin notieren?",
     "Auf Wunsch schreibe ich das gleich in die Kartei-Notiz.",
     "Soll das als Vermerk an den Termin?",

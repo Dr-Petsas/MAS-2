@@ -100,7 +100,7 @@ export function buildSpokenCaseBriefing(briefing, opts = {}) {
   else if (name) parts.push(`${name},`);
 
   if (briefing.counts.openTotal === 0) {
-    parts.push("Es ist aktuell kein für dich relevanter Vorgang offen. Alles erledigt.");
+    parts.push("Es ist aktuell kein für Sie relevanter Vorgang offen. Alles erledigt.");
     return parts.join(" ");
   }
 

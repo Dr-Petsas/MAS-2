@@ -48,7 +48,7 @@ const STIL_LOSUNGEN = [
     "Erzaehle es als kleinen roten Faden: erst das Bild des Tages, dann die Besonderheiten.",
     "Sprich ruhig und souveraen, mit kurzen Saetzen. Betone Warnungen deutlich.",
     "Klinge einen Tick beschwingt, aber professionell — kein Schema, keine Aufzaehlung.",
-    "Baue EINEN natuerlichen Uebergang ein (z. B. 'dazu solltest du wissen'), sonst schlicht bleiben.",
+    "Baue EINEN natuerlichen Uebergang ein (z. B. 'dazu sollten Sie wissen'), sonst schlicht bleiben.",
     "Formuliere so, wie eine erfahrene Praxismanagerin es muendlich zusammenfassen wuerde.",
     "Wechsle die Satzlaenge: mal kurz und knackig, mal ein laengerer erklaerender Satz.",
     // "Stelle Zusammenhaenge her ('weil','deshalb')" stand hier — GESTRICHEN

@@ -259,7 +259,7 @@ export async function runProaktivSweep(clientId, { publicBaseUrl = "", nowMs = D
       }
     } else if (d.action === "push" && !pushUsedThisSweep) {
       const r = await notifyOperator(clientId, operatorId, {
-        title: "Wenn du kurz Luft hast", body: item.spoken.slice(0, 240), url: "",
+        title: "Wenn Sie kurz Luft haben", body: item.spoken.slice(0, 240), url: "",
       }).catch(() => ({ ok: false }));
       if (r?.ok) {
         state.announced[d.key] = { at: nowMs, via: "push" };

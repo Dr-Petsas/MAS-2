@@ -259,7 +259,7 @@ export async function findInTreatment(clientId, { query, appointmentId, patientI
     ok: true,
     found: true,
     ...treffer,
-    message: `Gefunden bei ${who}${wann ? ` am ${wann}` : ""}: „${best}". Die Stelle habe ich dir auf den Bildschirm gelegt.`,
+    message: `Gefunden bei ${who}${wann ? ` am ${wann}` : ""}: „${best}". Die Stelle habe ich Ihnen auf den Bildschirm gelegt.`,
   };
 }
 

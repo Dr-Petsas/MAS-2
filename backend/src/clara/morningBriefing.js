@@ -64,7 +64,7 @@ function openItemsLines(briefing) {
   const lines = [];
   if (urgent) {
     lines.push(pick([
-      `Eins solltest du zuerst wissen: ${urgent.who} — ${urgent.summary}`,
+      `Eins sollten Sie zuerst wissen: ${urgent.who} — ${urgent.summary}`,
       `Das Wichtigste vorweg: ${urgent.who} — ${urgent.summary}`,
       `Bevor ich's vergesse, das brennt am ehesten: ${urgent.who} — ${urgent.summary}`,
     ]));
@@ -74,7 +74,7 @@ function openItemsLines(briefing) {
     // sondern einordnen und Filter anbieten.
     lines.push(pick([
       `Daneben ist einiges aufgelaufen — über ${Math.floor(restCount / 10) * 10} offene Einträge, vieles davon Routine. Sag Bescheid, dann filtere ich Ihnen das Wichtigste raus.`,
-      `Es liegen außerdem ungewöhnlich viele offene Einträge an, rund ${Math.floor(restCount / 10) * 10}. Die gehen wir besser gezielt durch, wenn du magst.`,
+      `Es liegen außerdem ungewöhnlich viele offene Einträge an, rund ${Math.floor(restCount / 10) * 10}. Die gehen wir besser gezielt durch, wenn Sie mögen.`,
     ]));
     return lines;
   }
@@ -122,7 +122,7 @@ function gapLines(run) {
   if (run.callLists?.length) {
     lines.push(pick([
       "Die Anruflisten liegen fertig im Monitor — ein Wort von Ihnen und Lisa legt los.",
-      "Wenn du sie freigibst, telefoniert Lisa die Kandidaten ab.",
+      "Wenn Sie sie freigeben, telefoniert Lisa die Kandidaten ab.",
     ]));
   }
   return lines;
@@ -133,7 +133,7 @@ function closingLine() {
   return pick([
     "Soll ich irgendwo tiefer reingehen?",
     "Wo fangen wir an?",
-    "Wenn du mehr zu einem Punkt willst, sag's einfach.",
+    "Wenn Sie mehr zu einem Punkt wollen, sagen Sie es einfach.",
     "Das war's von mir — guten Start!",
   ]);
 }

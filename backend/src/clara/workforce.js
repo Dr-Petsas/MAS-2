@@ -382,7 +382,7 @@ export async function askWorkforce(clientId, query) {
 
   // 1) Urlaubssaldo (wie viele Tage noch) — NICHT bei Historie-Fragen.
   if (/(urlaub|resturlaub|urlaubstage|urlaubsanspruch)/.test(lower) && !/betriebsferien/.test(lower) && !asksWhenOff) {
-    if (named?.candidates) return { ok: true, intent: "vacation", spoken: `Wen genau meinst du? Ich habe ${joinDe(named.candidates.map((m) => m.name))}.` };
+    if (named?.candidates) return { ok: true, intent: "vacation", spoken: `Wen genau meinen Sie? Ich habe ${joinDe(named.candidates.map((m) => m.name))}.` };
     if (named?.staff) return { ok: true, intent: "vacation", spoken: spokenVacation(named.staff, vacationStats(named.staff, absences, year), year) };
     const rows = t.team.filter((m) => m.active).map((m) => ({ staff: m, stats: vacationStats(m, absences, year) }));
     return { ok: true, intent: "vacation_all", spoken: spokenVacationAll(rows, year) };

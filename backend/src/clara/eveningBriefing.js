@@ -39,7 +39,7 @@ function greetingLine(operatorName) {
   return pick([
     `Feierabend${name ? `, ${name}` : ""}!`,
     `Alles klar${name ? `, ${name}` : ""} — machen wir den Tagesabschluss.`,
-    `Bevor du gehst${name ? `, ${name}` : ""}, einmal kurz das Wichtige.`,
+    `Bevor Sie gehen${name ? `, ${name}` : ""}, einmal kurz das Wichtige.`,
   ]);
 }
 
@@ -87,7 +87,7 @@ function closingLine(hadUrgent) {
     ]);
   }
   return pick([
-    "Nichts Dramatisches offen — du kannst beruhigt gehen. Schönen Feierabend!",
+    "Nichts Dramatisches offen — Sie können beruhigt gehen. Schönen Feierabend!",
     "Heute bleibt nichts Brisantes liegen. Guten Feierabend!",
     "Alles im grünen Bereich, nichts brennt. Bis morgen!",
   ]);

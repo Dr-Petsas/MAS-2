@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { loadBooking, ensureBerlinTz } from "./booking.js";
-import { todayBerlin, relativeDayLabel, isOwnCalendar, isVirtualStatus } from "./daySchedule.js";
+import {
+  todayBerlin, relativeDayLabel, isOwnCalendar, isVirtualStatus, clearAbsenceCache,
+} from "./daySchedule.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
 import { sendMail } from "../mail/mailbox.js";
 import { listAccounts } from "../mail/accounts.js";
@@ -87,7 +89,7 @@ const ABSENCE_QUIPS = [
   "Na gut — aber das Wartezimmer wird weinen.",
   "Urlaub vom Urlaub, verstehe.",
   "Mein Kalender und ich sind not amused.",
-  "Okay, aber nur weil du es bist.",
+  "Okay, aber nur weil Sie es sind.",
   "Und ich? Ich krieg nicht mal Wochenende.",
   "Wenn das so weitergeht, eröffne ich hier eine Strandbar.",
   "Moment, ich hole kurz das Beschwerdebuch … ach, vergiss es.",
@@ -440,7 +442,7 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
   if (counts.sms) how.push(`${counts.sms} per SMS`);
   if (counts.email) how.push(`${counts.email} per E-Mail durch Nadine`);
   if (counts.call) how.push(`${counts.call} per Anruf durch Lisa`);
-  parts.push(`Wenn du freigibst, sperre ich den Zeitraum im Kalender und sage ab: ${how.join(", ")} — jeder Patient bekommt genau eine Nachricht, mit Bitte um Neubuchung.`);
+  parts.push(`Wenn Sie freigeben, sperre ich den Zeitraum im Kalender und sage ab: ${how.join(", ")} — jeder Patient bekommt genau eine Nachricht, mit Bitte um Neubuchung.`);
   if (counts.none) parts.push(`Achtung: für ${counts.none} Patient${counts.none === 1 ? "en" : "en"} habe ich keinen Kontaktweg — die stehen im Monitor zur manuellen Absage.`);
   parts.push("Soll ich das machen? Sage: Abwesenheit freigeben.");
   return { ok: true, caseId, date: day, calendarName: calName, window: winLabel, counts, total: patients.length, message: parts.join(" ") };
@@ -500,6 +502,10 @@ async function writeAbsenceBlock(clientId, plan, { by } = {}) {
     createdAt: now,
     updatedAt: now,
   });
+  // Der Tagesplan haelt mehrtaegige Sperren kurz im Speicher — nach einem
+  // Schreibzugriff muss er neu lesen, sonst plant Clara noch zehn Minuten
+  // lang in eine gerade eingetragene Abwesenheit hinein.
+  clearAbsenceCache(clientId);
   return ref.id;
 }
 

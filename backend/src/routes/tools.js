@@ -6,7 +6,7 @@ import { completeTask } from "../tools/createTask.js";
 import { assertAppEnabled } from "../entitlements.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot, ensureBerlinTz } from "../clara/booking.js";
 import { findDirectoryContact, hasColleagueTitle, spokenDirectoryEntry } from "../clara/directory.js";
-import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, relativeDayLabel, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory, findSameTimeCompanions, buildSpokenCompanionQuestion, dayOfMs } from "../clara/daySchedule.js";
+import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, relativeDayLabel, spokenOwnAbsence, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory, findSameTimeCompanions, buildSpokenCompanionQuestion, dayOfMs } from "../clara/daySchedule.js";
 import { searchContacts } from "../brain/entityProfile.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "../clara/anamnese.js";
 import { polishForChannel } from "../clara/dictation.js";
@@ -680,7 +680,16 @@ router.post("/tools/day-appointments", async (req, res) => {
       const zahlSatz = n === 0
         ? (remaining ? `${rel} steht nichts mehr an.` : `${rel} ${verb} keine Termine.`)
         : `${rel} ${verb} ${n === 1 ? "einen Termin" : `${n} Termine`}${remaining ? " noch vor sich" : ""}${spanne}.`;
-      const countMessage = `${zahlSatz.charAt(0).toUpperCase()}${zahlSatz.slice(1)}${n ? " Die Namen lese ich auf Zuruf vor." : ""}`;
+      // "Keine Termine" heisst an einem Urlaubstag etwas anderes als an einem
+      // leeren Arbeitstag (Chef 27.07.2026) — die eigene Sperre gehoert dazu.
+      const eigeneSperre = spokenOwnAbsence(
+        (day.appointments || []).filter((a) => a.isAbsence).map((a) => ({
+          calendarName: a.calendarName, startMs: a.startMs, endMs: a.endMs,
+          title: a.title || "", multiDay: a.isMultiDay === true,
+        })),
+        { operatorDoctorName, dayOver: vergangen });
+      const countMessage = `${zahlSatz.charAt(0).toUpperCase()}${zahlSatz.slice(1)}`
+        + `${eigeneSperre ? ` ${eigeneSperre}` : ""}${n ? " Die Namen lese ich auf Zuruf vor." : ""}`;
       let ccard = null;
       try {
         ccard = karteTerminliste({
@@ -1305,7 +1314,7 @@ router.post("/tools/start-findings-for-patient", async (req, res) => {
       return res.json({
         ok: true,
         needsConfirm: true,
-        message: `Es gibt mehrere passende Termine heute: ${liste}. Welchen meinst du?`,
+        message: `Es gibt mehrere passende Termine heute: ${liste}. Welchen meinen Sie?`,
       });
     }
     const a = matches[0];
@@ -2975,7 +2984,7 @@ router.post("/tools/team-memo", async (req, res) => {
       status: "open",
       updates: [{ by: who, kind: "note", text }],
     });
-    const findHint = subjectName ? ` Du findest es unter ${subject.name}.` : "";
+    const findHint = subjectName ? ` Sie finden es unter ${subject.name}.` : "";
     res.json({ ok: true, caseId: c.id, message: `Notiert — das Memo steht als Vorgang im Praxisgedächtnis und ist fürs ganze Team sichtbar.${findHint}` });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -4111,7 +4120,7 @@ router.post("/tools/push-contact", async (req, res) => {
     const phone = String(sel?.mobilePhoneNumber || sel?.phone || "").trim();
     const email = String(sel?.email || "").trim();
     if (!sel || (!name && !phone && !email)) {
-      return res.json({ ok: false, message: "Wen meinst du? Bitte nenne mir zuerst den Namen, dann suche ich den Kontakt." });
+      return res.json({ ok: false, message: "Wen meinen Sie? Bitte nennen Sie mir zuerst den Namen, dann suche ich den Kontakt." });
     }
     if (!phone && !email) {
       return res.json({ ok: true, message: `Zu ${name} ist weder Telefonnummer noch E-Mail hinterlegt — es gibt nichts zu schicken.` });

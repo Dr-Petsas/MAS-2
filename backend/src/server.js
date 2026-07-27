@@ -105,7 +105,7 @@ app.get("/m/manifest.webmanifest", (req, res) => {
   const manifest = {
     name: "Clara – Praxis-Assistentin",
     short_name: "Clara",
-    description: "Clara ruft dich an: Briefings und Rückfragen deiner Praxis-KI direkt aufs Handy.",
+    description: "Clara ruft Sie an: Briefings und Rückfragen Ihrer Praxis-KI direkt aufs Handy.",
     display: "standalone",
     background_color: "#0a1322",
     theme_color: "#0a1322",

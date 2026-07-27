@@ -228,7 +228,7 @@ export async function buildNextPatientsBriefing(clientId, { date, calendarId, co
         }
         if (treffer.length > 1) {
             const namen = treffer.slice(0, 4).map((a) => `${a.patientName || a.patientLastName} um ${hhmm(a.startMs)}`).join("; ");
-            return { ok: true, message: `Es gibt mehrere passende Termine: ${namen}. Welchen meinst du?`, count: treffer.length };
+            return { ok: true, message: `Es gibt mehrere passende Termine: ${namen}. Welchen meinen Sie?`, count: treffer.length };
         }
         return await renderPatients(clientId, treffer.slice(0, 1), { single: true });
     }
@@ -378,7 +378,7 @@ async function renderChartPatient(clientId, patientName) {
             .map((p) => `${p.firstName || ""} ${p.lastName || ""}`.trim())
             .filter(Boolean)
             .join("; ");
-        return { ok: true, message: `Zu „${patientName}" gibt es mehrere Patienten${namen ? `: ${namen}` : ""}. Wen genau meinst du?`, count: (subj.candidates || []).length };
+        return { ok: true, message: `Zu „${patientName}" gibt es mehrere Patienten${namen ? `: ${namen}` : ""}. Wen genau meinen Sie?`, count: (subj.candidates || []).length };
     }
 
     const who = subj.name || patientName;

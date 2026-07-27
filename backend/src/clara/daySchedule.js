@@ -74,6 +74,9 @@ function normalizeAppointment(id, o) {
     patientLastName: (o.patient?.lastName || "").trim(),
     patientGender: (o.patient?.gender || "").trim().toLowerCase(),
     comments: String(o.comments || "").trim(),
+    // Titel der Sperrzeit ("Urlaub", "Fortbildung", "Notar") — bei Terminen
+    // leer. Clara nennt ihn, damit eine Abwesenheit als solche hoerbar wird.
+    title: String(o.title || "").trim(),
     docsStatus: String(o.patientDocsStatus || "").trim().toLowerCase(),
     newPatient: o.patient?.newPatient === true,
     isAbsence: o.calendarItemType === "absence",
@@ -153,6 +156,79 @@ export function isVirtualStatus(status) {
   return st === "needsConfirmation" || st === "declined";
 }
 
+// ---------------------------------------------------------------------------
+// Mehrtaegige Abwesenheiten, die in einen Tag HINEINRAGEN (Chef 27.07.2026).
+//
+// Vorfall: Clara rief abends an und wollte am Dienstag, 28.07. "sechs freie
+// Stunden" mit Recall-Patienten fuellen — obwohl im Kalender eine Sperre vom
+// 27.07. 10:30 bis 28.07. 17:00 stand. Der Grund liegt in der Tagesabfrage:
+// sie holt Termine mit `start` INNERHALB des Tages. Eine Abwesenheit, die
+// TAGS ZUVOR beginnt, hat ihren Start ausserhalb des Fensters und war damit
+// unsichtbar — an jedem Folgetag. Beim Urlaub vom 29.07. bis 13.08. waere
+// also jeder Tag ab dem 30.07. als komplett frei gewertet worden.
+//
+// Firestore kann "start < Tagesende UND end >= Tagesbeginn" nur mit eigenem
+// Kompositindex. Statt eines Index-Deploys holen wir die Sperren EINMAL fuer
+// ein breites Fenster und halten sie kurz im Speicher; Abwesenheiten sind
+// selten und aendern sich nicht im Minutentakt. Schreibt jemand eine neue
+// Abwesenheit, leert absencePlanner den Zwischenspeicher (clearAbsenceCache).
+// ---------------------------------------------------------------------------
+const CARRY_LOOKBACK_MS = 45 * 24 * 60 * 60 * 1000;
+const CARRY_LOOKAHEAD_MS = 120 * 24 * 60 * 60 * 1000;
+const CARRY_TTL_MS = 10 * 60 * 1000;
+const carryCache = new Map(); // `${clientId}:${locationId}` -> { fetchedAt, fromMs, toMs, items }
+
+/** Zwischenspeicher der Abwesenheiten verwerfen (nach jedem Schreibzugriff). */
+export function clearAbsenceCache(clientId) {
+  if (!clientId) { carryCache.clear(); return; }
+  for (const key of [...carryCache.keys()]) {
+    if (key.startsWith(`${clientId}:`)) carryCache.delete(key);
+  }
+}
+
+async function loadAbsenceWindow(clientId, locationId) {
+  const key = `${clientId}:${locationId}`;
+  const now = Date.now();
+  const cached = carryCache.get(key);
+  if (cached && now - cached.fetchedAt < CARRY_TTL_MS) return cached;
+
+  const fromMs = now - CARRY_LOOKBACK_MS;
+  const toMs = now + CARRY_LOOKAHEAD_MS;
+  const snap = await admin.firestore()
+    .collection("clients").doc(clientId)
+    .collection("locations").doc(locationId)
+    .collection("appointments")
+    .where("start", ">=", new Date(fromMs))
+    .where("start", "<=", new Date(toMs))
+    .orderBy("start")
+    .get();
+  const items = snap.docs
+    .map((d) => normalizeAppointment(d.id, d.data()))
+    .filter((a) => a && a.isAbsence);
+  const eintrag = { fetchedAt: now, fromMs, toMs, items };
+  carryCache.set(key, eintrag);
+  return eintrag;
+}
+
+/**
+ * Abwesenheiten, die VOR dem Tag beginnen und in ihn hineinreichen.
+ * Best-effort: schlaegt der Zwischenspeicher fehl, ist die Liste leer und der
+ * Tag verhaelt sich wie bisher (nie ein harter Fehler auf dem Tagespfad).
+ */
+async function carryOverAbsences(clientId, locationId, dayStartMs, dayEndMs) {
+  try {
+    const fenster = await loadAbsenceWindow(clientId, locationId);
+    if (dayStartMs < fenster.fromMs || dayStartMs > fenster.toMs) return [];
+    return fenster.items.filter((a) => {
+      const s = a.startMs || 0;
+      const e = a.endMs || s;
+      return s < dayStartMs && e > dayStartMs && s <= dayEndMs;
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function getDayAppointments(clientId, { date, calendarId } = {}) {
   const day = (date || "").trim() || todayBerlin();
   const booking = await loadBooking(clientId).catch(() => null);
@@ -173,6 +249,25 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
     .get();
 
   let appts = snap.docs.map((d) => normalizeAppointment(d.id, d.data())).filter(Boolean);
+  // Sperren vom Vortag, die in diesen Tag hineinragen, gehoeren dazu — sonst
+  // gilt der zweite Urlaubstag als frei (Chef 27.07.2026).
+  const uebergreifend = await carryOverAbsences(
+    clientId, locationId, dayStart.getTime(), dayEnd.getTime());
+  if (uebergreifend.length) {
+    const bekannt = new Set(appts.map((a) => a.id));
+    for (const a of uebergreifend) {
+      // Auf den Tag zuschneiden: ein Urlaub vom 29.07. bis 13.08. sperrt am
+      // 30.07. den GANZEN Tag, nicht "bis 17:15" (die Uhrzeit des letzten Tages).
+      if (!bekannt.has(a.id)) {
+        appts.push({
+          ...a,
+          startMs: Math.max(a.startMs, dayStart.getTime()),
+          endMs: Math.min(a.endMs || a.startMs, dayEnd.getTime()),
+        });
+      }
+    }
+    appts.sort((a, b) => a.startMs - b.startMs);
+  }
   // Mirror the platform calendar: drop temporary holds (no patient & not an
   // absence block) and multi-day NON-absence items, so counts match what the
   // team sees. Mehrtaegige ABWESENHEITEN (Urlaub/Fortbildung ueber mehrere
@@ -254,7 +349,24 @@ export async function getRangeAppointments(clientId, { from, to, calendarId } = 
     .get();
 
   let appts = snap.docs.map((d) => normalizeAppointment(d.id, d.data())).filter(Boolean);
-  appts = appts.filter((a) => (a.patientId || a.isAbsence) && !a.isMultiDay);
+  // Auch hier: eine Sperre, die vor dem Zeitraum beginnt und hineinreicht,
+  // gehoert dazu (Wochen-/Bereichsuebersicht, Chef 27.07.2026).
+  const uebergreifend = await carryOverAbsences(
+    clientId, locationId, rangeStart.getTime(), rangeEnd.getTime());
+  if (uebergreifend.length) {
+    const bekannt = new Set(appts.map((a) => a.id));
+    for (const a of uebergreifend) {
+      if (!bekannt.has(a.id)) {
+        appts.push({
+          ...a,
+          startMs: Math.max(a.startMs, rangeStart.getTime()),
+          endMs: Math.min(a.endMs || a.startMs, rangeEnd.getTime()),
+        });
+      }
+    }
+    appts.sort((a, b) => a.startMs - b.startMs);
+  }
+  appts = appts.filter((a) => (a.patientId || a.isAbsence) && (!a.isMultiDay || a.isAbsence));
   const showVirtual = await showVirtualAppointments(clientId, locationId);
   if (!showVirtual) {
     appts = appts.filter((a) => a.isAbsence || !isVirtualStatus(a.status));
@@ -381,7 +493,10 @@ export function computeDayBriefing(appointments = [], { calendars = [], nowMs = 
     docsRed: real.filter((a) => a.docsStatus === "red").length,
     attention,
     remaining,
-    absences: absences.map((a) => ({ calendarName: a.calendarName, startMs: a.startMs, endMs: a.endMs })),
+    absences: absences.map((a) => ({
+      calendarName: a.calendarName, startMs: a.startMs, endMs: a.endMs,
+      title: a.title || "", multiDay: a.isMultiDay === true,
+    })),
     firstMs: real.length ? Math.min(...real.map((a) => a.startMs)) : 0,
     lastMs: real.length ? Math.max(...real.map((a) => a.endMs || a.startMs)) : 0,
   };
@@ -394,6 +509,52 @@ function spokenGaps(gaps) {
   const g = gaps.slice(0, 3).map((x) => `von ${spokenTime(x.startMs)} bis ${spokenTime(x.endMs)}`);
   if (g.length === 1) return g[0];
   return `${g.slice(0, -1).join(", ")} und ${g[g.length - 1]}`;
+}
+
+// Titel einer Sperrzeit sprechbar machen: erste Zeile, ohne fuehrende
+// Uhrzeit-Angabe, gekappt. Aus "15:00 bis 17:00 Uhr\nModule 1: Fundamentals
+// of Oral Implantology" wird "Module 1: Fundamentals of Oral Implantology".
+function spokenAbsenceTitle(title) {
+  const zeilen = String(title || "").split(/\r?\n/).map((z) => z.trim()).filter(Boolean);
+  const ohneZeit = zeilen.filter((z) => !/^\d{1,2}[:.]\d{2}\s*(?:bis|-|–)\s*\d{1,2}[:.]\d{2}(?:\s*Uhr)?$/i.test(z));
+  const t = (ohneZeit[0] || zeilen[0] || "").replace(/\s+/g, " ").trim();
+  return t.length > 70 ? "" : t;
+}
+
+/**
+ * Die EIGENE Abwesenheit des Chefs klar aussprechen (Chef 27.07.2026).
+ *
+ * Vorher hiess es nur "Ausserdem sind 2 Sperrzeiten eingetragen" — und der
+ * Lueckenschliesser bot demselben Chef an, seinen Urlaubstag mit Recall-
+ * Patienten zu fuellen. Wer nicht da ist, muss das als ersten Satz hoeren.
+ * Pure: bekommt briefing.absences und den Namen des fragenden Behandlers.
+ */
+export function spokenOwnAbsence(absences = [], { operatorDoctorName = "", dayOver = false } = {}) {
+  const eigen = (absences || []).filter((a) => a.calendarName
+    && isOwnCalendar(a.calendarName, operatorDoctorName));
+  if (!eigen.length) return "";
+  // Laengste eigene Sperre entscheidet — sie prägt den Tag.
+  const a = [...eigen].sort((x, y) => ((y.endMs - y.startMs) - (x.endMs - x.startMs)))[0];
+  const von = new Date(a.startMs);
+  const bis = new Date(a.endMs || a.startMs);
+  const minute = (d) => d.getHours() * 60 + d.getMinutes();
+  const abTagesbeginn = minute(von) <= 1; // vom Vortag hereingezogen
+  // "laeuft weiter" heisst: bis Tagesende ODER ueber den Tag hinaus. Die Sperre
+  // 27.07. 10:30 -> 28.07. 17:00 darf am 27. nicht als "bis 17 Uhr" erscheinen.
+  const bisTagesende = minute(bis) >= 23 * 60 || dayOfMs(a.endMs) > dayOfMs(a.startMs);
+  const titel = spokenAbsenceTitle(a.title);
+  const grund = titel ? ` — ${titel}` : "";
+  const war = dayOver ? "waren" : "sind";
+  if (abTagesbeginn && bisTagesende) {
+    return `Sie selbst ${war} ganztägig nicht da${grund}.`;
+  }
+  if (abTagesbeginn) {
+    return `Sie selbst ${war} erst ab ${spokenTime(a.endMs)} da, davor ist Ihr Kalender gesperrt${grund}.`;
+  }
+  if (bisTagesende) {
+    return `Sie selbst ${war} ab ${spokenTime(a.startMs)} nicht mehr da${grund}.`;
+  }
+  return `Ihr Kalender ${dayOver ? "war" : "ist"} von ${spokenTime(a.startMs)} bis ${spokenTime(a.endMs)} gesperrt${grund}.`;
 }
 
 // Gesprochenes Tagesbriefing in ECHTEN Sätzen. Vorher klang das nach
@@ -420,9 +581,16 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   const dayOver = Boolean(isPast || (isToday && briefing?.lastMs && nowMs > briefing.lastMs));
   const futureGaps = (gaps) => (isToday ? (gaps || []).filter((x) => (x.endMs || x.startMs || 0) > nowMs) : (gaps || []));
   if (!briefing || briefing.total === 0) {
-    const blocks = briefing?.absences?.length
-      ? ` Es ${briefing.absences.length === 1 ? "ist nur eine Sperrzeit" : `sind nur ${briefing.absences.length} Sperrzeiten`} eingetragen.`
-      : "";
+    // Eigene Abwesenheit zuerst — "keine Termine" heisst an einem Urlaubstag
+    // etwas anderes als an einem leeren Arbeitstag (Chef 27.07.2026).
+    const eigen = spokenOwnAbsence(briefing?.absences, { operatorDoctorName, dayOver });
+    const fremdeSperren = (briefing?.absences || []).filter((a) => !a.calendarName
+      || !isOwnCalendar(a.calendarName, operatorDoctorName)).length;
+    const blocks = eigen
+      ? ` ${eigen}`
+      : (fremdeSperren
+        ? ` Es ${fremdeSperren === 1 ? "ist nur eine Sperrzeit" : `sind nur ${fremdeSperren} Sperrzeiten`} eingetragen.`
+        : "");
     // Lockerheit 1 (10.07.2026): auch die Leer-Meldung rotiert. Fakten-frei —
     // alle Varianten sagen dasselbe: kein Termin an diesem Tag.
     const leer = isPast
@@ -585,9 +753,16 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       : `${unconf} Termine sind noch unbestätigt.`);
   }
   if (briefing.absences.length) {
-    parts.push(briefing.absences.length === 1
-      ? "Außerdem ist eine Sperrzeit eingetragen."
-      : `Außerdem sind ${briefing.absences.length} Sperrzeiten eingetragen.`);
+    // Eigene Sperre benennen (Urlaub/Fortbildung), fremde nur zaehlen.
+    const eigen = spokenOwnAbsence(briefing.absences, { operatorDoctorName, dayOver });
+    const fremde = briefing.absences.filter((a) => !a.calendarName
+      || !isOwnCalendar(a.calendarName, operatorDoctorName)).length;
+    if (eigen) parts.push(eigen);
+    if (fremde) {
+      parts.push(fremde === 1
+        ? `${eigen ? "Dazu" : "Außerdem"} ist eine Sperrzeit eingetragen.`
+        : `${eigen ? "Dazu" : "Außerdem"} sind ${fremde} Sperrzeiten eingetragen.`);
+    }
   }
 
   // Terminnotizen + Dokumentenstatus — die Behandler-Pflichtinfos. Mehr als

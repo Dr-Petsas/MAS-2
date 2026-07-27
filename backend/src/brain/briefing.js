@@ -124,7 +124,7 @@ export function buildSpokenBriefing(briefing, opts = {}) {
   if (opts.greeting) parts.push(opts.greeting);
 
   if (briefing.counts.openTotal === 0) {
-    parts.push("Aktuell ist nichts Offenes für dich da. Alles erledigt.");
+    parts.push("Aktuell ist nichts Offenes für Sie da. Alles erledigt.");
     return parts.join(" ");
   }
 
@@ -139,7 +139,7 @@ export function buildSpokenBriefing(briefing, opts = {}) {
   if (g.unresolvedByAI.length) {
     parts.push(
       `${g.unresolvedByAI.length} ${g.unresolvedByAI.length === 1 ? "Anliegen wurde" : "Anliegen wurden"} ` +
-        `noch nicht gelöst und ${g.unresolvedByAI.length === 1 ? "braucht" : "brauchen"} dich:`
+        `noch nicht gelöst und ${g.unresolvedByAI.length === 1 ? "braucht" : "brauchen"} Sie:`
     );
     parts.push(...lines(g.unresolvedByAI, (it) => `${it.who}${pat(it)}: ${it.summary}`));
   }

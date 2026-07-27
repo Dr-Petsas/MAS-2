@@ -616,7 +616,7 @@ export async function dailyInitiativeScan(clientId, { targetDate, publicBaseUrl 
 export async function snoozeInitiative(clientId) {
   await configRef(clientId).set({ status: "snoozed", snoozedAt: Date.now() }, { merge: true });
   await clearPendingCallContext(clientId).catch(() => {});
-  return { ok: true, message: "Alles klar, ich halte mich mit dem Recall zurück. Sag einfach Bescheid, wenn du ihn doch starten willst." };
+  return { ok: true, message: "Alles klar, ich halte mich mit dem Recall zurück. Sagen Sie einfach Bescheid, wenn Sie ihn doch starten wollen." };
 }
 
 /** Satz fürs Tagesbriefing, wenn eine unbeantwortete Initiative offen ist. */
@@ -637,7 +637,7 @@ export async function initiativeSuffix(clientId) {
     return "";
   }
   await ref.set({ lastMentionAt: now }, { merge: true }).catch(() => {});
-  return ` Übrigens: ${cfg.summary} Soll ich versuchen, die Lücken zu schließen und Recall-Patienten anrufen zu lassen? Sag einfach ja, dann leg ich los.`;
+  return ` Übrigens: ${cfg.summary} Soll ich versuchen, die Lücken zu schließen und Recall-Patienten anrufen zu lassen? Sagen Sie einfach ja, dann lege ich los.`;
 }
 
 // ----------------------------------------------------------------------------
