@@ -33,6 +33,7 @@ import testlabRouter from "./routes/testlab.js";
 import devicesRouter from "./routes/devices.js";
 import lisaToolsRouter from "./routes/lisaTools.js";
 import treatmentRouter from "./routes/treatment.js";
+import claraSwitchRouter from "./routes/claraSwitch.js";
 import claraRouter from "./routes/clara.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL } from "./routes/_shared.js";
 
@@ -157,7 +158,7 @@ app.get("/m/ipad.webmanifest", (req, res) => {
 // altem lena-doku-template-zahn.js aus dem Safari-Cache (?v= nicht gebumpt) —
 // Befund-Diktate verschwanden, obwohl der Server laengst den Fix auslieferte.
 app.use((req, res, next) => {
-  if (/^\/m\/(ipad|ipad-app|preview|pair|call|lena-01)\.html$/.test(req.path) ||
+  if (/^\/m\/(ipad|ipad-app|preview|pair|call|lena-01|cx7)\.html$/.test(req.path) ||
       /^\/m\/lena-01\//.test(req.path) ||
       /^\/m\/lena-[\w-]+\.js$/.test(req.path)) {
     res.set("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -189,6 +190,7 @@ app.use(testlabRouter);
 app.use(devicesRouter);
 app.use(lisaToolsRouter);
 app.use(treatmentRouter);
+app.use(claraSwitchRouter);
 app.use(claraRouter);
 
 

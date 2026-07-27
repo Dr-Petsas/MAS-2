@@ -72,6 +72,11 @@ function isPublic(req) {
   if (/^\/clara\/[^/]+(\/connect|\/status)?$/.test(p)) return true;
   // /clara/health (globaler Stack-Health als JSON, keine PII, nebenwirkungsfrei).
   if (p === "/clara/health") return true;
+  // Clara-Umschalter (Handy-Seite /m/cx7.html, nicht eingeloggt): schaltet
+  // zwischen Live-Clara und der Testinstanz V6. Keine PII, kein Kalenderzugriff
+  // — nur Worker beenden/starten auf diesem Rechner. Der Seitenpfad ist bewusst
+  // unauffaellig gewaehlt, weil hier ohne Login umgeschaltet werden kann.
+  if (p.startsWith("/clara-switch/")) return true;
   // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
   if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
   // Behandlungs-Companion (iPad/Handy per QR am Behandlungsstuhl, NICHT
