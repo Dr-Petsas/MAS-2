@@ -125,6 +125,13 @@ Bianca-Arbeit in Clara-Sessions.
   Modell-Roulette). Worker um 23:39 neu gestartet — der Stand ist LIVE
   (Tag `stabil-2026-07-27-nacht`). Offen fuer den Chef: begleiteter
   Ende-zu-Ende-Livetest (Lisa ruft Testnummer an, Bericht kommt zurueck).
+- **28.07.2026 00:40: W-STABIL-4 (Fehler-als-Zustand) gebaut, getestet,
+  LIVE.** Faellt ein Werkzeug technisch aus, sagt Clara ab jetzt ehrlich
+  "Das kann ich gerade nicht nachsehen — der Zugriff darauf ist technisch
+  gestoert" statt zu raten oder leer zu klingen; jeder Ausfall wird als
+  roter Eintrag gespeichert und steht 60 Minuten auf der Status-Seite
+  (Check "Tool-Stoerungen"). Gate -Register gruen (28/28), Worker
+  22:32 UTC neu gestartet. Notaus: CLARA_FEHLER_EHRLICH=0.
 - **28.07.2026 00:20: W-STABIL-3 (Faehigkeits-Ping) und W-STABIL-6
   (Morgenlauf) gebaut, getestet, LIVE.** `/clara/health` prueft jetzt 10
   Punkte, darunter neu: alle 65 Profil-Tools gegen die wirklich gemounteten

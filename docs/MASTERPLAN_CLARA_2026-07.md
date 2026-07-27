@@ -1318,9 +1318,17 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
   Fehlalarm); (4) Lena-STT (8140); dazu Kontextfenster-Wache >= 32768.
   Test: `node scripts/test-capability-ping.mjs` (inkl. Negativprobe:
   erfundenes Tool auf toter Route wird gemeldet).
-- **W-STABIL-4 Fehler-als-Zustand:** Tool-/Endpunkt-Ausfall = ehrlicher
-  kurzer Satz + roter Eintrag, KEIN "sanft leeres Ergebnis" mehr.
-  (1 Verhaltensaenderung, 1 Neustart.)
+- **W-STABIL-4 Fehler-als-Zustand: FERTIG (28.07.2026).** Fallen in einem
+  Durchgang ALLE HTTP-Tools TECHNISCH aus (Route tot, 500, Netzwerk),
+  spricht der Worker selbst den ehrlichen Satz ("Das kann ich gerade nicht
+  nachsehen — der Zugriff darauf ist technisch gestoert. Ich habe die
+  Stoerung vermerkt.") und beendet den Turn — kein zweiter LLM-Durchgang,
+  nie wieder "sanft leeres Ergebnis". Anruf-Auftraege behalten ihren
+  praeziseren Satz. Jeder Ausfall geht als roter Eintrag an MAS
+  (POST /clara/tool-error -> mas_tool_errors) und steht auf der Status-
+  Seite ("Tool-Stoerungen (60 min)", heilt sich nach 1 h selbst).
+  Geschaefts-Antworten ("Termin bereits vergeben") sind KEIN Ausfall.
+  Test: testsuite/test_error_state.py (im Gate). Notaus: CLARA_FEHLER_EHRLICH=0.
 - **W-STABIL-5 Protokolle:** Worker-Logs anhaengen statt ueberschreiben;
   pro Gespraechszug ein Entscheidungsprotokoll (Transkript, Tool, Argumente,
   Ergebnisstatus, eingegriffene Waechter, gesprochener Satz).
