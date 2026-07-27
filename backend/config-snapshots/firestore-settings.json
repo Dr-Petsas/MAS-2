@@ -1,0 +1,850 @@
+{
+  "lenaStt": {
+    "exists": true,
+    "hash": "86ff1db7e9f79715",
+    "data": {
+      "wsUrl": "wss://sounds-specialist-household-wake.trycloudflare.com/stt"
+    }
+  },
+  "sophieKatalog": {
+    "exists": true,
+    "hash": "743aed17fcf8888c",
+    "data": {
+      "konzepte": [
+        {
+          "id": "endo",
+          "label": "Wurzelkanalbehandlung",
+          "fachbereich": "Endodontie",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            },
+            {
+              "key": "roentgen",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "kanaele",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "1",
+                  "label": "1 Kanal"
+                },
+                {
+                  "value": "2",
+                  "label": "2 Kanäle"
+                },
+                {
+                  "value": "3",
+                  "label": "3 Kanäle"
+                },
+                {
+                  "value": "4",
+                  "label": "4 Kanäle (MB2)"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "infiltration",
+                  "label": "Infiltration"
+                },
+                {
+                  "value": "leitung",
+                  "label": "Leitung"
+                },
+                {
+                  "value": "keine",
+                  "label": "Keine"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie_ort",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "Oberkiefer rechts",
+                  "label": "Oberkiefer rechts"
+                },
+                {
+                  "value": "Oberkiefer links",
+                  "label": "Oberkiefer links"
+                },
+                {
+                  "value": "Unterkiefer rechts",
+                  "label": "Unterkiefer rechts"
+                },
+                {
+                  "value": "Unterkiefer links",
+                  "label": "Unterkiefer links"
+                }
+              ]
+            },
+            {
+              "key": "kofferdam",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "sitzungen",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "einzeitig",
+                  "label": "Einzeitig"
+                },
+                {
+                  "value": "mehrzeitig",
+                  "label": "Mehrzeitig (med. Einlage)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "medeinlage",
+          "label": "Medikamentöse Einlage (Folgesitzung)",
+          "fachbereich": "Endodontie",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            }
+          ]
+        },
+        {
+          "id": "fuellung",
+          "label": "Füllung",
+          "fachbereich": "Konservierende ZHK",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            },
+            {
+              "key": "roentgen",
+              "typ": "ja_nein",
+              "pflicht": true
+            },
+            {
+              "key": "anaesthesie",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "infiltration",
+                  "label": "Infiltration"
+                },
+                {
+                  "value": "leitung",
+                  "label": "Leitung"
+                },
+                {
+                  "value": "keine",
+                  "label": "Keine"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie_ort",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "Oberkiefer rechts",
+                  "label": "Oberkiefer rechts"
+                },
+                {
+                  "value": "Oberkiefer links",
+                  "label": "Oberkiefer links"
+                },
+                {
+                  "value": "Unterkiefer rechts",
+                  "label": "Unterkiefer rechts"
+                },
+                {
+                  "value": "Unterkiefer links",
+                  "label": "Unterkiefer links"
+                }
+              ]
+            },
+            {
+              "key": "kofferdam",
+              "typ": "ja_nein",
+              "pflicht": true
+            },
+            {
+              "key": "material",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "composite",
+                  "label": "Composite (Mehrkosten)"
+                },
+                {
+                  "value": "kasse",
+                  "label": "Kassenfüllung (BEMA)"
+                }
+              ]
+            },
+            {
+              "key": "flaechen",
+              "typ": "flaechen",
+              "pflicht": true
+            },
+            {
+              "key": "kontrolle",
+              "typ": "ja_nein",
+              "pflicht": false
+            }
+          ]
+        },
+        {
+          "id": "extraktion",
+          "label": "Zahnentfernung",
+          "fachbereich": "Oralchirurgie",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            },
+            {
+              "key": "roentgen",
+              "typ": "ja_nein",
+              "pflicht": true
+            },
+            {
+              "key": "anaesthesie",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "infiltration",
+                  "label": "Infiltration"
+                },
+                {
+                  "value": "leitung",
+                  "label": "Leitung"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie_ort",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "Oberkiefer rechts",
+                  "label": "Oberkiefer rechts"
+                },
+                {
+                  "value": "Oberkiefer links",
+                  "label": "Oberkiefer links"
+                },
+                {
+                  "value": "Unterkiefer rechts",
+                  "label": "Unterkiefer rechts"
+                },
+                {
+                  "value": "Unterkiefer links",
+                  "label": "Unterkiefer links"
+                }
+              ]
+            },
+            {
+              "key": "osteotomie",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "nein",
+                  "label": "Normale Extraktion"
+                },
+                {
+                  "value": "ja",
+                  "label": "Osteotomie (operativ, 3030)"
+                }
+              ]
+            },
+            {
+              "key": "naht",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "kontrolle",
+              "typ": "ja_nein",
+              "pflicht": false
+            }
+          ]
+        },
+        {
+          "id": "wsr",
+          "label": "Wurzelspitzenresektion",
+          "fachbereich": "Oralchirurgie",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            },
+            {
+              "key": "roentgen",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "anaesthesie",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "infiltration",
+                  "label": "Infiltration"
+                },
+                {
+                  "value": "leitung",
+                  "label": "Leitung"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie_ort",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "Oberkiefer rechts",
+                  "label": "Oberkiefer rechts"
+                },
+                {
+                  "value": "Oberkiefer links",
+                  "label": "Oberkiefer links"
+                },
+                {
+                  "value": "Unterkiefer rechts",
+                  "label": "Unterkiefer rechts"
+                },
+                {
+                  "value": "Unterkiefer links",
+                  "label": "Unterkiefer links"
+                }
+              ]
+            },
+            {
+              "key": "naht",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "kontrolle",
+              "typ": "ja_nein",
+              "pflicht": true
+            }
+          ]
+        },
+        {
+          "id": "pzr",
+          "label": "Professionelle Zahnreinigung",
+          "fachbereich": "Prophylaxe",
+          "attribute": [
+            {
+              "key": "zaehne",
+              "typ": "zahl",
+              "pflicht": false
+            },
+            {
+              "key": "fluorid",
+              "typ": "ja_nein",
+              "pflicht": false
+            }
+          ]
+        },
+        {
+          "id": "zahnersatz",
+          "label": "Zahnersatz",
+          "fachbereich": "Prothetik / Zahnersatz",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            },
+            {
+              "key": "roentgen",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "versorgung",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "krone",
+                  "label": "Vollkrone"
+                },
+                {
+                  "value": "bruecke",
+                  "label": "Brücke"
+                },
+                {
+                  "value": "teilkrone",
+                  "label": "Teilkrone / Veneer / Inlay"
+                }
+              ]
+            },
+            {
+              "key": "pfeiler",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "2",
+                  "label": "2 Pfeiler"
+                },
+                {
+                  "value": "3",
+                  "label": "3 Pfeiler"
+                },
+                {
+                  "value": "4",
+                  "label": "4 Pfeiler"
+                },
+                {
+                  "value": "5",
+                  "label": "5+ Pfeiler"
+                }
+              ]
+            },
+            {
+              "key": "glieder",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "1",
+                  "label": "1 Glied"
+                },
+                {
+                  "value": "2",
+                  "label": "2 Glieder"
+                },
+                {
+                  "value": "3",
+                  "label": "3 Glieder"
+                },
+                {
+                  "value": "4",
+                  "label": "4 Glieder"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "infiltration",
+                  "label": "Infiltration"
+                },
+                {
+                  "value": "leitung",
+                  "label": "Leitung"
+                },
+                {
+                  "value": "keine",
+                  "label": "Keine"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie_ort",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "Oberkiefer rechts",
+                  "label": "Oberkiefer rechts"
+                },
+                {
+                  "value": "Oberkiefer links",
+                  "label": "Oberkiefer links"
+                },
+                {
+                  "value": "Unterkiefer rechts",
+                  "label": "Unterkiefer rechts"
+                },
+                {
+                  "value": "Unterkiefer links",
+                  "label": "Unterkiefer links"
+                }
+              ]
+            },
+            {
+              "key": "provisorium",
+              "typ": "ja_nein",
+              "pflicht": false
+            }
+          ]
+        },
+        {
+          "id": "inzision",
+          "label": "Abszess-Inzision / Schleimhautbehandlung",
+          "fachbereich": "Oralchirurgie",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            },
+            {
+              "key": "roentgen",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "anaesthesie",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "infiltration",
+                  "label": "Infiltration"
+                },
+                {
+                  "value": "leitung",
+                  "label": "Leitung"
+                },
+                {
+                  "value": "keine",
+                  "label": "Keine"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie_ort",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "Oberkiefer rechts",
+                  "label": "Oberkiefer rechts"
+                },
+                {
+                  "value": "Oberkiefer links",
+                  "label": "Oberkiefer links"
+                },
+                {
+                  "value": "Unterkiefer rechts",
+                  "label": "Unterkiefer rechts"
+                },
+                {
+                  "value": "Unterkiefer links",
+                  "label": "Unterkiefer links"
+                }
+              ]
+            },
+            {
+              "key": "drainage",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "kontrolle",
+              "typ": "ja_nein",
+              "pflicht": true
+            }
+          ]
+        },
+        {
+          "id": "implantat",
+          "label": "Implantatinsertion",
+          "fachbereich": "Implantologie / Chirurgie",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            },
+            {
+              "key": "roentgen",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "anzahl",
+              "typ": "zahl",
+              "pflicht": true
+            },
+            {
+              "key": "anaesthesie",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "infiltration",
+                  "label": "Infiltration"
+                },
+                {
+                  "value": "leitung",
+                  "label": "Leitung"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie_ort",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "Oberkiefer rechts",
+                  "label": "Oberkiefer rechts"
+                },
+                {
+                  "value": "Oberkiefer links",
+                  "label": "Oberkiefer links"
+                },
+                {
+                  "value": "Unterkiefer rechts",
+                  "label": "Unterkiefer rechts"
+                },
+                {
+                  "value": "Unterkiefer links",
+                  "label": "Unterkiefer links"
+                }
+              ]
+            },
+            {
+              "key": "augmentation",
+              "typ": "ja_nein",
+              "pflicht": true
+            },
+            {
+              "key": "sinuslift",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "keine",
+                  "label": "Kein Sinuslift"
+                },
+                {
+                  "value": "intern",
+                  "label": "Intern (transkrestal, geschlossen)"
+                },
+                {
+                  "value": "extern",
+                  "label": "Extern (lateral, offen)"
+                }
+              ]
+            },
+            {
+              "key": "knochenherkunft",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "ersatzmaterial",
+                  "label": "Nur Knochenersatzmaterial"
+                },
+                {
+                  "value": "eigenknochen",
+                  "label": "Eigenknochen (intraorale Entnahme)"
+                },
+                {
+                  "value": "beides",
+                  "label": "Eigenknochen + Ersatzmaterial"
+                }
+              ]
+            },
+            {
+              "key": "membran",
+              "typ": "auswahl",
+              "pflicht": true,
+              "optionen": [
+                {
+                  "value": "keine",
+                  "label": "Keine"
+                },
+                {
+                  "value": "kollagen",
+                  "label": "Kollagenmembran (GTR/GBR)"
+                },
+                {
+                  "value": "titanmesh",
+                  "label": "Titangitter/Titanmesh (vertikaler Aufbau)"
+                }
+              ]
+            },
+            {
+              "key": "prf",
+              "typ": "ja_nein",
+              "pflicht": true
+            },
+            {
+              "key": "naht",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "kontrolle",
+              "typ": "ja_nein",
+              "pflicht": true
+            }
+          ]
+        },
+        {
+          "id": "paro",
+          "label": "Parodontalbehandlung (PAR)",
+          "fachbereich": "Parodontologie",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            },
+            {
+              "key": "roentgen",
+              "typ": "ja_nein",
+              "pflicht": false
+            },
+            {
+              "key": "zaehne",
+              "typ": "zahl",
+              "pflicht": true
+            },
+            {
+              "key": "wurzeln",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "einwurzelig",
+                  "label": "Einwurzelig"
+                },
+                {
+                  "value": "mehrwurzelig",
+                  "label": "Mehrwurzelig"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "infiltration",
+                  "label": "Infiltration"
+                },
+                {
+                  "value": "leitung",
+                  "label": "Leitung"
+                },
+                {
+                  "value": "keine",
+                  "label": "Keine"
+                }
+              ]
+            },
+            {
+              "key": "anaesthesie_ort",
+              "typ": "auswahl",
+              "pflicht": false,
+              "optionen": [
+                {
+                  "value": "Oberkiefer rechts",
+                  "label": "Oberkiefer rechts"
+                },
+                {
+                  "value": "Oberkiefer links",
+                  "label": "Oberkiefer links"
+                },
+                {
+                  "value": "Unterkiefer rechts",
+                  "label": "Unterkiefer rechts"
+                },
+                {
+                  "value": "Unterkiefer links",
+                  "label": "Unterkiefer links"
+                }
+              ]
+            },
+            {
+              "key": "kontrolle",
+              "typ": "ja_nein",
+              "pflicht": false
+            }
+          ]
+        },
+        {
+          "id": "vipr",
+          "label": "Vitalitätsprüfung",
+          "fachbereich": "Diagnostik",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            }
+          ]
+        },
+        {
+          "id": "roentgen_einzel",
+          "label": "Röntgen (Einzelzahn / Bissflügel)",
+          "fachbereich": "Diagnostik",
+          "attribute": [
+            {
+              "key": "zahn",
+              "typ": "zahn",
+              "pflicht": true
+            }
+          ]
+        },
+        {
+          "id": "opg",
+          "label": "Panoramaschichtaufnahme (OPG)",
+          "fachbereich": "Diagnostik",
+          "attribute": []
+        },
+        {
+          "id": "psi",
+          "label": "Parodontaler Screening-Index (PSI)",
+          "fachbereich": "Diagnostik",
+          "attribute": []
+        },
+        {
+          "id": "untersuchung",
+          "label": "Eingehende Untersuchung",
+          "fachbereich": "Diagnostik",
+          "attribute": []
+        },
+        {
+          "id": "hkp",
+          "label": "Heil- und Kostenplan",
+          "fachbereich": "Diagnostik / Planung",
+          "attribute": []
+        }
+      ],
+      "glossar": "- vit e, vite, vit ex, vitext, vitalexstirpation → Vitalexstirpation (WK am vitalen Zahn, BEMA 28 VitE) [konzept=endo]\n- dev, devit, devitalisieren, devitalisation → Devitalisieren der Pulpa (BEMA 29 Dev) [konzept=endo]\n- wk, wkb, wurzelkanalbehandlung, wurzelbehandlung, endo → Wurzelkanalbehandlung/-aufbereitung (BEMA 32 WK) [konzept=endo]\n- wf, wurzelfüllung, wurzelfuellung, wurzelkanalfüllung, abfüllung → Wurzelkanalfüllung (BEMA 35 WF) [konzept=endo]\n- trep, trep1, trepanation, eröffnung, eroeffnung → Trepanation / Zugang (BEMA 31 Trep1) [konzept=endo]\n- med, med einlage, medikamentöse einlage, medikamenteneinlage, einlage → Medikamentöse Einlage. IM WK-KONTEXT (zusammen mit Trep/WK/WF/Vitext) → endo mehrzeitig. ALLEIN als Folgetermin („nur ne med gemacht“) → eigenständiges konzept medeinlage (Zahn aus offener WK ableiten) [konzept=endo attrs={\"sitzungen\":\"mehrzeitig\"}]\n- medeinlage, folge-einlage, folgeeinlage → Medikamentöse Einlage als Folgesitzung (nur die Einlage, nicht die ganze WK) [konzept=medeinlage]\n- revision, rev, wk-revision, wkrev, revisionsbehandlung → Wurzelkanal-Revision (alte WF erneuern) [konzept=endo]\n- nerv ziehen, nerv entfernen, nerv raus, nerv tot → umgangssprachlich für Wurzel-/Nervbehandlung [konzept=endo]\n- comp, komp, komposit, kompo, compo → Mehrschicht-Composite-Füllung (GOZ 2080 ff., Mehrkosten) [konzept=fuellung attrs={\"material\":\"composite\"}]\n- flg, fllg, füllung, fuellung, füllen → Füllung [konzept=fuellung]\n- kf, kassenfüllung, kassenfuellung, amalgam, amf → Kassenfüllung (BEMA 13 F1–F4, kein Mehrkosten) [konzept=fuellung attrs={\"material\":\"kasse\"}]\n- bu, aufbaufüllung, aufbaufuellung, aufbau, stumpfaufbau → Aufbaufüllung / Stumpfaufbau (GOZ 2180) [konzept=fuellung]\n- cp, caries profunda, cariesprofunda, tiefe karies, überkappung → Caries profunda (tiefe Karies / Diagnose, KEINE Fläche) → Überkappung [konzept=fuellung]\n- x, ex, extr, extraktion, entfernung → Zahnentfernung / Extraktion (GOZ 3000 ff., BEMA 43) [konzept=extraktion]\n- x1, einwurzelig entfernt → Extraktion einwurzelig [konzept=extraktion]\n- x2, xx, mehrwurzelig entfernt → Extraktion mehrwurzelig [konzept=extraktion]\n- x3, x12, tief zerstört, tief zerstoert, zahn zerstört → Extraktion eines tief zerstörten / nicht erhaltungswürdigen Zahnes (KEINE Füllung) [konzept=extraktion]\n- ost, ost1, osteo, osteotomie, op-extraktion → Operative Entfernung / Osteotomie (BEMA 47a Ost1, GOZ 3030) [konzept=extraktion attrs={\"osteotomie\":\"ja\"}]\n- 8er op, achter op, weisheitszahn-op, wz-op, wsg op → Weisheitszahn-/verlagerte Osteotomie [konzept=extraktion attrs={\"osteotomie\":\"ja\"}]\n- wurzelrest, wr entfernt, wurzelrest entfernt, tief frakturiert → Entfernung Wurzelrest [konzept=extraktion]\n- wsr, wurzelspitzenresektion, wurzelspitze, spitzenresektion, apektomie → Wurzelspitzenresektion (GOZ 3190 ff.) [konzept=wsr]\n- hemisektion, hem, wurzelamputation, prämolarisierung → Hemisektion / Wurzelamputation [konzept=extraktion]\n- naht, nähte, naehte, sutur, genäht → Wundnaht (GOÄ 2440 ff.) [modifikator attrs={\"naht\":\"ja\"}]\n- inz1, inz2, inzision, abszess, abszessinzision → Abszess-Inzision / Schleimhautbehandlung (GOÄ 2428, BEMA Inz1) [konzept=inzision]\n- inz → MEHRDEUTIG: „inz“ = Inzision (Abszess) ODER Füllungsfläche inzisal. Aus dem Kontext entscheiden (Abszess/Eiter/Schwellung/Streifen → Inzision; Füllung/Komposit/CP/andere Flächen → inzisal). Im Zweifel NACHFRAGEN, nicht raten. [nur-begriff]\n- streifen, streifeneinlage, streifen einlage, drainage, drainagestreifen → Drainagestreifen / Streifeneinlage (Drainage nach Inzision) — Begleitung der Abszessbehandlung [konzept=inzision]\n- impl, implantat, implantate, implantation, implant → Implantatinsertion — Region/Zahn ist PFLICHT [konzept=implantat]\n- par, paro, parodont, parodontalbehandlung, pa-behandlung → Parodontalbehandlung (PAR) — Region/Kiefer ist PFLICHT [konzept=paro]\n- externer sl, externem sl, externer sinuslift, lateraler sinuslift, offener sinuslift → Externer (lateraler/offener) Sinuslift — GOZ 9120 [modifikator attrs={\"augmentation\":\"ja\",\"sinuslift\":\"extern\"}]\n- interner sl, internem sl, interner sinuslift, transkrestaler sinuslift, geschlossener sinuslift → Interner (transkrestaler/geschlossener) Sinuslift — GOZ 9110 [modifikator attrs={\"augmentation\":\"ja\",\"sinuslift\":\"intern\"}]\n- sl, sinuslift, sinusbodenelevation, sinus lift → Sinuslift (Sinusbodenelevation). Typ erfragen: extern (lateral/offen, 9120) ODER intern (transkrestal, 9110). [modifikator attrs={\"augmentation\":\"ja\"}]\n- eigenknochen, knochenentnahme, knochenblock, blockentnahme, autologer knochen → Eigenknochen-Augmentation mit intraoraler Entnahme — GOZ 9140 (Entnahme) + 9090 (Gewinnung/Aufbereitung) [modifikator attrs={\"augmentation\":\"ja\",\"knochenherkunft\":\"eigenknochen\"}]\n- vertikaler knochenaufbau, vertikale augmentation, alveolarkamm aufbau, kammaufbau, vertikaler aufbau auf dem alveolarkamm → Vertikaler Knochenaufbau am Alveolarkamm — i. d. R. mit Titangitter/Mesh stabilisiert [modifikator attrs={\"augmentation\":\"ja\",\"membran\":\"titanmesh\"}]\n- titanmesh, titangitter, titan-mesh, titanmeshmembran, titanmembran → Titangitter/Titanmesh (z. B. Osstem OssBuilder) zur vertikalen Augmentation — Honorar GOZ 4138 + Material Titanmesh [modifikator attrs={\"augmentation\":\"ja\",\"membran\":\"titanmesh\"}]\n- kollagenmembran, barrieremembran, resorbierbare membran, gbr-membran → Kollagen-/Barrieremembran (GTR/GBR) — GOZ 4138 + Membran-Material [modifikator attrs={\"augmentation\":\"ja\",\"membran\":\"kollagen\"}]\n- knochenaufbau, augmentation, augmentiert, gbr, knochenaufbaumaterial → Knochenaufbau/Augmentation — GOZ 9100/9090 + Knochenersatzmaterial. Details (Sinuslift, Eigenknochen, Membran) erfragen. [modifikator attrs={\"augmentation\":\"ja\"}]\n- prp, prf, fibrin, fibrinmembran, eigenblut → Eigenblut/PRF/PRP (Fibrinmembran) — GOÄ Ä250 Blutentnahme + Aufbereitung/Einbringen (Analog § 6) + PRF-Röhrchen [modifikator attrs={\"prf\":\"ja\"}]\n- la, leitung, leitungsanästhesie, leitungsanaesthesie, l1 → Leitungsanästhesie (GOZ 0100, BEMA 41a L1) [modifikator attrs={\"anaesthesie\":\"leitung\"}]\n- ia, inf, infiltration, infiltrationsanästhesie, infiltrationsanaesthesie → Infiltrationsanästhesie (GOZ 0090, BEMA 40 I) [modifikator attrs={\"anaesthesie\":\"infiltration\"}]\n- ofa, oberflächenanästhesie, oberflaechenanaesthesie, topisch, schleimhaut betäubt → Oberflächenanästhesie (GOZ 0080) [nur-begriff]\n- ohne anästhesie, ohne betäubung, ohne spritze, keine betäubung, ohne la → ohne Anästhesie [modifikator attrs={\"anaesthesie\":\"keine\"}]\n- pzr, zahnreinigung, prof. zahnreinigung, professionelle zahnreinigung, reinigung → Professionelle Zahnreinigung (GOZ 1040) [konzept=pzr]\n- zst, zahnstein, zahnsteinentfernung, zste, scaling supragingival → Zahnsteinentfernung (BEMA 107 Zst) [konzept=pzr]\n- upt, unterstützende parodontitistherapie, uptg, par-nachsorge, parodontale nachsorge → Unterstützende Parodontitistherapie [nur-begriff]\n- pa, par, parodontitisbehandlung, parodontosebehandlung, ait → Parodontitistherapie (BEMA AIT/SRP) [nur-begriff]\n- psi, 04, screening index, parodontaler screening → Parodontaler Screening-Index (GOZ 4005, BEMA 04) [konzept=psi]\n- fu, früherkennung, frueherkennung, ip, individualprophylaxe → Kinder-Prophylaxe / Fluoridierung (FU/IP/FLA) [nur-begriff]\n- ze fix, zefix, ze festsitzend, festsitzender zahnersatz, ze eingl → Festsitzenden Zahnersatz eingegliedert [konzept=zahnersatz attrs={\"versorgung\":\"krone\"}]\n- ze, zahnersatz, kr, krone, vollkrone → Krone / Zahnersatz (GOZ 2200/5000) [konzept=zahnersatz attrs={\"versorgung\":\"krone\"}]\n- br, brücke, bruecke, brückenglied, adhäsivbrücke → Brücke (GOZ 5010/5070) [konzept=zahnersatz attrs={\"versorgung\":\"bruecke\"}]\n- pk, teilkrone, tk, veneer, inlay → Teilkrone / Veneer / Inlay (GOZ 2150 ff./2220) [konzept=zahnersatz attrs={\"versorgung\":\"teilkrone\"}]\n- teleskop, teleskopkrone, geschiebe, klammer, halteelement → Herausnehmbarer Zahnersatz (Teleskop/Prothese) [konzept=zahnersatz]\n- stift, glasfaserstift, schraubenaufbau, wurzelstift, stiftaufbau → Stift-/Schraubenaufbau (GOZ 2195) [konzept=zahnersatz]\n- prov, provisorium, langzeitprovisorium, lzp, provi → Provisorium (GOZ 2270) [konzept=zahnersatz]\n- rep, reparatur, prothesenreparatur, unterfütterung, unterfuetterung → Prothesen-Reparatur/Unterfütterung (BEMA 100a/b) [konzept=zahnersatz]\n- 01, u, untersuchung, eingehende untersuchung, kontrolle → Eingehende Untersuchung (GOZ 0010, BEMA 01 U) [konzept=untersuchung]\n- vipr, vitalitätsprüfung, vitalitaetspruefung, kältetest, sensibilitätstest → Vitalitätsprüfung (GOZ 0070, BEMA 08 ViPr) [konzept=vipr]\n- opg, ops, pano, panorama, panoramaschicht → Panoramaschichtaufnahme (GOÄ Ä5004) [konzept=opg]\n- dvt, 3d-röntgen, 3d roentgen, ct → Digitale Volumentomographie (DVT) [nur-begriff]\n- zahnfilm, einzelzahnfilm, ä5000, zahnröntgen, röntgen → Zahnfilm / Bissflügel (GOÄ Ä5000) [konzept=roentgen_einzel]\n- hkp, heil- und kostenplan, kostenplan, 0030 → Heil- und Kostenplan (GOZ 0030) [konzept=hkp]\n- mkv, mehrkostenvereinbarung, mehrkosten, mkv-rechnung, privatvereinbarung → Mehrkostenvereinbarung (Einwilligung bei Composite/Privatleistung) [nur-begriff]\n- kofferdam, koferdam, rubber dam, spanngummi, absolute trockenlegung → Kofferdam / Trockenlegung (GOZ 2040) [nur-begriff]\n- blutstillung, blutung gestillt, hämostase, haemostase, hämostyptikum → Blutstillung (GOZ 3050) [nur-begriff]\n- retraktionsfäden, retraktionsfaeden, retraktionsfaden, retraktionsfäden gelegt, fadenlegung → Retraktionsfaden / Gingivaretraktion (GOZ 2030 + Material) [nur-begriff]\n- parapulpärer stift, parapulpaerer stift, parapulpär stift, parapulpaer stift, para stift → Parapulpärer Stift (Retentionspin für Füllung, analog § 6 GOZ entspr. 2195) [nur-begriff]\n\nZAHNSCHEMA (FDI): erste Ziffer = Quadrant (1=oben rechts, 2=oben links, 3=unten links, 4=unten rechts),\nzweite Ziffer = Position 1–8 von der Mitte nach hinten. „eins eins“=11, „vier fünf“=45.\nUmgangssprache → Position: Einser/Schneidezahn=1, Zweier=2, Dreier/Eckzahn=3, Vierer/erster Prämolar=4,\nFünfer/zweiter Prämolar=5, Sechser/Sechsjahrmolar/erster Molar/Backenzahn=6, Siebener/zweiter Molar=7,\nAchter/Weisheitszahn/Dritter Molar=8. Quadrant aus „oben/unten“ + „rechts/links“ bestimmen\n(z. B. „unterer linker Sechser“ = 36, „oberer rechter Weisheitszahn“ = 18).\nWURZEL-/KANALZAHL NIE ausgeben — Sophie leitet sie aus dem Zahn ab.\n\nFLÄCHEN (als Buchstaben kombinieren, z. B. „mod“): m=mesial (zur Mitte), d=distal (von der Mitte weg),\no=okklusal (Kaufläche), i=inzisal (Schneidekante), b=bukkal (Wange), v=vestibulär (außen),\nl=lingual (Zunge), p=palatinal (Gaumen). „mod“ = mesial-okklusal-distal.\nNUR diese Buchstaben sind Flächen. „x“, „c“, „a“, „e“ sind KEINE Flächen.\nWICHTIG: „x“/„ex“ bedeutet EXTRAKTION (Zahn entfernen) — niemals eine Füllung\nund niemals eine Fläche. Eine Ziffer hinter dem „x“ (x1, x2, x3) gehört zur\nExtraktion und ist KEINE Flächenzahl. Ein direkt am Zahn klebendes Kürzel gilt\nfür genau diesen Zahn: „36x“/„36x3“ = Extraktion an 36, „16wf“ = WF an 16,\n„26mod“ = Füllung mod an 26."
+    }
+  }
+}

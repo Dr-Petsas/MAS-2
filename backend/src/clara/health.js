@@ -10,6 +10,7 @@
 import net from "node:net";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const OLLAMA_DEFAULT_BASE = "http://127.0.0.1:11434/v1";
@@ -34,7 +35,9 @@ const WORKER_LOG_DIRS = [
   { dir: "F:/MAS-2/logs", re: /^clara_.*\.err\.log$/ },
   { dir: "F:/Clara-Voice", re: /^_worker.*\.err\.log$/ },
   // Vom Umschalter gestartete Worker (Live wie V6) protokollieren hierhin.
-  { dir: "F:/Clara-Voice/.run/switch", re: /^(live|v6)\.err\.log$/ },
+  // Seit W-STABIL-5 pro Start zeitgestempelt (live-JJJJMMTT-HHMMSS.err.log);
+  // die alten festen Namen bleiben als Altbestand mit abgedeckt.
+  { dir: "F:/Clara-Voice/.run/switch", re: /^(live|v6)(-\d{8}-\d{4,6})?\.err\.log$/ },
 ];
 
 async function readLlmConfig() {
@@ -350,6 +353,64 @@ async function newestWorkerLog() {
   return newest;
 }
 
+// W-STABIL-7 "Konfig ins Tag" (28.07.2026): Der wirksame Zustand ausserhalb
+// von Git (ElevenLabs-Agenten-Prompt, Firestore-Settings, Env-Schluessel)
+// liegt als committeter Snapshot in backend/config-snapshots/. Dieser Check
+// laesst den Exporter im Vergleichsmodus laufen: Drift (z. B. jemand aendert
+// den Lisa-Prompt in der ElevenLabs-Konsole) macht die Status-Seite ROT und
+// kommt ueber den Morgenlauf aufs Handy. Cache 10 min.
+const konfigCache = { ts: 0, result: null };
+export async function checkKonfigDrift() {
+  if (konfigCache.result && Date.now() - konfigCache.ts < 10 * 60_000) return konfigCache.result;
+  const backendDir = path.resolve(__dirname, "../..");
+  const script = path.join(backendDir, "scripts", "konfig-export.mjs");
+  const result = await new Promise((resolve) => {
+    execFile(process.execPath, [script, "--check"], { cwd: backendDir, timeout: 60_000 },
+      (err, stdout = "", stderr = "") => {
+        const out = `${stdout}\n${stderr}`;
+        if (!err) {
+          resolve({ ok: true,
+            detail: "wirksame Konfig = Snapshot (ElevenLabs-Agenten, Firestore-Settings, Env-Schluessel)",
+            fix: "" });
+          return;
+        }
+        const geaendert = [...out.matchAll(/\[(?:GEAENDERT|NEU)\]\s+(\S+)/g)].map((m) => m[1]);
+        if (geaendert.length) {
+          resolve({ ok: false, detail: `Drift gegen Snapshot: ${geaendert.join(", ")}`,
+            fix: "node scripts/konfig-export.mjs laufen lassen, Aenderung pruefen + committen (oder in der Quelle zuruecknehmen)" });
+        } else {
+          resolve({ ok: false,
+            detail: `Konfig-Pruefung fehlgeschlagen: ${String(err.message || err).slice(0, 140)}`,
+            fix: "node scripts/konfig-export.mjs --check von Hand laufen lassen" });
+        }
+      });
+  });
+  konfigCache.ts = Date.now();
+  konfigCache.result = result;
+  return result;
+}
+
+// W-STABIL-7: Release = Versionspaar. Immer gruen (reine Anzeige), aber auf
+// der Status-Seite steht, WELCHER Stand wirklich laeuft — inkl. "-dirty",
+// wenn unkommittierte Aenderungen im Arbeitsverzeichnis liegen.
+function gitDescribe(dir) {
+  return new Promise((resolve) => {
+    execFile("git", ["describe", "--tags", "--always", "--dirty"], { cwd: dir, timeout: 8000 },
+      (err, stdout) => resolve(err ? "unbekannt" : String(stdout).trim()));
+  });
+}
+export async function checkVersionsstand() {
+  const [mas, clara] = await Promise.all([
+    gitDescribe("F:/MAS-2"), gitDescribe("F:/Clara-Voice"),
+  ]);
+  let snap = "Konfig-Snapshot fehlt";
+  try {
+    const st = await fs.stat(path.resolve(__dirname, "../../config-snapshots/elevenlabs-agent-lisa.json"));
+    snap = `Konfig-Snapshot vom ${new Date(st.mtimeMs).toISOString().slice(0, 10)}`;
+  } catch { /* fehlt */ }
+  return { ok: true, detail: `MAS ${mas} | Clara ${clara} | ${snap}`, fix: "" };
+}
+
 async function checkWorker() {
   // Es kann die Live-Clara (Port 8091) ODER die V6-Testinstanz (Port 8092)
   // laufen - nie beide (siehe tools\clara-switch.ps1). Der Check darf die
@@ -404,6 +465,10 @@ export async function runClaraHealth() {
   checks.push({ name: "ElevenLabs (Lisa/TTS)", ...(await checkElevenLabs()) });
   checks.push({ name: "Lena-STT (Doku)", ...(await checkLena()) });
   checks.push({ name: "Tool-Stoerungen (60 min)", ...(await checkToolErrors()) });
+
+  // W-STABIL-7: Konfig-Drift + sichtbarer Versionsstand.
+  checks.push({ name: "Konfig-Drift (ElevenLabs/Firestore/Env)", ...(await checkKonfigDrift()) });
+  checks.push({ name: "Versionsstand", ...(await checkVersionsstand()) });
 
   const overall = checks.every((c) => c.ok) ? "green" : "red";
   return { overall, ts: new Date().toISOString(), model, checks };

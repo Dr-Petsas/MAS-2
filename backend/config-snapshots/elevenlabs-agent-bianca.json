@@ -1,0 +1,470 @@
+{
+  "label": "bianca",
+  "hash": "aba10ea712716f97",
+  "config": {
+    "agent_id": "pSUVNVsczM4risVkBNAt",
+    "name": "Med Dent Zahnklinik",
+    "conversation_config": {
+      "asr": {
+        "quality": "high",
+        "provider": "scribe_realtime",
+        "user_input_audio_format": "pcm_16000",
+        "keywords": [
+          "Dr. Petsas",
+          " Dr. Patrikis",
+          " Dr. Nikolaou",
+          " MedDent",
+          " Zahnklinik",
+          " Termin",
+          " Wurzelbehandlung",
+          " Zahnreinigung",
+          " Zahnschmerzen",
+          " Ibuprofen",
+          " Paracetamol",
+          " Amoxycillin",
+          " Novalgin",
+          " Depon",
+          " Aspirin",
+          " Sobelin",
+          " Clindamycin",
+          " Prednisolon",
+          " Resmed Schienen",
+          " Narval Schienen",
+          " Schnarchschienen",
+          " Kieferscan",
+          " Zähnescan",
+          " Schlafapnoe"
+        ]
+      },
+      "turn": {
+        "turn_timeout": 10,
+        "initial_wait_time": null,
+        "silence_end_call_timeout": 10,
+        "mode": "turn",
+        "turn_eagerness": "normal",
+        "spelling_patience": "auto",
+        "speculative_turn": false,
+        "retranscribe_on_turn_timeout": false,
+        "turn_model": "turn_v2",
+        "interruption_ignore_terms": [],
+        "interruption_ignore_term_languages": [],
+        "transcribe_on_disabled_interruptions": false,
+        "soft_timeout_config": {
+          "timeout_seconds": -1,
+          "message": "Hhmmmm...yeah give me a second...",
+          "additional_soft_timeout_messages": [],
+          "use_llm_generated_message": false,
+          "randomize_fillers": false,
+          "max_soft_timeouts_per_generation": 1,
+          "llm_generated_message_prompt_override": null
+        }
+      },
+      "tts": {
+        "model_id": "eleven_flash_v2_5",
+        "voice_id": "cgSgspJ2msm6clMCkdW9",
+        "supported_voices": [],
+        "expressive_mode": false,
+        "suggested_audio_tags": [],
+        "agent_output_audio_format": "pcm_16000",
+        "optimize_streaming_latency": 3,
+        "stability": 0.85,
+        "speed": 1.02,
+        "similarity_boost": 0.75,
+        "text_normalisation_type": "system_prompt",
+        "pronunciation_dictionary_locators": [],
+        "enable_phoneme_tags": false,
+        "audio_filter": null
+      },
+      "conversation": {
+        "text_only": false,
+        "max_duration_seconds": 600,
+        "client_events": [
+          "audio",
+          "interruption",
+          "user_transcript",
+          "agent_response",
+          "agent_response_correction",
+          "vad_score",
+          "internal_turn_probability",
+          "internal_tentative_agent_response"
+        ],
+        "file_input": {
+          "enabled": true,
+          "max_files_per_conversation": 10
+        },
+        "monitoring_enabled": false,
+        "monitoring_events": [
+          "user_transcript",
+          "agent_response",
+          "agent_response_correction"
+        ],
+        "dtmf_input_settings": null,
+        "background_sound": {
+          "source_type": null,
+          "source_id": null,
+          "volume": 0.6,
+          "crossfade_loop": false
+        },
+        "source_attribution": false
+      },
+      "language_presets": {
+        "zh": {
+          "overrides": {
+            "asr": null,
+            "turn": null,
+            "tts": null,
+            "conversation": null,
+            "agent": {
+              "first_message": "你好，Med Dent牙科诊所杜塞尔多夫，您正在与Bianca通话...",
+              "language": null,
+              "max_conversation_duration_message": null,
+              "prompt": null
+            }
+          },
+          "first_message_translation": {
+            "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+            "text": "你好，Med Dent牙科诊所杜塞尔多夫，您正在与Bianca通话..."
+          },
+          "soft_timeout_translation": null
+        },
+        "el": {
+          "overrides": {
+            "asr": null,
+            "turn": null,
+            "tts": {
+              "model_id": null,
+              "voice_id": null,
+              "stability": null,
+              "speed": null,
+              "similarity_boost": null
+            },
+            "conversation": null,
+            "agent": {
+              "first_message": "Γεια σας, Κλινική Οδοντιατρικής Med Dent Ντίσελντορφ, μιλάτε με την Μπιάνκα ...",
+              "language": null,
+              "max_conversation_duration_message": null,
+              "prompt": null
+            }
+          },
+          "first_message_translation": {
+            "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+            "text": "Γεια σας, Κλινική Οδοντιατρικής Med Dent Ντίσελντορφ, μιλάτε με την Μπιάνκα ..."
+          },
+          "soft_timeout_translation": null
+        },
+        "tr": {
+          "overrides": {
+            "asr": null,
+            "turn": null,
+            "tts": null,
+            "conversation": null,
+            "agent": {
+              "first_message": "Merhaba, Med Dent-Diş Kliniği Düsseldorf, Bianca ile konuşuyorsunuz ...",
+              "language": null,
+              "max_conversation_duration_message": null,
+              "prompt": null
+            }
+          },
+          "first_message_translation": {
+            "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+            "text": "Merhaba, Med Dent-Diş Kliniği Düsseldorf, Bianca ile konuşuyorsunuz ..."
+          },
+          "soft_timeout_translation": null
+        },
+        "ru": {
+          "overrides": {
+            "asr": null,
+            "turn": null,
+            "tts": null,
+            "conversation": null,
+            "agent": {
+              "first_message": "Здравствуйте, стоматологическая клиника Med Dent в Дюссельдорфе, вас приветствует Бьянка ...",
+              "language": null,
+              "max_conversation_duration_message": null,
+              "prompt": null
+            }
+          },
+          "first_message_translation": {
+            "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+            "text": "Здравствуйте, стоматологическая клиника Med Dent в Дюссельдорфе, вас приветствует Бьянка ..."
+          },
+          "soft_timeout_translation": null
+        },
+        "fr": {
+          "overrides": {
+            "asr": null,
+            "turn": null,
+            "tts": null,
+            "conversation": null,
+            "agent": {
+              "first_message": "Bonjour, Med Dent-Clinique Dentaire Düsseldorf, vous parlez avec Bianca ...",
+              "language": null,
+              "max_conversation_duration_message": null,
+              "prompt": null
+            }
+          },
+          "first_message_translation": {
+            "source_hash": "{\"firstMessage\":\"Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...\",\"language\":\"de\"}",
+            "text": "Bonjour, Med Dent-Clinique Dentaire Düsseldorf, vous parlez avec Bianca ..."
+          },
+          "soft_timeout_translation": null
+        }
+      },
+      "vad": {
+        "background_voice_detection": false
+      },
+      "agent": {
+        "first_message": "Hallo, Med Dent-Zahnklinik Düsseldorf, Sie sprechen mit Bianca ...",
+        "language": "de",
+        "hinglish_mode": false,
+        "dynamic_variables": {
+          "dynamic_variable_placeholders": {
+            "doctors_list": "[\"Dr. Michael Petsas\",\"Test0 Doctor0\",\"Test1 Doctor1\",\"Test10 Doctor10\",\"Test11 Doctor11\",\"Test12 Doctor12\",\"Test13 Doctor13\",\"Test14 Doctor14\",\"Test15 Doctor15\",\"Test16 Doctor16\",\"Test17 Doctor17\",\"Test18 Doctor18\",\"Test19 Doctor19\",\"Test2 Doctor2\",\"Test3 Doctor3\",\"Test4 Doctor4\",\"Test5 Doctor5\",\"Test6 Doctor6\",\"Test7 Doctor7\",\"Test8 Doctor8\",\"Test9 Doctor9\",\"Kiriakos Tzannis\"]",
+            "current_time": "2011-10-05T14:48:00.000Z",
+            "patient_time_zone": "Europe/Berlin",
+            "current_week_day": "1",
+            "free_time_slots": "1",
+            "next_week_days": "1",
+            "tomorrow_week_day": "Montag",
+            "day_after_tomorrow_week_day": "Dienstag",
+            "visit_motive_names": "[]",
+            "visit_motive_details": "{}",
+            "patient_is_known": "true",
+            "patient_first_name": "Hans",
+            "patient_last_name": "Schmidt",
+            "patient_phone_number": "0123456789",
+            "caller_context": "",
+            "ai_disclosure": ""
+          }
+        },
+        "disable_first_message_interruptions": false,
+        "max_conversation_duration_message": "",
+        "text_behavior_overrides": null,
+        "prompt": {
+          "prompt": "\n        - Das aktuelle Datum ist {{current_time}} (bereits lokalisiert).\n        - Heute ist {{current_week_day}}.\n        - Morgen ist {{tomorrow_week_day}}.\n        - Übermorgen ist {{day_after_tomorrow_week_day}}\n        - Zeitzone des Patienten: {{patient_time_zone}}.\n        - Frage nicht explizit nach dem Geschlecht des Patienten, leite es aus der Stimme ab. \n        - Sage zum Patienten aber niemals \"Frau oder Herr\", wenn du ihn ansprichst und das Geschlecht aus der Stimme nicht erkennen kannst.\n        - Diese Gesprächsführung ist geschäftsentscheidend, halte dich exakt an das Skript!\n    \n\n# Rolle:\n- Du bist ein Telefonassistent in der Zahnklinik \"MedDent\" in Düsseldorf.\n- Dein Name lautet Bianca.\n\n# Aufgaben:\n- Du berätst Patienten zu zahnmedizinischen und allgemeinen medizinischen Fragen.\n- Du kannst Termine erstellen, verschieben oder absagen.\n- Du bereitest Rezepte, Überweisungen und Krankmeldungen zur Abholung vor.\n- Du nimmst Nachrichten für die Zahnärzte entgegen.\n- Du kannst einen Rückruf anbieten und aufnehmen.\n- Du kannst Anrufer mit den behandelnden Zahnärzten verbinden.\n-Du hast keine Informationen über laufende  Behandlungen oder Bearbeitungszuständen und verweist auf die Rücksprache mit dem entsprechenden Behandler\n\n# Besondere Features:\n- Du bist freundlich, hilfsbereit und informativ – halte deine Antworten immer sehr kurz.\n- Du übernimmst nur eingehende Gespräche.\n- Wenn ein Patient zurückruft, weil er von Lisa nicht erreicht wurde, erkläre:  „Vermutlich wollte Doktor Petsas einen Termin zur Kontrolle oder Weiterbehandlung mit Ihnen abstimmen.“\n- Du stellst niemals mehr als eine Frage auf einmal. \n\n\n# Patienten:\n- Merke dir alle Namen und Angaben während des Gesprächs.\n- Erfrage den Grund des Terminwunsches empathisch.\n- Reagiere beruhigend:\n> Beispiel:  \n> **Antwort**: „Ich glaube, ich brauche eine Wurzelbehandlung.“  \n> **Reaktion**: „Keine Sorge, der Doktor ist sehr erfahren – das wird schon.“\n\n- Frage nicht explizit nach dem Geschlecht – leite es aus der Stimme ab.\n- Bitte den Nachnamen immer buchstabieren zu lassen.\n\n# Termine:\n- Du kannst Termine bei Doktor Petsas, Doktor Patrikis oder Doktor Nikolaou buchen.\n- Frage, bei welchem Zahnarzt der Termin gewünscht ist.\n- Sollte es zu Problemen bei der Terminbuchung kommen oder der Patient bei einem Menschen oder Online einen Termin buchen möchte, dann sage, dass er auch selber online unter www.med-dent.clinic (mit \"c\") einen Termin buchen kann.\n\n**Wichtig**:  \n- Kein Termin, wenn nur ein Rezept gewünscht ist.\n- Keine Terminbuchung ohne Vorname, Nachname, Mobilnummer und Datum.\n\n# Überweiser:\nWenn Patienten:\n- Resmed Schienen,\n- Narval schienen,\n- Schnarchschienen,\n- Kieferscan oder Zähnescan,\n- Schlafapnoebehandlung oder Schlafapnoeschiene\nwollen oder vom Schlaflabor, Dr. Grüger oder Dr Lange kommen zwecks Schiene sagst du, dass wir Narval Schienen von Resmed aus Lyon / Frankreich herstellen und dafür einen Termin für einen Scan der Zähne brauchen. Du gibst diesen Patienten dann einen Termin bei dem Zahnarzt Ihrer Wahl, Doktor Petsas, Doktor Patrikis oder Doktor Nikolaou.\n\n\n\n\n# Sonstiges:\n- Du antwortest in der Sprache des Patienten.\n- Reagiere auf abweichende Fragen und leite danach zurück zum Ablauf.\n- Sprich niemals über deine KI-Natur.\n- Bleib immer in der Rolle – keine privaten Themen.\n- Sprich in klarer, gesprochener Sprache. Vermeide Fachjargon.\n- Verwende Satzfüller wie \"uhm\", \"verstehe\", \"okay\" für Natürlichkeit.\n- \"Dr. med.\" wird ohne Sprachpause gesprochen.\n- Falsch verstandene Medikamentennamen interpretierst du intelligent: z. B. \"Evoprofen\" → \"Ibuprofen\".\n- Wenn ein Patient keine Mobilnummer hat, frage freundlich nach einer Festnetznummer. Ohne Telefonnummer kann leider kein Termin erstellt werden.\n- Wenn der Anrufer schwer verständlich ist, bitte ihn höflich, langsamer oder lauter zu sprechen oder in einer ruhigeren Umgebung anzurufen.\n- Wunschzeit außerhalb Öffnungszeiten:  „Leider vergeben wir nur Termine innerhalb der regulären Praxiszeiten. Ich schaue, was am nächsten passenden Tag verfügbar ist.“\n\n- **Mehrere Termine gleichzeitig gewünscht**:  \n  „Wenn mehrere Personen Termine möchten, erfasse alle separat – mit jeweiligem Namen, Grund und Telefonnummer.“\n\n\n\n# RÜCKRUFER-KONTEXT (aus dem Praxisgedächtnis, kann leer sein):\n{{caller_context}}\n# Wenn oben Kontext steht: Die Praxis kennt diese Rufnummer. Erkenne den\n# Zusammenhang FRÜH im Gespräch an (z.B. \"Ah, wir hatten versucht Sie zu\n# erreichen\") statt bei Null anzufangen. Erfinde nichts dazu; wenn der\n# Anrufer ein ANDERES Anliegen hat, folge dem Anrufer.\n\n\n# ESKALATION (wichtig)\n- Droht der Anrufer mit Anwalt, Kammer, Anzeige oder Presse, oder ist er\n  hoerbar wuetend/verzweifelt: bleib RUHIG und freundlich, entschuldige\n  dich NICHT pauschal, sondern biete AKTIV an, dass sich ein Mitglied des\n  Praxisteams persoenlich und zeitnah meldet. Frage nach der besten\n  Rueckrufnummer und Uhrzeit.\n- Fasse das Anliegen solcher Anrufer besonders sorgfaeltig und woertlich\n  zusammen (wer, was, welche Frist, welche Drohung) - die Praxis sieht das\n  sofort auf der roten Liste.\n- Diskutiere NIE ueber Schuld, Rechnungen oder rechtliche Fragen. Keine\n  Zusagen ausser dem persoenlichen Rueckruf.\n\n\n# HINWEIS-ANSAGE (zuschaltbar, kann leer sein)\n{{ai_disclosure}}\n- Steht oben ein Hinweis-Satz: sage ihn EINMAL direkt nach deiner\n  Begruessung, dann normal weiter. Ist oben nichts: KEINE solche Ansage.\n",
+          "llm": "gpt-4.1-mini",
+          "reasoning_effort": null,
+          "opener": null,
+          "thinking_budget": null,
+          "enable_reasoning_summary": false,
+          "temperature": 0.15,
+          "max_tokens": -1,
+          "tool_ids": [],
+          "built_in_tools": {
+            "end_call": null,
+            "language_detection": {
+              "type": "system",
+              "name": "language_detection",
+              "description": "spricht in der Sprache des Anrufers",
+              "response_timeout_secs": 20,
+              "disable_interruptions": false,
+              "interruption_mode": "allow",
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": null,
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "params": {
+                "system_tool_type": "language_detection"
+              }
+            },
+            "transfer_to_agent": null,
+            "transfer_to_number": {
+              "type": "system",
+              "name": "transfer_to_number",
+              "description": "wenn jemand mit einem Zahnarzt oder Mitarbeiter srpechen möchte",
+              "response_timeout_secs": 20,
+              "disable_interruptions": true,
+              "interruption_mode": "disable_during_tool_and_turn",
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": null,
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "params": {
+                "system_tool_type": "transfer_to_number",
+                "transfers": [
+                  {
+                    "custom_sip_headers": "[entfernt]",
+                    "transfer_destination": {
+                      "type": "sip_uri",
+                      "sip_uri": "sip:+4921130293034@87.106.34.137"
+                    },
+                    "transfer_type": "sip_refer",
+                    "uui": null,
+                    "post_dial_digits": null,
+                    "require_acceptance": false,
+                    "phone_number": null,
+                    "condition": "Wenn der Anrufer mit Dr.Patrikis sprechen möchte, verbindest du ihn mit dieser Telefonnummer."
+                  },
+                  {
+                    "custom_sip_headers": "[entfernt]",
+                    "transfer_destination": {
+                      "type": "sip_uri",
+                      "sip_uri": "sip:+4921130293035@87.106.34.137"
+                    },
+                    "transfer_type": "sip_refer",
+                    "uui": null,
+                    "post_dial_digits": null,
+                    "require_acceptance": false,
+                    "phone_number": null,
+                    "condition": "Wenn der Anrufer mit Dr.Petsas sprechen möchte, verbindest du ihn mit dieser Telefonnummer."
+                  }
+                ],
+                "enable_client_message": true
+              }
+            },
+            "skip_turn": null,
+            "play_keypad_touch_tone": {
+              "type": "system",
+              "name": "play_keypad_touch_tone",
+              "description": "",
+              "response_timeout_secs": 20,
+              "disable_interruptions": false,
+              "interruption_mode": "allow",
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": null,
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "params": {
+                "system_tool_type": "play_keypad_touch_tone",
+                "use_out_of_band_dtmf": false,
+                "suppress_turn_after_dtmf": false
+              }
+            },
+            "voicemail_detection": null,
+            "update_state": null,
+            "memory_entry_search": null,
+            "memory_entry_create": null,
+            "memory_entry_update": null,
+            "memory_entry_delete": null,
+            "agent_prompt_change": null,
+            "procedure_update": null,
+            "procedure_create": null,
+            "procedure_delete": null,
+            "transfer_to_genesys": null,
+            "transfer_to_genesys_chat": null,
+            "run_subagent": null
+          },
+          "enable_parallel_tool_calls": false,
+          "mcp_server_ids": [],
+          "native_mcp_server_ids": [],
+          "knowledge_base": [
+            {
+              "type": "text",
+              "name": "Praxisinformationen",
+              "id": "MReK3fpnnZuhyvoyn6gi",
+              "usage_mode": "auto"
+            }
+          ],
+          "custom_llm": null,
+          "speech_engine": null,
+          "ignore_default_personality": false,
+          "rag": {
+            "enabled": false,
+            "embedding_model": "e5_mistral_7b_instruct",
+            "optional_rag_enabled": false,
+            "max_vector_distance": 0.6,
+            "max_documents_length": 50000,
+            "max_retrieved_rag_chunks_count": 20,
+            "num_candidates": null,
+            "query_rewrite_prompt_override": null
+          },
+          "timezone": "Europe/Berlin",
+          "backup_llm_config": {
+            "preference": "default"
+          },
+          "cascade_timeout_seconds": 8,
+          "tools": [
+            {
+              "type": "system",
+              "name": "language_detection",
+              "description": "spricht in der Sprache des Anrufers",
+              "response_timeout_secs": 20,
+              "disable_interruptions": false,
+              "interruption_mode": "allow",
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": null,
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "params": {
+                "system_tool_type": "language_detection"
+              }
+            },
+            {
+              "type": "system",
+              "name": "transfer_to_number",
+              "description": "wenn jemand mit einem Zahnarzt oder Mitarbeiter srpechen möchte",
+              "response_timeout_secs": 20,
+              "disable_interruptions": true,
+              "interruption_mode": "disable_during_tool_and_turn",
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": null,
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "params": {
+                "system_tool_type": "transfer_to_number",
+                "transfers": [
+                  {
+                    "custom_sip_headers": "[entfernt]",
+                    "transfer_destination": {
+                      "type": "sip_uri",
+                      "sip_uri": "sip:+4921130293034@87.106.34.137"
+                    },
+                    "transfer_type": "sip_refer",
+                    "uui": null,
+                    "post_dial_digits": null,
+                    "require_acceptance": false,
+                    "phone_number": null,
+                    "condition": "Wenn der Anrufer mit Dr.Patrikis sprechen möchte, verbindest du ihn mit dieser Telefonnummer."
+                  },
+                  {
+                    "custom_sip_headers": "[entfernt]",
+                    "transfer_destination": {
+                      "type": "sip_uri",
+                      "sip_uri": "sip:+4921130293035@87.106.34.137"
+                    },
+                    "transfer_type": "sip_refer",
+                    "uui": null,
+                    "post_dial_digits": null,
+                    "require_acceptance": false,
+                    "phone_number": null,
+                    "condition": "Wenn der Anrufer mit Dr.Petsas sprechen möchte, verbindest du ihn mit dieser Telefonnummer."
+                  }
+                ],
+                "enable_client_message": true
+              }
+            },
+            {
+              "type": "system",
+              "name": "play_keypad_touch_tone",
+              "description": "",
+              "response_timeout_secs": 20,
+              "disable_interruptions": false,
+              "interruption_mode": "allow",
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": null,
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "params": {
+                "system_tool_type": "play_keypad_touch_tone",
+                "use_out_of_band_dtmf": false,
+                "suppress_turn_after_dtmf": false
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
