@@ -16,6 +16,8 @@ const CLARA_ENV = "F:/Clara-Voice/.env";
 const WORKER_LOG_DIRS = [
   { dir: "F:/MAS-2/logs", re: /^clara_.*\.err\.log$/ },
   { dir: "F:/Clara-Voice", re: /^_worker.*\.err\.log$/ },
+  // Vom Umschalter gestartete Worker (Live wie V6) protokollieren hierhin.
+  { dir: "F:/Clara-Voice/.run/switch", re: /^(live|v6)\.err\.log$/ },
 ];
 
 async function readLlmConfig() {
@@ -79,10 +81,18 @@ async function checkLlmModel(model, base) {
 
 async function checkToolCalling(model, base) {
   // Reiner LLM-Aufruf mit einem Test-Tool. KEINE echte Ausfuehrung.
+  //
+  // Das heutige Datum MUSS mit in den System-Prompt (27.07.2026): ohne es kann
+  // das Modell das Pflichtfeld 'date' nicht fuellen und fragt hoeflich zurueck
+  // ("welches Datum ist morgen?") statt das Tool zu rufen. Die Pruefung meldete
+  // daraufhin faelschlich den 1011c18-Fehler, obwohl Clara live einwandfrei
+  // Tools rief - sie bekommt das Datum naemlich immer mitgeliefert. Der Check
+  // muss dieselbe Ausgangslage schaffen wie der echte Clara-Prompt.
+  const today = new Date().toISOString().slice(0, 10);
   const payload = {
     model, stream: false, max_tokens: 80, temperature: 0.3,
     messages: [
-      { role: "system", content: "Du bist ein Praxis-Assistent. Nutze fuer Kalenderfragen das passende Tool." },
+      { role: "system", content: `Du bist ein Praxis-Assistent. Heute ist ${today}. Nutze fuer Kalenderfragen das passende Tool und fuelle Datumsangaben selbst im Format JJJJ-MM-TT aus.` },
       { role: "user", content: "Was habe ich morgen fuer Termine?" },
     ],
     tools: [{
@@ -90,7 +100,11 @@ async function checkToolCalling(model, base) {
       function: {
         name: "get_day_appointments",
         description: "Liefert die Termine eines Tages.",
-        parameters: { type: "object", properties: { date: { type: "string" } }, required: ["date"] },
+        parameters: {
+          type: "object",
+          properties: { date: { type: "string", description: "Tag im Format JJJJ-MM-TT" } },
+          required: ["date"],
+        },
       },
     }],
   };
@@ -131,7 +145,15 @@ async function newestWorkerLog() {
 }
 
 async function checkWorker() {
-  const portUp = await checkTcp(8091);
+  // Es kann die Live-Clara (Port 8091) ODER die V6-Testinstanz (Port 8092)
+  // laufen - nie beide (siehe tools\clara-switch.ps1). Der Check darf die
+  // Testinstanz nicht als "Worker tot" melden.
+  const [liveUp, v6Up] = await Promise.all([checkTcp(8091), checkTcp(8092)]);
+  const portUp = liveUp || v6Up;
+  const which = liveUp && v6Up ? "ACHTUNG: Live (8091) UND V6 (8092)"
+    : liveUp ? "Live-Clara (8091)"
+      : v6Up ? "V6-Testinstanz (8092)"
+        : "kein Worker-Port";
   const log = await newestWorkerLog();
   let registered = false;
   let logInfo = "kein Worker-Log gefunden";
@@ -142,9 +164,9 @@ async function checkWorker() {
       logInfo = `${log.name}: ${registered ? "registered worker OK" : "NICHT registriert"}`;
     } catch { logInfo = `${log.name}: nicht lesbar`; }
   }
-  const ok = portUp && registered;
-  return { ok, detail: `Port 8091 ${portUp ? "lauscht" : "tot"} | ${logInfo}`,
-    fix: "start-clara.ps1 neu starten; Worker-Log auf Traceback pruefen" };
+  const ok = portUp && registered && !(liveUp && v6Up);
+  return { ok, detail: `${which} ${portUp ? "lauscht" : "tot"} | ${logInfo}`,
+    fix: "Umschalter /m/cx7.html nutzen oder start-clara.ps1 neu starten; Worker-Log auf Traceback pruefen" };
 }
 
 export async function runClaraHealth() {
