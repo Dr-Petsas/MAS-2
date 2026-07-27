@@ -548,6 +548,31 @@ export async function findLisaCallResult(clientId, { taskId = "", contactName = 
   return { ok: true, state: "running", task: treffer[0] };
 }
 
+/**
+ * Zusammenfassung nachziehen (27.07.2026). Wird ein Anruf abgeschlossen,
+ * BEVOR es dieses Feature gab — oder war das LLM in genau dieser Sekunde nicht
+ * erreichbar — steht am Task nur `resultSummary`: die letzten Lisa-Saetze,
+ * roh und mitten im Satz abgeschnitten. Fragt der Chef spaeter nach dem
+ * Gespraech, verdichten wir das gespeicherte Transkript dann eben JETZT und
+ * schreiben das Ergebnis zurueck, damit es beim naechsten Mal sofort da ist.
+ * Best-effort: schlaegt die Verdichtung fehl, bleibt alles wie es war.
+ */
+export async function ensureDialogSummary(clientId, task) {
+  if (!task || task.dialogSummary || !task.transcriptText) return task;
+  const zus = await dialogZusammenfassung(
+    task.transcriptText, task.contactName || task.phone, "");
+  if (!zus) return task;
+  const gekuerzt = clip(zus, 700);
+  if (task.id) {
+    try {
+      await tasksCol(clientId).doc(String(task.id)).update({ dialogSummary: gekuerzt });
+    } catch (e) {
+      log.warn("lisa.summary.backfill_failed", { clientId, taskId: task.id, error: String(e?.message || e) });
+    }
+  }
+  return { ...task, dialogSummary: gekuerzt };
+}
+
 /** Recent Lisa tasks for the monitor UI (newest first). */
 export async function listLisaTasks(clientId, limit = 25) {
   const snap = await tasksCol(clientId).orderBy("ts", "desc").limit(limit).get();

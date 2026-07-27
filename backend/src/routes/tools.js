@@ -45,7 +45,7 @@ import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatm
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
-import { lisaSendSms, lisaStartCall, findLisaCallResult } from "../lisa/outbound.js";
+import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -4185,7 +4185,11 @@ router.post("/tools/lisa-call-result", async (req, res) => {
       });
     }
 
-    const zusammenfassung = String(t.dialogSummary || t.resultSummary || "").trim();
+    // Fehlt die Verdichtung (Anruf aus der Zeit vor diesem Feature oder LLM
+    // beim Auflegen nicht erreichbar), jetzt nachziehen — sonst liest Clara
+    // die rohen letzten Lisa-Saetze vor, mitten im Satz abgeschnitten.
+    const voll = await ensureDialogSummary(clientId, t).catch(() => t);
+    const zusammenfassung = String(voll.dialogSummary || voll.resultSummary || "").trim();
     const ausgang = LISA_OUTCOME_SATZ[t.outcome] || "hat angerufen";
     const satz = `Lisa ${ausgang}${t.contactName ? `, ${t.contactName}` : ""}.`
       + (zusammenfassung ? ` ${zusammenfassung}` : " Zum Inhalt liegt mir nichts vor.");
