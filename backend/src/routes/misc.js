@@ -4,7 +4,10 @@
 import express from "express";
 import { assertAppEnabled } from "../entitlements.js";
 import { getPatientAnamnese } from "../clara/anamnese.js";
-import { proxyGetFreeTimeSlots, proxyCreateAppointment, proxyUpdateOrCancel } from "../clara/cfProxy.js";
+import {
+  proxyGetFreeTimeSlots, proxyCreateAppointment, proxyUpdateOrCancel,
+  proxyGetDoctorAbsences, proxyFindPatientAppointments, proxyCancelAppointmentById,
+} from "../clara/cfProxy.js";
 import { listLisaTasks, getLisaTaskDetail, getLisaTaskAudio, smsConfigured as lisaSmsConfigured, callConfigured as lisaCallConfigured } from "../lisa/outbound.js";
 import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
@@ -169,6 +172,33 @@ router.post("/cf/createAppointment", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
     sendCf(res, await proxyCreateAppointment(clientId, req.body || {}));
+  } catch (e) {
+    res.status(500).json({ status: "error", message: String(e?.message || e) });
+  }
+});
+
+
+router.post("/cf/agentGetDoctorAbsences", async (req, res) => {
+  try {
+    sendCf(res, await proxyGetDoctorAbsences(req.body || {}));
+  } catch (e) {
+    res.status(500).json({ status: "error", message: String(e?.message || e) });
+  }
+});
+
+
+router.post("/cf/agentFindPatientAppointments", async (req, res) => {
+  try {
+    sendCf(res, await proxyFindPatientAppointments(req.body || {}));
+  } catch (e) {
+    res.status(500).json({ status: "error", message: String(e?.message || e) });
+  }
+});
+
+
+router.post("/cf/agentCancelAppointmentById", async (req, res) => {
+  try {
+    sendCf(res, await proxyCancelAppointmentById(req.body || {}));
   } catch (e) {
     res.status(500).json({ status: "error", message: String(e?.message || e) });
   }

@@ -128,3 +128,23 @@ async function emitCreated(clientId, body) {
 export async function proxyUpdateOrCancel(body) {
   return forward("updateOrCancelAppointment", body);
 }
+
+// 27.07.2026 (Chef-Vorfall "Abwesenheiten werden nicht erkannt"):
+// Claras Profil zeigt mit `cf_base_url` auf MAS (/cf), damit jede Plattform-
+// Anfrage hier durchlaeuft. Dieser Proxy kannte aber nur die drei Buchungs-
+// Routen — `agentGetDoctorAbsences` fehlte. Der Worker bekam auf JEDE
+// Urlaubs-/Abwesenheitsfrage 404 und antwortete "Ich konnte den Urlaub gerade
+// nicht pruefen", obwohl die Cloud Function laengst deployt ist und korrekt
+// antwortet. Dieselbe Falle lag bei den beiden Agent-Termin-Routen.
+// Reine Durchleitung, kein eigenes Verhalten.
+export async function proxyGetDoctorAbsences(body) {
+  return forward("agentGetDoctorAbsences", body);
+}
+
+export async function proxyFindPatientAppointments(body) {
+  return forward("agentFindPatientAppointments", body);
+}
+
+export async function proxyCancelAppointmentById(body) {
+  return forward("agentCancelAppointmentById", body);
+}
