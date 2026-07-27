@@ -258,6 +258,33 @@ async function elevenGetConversation(conversationId) {
  * @param {{phone:string, instruction:string, contactName?:string, by?:string, callLanguage?:string, bookingContext?:object}} input
  * @returns {Promise<{ok:boolean, message:string, taskId?:string}>}
  */
+// 27.07.2026 (Live 19:57): Auftrag war "Es ist gleich 20 Uhr." — Lisa sagte am
+// Telefon stattdessen wortgleich das TERMIN-BEISPIEL aus ihrem Agenten-Prompt
+// ("Ich rufe an, weil wir Ihren Termin gerne vorverlegen würden ..."). Ursache:
+// der Agenten-Prompt verlangt 3-7 ausformulierte Sätze und ein konkretes
+// Termin-Verb; ein kurzer, termin-freier Auftrag bietet dafür keinen Stoff, also
+// griff das Modell zum naechstliegenden Vorbild. Termin-freie Auftraege bekommen
+// deshalb einen ausdruecklichen Rahmen mit. Recall-/Termin-Auftraege (die die
+// Terminlogik brauchen) bleiben unberuehrt.
+const TERMIN_WORT_RE =
+  /\b(termin\w*|verschieb\w*|vorverleg\w*|verleg\w*|absag\w*|abgesagt|storn\w*|recall\w*|kontrolle|prophylaxe|nachsorge|buch\w*|umbuch\w*|erinner\w*|slot\w*|sprechstunde\w*|zahnreinigung)\b/i;
+
+export function rahmeAuftrag(prompt) {
+  const text = String(prompt || "").trim();
+  if (!text || TERMIN_WORT_RE.test(text)) return text;
+  // Die Regel steht als Regieanweisung DAHINTER und ist ausdruecklich nicht
+  // zum Vorlesen: ohne diesen Hinweis sprach Lisa im Test die Regel selbst
+  // aus ("eine Information, die nichts mit einem Termin zu tun hat") statt der
+  // Nachricht.
+  return `${text}
+
+[Regieanweisung, NICHT vorlesen und NICHT erwaehnen: Dieser Anruf hat nichts `
+    + `mit Terminen zu tun. Sage in eigenen Worten genau die Nachricht, die oben `
+    + `steht. Frage NICHT nach Terminwuenschen, biete KEINEN Termin an, nenne `
+    + `keinen Terminanlass. Eine kurze Nachricht darf in ein bis zwei Saetzen `
+    + `erledigt sein.]`;
+}
+
 export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext } = {}) {
   if (!callConfigured()) {
     return { ok: false, message: "Outbound-Anrufe sind nicht konfiguriert." };
@@ -313,7 +340,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     delegated_to: "Lisa",
     contact_name: name || to,
     phone_number: to,
-    task_prompt: disclosure ? `${disclosure}${prompt}` : prompt,
+    task_prompt: rahmeAuftrag(disclosure ? `${disclosure}${prompt}` : prompt),
     patient_name: name || "",
     doctor: by || "",
     scheduled_for: "",
