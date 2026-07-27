@@ -728,6 +728,36 @@ function spokenPatient(a) {
   return a.patientName || last;
 }
 
+/**
+ * W-DIALOG WP5b: Nachbarn zur gleichen Startzeit. Pure — speist sich aus
+ * getDayAppointments. ``sameLastName`` markiert die Ehefrau-/Haushalts-
+ * Heuristik (Architektur-Entscheidung 9: nur fragen, nie automatisch absagen).
+ */
+export function findSameTimeCompanions(appointments, focus, { windowMs = 120000 } = {}) {
+  if (!focus?.startMs) return [];
+  const selfId = String(focus.patientId || "").trim();
+  const selfLn = String(focus.patientLastName || "").trim().toLowerCase();
+  return (appointments || [])
+    .filter((a) => !a.isAbsence && a.patientId
+      && String(a.patientId) !== selfId
+      && Math.abs((a.startMs || 0) - focus.startMs) <= windowMs)
+    .map((a) => ({
+      ...a,
+      sameLastName: !!(selfLn && String(a.patientLastName || "").trim().toLowerCase() === selfLn),
+    }))
+    .sort((a, b) => Number(b.sameLastName) - Number(a.sameLastName) || a.startMs - b.startMs);
+}
+
+/** Rueckfrage-Satz nur bei gleichem Nachnamen (sonst kein Befund -> still). */
+export function buildSpokenCompanionQuestion(companions = []) {
+  const pool = companions.filter((c) => c.sameLastName).slice(0, 2);
+  if (!pool.length) return "";
+  if (pool.length === 1) {
+    return `Im Kalender steht zur gleichen Zeit auch ${spokenPatient(pool[0])} — soll ich den Termin ebenfalls ansprechen?`;
+  }
+  return `Zur gleichen Zeit stehen noch ${pool.map(spokenPatient).join(" und ")} im Kalender. Soll ich die auch ansprechen?`;
+}
+
 // Turn clinic visit-motive labels into a natural reason phrase. Heuristic on
 // purpose — unknown labels stay intact behind "für".
 function spokenMotive(name) {

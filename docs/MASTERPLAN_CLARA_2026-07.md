@@ -1255,11 +1255,13 @@ Testschuld, das ist die Architektur.
       Notaus `CLARA_DIALOG_STATE=0` => byte-identisches Altverhalten.
       Absicherung: `testsuite/test_dialog_state.py` im Release-Gate.
 - [x] WP1b Labor-Mehrzug: `/ask` akzeptiert `sessionId` + haelt history/
-      session_state (Chatfenster-Anschluss vorbereitet; UI folgt).
+      session_state; Testlabor-UI mit Chatblasen + Weiterfragen
+      (`clara-testlabor.html` + `sessionId`/`reset` durchgereicht).
 - [x] WP2 Abwesenheits-LESE-Werkzeug: `getDoctorVacation` (Builtin) aktiviert +
       Katalog `abs-06` + Routing "wann habe ich Urlaub/frei".
-- [ ] WP3 Deckungspruefung in `response_guard.sanitize_reply` (Sicherung VOR
+- [x] WP3 Deckungspruefung in `response_guard.sanitize_reply` (Sicherung VOR
       der Lockerung). Kein Kontext -> keine Pruefung, im Zweifel behalten.
+      Notaus `CLARA_FACT_COVERAGE=0`. Absicherung in `test_speakability.py`.
 - [x] WP4 Briefing rauszoomen: `day_briefing` liefert bereits Lagebild
       (`overview: true` + Nachfrage); `list_day_appointments` und
       `patient_next_appointment` liefern jetzt strukturierte Termine fuer den
@@ -1267,9 +1269,10 @@ Testschuld, das ist die Architektur.
 - [x] WP5 Vorschlag/Bestaetigung statt blinder Absage: Storno/Verschieben geht
       erst ueber `patient_next_appointment`, setzt offene Handlung, "ja"/"den"
       loest aus. Intent-Router schreibt nicht mehr search→cancel um.
-      Umfeld-Scan (Ehefrau/Mail) noch offen — braucht denselben Scan-Schritt.
-- [ ] WP6 Suche mit Herkunft ("wo habe ich geschaut, was war beinahe") +
-      Verengung desselben Laufs statt Neustart.
+      Umfeld-Scan am Gegenstand: gleicher Startzeit + gleicher Nachname
+      (Rueckfrage, nie Auto-Doppelabsage) + offene Vorgaenge/Mail am Patienten.
+- [x] WP6 Suche mit Herkunft ("gesucht in Patienten; Adressbuch: …") bei
+      leerer Patientensuche — Adressbuch im selben Lauf, kein Neustart.
 
 **Definition of Done:** Die 10 heute durchfallenden Dialoge laufen gruen, OHNE
 dass eine Erwartung aufgeweicht wird; die Einzelfragen-Quote bleibt >= 89 %;

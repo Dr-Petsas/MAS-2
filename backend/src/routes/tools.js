@@ -5,7 +5,8 @@ import express from "express";
 import { completeTask } from "../tools/createTask.js";
 import { assertAppEnabled } from "../entitlements.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot, ensureBerlinTz } from "../clara/booking.js";
-import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory } from "../clara/daySchedule.js";
+import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory, findSameTimeCompanions, buildSpokenCompanionQuestion, dayOfMs } from "../clara/daySchedule.js";
+import { searchContacts } from "../brain/entityProfile.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "../clara/anamnese.js";
 import { polishForChannel } from "../clara/dictation.js";
 import { buildSpokenDayOverview } from "../clara/dayOverview.js";
@@ -777,8 +778,10 @@ router.post("/tools/patient-appointments", async (req, res) => {
     const rawName = String(req.body?.name || "").trim();
     const hint = String(req.body?.hint || "").trim();
 
-    const packPatientAppts = (result, who, patient) => {
-      // W-DIALOG: strukturierte Termine mitliefern (Merkzettel / Rueckbezuege).
+    // W-DIALOG WP5b: Umfeld am Gegenstand (Nachbar zur gleichen Zeit + offene
+    // Vorgaenge/Mail). Best-effort — die Terminantwort darf nie daran scheitern.
+    // Rueckfragen nur bei Befund; keine automatische Doppelabsage.
+    const packPatientAppts = async (result, who, patient) => {
       const next = result?.next || null;
       const upcoming = Array.isArray(result?.upcoming) ? result.upcoming : (next ? [next] : []);
       const named = (a) => a ? {
@@ -787,11 +790,56 @@ router.post("/tools/patient-appointments", async (req, res) => {
         patientLastName: a.patientLastName || patient?.lastName || "",
         lastName: patient?.lastName || a.patientLastName || "",
       } : null;
+      const focus = named(next);
+      let message = buildSpokenPatientAppointments(result, { who });
+      const surroundings = { companions: [], caseHint: "" };
+      if (focus?.startMs) {
+        try {
+          const date = dayOfMs(focus.startMs);
+          const day = await getDayAppointments(clientId, {
+            date,
+            calendarId: focus.calendarId || undefined,
+          });
+          if (day?.ok) {
+            const companions = findSameTimeCompanions(day.appointments, focus);
+            const q = buildSpokenCompanionQuestion(companions);
+            if (q) {
+              message = `${message} ${q}`;
+              surroundings.companions = companions
+                .filter((c) => c.sameLastName)
+                .slice(0, 2)
+                .map((c) => ({
+                  appointmentId: c.id,
+                  patientId: c.patientId,
+                  patientName: c.patientName,
+                  patientLastName: c.patientLastName,
+                  startMs: c.startMs,
+                }));
+            }
+          }
+        } catch (err) {
+          log.warn("patient-appointments companion scan failed", { clientId, err: String(err?.message || err) });
+        }
+        try {
+          const pid = focus.patientId || patient?.id;
+          if (pid) {
+            const caseMap = await listActiveCasesByPatientIds(clientId, [pid]);
+            const mem = buildSpokenMemoryHints([focus], caseMap);
+            if (mem) {
+              message = `${message} ${mem}`;
+              surroundings.caseHint = mem;
+            }
+          }
+        } catch (err) {
+          log.warn("patient-appointments case scan failed", { clientId, err: String(err?.message || err) });
+        }
+      }
       return {
         ok: true,
-        message: buildSpokenPatientAppointments(result, { who }),
-        next: named(next),
+        message,
+        next: focus,
         upcoming: upcoming.map(named).filter(Boolean),
+        surroundings,
       };
     };
 
@@ -803,7 +851,7 @@ router.post("/tools/patient-appointments", async (req, res) => {
         await setPatientCandidates(clientId, [byOrd], byOrd);
         const who = `${byOrd.firstName || ""} ${byOrd.lastName || ""}`.trim() || "der Patient";
         const result = await getPatientAppointments(clientId, { patientId: byOrd.id, firstName: byOrd.firstName, lastName: byOrd.lastName });
-        return res.json(packPatientAppts(result, who, byOrd));
+        return res.json(await packPatientAppts(result, who, byOrd));
       }
     }
 
@@ -835,7 +883,7 @@ router.post("/tools/patient-appointments", async (req, res) => {
     await setPatientCandidates(clientId, candidates, sel);
     const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
     const result = await getPatientAppointments(clientId, { patientId: sel.id, firstName: sel.firstName, lastName: sel.lastName });
-    return res.json(packPatientAppts(result, who, sel));
+    return res.json(await packPatientAppts(result, who, sel));
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -4196,7 +4244,32 @@ router.post("/tools/search-patient", async (req, res) => {
       patients = result.patients || [];
       if (patients.length === 0) {
         await setPatientCandidates(clientId, [], null);
-        return res.json({ ok: true, message: `Kein Patient mit dem Namen ${name} gefunden.` });
+        // W-DIALOG WP6: Herkunft nennen + Adressbuch mitpruefen (kein Neustart).
+        let contacts = [];
+        try {
+          contacts = await searchContacts(clientId, name, 3);
+        } catch { contacts = []; }
+        if (contacts.length) {
+          const labels = contacts.map((c) => {
+            const cat = c.category ? ` (${c.category})` : "";
+            return `${c.name}${cat}`;
+          });
+          const list = labels.length === 1
+            ? labels[0]
+            : `${labels.slice(0, -1).join(", ")} und ${labels[labels.length - 1]}`;
+          return res.json({
+            ok: true,
+            searchedIn: ["patients", "contacts"],
+            contacts,
+            message: `In den Patienten nichts zu ${name}. Im Adressbuch finde ich: ${list}. Meinen Sie einen davon?`,
+          });
+        }
+        return res.json({
+          ok: true,
+          searchedIn: ["patients", "contacts"],
+          contacts: [],
+          message: `Kein Patient mit dem Namen ${name} gefunden. Auch im Adressbuch nichts Passendes.`,
+        });
       }
       // Exakter Voll-Name schlaegt Teil-Treffer ("Stefan Meier" soll nicht an
       // "Stefanie Meierhoefer" haengen bleiben) — Stefan-Meier-Loop 2026-06-11.

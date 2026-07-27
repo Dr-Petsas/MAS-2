@@ -141,6 +141,25 @@ select,input[type=search]{
   padding:11px 12px; line-height:1.55; white-space:pre-wrap; word-break:break-word;
 }
 .answer.empty{color:var(--ink-dim);font-style:italic}
+.chat{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+.bubble{
+  max-width:min(92%,540px); padding:9px 12px; border-radius:14px;
+  line-height:1.5; white-space:pre-wrap; word-break:break-word;
+}
+.bubble.user{
+  align-self:flex-end; background:rgba(224,114,209,.18);
+  border:1px solid rgba(224,114,209,.35); border-bottom-right-radius:4px;
+}
+.bubble.assistant{
+  align-self:flex-start; background:rgba(0,0,0,.30);
+  border:1px solid var(--line); border-bottom-left-radius:4px;
+}
+.follow{
+  display:flex; gap:8px; margin-top:10px; align-items:flex-end;
+}
+.follow textarea{
+  flex:1; min-height:42px; max-height:120px; margin:0;
+}
 .lbl{font-size:11.5px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 5px}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (max-width:820px){ .cols{grid-template-columns:1fr} }
@@ -265,9 +284,11 @@ const S = {
   catalog: null,
   stored: {},
   results: {},          // caseId -> letztes Ergebnis
+  chats: {},            // caseId -> [{role,text}] Mehrzug-Chat (W-DIALOG)
   open: new Set(),
   running: false,
   prompt: null,
+  problemKinds: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -469,10 +490,20 @@ function bodyHtml(c) {
   const st = S.stored[c.id] || {};
   const f = st.finding || {};
   const b = st.baseline;
+  const turns = S.chats[c.id] || [];
 
-  const answer = r
-    ? `<div class="answer">${esc(r.final_response) || "<i>leer</i>"}</div>`
-    : `<div class="answer empty">Noch nicht gefragt. „Fragen“ drücken — die Antwort erscheint hier.</div>`;
+  const chat = turns.length
+    ? `<div class="chat">${turns.map((t) =>
+        `<div class="bubble ${t.role === "user" ? "user" : "assistant"}">${esc(t.text) || "<i>leer</i>"}</div>`
+      ).join("")}</div>`
+    : (r
+      ? `<div class="chat"><div class="bubble assistant">${esc(r.final_response) || "<i>leer</i>"}</div></div>`
+      : `<div class="answer empty">Noch nicht gefragt. „Fragen“ drücken — die Antwort erscheint hier.</div>`);
+
+  const follow = `<div class="follow">
+      <textarea data-act="followText" rows="1" placeholder="Weiterfragen … z. B. den um vierzehn Uhr"></textarea>
+      <button class="btn small primary" data-act="follow">Senden</button>
+    </div>`;
 
   // Unterschied ehrlich benennen: Clara formuliert bei jedem Lauf etwas
   // anders - das ist normal und kein Befund. Alarmieren darf nur, wenn ein
@@ -485,8 +516,9 @@ function bodyHtml(c) {
   const differs = toolChanged || shrank;
 
   return `
-    <div class="lbl">Claras Antwort${r ? "" : ""}</div>
-    ${answer}
+    <div class="lbl">Gespräch</div>
+    ${chat}
+    ${follow}
     ${r?.fails?.length ? `<div class="fails"><b>Automatische Prüfung:</b> ${esc(r.fails.join(" · "))}</div>` : ""}
     ${r?.tools?.length ? `<div class="toolinfo">${r.tools.map((t) =>
         `${esc(t.name)}(${esc(JSON.stringify(t.args || {}).slice(0, 200))}) [${esc(t.mode)}] ${t.ms}ms`
@@ -605,6 +637,16 @@ function wireBody(c, el) {
     await refreshStored();
     toast("Neuer Ist-Zustand eingefroren.");
   };
+
+  const followBtn = body.querySelector('[data-act="follow"]');
+  const followTa = body.querySelector('[data-act="followText"]');
+  if (followBtn && followTa) {
+    const send = () => askOne(c, { text: followTa.value, followUp: true });
+    followBtn.onclick = send;
+    followTa.onkeydown = (ev) => {
+      if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); }
+    };
+  }
 }
 
 async function refreshStored() {
@@ -617,9 +659,13 @@ async function refreshStored() {
 /* ===========================================================================
    Fragen stellen
    =========================================================================== */
-function applyResult(rec) {
+function applyResult(rec, { userText } = {}) {
   if (!rec?.id) return;
   S.results[rec.id] = rec;
+  if (!S.chats[rec.id]) S.chats[rec.id] = [];
+  const q = userText || rec.input || "";
+  if (q) S.chats[rec.id].push({ role: "user", text: q });
+  S.chats[rec.id].push({ role: "assistant", text: rec.final_response || "" });
   const el = $("list").querySelector(`.q[data-id="${CSS.escape(rec.id)}"]`);
   if (!el) return;
   const c = [...(S.catalog.cases || []), ...(S.catalog.dialogs || [])].find((x) => x.id === rec.id);
@@ -628,13 +674,28 @@ function applyResult(rec) {
   wire(c);
 }
 
-async function askOne(c) {
+async function askOne(c, { text, followUp } = {}) {
   const el = $("list").querySelector(`.q[data-id="${CSS.escape(c.id)}"]`);
   if (el) el.classList.add("running");
   S.open.add(c.id);
+  const sessionId = `card-${c.id}`;
+  const userText = followUp
+    ? String(text || "").trim()
+    : (c.text || c.goal || "");
+  if (followUp && !userText) {
+    if (el) el.classList.remove("running");
+    return toast("Bitte eine Nachfrage eingeben.");
+  }
+  if (!followUp) S.chats[c.id] = [];
   try {
-    const d = await api("/testlab/ask", { method: "POST", body: { id: c.id } });
-    applyResult(d.result);
+    const body = {
+      id: c.id,
+      sessionId,
+      reset: !followUp,
+    };
+    if (followUp) body.text = userText;
+    const d = await api("/testlab/ask", { method: "POST", body });
+    applyResult(d.result, { userText });
   } catch (e) {
     toast("Fehler: " + e.message, 5000);
     if (el) el.classList.remove("running");
@@ -669,7 +730,8 @@ async function runMany(payload, label) {
         if (!line) continue;
         let m; try { m = JSON.parse(line); } catch { continue; }
         if (m.type === "result") {
-          applyResult(m.result);
+          if (m.result?.id) S.chats[m.result.id] = [];
+          applyResult(m.result, { userText: m.result?.input });
           $("barText").textContent = `${label}: ${m.n} von ${m.total}`;
           $("prog").firstElementChild.style.width = (100 * m.n / m.total) + "%";
         } else if (m.type === "done") {

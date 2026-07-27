@@ -221,7 +221,13 @@ router.post("/testlab/ask", lab(async (clientId, req, res) => {
   const body = req.body || {};
   const out = await labFetch("/ask", {
     method: "POST",
-    body: { clientId, id: body.id || "", text: body.text || "" },
+    body: {
+      clientId,
+      id: body.id || "",
+      text: body.text || "",
+      sessionId: body.sessionId || body.session_id || "",
+      reset: !!(body.reset || body.newChat),
+    },
   });
   const r = out.result || {};
 
