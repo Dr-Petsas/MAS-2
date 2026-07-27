@@ -5,6 +5,7 @@ import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { upsertSharedContact } from "../brain/addressBook.js";
 import { lisaDisclosurePrefix } from "../brain/aiDisclosure.js";
+import { redirectOutbound } from "../clara/testRedirect.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -139,6 +140,19 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
   if (!smsConfigured()) {
     return { ok: false, message: "SMS-Versand ist nicht konfiguriert." };
   }
+  // Testlabor (W-LABOR WP6): Laeuft der Aufruf in einem Testlauf, geht die SMS
+  // an den hinterlegten Testpatienten statt an den echten. Der Haken sitzt hier
+  // und nicht in der Route, weil auch recallCoach und absencePlanner hier
+  // hereinlaufen — genau die indirekten Wege, die ein Routen-Haken uebersieht.
+  const redirected = redirectOutbound({ phone, text: message, recipientName });
+  if (redirected) {
+    log.warn("lisa.sms.test_redirect", {
+      clientId, from: redirected.originalPhone, to: redirected.phone,
+    });
+    phone = redirected.phone;
+    message = redirected.text;
+    recipientName = redirected.recipientName;
+  }
   const to = normalizePhoneE164(phone);
   if (!to) return { ok: false, message: "Die Telefonnummer habe ich nicht verstanden. Bitte noch einmal nennen." };
   const body = clip(message, 480);
@@ -244,6 +258,17 @@ async function elevenGetConversation(conversationId) {
 export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext } = {}) {
   if (!callConfigured()) {
     return { ok: false, message: "Outbound-Anrufe sind nicht konfiguriert." };
+  }
+  // Testlabor (W-LABOR WP6) — siehe lisaSendSms. Der Testempfaenger hoert am
+  // Anfang, dass es ein Testlauf ist, und fuer wen der Anruf gedacht war.
+  const redirected = redirectOutbound({ phone, text: instruction, recipientName: contactName });
+  if (redirected) {
+    log.warn("lisa.call.test_redirect", {
+      clientId, from: redirected.originalPhone, to: redirected.phone,
+    });
+    phone = redirected.phone;
+    instruction = redirected.text;
+    contactName = redirected.recipientName;
   }
   const to = normalizePhoneE164(phone);
   if (!to) return { ok: false, message: "Die Telefonnummer habe ich nicht verstanden. Bitte noch einmal nennen." };

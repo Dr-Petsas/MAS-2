@@ -1132,15 +1132,42 @@ Ist-Zustand von heute zum Zuruecksetzen eigener Aenderungen.
    Zuruecksetzen wirkt punktgenau auf die Tool-Beschreibung bzw. auf die
    geaenderte Prompt-Stelle, mit Versionshistorie (nichts geht verloren).
 
-- [ ] WP1 Labor-Dienst `lab_server.py` (Einzelfrage, Strom, reload, Abbruch).
-- [ ] WP2 MAS-Bruecke `/testlab/*` + Firestore-Speicher pro Mandant.
-- [ ] WP3 Seite: Vollbild/responsiv, Live-Antworten, Kommentar, Export.
-- [ ] WP4 Profil-Generator pro Mandant.
-- [ ] WP5 Basislinie einfrieren + Zuruecksetzen.
-- [ ] WP6 Testpatient-Umleitung per Request (SMS/Anruf/Buchung).
-- [ ] WP7 Prompt- + Tool-Editor mit Versionierung.
-- [ ] WP8 Katalog auf volle Funktionsabdeckung (~250 Fragen, alle 13 Gruppen).
-- [ ] WP9 Superuser-Tab pro Kunde (einmaliger Frontend-Deploy).
+- [x] WP1 Labor-Dienst `lab_server.py` (Einzelfrage, Strom, reload, Abbruch).
+- [x] WP2 MAS-Bruecke `/testlab/*` + Firestore-Speicher pro Mandant.
+- [x] WP3 Seite: Vollbild/responsiv, Live-Antworten, Kommentar, Export.
+- [x] WP4 Profil-Generator pro Mandant: `POST /testlab/create-profile` holt
+      Kunde/Standort/Kalender/Besuchsgruende aus der Plattform-Datenbank, der
+      Labor-Dienst schreibt das Profil aus der Vorlage und schreibt die
+      Kunden-Nummer in JEDE Werkzeug-Adresse um (sonst testet der neue Mandant
+      unbemerkt gegen fremde Daten). `mas_config/booking` wird mitgesetzt.
+- [x] WP5 Basislinie einfrieren + Zuruecksetzen.
+- [x] WP6 Testpatient-Umleitung per Request — **als Positivliste**, nicht als
+      Sperrliste (`src/clara/testRedirect.js`). Anlass: der erste Entwurf
+      vertraute darauf, dass MAS ein mitgeschicktes `testRedirect` auswertet;
+      MAS kannte das Feld nicht und der erste Probelauf trug eine ECHTE
+      Abwesenheit fuer 07.08.2026 in den Kalender Dr. Petsas ein. Jetzt gilt:
+      lesende Werkzeuge laufen, `send_sms`/`delegate_call` werden auf den
+      Testpatienten umgebogen (Haken in `lisaSendSms`/`lisaStartCall`, damit
+      auch die indirekten Wege ueber recallCoach/absencePlanner erfasst sind),
+      **alles Uebrige wird verweigert** — auch jedes kuenftig ergaenzte
+      Werkzeug, bis es jemand bewusst einordnet. Testpatient pro Mandant:
+      `mas_config/test_redirect`. Absicherung: `scripts/test-test-redirect.mjs`.
+      Offen: Buchen/Stornieren/Abwesenheit brauchen einen Testkalender.
+- [x] WP7 Prompt- + Tool-Editor mit Versionierung.
+- [x] WP8 Katalog auf volle Funktionsabdeckung: 165 Einzelfragen + 21 Dialoge,
+      alle 64 Werkzeuge haben mindestens eine Frage (vorher 39 ohne).
+- [x] WP9 Superuser-Tab pro Kunde (Deploy 27.07.2026, `claraTestLabView.tsx`).
+
+**Was der erste Volldurchlauf gefunden hat (27.07.2026, 159/165):** vier echte
+Maengel, die ohne den Katalog niemand gesehen haette — (1) "Ich habe das Diktat
+beendet" ohne Stopp-Werkzeug, die Aufnahme lief weiter; (2) "Ruhe-Modus ist
+aktiv" ohne Umschalten; (3) ein frei erfundenes Tagesbriefing, weil "Gib mir das
+Tagesbriefing" kein Tages-Muster traf; (4) die Selbstanrede "Clara, ich habe …".
+Alle vier behoben und per Test festgenagelt. Zusaetzlich zwei Maengel am
+Werkzeug selbst: die Suite liess die Sprech-Schicht aus (zeigte Rohtext statt
+gesprochenem Text) und `run_tests.py` endete IMMER mit Code 0 — die
+Funktions-Testsuite konnte das Release-Gate gar nicht rot faerben
+(`--min-pass`, Schwelle 85 %).
 
 **Definition of Done:** Jede Frage ist einzeln, gruppenweise und komplett
 ausloesbar; Antworten erscheinen live unter der Frage; Befunde sind pro Frage

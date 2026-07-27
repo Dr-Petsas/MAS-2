@@ -35,7 +35,8 @@ import lisaToolsRouter from "./routes/lisaTools.js";
 import treatmentRouter from "./routes/treatment.js";
 import claraSwitchRouter from "./routes/claraSwitch.js";
 import claraRouter from "./routes/clara.js";
-import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL } from "./routes/_shared.js";
+import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
+import { testRedirectMiddleware } from "./clara/testRedirect.js";
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -181,6 +182,10 @@ app.use(authMiddleware());
 // (/clara/devices*) muessen vorher greifen.
 // ---------------------------------------------------------------------------
 app.use(miscRouter);
+// Testlabor-Torwaechter VOR den Werkzeugen: nur mit ausdruecklichem Kennzeichen
+// aktiv, dann Positivliste — alles Unbekannte wird verweigert statt ausgefuehrt
+// (Vorfall 27.07.2026, siehe clara/testRedirect.js).
+app.use(testRedirectMiddleware(resolveClientId));
 app.use(toolsRouter);
 app.use(qmRouter);
 app.use(brainRouter);

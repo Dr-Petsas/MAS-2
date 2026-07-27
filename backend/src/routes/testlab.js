@@ -20,6 +20,8 @@ import {
   listLab, saveFinding, saveBaseline, clearBaseline, exportFindings,
   findingsToMarkdown, PROBLEM_KINDS, SEVERITIES,
 } from "../testlab/store.js";
+import { loadTestPatient, saveTestPatient } from "../clara/testRedirect.js";
+import { masCollection } from "../tenant.js";
 import { resolveClientId } from "./_shared.js";
 
 const router = express.Router();
@@ -69,6 +71,7 @@ router.get("/testlab/status", lab(async (clientId, req, res) => {
     } catch { /* Liste ist Bonus */ }
   }
   const mine = profiles.find((p) => p.clientId === clientId) || null;
+  const testPatient = await loadTestPatient(clientId).catch(() => null);
   res.json({
     ok: true,
     clientId,
@@ -78,9 +81,100 @@ router.get("/testlab/status", lab(async (clientId, req, res) => {
     health,
     profile: mine,
     hasProfile: !!mine,
+    // Ohne hinterlegten Testpatienten verweigert MAS jeden Versand im
+    // Testbetrieb - die Seite soll das anzeigen koennen, bevor jemand sich
+    // wundert, warum eine Test-SMS nicht rausgeht.
+    testPatient: testPatient ? { name: testPatient.name, phone: testPatient.phone } : null,
     problemKinds: PROBLEM_KINDS,
     severities: SEVERITIES,
   });
+}));
+
+
+/**
+ * Profil-Generator (W-LABOR WP5): Clara-Profil fuer einen Kunden anlegen.
+ *
+ * Von 12 Kunden hat heute genau einer ein Profil — jeder weitere musste bisher
+ * von Hand aus ~1.900 Zeilen abgeschrieben werden. Mandantenspezifisch ist nur
+ * ein kleiner Teil: Kunde, Standort, Kalender, Besuchsgruende. Den holt diese
+ * Route aus der Plattform-Datenbank; die Datei schreibt der Labor-Dienst.
+ *
+ * Nebenbei wird mas_config/booking mitgeschrieben — ohne das wirft jedes
+ * MAS-Werkzeug fuer diesen Kunden, das Profil waere also nutzlos.
+ */
+router.post("/testlab/create-profile", lab(async (clientId, req, res) => {
+  const db = admin.firestore();
+  const clientSnap = await db.collection("clients").doc(clientId).get();
+  if (!clientSnap.exists) throw new Error(`Kunde ${clientId} nicht gefunden`);
+  const client = clientSnap.data() || {};
+
+  const wantedLoc = String(req.body?.locationId || "").trim();
+  const locSnap = await db.collection("clients").doc(clientId)
+    .collection("locations").limit(20).get();
+  if (locSnap.empty) throw new Error("Der Kunde hat noch keinen Standort.");
+  const locDoc = wantedLoc
+    ? locSnap.docs.find((d) => d.id === wantedLoc)
+    : locSnap.docs[0];
+  if (!locDoc) throw new Error(`Standort ${wantedLoc} gibt es bei diesem Kunden nicht.`);
+  const location = locDoc.data() || {};
+
+  const [calSnap, vmSnap] = await Promise.all([
+    locDoc.ref.collection("calendars").limit(50).get(),
+    locDoc.ref.collection("visitMotives").limit(200).get(),
+  ]);
+  const calendars = calSnap.docs
+    .map((d) => ({ id: d.id, name: String((d.data() || {}).name || (d.data() || {}).abbreviation || "").trim() }))
+    .filter((c) => c.name);
+  if (!calendars.length) {
+    throw new Error("Der Standort hat noch keine Kalender — ohne Kalender kann Clara nichts nachschauen.");
+  }
+  const visitMotives = vmSnap.docs.map((d) => {
+    const v = d.data() || {};
+    return { id: d.id, name: String(v.name || "").trim(), duration: Number(v.duration || 0) || 30 };
+  }).filter((v) => v.name).sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+  const booking = {
+    client_id: clientId,
+    client_name: String(client.name || "").trim(),
+    location_id: locDoc.id,
+    location_name: String(location.name || client.name || "").trim(),
+    phone_country_code: "+49",
+    search_calendar_ids: calendars.map((c) => c.id),
+    calendars,
+    default_calendar_id: calendars[0].id,
+    visit_motives: visitMotives,
+  };
+
+  const created = await labFetch("/profile/create", {
+    method: "POST",
+    body: { clientId, booking, template: req.body?.template || "" },
+  });
+
+  // Ohne mas_config/booking wirft loadBooking() in jedem Werkzeug.
+  await masCollection(clientId, "mas_config").doc("booking").set({
+    clientId,
+    clientName: booking.client_name,
+    locationId: booking.location_id,
+    locationName: booking.location_name,
+    source: "testlab-generator",
+    defaultCalendarId: booking.default_calendar_id,
+    calendars,
+    visitMotives,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  res.json({ ...created, bookingSeeded: true, locationName: booking.location_name });
+}));
+
+
+// --- Testpatient pro Mandant: Ziel aller Nachrichten im Testbetrieb --------
+router.get("/testlab/test-patient", lab(async (clientId, req, res) => {
+  res.json({ ok: true, clientId, testPatient: await loadTestPatient(clientId) });
+}));
+
+router.post("/testlab/test-patient", lab(async (clientId, req, res) => {
+  const saved = await saveTestPatient(clientId, req.body || {});
+  res.json({ ok: true, clientId, testPatient: saved });
 }));
 
 
