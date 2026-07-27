@@ -20,7 +20,7 @@ import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechn
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken } from "../clara/dokuWaechter.js";
 import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
 import { freiFormulieren } from "../clara/freiSprech.js";
-import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt } from "../clara/karten.js";
+import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis } from "../clara/karten.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
@@ -45,7 +45,7 @@ import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatm
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
-import { lisaSendSms, lisaStartCall } from "../lisa/outbound.js";
+import { lisaSendSms, lisaStartCall, findLisaCallResult } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -4123,6 +4123,80 @@ router.post("/tools/delegate-call", async (req, res) => {
       by: op?.name || "Team",
     });
     res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Ausgang und Verlauf eines von Clara delegierten Anrufs (Chef 27.07.2026:
+// "Lisa fuehrt die Auftraege super aus, aber sie gibt keine Rueckmeldung ueber
+// den Gespraechsverlauf zurueck"). Die Daten lagen schon in mas_lisa_tasks —
+// es fehlte der Weg zurueck in Claras Mund. Gesprochen wird der Ausgang plus
+// die Zusammenfassung des GANZEN Dialogs; der volle Wortlaut steht auf der
+// Karte (Flip-Rueckseite) und ist damit fuer Nachfragen gedeckt.
+const LISA_OUTCOME_SATZ = {
+  reached: "hat ihn erreicht",
+  voicemail: "hat auf die Mailbox gesprochen",
+  no_answer: "hat niemanden erreicht",
+  failed: "kam nicht durch",
+};
+
+router.post("/tools/lisa-call-result", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const contactName = String(req.body?.contactName || req.body?.name || "").trim();
+    const r = await findLisaCallResult(clientId, {
+      taskId: String(req.body?.taskId || "").trim(),
+      contactName,
+    });
+
+    if (!r.ok || r.state === "none") {
+      return res.json({
+        ok: true,
+        found: false,
+        message: contactName
+          ? `Ich finde keinen Anruf von Lisa bei ${contactName}.`
+          : "Lisa hat bisher keinen Anruf von mir bekommen.",
+      });
+    }
+
+    const t = r.task || {};
+    const wer = t.contactName || t.phone || "dem Kontakt";
+    if (r.state === "running") {
+      return res.json({
+        ok: true, found: true, running: true, taskId: t.id || "",
+        message: `Lisa telefoniert gerade noch mit ${wer}. Sobald sie auflegt, melde ich dir das Ergebnis.`,
+      });
+    }
+
+    const zusammenfassung = String(t.dialogSummary || t.resultSummary || "").trim();
+    const ausgang = LISA_OUTCOME_SATZ[t.outcome] || "hat angerufen";
+    const satz = `Lisa ${ausgang}${t.contactName ? `, ${t.contactName}` : ""}.`
+      + (zusammenfassung ? ` ${zusammenfassung}` : " Zum Inhalt liegt mir nichts vor.");
+
+    let card = null;
+    try {
+      const endedMs = t.endedAt?.toMillis?.() || t.endedAt?._seconds * 1000 || 0;
+      card = karteLisaErgebnis({
+        contactName: t.contactName || "",
+        phone: t.phone || "",
+        outcome: t.outcome || "",
+        summary: zusammenfassung,
+        auftrag: t.prompt || "",
+        transcript: t.transcriptText || "",
+        endedMs,
+        durationSecs: Number(t.durationSecs || 0) || 0,
+      });
+    } catch { /* Karte ist Komfort */ }
+
+    return res.json({
+      ok: true, found: true, taskId: t.id || "", outcome: t.outcome || "",
+      message: satz, card,
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

@@ -6,6 +6,9 @@ import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { upsertSharedContact } from "../brain/addressBook.js";
 import { lisaDisclosurePrefix } from "../brain/aiDisclosure.js";
 import { redirectOutbound } from "../clara/testRedirect.js";
+import { summarizeForSpeech } from "../clara/summarize.js";
+import { getOperator } from "../clara/sessions.js";
+import { notifyOperator } from "../clara/devices.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -397,6 +400,52 @@ const OUTCOME_SPOKEN = {
   failed: "nicht erreicht (Fehler)",
 };
 
+/**
+ * Den GESAMTEN Gespraechsverlauf zu wenigen Saetzen verdichten (Chef
+ * 27.07.2026: "sie gibt keine Rueckmeldung ueber den Gespraechsverlauf").
+ * Die letzten Lisa-Saetze (resultSummary) sagen oft nur "Auf Wiederhoeren" —
+ * der Chef will wissen, WAS besprochen wurde, von beiden Seiten.
+ * Faellt das LLM aus, bleibt es beim deterministischen Rohtext (nie schlechter
+ * als vorher). Erfundene Zahlen faengt der Waechter in summarize.js ab.
+ */
+async function dialogZusammenfassung(transcriptText, who, fallback) {
+  const src = String(transcriptText || "").trim();
+  if (!src) return fallback || "";
+  try {
+    const r = await summarizeForSpeech("call", src, {
+      subject: who ? `Anruf bei ${who}` : "",
+      sender: "Lisa (Praxis)",
+      maxSentences: 3,
+      timeoutMs: 20000,
+    });
+    if (r.ok && r.text) return r.text;
+  } catch { /* Zusammenfassung ist Komfort, nie Bedingung */ }
+  return fallback || "";
+}
+
+/**
+ * Ergebnis eines erledigten Auftrags aufs Handy melden. Der Chef hat den
+ * Anruf selbst in Auftrag gegeben — die Rueckmeldung ist die Einloesung des
+ * Versprechens aus delegate_call ("Ich melde mich, sobald das Ergebnis
+ * vorliegt") und laeuft deshalb bewusst NICHT ueber das Spontan-Budget der
+ * proaktiven Meldungen. Best-effort: wirft nie.
+ */
+async function meldeErgebnis(clientId, { who, outcome, summary }) {
+  try {
+    const op = await getOperator(clientId);
+    if (!op?.id) return { ok: false, reason: "no_operator" };
+    const r = await notifyOperator(clientId, op.id, {
+      title: `Lisa: ${who} ${OUTCOME_SPOKEN[outcome] || outcome}`,
+      body: clip(summary, 240) || "Frag Clara nach dem Gesprächsverlauf.",
+      url: "",
+    });
+    return { ok: !!r?.ok, sent: r?.sent || 0 };
+  } catch (e) {
+    log.warn("lisa.call.notify_failed", { clientId, error: String(e?.message || e) });
+    return { ok: false };
+  }
+}
+
 let finalizeBusy = false;
 
 /**
@@ -426,15 +475,18 @@ export async function finalizeLisaCalls(clientId) {
           .filter((l) => ["agent", "assistant"].includes(String(l.role).toLowerCase()))
           .slice(-3).map((l) => l.text).join(" ");
 
+        const who = task.contactName || task.phone;
+        const dialogSummary = await dialogZusammenfassung(transcriptText, who, agentTail);
+
         await doc.ref.update({
           status: status === "done" ? "done" : "failed",
           outcome,
           resultSummary: clip(agentTail, 320) || null,
+          dialogSummary: clip(dialogSummary, 700) || null,
           transcriptText: clip(transcriptText, 8000) || null,
           endedAt: FieldValue.serverTimestamp(),
         });
 
-        const who = task.contactName || task.phone;
         await appendEvent(clientId, {
           id: `lisa-result-${task.id}`,
           channel: CHANNELS.LISA_CALL,
@@ -444,15 +496,17 @@ export async function finalizeLisaCalls(clientId) {
           subject: { name: task.contactName || "" },
           summary:
             `Lisas Anruf bei ${who} ist beendet: ${OUTCOME_SPOKEN[outcome] || outcome}.` +
-            (agentTail ? ` Laut Gespräch: "${clip(agentTail, 240)}"` : ""),
+            (dialogSummary ? ` Aus dem Gespräch: ${clip(dialogSummary, 400)}` : ""),
           signals: outcome === "reached" ? {} : { unresolvedByAI: true },
           payloadRef: { kind: "lisa_task", id: task.id },
           extractor: "lisa@outbound",
           tags: ["lisa", "call", "result"],
         });
 
+        const push = await meldeErgebnis(clientId, { who, outcome, summary: dialogSummary });
+
         finalized += 1;
-        log.info("lisa.call.finalized", { clientId, taskId: task.id, outcome });
+        log.info("lisa.call.finalized", { clientId, taskId: task.id, outcome, gemeldet: !!push.ok });
       } catch (e) {
         log.warn("lisa.call.finalize_error", { clientId, taskId: task.id, error: String(e?.message || e) });
       }
@@ -461,6 +515,37 @@ export async function finalizeLisaCalls(clientId) {
   } finally {
     finalizeBusy = false;
   }
+}
+
+/**
+ * Ausgang und Verlauf eines delegierten Anrufs nachschlagen (Chef 27.07.2026).
+ * Ohne Angabe: der ZULETZT delegierte Anruf. Mit `contactName`: der letzte
+ * Anruf bei dieser Person (Teilstring, gross/klein egal). Laeuft der Anruf noch,
+ * wird das ehrlich gemeldet statt ein Ergebnis zu erfinden.
+ *
+ * @returns {Promise<{ok:boolean, state:"done"|"running"|"none", task?:object}>}
+ */
+export async function findLisaCallResult(clientId, { taskId = "", contactName = "" } = {}) {
+  if (taskId) {
+    const doc = await tasksCol(clientId).doc(String(taskId)).get();
+    if (!doc.exists) return { ok: false, state: "none" };
+    const t = doc.data();
+    return { ok: true, state: t.status === "calling" ? "running" : "done", task: t };
+  }
+
+  const snap = await tasksCol(clientId).orderBy("ts", "desc").limit(25).get();
+  const wanted = String(contactName || "").trim().toLowerCase();
+  const passt = (t) => {
+    if (t.kind && t.kind !== "call") return false;
+    if (!wanted) return true;
+    const name = `${t.contactName || ""} ${t.phone || ""}`.toLowerCase();
+    return wanted.split(/\s+/).some((teil) => teil.length >= 3 && name.includes(teil));
+  };
+  const treffer = snap.docs.map((d) => d.data()).filter(passt);
+  if (!treffer.length) return { ok: false, state: "none" };
+  const fertig = treffer.find((t) => t.status !== "calling");
+  if (fertig) return { ok: true, state: "done", task: fertig };
+  return { ok: true, state: "running", task: treffer[0] };
 }
 
 /** Recent Lisa tasks for the monitor UI (newest first). */

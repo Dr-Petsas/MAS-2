@@ -352,6 +352,59 @@ export function karteKontakt({ name = "", mobile = "", phone = "", email = "", p
   };
 }
 
+const LISA_AUSGANG = {
+  reached: { wort: "erreicht", level: "ok", icon: "check" },
+  voicemail: { wort: "auf die Mailbox gesprochen", level: "warn", icon: "phone" },
+  no_answer: { wort: "nicht erreicht", level: "warn", icon: "phone" },
+  failed: { wort: "nicht zustande gekommen", level: "alert", icon: "alert" },
+};
+
+/**
+ * Ergebnis eines von Clara delegierten Lisa-Anrufs (Chef 27.07.2026: "sie gibt
+ * keine Rueckmeldung ueber den Gespraechsverlauf"). Vorne der Ausgang und die
+ * Zusammenfassung des GANZEN Dialogs, hinten (detail) der vollstaendige
+ * Wortlaut — damit Clara auf Nachfragen dazu fundiert antworten kann, ohne zu
+ * raten (der Anzeige-Kontext gilt dem Fakten-Waechter als gedeckt).
+ */
+export function karteLisaErgebnis({
+  contactName = "", phone = "", outcome = "", summary = "", auftrag = "",
+  transcript = "", endedMs = 0, durationSecs = 0,
+} = {}) {
+  const a = LISA_AUSGANG[outcome] || { wort: outcome || "unbekannt", level: "info", icon: "phone" };
+  const items = [item(a.level, a.icon, `Ausgang: ${a.wort}`)];
+  if (summary) items.push(item("info", "note", summary));
+  if (auftrag) items.push(item("info", "pen", `Auftrag: ${auftrag}`));
+  if (durationSecs > 0) {
+    const min = Math.floor(durationSecs / 60);
+    const sek = durationSecs % 60;
+    items.push(item("info", "clock", min ? `Dauer: ${min} Min. ${sek} Sek.` : `Dauer: ${sek} Sek.`));
+  }
+
+  const dLines = [`Lisas Anruf bei ${contactName || phone || "unbekannt"}: ${a.wort}.`];
+  if (auftrag) dLines.push(`Auftrag war: ${auftrag}`);
+  if (summary) dLines.push(`Zusammenfassung: ${summary}`);
+  if (transcript) {
+    dLines.push("Gesprächsverlauf:");
+    for (const zeile of String(transcript).split("\n").slice(0, 60)) {
+      const m = /^([A-Za-z_]+):\s*(.+)$/.exec(zeile.trim());
+      if (!m) continue;
+      const wer = ["agent", "assistant"].includes(m[1].toLowerCase()) ? "Lisa" : contactName || "Gegenüber";
+      dLines.push(`${wer}: ${m[2].trim()}`);
+    }
+  }
+
+  return {
+    kind: "lisa",
+    tag: "Lisas Anruf",
+    title: clip(contactName || phone, 40) || "Anruf",
+    time: endedMs ? zeitLabel(endedMs) : "",
+    subtitle: a.wort,
+    heading: "Ergebnis",
+    items: items.slice(0, 8),
+    detail: detailText(dLines),
+  };
+}
+
 /**
  * Doku-Memo-Karte — die "geflippte Rückseite" beim Diktieren: gespeicherte
  * Notiz-Punkte + was für die lückenlose Doku/Abrechnung noch fehlt.
