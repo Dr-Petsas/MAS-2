@@ -20,7 +20,7 @@ import { getLetterSettings, setLetterSettings } from "../mail/letterSettings.js"
 import { saveLetterheadAsset, getLetterheadMeta, deleteLetterheadAsset, listLetterheads, setActiveLetterhead, deleteLetterhead } from "../mail/letterhead.js";
 import { saveLetterAsset, getLetterAssetMeta, deleteLetterAsset, getLetterAssetBuffer } from "../mail/letterAssets.js";
 import { listBlocks, createBlock, updateBlock, deleteBlock, seedDefaultBlocks } from "../mail/letterBlocks.js";
-import { draftLetter, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
+import { draftLetter, draftFromDiscussion, discussCompose, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
 import { extractText } from "../mail/extract.js";
 import { saveDocument } from "../mail/documents.js";
 import { archiveLetter, listLetters, getLetter } from "../mail/letterArchive.js";
@@ -593,6 +593,50 @@ router.post("/mail/letter/ai-rewrite", async (req, res) => {
     const b = req.body || {};
     const out = await rewritePassage(clientId, { selection: b.selection, instruction: b.instruction, fullText: b.fullText, tone: b.tone });
     if (!out.ok) return res.status(400).json({ ok: false, ...out, llm: llmInfo() });
+    res.json({ ok: true, clientId, ...out, llm: llmInfo() });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Composer-Diskussions-Chat (qwen3.6): Thema erörtern, PDFs/Briefe als Kontext,
+// Mehrfach-Turns — bevor „E-Mail generieren“ den Entwurf schreibt.
+// Body: { messages:[{role,content}], documents?:[{filename,text}], recipient?, subjectHint? }
+router.post("/mail/compose/ai-chat", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const b = req.body || {};
+    const out = await discussCompose(clientId, {
+      messages: b.messages,
+      documents: b.documents,
+      recipient: b.recipient,
+      subjectHint: b.subjectHint,
+    });
+    if (!out.ok) return res.status(400).json({ ok: false, ...out, llm: llmInfo() });
+    res.json({ ok: true, clientId, ...out, llm: llmInfo() });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Chatverlauf → fertige E-Mail (subject/body). Button „E-Mail generieren“.
+// Body: { messages, documents?, recipient?, subjectHint?, tone? }
+router.post("/mail/compose/ai-from-chat", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const b = req.body || {};
+    const out = await draftFromDiscussion(clientId, {
+      messages: b.messages,
+      documents: b.documents,
+      recipient: b.recipient,
+      subjectHint: b.subjectHint,
+      tone: b.tone,
+    });
+    if (!out.ok && !out.body) return res.status(400).json({ ok: false, ...out, llm: llmInfo() });
     res.json({ ok: true, clientId, ...out, llm: llmInfo() });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

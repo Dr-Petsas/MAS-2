@@ -356,6 +356,104 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
 // Inline edit: rewrite ONLY the marked passage per the user's instruction. Used
 // by the "Textstelle markieren & per Prompt ändern" feature. Returns just the
 // rewritten span (plain text) so the frontend can splice it back in place.
+/**
+ * Mehrfach-Chat vor dem Niederschreiben einer E-Mail (Composer-Popup).
+ * qwen3.6 diskutiert mit dem Team: Unterlagen analysieren, Argumente klären,
+ * Antwortstrategie erarbeiten — OHNE schon die fertige Mail zu erzwingen.
+ * Body-Felder (vom Aufrufer): messages[{role,content}], documents[{filename,text}],
+ * recipient?, subjectHint?.
+ */
+export async function discussCompose(clientId, { messages, documents, recipient, subjectHint } = {}) {
+  const history = Array.isArray(messages)
+    ? messages
+        .filter((m) => m && (m.role === "user" || m.role === "assistant") && String(m.content || "").trim())
+        .slice(-24)
+        .map((m) => ({ role: m.role, content: clip(m.content, 6000) }))
+    : [];
+  if (!history.length) return { ok: false, reason: "no_messages", text: "", model: "" };
+
+  const docs = Array.isArray(documents)
+    ? documents
+        .filter((d) => d && String(d.text || "").trim())
+        .slice(0, 6)
+        .map((d, i) => ({
+          filename: clip(d.filename || `Unterlage ${i + 1}`, 120),
+          text: clip(d.text, 12000),
+        }))
+    : [];
+
+  const sp = await loadSenderProfile(clientId);
+  const docsBlock = docs.length
+    ? "\n\nHOCHGELADENE UNTERLAGEN (verbindlicher Fakten-Kontext — nichts erfinden, was nicht darin steht):\n"
+      + docs.map((d, i) => `--- ${i + 1}. ${d.filename} ---\n${d.text}`).join("\n\n")
+    : "";
+
+  const system = [
+    "Du bist Nadine, die Schreib- und Beratungs-KI der Praxis. Du hilfst dem Team, ein Thema ZUERST zu erörtern, bevor eine E-Mail niedergeschrieben wird.",
+    sp.orgName ? `Absender-Praxis: ${sp.orgName}${sp.branchLabel ? ` (${sp.branchLabel})` : ""}.` : "",
+    "Stil: klar, praxisnah, auf Deutsch. Du darfst Fragen stellen, Argumente prüfen, Risiken benennen und Formulierungsvorschläge skizzieren.",
+    "WICHTIG: Schreibe in diesem Chat KEINE fertige, versandfertige E-Mail mit Anrede/Grußformel, es sei denn der Nutzer verlangt ausdrücklich einen Formulierungsvorschlag.",
+    "Erfinde keine Beträge, Fristen, Aktenzeichen, Diagnosen oder Zusagen, die nicht in den Unterlagen oder im Gespräch stehen.",
+    "Wenn eine Unterlage vorliegt, gehe KONKRET darauf ein (Aktenzeichen, Frist, Forderung, Ton).",
+    recipient ? `Geplanter Empfänger: ${clip(recipient, 200)}.` : "",
+    subjectHint ? `Betreff-Hinweis: ${clip(subjectHint, 200)}.` : "",
+    "Antworte als Chatpartner — nicht als JSON.",
+  ].filter(Boolean).join(" ") + docsBlock;
+
+  const { base: strongBase, model: strongModel } = strongLlm();
+  const res = await chat(
+    [{ role: "system", content: system }, ...history],
+    { temperature: 0.4, maxTokens: 1600, model: strongModel, baseUrl: strongBase, timeoutMs: 120000 }
+  );
+  if (!res.ok) return { ok: false, reason: res.reason || "llm_error", text: "", model: res.model };
+  return { ok: true, text: res.text.trim(), model: res.model };
+}
+
+/**
+ * Chatverlauf (+ Unterlagen) → fertige E-Mail (subject/body) über denselben
+ * starken Draft-Pfad. Wird vom Button „E-Mail generieren“ im Diskussions-Popup
+ * aufgerufen.
+ */
+export async function draftFromDiscussion(clientId, { messages, documents, recipient, subjectHint, tone } = {}) {
+  const history = Array.isArray(messages)
+    ? messages
+        .filter((m) => m && (m.role === "user" || m.role === "assistant") && String(m.content || "").trim())
+        .slice(-30)
+    : [];
+  const docs = Array.isArray(documents)
+    ? documents.filter((d) => d && String(d.text || "").trim()).slice(0, 6)
+    : [];
+
+  const transcript = history
+    .map((m) => `${m.role === "user" ? "TEAM" : "NADINE"}: ${String(m.content || "").trim()}`)
+    .join("\n\n");
+  const docsText = docs
+    .map((d, i) => `--- Unterlage ${i + 1}: ${d.filename || "Dokument"} ---\n${clip(d.text, 12000)}`)
+    .join("\n\n");
+
+  const sourceText = [
+    docsText ? `## Unterlagen\n${docsText}` : "",
+    transcript ? `## Gesprächsverlauf (erarbeitete Antwortstrategie)\n${transcript}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  if (!sourceText.trim()) {
+    return { ok: false, subject: "", body: "", fallback: true, reason: "no_discussion", model: "", contextUsed: null };
+  }
+
+  return draftLetter(clientId, {
+    recipient,
+    sourceText,
+    direction: [
+      "Formuliere JETZT die im Gespräch erarbeitete Antwort als fertige, versandfertige E-Mail.",
+      "Nutze die im Gespräch vereinbarten Punkte, Tonlage und Zusagen — nichts Neues erfinden.",
+      "Der E-Mail-Body enthält Anrede, Fließtext und Grußformel.",
+      subjectHint ? `Betreff-Hinweis (falls passend): ${subjectHint}` : "",
+    ].filter(Boolean).join("\n"),
+    tone: tone || "freundlich, verbindlich",
+    useContext: false, // Gespräch + Unterlagen sind die Quelle — kein fremder Gehirn-Kontext
+  });
+}
+
 export async function rewritePassage(clientId, { selection, instruction, fullText, tone } = {}) {
   const sel = String(selection || "").trim();
   const ask = String(instruction || "").trim();
