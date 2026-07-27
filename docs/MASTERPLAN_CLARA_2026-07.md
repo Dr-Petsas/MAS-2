@@ -1309,18 +1309,29 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
 - **W-STABIL-2 Flip-Sperre:** `compare_runs.py` als Pflichtschritt im Gate —
   jeder frueher gruene Fall, der kippt, wird namentlich gemeldet und macht
   das Gate rot (unabhaengig von der Quote).
-- **W-STABIL-3 Faehigkeits-Ping:** MAS-Endpunkt klopft alle Werkzeuge/
-  Verbindungen an (MAS-Tools, /cf-Plattform-Proxys, ElevenLabs, Ollama,
-  Lena-Dienst); Ergebnis auf der Handy-Statusseite. Haette die tote
-  Abwesenheits-Route am ERSTEN Tag gefunden.
+- **W-STABIL-3 Faehigkeits-Ping: FERTIG (28.07.2026).** `/clara/health`
+  (und damit die Handy-Statusseite `/clara/<clientId>/status`) prueft jetzt
+  zusaetzlich: (1) ALLE 65 Profil-Tools gegen die wirklich gemounteten
+  MAS-Routen — genau der Abwesenheits-Vorfall; (2) die 9 Plattform-Cloud-
+  Functions per OPTIONS (ohne Ausfuehrung); (3) ElevenLabs ueber den
+  Lisa-Agent-Endpunkt (der Key ist ConvAI-beschraenkt, /v1/user waere
+  Fehlalarm); (4) Lena-STT (8140); dazu Kontextfenster-Wache >= 32768.
+  Test: `node scripts/test-capability-ping.mjs` (inkl. Negativprobe:
+  erfundenes Tool auf toter Route wird gemeldet).
 - **W-STABIL-4 Fehler-als-Zustand:** Tool-/Endpunkt-Ausfall = ehrlicher
   kurzer Satz + roter Eintrag, KEIN "sanft leeres Ergebnis" mehr.
   (1 Verhaltensaenderung, 1 Neustart.)
 - **W-STABIL-5 Protokolle:** Worker-Logs anhaengen statt ueberschreiben;
   pro Gespraechszug ein Entscheidungsprotokoll (Transkript, Tool, Argumente,
   Ergebnisstatus, eingegriffene Waechter, gesprochener Satz).
-- **W-STABIL-6 Morgenlauf:** Register + Ping automatisch vor Praxisbeginn,
-  rot/gruen aufs Handy.
+- **W-STABIL-6 Morgenlauf: FERTIG (28.07.2026).** Scheduler im MAS: taeglich
+  ab 06:30 (CLARA_MORGENLAUF_ZEIT, Not-Aus CLARA_MORGENLAUF=0) laufen
+  Faehigkeits-Ping + Verkaufskern-Register (SAFE-Modus, 28 Faelle, keine
+  echten Pushes/SMS aus den Tests) — das Ergebnis kommt als EIN Push aufs
+  Handy ("Morgenlauf: GRUEN — Ping gruen (10 Checks) | Register 28/28",
+  Link auf die Statusseite). Handausloesung: POST /clara/morgenlauf/run
+  (?push=0 fuer stumm). Live bewiesen 28.07. 00:14 Uhr: Ping gruen,
+  Register 28/28, Laufzeit ~2,5 min.
 - **W-STABIL-7 Konfig ins Tag:** ElevenLabs-Prompt, Profil, Firestore-Config,
   Env-Whitelist als Export im Repo, Abgleich beim Start; Release =
   Versionspaar (Clara-Tag + MAS-Tag + Konfig), harter Startabbruch statt

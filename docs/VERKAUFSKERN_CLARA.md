@@ -125,6 +125,16 @@ Bianca-Arbeit in Clara-Sessions.
   Modell-Roulette). Worker um 23:39 neu gestartet — der Stand ist LIVE
   (Tag `stabil-2026-07-27-nacht`). Offen fuer den Chef: begleiteter
   Ende-zu-Ende-Livetest (Lisa ruft Testnummer an, Bericht kommt zurueck).
+- **28.07.2026 00:20: W-STABIL-3 (Faehigkeits-Ping) und W-STABIL-6
+  (Morgenlauf) gebaut, getestet, LIVE.** `/clara/health` prueft jetzt 10
+  Punkte, darunter neu: alle 65 Profil-Tools gegen die wirklich gemounteten
+  MAS-Routen (haette die tote Abwesenheits-Route am ersten Tag gefunden),
+  die 9 Plattform-Cloud-Functions, ElevenLabs (Lisa-Agent-Endpunkt — der
+  Key ist ConvAI-beschraenkt, /v1/user war Fehlalarm) und Lena-STT. Ab
+  morgen frueh 06:30 laeuft automatisch Ping + Register (SAFE) und EIN
+  Push meldet rot/gruen aufs Handy. Live-Beweis 00:14 Uhr ueber
+  POST /clara/morgenlauf/run: Ping gruen (10 Checks), Register 28/28,
+  ~2,5 min. MAS neu gestartet, Clara-Gate danach gruen.
 
 ## Befund Lueckenfueller-Kette (Audit 27.07.2026 abends)
 
