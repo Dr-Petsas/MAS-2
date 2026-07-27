@@ -1369,9 +1369,33 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
   Normalpfad beide bewiesen. (5) Rollback WIRKLICH geuebt: checkout
   `stabil-2026-07-27-nacht` -> Kernmodule kompilieren + Sprech-Schicht gruen
   auf dem alten Stand -> zurueck auf `v5.4-speed`, HEAD byte-identisch.
-- **W-STABIL-8 Neubau aus dem Verkaufskern:** Fristen-/Rechnungs-Waechter
-  (Punkte 24/25) — EIN Waechter, EINE Wiedervorlage-Liste, drei Quellen
-  (Mail, Scan via `mail/ocr.js`, Telefon-Transkripte).
+- **W-STABIL-8 Neubau aus dem Verkaufskern: FERTIG (28.07.2026).**
+  Fristen-/Rechnungs-Waechter (Punkte 24/25) — EIN Waechter, EINE
+  Wiedervorlage-Liste, drei Quellen. (1) `brain/critical.js` erweitert:
+  Rechnungs-/Zahlungssignal (`invoiceOrPayment`), Betrags-Extraktion in Cent
+  (`extractAmountCents`, NIE gesprochen — nur Karte), mehr Frist-Muster
+  ("Widerspruch bis", "Zahlungsfrist", "zu zahlen bis") und die
+  Stark/Schwach-Unterscheidung `deadlineStrong` (Werbe-"bis zum" wie
+  FLYERALARM kommt NICHT auf die Wiedervorlage — Live-Befund im ersten
+  Lauf). (2) Drei Quellen tragen die Felder: Mail-Sync
+  (`mailbox.recordInboundMail`), gescannte Post (`documents.saveDocument`
+  bewertet jetzt — vorher OHNE Frist-Feld) und Telefon-Transkripte
+  (`brain/extractor.js` + Ingest-Route). NEU: Mail-ANLAGEN werden beim Sync
+  automatisch gelesen (PDF-Textlayer/Vision-OCR, max. 3 Anlagen je Mail,
+  Signatur-Logos ausgenommen, asynchron, Notaus `MAS_MAIL_ANHANG_OCR=0`) und
+  als bewertete Unterlage in `mas_documents` + Gehirn uebernommen — Hauspost
+  kommt gescannt als E-Mail-Anlage (O-Ton Chef). (3) Lese-Modell
+  `brain/wiedervorlage.js` (offene starke Fristen + Kritisches + Rechnungen,
+  nach Faelligkeit; Verstrichenes faellt nach 14 Tagen raus), Tools
+  `POST /tools/wiedervorlage` (+ Karte `karteWiedervorlage` mit Betraegen)
+  und `POST /tools/wiedervorlage-erledigt` (Sprach-Quittung; mehrdeutig =>
+  Rueckfrage, nie raten). Clara-Profil: 2 neue Tools (Gruppe `post`),
+  Subsetting-Keywords frist/wiedervorlage/rechnung/mahnung/widerspruch
+  (bewusst OHNE breite Woerter wie "faellig" — kaperte die QM-Frage),
+  Register vk-24/vk-25/vk-25b. Beweis: `scripts/test-wiedervorlage.mjs`
+  (37 Pruefungen, inkl. Firestore-Kette mit Aufraeumen), bestehende Tests
+  critical/extractor/karten gruen, Route live gegen echte Praxisdaten
+  geprueft.
 - **W-STABIL-9 Lueckenfueller Ende-zu-Ende (Audit 27.07., Befund im
   Verkaufskern-Dokument):** Die Kette ist GEBAUT und der Maschinenraum
   gruen (Modultest `test-gap-fill.mjs` inkl. Abwesenheits-Block; Cloud

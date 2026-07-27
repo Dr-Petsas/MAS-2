@@ -11,6 +11,8 @@ import { recordCommunication } from "../brain/record.js";
 import { upsertSharedContact, extractPhoneFromText } from "../brain/addressBook.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { assessCritical } from "../brain/critical.js";
+import { extractText } from "./extract.js";
+import { saveDocument } from "./documents.js";
 
 function escapeHtml(v) {
   return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -278,8 +280,51 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
   // failure-safe (recordCommunication queues a retry on error, never throws).
   if (created && effDirection === "in" && classification.relevant !== false && isFresh) {
     await recordInboundMail(clientId, id, doc).catch(() => { /* outbox already captured it */ });
+    // W-STABIL-8: Hauspost kommt GESCANNT ALS E-MAIL-ANLAGE (O-Ton Chef). Die
+    // Anlage wird deshalb beim Sync gelesen (PDF-Textlayer bzw. Hybrid-OCR)
+    // und als Unterlage uebernommen — saveDocument bewertet sie dabei auf
+    // Frist/Rechnung/Betrag, damit der Scan in der Wiedervorlage auftaucht.
+    // Bewusst NICHT awaited: OCR (Vision-Modell) darf den Sync nie aufhalten.
+    // Notaus: MAS_MAIL_ANHANG_OCR=0.
+    if (process.env.MAS_MAIL_ANHANG_OCR !== "0" && (parsed.attachments || []).length) {
+      ocrInboundAttachments(clientId, doc, parsed.attachments).catch(() => {});
+    }
   }
   return { id, created, threadId };
+}
+
+const ANHANG_OCR_MAX = 3; // pro Mail hoechstens 3 Anlagen lesen
+const ANHANG_OCR_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Gescannte Post aus Mail-Anlagen in den Unterlagen-Store + Waechter heben. */
+async function ocrInboundAttachments(clientId, doc, parsedAtts) {
+  let gelesen = 0;
+  for (const a of parsedAtts) {
+    if (gelesen >= ANHANG_OCR_MAX) break;
+    // Signatur-Logos u. ae. (inline/cid) sind keine Post.
+    if (a.cid || String(a.contentDisposition || "").toLowerCase() === "inline") continue;
+    const ct = String(a.contentType || "").toLowerCase();
+    const fn = String(a.filename || "").toLowerCase();
+    const istDokument = ct.includes("pdf") || ct.startsWith("image/") || /\.(pdf|png|jpe?g|tiff?)$/.test(fn);
+    if (!istDokument || !a.content || a.content.length > ANHANG_OCR_MAX_BYTES) continue;
+    gelesen++;
+    try {
+      const r = await extractText({
+        base64: a.content.toString("base64"),
+        filename: a.filename,
+        contentType: a.contentType,
+      });
+      const text = ((r.ok && r.text) || "").trim();
+      if (text.length < 80) continue; // Logo/leere Seite — keine Unterlage
+      await saveDocument(clientId, {
+        text,
+        filename: a.filename || "Scan aus E-Mail",
+        kind: "scan",
+        uploadedBy: "Nadine (Anhang-Scan)",
+        patientName: doc.from?.name || "",
+      });
+    } catch { /* naechste Anlage — OCR-Ausfall darf nichts blockieren */ }
+  }
 }
 
 /**
@@ -330,6 +375,12 @@ async function recordInboundMail(clientId, msgId, doc) {
     signals.critical = true;
     tags.push("kritisch", crit.category);
   }
+  // W-STABIL-8 Rechnungs-/Zahlungs-Waechter: Vorgang bleibt als Wiedervorlage
+  // offen, Betrag wandert (nur) auf die Karte.
+  if (crit.invoiceOrPayment) {
+    signals.invoiceOrPayment = true;
+    tags.push("rechnung");
+  }
 
   return recordCommunication(clientId, {
     id: `mail-in:${msgId}`,
@@ -344,6 +395,8 @@ async function recordInboundMail(clientId, msgId, doc) {
     signals,
     summary: crit.critical ? `[${crit.label}] ${summary}` : summary,
     deadlineMs: crit.deadlineMs,
+    deadlineStrong: crit.deadlineStrong,
+    amountCents: crit.amountCents,
     tags,
     extractor: "nadine@sync",
     payloadRef: { kind: "mail", id: msgId },

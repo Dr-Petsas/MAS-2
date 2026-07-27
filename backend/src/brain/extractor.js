@@ -250,6 +250,9 @@ export async function extractFromTranscript(transcript, opts = {}) {
     fragments.push(`⚠ ${crit.label}`);
     if (crit.quote) evidence.push({ flag: "critical", quote: crit.quote });
   }
+  // W-STABIL-8: Anwaelte/Behoerden/Rechnungssteller am TELEFON laufen in
+  // denselben Waechter wie eine Mail (EIN Waechter, EINE Liste, drei Quellen).
+  if (crit.invoiceOrPayment) signals.invoiceOrPayment = true;
 
   // Confidence: rule-based caps at 0.85 (deterministic, but still extraction).
   const flagCount = SIGNAL_FLAGS.filter((f) => signals[f]).length;
@@ -272,7 +275,10 @@ export async function extractFromTranscript(transcript, opts = {}) {
     evidence,
     // Fristen-Wächter: erkannte Frist + Radar-Kategorie für Event-Tags.
     deadlineMs: crit.deadlineMs || null,
+    deadlineStrong: !!crit.deadlineStrong,
     criticalCategory: crit.critical ? crit.category : null,
+    // W-STABIL-8: Betrag (nur Karte, nie gesprochen).
+    amountCents: crit.amountCents || null,
   };
 
   if (typeof opts.refine === "function") {

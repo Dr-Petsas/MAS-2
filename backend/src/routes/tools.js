@@ -21,7 +21,8 @@ import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechn
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken } from "../clara/dokuWaechter.js";
 import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
 import { freiFormulieren } from "../clara/freiSprech.js";
-import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis } from "../clara/karten.js";
+import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteWiedervorlage } from "../clara/karten.js";
+import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEuro } from "../brain/wiedervorlage.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
@@ -2934,6 +2935,48 @@ router.post("/tools/comms-digest", async (req, res) => {
   }
 });
 
+
+// W-STABIL-8 Wiedervorlage (Verkaufskern 24/25): "Welche Fristen sind offen?" /
+// "Gibt es offene Rechnungen?" — EIN Waechter ueber Mail, gescannte Post und
+// Telefonate. Gesprochen werden Absender/Sache/Frist; Betraege stehen NUR auf
+// der Karte (Chef-Regel: keine Euro-Betraege in gesprochenen Briefings).
+router.post("/tools/wiedervorlage", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const liste = await buildWiedervorlage(clientId);
+    // Optional eingrenzen: { nur: "rechnungen" | "fristen" }
+    const nur = String(req.body?.nur || "").toLowerCase();
+    if (nur.startsWith("rechnung")) liste.items = liste.items.filter((i) => i.rechnung);
+    else if (nur.startsWith("frist")) liste.items = liste.items.filter((i) => i.deadlineMs);
+    const message = spokenWiedervorlage(liste);
+    let card;
+    try { card = karteWiedervorlage({ items: liste.items, euro: formatEuro }); } catch { /* Karte ist Komfort */ }
+    res.json(card ? { ok: true, message, card } : { ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Sprach-Quittung: "Die Sache mit Meier ist erledigt." Eindeutigkeit Pflicht —
+// bei mehreren Treffern fragt Clara zurueck statt zu raten.
+router.post("/tools/wiedervorlage-erledigt", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await resolveWiedervorlage(clientId, {
+      wer: req.body?.wer || req.body?.who || "",
+      actor: req.body?.actor || "Chef (Sprache)",
+    });
+    res.json({ ok: out.ok, message: out.message, reason: out.reason || undefined });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
 
 // Voice: "Wie steht es um die Abwesenheit?" — gesprochener Zwischenstand
 // (informiert/neu gebucht/offen).

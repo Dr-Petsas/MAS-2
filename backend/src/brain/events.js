@@ -106,6 +106,7 @@ export const SIGNAL_FLAGS = Object.freeze([
   "unresolvedByAI", // the AI could not resolve the matter
   "needsHuman", // explicitly should reach a human / the doctor
   "critical", // Eskalations-Radar: Anwalt/Kammer/Mahnung/Pfändung/Eskalation
+  "invoiceOrPayment", // W-STABIL-8: Rechnung/Zahlungsvorgang (Wiedervorlage)
 ]);
 const FLAG_SET = new Set(SIGNAL_FLAGS);
 
@@ -233,7 +234,9 @@ export function buildEvent(input = {}) {
       sig.documentRelated ||
       sig.painPersists ||
       sig.repeatVisitStated ||
-      sig.critical;
+      sig.critical ||
+      // W-STABIL-8: Rechnungen/Zahlungen bleiben offen, bis jemand "erledigt" sagt.
+      sig.invoiceOrPayment;
     status = actionable ? ITEM_STATUS.OPEN : ITEM_STATUS.NONE;
   }
   assertEnum(status, STATUS_SET, "status");
@@ -264,6 +267,16 @@ export function buildEvent(input = {}) {
     // Fristen-Wächter: erkannte Frist (epoch ms, Tagesende) — null wenn keine.
     deadlineMs: Number.isFinite(Number(input.deadlineMs)) && Number(input.deadlineMs) > 0
       ? Number(input.deadlineMs)
+      : null,
+    // W-STABIL-8: true, wenn ein STARKES Frist-Wort (Frist/Widerspruch/zahlbar
+    // ...) die Frist ausgeloest hat — nur solche Fristen kommen auf die
+    // Wiedervorlage; schwache ("bis zum" in Werbung) bleiben rote-Liste-Info.
+    deadlineStrong: input.deadlineStrong === true ? true : null,
+    // W-STABIL-8: erkannter Geldbetrag in Cent (Rechnung/Forderung). Wird NUR
+    // auf Karten angezeigt, NIE gesprochen (Chef-Regel: keine Euro-Betraege
+    // in gesprochenen Briefings). null = kein Betrag erkannt.
+    amountCents: Number.isFinite(Number(input.amountCents)) && Number(input.amountCents) > 0
+      ? Number(input.amountCents)
       : null,
     // Eigene Verfallsfrist (epoch ms) ABWEICHEND vom allgemeinen Retention-
     // Regler. Eingefuehrt 04.07.2026 fuer Behandlungsdoku im Shared Memory:

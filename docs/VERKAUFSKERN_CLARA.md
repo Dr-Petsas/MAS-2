@@ -71,8 +71,8 @@ Status-Legende:
 | Nr | Faehigkeit | Werkzeuge | Status | Register |
 |----|------------|-----------|--------|----------|
 | 23 | "Was ist heute reingekommen?" — Mails + Anrufe + Empfang | `comms_digest` | OK | vk-23 |
-| 24 | Fristen-Waechter: Fristen aus E-Mails, gescannter Post (Mail-Anlage -> `mail/ocr.js`) UND Telefonaten; Wiedervorlage bis "erledigt" | NEUBAU (Basis: Eskalationsliste, OCR-Strecke, Anruf-Transkripte) | NEUBAU | folgt |
-| 25 | Rechnungs-/Zahlungs-Waechter aus denselben drei Quellen; Betrag NUR auf der Karte, gesprochen wird die Frist (Regel: keine Euro-Betraege in gesprochenen Briefings) | NEUBAU | NEUBAU | folgt |
+| 24 | Fristen-Waechter: Fristen aus E-Mails, gescannter Post (Mail-Anlage -> `mail/ocr.js`) UND Telefonaten; Wiedervorlage bis "erledigt" | `wiedervorlage` + `wiedervorlage_erledigt` (MAS: `brain/wiedervorlage.js`, Quellen: `mailbox.js`/`documents.js`/`extractor.js`) | OK (28.07.2026) | vk-24, vk-25b; MAS: `scripts/test-wiedervorlage.mjs` |
+| 25 | Rechnungs-/Zahlungs-Waechter aus denselben drei Quellen; Betrag NUR auf der Karte, gesprochen wird die Frist (Regel: keine Euro-Betraege in gesprochenen Briefings) | `signals.invoiceOrPayment` + `amountCents` (Karte `karteWiedervorlage`) | OK (28.07.2026) | vk-25; MAS: `scripts/test-wiedervorlage.mjs` |
 | 26 | Kritisches sofort melden, ohne Fehlalarm durch Werbe-Fusszeilen | `brain/critical.js` (`ohneFusszeile`) | REP-2707 | MAS: `scripts/test-critical-fusszeile.mjs` |
 
 ## F. Anzeige
@@ -125,6 +125,27 @@ Bianca-Arbeit in Clara-Sessions.
   Modell-Roulette). Worker um 23:39 neu gestartet — der Stand ist LIVE
   (Tag `stabil-2026-07-27-nacht`). Offen fuer den Chef: begleiteter
   Ende-zu-Ende-Livetest (Lisa ruft Testnummer an, Bericht kommt zurueck).
+- **28.07.2026 01:45: W-STABIL-8 (Fristen-/Rechnungs-Waechter, Nr. 24+25)
+  gebaut, getestet, LIVE.** EIN Waechter, EINE Liste, drei Quellen: (1) Die
+  Bewertung in `brain/critical.js` erkennt jetzt zusaetzlich Rechnungs-/
+  Zahlungsvorgaenge (`invoiceOrPayment`), Geldbetraege in Cent
+  (`extractAmountCents`) und mehr Frist-Formulierungen ("Widerspruch bis",
+  "Zahlungsfrist", "zu zahlen bis"). (2) Alle DREI Quellen tragen die Felder:
+  E-Mail beim Sync, gescannte Post in `saveDocument` (vorher bekam ein Scan
+  mit "Widerspruch bis 15.08." KEIN Fristen-Feld) und Telefon-Transkripte im
+  Extractor. NEU: Mail-ANLAGEN (Hauspost kommt gescannt als E-Mail) werden
+  beim Sync automatisch gelesen (PDF-Textlayer/Vision-OCR, max. 3 Anlagen,
+  Notaus MAS_MAIL_ANHANG_OCR=0) und als bewertete Unterlage uebernommen.
+  (3) Die Wiedervorlage (`brain/wiedervorlage.js`, Tools `wiedervorlage` +
+  `wiedervorlage_erledigt`, Karte `karteWiedervorlage`) zeigt alles Offene
+  nach Faelligkeit; abgehakt wird per Sprache ("Die Sache mit dem Finanzamt
+  ist erledigt" — bei mehreren Treffern ehrliche Rueckfrage, nie raten).
+  CHEF-REGELN eingebaut: Euro-Betraege stehen NUR auf der Karte, werden NIE
+  gesprochen (Test prueft das); Werbe-"bis zum"-Fristen (FLYERALARM-Befund
+  aus dem ersten Live-Lauf) kommen NICHT auf die Liste (nur STARKE
+  Frist-Woerter, Kritisches und Rechnungen); Verstrichenes fliegt nach 14
+  Tagen runter. 37 Pruefungen gruen (`scripts/test-wiedervorlage.mjs`),
+  Register vk-24/vk-25/vk-25b.
 - **28.07.2026 01:05: W-STABIL-7 (Konfig ins Tag) gebaut, getestet, LIVE.**
   Der Lisa-Prompt (lebte NUR in der ElevenLabs-Konsole), die Firestore-
   Settings und die Env-Schluessel-Namen liegen jetzt als Snapshot im Repo

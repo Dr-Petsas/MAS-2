@@ -246,7 +246,12 @@ router.post("/brain/ingest/transcript", async (req, res) => {
       extractor: req.body?.extractor || "rules@v1",
       ts: req.body?.ts,
       deadlineMs: extracted.deadlineMs || null,
-      tags: extracted.criticalCategory ? ["kritisch", extracted.criticalCategory] : [],
+      deadlineStrong: extracted.deadlineStrong === true,
+      amountCents: extracted.amountCents || null,
+      tags: [
+        ...(extracted.criticalCategory ? ["kritisch", extracted.criticalCategory] : []),
+        ...(extracted.signals?.invoiceOrPayment ? ["rechnung"] : []),
+      ],
     });
     let caseLink = null;
     if (created && event.status === "open") {

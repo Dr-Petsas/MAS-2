@@ -5,6 +5,7 @@ import { appendEvent } from "../brain/eventStore.js";
 import { linkEventToCase } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { chat, strongLlm } from "./llm.js";
+import { assessCritical } from "../brain/critical.js";
 
 // ============================================================================
 // Hochgeladene/eingefügte Unterlagen (Briefe, PDFs, gescannte Schreiben), die
@@ -132,13 +133,34 @@ export async function saveDocument(clientId, input = {}) {
     }
   }
 
+  // W-STABIL-8: Gescannte Post laeuft durch DENSELBEN Waechter wie Mail und
+  // Telefonat — Frist + Rechnungssignal + Betrag landen am Event, damit der
+  // Brief in der Wiedervorlage auftaucht statt still im Archiv zu liegen.
+  // (Vorher bekam ein Scan mit "Widerspruch bis 15.08." KEIN deadlineMs.)
+  const crit = assessCritical({ subject: filename, text });
+  const signals = {};
+  const tags = [];
+  if (crit.critical) {
+    signals.critical = true;
+    tags.push("kritisch", crit.category);
+  }
+  if (crit.invoiceOrPayment) {
+    signals.invoiceOrPayment = true;
+    tags.push("rechnung");
+  }
+
   const { event } = await appendEvent(clientId, {
     channel: "nadine_letter",
     direction: "in",
     type: "interaction",
     counterparty: { kind: cpKind, name: nameHint || "Unbekannt", ref: null },
     subject,
-    summary: `Unterlage übernommen: ${filename}\n\n${clip(text, 800)}`,
+    signals,
+    summary: `${crit.critical ? `[${crit.label}] ` : ""}Unterlage übernommen: ${filename}\n\n${clip(text, 800)}`,
+    deadlineMs: crit.deadlineMs,
+    deadlineStrong: crit.deadlineStrong,
+    amountCents: crit.amountCents,
+    tags,
     extractor: "nadine@upload",
     payloadRef: { kind: "document", id },
   });

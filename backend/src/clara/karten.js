@@ -532,6 +532,54 @@ export function karteEingaenge({
   };
 }
 
+/**
+ * Wiedervorlage-Karte (W-STABIL-8): Fristen + Rechnungen aus Mail, gescannter
+ * Post und Telefonaten. HIER (und nur hier) stehen die Euro-Betraege — der
+ * gesprochene Text nennt sie nie (Chef-Regel). `items`: Ausgabe von
+ * brain/wiedervorlage.buildWiedervorlage (wer/was/quelle/stage/amountCents).
+ */
+export function karteWiedervorlage({ items = [], euro = (c) => "" } = {}) {
+  const levelOf = (it) => (it.stage === "overdue" ? "alert"
+    : it.stage === "today" || it.kritisch ? "alert"
+      : it.stage === "soon" ? "warn"
+        : it.rechnung ? "warn" : "info");
+  const iconOf = (it) => (it.rechnung ? "euro" : "clock");
+  const zeile = (it) => {
+    const frist = it.deadlineMs
+      ? (it.stage === "overdue" ? "ÜBERFÄLLIG" : `bis ${datumKurz(it.deadlineMs)}`)
+      : "ohne Datum";
+    const betrag = it.amountCents ? ` · ${euro(it.amountCents)}` : "";
+    const mehrfach = it.schreiben > 1 ? ` (${it.schreiben} Schreiben)` : "";
+    return clip(`${frist} — ${it.wer}${mehrfach}: ${it.was}${betrag}`, 110);
+  };
+
+  const rows = (items || []).slice(0, 8).map((it) => item(levelOf(it), iconOf(it), zeile(it)));
+  if (!rows.length) rows.push(item("ok", "check", "Keine Fristen, keine offenen Rechnungen"));
+
+  const dLines = [(items || []).length
+    ? `Wiedervorlage (${items.length} offen):`
+    : "Wiedervorlage: nichts offen."];
+  for (const it of items || []) {
+    dLines.push(`${it.deadlineMs ? `Frist ${datumKurz(it.deadlineMs)}` : "Ohne Datum"} — ${it.wer} (${it.quelle}): ${it.was}${it.amountCents ? ` — ${euro(it.amountCents)}` : ""}${it.kritisch ? " [kritisch]" : ""}`);
+  }
+  dLines.push('Abhaken per Sprache: "Die Sache mit ... ist erledigt."');
+
+  const dringend = (items || []).filter((i) => i.stage === "overdue" || i.stage === "today").length;
+  return {
+    kind: "wiedervorlage",
+    tag: "Wiedervorlage",
+    title: "Fristen & Rechnungen",
+    time: "",
+    subtitle: items?.length
+      ? `${items.length} offen${dringend ? ` · ${dringend} dringend` : ""}`
+      : "Nichts offen",
+    heading: "Nicht liegen lassen",
+    items: rows,
+    detail: detailText(dLines),
+    footer: items?.length > 8 ? `${items.length - 8} weitere` : "",
+  };
+}
+
 /** Sophie-Abrechnungs-Karte (nur beim EXPLIZITEN "rechne ab" — kein Briefing). */
 export function karteSophie(r = {}) {
   const items = [];
