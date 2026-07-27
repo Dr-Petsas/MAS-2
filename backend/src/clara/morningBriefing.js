@@ -45,9 +45,9 @@ function greetingLine(operatorName) {
     "Morgen",
   ]);
   const tail = pick([
-    "Hier ist dein Auftakt für heute.",
+    "Hier ist Ihr Auftakt für heute.",
     "Ich hab schon mal vorgearbeitet — hier der Überblick.",
-    "Kurzer Rundumblick, dann gehört der Tag dir.",
+    "Kurzer Rundumblick, dann gehört der Tag Ihnen.",
     "Einmal alles Wichtige in einer Minute.",
   ]);
   return `${base}${name ? `, ${name}` : ""}! ${tail}`;
@@ -73,7 +73,7 @@ function openItemsLines(briefing) {
     // Massenlage (z.B. nach Import/Testdaten): keine grosse Zahl zelebrieren,
     // sondern einordnen und Filter anbieten.
     lines.push(pick([
-      `Daneben ist einiges aufgelaufen — über ${Math.floor(restCount / 10) * 10} offene Einträge, vieles davon Routine. Sag Bescheid, dann filtere ich dir das Wichtigste raus.`,
+      `Daneben ist einiges aufgelaufen — über ${Math.floor(restCount / 10) * 10} offene Einträge, vieles davon Routine. Sag Bescheid, dann filtere ich Ihnen das Wichtigste raus.`,
       `Es liegen außerdem ungewöhnlich viele offene Einträge an, rund ${Math.floor(restCount / 10) * 10}. Die gehen wir besser gezielt durch, wenn du magst.`,
     ]));
     return lines;
@@ -102,7 +102,7 @@ function mailLine(counts) {
     ]));
   }
   if (counts.awaitingApproval > 0) {
-    bits.push(`${counts.awaitingApproval === 1 ? "ein Entwurf von Nadine wartet" : `${counts.awaitingApproval} Entwürfe von Nadine warten`} auf deine Freigabe`);
+    bits.push(`${counts.awaitingApproval === 1 ? "ein Entwurf von Nadine wartet" : `${counts.awaitingApproval} Entwürfe von Nadine warten`} auf Ihre Freigabe`);
   }
   if (!bits.length) return "";
   const line = bits.join(", und ");
@@ -121,7 +121,7 @@ function gapLines(run) {
   // Briefings (Chef, 12.06.2026) — das wird ein eigenes Lena/Sophie-Element.
   if (run.callLists?.length) {
     lines.push(pick([
-      "Die Anruflisten liegen fertig im Monitor — ein Wort von dir und Lisa legt los.",
+      "Die Anruflisten liegen fertig im Monitor — ein Wort von Ihnen und Lisa legt los.",
       "Wenn du sie freigibst, telefoniert Lisa die Kandidaten ab.",
     ]));
   }

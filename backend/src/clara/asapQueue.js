@@ -203,7 +203,7 @@ export function spokenAsapQueue(queue) {
     return pick([
       "Gerade brennt nichts: keine kritischen Vorgaenge, keine Fristen, nichts Dringendes aus Post oder Telefon.",
       "Nichts Dringendes — rote Liste leer, keine Fristen, keine wartenden Freigaben.",
-      "Alles ruhig: kein kritischer Vorgang, keine faellige Frist, nichts wartet auf dich.",
+      "Alles ruhig: kein kritischer Vorgang, keine faellige Frist, nichts wartet auf Sie.",
     ]);
   }
   const p0 = items.filter((i) => i.prio === "P0");

@@ -2528,7 +2528,7 @@ router.post("/tools/running-late", async (req, res) => {
       .sort((a, b) => a.startMs - b.startMs);
 
     if (!upcoming.length) {
-      const msg = "Für heute steht nichts mehr an — der Verzug holt dich also nicht mehr ein.";
+      const msg = "Für heute steht nichts mehr an — der Verzug holt Sie also nicht mehr ein.";
       return res.json({ ok: true, message: msg, pushed: false, affected: 0 });
     }
 
@@ -2569,7 +2569,7 @@ router.post("/tools/running-late", async (req, res) => {
 
     return res.json({
       ok: true,
-      message: pushed ? `${message} (Das Lagebild liegt auch auf deinem Handy.)` : message,
+      message: pushed ? `${message} (Das Lagebild liegt auch auf Ihrem Handy.)` : message,
       pushed,
       affected: upcoming.length,
     });
@@ -3184,7 +3184,7 @@ router.post("/tools/compose-email", async (req, res) => {
     return res.json({
       ok: true,
       caseId,
-      message: `Alles klar. Nadine schreibt eine E-Mail${displayName ? ` an ${displayName}` : ""} und legt sie dir zur Freigabe vor — gesendet wird erst nach deiner Bestätigung. Soll ich sie senden?`,
+      message: `Alles klar. Nadine schreibt eine E-Mail${displayName ? ` an ${displayName}` : ""} und legt sie Ihnen zur Freigabe vor — gesendet wird erst nach Ihrer Bestätigung. Soll ich sie senden?`,
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -3262,7 +3262,7 @@ router.post("/tools/dictate-letter", async (req, res) => {
     return res.json({
       ok: true,
       caseId,
-      message: `Alles klar, ich habe dein Diktat aufgenommen. Nadine arbeitet daraus einen Briefentwurf${displayName ? ` an ${displayName}` : ""} aus und legt ihn dir zur Freigabe vor.`,
+      message: `Alles klar, ich habe Ihr Diktat aufgenommen. Nadine arbeitet daraus einen Briefentwurf${displayName ? ` an ${displayName}` : ""} aus und legt ihn Ihnen zur Freigabe vor.`,
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -3298,11 +3298,11 @@ router.post("/tools/dictate", async (req, res) => {
     // Brief / E-Mail -> Nadine-Entwurf zur Freigabe.
     if (ch === "brief") {
       const { caseId, displayName } = await assignNadineDraftFromDictation(clientId, { channelLabel: "Brief", recipientName, dictation, by });
-      return res.json({ ok: true, caseId, message: `Alles klar. Nadine macht aus deinem Diktat einen Briefentwurf${displayName ? ` an ${displayName}` : ""} und legt ihn dir zur Freigabe vor.` });
+      return res.json({ ok: true, caseId, message: `Alles klar. Nadine macht aus Ihrem Diktat einen Briefentwurf${displayName ? ` an ${displayName}` : ""} und legt ihn Ihnen zur Freigabe vor.` });
     }
     if (ch === "email") {
       const { caseId, displayName } = await assignNadineDraftFromDictation(clientId, { channelLabel: "E-Mail", recipientName, dictation, by });
-      return res.json({ ok: true, caseId, message: `Alles klar. Nadine macht aus deinem Diktat einen E-Mail-Entwurf${displayName ? ` an ${displayName}` : ""} und legt ihn dir zur Freigabe vor.` });
+      return res.json({ ok: true, caseId, message: `Alles klar. Nadine macht aus Ihrem Diktat einen E-Mail-Entwurf${displayName ? ` an ${displayName}` : ""} und legt ihn Ihnen zur Freigabe vor.` });
     }
 
     // SMS / Anruf -> Ziel aufloesen, ausformulieren, vorlesen, erst auf 'ja' senden.
@@ -3373,7 +3373,7 @@ router.post("/tools/send-prepared-email", async (req, res) => {
     }
     const active = await getActiveCase(clientId);
     if (!active?.id) {
-      return res.json({ ok: false, sent: false, message: "Ich weiss gerade nicht, welche E-Mail gemeint ist. Sag mir kurz den Empfaenger, dann verfasse ich sie und sende nach deiner Freigabe." });
+      return res.json({ ok: false, sent: false, message: "Ich weiss gerade nicht, welche E-Mail gemeint ist. Sagen Sie mir kurz den Empfaenger, dann verfasse ich sie und sende nach Ihrer Freigabe." });
     }
     let c = await getCase(clientId, active.id);
     if (!c) return res.json({ ok: false, sent: false, message: "Den Vorgang finde ich nicht mehr. Bitte sag mir den Empfaenger neu." });
@@ -3640,7 +3640,7 @@ function contactPushConfirm(p, pushed) {
   const phone = String(p.mobilePhoneNumber || p.phone || "").trim();
   const email = String(p.email || "").trim();
   const head = reached
-    ? `Ich habe dir die Kontaktdaten von ${name} gerade aufs Handy geschickt.`
+    ? `Ich habe Ihnen die Kontaktdaten von ${name} gerade aufs Handy geschickt.`
     : `Gemeint ist ${name}${phone ? `, Telefon ${phone}` : ""}${email ? `${phone ? "," : ","} E-Mail ${email}` : ""}. (Aufs Handy konnte ich nichts schicken — kein Geraet gekoppelt.)`;
   return `${head} Ist das die richtige Person? Wenn ja, sag mir was ich tun soll — SMS, E-Mail oder Anruf, und den Inhalt. Wenn nein, suchen wir weiter.`;
 }
@@ -4057,7 +4057,7 @@ router.post("/tools/push-contact", async (req, res) => {
     }
     const pushed = await pushContactCard(clientId, sel);
     if (pushed?.sent > 0) {
-      return res.json({ ok: true, pushed: true, message: `Erledigt — ich habe dir die Kontaktdaten von ${name} aufs Handy geschickt.` });
+      return res.json({ ok: true, pushed: true, message: `Erledigt — ich habe Ihnen die Kontaktdaten von ${name} aufs Handy geschickt.` });
     }
     // Kein Geraet erreicht: ehrlich die Daten nennen statt einen Push zu behaupten.
     const parts = [phone && `Telefon ${phone}`, email && `E-Mail ${email}`].filter(Boolean).join(", ");
@@ -4181,7 +4181,7 @@ router.post("/tools/lisa-call-result", async (req, res) => {
     if (r.state === "running") {
       return res.json({
         ok: true, found: true, running: true, taskId: t.id || "",
-        message: `Lisa telefoniert gerade noch mit ${wer}. Sobald sie auflegt, melde ich dir das Ergebnis.`,
+        message: `Lisa telefoniert gerade noch mit ${wer}. Sobald sie auflegt, melde ich Ihnen das Ergebnis.`,
       });
     }
 
@@ -4616,7 +4616,7 @@ router.post("/tools/contact-card", async (req, res) => {
     if (!mobile && phone) parts.push(`Festnetz ${spokenPhoneNumber(phone)}.`);
     if (!mobile && !phone && email) parts.push(`Keine Telefonnummer, aber eine E-Mail-Adresse ist hinterlegt.`);
     parts.push(pushed
-      ? "Ich habe dir die Kontaktkarte aufs Handy geschickt — antippen und du kannst direkt anrufen."
+      ? "Ich habe Ihnen die Kontaktkarte aufs Handy geschickt — antippen und Sie können direkt anrufen."
       : "Die Karte konnte ich nicht aufs Handy schicken — kein gekoppeltes Gerät erreichbar.");
     // 27.07.2026: bisher ging NUR eine Push-Nachricht raus; auf der Flip-
     // Rueckseite stand nichts, obwohl Clara "Karte aufs Handy geschickt" sagte.
@@ -4832,7 +4832,7 @@ router.post("/tools/book-for-patient", async (req, res) => {
         patientLastName: selected.lastName,
         visitMotiveName: r.visitMotiveName,
       }, { calendarName: c.doctorName || r.calendarName }));
-      if (proof?.pushed?.sent > 0) proofNote = " Den Beleg habe ich dir aufs Handy geschickt.";
+      if (proof?.pushed?.sent > 0) proofNote = " Den Beleg habe ich Ihnen aufs Handy geschickt.";
     } catch { /* Beleg ist Komfort, nie ein Blocker fuer die Buchung */ }
 
     const pre = c.alreadyBooked ? "Der Termin war bereits gebucht" : "Termin gebucht";

@@ -356,7 +356,7 @@ export function buildSpokenAnamnese(result, { who = "der Patient" } = {}) {
 
   const frage = vary("anamnese.notizfrage", [
     "Soll ich das als Notiz festhalten?",
-    "Soll ich dir das an den Termin schreiben?",
+    "Soll ich Ihnen das an den Termin schreiben?",
     "Möchtest du, dass ich das als Notiz hinterlege?",
     "Sag Bescheid, wenn ich das als Notiz speichern soll.",
     "Wenn du willst, halte ich das direkt als Notiz fest.",

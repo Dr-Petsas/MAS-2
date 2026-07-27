@@ -408,7 +408,7 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
     return {
       ok: true, caseId, date: day, calendarName: calName, blocked: true, total: 0,
       proof: proof || undefined,
-      message: `${absenceQuip()} Erledigt — ${own ? "deine Abwesenheit" : `die Abwesenheit für ${calName}`} ${dayRel(day)} ${winLabel} ist eingetragen. Es sind keine Termine betroffen, und in der Zeit kann auch nichts mehr gebucht werden.`,
+      message: `${absenceQuip()} Erledigt — ${own ? "Ihre Abwesenheit" : `die Abwesenheit für ${calName}`} ${dayRel(day)} ${winLabel} ist eingetragen. Es sind keine Termine betroffen, und in der Zeit kann auch nichts mehr gebucht werden.`,
     };
   }
 
@@ -435,7 +435,7 @@ export async function planAbsence(clientId, { date, startTime, endTime, calendar
     await casesCol(clientId).doc(caseId).update({ absencePlan: plan, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
   }
 
-  const parts = [absenceQuip(), `${capFirst(dayRel(day))} ${winLabel === "ganztägig" ? "" : `${winLabel} `}${patients.length === 1 ? "steht 1 Termin" : `stehen ${patients.length} Termine`} ${own ? "bei dir" : `bei ${calName}`} im Kalender.`];
+  const parts = [absenceQuip(), `${capFirst(dayRel(day))} ${winLabel === "ganztägig" ? "" : `${winLabel} `}${patients.length === 1 ? "steht 1 Termin" : `stehen ${patients.length} Termine`} ${own ? "bei Ihnen" : `bei ${calName}`} im Kalender.`];
   const how = [];
   if (counts.sms) how.push(`${counts.sms} per SMS`);
   if (counts.email) how.push(`${counts.email} per E-Mail durch Nadine`);
@@ -764,7 +764,7 @@ export async function absenceStatusSpoken(clientId) {
     const ps = plan.patients || [];
     const winInfo = plan.windowLabel && plan.windowLabel !== "ganztägig" ? ` (${plan.windowLabel})` : "";
     if (c.status === CASE_STATUS.WAITING_APPROVAL) {
-      parts.push(`${capFirst(dayRel(plan.date))}${winInfo} bei ${plan.calendarName}: ${ps.length} Termin(e), wartet auf deine Freigabe.`);
+      parts.push(`${capFirst(dayRel(plan.date))}${winInfo} bei ${plan.calendarName}: ${ps.length} Termin(e), wartet auf Ihre Freigabe.`);
       continue;
     }
     if (!ps.length) {

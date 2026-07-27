@@ -616,7 +616,7 @@ export function buildSpokenGapBriefing(run, { operatorName } = {}) {
 
   const lists = run.callLists?.length || 0;
   if (lists) {
-    parts.push(`${lists} Anrufliste${lists === 1 ? " wartet" : "n warten"} auf deine Freigabe im Monitor.`);
+    parts.push(`${lists} Anrufliste${lists === 1 ? " wartet" : "n warten"} auf Ihre Freigabe im Monitor.`);
     parts.push("Wenn du wissen möchtest, wen ich vorschlage, sag: wer sind die Kandidaten.");
   }
   return parts.join(" ");

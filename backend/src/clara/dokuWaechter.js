@@ -244,8 +244,8 @@ export async function dokuAbendlauf(clientId, { publicBaseUrl = "", tageZurueck 
     reason,
     date: heute,
     spoken: n === 1
-      ? `Ich habe dich angerufen: eine Dokumentation fehlt noch — ${erster.patientName}, Termin ${erster.dateSpoken}${erster.motive ? `, im Kalender steht ${erster.motive}` : ""}. Was habt ihr gemacht?`
-      : `Ich habe dich angerufen: ${n} Dokumentationen fehlen noch. Fangen wir mit ${erster.patientName} an — Termin ${erster.dateSpoken}${erster.motive ? `, im Kalender steht ${erster.motive}` : ""}. Was habt ihr gemacht?`,
+      ? `Ich habe Sie angerufen: eine Dokumentation fehlt noch — ${erster.patientName}, Termin ${erster.dateSpoken}${erster.motive ? `, im Kalender steht ${erster.motive}` : ""}. Was habt ihr gemacht?`
+      : `Ich habe Sie angerufen: ${n} Dokumentationen fehlen noch. Fangen wir mit ${erster.patientName} an — Termin ${erster.dateSpoken}${erster.motive ? `, im Kalender steht ${erster.motive}` : ""}. Was habt ihr gemacht?`,
     instruction:
       `KONTEXT: Du (Clara) hast den Chef soeben aktiv angerufen, weil Behandlungs-Dokumentationen fehlen. ` +
       `Arbeite die Liste EINZELN ab: nenne Patient, Termintag und Besuchsgrund und frage, was gemacht wurde. ` +

@@ -74,7 +74,7 @@ function approvalLine(mailCounts, gapPending) {
   }
   if (!bits.length) return "";
   return pick([
-    `Auf deine Freigabe ${bits.length === 1 && !bits[0].startsWith("ein ") ? "warten" : "wartet noch"} ${bits.join(" und ")} — geht auch morgen früh.`,
+    `Auf Ihre Freigabe ${bits.length === 1 && !bits[0].startsWith("ein ") ? "warten" : "wartet noch"} ${bits.join(" und ")} — geht auch morgen früh.`,
     `Im Cockpit ${bits.length > 1 ? "liegen" : "liegt"} noch ${bits.join(" und ")} zur Freigabe.`,
   ]);
 }

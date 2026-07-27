@@ -582,7 +582,7 @@ export async function dailyInitiativeScan(clientId, { targetDate, publicBaseUrl 
           kind: "recall_initiative",
           reason,
           date,
-          spoken: `Ich habe dich angerufen: ${summary} Soll ich versuchen, die Lücken zu schließen und Recall-Patienten anrufen zu lassen?`,
+          spoken: `Ich habe Sie angerufen: ${summary} Soll ich versuchen, die Lücken zu schließen und Recall-Patienten anrufen zu lassen?`,
           instruction:
             `KONTEXT: Du (Clara) hast den Chef soeben aktiv per Push angerufen. Anlass: ${summary} ` +
             `Du hast gefragt, ob du versuchen sollst, die Lücken zu schließen und Recall-Patienten anrufen zu lassen. ` +

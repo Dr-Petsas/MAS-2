@@ -232,7 +232,7 @@ export async function runProaktivSweep(clientId, { publicBaseUrl = "", nowMs = D
             kind: "asap_p0",
             reason,
             date: day,
-            spoken: `Ich habe dich angerufen, weil etwas nicht liegen bleiben darf: ${item.spoken}. Sollen wir das jetzt angehen?`,
+            spoken: `Ich habe Sie angerufen, weil etwas nicht liegen bleiben darf: ${item.spoken}. Sollen wir das jetzt angehen?`,
             instruction:
               "KONTEXT: Du (Clara) hast den Chef soeben aktiv angerufen, weil ein kritischer Vorgang " +
               `ansteht: ${item.spoken}. Erklaere kurz worum es geht und biete den naechsten Schritt an ` +

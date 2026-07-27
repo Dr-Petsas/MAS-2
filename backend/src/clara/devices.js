@@ -421,7 +421,7 @@ export async function refreshSubscription(clientId, deviceId, deviceKey, subscri
  * call-style notification; tapping it opens the /m/call page which dials in.
  */
 export function buildCallPayload({ publicBaseUrl, clientId, deviceId, reason = "", kind = "clara_call" } = {}) {
-  const cleanReason = s(reason).slice(0, 90) || "Clara möchte dich sprechen";
+  const cleanReason = s(reason).slice(0, 90) || "Clara möchte Sie sprechen";
   const url = `${String(publicBaseUrl || "").replace(/\/+$/, "")}/m/call.html` +
     `?c=${encodeURIComponent(clientId)}&d=${encodeURIComponent(deviceId)}&reason=${encodeURIComponent(cleanReason)}`;
   return { kind, title: "Clara ruft an", reason: cleanReason, url, ts: Date.now() };
