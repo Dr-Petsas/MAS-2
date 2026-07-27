@@ -17,6 +17,7 @@ import { resolveAppointmentInfo, readAppointmentSegments, combineActiveSegments 
 import { appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechnung } from "../clara/dokuAbrechnung.js";
 import { askWorkforce as wfAsk, setBetriebsferien as wfSetBetriebsferien, spokenBetriebsferien as wfSpokenBetriebsferien, parseDateFromText as wfParseDate } from "../clara/workforce.js";
 import { createSession, endSession, setOperator } from "../clara/sessions.js";
+import { listDirectory, upsertDirectoryEntry, removeDirectoryEntry } from "../clara/directory.js";
 import { identifyByPin, listOperators, saveOperators, OPERATOR_ROLES, roleLabel } from "../clara/operators.js";
 import { identifyByDevice, callOperator, consumePendingCallContext } from "../clara/devices.js";
 import { getGreetingContext } from "../clara/greetingContext.js";
@@ -362,6 +363,52 @@ router.post("/clara/identify", async (req, res) => {
     if (!op) return res.status(401).json({ ok: false, error: "pin_invalid" });
     await setOperator(clientId, op);
     res.json({ ok: true, operator: { name: op.name, role: op.role } });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// --- Praxis-Verzeichnis (Kollegen mit Kontaktdaten) -----------------------
+// Chef 27.07.2026: "Koennen wir alle Aerzte, Telefonnummer und E-Mails
+// permanent speichern?" Genau dafuer. Von Hand gepflegt, wird von keinem
+// Mail-/Anruf-Import ueberschrieben; find_contact und contact_card lesen es
+// VOR der Patientenkartei (dort liegen gleichnamige Alt-Datensaetze).
+router.get("/clara/directory", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    res.json({ ok: true, clientId, entries: await listDirectory(clientId) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+router.post("/clara/directory", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const eintrag = await upsertDirectoryEntry(clientId, req.body || {});
+    res.json({ ok: true, clientId, entry: eintrag, entries: await listDirectory(clientId) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+router.delete("/clara/directory", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const r = await removeDirectoryEntry(clientId, req.body?.name || req.query?.name || "");
+    res.json({ ok: true, clientId, ...r, entries: await listDirectory(clientId) });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

@@ -5,6 +5,7 @@ import express from "express";
 import { completeTask } from "../tools/createTask.js";
 import { assertAppEnabled } from "../entitlements.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot, ensureBerlinTz } from "../clara/booking.js";
+import { findDirectoryContact, hasColleagueTitle, spokenDirectoryEntry } from "../clara/directory.js";
 import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, relativeDayLabel, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory, findSameTimeCompanions, buildSpokenCompanionQuestion, dayOfMs } from "../clara/daySchedule.js";
 import { searchContacts } from "../brain/entityProfile.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "../clara/anamnese.js";
@@ -3913,6 +3914,35 @@ router.post("/tools/find-contact", async (req, res) => {
       }
     }
 
+    // Kollegen der Praxis stehen VOR der Patientenkartei (Chef 27.07.2026:
+    // "Wieso findet Clara die Kontaktdaten von Dr. Petsas nicht?"). In der
+    // Kartei liegen gleichnamige Alt-/Testdatensaetze — ohne diesen Vorrang
+    // fragt Clara "Welchen Petsas meinen Sie?" statt zu antworten. Nur bei
+    // Titel-Anrede ("Dr. Petsas", "Doktor Patrikis"), damit ein Patient
+    // desselben Nachnamens weiterhin normal gefunden wird.
+    if (rawName && hasColleagueTitle(rawName)) {
+      const kollege = await findDirectoryContact(clientId, rawName).catch(() => null);
+      if (kollege && (kollege.mobile || kollege.phone || kollege.email)) {
+        const nummer = kollege.mobile || kollege.phone;
+        await setPatientCandidates(clientId, [], {
+          id: null, firstName: "", lastName: kollege.name,
+          mobilePhoneNumber: nummer, email: kollege.email,
+          hasPhone: !!nummer, external: true,
+        });
+        const pushed = await pushContactCard(
+          clientId,
+          { name: kollege.name, phone: nummer, email: kollege.email },
+          { note: kollege.role || "Praxis-Team" },
+        );
+        return res.json({
+          ok: true,
+          pushed: pushed?.sent > 0,
+          message: `${kollege.name} aus dem Praxis-Team: ${spokenDirectoryEntry(kollege)}. ${contactPushConfirm({ name: kollege.name, mobilePhoneNumber: nummer, email: kollege.email }, pushed)}`,
+          directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt).",
+        });
+      }
+    }
+
     // Kandidaten: neue Suche bei Namen, sonst die der letzten Suche (Nachfrage).
     let candidates = [];
     if (rawName) {
@@ -3927,6 +3957,28 @@ router.post("/tools/find-contact", async (req, res) => {
         if (exact.length) candidates = exact;
       }
       if (!candidates.length) {
+        // Kein Patient -> vielleicht ein Kollege ohne Titel im Satz
+        // ("Ruf Patrikis an"), erst danach der externe Kontakt.
+        const kollege = await findDirectoryContact(clientId, name).catch(() => null);
+        if (kollege && (kollege.mobile || kollege.phone || kollege.email)) {
+          const nummer = kollege.mobile || kollege.phone;
+          await setPatientCandidates(clientId, [], {
+            id: null, firstName: "", lastName: kollege.name,
+            mobilePhoneNumber: nummer, email: kollege.email,
+            hasPhone: !!nummer, external: true,
+          });
+          const pushed = await pushContactCard(
+            clientId,
+            { name: kollege.name, phone: nummer, email: kollege.email },
+            { note: kollege.role || "Praxis-Team" },
+          );
+          return res.json({
+            ok: true,
+            pushed: pushed?.sent > 0,
+            message: `${kollege.name} aus dem Praxis-Team: ${spokenDirectoryEntry(kollege)}. ${contactPushConfirm({ name: kollege.name, mobilePhoneNumber: nummer, email: kollege.email }, pushed)}`,
+            directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt).",
+          });
+        }
         // Kein Patient -> externer Kontakt? (Handwerker, Labor, Lieferant —
         // aus Adressbuch, Posteingang und Anruf-Events im Shared Memory.)
         const ext = await findExternalContact(clientId, name, hintLower);
@@ -3999,10 +4051,19 @@ router.post("/tools/find-contact", async (req, res) => {
 
     if (candidates.length > 1) {
       await setPatientCandidates(clientId, candidates, null);
+      // Traegt ein KOLLEGE denselben Nachnamen (Patrikis: fuenf Patienten und
+      // ein Arzt), gehoert er in die Rueckfrage — sonst sucht der Chef den
+      // Kollegen zwischen lauter Patienten (Chef 27.07.2026).
+      const kollege = rawName
+        ? await findDirectoryContact(clientId, rawName).catch(() => null)
+        : null;
+      const kollegeZusatz = kollege && (kollege.mobile || kollege.phone || kollege.email)
+        ? ` Oder meinen Sie den Kollegen ${kollege.name}?`
+        : "";
       // Keine zitierbare Beispielantwort anhaengen ("Sie koennen auch sagen:
       // ...") — das 4B-Modell uebernimmt solche Saetze woertlich als eigene
       // Antwort statt die Rueckfrage zu stellen (Testlauf 2026-06-11).
-      return res.json({ ok: true, message: disambiguationQuestion(candidates) });
+      return res.json({ ok: true, message: `${disambiguationQuestion(candidates)}${kollegeZusatz}` });
     }
 
     const sel = candidates[0];
@@ -4537,6 +4598,29 @@ router.post("/tools/contact-card", async (req, res) => {
     }
     const rawName = (req.body?.name || "").trim();
     const hint = String(req.body?.hint || "").trim();
+
+    // Kollegen zuerst (Chef 27.07.2026) — siehe find-contact: gleichnamige
+    // Alt-Datensaetze in der Kartei duerfen Dr. Petsas nicht verdecken.
+    if (rawName && hasColleagueTitle(rawName)) {
+      const kollege = await findDirectoryContact(clientId, rawName).catch(() => null);
+      if (kollege && (kollege.mobile || kollege.phone || kollege.email)) {
+        const nummer = kollege.mobile || kollege.phone;
+        const pushed = await pushContactCard(
+          clientId,
+          { name: kollege.name, phone: nummer, email: kollege.email },
+          { note: kollege.role || "Praxis-Team" },
+        );
+        const gesprochen = [
+          `${kollege.name}:`,
+          kollege.mobile ? `Mobil ${spokenPhoneNumber(kollege.mobile)}.` : "",
+          !kollege.mobile && kollege.phone ? `Festnetz ${spokenPhoneNumber(kollege.phone)}.` : "",
+          pushed?.sent > 0
+            ? "Ich habe Ihnen die Kontaktkarte aufs Handy geschickt - antippen und Sie können direkt anrufen."
+            : "Die Karte konnte ich nicht aufs Handy schicken - kein gekoppeltes Gerät erreichbar.",
+        ].filter(Boolean).join(" ");
+        return res.json({ ok: true, pushed: pushed?.sent > 0, message: gesprochen });
+      }
+    }
 
     // Patient identifizieren — gleiche Route wie search_patient (inkl.
     // Nachfrage gegen die gemerkten Kandidaten und STT-Varianten-Suche).
