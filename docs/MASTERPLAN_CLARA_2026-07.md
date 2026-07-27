@@ -1391,11 +1391,16 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
   und `POST /tools/wiedervorlage-erledigt` (Sprach-Quittung; mehrdeutig =>
   Rueckfrage, nie raten). Clara-Profil: 2 neue Tools (Gruppe `post`),
   Subsetting-Keywords frist/wiedervorlage/rechnung/mahnung/widerspruch
-  (bewusst OHNE breite Woerter wie "faellig" — kaperte die QM-Frage),
-  Register vk-24/vk-25/vk-25b. Beweis: `scripts/test-wiedervorlage.mjs`
-  (37 Pruefungen, inkl. Firestore-Kette mit Aufraeumen), bestehende Tests
-  critical/extractor/karten gruen, Route live gegen echte Praxisdaten
-  geprueft.
+  (bewusst OHNE breite Woerter wie "faellig" — kaperte die QM-Frage;
+  das Abhaken zusaetzlich in Gruppe `memo`, weil "Die Sache mit X ist
+  erledigt" wie ein Aufgaben-Satz routet), Register vk-24/vk-25/vk-25b.
+  Mahn-KASKADEN desselben Absenders werden gebuendelt (neuestes Schreiben
+  zaehlt, "N Schreiben" wird mitgesprochen; Abhaken erledigt ALLE Schreiben
+  des Vorgangs — Live-Befund: FLYERALARM stand dreifach drauf). Beweis:
+  `scripts/test-wiedervorlage.mjs` (40 Pruefungen, inkl. Firestore-Kette
+  mit Aufraeumen), bestehende Tests critical/extractor/karten gruen,
+  Clara-Register 31/31, Route live gegen echte Praxisdaten geprueft
+  (Netdental, FLYERALARM-Kaskade 4 Schreiben, Unterlagen-Anforderung).
 - **W-STABIL-9 Lueckenfueller Ende-zu-Ende (Audit 27.07., Befund im
   Verkaufskern-Dokument):** Die Kette ist GEBAUT und der Maschinenraum
   gruen (Modultest `test-gap-fill.mjs` inkl. Abwesenheits-Block; Cloud

@@ -144,8 +144,10 @@ Bianca-Arbeit in Clara-Sessions.
   gesprochen (Test prueft das); Werbe-"bis zum"-Fristen (FLYERALARM-Befund
   aus dem ersten Live-Lauf) kommen NICHT auf die Liste (nur STARKE
   Frist-Woerter, Kritisches und Rechnungen); Verstrichenes fliegt nach 14
-  Tagen runter. 37 Pruefungen gruen (`scripts/test-wiedervorlage.mjs`),
-  Register vk-24/vk-25/vk-25b.
+  Tagen runter; Mahn-KASKADEN desselben Absenders werden zu EINEM Punkt
+  gebuendelt ("N Schreiben"), Abhaken erledigt alle Schreiben des Vorgangs.
+  40 Pruefungen gruen (`scripts/test-wiedervorlage.mjs`),
+  Register vk-24/vk-25/vk-25b, Clara-Register gesamt 31/31.
 - **28.07.2026 01:05: W-STABIL-7 (Konfig ins Tag) gebaut, getestet, LIVE.**
   Der Lisa-Prompt (lebte NUR in der ElevenLabs-Konsole), die Firestore-
   Settings und die Env-Schluessel-Namen liegen jetzt als Snapshot im Repo
