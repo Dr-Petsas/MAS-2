@@ -179,6 +179,17 @@ function namenOk(quelle, ausgabe) {
 // steht, darf die Umformulierung nicht einfuehren.
 const VERNEINUNG_RE = /\b(leer|keine[nmrs]?|kein|nichts|niemand|nie)\b/i;
 
+// Anrede-Bruch: "Du hast heute drei Termine" neben "Heute hatten Sie ..." in
+// derselben Antwort. Nur pruefen, was den CHEF anspricht — ein "du" aus einem
+// Zitat der Quelle darf bleiben.
+const DUZEN_RE = /\b(du|dir|dich|dein|deine[mnrs]?)\b/i;
+
+function anredeOk(quelle, ausgabe) {
+    if (!DUZEN_RE.test(String(ausgabe || ""))) return { ok: true };
+    if (DUZEN_RE.test(String(quelle || ""))) return { ok: true };
+    return { ok: false, warum: "geduzt statt gesiezt" };
+}
+
 function verneinungOk(quelle, ausgabe) {
     if (!VERNEINUNG_RE.test(String(ausgabe || ""))) return { ok: true };
     if (VERNEINUNG_RE.test(String(quelle || ""))) return { ok: true };
@@ -208,6 +219,8 @@ export function guardOk(quelle, ausgabe) {
     if (!n.ok) return n;
     const v = verneinungOk(q, a);
     if (!v.ok) return v;
+    const an = anredeOk(q, a);
+    if (!an.ok) return an;
     return { ok: true };
 }
 
@@ -240,7 +253,10 @@ export async function freiFormulieren(text, { kontext = "interne Team-Ansage", t
     const bauePrompt = (stil, streng) => [
         "Du bist Clara, die Sprach-Assistentin einer deutschen Arztpraxis, und formulierst eine interne Ansage fuers Team NEU — natuerlich, menschlich, gesprochen.",
         "HARTE REGELN:",
-        "1. Du DUZT den Chef immer ('du hast', 'denk dran') — NIE 'Sie'.",
+        // Chef 27.07.2026: EINE Anrede. Die deterministischen Ansagen siezen
+        // ("Heute hatten Sie 3 Termine") — die Umformulierung duzte ("Du hast
+        // heute ..."), in derselben Antwort. Jetzt siezt beides.
+        "1. Du SIEZT den Chef immer ('Sie haben', 'denken Sie dran') — NIE 'du'.",
         "2. ALLE Fakten unveraendert uebernehmen: jeden Namen, jede Zahl, jede Uhrzeit, jedes Datum, jede Warnung. Nichts weglassen, nichts dazuerfinden, nichts umdeuten.",
         "3. Zahlen, Uhrzeiten und Daten EXAKT als Ziffern lassen, wie sie dastehen (aus 13:40 wird NICHT 'zwanzig vor zwei'). Zahlwoerter bleiben Zahlwoerter.",
         "4. Termin-Notizen und Zitate (alles nach 'Geplant:', 'Notiz', 'Vorgang') WOERTLICH uebernehmen — dort nichts umformulieren.",

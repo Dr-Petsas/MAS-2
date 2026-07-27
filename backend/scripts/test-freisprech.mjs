@@ -43,7 +43,11 @@ const quelleTagEnde = "Heute hatten Sie drei Termine, zwischen 9 Uhr und 10 Uhr 
 check("Guard: dazuerfundene Verneinung faellt durch (abgearbeitet -> leer)",
   !guardOk(quelleTagEnde, "Du hast heute zwischen 9 Uhr und 10 Uhr 30 drei Termine, damit ist der Kalender fuer heute leer. Es sind sechs E-Mails reingekommen.").ok);
 check("Guard: gleiche Aussage anders gesagt bleibt ok",
-  guardOk(quelleTagEnde, "Du hattest heute drei Termine, zwischen 9 Uhr und 10 Uhr 30 - damit ist der Kalender fuer heute abgearbeitet. Reingekommen sind sechs E-Mails.").ok);
+  guardOk(quelleTagEnde, "Sie hatten heute drei Termine, zwischen 9 Uhr und 10 Uhr 30 - damit ist der Kalender fuer heute abgearbeitet. Reingekommen sind sechs E-Mails.").ok);
+check("Guard: geduzte Fassung faellt durch (Chef 27.07.2026: immer siezen)",
+  !guardOk(quelleTagEnde, "Du hast heute drei Termine gehabt, zwischen 9 Uhr und 10 Uhr 30 - damit ist dein Kalender abgearbeitet. Es sind sechs E-Mails eingegangen.").ok);
+check("Guard: gesiezte Fassung bleibt ok",
+  guardOk(quelleTagEnde, "Drei Termine hatten Sie heute, zwischen 9 Uhr und 10 Uhr 30 - damit ist Ihr Kalender abgearbeitet. Es sind sechs E-Mails eingegangen.").ok);
 check("Guard: Verneinung aus der Quelle darf bleiben",
   guardOk("Heute sind keine Termine gebucht, der Kalender ist leer. Es sind sechs E-Mails eingegangen.",
     "Heute ist nichts gebucht, der Kalender bleibt leer - dafuer liegen sechs E-Mails da.").ok);
