@@ -1410,6 +1410,14 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
   Einbestellen) gruen, (b) EIN begleiteter Livetest mit dem Chef:
   Testliste freigeben -> Lisa ruft eine Testnummer an -> Buchung/Bericht
   kommen nachweisbar zurueck. Erst dann gilt Block C als verkaufsfertig.
+  **Stand 28.07.2026 nachts: (a) ERLEDIGT** — Register komplett gruen
+  (31/31, inkl. vk-18 UND vk-18b als Mehrzug-Dialoge), Lese-Endpunkte
+  live geprueft (Gap-Briefing "keine nennenswerten Luecken", Kandidaten
+  mit echten Faelligkeiten, Status). **(b) VORBEREITET:** Schritt-fuer-
+  Schritt-Anleitung fuer den 5-Minuten-Livetest liegt in
+  `docs/LIVETEST_LUECKENFUELLER.md` (Weg A: Einbestellen auf die eigene
+  Handynummer; Weg B: Recall-Liste). Nachts bewusst NICHT ausgefuehrt —
+  echte Anrufe nur begleitet.
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
