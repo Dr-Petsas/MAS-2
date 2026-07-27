@@ -1072,6 +1072,84 @@ end-to-end; Fakten-Waechter bleibt gruen (WP4 flag-gated + getestet); MAS
 Schnell-Gate gruen; kein Rueckbau der Sprech-/Isolation-/Verbatim-Garantien.
 Weitere Domaenen (WP8-Liste) sind "nach Bedarf" und folgen dem Muster.
 
+## Phase W-LABOR - Clara-Testlabor pro Mandant (Chef 27.07.2026)
+
+**Auftrag (sinngemaess):** Eine Seite, auf der JEDE Frage, die Clara koennen
+muss, nach Funktionen kategorisiert steht. Fragen einzeln ODER gruppenweise
+ausloesbar (kein Zwang zum 250er-Komplettlauf), Claras Antwort erscheint LIVE
+schriftlich unter der Frage. Pro Frage: Problem markieren + Kommentar
+schreiben, Befunde als Datei runterladen, damit Clara sofort verbessert werden
+kann. Verbesserung soll direkt von der Seite aus anstossbar sein (Prompt +
+Tool-Beschreibungen editierbar). Mandantenfaehig: im Superuser-Konto unter
+JEDEM Kunden, getestet wird gegen die Daten/Kalender des gewaehlten Kunden,
+Aenderungen werden PRO MANDANT gespeichert. Pro Frage ein eingefrorener
+Ist-Zustand von heute zum Zuruecksetzen eigener Aenderungen.
+
+**Befund der Bestandsaufnahme (27.07.):**
+- Die Testsuite (`run_tests.py`, 127 Faelle + 13 Dialoge) faehrt schon die
+  echte Produktions-Pipeline, schreibt ihr JSONL aber ERST AM ENDE (Z. 852) —
+  darum gibt es heute keine Live-Antworten. stdout traegt nur `tool=` + ms.
+- Es gibt KEINEN Endpunkt "Frage rein, Antwort raus". `--ids` kostet je Lauf
+  10-20 s Ollama-Warmup -> fuer Einzelfragen unbrauchbar.
+- Abdeckung: 64 Tools in 13 Gruppen stehen 25 Test-Kategorien gegenueber;
+  `doku` (17 Tools), `komm` (8), `memo` (7) sind praktisch unabgedeckt.
+- Claras System-Prompt kommt im Compact-Modus zu ~100 % aus `profile.json`
+  -> `system_prompt` (~22.700 Zeichen), ist also vollstaendig web-editierbar.
+  Die 64 Tool-Beschreibungen sind ~78 % des LLM-Kontexts und die Hauptursache
+  falscher Tool-Wahl — ebenfalls aus `profile.json`, ebenfalls editierbar.
+- Mandantenfaehigkeit-Blocker: `profiles/clara_meddent/profile.json` traegt die
+  Kunden-ID **64x fest in den Tool-URLs**, dazu Standort + 3 Kalender. Andere
+  Kunden haben heute KEIN Clara-Profil -> Profil-Generator noetig.
+- Der Platz im Superuser existiert bereits: Kunden-Workspace mit Tab
+  `testtrain` (`superuserDashboard.tsx`, `TestTrainView mode="client"`).
+
+**Architektur (Chef-Entscheidungen 27.07.):**
+1. **Labor-Dienst** (Clara-Voice, `testsuite/lab_server.py`): haelt Modell,
+   Profil und Tools dauerhaft im RAM; Einzelfrage in 1-3 s statt 20 s Warmup;
+   Gruppen-/Vollauf als NDJSON-Strom; `reload` liest das Profil frisch von der
+   Platte, damit "Prompt aendern -> sofort nochmal fragen" ohne Neustart geht.
+   Nutzt `process_turn()`/`evaluate()` aus `run_tests.py` — dieselbe Pipeline
+   wie das Gate, kein zweiter Wahrheitsstand.
+2. **MAS-Bruecke** `/testlab/*`: reicht den Dienst durch, speichert PRO
+   MANDANT in Firestore (`clients/{clientId}/mas_clara_lab_*`): Basislinien,
+   Befunde/Kommentare, Prompt- und Tool-Fassungen.
+3. **Seite** `backend/public/clara-testlabor.html`: Vollbild-Layout (100dvh,
+   eigene Scrollbereiche), responsiv bis Handy; im Superuser unter jedem Kunden
+   als eingebetteter Tab (`?client=<id>&t=<token>`; `?t=` akzeptiert auth.js
+   bereits). Frontend wird EINMAL deployt, danach laufen Aenderungen an der
+   Seite ohne Firebase-Deploy.
+4. **Profil-Generator**: erzeugt pro Mandant ein Clara-Profil aus der Vorlage
+   (Kunden-ID, Standort, Kalender aus Firestore eingesetzt).
+5. **Echte Daten, umgeleitete Ausgaenge** (Chef: "komplett auf echten Daten"):
+   Lese-Tools echt wie bisher; Schreib-Tools echt, aber alle Ausgaenge auf den
+   Demo-Patienten "Michael Petsassss" / `+491776004600` umgeleitet. Die
+   Umleitung haengt PRO REQUEST am Aufruf (AsyncLocalStorage-Hook in
+   `lisa/outbound.js`), NIE als globale Env — sonst leitet der Praxisbetrieb
+   bei Vergessen echte Patienten-SMS um (stiller Ausfall).
+6. **Basislinie pro Frage**: friert Antwort, Tool, Argumente und die Fassung
+   von Prompt/Tool-Beschreibungen ein; "heute" und "jetzt" nebeneinander.
+   Konflikt beachtet: der System-Prompt ist EINER fuer alle Fragen —
+   Zuruecksetzen wirkt punktgenau auf die Tool-Beschreibung bzw. auf die
+   geaenderte Prompt-Stelle, mit Versionshistorie (nichts geht verloren).
+
+- [ ] WP1 Labor-Dienst `lab_server.py` (Einzelfrage, Strom, reload, Abbruch).
+- [ ] WP2 MAS-Bruecke `/testlab/*` + Firestore-Speicher pro Mandant.
+- [ ] WP3 Seite: Vollbild/responsiv, Live-Antworten, Kommentar, Export.
+- [ ] WP4 Profil-Generator pro Mandant.
+- [ ] WP5 Basislinie einfrieren + Zuruecksetzen.
+- [ ] WP6 Testpatient-Umleitung per Request (SMS/Anruf/Buchung).
+- [ ] WP7 Prompt- + Tool-Editor mit Versionierung.
+- [ ] WP8 Katalog auf volle Funktionsabdeckung (~250 Fragen, alle 13 Gruppen).
+- [ ] WP9 Superuser-Tab pro Kunde (einmaliger Frontend-Deploy).
+
+**Definition of Done:** Jede Frage ist einzeln, gruppenweise und komplett
+ausloesbar; Antworten erscheinen live unter der Frage; Befunde sind pro Frage
+kommentierbar und als JSON+Markdown exportierbar (mit Repro-Kommando); Prompt
+und Tool-Beschreibungen sind pro Mandant editierbar und versioniert; jede Frage
+hat eine einfrierbare Basislinie mit Zuruecksetzen; Ausgaenge gehen im Testlauf
+NIE an echte Patienten; `run_tests.py`-Verhalten fuer das Release-Gate bleibt
+byte-identisch (Labor ist additiv); Clara-Gate gruen.
+
 ## Reihenfolge
 
 1. Phase 0 (sofort) -> parallel Dens-Kickoff-Fragen raus + Hardware bestellen

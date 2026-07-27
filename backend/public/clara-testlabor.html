@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Clara-Testlabor</title>
+<meta name="theme-color" content="#0b0410" />
+<style>
+/* ==========================================================================
+   Clara-Testlabor (W-LABOR, 27.07.2026)
+   Vollbild-Arbeitsplatz: kein zentrierter Kasten, sondern 100dvh-Raster mit
+   eigenen Scrollbereichen je Spalte. Responsiv bis aufs Handy - dort klappt
+   die Gruppenspalte in eine waagerechte Leiste und die Fragen werden
+   einspaltig. Laeuft auch eingebettet im Superuser-Kundenbereich (iframe).
+   ========================================================================== */
+:root{
+  color-scheme: dark;
+  --bg-1:#1a0d26; --bg-2:#0b0410; --bg-3:#0f0616;
+  --panel:rgba(255,255,255,.045); --panel-2:rgba(255,255,255,.07);
+  --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.16);
+  --ink:#f2e9f6; --ink-soft:#b3a6bf; --ink-dim:#8a7d96;
+  --pink:#e072d1; --pink-deep:#b13fa0;
+  --ok:#4ade80; --warn:#fbbf24; --bad:#ff4d6d; --info:#60a5fa;
+  --head-h:56px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{
+  font-family:system-ui,"Segoe UI",Roboto,sans-serif; color:var(--ink); font-size:14px;
+  background:radial-gradient(120% 90% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
+}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
+
+/* ---- Grundraster: Kopf + Inhalt, beides ohne Seiten-Scroll --------------- */
+#app{
+  display:grid; grid-template-rows:auto 1fr;
+  height:100dvh; padding-top:env(safe-area-inset-top);
+}
+#main{display:grid; grid-template-columns:264px 1fr; min-height:0}
+@media (max-width:1100px){ #main{grid-template-columns:210px 1fr} }
+@media (max-width:760px){ #main{grid-template-columns:1fr; grid-template-rows:auto 1fr} }
+
+/* ---- Kopfleiste ---------------------------------------------------------- */
+header{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:8px 14px; min-height:var(--head-h);
+  border-bottom:1px solid var(--line); background:rgba(0,0,0,.28);
+  backdrop-filter:blur(8px);
+}
+.brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:.2px;white-space:nowrap}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--ink-dim);flex:none}
+.brand .dot.on{background:var(--ok);box-shadow:0 0 10px rgba(74,222,128,.7)}
+.brand .dot.off{background:var(--bad);box-shadow:0 0 10px rgba(255,77,109,.7)}
+.spacer{flex:1 1 auto}
+.meta{color:var(--ink-dim);font-size:12px;white-space:nowrap}
+/* Handy: Kopfzeile kompakt halten - sie frisst sonst ein Drittel des Bildes.
+   Die Suche rutscht in die zweite Zeile und nimmt dort die Restbreite. */
+@media (max-width:760px){
+  header{gap:7px;padding:7px 10px}
+  .meta.hide-sm{display:none}
+  #search{order:9;flex:1 1 100%;max-width:none}
+  .btn.small{padding:5px 9px;font-size:12px}
+}
+
+select,input[type=search]{
+  background:rgba(0,0,0,.3); border:1px solid var(--line-2); border-radius:9px;
+  padding:7px 10px; max-width:min(46vw,280px);
+}
+.btn{
+  border:1px solid var(--line-2); background:var(--panel-2); border-radius:9px;
+  padding:7px 12px; cursor:pointer; font-weight:600; white-space:nowrap;
+}
+.btn:hover{background:rgba(255,255,255,.13)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:linear-gradient(135deg,var(--pink),var(--pink-deep));border-color:transparent;color:#fff}
+.btn.ghost{background:transparent}
+.btn.small{padding:5px 9px;font-size:12.5px}
+.btn.danger{border-color:rgba(255,77,109,.5);color:#ffb3c1}
+
+/* ---- Gruppenspalte ------------------------------------------------------- */
+#groups{
+  border-right:1px solid var(--line); overflow-y:auto; padding:10px 8px;
+  display:flex; flex-direction:column; gap:3px; min-height:0;
+}
+@media (max-width:760px){
+  #groups{
+    flex-direction:row; overflow-x:auto; overflow-y:hidden; gap:6px;
+    border-right:0; border-bottom:1px solid var(--line); padding:8px 10px;
+    scrollbar-width:none;
+  }
+  #groups::-webkit-scrollbar{display:none}
+  /* Waagerechte Leiste: die Knoepfe duerfen sich NICHT auf die volle Breite
+     ziehen, sonst fuellt die aktive Gruppe den Bildschirm und die anderen
+     sind unerreichbar. Deshalb hier alles auf Inhaltsbreite. */
+  #groups .g{white-space:nowrap;flex:0 0 auto;width:auto;padding:6px 11px}
+  #groups .g .nm{flex:0 0 auto}
+  #groups .g .sub{display:none}
+  #groups .g .count{display:none}
+}
+.g{
+  display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:9px;
+  cursor:pointer; border:1px solid transparent; background:transparent; text-align:left; width:100%;
+}
+.g:hover{background:var(--panel)}
+.g.active{background:var(--panel-2);border-color:var(--line-2)}
+.g .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.g .sub{display:block;font-size:11.5px;color:var(--ink-dim);margin-top:1px}
+.count{font-size:11.5px;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.warnpill{font-size:11px;color:#3b1f00;background:var(--warn);border-radius:999px;padding:1px 6px;font-weight:800}
+
+/* ---- Fragenliste --------------------------------------------------------- */
+#list{overflow-y:auto; padding:14px; min-height:0; scroll-behavior:smooth}
+.listhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.listhead h2{margin:0;font-size:17px}
+.hint{color:var(--ink-dim);font-size:12.5px}
+
+.q{
+  border:1px solid var(--line); border-radius:13px; background:var(--panel);
+  margin-bottom:11px; overflow:hidden;
+}
+.q.running{border-color:rgba(224,114,209,.55)}
+.q.ok{border-left:3px solid var(--ok)}
+.q.fail{border-left:3px solid var(--bad)}
+.q.flagged{border-left:3px solid var(--warn)}
+.qhead{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;cursor:pointer}
+.qhead:hover{background:rgba(255,255,255,.03)}
+.qtext{flex:1;min-width:0}
+.qtext .t{font-weight:600;line-height:1.4}
+.qtext .s{font-size:11.5px;color:var(--ink-dim);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap}
+.tag{background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:6px;padding:0 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px}
+.tag.ok{border-color:rgba(74,222,128,.5);color:var(--ok)}
+.tag.bad{border-color:rgba(255,77,109,.5);color:#ffb3c1}
+.qact{display:flex;gap:6px;align-items:center;flex:none}
+@media (max-width:600px){ .qhead{flex-wrap:wrap} .qact{width:100%;justify-content:flex-end} }
+
+.qbody{padding:0 13px 13px;display:none}
+.q.open .qbody{display:block}
+.answer{
+  background:rgba(0,0,0,.30); border:1px solid var(--line); border-radius:10px;
+  padding:11px 12px; line-height:1.55; white-space:pre-wrap; word-break:break-word;
+}
+.answer.empty{color:var(--ink-dim);font-style:italic}
+.lbl{font-size:11.5px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 5px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:820px){ .cols{grid-template-columns:1fr} }
+.fails{margin:9px 0 0;padding:9px 11px;border-radius:9px;background:rgba(255,77,109,.10);
+       border:1px solid rgba(255,77,109,.3);font-size:12.5px;color:#ffc4cf}
+.toolinfo{margin-top:9px;font-size:12px;color:var(--ink-soft);font-family:ui-monospace,Consolas,monospace;
+          word-break:break-all;background:rgba(0,0,0,.22);border-radius:8px;padding:8px 10px}
+
+/* ---- Befund -------------------------------------------------------------- */
+.finding{margin-top:12px;border-top:1px dashed var(--line-2);padding-top:11px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+textarea{
+  width:100%; background:rgba(0,0,0,.3); border:1px solid var(--line-2); border-radius:9px;
+  padding:9px 11px; resize:vertical; min-height:62px; line-height:1.5;
+}
+.sev{display:flex;gap:5px}
+.sev button{border:1px solid var(--line-2);background:transparent;border-radius:8px;padding:4px 10px;
+            cursor:pointer;font-size:12.5px}
+.sev button.on[data-sev=blocker]{background:var(--bad);border-color:var(--bad);color:#fff}
+.sev button.on[data-sev=stoerend]{background:var(--warn);border-color:var(--warn);color:#3b1f00}
+.sev button.on[data-sev=kosmetik]{background:var(--info);border-color:var(--info);color:#04203f}
+.saved{color:var(--ok);font-size:12px}
+
+/* ---- Schieber (Prompt/Tools) --------------------------------------------- */
+#drawer{
+  position:fixed; inset:0 0 0 auto; width:min(760px,100%); z-index:40;
+  background:linear-gradient(180deg,#150a1f,#0b0410); border-left:1px solid var(--line-2);
+  display:grid; grid-template-rows:auto 1fr auto; transform:translateX(100%);
+  transition:transform .18s ease; box-shadow:-20px 0 60px rgba(0,0,0,.5);
+}
+#drawer.open{transform:none}
+#drawer header{background:transparent;backdrop-filter:none}
+#drawerBody{overflow-y:auto;padding:14px;min-height:0}
+#drawerFoot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
+            padding-bottom:calc(11px + env(safe-area-inset-bottom))}
+#promptArea{min-height:46vh;font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.toolrow{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--panel)}
+.toolrow .nm{font-family:ui-monospace,Consolas,monospace;font-weight:700;font-size:12.5px}
+.toolrow textarea{min-height:54px;margin-top:6px;font-size:12.5px}
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:39;display:none}
+#scrim.on{display:block}
+
+/* ---- Fussleiste (Lauf-Fortschritt) --------------------------------------- */
+#bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;display:none;
+  align-items:center;gap:12px;padding:9px 14px;
+  padding-bottom:calc(9px + env(safe-area-inset-bottom));
+  background:rgba(11,4,16,.96);border-top:1px solid var(--line-2);
+}
+#bar.on{display:flex}
+#prog{flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}
+#prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--pink),var(--pink-deep))}
+#toast{
+  position:fixed;left:50%;bottom:74px;transform:translateX(-50%);z-index:50;
+  background:rgba(0,0,0,.9);border:1px solid var(--line-2);border-radius:10px;
+  padding:9px 15px;display:none;max-width:90vw;
+}
+#toast.on{display:block}
+.center{display:grid;place-items:center;height:100%;text-align:center;padding:24px;color:var(--ink-soft)}
+.spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.25);border-top-color:var(--pink);
+      border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><span class="dot" id="dot"></span><span>Clara-Testlabor</span></div>
+    <select id="clientSel" title="Mandant"></select>
+    <span class="meta hide-sm" id="metaInfo"></span>
+    <span class="spacer"></span>
+    <input type="search" id="search" placeholder="Frage suchen …" />
+    <button class="btn small" id="btnPrompt">Prompt &amp; Tools</button>
+    <button class="btn small" id="btnExport">Befunde laden</button>
+    <button class="btn small primary" id="btnRunGroup">Gruppe testen</button>
+  </header>
+
+  <div id="main">
+    <nav id="groups"></nav>
+    <section id="list"><div class="center"><span class="spin"></span> &nbsp;Labor wird geladen …</div></section>
+  </div>
+</div>
+
+<div id="bar">
+  <span id="barText">läuft …</span>
+  <div id="prog"><i></i></div>
+  <button class="btn small danger" id="btnCancel">Abbrechen</button>
+</div>
+
+<div id="scrim"></div>
+<aside id="drawer" aria-hidden="true">
+  <header>
+    <div class="brand"><span>Prompt &amp; Tool-Beschreibungen</span></div>
+    <span class="spacer"></span>
+    <button class="btn small ghost" id="btnDrawerClose">Schließen</button>
+  </header>
+  <div id="drawerBody"></div>
+  <div id="drawerFoot">
+    <button class="btn primary" id="btnSavePrompt">System-Prompt speichern</button>
+    <span class="meta" id="promptMeta"></span>
+  </div>
+</aside>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ===========================================================================
+   Zustand + Zugang
+   Die Seite laeuft eigenstaendig ODER eingebettet im Superuser-Kundenbereich.
+   Eingebettet kommen Mandant und Anmelde-Token per Adresse (?client=&t=) -
+   ?t= akzeptiert die MAS-Anmeldung bereits fuer Browser-Aufrufe.
+   =========================================================================== */
+const QS = new URLSearchParams(location.search);
+const TOKEN = QS.get("t") || "";
+const EMBEDDED = QS.get("embedded") === "1" || window.self !== window.top;
+
+const S = {
+  clientId: QS.get("client") || QS.get("clientId") || "",
+  group: "",
+  search: "",
+  catalog: null,
+  stored: {},
+  results: {},          // caseId -> letztes Ergebnis
+  open: new Set(),
+  running: false,
+  prompt: null,
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function headers(json) {
+  const h = {};
+  if (json) h["Content-Type"] = "application/json";
+  if (TOKEN) h["Authorization"] = "Bearer " + TOKEN;
+  if (S.clientId) h["X-Client-Id"] = S.clientId;
+  h["ngrok-skip-browser-warning"] = "1";
+  return h;
+}
+
+async function api(path, { method = "GET", body = null } = {}) {
+  const r = await fetch(path, {
+    method, headers: headers(!!body), body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.ok === false) throw new Error(d.error || ("HTTP " + r.status));
+  return d;
+}
+
+let toastTimer = null;
+function toast(msg, ms = 2600) {
+  $("toast").textContent = msg;
+  $("toast").classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("on"), ms);
+}
+
+/* ===========================================================================
+   Laden
+   =========================================================================== */
+async function boot() {
+  try {
+    const st = await api("/testlab/status");
+    S.clientId = st.clientId || S.clientId;
+    S.problemKinds = st.problemKinds || [];
+    $("dot").className = "dot " + (st.online ? "on" : "off");
+    $("metaInfo").textContent = st.online
+      ? `${st.profile?.clientName || st.profile?.name || st.clientId} · ${st.health?.model || ""}`
+      : "Labor offline";
+
+    if (!st.online) return showBlocked(
+      "Das Testlabor läuft nicht.",
+      `Auf der KI-Maschine starten:<br><code>cd F:\\Clara-Voice</code><br><code>python testsuite/lab_server.py</code>`
+      + `<br><br><span class="hint">${esc(st.error || "")}</span>`);
+
+    if (!st.hasProfile) return showBlocked(
+      "Für diesen Kunden gibt es noch kein Clara-Profil.",
+      "Ohne Profil weiß Clara nicht, gegen welchen Kalender und welche Praxisdaten sie arbeiten soll."
+      + " Ein Profil kann aus der Vorlage erzeugt werden — sag Bescheid.");
+
+    if (!EMBEDDED) loadClients();
+    else $("clientSel").style.display = "none";
+
+    await loadCatalog();
+  } catch (e) {
+    showBlocked("Zugriff fehlgeschlagen.", esc(e.message));
+  }
+}
+
+function showBlocked(title, html) {
+  $("list").innerHTML = `<div class="center"><div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:8px">${esc(title)}</div>
+    <div class="hint" style="line-height:1.7">${html}</div></div></div>`;
+}
+
+async function loadClients() {
+  try {
+    const d = await api("/testlab/clients");
+    const sel = $("clientSel");
+    sel.innerHTML = d.clients.map((c) =>
+      `<option value="${esc(c.id)}" ${c.id === S.clientId ? "selected" : ""}>` +
+      `${esc(c.name)}${c.hasProfile ? "" : " (kein Profil)"}</option>`).join("");
+    sel.onchange = () => {
+      S.clientId = sel.value;
+      const u = new URL(location.href);
+      u.searchParams.set("client", S.clientId);
+      history.replaceState(null, "", u);
+      boot();
+    };
+  } catch { $("clientSel").style.display = "none"; }
+}
+
+async function loadCatalog() {
+  const d = await api("/testlab/catalog");
+  S.catalog = d;
+  S.stored = d.stored || {};
+  if (!S.group) S.group = d.groups?.[0]?.id || "";
+  renderGroups();
+  renderList();
+}
+
+/* ===========================================================================
+   Gruppen
+   =========================================================================== */
+function renderGroups() {
+  const gs = S.catalog.groups || [];
+  $("groups").innerHTML = gs.map((g) => {
+    const flagged = countFlagged(g.id);
+    return `<button class="g ${g.id === S.group ? "active" : ""}" data-g="${esc(g.id)}">
+      <span class="nm">${esc(g.label)}
+        <span class="sub">${g.questions} Fragen${g.toolsWithoutQuestion
+          ? ` · ${g.toolsWithoutQuestion} Funktionen ohne Frage` : ""}</span>
+      </span>
+      ${flagged ? `<span class="warnpill">${flagged}</span>` : `<span class="count">${g.questions}</span>`}
+    </button>`;
+  }).join("");
+  $("groups").querySelectorAll(".g").forEach((b) => {
+    b.onclick = () => { S.group = b.dataset.g; renderGroups(); renderList(); $("list").scrollTop = 0; };
+  });
+}
+
+function countFlagged(gid) {
+  return casesOf(gid).filter((c) => S.stored[c.id]?.finding).length;
+}
+
+function casesOf(gid) {
+  const all = [...(S.catalog.cases || []), ...(S.catalog.dialogs || [])];
+  return all.filter((c) => (c.groups || []).includes(gid));
+}
+
+function visibleCases() {
+  let cs = casesOf(S.group);
+  const q = S.search.trim().toLowerCase();
+  if (q) {
+    cs = [...(S.catalog.cases || []), ...(S.catalog.dialogs || [])]
+      .filter((c) => (c.text || c.goal || "").toLowerCase().includes(q) || c.id.toLowerCase().includes(q));
+  }
+  return cs;
+}
+
+/* ===========================================================================
+   Fragenliste
+   =========================================================================== */
+function renderList() {
+  const cs = visibleCases();
+  const g = (S.catalog.groups || []).find((x) => x.id === S.group);
+  const gap = (S.catalog.coverage || []).filter(
+    (c) => c.questions === 0 && (c.groups || []).includes(S.group));
+
+  const head = `<div class="listhead">
+      <h2>${esc(S.search ? "Suche" : (g?.label || "Fragen"))}</h2>
+      <span class="hint">${cs.length} Fragen</span>
+      <span class="spacer"></span>
+    </div>
+    ${gap.length ? `<div class="fails" style="background:rgba(251,191,36,.10);border-color:rgba(251,191,36,.35);color:#ffe4a3">
+      <b>${gap.length} Funktionen in dieser Gruppe haben noch keine Testfrage:</b>
+      ${gap.map((c) => `<code>${esc(c.tool)}</code>`).join(", ")}
+    </div>` : ""}`;
+
+  $("list").innerHTML = head + (cs.length
+    ? cs.map(cardHtml).join("")
+    : `<div class="hint">Keine Frage gefunden.</div>`);
+  cs.forEach(wire);
+}
+
+function cardHtml(c) {
+  const r = S.results[c.id];
+  const st = S.stored[c.id] || {};
+  const open = S.open.has(c.id);
+  const cls = [
+    "q", open ? "open" : "",
+    st.finding ? "flagged" : (r ? (r.pass ? "ok" : "fail") : ""),
+  ].join(" ");
+  const expect = (c.expect_tool || []).join(" / ");
+
+  return `<article class="${cls}" data-id="${esc(c.id)}">
+    <div class="qhead" data-act="toggle">
+      <div class="qtext">
+        <div class="t">${esc(c.text || c.goal || c.id)}</div>
+        <div class="s">
+          <span class="tag">${esc(c.id)}</span>
+          ${expect ? `<span>erwartet: <span class="tag">${esc(expect)}</span></span>` : ""}
+          ${r ? toolBadge(r) : ""}
+          ${r ? `<span>${Math.round((r.total_ms || 0) / 100) / 10}s</span>` : ""}
+          ${st.finding ? `<span class="tag bad">Befund: ${esc(st.finding.problem)}</span>` : ""}
+          ${st.baseline ? `<span title="Ist-Zustand eingefroren">📌</span>` : ""}
+        </div>
+      </div>
+      <div class="qact">
+        <button class="btn small primary" data-act="ask">Fragen</button>
+      </div>
+    </div>
+    <div class="qbody">${open ? bodyHtml(c) : ""}</div>
+  </article>`;
+}
+
+function toolBadge(r) {
+  const good = !r.expect_tool?.length || r.expect_tool.includes(r.first_tool);
+  return `<span class="tag ${good ? "ok" : "bad"}">${esc(r.first_tool || "none")}</span>`;
+}
+
+function bodyHtml(c) {
+  const r = S.results[c.id];
+  const st = S.stored[c.id] || {};
+  const f = st.finding || {};
+  const b = st.baseline;
+
+  const answer = r
+    ? `<div class="answer">${esc(r.final_response) || "<i>leer</i>"}</div>`
+    : `<div class="answer empty">Noch nicht gefragt. „Fragen“ drücken — die Antwort erscheint hier.</div>`;
+
+  // Unterschied ehrlich benennen: Clara formuliert bei jedem Lauf etwas
+  // anders - das ist normal und kein Befund. Alarmieren darf nur, wenn ein
+  // ANDERES Tool gewaehlt wurde (Routing kaputt) oder die Antwort plötzlich
+  // deutlich kuerzer/leer ist (Inhalt verloren).
+  const toolChanged = b && r && b.tool !== r.first_tool;
+  const shrank = b && r && b.answer.length > 60
+    && r.final_response.length < b.answer.length * 0.5;
+  const wordingOnly = b && r && !toolChanged && !shrank && b.answer !== r.final_response;
+  const differs = toolChanged || shrank;
+
+  return `
+    <div class="lbl">Claras Antwort${r ? "" : ""}</div>
+    ${answer}
+    ${r?.fails?.length ? `<div class="fails"><b>Automatische Prüfung:</b> ${esc(r.fails.join(" · "))}</div>` : ""}
+    ${r?.tools?.length ? `<div class="toolinfo">${r.tools.map((t) =>
+        `${esc(t.name)}(${esc(JSON.stringify(t.args || {}).slice(0, 200))}) [${esc(t.mode)}] ${t.ms}ms`
+      ).join("<br>")}</div>` : ""}
+
+    ${b ? `<div class="lbl">Ist-Zustand von ${new Date(b.frozenAt).toLocaleDateString("de-DE")} ${
+        toolChanged ? `<span style="color:var(--bad)">— anderes Tool: damals ${esc(b.tool)}</span>`
+        : shrank ? `<span style="color:var(--warn)">— Antwort deutlich kürzer als damals</span>`
+        : wordingOnly ? "— gleiches Tool, andere Formulierung"
+        : "— unverändert"}</div>
+      ${(differs || wordingOnly) && r
+        ? `<div class="answer" style="opacity:.7">${esc(b.answer) || "<i>leer</i>"}</div>` : ""}` : ""}
+
+    <div class="finding">
+      <div class="lbl">Problem melden</div>
+      <div class="row">
+        <select data-f="problem">
+          <option value="">— kein Problem —</option>
+          ${(S.problemKinds || []).map((p) =>
+            `<option value="${p}" ${f.problem === p ? "selected" : ""}>${p.replace(/_/g, " ")}</option>`).join("")}
+        </select>
+        <div class="sev">
+          ${["blocker", "stoerend", "kosmetik"].map((s) =>
+            `<button data-sev="${s}" class="${(f.severity || "stoerend") === s ? "on" : ""}">${s}</button>`).join("")}
+        </div>
+        <span class="spacer"></span>
+        ${b ? `<button class="btn small" data-act="reset" title="Tool-Beschreibung auf den eingefrorenen Stand zurück">Zurücksetzen</button>` : ""}
+        <button class="btn small" data-act="refreeze" title="Aktuellen Stand als neuen Ist-Zustand einfrieren">Neu einfrieren</button>
+      </div>
+      <div class="cols" style="margin-top:9px">
+        <div>
+          <div class="lbl">Was stört dich?</div>
+          <textarea data-f="comment" placeholder="z. B. zählt Termine auf statt zusammenzufassen">${esc(f.comment || "")}</textarea>
+        </div>
+        <div>
+          <div class="lbl">So wäre es richtig (wird später zum Test)</div>
+          <textarea data-f="expectedAnswer" placeholder="optional">${esc(f.expectedAnswer || "")}</textarea>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn small primary" data-act="saveFinding">Befund speichern</button>
+        <span class="saved" data-role="savedHint"></span>
+      </div>
+    </div>`;
+}
+
+function wire(c) {
+  const el = $("list").querySelector(`.q[data-id="${CSS.escape(c.id)}"]`);
+  if (!el) return;
+
+  el.querySelector('[data-act="toggle"]').onclick = (ev) => {
+    if (ev.target.closest("button[data-act='ask']")) return;
+    if (S.open.has(c.id)) S.open.delete(c.id); else S.open.add(c.id);
+    el.classList.toggle("open");
+    el.querySelector(".qbody").innerHTML = S.open.has(c.id) ? bodyHtml(c) : "";
+    if (S.open.has(c.id)) wireBody(c, el);
+  };
+  el.querySelector('[data-act="ask"]').onclick = (ev) => { ev.stopPropagation(); askOne(c); };
+  if (S.open.has(c.id)) wireBody(c, el);
+}
+
+function wireBody(c, el) {
+  const body = el.querySelector(".qbody");
+  const sev = { v: (S.stored[c.id]?.finding?.severity) || "stoerend" };
+
+  body.querySelectorAll(".sev button").forEach((b) => {
+    b.onclick = () => {
+      sev.v = b.dataset.sev;
+      body.querySelectorAll(".sev button").forEach((x) => x.classList.toggle("on", x === b));
+    };
+  });
+
+  const save = body.querySelector('[data-act="saveFinding"]');
+  if (save) save.onclick = async () => {
+    const r = S.results[c.id] || {};
+    const get = (n) => body.querySelector(`[data-f="${n}"]`)?.value || "";
+    save.disabled = true;
+    try {
+      await api("/testlab/finding", { method: "PUT", body: {
+        caseId: c.id,
+        problem: get("problem"), severity: sev.v,
+        comment: get("comment"), expectedAnswer: get("expectedAnswer"),
+        question: c.text || c.goal || "", answer: r.final_response || "",
+        toolExpected: c.expect_tool || [], toolActual: r.first_tool || "",
+        toolArgs: r.first_args || {}, autoFails: r.fails || [],
+        ttftMs: r.llm1_ttft_ms || 0, totalMs: r.total_ms || 0,
+        group: c.group || "", category: c.category || "",
+      }});
+      await refreshStored();
+      body.querySelector('[data-role="savedHint"]').textContent = "gespeichert";
+      renderGroups();
+      el.classList.toggle("flagged", !!S.stored[c.id]?.finding);
+    } catch (e) { toast("Speichern fehlgeschlagen: " + e.message, 4000); }
+    save.disabled = false;
+  };
+
+  const reset = body.querySelector('[data-act="reset"]');
+  if (reset) reset.onclick = async () => {
+    reset.disabled = true;
+    try {
+      const d = await api("/testlab/reset", { method: "POST", body: { caseId: c.id } });
+      toast(`Beschreibung von ${d.restored} zurückgesetzt.`);
+    } catch (e) { toast(e.message, 4500); }
+    reset.disabled = false;
+  };
+
+  const re = body.querySelector('[data-act="refreeze"]');
+  if (re) re.onclick = async () => {
+    const r = S.results[c.id];
+    if (!r) return toast("Erst fragen, dann einfrieren.");
+    await api("/testlab/baseline", { method: "POST", body: { caseId: c.id, snapshot: {
+      question: r.input, answer: r.final_response, tool: r.first_tool,
+      toolArgs: r.first_args, pass: r.pass, fails: r.fails,
+      totalMs: r.total_ms, model: r.model,
+    }}});
+    await refreshStored();
+    toast("Neuer Ist-Zustand eingefroren.");
+  };
+}
+
+async function refreshStored() {
+  try {
+    const d = await api("/testlab/catalog");
+    S.stored = d.stored || {};
+  } catch { /* nicht kritisch */ }
+}
+
+/* ===========================================================================
+   Fragen stellen
+   =========================================================================== */
+function applyResult(rec) {
+  if (!rec?.id) return;
+  S.results[rec.id] = rec;
+  const el = $("list").querySelector(`.q[data-id="${CSS.escape(rec.id)}"]`);
+  if (!el) return;
+  const c = [...(S.catalog.cases || []), ...(S.catalog.dialogs || [])].find((x) => x.id === rec.id);
+  el.classList.remove("running");
+  el.outerHTML = cardHtml(c);
+  wire(c);
+}
+
+async function askOne(c) {
+  const el = $("list").querySelector(`.q[data-id="${CSS.escape(c.id)}"]`);
+  if (el) el.classList.add("running");
+  S.open.add(c.id);
+  try {
+    const d = await api("/testlab/ask", { method: "POST", body: { id: c.id } });
+    applyResult(d.result);
+  } catch (e) {
+    toast("Fehler: " + e.message, 5000);
+    if (el) el.classList.remove("running");
+  }
+}
+
+/** Gruppe (oder alles) als Strom - jede Antwort erscheint sofort. */
+async function runMany(payload, label) {
+  if (S.running) return toast("Es läuft schon ein Test.");
+  S.running = true;
+  $("bar").classList.add("on");
+  $("barText").textContent = label + " …";
+  $("prog").firstElementChild.style.width = "0%";
+
+  try {
+    const resp = await fetch("/testlab/run", {
+      method: "POST", headers: headers(true), body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let m; try { m = JSON.parse(line); } catch { continue; }
+        if (m.type === "result") {
+          applyResult(m.result);
+          $("barText").textContent = `${label}: ${m.n} von ${m.total}`;
+          $("prog").firstElementChild.style.width = (100 * m.n / m.total) + "%";
+        } else if (m.type === "done") {
+          toast(`Fertig: ${m.passed} von ${m.done} bestanden (${Math.round(m.elapsedMs / 1000)}s)`, 5000);
+        } else if (m.type === "cancelled") {
+          toast("Abgebrochen.");
+        }
+      }
+    }
+  } catch (e) {
+    toast("Lauf fehlgeschlagen: " + e.message, 5000);
+  }
+  S.running = false;
+  $("bar").classList.remove("on");
+  renderGroups();
+}
+
+/* ===========================================================================
+   Prompt & Tool-Beschreibungen
+   =========================================================================== */
+async function openDrawer() {
+  $("drawer").classList.add("open");
+  $("scrim").classList.add("on");
+  $("drawerBody").innerHTML = `<div class="center"><span class="spin"></span></div>`;
+  try {
+    const p = await api("/testlab/prompt");
+    S.prompt = p;
+    $("promptMeta").textContent = `${p.promptChars.toLocaleString("de-DE")} Zeichen · ${p.tools.length} Tools`;
+    $("drawerBody").innerHTML = `
+      <div class="hint" style="margin-bottom:9px">
+        Das ist wörtlich der Prompt, den Clara bekommt. Jede Speicherung wird als Git-Fassung
+        festgehalten und wirkt sofort bei der nächsten Frage.
+      </div>
+      <textarea id="promptArea">${esc(p.systemPrompt)}</textarea>
+      <div class="lbl" style="margin-top:16px">Tool-Beschreibungen — häufigste Ursache falscher Tool-Wahl</div>
+      <input type="search" id="toolSearch" placeholder="Tool suchen …" style="max-width:100%;width:100%;margin-bottom:9px" />
+      <div id="toolList"></div>`;
+    renderTools("");
+    $("toolSearch").oninput = (e) => renderTools(e.target.value);
+  } catch (e) {
+    $("drawerBody").innerHTML = `<div class="center">${esc(e.message)}</div>`;
+  }
+}
+
+function renderTools(q) {
+  const f = (S.prompt.tools || []).filter((t) =>
+    !q || t.name.toLowerCase().includes(q.toLowerCase()));
+  $("toolList").innerHTML = f.map((t) => `
+    <div class="toolrow" data-tool="${esc(t.name)}">
+      <div class="row"><span class="nm">${esc(t.name)}</span>
+        <span class="spacer"></span>
+        <button class="btn small" data-act="saveTool">Speichern</button></div>
+      <textarea>${esc(t.description)}</textarea>
+    </div>`).join("") || `<div class="hint">Kein Tool gefunden.</div>`;
+
+  $("toolList").querySelectorAll(".toolrow").forEach((row) => {
+    row.querySelector('[data-act="saveTool"]').onclick = async (ev) => {
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      try {
+        await api("/testlab/tool", { method: "PUT", body: {
+          name: row.dataset.tool, description: row.querySelector("textarea").value,
+        }});
+        toast("Beschreibung gespeichert — wirkt ab der nächsten Frage.");
+      } catch (e) { toast(e.message, 4500); }
+      btn.disabled = false;
+    };
+  });
+}
+
+function closeDrawer() {
+  $("drawer").classList.remove("open");
+  $("scrim").classList.remove("on");
+}
+
+/* ===========================================================================
+   Bedienung
+   =========================================================================== */
+$("btnRunGroup").onclick = () => {
+  const g = (S.catalog?.groups || []).find((x) => x.id === S.group);
+  runMany({ groups: [S.group] }, `Gruppe ${g?.label || S.group}`);
+};
+$("btnCancel").onclick = async () => {
+  try { await api("/testlab/cancel", { method: "POST", body: {} }); } catch { /* egal */ }
+};
+$("btnPrompt").onclick = openDrawer;
+$("btnDrawerClose").onclick = closeDrawer;
+$("scrim").onclick = closeDrawer;
+$("btnSavePrompt").onclick = async () => {
+  const v = $("promptArea")?.value || "";
+  if (!v.trim()) return toast("Ein leerer Prompt würde Clara stumm schalten.");
+  $("btnSavePrompt").disabled = true;
+  try {
+    const d = await api("/testlab/prompt", { method: "PUT", body: { systemPrompt: v } });
+    toast(`Gespeichert${d.git?.commit ? " (" + d.git.commit + ")" : ""} — wirkt ab der nächsten Frage.`, 4000);
+  } catch (e) { toast(e.message, 5000); }
+  $("btnSavePrompt").disabled = false;
+};
+$("btnExport").onclick = () => {
+  const u = new URL("/testlab/export", location.origin);
+  u.searchParams.set("format", "json");
+  if (S.clientId) u.searchParams.set("clientId", S.clientId);
+  if (TOKEN) u.searchParams.set("t", TOKEN);
+  window.open(u.toString(), "_blank");
+};
+let searchTimer = null;
+$("search").oninput = (e) => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { S.search = e.target.value; renderList(); }, 200);
+};
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeDrawer();
+  if (e.key === "/" && document.activeElement?.tagName !== "TEXTAREA"
+      && document.activeElement?.tagName !== "INPUT") {
+    e.preventDefault(); $("search").focus();
+  }
+});
+
+boot();
+</script>
+</body>
+</html>
