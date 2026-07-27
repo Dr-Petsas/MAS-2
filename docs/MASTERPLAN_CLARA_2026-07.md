@@ -1285,8 +1285,61 @@ Warteliste-Angebot beim freigewordenen Slot, echtes Familien-/Haushalts-Feld in
 der Plattform, Laborauftrags-Status (Daten existieren nicht), Anrufernummer ->
 Patient bei Bianca.
 
+## Phase W-STABIL - Verkaufskern & Regressions-Register (Chef 27.07.2026 abends)
+
+Ausloeser: Wochenlange Korrektur-Schleifen ("verschlimmbessern") ohne Ende;
+Befund vom 27.07.: (a) Fehler werden in hoefliche Saetze verwandelt statt
+sichtbar zu werden (Abwesenheits-Auskunft lief WOCHEN gegen eine fehlende
+MAS-Proxy-Route, Gate blieb gruen), (b) die grosse Testsuite prueft NUR
+Tool-Wahl + Argumente, nie den gesprochenen Inhalt, (c) Voll-Gate simuliert
+alle Tools (SAFE) und kann tote Endpunkte nicht sehen, (d) --min-pass 85
+erlaubt ~28 rote Faelle, (e) wirksamer Zustand (ElevenLabs-Prompt, Firestore,
+Env) liegt ausserhalb von Git.
+
+Der MASSSTAB ist `docs/VERKAUFSKERN_CLARA.md` (27 Punkte, vom Chef
+festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
+
+- **W-STABIL-1 Register (27.07. begonnen):** `testsuite/register.json` in
+  Clara-Voice — Verkaufskern- (`vk-*`) und Regressions-Faelle (`reg-*`) mit
+  Erwartung an Tool, Argumente UND gesprochenen Inhalt (`say_contains`/
+  `say_not_contains`, Datums-Platzhalter `{{today}}` usw.). Register-Faelle
+  sind KRITISCH: ein roter Fall macht den Lauf rot (blockierend ab erstem
+  gruenen Lauf, Schalter `--register-strict`). Jede neue Chef-Beschwerde wird
+  ERST Register-Fall (rot), DANN Fix (gruen).
+- **W-STABIL-2 Flip-Sperre:** `compare_runs.py` als Pflichtschritt im Gate —
+  jeder frueher gruene Fall, der kippt, wird namentlich gemeldet und macht
+  das Gate rot (unabhaengig von der Quote).
+- **W-STABIL-3 Faehigkeits-Ping:** MAS-Endpunkt klopft alle Werkzeuge/
+  Verbindungen an (MAS-Tools, /cf-Plattform-Proxys, ElevenLabs, Ollama,
+  Lena-Dienst); Ergebnis auf der Handy-Statusseite. Haette die tote
+  Abwesenheits-Route am ERSTEN Tag gefunden.
+- **W-STABIL-4 Fehler-als-Zustand:** Tool-/Endpunkt-Ausfall = ehrlicher
+  kurzer Satz + roter Eintrag, KEIN "sanft leeres Ergebnis" mehr.
+  (1 Verhaltensaenderung, 1 Neustart.)
+- **W-STABIL-5 Protokolle:** Worker-Logs anhaengen statt ueberschreiben;
+  pro Gespraechszug ein Entscheidungsprotokoll (Transkript, Tool, Argumente,
+  Ergebnisstatus, eingegriffene Waechter, gesprochener Satz).
+- **W-STABIL-6 Morgenlauf:** Register + Ping automatisch vor Praxisbeginn,
+  rot/gruen aufs Handy.
+- **W-STABIL-7 Konfig ins Tag:** ElevenLabs-Prompt, Profil, Firestore-Config,
+  Env-Whitelist als Export im Repo, Abgleich beim Start; Release =
+  Versionspaar (Clara-Tag + MAS-Tag + Konfig), harter Startabbruch statt
+  gelber Warnung; Rollback einmal WIRKLICH ueben.
+- **W-STABIL-8 Neubau aus dem Verkaufskern:** Fristen-/Rechnungs-Waechter
+  (Punkte 24/25) — EIN Waechter, EINE Wiedervorlage-Liste, drei Quellen
+  (Mail, Scan via `mail/ocr.js`, Telefon-Transkripte).
+
+Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
+waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
+
+Danach (nicht davor): Umbau-Phase — deterministischer Absichts-Router statt
+verstreuter Regex-Waechter, Faktenantworten ohne LLM-Umformulierung,
+Werkzeug-Konsolidierung, Pfad-Trennung (Clara/Bianca-Erbschaft aufloesen).
+
 ## Reihenfolge
 
+0. **W-STABIL vor allem anderen** - solange W-STABIL-1 bis -7 nicht stehen,
+   keine neuen Faehigkeiten (Ausnahme: P0-Fehler mit Register-Fall).
 1. Phase 0 (sofort) -> parallel Dens-Kickoff-Fragen raus + Hardware bestellen
 2. W-LENA (Tier 1, direkt nach Phase 0)
 3. Phase 1 (Woche 1-3) - Schluessel fuer Latenz, Rollen, Plattform
@@ -1391,6 +1444,16 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 27.07.2026 (abends): **W-STABIL beschlossen (Chef) — Verkaufskern +
+  Regressions-Register statt weiterer Einzel-Fixes.** Der Chef hat den
+  Verkaufskern festgelegt (`docs/VERKAUFSKERN_CLARA.md`, 27 Punkte inkl.
+  Fristen-/Rechnungs-Waechter aus Mail + gescannter Post + Telefonaten).
+  Befunde des Tages dokumentiert (unsichtbare Fehler, Testsuite prueft
+  keinen gesprochenen Inhalt, SAFE-Gate sieht keine toten Endpunkte,
+  min-pass 85, Konfig ausserhalb Git). Entscheidung: KEIN Rollback auf v6
+  (v6 = Stand 10.07. = `stabil-2026-07-10-0035` + Testinstanz-Verkabelung;
+  17 Tage aelter, enthaelt den Heads-up-Fehler); v6 bleibt Testinstanz.
+  Bianca wird eigenstaendig neu entwickelt, Hochzeit erst wenn Clara steht.
 - 25.07.2026: **W-DATEN-1 GEBAUT — Namen & Kontakte im STT-Bias (Chef).**
   `listPatientNamesForStt` (MAS `src/clara/sttPatientNames.js`) haengt jetzt
   additiv Korrespondenz-/Kontaktnamen an die Kalendernamen: (a) juengste
