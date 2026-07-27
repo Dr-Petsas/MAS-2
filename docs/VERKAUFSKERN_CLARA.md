@@ -88,6 +88,25 @@ entwickelt (Chef 27.07.). Die Zusammenfuehrung mit Clara ("Hochzeit") kommt
 erst, wenn Clara steht. Bis dahin: keine Bianca-Faelle im Register, keine
 Bianca-Arbeit in Clara-Sessions.
 
+## Messstand
+
+- **27.07.2026 22:03 (SAFE = Routing-Beweis, noch kein Daten-Beweis):
+  22/27 gruen.** Rot, als naechstes zu fixen (je EIN Fix, EIN Neustart,
+  Register davor/danach):
+  1. `vk-07` — "Sag den Termin von Herrn Melzer morgen ab" fuehrt DIREKT
+     `cancelAppointment` aus, ohne vorher nachzuschauen und rueckzufragen
+     (Live-Risiko: Absage ohne Bestaetigung).
+  2. `vk-12` — "Was hat der Anruf von Lisa ergeben?" wird vom
+     Anrufliste-Waechter gekapert (`call_log` statt `lisa_call_result`);
+     der Gespraechsbericht ist so per Sprache nicht erreichbar.
+  3. `vk-21` — "Hat Frau Mueller naechste Woche frei?" laeuft auf
+     `next_free_slot` (freie Termine!) statt auf die Abwesenheits-Auskunft.
+  4. `vk-18` Zug 2 — "Wer sind die Kandidaten?" bleibt ohne Tool; der
+     Fakten-Backstop verwirft die erfundene Antwort zwar, synthetisiert
+     aber kein `list_recall_candidates`.
+  5. `reg-04` Zug 2 — "Schick sie mir aufs Handy" (Name fiel im Satz
+     davor) bleibt ohne Tool — exakt die Karten-Beschwerde vom 27.07.
+
 ## Offene Punkte zum Neubau (24/25)
 
 - Eingangsweg Post: Hauspost kommt GESCANNT ALS E-MAIL-ANLAGE an; die lokale
