@@ -2,7 +2,7 @@ import { chat, llmInfo, strongLlm } from "./llm.js";
 import { getCaseContext, listCases } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { listMessagesForCase } from "./store.js";
-import { listDocumentsForCase } from "./documents.js";
+import { listDocumentsForCase, summarizeDocument } from "./documents.js";
 import { getLetter, listLetters } from "./letterArchive.js";
 import { getLetterSettings } from "./letterSettings.js";
 import { getProfile } from "../qm/books.js";
@@ -367,31 +367,45 @@ export async function discussCompose(clientId, { messages, documents, recipient,
   const history = Array.isArray(messages)
     ? messages
         .filter((m) => m && (m.role === "user" || m.role === "assistant") && String(m.content || "").trim())
-        .slice(-24)
-        .map((m) => ({ role: m.role, content: clip(m.content, 6000) }))
+        .slice(-16)
+        .map((m) => ({ role: m.role, content: clip(m.content, 3500) }))
     : [];
   if (!history.length) return { ok: false, reason: "no_messages", text: "", model: "" };
 
-  const docs = Array.isArray(documents)
-    ? documents
-        .filter((d) => d && String(d.text || "").trim())
-        .slice(0, 6)
-        .map((d, i) => ({
-          filename: clip(d.filename || `Unterlage ${i + 1}`, 120),
-          text: clip(d.text, 12000),
-        }))
+  // Lange PDFs (12k+ Zeichen) haben den Chat auf ~76s getrieben — der Tunnel
+  // (mas.pickadoc-tunnel.com) bricht dann oft ab, bevor die Antwort ankommt.
+  // Deshalb: große Unterlagen zuerst zum Steckbrief verdichten, dann chatten.
+  const rawDocs = Array.isArray(documents)
+    ? documents.filter((d) => d && String(d.text || "").trim()).slice(0, 4)
     : [];
+  const docs = [];
+  for (let i = 0; i < rawDocs.length; i++) {
+    const d = rawDocs[i];
+    const filename = clip(d.filename || `Unterlage ${i + 1}`, 120);
+    const full = String(d.text || "").trim();
+    let text = full;
+    let condensed = false;
+    if (full.length > 2200) {
+      const digest = await summarizeDocument(full).catch(() => "");
+      if (digest && digest.trim()) { text = digest.trim(); condensed = true; }
+      else text = clip(full, 2200);
+    } else {
+      text = clip(full, 2200);
+    }
+    docs.push({ filename, text, condensed });
+  }
 
   const sp = await loadSenderProfile(clientId);
   const docsBlock = docs.length
     ? "\n\nHOCHGELADENE UNTERLAGEN (verbindlicher Fakten-Kontext — nichts erfinden, was nicht darin steht):\n"
-      + docs.map((d, i) => `--- ${i + 1}. ${d.filename} ---\n${d.text}`).join("\n\n")
+      + docs.map((d, i) => `--- ${i + 1}. ${d.filename}${d.condensed ? " (Steckbrief)" : ""} ---\n${d.text}`).join("\n\n")
     : "";
 
   const system = [
     "Du bist Nadine, die Schreib- und Beratungs-KI der Praxis. Du hilfst dem Team, ein Thema ZUERST zu erörtern, bevor eine E-Mail niedergeschrieben wird.",
     sp.orgName ? `Absender-Praxis: ${sp.orgName}${sp.branchLabel ? ` (${sp.branchLabel})` : ""}.` : "",
     "Stil: klar, praxisnah, auf Deutsch. Du darfst Fragen stellen, Argumente prüfen, Risiken benennen und Formulierungsvorschläge skizzieren.",
+    "Antworte KNAPP und konkret (typisch 8–20 Zeilen) — kein Aufsatz.",
     "WICHTIG: Schreibe in diesem Chat KEINE fertige, versandfertige E-Mail mit Anrede/Grußformel, es sei denn der Nutzer verlangt ausdrücklich einen Formulierungsvorschlag.",
     "Erfinde keine Beträge, Fristen, Aktenzeichen, Diagnosen oder Zusagen, die nicht in den Unterlagen oder im Gespräch stehen.",
     "Wenn eine Unterlage vorliegt, gehe KONKRET darauf ein (Aktenzeichen, Frist, Forderung, Ton).",
@@ -401,11 +415,17 @@ export async function discussCompose(clientId, { messages, documents, recipient,
   ].filter(Boolean).join(" ") + docsBlock;
 
   const { base: strongBase, model: strongModel } = strongLlm();
+  const t0 = Date.now();
   const res = await chat(
     [{ role: "system", content: system }, ...history],
-    { temperature: 0.4, maxTokens: 1600, model: strongModel, baseUrl: strongBase, timeoutMs: 120000 }
+    { temperature: 0.35, maxTokens: 900, model: strongModel, baseUrl: strongBase, timeoutMs: 90000 }
   );
-  if (!res.ok) return { ok: false, reason: res.reason || "llm_error", text: "", model: res.model };
+  const ms = Date.now() - t0;
+  if (!res.ok) {
+    console.warn(`[compose-ai-chat] llm fail reason=${res.reason || "?"} model=${res.model} ms=${ms} docs=${docs.length}`);
+    return { ok: false, reason: res.reason || "llm_error", text: "", model: res.model };
+  }
+  console.log(`[compose-ai-chat] ok model=${res.model} ms=${ms} docs=${docs.length} chars=${res.text.length}`);
   return { ok: true, text: res.text.trim(), model: res.model };
 }
 
