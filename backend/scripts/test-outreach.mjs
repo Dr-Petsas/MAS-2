@@ -161,6 +161,81 @@ check("Anruf: generisch ohne Hintergrund-Block", !instrGen.includes("Hintergrund
 check("Anruf: generisch nennt Anlass + Regeln", instrGen.includes("Sondertermin Alpha Neun") && instrGen.includes("keine Diagnosen"));
 
 // ---------------------------------------------------------------------------
+// 3b) Kontroll-Fokus (Chef 28.07.2026: Live-Anruf bot "Zahnersatz
+//     eingliedern" an statt der KONTROLLE des eingegliederten Zahnersatzes).
+//     Recall zu einer zurueckliegenden Behandlung = immer Kontroll-Einladung.
+// ---------------------------------------------------------------------------
+
+const instrZe = composeRecallCallInstruction({
+  ...baseArgs,
+  visitMotiveName: "ZE Eingliederung Krone",
+  overdueDays: 800,
+  source: "recall",
+});
+check("Kontrolle ZE: Qualitätssicherung + kontrollieren", /Qualitätssicherung/.test(instrZe) && /kontrollieren/.test(instrZe), instrZe.slice(0, 200));
+check("Kontrolle ZE: Verbot neue Behandlung (KONTROLLTERMIN)", instrZe.includes("KONTROLLTERMIN") && instrZe.includes("eingliedern lassen"));
+check("Kontrolle ZE: nicht 'wieder fällig: Eingliederung'", !/wieder fällig[^.]*Eingliederung/.test(instrZe));
+check("Kontrolle ZE: Zeitbezug Jahre (über 2 Jahren)", /über 2 Jahren/.test(instrZe), instrZe.match(/über [^ ]+ Jahren?/)?.[0] || "fehlt");
+check("Kontrolle ZE: Länge <= Limit", instrZe.length <= CALL_INSTRUCTION_LIMIT, `${instrZe.length}`);
+
+const instrFuellung = composeRecallCallInstruction({
+  ...baseArgs,
+  visitMotiveName: "KCH Füllung zweiflächig",
+  overdueDays: 400,
+  source: "recall",
+});
+check("Kontrolle Füllung: dicht und intakt", /Füllung zu kontrollieren|dicht und intakt/.test(instrFuellung), instrFuellung.slice(0, 200));
+check("Kontrolle Füllung: Verbot enthalten", instrFuellung.includes("KONTROLLTERMIN"));
+
+const instrPa = composeRecallCallInstruction({
+  ...baseArgs,
+  visitMotiveName: "PAR Nachsorge UPT",
+  overdueDays: 200,
+  source: "recall",
+});
+check("Kontrolle PA: Zustand des Zahnfleisches", /Zustand des Zahnfleisches überprüfen/.test(instrPa), instrPa.slice(0, 200));
+
+const instrImpl = composeRecallCallInstruction({
+  ...baseArgs,
+  visitMotiveName: "IMPL Implantatversorgung",
+  overdueDays: 500,
+  source: "recall",
+});
+check("Kontrolle Implantat: begutachten + Entzündung/Knochenabbau", /begutachten/.test(instrImpl) && /Entzündung mit Knochenabbau/.test(instrImpl), instrImpl.slice(0, 200));
+
+const instrKb = composeRecallCallInstruction({
+  ...baseArgs,
+  visitMotiveName: "KB Aufbissschiene",
+  overdueDays: 300,
+  source: "recall",
+});
+check("Kontrolle Schiene: Sitz und Zustand", /Sitz und Zustand der Schiene/.test(instrKb), instrKb.slice(0, 200));
+
+// Beratungs-/Vorsorge-/Prophylaxe-Motive behalten den Katalog-Weg
+const instrBeratung = composeRecallCallInstruction({
+  ...baseArgs,
+  visitMotiveName: "Implantat-Beratung",
+  overdueDays: 100,
+  source: "recall",
+});
+check("Beratung: KEIN Kontroll-Fokus (kein Bestand zu prüfen)", !instrBeratung.includes("KONTROLLTERMIN"), instrBeratung.slice(0, 160));
+check("Krebsvorsorge: Katalog-Weg bleibt (überfällig-Phrase)", /überfällig/.test(instrRecall));
+
+const smsZe = composeRecallSms({
+  practiceName: "Praxis MedDent Bonn",
+  practicePhone: "0228 555 123",
+  patientName: "Helena Brandt",
+  date: "2026-07-08",
+  timeLabel: "10:30",
+  visitMotiveName: "ZE Eingliederung Krone",
+});
+check("SMS ZE: Kontrolle Ihres Zahnersatzes", smsZe.includes("Kontrolle Ihres Zahnersatzes"), smsZe);
+check("SMS ZE: Länge <= Limit", smsZe.length <= SMS_LIMIT, `${smsZe.length}`);
+
+const autoZe = buildAutoInviteMessage({ visitMotiveName: "ZE Eingliederung" });
+check("Auto-Botschaft ZE: Kontrolle statt Eingliederung", autoZe.includes("Kontrolle Ihres Zahnersatzes") && !/fällig: ZE Eingliederung/.test(autoZe), autoZe);
+
+// ---------------------------------------------------------------------------
 // 4) SMS
 // ---------------------------------------------------------------------------
 

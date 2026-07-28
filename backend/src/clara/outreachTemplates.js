@@ -263,6 +263,125 @@ function overduePhrase(overdueDays, source) {
   return ` Der letzte Besuch liegt ${span} zurück.`;
 }
 
+// ---------------------------------------------------------------------------
+// Kontroll-Fokus fuer Recall-Ansprachen (Chef 28.07.2026, Live-Anruf ~13:05:
+// "lisa will zahnersatz eingliedern lassen und redet nicht von
+// kontrolltermin-vereinbarung"). Ein Recall zu einer ZURUECKLIEGENDEN
+// Behandlung ist IMMER eine Einladung zur KONTROLLE — nie ein Angebot, die
+// Behandlung (erneut) durchzufuehren. Deterministisch aus dem Motivnamen
+// abgeleitet (kein Katalog-Fuzzy, kein LLM-Raten). Kampagnen-Prompts der
+// Praxis bleiben unangetastet (Schutz vom 17.07.2026).
+//
+// Chef-Vorgaben woertlich: Zahnersatz-Eingliederung -> "x Monate/Jahre sind
+// vorbei, wir moechten den Zahnersatz zur Einhaltung unserer Qualitaets-
+// sicherung kontrollieren"; Fuellungen -> "wir rufen an, um diese zu
+// kontrollieren"; Parodontitis -> "den Zustand des Zahnfleisches ueberpruefen";
+// Implantate -> "begutachten, ob chronische Entzuendungen mit Knochenabbau
+// vorliegen"; KB/Schienen -> "Schienenkontrolle"; usw. — immer mit der
+// Betonung, dass der letzte Termin weit zurueckliegt.
+// ---------------------------------------------------------------------------
+
+/** "5 Jahren" / "14 Monaten" / "einigen Wochen" — fuer "vor ueber X". */
+function spanDativ(overdueDays) {
+  const days = Number(overdueDays) || 0;
+  if (days < 21) return "";
+  const months = Math.round(days / 30);
+  if (months >= 24) return `${Math.floor(months / 12)} Jahren`;
+  if (months >= 2) return `${months} Monaten`;
+  return "einigen Wochen";
+}
+
+// Motive, die selbst schon Kontroll-/Vorsorge-/Beratungs-Charakter tragen,
+// behalten den Katalog-Weg (deren Texte SIND bereits die Kontrolle bzw. bei
+// Beratungen gibt es noch keinen Bestand, den man kontrollieren koennte).
+// "Nachsorge" fehlt hier BEWUSST: "PAR Nachsorge/UPT" soll den
+// Zahnfleisch-Fokus bekommen, nicht den generischen Katalogtext.
+const KONTROLL_SCHON_RE = /(kontroll|check|untersuchung|prophylaxe|\bpzr\b|zahnreinigung|beratung|besprechung|aufklaerung|erstgespraech|vorsorge|recall)/;
+
+const KONTROLL_FAELLE = [
+  {
+    id: "implantat",
+    re: /implant/,
+    topic: "Kontrolle Ihrer Implantate",
+    zweck: (vor) =>
+      `${vor ? `Vor ${vor}` : "Vor einiger Zeit"} wurden Implantate gesetzt. ` +
+      "Wir möchten die Implantate begutachten und sicherstellen, dass keine chronische Entzündung mit Knochenabbau vorliegt.",
+    kurz: "Wir möchten Ihre Implantate kontrollieren — so erkennen wir Entzündungen am Knochen früh.",
+  },
+  {
+    id: "parodontitis",
+    re: /(parodont|\bpa\b|\bpar\b|\bparo\b|\bupt\b|zahnfleisch)/,
+    topic: "Kontrolle Ihres Zahnfleisches",
+    zweck: (vor) =>
+      `Die Parodontitis-Behandlung liegt ${vor ? `über ${vor}` : "längere Zeit"} zurück. ` +
+      "Wir möchten den Zustand des Zahnfleisches überprüfen, damit sich die Entzündung nicht unbemerkt neu bildet.",
+    kurz: "Wir möchten den Zustand Ihres Zahnfleisches nach der Parodontitis-Behandlung überprüfen.",
+  },
+  {
+    id: "schiene",
+    re: /(schiene|aufbiss|knirsch|\bkb\b)/,
+    topic: "Kontrolle Ihrer Schiene",
+    zweck: (vor) =>
+      `Sie haben ${vor ? `vor ${vor}` : "vor einiger Zeit"} eine Schiene von uns bekommen. ` +
+      "Wir möchten Sitz und Zustand der Schiene kontrollieren und sie bei Bedarf anpassen.",
+    kurz: "Wir möchten Sitz und Zustand Ihrer Schiene kontrollieren.",
+  },
+  {
+    id: "fuellung",
+    re: /(fuellung|\bkch\b|\bkons\b|komposit|inlay|onlay|restauration)/,
+    topic: "Kontrolle Ihrer Füllung",
+    zweck: (vor) =>
+      `${vor ? `Vor ${vor}` : "Vor einiger Zeit"} wurde eine Füllung gelegt. ` +
+      "Wir rufen an, um die Füllung zu kontrollieren — ob sie weiterhin dicht und intakt ist.",
+    kurz: "Wir möchten kontrollieren, ob Ihre Füllung weiterhin dicht und intakt ist.",
+  },
+  {
+    id: "zahnersatz",
+    re: /(zahnersatz|eingliederung|krone|bruecke|prothese|teleskop|veneer|\bze\b)/,
+    topic: "Kontrolle Ihres Zahnersatzes",
+    zweck: (vor) =>
+      `${vor ? `Vor ${vor}` : "Vor einiger Zeit"} wurde Ihr Zahnersatz eingegliedert. ` +
+      "Zur Einhaltung unserer Qualitätssicherung möchten wir den Zahnersatz jetzt kontrollieren.",
+    kurz: "Wir möchten Ihren Zahnersatz im Rahmen unserer Qualitätssicherung kontrollieren.",
+  },
+];
+
+// Nicht verhandelbar, steht in JEDER Kontroll-Fokus-Instruktion: Lisa darf
+// die zurueckliegende Behandlung NIE als neues Angebot verkaufen.
+const KONTROLL_VERBOT =
+  "WICHTIG: Es geht um einen reinen KONTROLLTERMIN. Biete NIEMALS an, die damalige Behandlung erneut oder neu durchzuführen " +
+  "(nichts 'eingliedern lassen', keine neue Füllung, kein neues Implantat, keine neue Schiene) — " +
+  "es geht ausschließlich darum, den Zustand zu überprüfen. Betone freundlich, dass der letzte Termin schon länger zurückliegt.";
+
+/**
+ * Kontroll-Fokus fuer ein Recall-Motiv. null => Motiv traegt selbst schon
+ * Kontroll-/Beratungs-Charakter, der Katalog-Weg bleibt.
+ * source "recall": overdueDays = Ueberfaelligkeit => Behandlung liegt
+ * MINDESTENS so lange zurueck ("vor über X"). source "campaign":
+ * overdueDays = Zeit seit letztem Besuch ("vor etwa X"). Nie mehr behaupten,
+ * als die Daten hergeben.
+ */
+export function recallKontrollFokus({ visitMotiveName, overdueDays = 0, source = "recall" } = {}) {
+  const motiv = s(visitMotiveName);
+  if (!motiv) return null;
+  const folded = foldGerman(motiv);
+  if (KONTROLL_SCHON_RE.test(folded)) return null;
+  const fall = KONTROLL_FAELLE.find((f) => f.re.test(folded)) || null;
+  // Kein benannter Behandlungs-Fall => Katalog-Weg bleibt (dort liegen fuer
+  // Vorsorge/Kontrolle/20 Fachrichtungen die richtigen Texte). Weitere
+  // Faelle ("usw.") kommen auf Chef-Zuruf in KONTROLL_FAELLE dazu.
+  if (!fall) return null;
+  const span = spanDativ(overdueDays);
+  const vor = span ? (source === "campaign" ? `etwa ${span}` : `über ${span}`) : "";
+  return {
+    id: fall.id,
+    topic: fall.topic,
+    anlass: `${fall.topic} — der zugehörige Termin („${motiv}“) liegt ${vor ? `${vor}` : "längere Zeit"} zurück.`,
+    purpose: fall.zweck(vor),
+    purposeShort: fall.kurz,
+  };
+}
+
 // Die Regeln sind der nicht verhandelbare Kern jeder Instruktion.
 const CALL_RULES =
   "Regeln: Stelle keine Diagnosen, nenne keine Preise und gib keine Heilversprechen. " +
@@ -312,6 +431,7 @@ export function composeRecallCallInstruction({
 
   // Motiv-Block: Kampagnen-Override (Stufe 1) ODER Katalog/Klasse/generisch.
   let motiveBlocks;
+  let fokus = null;
   if (s(campaignPrompt)) {
     // WICHTIG (Vorfall 17.07.2026): KEINE Katalog-Auflösung des Motivnamens in
     // die Ansprache mischen. "KFO/KB Besprechung" fuzzy-matchte auf einen
@@ -322,16 +442,29 @@ export function composeRecallCallInstruction({
       `Vorgaben der Praxis für dieses Gespräch (halte dich genau an Inhalt und Reihenfolge, erfinde keine Behandlung dazu): ${s(campaignPrompt)}`,
     ];
   } else {
-    const anlass =
-      `Anlass: „${topic}“ ist laut Erinnerungssystem der Praxis wieder fällig` +
-      `${o.texts.intervalDe ? ` — empfohlen wird der Termin ${o.texts.intervalDe}` : ""}.` +
-      overduePhrase(overdueDays, source);
-    motiveBlocks = [
-      anlass,
-      o.texts.purpose ? `Hintergrund, den du sinngemäß erklären darfst: ${o.texts.purpose}` : "",
-      o.texts.what ? `Falls gefragt wird, was bei dem Termin gemacht wird: ${o.texts.what}` : "",
-      o.texts.consequence ? `Nur falls der Patient zögert, darfst du sachlich ergänzen: ${o.texts.consequence}` : "",
-    ].filter(Boolean);
+    // Kontroll-Fokus (Chef 28.07.2026): Recall zu einer zurueckliegenden
+    // Behandlung wird IMMER als Kontroll-Einladung gesprochen — nie als
+    // Angebot, die Behandlung (erneut) durchzufuehren ("Zahnersatz
+    // eingliedern lassen" war der Live-Fehlgriff).
+    fokus = recallKontrollFokus({ visitMotiveName, overdueDays, source });
+    if (fokus) {
+      motiveBlocks = [
+        `Anlass: ${fokus.anlass}`,
+        `Hintergrund, den du sinngemäß erklären darfst: ${fokus.purpose}`,
+        KONTROLL_VERBOT,
+      ];
+    } else {
+      const anlass =
+        `Anlass: „${topic}“ ist laut Erinnerungssystem der Praxis wieder fällig` +
+        `${o.texts.intervalDe ? ` — empfohlen wird der Termin ${o.texts.intervalDe}` : ""}.` +
+        overduePhrase(overdueDays, source);
+      motiveBlocks = [
+        anlass,
+        o.texts.purpose ? `Hintergrund, den du sinngemäß erklären darfst: ${o.texts.purpose}` : "",
+        o.texts.what ? `Falls gefragt wird, was bei dem Termin gemacht wird: ${o.texts.what}` : "",
+        o.texts.consequence ? `Nur falls der Patient zögert, darfst du sachlich ergänzen: ${o.texts.consequence}` : "",
+      ].filter(Boolean);
+    }
   }
 
   const rules = liveBooking ? [CALL_RULES, LIVE_BOOKING_RULES] : [CALL_RULES];
@@ -347,8 +480,9 @@ export function composeRecallCallInstruction({
       blocks = blocks.filter((b) => !b.startsWith("Nur falls der Patient"));
       text = assemble(blocks);
     }
-    if (text.length > CALL_INSTRUCTION_LIMIT && o.texts.purposeShort) {
-      blocks = blocks.map((b) => b.startsWith("Hintergrund") ? `Hintergrund, den du sinngemäß erklären darfst: ${o.texts.purposeShort}` : b);
+    const pShort = fokus ? fokus.purposeShort : o.texts.purposeShort;
+    if (text.length > CALL_INSTRUCTION_LIMIT && pShort) {
+      blocks = blocks.map((b) => b.startsWith("Hintergrund") ? `Hintergrund, den du sinngemäß erklären darfst: ${pShort}` : b);
       text = assemble(blocks);
     }
   }
@@ -375,7 +509,12 @@ export function composeRecallSms({
   const praxis = s(practiceName) || "Ihrer Praxis";
   const phone = s(practicePhone);
   const o = outreach || resolveOutreach({ visitMotiveName });
-  const topic = o.topicLabel || s(visitMotiveName);
+  // Kontroll-Fokus (Chef 28.07.2026): auch die SMS spricht von der KONTROLLE
+  // der zurueckliegenden Behandlung, nie von der Behandlung selbst
+  // ("faellig: ZE Eingliederung" las sich wie ein neues Eingliedern).
+  const fokus = recallKontrollFokus({ visitMotiveName });
+  const topic = fokus ? fokus.topic : (o.topicLabel || s(visitMotiveName));
+  const purposeShort = fokus ? fokus.purposeShort : o.texts.purposeShort;
 
   // Online-Zusage (Chef 28.07.2026): Mit Link sagt der Patient per Tipp zu —
   // die erste Zusage bucht den Slot fest (routes/zusage.js). Der Link darf
@@ -391,7 +530,7 @@ export function composeRecallSms({
     (topic
       ? `Laut unserem Erinnerungssystem ist bei Ihnen wieder ein Termin fällig: ${topic}. `
       : `Bei Ihnen ist laut unserem Erinnerungssystem wieder ein Termin fällig. `) +
-    (withPurpose && o.texts.purposeShort ? `${o.texts.purposeShort} ` : "") +
+    (withPurpose && purposeShort ? `${purposeShort} ` : "") +
     `Am ${dateDe(date)} um ${s(timeLabel)} Uhr ist kurzfristig ein Termin frei geworden — ` +
     schluss;
 
@@ -409,11 +548,14 @@ export function composeRecallSms({
  */
 export function buildAutoInviteMessage({ visitMotiveName, outreach = null } = {}) {
   const o = outreach || resolveOutreach({ visitMotiveName });
-  const topic = o.topicLabel || s(visitMotiveName);
+  // Kontroll-Fokus auch beim gezielten Einbestellen ohne Chef-Diktat.
+  const fokus = recallKontrollFokus({ visitMotiveName });
+  const topic = fokus ? fokus.topic : (o.topicLabel || s(visitMotiveName));
   if (!topic) return "";
   let msg = `Laut Erinnerungssystem ist wieder ein Termin fällig: ${topic}.`;
-  if (o.texts.purposeShort && (msg.length + o.texts.purposeShort.length) < 240) {
-    msg += ` ${o.texts.purposeShort}`;
+  const pShort = fokus ? fokus.purposeShort : o.texts.purposeShort;
+  if (pShort && (msg.length + pShort.length) < 240) {
+    msg += ` ${pShort}`;
   }
   return msg;
 }
