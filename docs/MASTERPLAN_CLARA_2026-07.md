@@ -1652,6 +1652,55 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     Nebenbefund: start-mas-stack.ps1 zeigte noch auf den alten
     lena_stt-Pfad in Clara-Voice (Cutover 23.07.) — auf F:\Lena-Voice
     umgebogen.
+    NACHTRAG 4 (Chef 28.07. 12:24: "ich habe darum gebeten tatjana
+    kruse zu entfernen, kann sie nicht … sie liest mir die patienten
+    vor, das ist quatsch … 10 mal gesagt anrufen … immer noch keine
+    kennzahlen"): Protokoll 12:14 zeigte die Wurzel — es gab KEIN
+    Sprach-Tool zum Entfernen; das LLM griff zu gapfill_call_patient
+    (confirm=true!) und las als "Hilfe" alle acht Kandidaten vor,
+    danach erfand es "bereits freigegeben — ich muesste den Recall
+    stornieren". Fixes:
+    (1) SPRACH-ENTFERNEN: neues Tool remove_recall_candidate ->
+    POST /tools/recall-remove-candidate; removeCandidateByName sucht
+    tolerant ueber alle offenen Listen (normalisiert, Teilstring,
+    Levenshtein<=2 — "Krose"->Kruse; EIN Wort trifft den Nachnamen),
+    bei mehreren Treffern Rueckfrage ("Da passen mehrere: A oder B?"),
+    derselbe Patient fliegt aus ALLEN Listen; Antwort kurz + frische
+    Kandidaten-Karte. Kontaktierte sind jetzt ENTFERNBAR (der
+    already_contacted-Guard blockierte genau Tatjana Kruse; Kontakt-
+    Daten bleiben als Audit am Kandidaten). Profil: Tool mit
+    "SOFORT bei 'entferne X'; NIE gapfill_call_patient; NIE alle
+    Kandidaten aufzaehlen"; Negativ-Verweise in gapfill_call_patient
+    und list_recall_candidates; Subsetting-Keywords entfern/streich/
+    Liste -> recall-Gruppe.
+    (2) ZAEHLER LIVE + TONNE UEBERALL: gapFillOverview heftet bei
+    jedem Laden die frischen Ledger-Zaehler an die Kandidaten (die
+    Momentaufnahme vom Formungszeitpunkt blieb nach Lisas Anrufen
+    stehen — deshalb "keine Kennzahlen"); Monitor zeigt die Zaehler
+    jetzt IMMER (auch 0, gruen nur bei Erfolg) und die Tonne an jeder
+    Zeile, auch bei Kontaktierten.
+    (3) "ANRUFEN." = ZUSTIMMUNG: _APPROVE_CALL_CMD_RE (nur ganzer
+    Kurzsatz: "Anrufen." / "Starte die Anrufe." / "Ruf sie an." /
+    "Los.") zaehlt bei offener Freigabe-Frage als Ja; laengere
+    Saetze mit Namen ("Ruf Herrn Meier an") bleiben delegate_call.
+    Der Approve-Guard ERSETZT jetzt auch falsche Tool-Griffe nach
+    einer Kurzsatz-Zustimmung (delegate_call/gap_briefing/… ->
+    approve_recall).
+    (4) "NOPE." ist jetzt eine Ablehnung (fehlte im Reject-Muster —
+    Clara bot die Freigabe zweimal unbeirrt erneut an).
+    (5) SPRECH-DOPPLUNG: 12:15 sprach Clara die Freigabe-Bestaetigung
+    doppelt — das Modell nahm die Vollzugsmeldung als Preamble vorweg,
+    die woertliche approve_recall-Tool-Message wiederholte sie 1:1.
+    Der Cross-Pass-Satz-Dedup gilt jetzt auch im Verbatim-Pfad (was
+    in diesem Zug schon gesagt wurde, wird nicht erneut vorgelesen).
+    Beweise: test-listen-pflege.mjs 30 Pins gruen (Namens-Entfernen
+    tolerant/mehrdeutig/unbekannt, Kontaktierte entfernbar, Fantasie-
+    Namen gegen Produktions-Kollision), test_recall_yes_no_guard.py
+    gruen (15 Anrufen-Pins, Nope-Pins, Sanitize gap_briefing+
+    'Anrufen.'->approve_recall), Subsetting 214 Zuege ok, Gate gruen,
+    Remove-Route live geprobt (not_found sauber, Karte mit
+    Live-Zaehler "Tatjana Kruse ¹"). Frontend deployt
+    (main.9ba1ba25.js), MAS + Worker neu gestartet.
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.

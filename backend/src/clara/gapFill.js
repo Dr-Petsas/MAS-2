@@ -1049,6 +1049,30 @@ export async function gapFillOverview(clientId) {
     }
     gapCases.push(c);
   }
+  // Kontakt-Zaehler LIVE anheften (Chef 28.07.2026: "ich sehe immer noch
+  // keine kennzahlen"): die Momentaufnahme vom Formungszeitpunkt veraltet,
+  // sobald Lisa anruft oder online gebucht wird. Der Monitor bekommt deshalb
+  // bei jedem Laden den frischen Stand aus dem Kontakt-Ledger (wenige IDs,
+  // ein getAll — billig). Zaehler sind Zugabe: ein Fehler hier darf die
+  // Uebersicht nie verhindern.
+  try {
+    const ids = [...new Set(gapCases.flatMap((c) => (c.callList?.candidates || []).map((k) => s(k.patientId)).filter(Boolean)))];
+    if (ids.length) {
+      const frisch = await loadStatsMap(clientId, ids);
+      for (const c of gapCases) {
+        const cands = c.callList?.candidates;
+        if (!Array.isArray(cands)) continue;
+        c.callList = {
+          ...c.callList,
+          candidates: cands.map((k) => {
+            const st = frisch.get(s(k.patientId));
+            if (!st) return k;
+            return { ...k, stats: { ...(k.stats || {}), contacts: st.contacts, booked: st.booked } };
+          }),
+        };
+      }
+    }
+  } catch { /* Zaehler sind Zugabe */ }
   return {
     pending: gapCases.filter((c) => c.status === CASE_STATUS.WAITING_APPROVAL).map(toOverviewItem),
     approved: gapCases.filter((c) => c.status !== CASE_STATUS.WAITING_APPROVAL).map(toOverviewItem),
@@ -1079,7 +1103,7 @@ function toOverviewItem(c) {
  * (Audit + damit der naechste Scan ihn nicht wieder hereinholt); kontaktiert
  * wird er nicht mehr, der naechste Puffer-Kandidat rueckt automatisch nach.
  */
-export async function removeCandidateFromList(clientId, caseId, { patientId, by } = {}) {
+export async function removeCandidateFromList(clientId, caseId, { patientId, by, via } = {}) {
   const ref = masCollection(clientId, "mas_cases").doc(s(caseId));
   const snap = await ref.get();
   if (!snap.exists) return { ok: false, reason: "not_found" };
@@ -1088,8 +1112,11 @@ export async function removeCandidateFromList(clientId, caseId, { patientId, by 
   if (!Array.isArray(cands)) return { ok: false, reason: "not_a_call_list" };
   const idx = cands.findIndex((x) => s(x.patientId) === s(patientId));
   if (idx < 0) return { ok: false, reason: "candidate_not_found" };
-  if (cands[idx].contact?.taskId) return { ok: false, reason: "already_contacted" };
-  if (cands[idx].removed) return { ok: true, already: true };
+  // Kontaktierte DUERFEN entfernt werden (Chef 28.07.2026: "ich habe darum
+  // gebeten, Tatjana Kruse zu entfernen" — sie war bereits angerufen). Die
+  // Kontakt-Daten bleiben am Kandidaten fuer die Nachvollziehbarkeit; removed
+  // heisst nur: nicht mehr auf der Liste, kein weiterer Versuch.
+  if (cands[idx].removed) return { ok: true, already: true, name: s(cands[idx].name) };
 
   const neu = [...cands];
   neu[idx] = { ...neu[idx], removed: true, removedBy: s(by) || "Team", removedAt: Date.now() };
@@ -1097,10 +1124,102 @@ export async function removeCandidateFromList(clientId, caseId, { patientId, by 
   await addUpdate(clientId, s(caseId), {
     by: s(by) || "Team",
     kind: "note",
-    text: `Kandidat ${neu[idx].name || patientId} von der Anrufliste genommen (per Wisch entfernt).`,
+    text: `Kandidat ${neu[idx].name || patientId} von der Anrufliste genommen (${s(via) || "im Monitor entfernt"}).`,
   });
   const verbleibend = neu.filter((x) => !x.removed).length;
-  return { ok: true, remaining: verbleibend };
+  return { ok: true, remaining: verbleibend, name: s(neu[idx].name) };
+}
+
+// --- Kandidat per NAME entfernen (Sprach-Weg) --------------------------------
+// Chef 28.07.2026: "ich habe darum gebeten tatjana kruse zu entfernen, kann
+// sie nicht" — es gab schlicht kein Sprach-Tool; das LLM griff zu
+// gapfill_call_patient und las zur "Hilfe" alle Kandidaten vor. Der Name
+// kommt aus STT und darf verhoert sein ("Krose" -> Kruse), deshalb tolerante
+// Suche: exakt > Teilstring > Levenshtein bis 2 (ein Wort matcht Nachnamen).
+
+function normPersonName(x) {
+  return s(x).toLowerCase()
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+    .replace(/[^a-z ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function levDistanz(a, b, max = 3) {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/** Abstand Suchbegriff <-> Kandidatenname (0 exakt … 3 kein Treffer). */
+function nameTrefferScore(query, kandidatName) {
+  const q = normPersonName(query);
+  const full = normPersonName(kandidatName);
+  if (!q || !full) return 99;
+  if (full === q) return 0;
+  if (full.includes(q) || q.includes(full)) return 1;
+  const qWorte = q.split(" ");
+  const fWorte = full.split(" ");
+  // Ein gesprochenes Wort darf einen Namensbestandteil treffen ("Kruse").
+  if (qWorte.length === 1) {
+    let best = 99;
+    for (const w of fWorte) best = Math.min(best, levDistanz(qWorte[0], w, 2));
+    return best <= 2 ? 1 + best : 99;
+  }
+  const d = levDistanz(q, full, 2);
+  return d <= 2 ? d : 99;
+}
+
+export async function removeCandidateByName(clientId, { patientName, by } = {}) {
+  const gesagt = s(patientName);
+  if (!gesagt) return { ok: false, reason: "no_name" };
+  const ov = await gapFillOverview(clientId);
+  const listen = [...(ov.pending || []), ...(ov.approved || [])];
+  if (!listen.length) return { ok: false, reason: "no_lists" };
+
+  // Beste Treffer ueber alle offenen Listen einsammeln (derselbe Patient kann
+  // in mehreren Listen stehen — dann fliegt er ueberall raus).
+  const treffer = new Map(); // patientId -> { name, score, faelle:Set }
+  for (const l of listen) {
+    for (const k of l.candidates || []) {
+      if (k.removed || !s(k.patientId)) continue;
+      const score = nameTrefferScore(gesagt, k.name);
+      if (score > 3) continue;
+      const t = treffer.get(s(k.patientId)) || { name: s(k.name), score, faelle: new Set() };
+      t.score = Math.min(t.score, score);
+      t.faelle.add(l.caseId);
+      treffer.set(s(k.patientId), t);
+    }
+  }
+  if (!treffer.size) return { ok: false, reason: "candidate_not_found" };
+  const sortiert = [...treffer.entries()].sort((a, b) => a[1].score - b[1].score);
+  const bestScore = sortiert[0][1].score;
+  const beste = sortiert.filter(([, t]) => t.score === bestScore);
+  if (beste.length > 1) {
+    return {
+      ok: false,
+      reason: "ambiguous",
+      kandidaten: beste.map(([, t]) => t.name),
+    };
+  }
+  const [patientId, t] = beste[0];
+  let entferntAus = 0;
+  for (const caseId of t.faelle) {
+    const r = await removeCandidateFromList(clientId, caseId, {
+      patientId, by, via: "per Stimme entfernt",
+    });
+    if (r.ok) entferntAus++;
+  }
+  return { ok: entferntAus > 0, name: t.name, listen: entferntAus };
 }
 
 /**

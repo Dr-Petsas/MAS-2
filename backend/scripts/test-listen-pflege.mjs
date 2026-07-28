@@ -1,6 +1,8 @@
 // Listen-Pflege + Puffer (Chef 28.07.2026) — Firestore-Pins mit Aufraeumen.
-//   1. Wisch-Entfernen: removed=true bleibt als Audit, remaining stimmt,
-//      Doppel-Entfernen idempotent, Kontaktierte sind geschuetzt.
+//   1. Entfernen (Tonne/Stimme): removed=true bleibt als Audit, remaining
+//      stimmt, Doppel-Entfernen idempotent, Kontaktierte sind ENTFERNBAR
+//      (Chef 28.07.: "Tatjana Kruse entfernen" — sie war schon angerufen).
+//      Namens-Entfernen tolerant gegen STT-Hoerfehler ("Pflöge" -> Pflege).
 //   2. Verfall: Liste mit verstrichenem Slot verschwindet aus dem Overview
 //      und der Fall wird geschlossen.
 //   3. Auffrischen uebernimmt removed-Markierungen (Scan holt Entfernte
@@ -10,7 +12,7 @@ import "dotenv/config";
 import { masCollection } from "../src/tenant.js";
 import { createCase } from "../src/brain/caseStore.js";
 import {
-  removeCandidateFromList, gapFillOverview, gapCandidateCardData, aktiveKandidaten,
+  removeCandidateFromList, removeCandidateByName, gapFillOverview, gapCandidateCardData, aktiveKandidaten,
   gapFillCalendarBoundary, listRecallBuckets, resolveBucketKey, setListBucket,
 } from "../src/clara/gapFill.js";
 
@@ -82,28 +84,45 @@ try {
     candidates: [
       kandidat(1),
       kandidat(2, { contact: { via: "sms", taskId: "t_pflege", ok: true, at: Date.now() } }),
-      kandidat(3),
-      kandidat(4),
+      // Fantasie-Namen fuer den Sprach-Weg: die Suche laeuft ueber ALLE
+      // offenen Listen — echte Namen (erster Versuch: "Kruse") kollidieren
+      // mit der Produktions-Liste des Tages. Und Ziffern-Namen ("Testfall
+      // Pflege 3/4") normalisieren auf denselben String.
+      kandidat(3, { name: "Zyprian Quastenfloß" }),
+      kandidat(4, { name: "Zypriana Quastenfloß" }),
     ],
   });
   await seedCase(CASE_ALT, {
     date: gestern, startMin: 9 * 60, endMin: 10 * 60, candidates: [kandidat(5)],
   });
 
-  console.log("[1] Wisch-Entfernen");
+  console.log("[1] Entfernen (Tonne + Stimme)");
   const r1 = await removeCandidateFromList(clientId, CASE_AKTIV, { patientId: "pflege_p1", by: "Chef (Test)" });
   check("Entfernen ok, 3 aktive bleiben (p2 kontaktiert, p3, p4)", r1.ok === true && r1.remaining === 3);
   const r2 = await removeCandidateFromList(clientId, CASE_AKTIV, { patientId: "pflege_p1", by: "Chef (Test)" });
   check("Doppel-Entfernen idempotent", r2.ok === true && r2.already === true);
+  // Mehrdeutig: "Quastenfloß" passt auf Zyprian UND Zypriana -> Rueckfrage statt Raten.
+  const n2 = await removeCandidateByName(clientId, { patientName: "Quastenfloß" });
+  check("Mehrdeutiger Name -> Rueckfrage (ambiguous)", n2.ok === false && n2.reason === "ambiguous" && (n2.kandidaten || []).length === 2);
+  // Sprach-Weg mit STT-Hoerfehler ("Quastenflos" statt "Quastenfloß" —
+  // wie live 28.07. "Krose" statt "Kruse"): trifft nur Zyprian.
+  const n1 = await removeCandidateByName(clientId, { patientName: "Zyprian Quastenflos", by: "Chef (Telefon)" });
+  check("Namens-Entfernen tolerant (Hoerfehler)", n1.ok === true && n1.name === "Zyprian Quastenfloß" && n1.listen === 1);
+  const n3 = await removeCandidateByName(clientId, { patientName: "Zebra Quux" });
+  check("Unbekannter Name -> candidate_not_found", n3.ok === false && n3.reason === "candidate_not_found");
+  // Kontaktierte sind ENTFERNBAR (Chef 28.07.: Tatjana Kruse war schon
+  // angerufen und sollte trotzdem von der Liste).
   const r3 = await removeCandidateFromList(clientId, CASE_AKTIV, { patientId: "pflege_p2" });
-  check("Kontaktierter Kandidat ist geschuetzt", r3.ok === false && r3.reason === "already_contacted");
+  check("Kontaktierter Kandidat ist entfernbar", r3.ok === true && r3.remaining === 1);
   const r4 = await removeCandidateFromList(clientId, CASE_AKTIV, { patientId: "gibtsnicht" });
   check("Unbekannter Kandidat -> candidate_not_found", r4.ok === false && r4.reason === "candidate_not_found");
   const snap = await masCollection(clientId, "mas_cases").doc(CASE_AKTIV).get();
   const cands = snap.data().callList.candidates;
   const p1 = cands.find((c) => c.patientId === "pflege_p1");
   check("removed bleibt als Audit (removedBy gesetzt)", p1?.removed === true && p1?.removedBy === "Chef (Test)");
-  check("aktiveKandidaten filtert entfernte raus", aktiveKandidaten(snap.data().callList).length === 3);
+  const p3n = cands.find((c) => c.patientId === "pflege_p3");
+  check("Sprach-Entfernen auditiert (removedBy Telefon)", p3n?.removed === true && p3n?.removedBy === "Chef (Telefon)");
+  check("aktiveKandidaten filtert entfernte raus (nur Katharina bleibt)", aktiveKandidaten(snap.data().callList).length === 1);
 
   console.log("[2] Verfall + Kalender-Grenze im Overview");
   const hatGrenze = BOUNDARY_CAL !== "cal_pflege";
@@ -135,7 +154,7 @@ try {
   console.log("[3] Anzeige-Wege ohne Entfernte");
   const karten = await gapCandidateCardData(clientId);
   const meine = karten.find((k) => k.calendarName === "Dr. Pflege");
-  check("Karte zeigt nur aktive Kandidaten (3)", (meine?.candidates || []).length === 3);
+  check("Karte zeigt nur aktive Kandidaten (1)", (meine?.candidates || []).length === 1);
   check("Karte traegt Zaehler am Namen (z. B. ³ oder ✓)", (meine?.candidates || []).some((c) => /[⁰¹²³⁴⁵⁶⁷⁸⁹]/.test(c.anzeigeName)));
 
   console.log("[4] Themen-Buckets (Auswahl + Listenwechsel)");

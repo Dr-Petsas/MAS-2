@@ -26,7 +26,7 @@ import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEu
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
-import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey } from "../clara/gapFill.js";
+import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey, removeCandidateByName } from "../clara/gapFill.js";
 import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../clara/gapInvite.js";
 import { outreachForClient, buildAutoInviteMessage } from "../clara/outreachTemplates.js";
 import { recordContact } from "../clara/outreachStats.js";
@@ -2762,6 +2762,46 @@ router.post("/tools/recall-candidates", async (req, res) => {
         .map((d) => karteRecallKandidaten(d));
     } catch { /* Karte ist Zugabe — Sprechtext traegt die Wahrheit */ }
     res.json({ ok: true, message, card: cards[0] || null, cards });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Voice: "Entferne Tatjana Kruse von der Liste." (Chef 28.07.2026 — es gab
+// kein Sprach-Tool zum Entfernen; das LLM griff zu gapfill_call_patient und
+// las alle Kandidaten vor). Der Name kommt aus STT und darf verhoert sein
+// ("Krose" -> Kruse): removeCandidateByName sucht tolerant ueber alle offenen
+// Anruflisten. Antwort ist kurz und wird woertlich gesprochen.
+router.post("/tools/recall-remove-candidate", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const op = await getOperator(clientId);
+    const gesagt = String(req.body?.patientName || "").trim();
+    if (!gesagt) {
+      return res.json({ ok: false, message: "Wen soll ich von der Liste nehmen? Bitte den Namen sagen." });
+    }
+    const out = await removeCandidateByName(clientId, { patientName: gesagt, by: op?.name || "Chef (Telefon)" });
+    let message;
+    if (out.ok) {
+      message = out.listen > 1
+        ? `${out.name} ist von allen ${out.listen} Anruflisten gestrichen.`
+        : `${out.name} ist von der Liste gestrichen.`;
+    } else if (out.reason === "ambiguous") {
+      message = `Da passen mehrere: ${out.kandidaten.join(" oder ")} — wen meinen Sie?`;
+    } else if (out.reason === "no_lists") {
+      message = "Es gibt gerade keine offene Anrufliste.";
+    } else {
+      message = `${gesagt} finde ich auf keiner offenen Anrufliste.`;
+    }
+    // Frische Kandidaten-Karte mitschicken, damit der Monitor sofort stimmt.
+    let cards = [];
+    try {
+      cards = (await gapCandidateCardData(clientId, {})).map((d) => karteRecallKandidaten(d));
+    } catch { /* Karte ist Zugabe */ }
+    res.json({ ok: out.ok, message, card: cards[0] || null, cards });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
