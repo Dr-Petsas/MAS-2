@@ -1583,6 +1583,16 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     Overview-Verfall schloss sonst nach 09:00 die heutige
     08-09-Testliste — zeitabhaengiger Fehlalarm), Fachbereichsfrage +
     Implantat->Kons-Wechsel live am Endpunkt gegengeprueft.
+    NACHTRAG (Chef: "Kons sind insgesamt ueber 1000, ueber alle
+    Kalender"): Der 3-Jahres-Lookback frass 1.808 der 3.072 Recalls
+    (darunter 788 Kons, 918 Prophylaxe) — Altersgrenze auf 10 Jahre
+    gestellt (MAS_RECALL_LOOKBACK_DAYS=3650, praktisch kein
+    Ausschluss). Live danach: Pool 2.786; Kons 1.286 gesamt/472
+    passend fuer Petsas, Prophylaxe 1.251/193, ZE 139/28, Implantat
+    27/16 — "passend" bleibt durch die Kalender-Grenze begrenzt
+    (kalendergebundene Recalls anderer Behandler gehoeren deren
+    Clara). createdBy-Tor kostet nur 7, ohne Telefon nur 3 — beide
+    bleiben.
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.

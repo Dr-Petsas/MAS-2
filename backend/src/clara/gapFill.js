@@ -53,12 +53,14 @@ const MAX_CANDIDATES_STORED = Number(process.env.MAS_GAP_MAX_STORED || 24);
 const RECALL_MIN_LEAD_HOURS = Number(process.env.MAS_RECALL_MIN_LEAD_HOURS || 16);
 const THROTTLE_DAYS = 14; // no patient is proposed twice within this window
 // Chef 28.07.2026 ("meine Buckets haben hunderte wenn nicht tausende
-// Patienten"): Live lagen 3072 virtuelle Recalls im Bestand, gelesen wurden
-// aber nur 300 unsortierte, und alles ueber 1 Jahr Ueberfaelligkeit flog raus
-// (213 der 300!). Deshalb: Lookback 3 Jahre (je ueberfaelliger, desto
-// wichtiger) und der Bestand wird KOMPLETT paginiert gelesen (projiziert,
-// mit Kurzzeit-Cache) statt bei 300 abgeschnitten.
-const RECALL_LOOKBACK_DAYS = Number(process.env.MAS_RECALL_LOOKBACK_DAYS || 1095);
+// Patienten"; "Kons sind insgesamt ueber 1000, ueber alle Kalender"):
+// Live lagen 3072 virtuelle Recalls im Bestand, gelesen wurden aber nur 300
+// unsortierte. Der Bestand wird jetzt KOMPLETT paginiert gelesen (projiziert,
+// mit Kurzzeit-Cache). Zweiter Fresser war die Altersgrenze: 1.808 der 3.072
+// Recalls sind aelter als 3 Jahre ueberfaellig (darunter 788 Kons) — die
+// Grenze steht deshalb auf 10 Jahren (praktisch: kein Ausschluss; alt heisst
+// nicht wertlos, die Spam-Wache und das Ranking schuetzen vor Unfug).
+const RECALL_LOOKBACK_DAYS = Number(process.env.MAS_RECALL_LOOKBACK_DAYS || 3650);
 const RECALL_INVENTORY_CACHE_MS = Number(process.env.MAS_RECALL_INVENTORY_CACHE_MS || 10 * 60 * 1000);
 const RECALL_INVENTORY_MAX = Number(process.env.MAS_RECALL_INVENTORY_MAX || 8000);
 /** Feste Kampagnen-ID fuer `scripts/seed-gapfill-demo.mjs` — nur bei demoOnly. */
