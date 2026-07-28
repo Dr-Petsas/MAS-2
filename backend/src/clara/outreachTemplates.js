@@ -302,6 +302,7 @@ const KONTROLL_FAELLE = [
   {
     id: "implantat",
     re: /implant/,
+    gruppe: "Implantate",
     topic: "Kontrolle Ihrer Implantate",
     zweck: (vor) =>
       `${vor ? `Vor ${vor}` : "Vor einiger Zeit"} wurden Implantate gesetzt. ` +
@@ -311,6 +312,7 @@ const KONTROLL_FAELLE = [
   {
     id: "parodontitis",
     re: /(parodont|\bpa\b|\bpar\b|\bparo\b|\bupt\b|zahnfleisch)/,
+    gruppe: "Parodontitis-Nachsorge",
     topic: "Kontrolle Ihres Zahnfleisches",
     zweck: (vor) =>
       `Die Parodontitis-Behandlung liegt ${vor ? `über ${vor}` : "längere Zeit"} zurück. ` +
@@ -320,6 +322,7 @@ const KONTROLL_FAELLE = [
   {
     id: "schiene",
     re: /(schiene|aufbiss|knirsch|\bkb\b)/,
+    gruppe: "Schienen",
     topic: "Kontrolle Ihrer Schiene",
     zweck: (vor) =>
       `Sie haben ${vor ? `vor ${vor}` : "vor einiger Zeit"} eine Schiene von uns bekommen. ` +
@@ -329,6 +332,7 @@ const KONTROLL_FAELLE = [
   {
     id: "fuellung",
     re: /(fuellung|\bkch\b|\bkons\b|komposit|inlay|onlay|restauration)/,
+    gruppe: "Füllungen",
     topic: "Kontrolle Ihrer Füllung",
     zweck: (vor) =>
       `${vor ? `Vor ${vor}` : "Vor einiger Zeit"} wurde eine Füllung gelegt. ` +
@@ -338,6 +342,7 @@ const KONTROLL_FAELLE = [
   {
     id: "zahnersatz",
     re: /(zahnersatz|eingliederung|krone|bruecke|prothese|teleskop|veneer|\bze\b)/,
+    gruppe: "Zahnersatz",
     topic: "Kontrolle Ihres Zahnersatzes",
     zweck: (vor) =>
       `${vor ? `Vor ${vor}` : "Vor einiger Zeit"} wurde Ihr Zahnersatz eingegliedert. ` +
@@ -375,6 +380,7 @@ export function recallKontrollFokus({ visitMotiveName, overdueDays = 0, source =
   const vor = span ? (source === "campaign" ? `etwa ${span}` : `über ${span}`) : "";
   return {
     id: fall.id,
+    gruppe: fall.gruppe,
     topic: fall.topic,
     anlass: `${fall.topic} — der zugehörige Termin („${motiv}“) liegt ${vor ? `${vor}` : "längere Zeit"} zurück.`,
     purpose: fall.zweck(vor),
@@ -408,6 +414,7 @@ export function composeRecallCallInstruction({
   practiceName, patientName, date, timeLabel, calendarName,
   visitMotiveName, overdueDays = 0, source = "campaign",
   outreach = null, campaignPrompt = "", liveBooking = false,
+  chefHinweis = "",
 } = {}) {
   const praxis = s(practiceName) || "der Praxis";
   const o = outreach || resolveOutreach({ visitMotiveName });
@@ -467,8 +474,15 @@ export function composeRecallCallInstruction({
     }
   }
 
+  // Chef-Vorgabe (28.07.2026: "clara bespricht den prompt mit mir und nimmt
+  // korrekturen auf"): Diktierte Anpassungen des Praxisinhabers stehen als
+  // eigener Block MIT VORRANG in der Instruktion und werden NIE weggekuerzt.
+  const chefBlock = s(chefHinweis)
+    ? `Ausdrückliche Vorgabe des Praxisinhabers für dieses Gespräch (hat bei Widersprüchen Vorrang): ${s(chefHinweis)}`
+    : "";
   const rules = liveBooking ? [CALL_RULES, LIVE_BOOKING_RULES] : [CALL_RULES];
-  const assemble = (blocks) => [head, ...rules, ...blocks, offer, closing].join(" ");
+  const fixe = chefBlock ? [...rules, chefBlock] : rules;
+  const assemble = (blocks) => [head, ...fixe, ...blocks, offer, closing].join(" ");
 
   // Kürzen bei Überlänge — von der entbehrlichsten Info zur wichtigsten.
   let blocks = motiveBlocks;
@@ -488,11 +502,11 @@ export function composeRecallCallInstruction({
   }
   if (text.length > CALL_INSTRUCTION_LIMIT) {
     // Letzte Sicherung (z. B. überlanger Kampagnen-Prompt): Motiv-Teil kappen,
-    // Regeln/Angebot/Abschluss bleiben vollständig.
-    const fixedLen = [head, ...rules, offer, closing].join(" ").length + 2;
+    // Regeln/Chef-Vorgabe/Angebot/Abschluss bleiben vollständig.
+    const fixedLen = [head, ...fixe, offer, closing].join(" ").length + 2;
     const budget = Math.max(0, CALL_INSTRUCTION_LIMIT - fixedLen);
     const motivePart = blocks.join(" ").slice(0, budget > 1 ? budget - 1 : 0) + "…";
-    text = [head, ...rules, motivePart, offer, closing].join(" ");
+    text = [head, ...fixe, motivePart, offer, closing].join(" ");
   }
   return text;
 }

@@ -7,7 +7,7 @@ import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../li
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { listCases, addUpdate, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
-import { resolveOutreach, composeRecallCallInstruction, composeRecallSms } from "./outreachTemplates.js";
+import { resolveOutreach, composeRecallCallInstruction, composeRecallSms, recallKontrollFokus } from "./outreachTemplates.js";
 import { createSlotClaim } from "./slotClaim.js";
 import { MAX_CANDIDATES_PER_LIST } from "./gapFill.js";
 import { recordContact, markConverted } from "./outreachStats.js";
@@ -151,7 +151,7 @@ async function claimForCandidate(clientId, { c, cand, list, booking, timeLabel, 
   }
 }
 
-function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey, liveBooking }) {
+function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey, liveBooking, chefHinweis }) {
   return composeRecallCallInstruction({
     practiceName: booking?.practiceName,
     patientName: cand?.name,
@@ -164,6 +164,7 @@ function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, sp
     outreach: resolveCandidateOutreach(cand || {}, specialtyKey),
     campaignPrompt: cand?.phonePrompt,
     liveBooking: !!liveBooking,
+    chefHinweis: chefHinweis || "",
   });
 }
 
@@ -247,6 +248,7 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
         instruction: buildCallInstruction({
           cand, booking, date: list.date, timeLabel,
           calendarName: list.calendarName, specialtyKey, liveBooking,
+          chefHinweis: list.chefHinweis,
         }),
         contactName: cand.name,
         by: by || "Recall-Coach",
@@ -301,6 +303,137 @@ async function pendingGapCases(clientId, { date } = {}) {
     c.status === CASE_STATUS.WAITING_APPROVAL &&
     (!date || c.callList.date === date)
   );
+}
+
+// ---------------------------------------------------------------------------
+// Ansage-Besprechung VOR der Freigabe (Chef 28.07.2026: "es waere gut wenn
+// clara zur absicherung den prompt mit mir bespricht … und ich dann eine
+// chance habe das umzustellen wenn ich fehler bemerke und clara die korrektur
+// aufnimmt und bestaetigt"). Zwei Schritte:
+//   recallInstructionPreview  — sagt gruppiert an, WAS Lisa den Patienten
+//                               sagen wird (Kern-Botschaft je Fachbereich).
+//   setRecallChefHinweis      — nimmt eine diktierte Korrektur auf; sie wird
+//                               als Vorrang-Block in JEDE Anruf-Instruktion
+//                               der Liste eingewebt (composeRecall…).
+// ---------------------------------------------------------------------------
+
+/** Kern-Botschaft eines Kandidaten (fuers Chef-Ohr, gruppierbar). */
+function candKernbotschaft(cand, specialtyKey) {
+  const source = cand?.source || (cand?.campaignId ? "campaign" : "recall");
+  const fokus = recallKontrollFokus({
+    visitMotiveName: cand?.visitMotiveName,
+    overdueDays: cand?.overdueDays,
+    source,
+  });
+  if (fokus) return { key: fokus.id, gruppe: fokus.gruppe || fokus.topic, text: fokus.purpose };
+  const o = resolveCandidateOutreach(cand || {}, specialtyKey);
+  const topic = o.topicLabel || s(cand?.visitMotiveName) || "ein fälliger Termin";
+  const text = o.texts.purposeShort
+    ? `„${topic}“ ist laut Erinnerungssystem wieder fällig. ${o.texts.purposeShort}`
+    : `„${topic}“ ist laut Erinnerungssystem wieder fällig.`;
+  return { key: `katalog:${topic}`, gruppe: topic, text };
+}
+
+/** Die neueste wartende Liste aufloesen (oder gezielt per caseId). */
+async function resolvePendingList(clientId, caseId) {
+  if (s(caseId)) {
+    const snap = await masCollection(clientId, "mas_cases").doc(s(caseId)).get();
+    return snap.exists ? { id: snap.id, ...snap.data() } : null;
+  }
+  const pending = await pendingGapCases(clientId, {});
+  if (!pending.length) return null;
+  // Juengste zuerst (updatedAt kommt aus listCases absteigend — Reihenfolge
+  // beibehalten): die zuletzt besprochene Liste ist die gemeinte.
+  return pending[0];
+}
+
+/**
+ * "Wie instruierst du Lisa?" — gesprochene Vorschau der Anruf-Ansage fuer die
+ * wartende Liste, gruppiert nach Kern-Botschaft (gemischte Listen haben je
+ * Fachbereich eine eigene Ansprache). Ehrlich: gesprochen wird, was
+ * composeRecallCallInstruction fuer genau diese Kandidaten baut.
+ */
+export async function recallInstructionPreview(clientId, { caseId } = {}) {
+  const c = await resolvePendingList(clientId, caseId);
+  if (!c || !c.callList) {
+    return { ok: false, reason: "no_pending", message: "Gerade wartet keine Anrufliste auf Freigabe — die Ansage bespreche ich am besten, bevor Lisa loslegt. Sage zuerst: Recall starten." };
+  }
+  const list = c.callList;
+  const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
+  const liveBooking = liveBookingConfigured();
+  const timeLabel = minutesToHHMM(list.slot?.startMin);
+
+  const aktive = (Array.isArray(list.candidates) ? list.candidates : [])
+    .filter((x) => !x.removed && !x.contact?.taskId)
+    .slice(0, MAX_CANDIDATES_PER_LIST);
+  if (!aktive.length) {
+    return { ok: false, reason: "no_candidates", message: "Auf der wartenden Liste ist kein aktiver Kandidat mehr — da gibt es nichts zu besprechen." };
+  }
+
+  // Gruppieren nach Kern-Botschaft (Zahnersatz, Fuellungen, Implantate ...).
+  const gruppen = new Map();
+  for (const cand of aktive) {
+    const k = candKernbotschaft(cand, specialtyKey);
+    const g = gruppen.get(k.key) || { gruppe: k.gruppe, text: k.text, anzahl: 0 };
+    g.anzahl++;
+    gruppen.set(k.key, g);
+  }
+
+  const teile = [];
+  teile.push(`So instruiere ich Lisa für die Liste ${dateDe(list.date)} um ${timeLabel} Uhr: Sie ruft freundlich im Namen der Praxis an.`);
+  const gl = [...gruppen.values()];
+  const maxGruppen = 3;
+  for (const g of gl.slice(0, maxGruppen)) {
+    teile.push(gl.length === 1
+      ? `Die Kern-Botschaft: ${g.text}`
+      : `Bei ${g.gruppe} (${g.anzahl === 1 ? "ein Patient" : `${g.anzahl} Patienten`}): ${g.text}`);
+  }
+  if (gl.length > maxGruppen) {
+    teile.push(`Und nach demselben Kontroll-Muster für ${gl.length - maxGruppen} weitere Gruppen.`);
+  }
+  teile.push(liveBooking
+    ? `Dann bietet sie den freien Termin am ${dateDe(list.date)} um ${timeLabel} Uhr an und bucht bei Zusage direkt im Kalender.`
+    : `Dann bietet sie den freien Termin am ${dateDe(list.date)} um ${timeLabel} Uhr an; die Praxis bestätigt anschließend.`);
+  teile.push("Dabei gilt immer: keine Diagnosen, keine Preise, ein Nein akzeptiert sie freundlich.");
+  if (s(list.chefHinweis)) {
+    teile.push(`Deine Vorgabe ist bereits hinterlegt: „${s(list.chefHinweis)}“.`);
+  }
+  teile.push("Soll Lisa etwas anders sagen? Sag es mir einfach — oder gib den Recall frei.");
+
+  return { ok: true, caseId: c.id, message: teile.join(" "), chefHinweis: s(list.chefHinweis) || null };
+}
+
+/**
+ * Diktierte Chef-Korrektur fuer Lisas Ansprache aufnehmen. Haengt an einen
+ * evtl. vorhandenen Hinweis an (mit "; "), kappt auf 300 Zeichen je Diktat
+ * und bestaetigt woertlich, was Lisa zusaetzlich gesagt bekommt.
+ */
+export async function setRecallChefHinweis(clientId, { caseId, hinweis, by } = {}) {
+  const neu = s(hinweis).slice(0, 300);
+  if (!neu) {
+    return { ok: false, reason: "no_hint", message: "Was genau soll Lisa anders sagen? Sag mir die Vorgabe in einem Satz." };
+  }
+  const c = await resolvePendingList(clientId, caseId);
+  if (!c || !c.callList) {
+    return { ok: false, reason: "no_pending", message: "Gerade wartet keine Anrufliste auf Freigabe — die Vorgabe kann ich erst an einer offenen Liste hinterlegen." };
+  }
+  const alt = s(c.callList.chefHinweis);
+  const kombi = (alt ? `${alt}; ${neu}` : neu).slice(0, 600);
+  await masCollection(clientId, "mas_cases").doc(c.id).update({
+    "callList.chefHinweis": kombi,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await addUpdate(clientId, c.id, {
+    by: s(by) || "Chef (Telefon)",
+    kind: "note",
+    text: `Chef-Vorgabe für Lisas Ansprache aufgenommen: „${neu}“`,
+  }).catch(() => {});
+  return {
+    ok: true,
+    caseId: c.id,
+    chefHinweis: kombi,
+    message: `Übernommen — Lisa bekommt für jedes Gespräch die Vorgabe: „${neu}“. Sie hat Vorrang vor dem Standard-Text. Noch etwas anpassen, oder soll ich den Recall freigeben?`,
+  };
 }
 
 export async function approveAndExecute(clientId, { date, caseId, by } = {}) {

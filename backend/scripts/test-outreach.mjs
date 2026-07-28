@@ -235,6 +235,26 @@ check("SMS ZE: Länge <= Limit", smsZe.length <= SMS_LIMIT, `${smsZe.length}`);
 const autoZe = buildAutoInviteMessage({ visitMotiveName: "ZE Eingliederung" });
 check("Auto-Botschaft ZE: Kontrolle statt Eingliederung", autoZe.includes("Kontrolle Ihres Zahnersatzes") && !/fällig: ZE Eingliederung/.test(autoZe), autoZe);
 
+// Chef-Vorgabe (28.07.2026: "clara bespricht den prompt mit mir und nimmt
+// korrekturen auf"): steht mit Vorrang in der Instruktion, wird NIE gekappt.
+const instrHinweis = composeRecallCallInstruction({
+  ...baseArgs,
+  visitMotiveName: "ZE Eingliederung Krone",
+  overdueDays: 800,
+  source: "recall",
+  chefHinweis: "Betone, dass die Kontrolle kurz und schmerzfrei ist.",
+});
+check("Chef-Vorgabe: enthalten + Vorrang markiert", instrHinweis.includes("Vorgabe des Praxisinhabers") && instrHinweis.includes("kurz und schmerzfrei"), instrHinweis.slice(0, 160));
+check("Chef-Vorgabe: Länge <= Limit", instrHinweis.length <= CALL_INSTRUCTION_LIMIT, `${instrHinweis.length}`);
+
+const instrHinweisLang = composeRecallCallInstruction({
+  ...baseArgs,
+  visitMotiveName: "PRO Professionelle Zahnreinigung",
+  campaignPrompt: "Sehr wichtig! ".repeat(300),
+  chefHinweis: "Immer zuerst nach dem Befinden fragen.",
+});
+check("Chef-Vorgabe: überlebt Monster-Kappung", instrHinweisLang.includes("nach dem Befinden fragen") && instrHinweisLang.length <= CALL_INSTRUCTION_LIMIT, `${instrHinweisLang.length}`);
+
 // ---------------------------------------------------------------------------
 // 4) SMS
 // ---------------------------------------------------------------------------

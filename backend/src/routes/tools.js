@@ -34,7 +34,7 @@ import { spokenMorningBriefing } from "../clara/morningBriefing.js";
 import { spokenEveningBriefing } from "../clara/eveningBriefing.js";
 import { buildAsapQueue, spokenAsapQueue } from "../clara/asapQueue.js";
 import { snoozeProaktiv } from "../clara/interruptPolicy.js";
-import { approveAndExecute, snoozeInitiative, initiativeSuffix, recallStatusSpoken } from "../clara/recallCoach.js";
+import { approveAndExecute, snoozeInitiative, initiativeSuffix, recallStatusSpoken, recallInstructionPreview, setRecallChefHinweis } from "../clara/recallCoach.js";
 import { planAbsence, approveAbsence, absenceStatusSpoken } from "../clara/absencePlanner.js";
 import { lookupCaller, normalizePhone } from "../clara/callerLookup.js";
 import { spokenCallLog } from "../clara/callLog.js";
@@ -2802,6 +2802,44 @@ router.post("/tools/recall-remove-candidate", async (req, res) => {
       cards = (await gapCandidateCardData(clientId, {})).map((d) => karteRecallKandidaten(d));
     } catch { /* Karte ist Zugabe */ }
     res.json({ ok: out.ok, message, card: cards[0] || null, cards });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Voice: "Wie instruierst du Lisa?" — Clara bespricht die Anruf-Ansage VOR der
+// Freigabe mit dem Chef (Chef 28.07.2026: "zur absicherung den prompt mit mir
+// besprechen … und ich habe eine chance das umzustellen").
+router.post("/tools/recall-instruction-preview", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await recallInstructionPreview(clientId, { caseId: req.body?.caseId });
+    res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Voice: "Sag Lisa zusätzlich, dass …" — diktierte Korrektur an Lisas Ansprache
+// aufnehmen; sie wird als Vorrang-Block in jede Anruf-Instruktion eingewebt.
+router.post("/tools/recall-instruction-adjust", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const op = await getOperator(clientId);
+    const out = await setRecallChefHinweis(clientId, {
+      caseId: req.body?.caseId,
+      hinweis: req.body?.hinweis,
+      by: op?.name || "Chef (Telefon)",
+    });
+    res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

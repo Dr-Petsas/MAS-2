@@ -15,6 +15,7 @@ import {
   removeCandidateFromList, removeCandidateByName, gapFillOverview, gapCandidateCardData, aktiveKandidaten,
   gapFillCalendarBoundary, listRecallBuckets, resolveBucketKey, setListBucket,
 } from "../src/clara/gapFill.js";
+import { recallInstructionPreview, setRecallChefHinweis } from "../src/clara/recallCoach.js";
 
 const clientId = process.env.MAS_CLIENT_ID || "MEe4ZQHEzOPzLcexyhdT";
 const suffix = Date.now().toString(36);
@@ -89,7 +90,9 @@ try {
       // mit der Produktions-Liste des Tages. Und Ziffern-Namen ("Testfall
       // Pflege 3/4") normalisieren auf denselben String.
       kandidat(3, { name: "Zyprian Quastenfloß" }),
-      kandidat(4, { name: "Zypriana Quastenfloß" }),
+      // ZE-Motiv fuer die Ansage-Besprechung ([1b]): der Preview muss die
+      // Qualitaetssicherungs-Kontrolle sprechen, nie "Eingliederung anbieten".
+      kandidat(4, { name: "Zypriana Quastenfloß", visitMotiveName: "ZE Eingliederung Krone", overdueDays: 800 }),
     ],
   });
   await seedCase(CASE_ALT, {
@@ -123,6 +126,23 @@ try {
   const p3n = cands.find((c) => c.patientId === "pflege_p3");
   check("Sprach-Entfernen auditiert (removedBy Telefon)", p3n?.removed === true && p3n?.removedBy === "Chef (Telefon)");
   check("aktiveKandidaten filtert entfernte raus (nur Katharina bleibt)", aktiveKandidaten(snap.data().callList).length === 1);
+
+  console.log("[1b] Ansage-Besprechung (Preview + Chef-Vorgabe)");
+  // Einzige aktive Kandidatin ist Zypriana (ZE Eingliederung, 800 Tage) —
+  // die Vorschau muss den Kontroll-Fokus sprechen, nicht die Behandlung.
+  const pv1 = await recallInstructionPreview(clientId, { caseId: CASE_AKTIV });
+  check("Preview ok + spricht Qualitätssicherungs-Kontrolle", pv1.ok === true && /Qualitätssicherung/.test(pv1.message) && /instruiere ich Lisa/.test(pv1.message));
+  check("Preview endet mit Anpassungs-Frage", /anders sagen/.test(pv1.message));
+  const h0 = await setRecallChefHinweis(clientId, { caseId: CASE_AKTIV, hinweis: "", by: "Chef (Test)" });
+  check("Leere Vorgabe -> Rueckfrage (no_hint)", h0.ok === false && h0.reason === "no_hint");
+  const h1 = await setRecallChefHinweis(clientId, { caseId: CASE_AKTIV, hinweis: "Betone, dass die Kontrolle kurz und schmerzfrei ist.", by: "Chef (Test)" });
+  check("Vorgabe uebernommen + woertlich bestaetigt", h1.ok === true && /kurz und schmerzfrei/.test(h1.message));
+  const h2 = await setRecallChefHinweis(clientId, { caseId: CASE_AKTIV, hinweis: "Nach dem Befinden fragen.", by: "Chef (Test)" });
+  check("Zweite Vorgabe wird angehaengt", h2.ok === true && h2.chefHinweis.includes("kurz und schmerzfrei") && h2.chefHinweis.includes("Befinden"));
+  const pv2 = await recallInstructionPreview(clientId, { caseId: CASE_AKTIV });
+  check("Preview nennt hinterlegte Vorgabe", pv2.ok === true && /kurz und schmerzfrei/.test(pv2.message));
+  const snapH = await masCollection(clientId, "mas_cases").doc(CASE_AKTIV).get();
+  check("chefHinweis am Case gespeichert", (snapH.data().callList.chefHinweis || "").includes("Befinden"));
 
   console.log("[2] Verfall + Kalender-Grenze im Overview");
   const hatGrenze = BOUNDARY_CAL !== "cal_pflege";
