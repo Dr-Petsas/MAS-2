@@ -1739,6 +1739,42 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     EINMALIG muss der Chef die App noch von Hand frisch laden
     (alter Stand kennt den Selbst-Update-Code nicht).
 
+    NACHTRAG 6 (Chef 28.07. 13:27 + 13:47):
+    (1) ANSAGE-BESPRECHUNG VOR FREIGABE ("es waere gut wenn clara zur
+    absicherung den prompt mit mir bespricht ... und ich dann eine
+    chance habe das umzustellen ... clara nimmt die korrektur auf und
+    bestaetigt"): recallCoach.recallInstructionPreview spricht
+    gruppiert (Zahnersatz, Fuellungen, Implantate ...), WAS Lisa den
+    Patienten sagen wird — ehrlich aus denselben Bausteinen wie die
+    echte Instruktion — und fragt "Soll Lisa etwas anders sagen?".
+    setRecallChefHinweis nimmt diktierte Korrekturen auf (append,
+    300 Zeichen je Diktat, Audit-Update am Case) und bestaetigt
+    woertlich; composeRecallCallInstruction webt callList.chefHinweis
+    als NIE-gekuerzten Vorrang-Block in jede Anruf-Anweisung. Voice:
+    preview_recall_instruction ("Wie instruierst du Lisa?") +
+    adjust_recall_instruction ("Sag Lisa zusaetzlich ..."), Gruppe
+    recall, Keywords instruier/ansage/prompt/besprech/formulier.
+    (2) FREIGABE VERSTEHT NATUERLICHE SPRACHE ("ich kenne zig hunderte
+    formulierungen dafuer, aber clara versteht sie nicht ... clara
+    versteht nur recall liste freigeben"): DREI Luecken — a) Kurz-
+    kommando-Muster massiv verbreitert (_ZUSTIMM_PREFIX "Ja,/Ok/Alles
+    klar," + leg los / fang an (anzurufen) / du kannst starten / Lisa
+    kann loslegen / gib die Liste frei / genehmigt / mach das / los
+    geht's; Eigennamen bleiben delegate_call; Aufschub nicht anrufen/
+    noch nicht/warte/moment/stopp = Ablehnung mit Vorrang); b) DREI
+    Topic-Checks (Approve-Guard-Ziel, gap_briefing->approve-Route,
+    Freigabe-Erdung) verlangten recall/anruflist/freigeben/lueck —
+    Claras freie Rueckfrage "Soll Lisa die Anrufe starten?" trug
+    keines; Lisa/Kandidaten+Anruf zaehlt jetzt ueberall; c) delegate_
+    call/gapfill_call_patient nach Freigabe-Frage + Kurzsatz werden zu
+    approve_recall umgeschrieben. LLM-Weg: approve_recall-Beschreibung
+    + System-Prompt sagen "Absicht verstehen, nicht Woerter abgleichen"
+    mit den Chef-Beispielen. Beweise: test_recall_yes_no_guard GRUEN
+    (20 Formulierungs-, 7 Negativ-, 5 Aufschub-Pins, Ende-zu-Ende-
+    Sanitize mit Lisa-Wortlaut), test-outreach 62/62, test-listen-
+    pflege [1b] gruen, Subsetting 214 Zuege, Gate gruen. MAS + Worker
+    laufen mit dem neuen Stand (13:56).
+
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
 
