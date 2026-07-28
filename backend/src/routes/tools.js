@@ -22,7 +22,7 @@ import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, spri
 import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
 import { freiFormulieren } from "../clara/freiSprech.js";
 import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteWiedervorlage } from "../clara/karten.js";
-import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEuro } from "../brain/wiedervorlage.js";
+import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEuro, ABHAK_ANLEITUNG } from "../brain/wiedervorlage.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
@@ -2960,7 +2960,30 @@ router.post("/tools/wiedervorlage", async (req, res) => {
     const nur = String(req.body?.nur || "").toLowerCase();
     if (nur.startsWith("rechnung")) liste.items = liste.items.filter((i) => i.rechnung);
     else if (nur.startsWith("frist")) liste.items = liste.items.filter((i) => i.deadlineMs);
-    const message = spokenWiedervorlage(liste);
+    let message = spokenWiedervorlage(liste);
+    // W-UMBAU-2 Werkzeug 3 (28.07.2026): Der BERICHT wird lebendig erzaehlt
+    // (FreiSprech: LLM formuliert, Fakten-Guard sichert Zahlen/Daten und blockt
+    // dazuerfundene Euro-Betraege). Die ABHAK-ANLEITUNG dahinter ist ein
+    // Sprachbefehl und bleibt WOERTLICH — sonst lernt der Chef den falschen
+    // Satz. ZUSAETZLICH prueft die Route, dass jeder gesprochene ABSENDER die
+    // Umformulierung woertlich ueberlebt: namenOk im Guard sieht nur Namen mit
+    // Anrede (Herr/Frau/Doktor) — "Finanzamt Bochum" waere sonst ungeschuetzt.
+    // Die Karte behaelt immer den woertlichen Inhalt (Pruefpunkt Handy).
+    try {
+      const anleitung = message.endsWith(ABHAK_ANLEITUNG);
+      const bericht = anleitung
+        ? message.slice(0, message.length - ABHAK_ANLEITUNG.length).trimEnd()
+        : message;
+      const frei = await freiFormulieren(bericht, {
+        kontext: "Bericht ueber offene Fristen und Rechnungssachen auf der Wiedervorlage (ohne Geldbetraege)",
+      });
+      const absenderDa = liste.items.slice(0, 4)
+        .map((i) => i.wer).filter((w) => w && w !== "Unbekannt")
+        .every((w) => frei.text.includes(w));
+      if (frei.ok && absenderDa) {
+        message = anleitung ? `${frei.text} ${ABHAK_ANLEITUNG}` : frei.text;
+      }
+    } catch { /* deterministisch weiter */ }
     let card;
     try { card = karteWiedervorlage({ items: liste.items, euro: formatEuro }); } catch { /* Karte ist Komfort */ }
     res.json(card ? { ok: true, message, card } : { ok: true, message });

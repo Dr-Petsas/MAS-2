@@ -143,6 +143,12 @@ function gesprochenerPunkt(it) {
   return `${art}${von} (${it.quelle}${mehrfach})${frist}`;
 }
 
+// W-UMBAU-2 Werkzeug 3 (28.07.2026): Die Abhak-Anleitung ist ein SPRACHBEFEHL
+// des Chefs — sie muss immer WOERTLICH gleich klingen, sonst lernt er den
+// falschen Satz. Als Konstante exportiert, damit die Route den Bericht davor
+// lebendig umformulieren kann, ohne die Anleitung anzutasten.
+export const ABHAK_ANLEITUNG = 'Zum Abhaken: "Die Sache mit ... ist erledigt."';
+
 /**
  * Gesprochene Wiedervorlage: maximal `max` Punkte ausformuliert, Rest gezaehlt.
  * KEINE Euro-Betraege im gesprochenen Text (Chef-Regel) — die stehen auf der
@@ -158,7 +164,7 @@ export function spokenWiedervorlage({ items = [] } = {}, { max = 4 } = {}) {
     : `${items.length} Punkte auf der Wiedervorlage${dringend ? `, davon ${dringend === 1 ? "einer dringend" : `${dringend} dringend`}` : ""}`;
   const gesagt = items.slice(0, max).map(gesprochenerPunkt);
   const rest = items.length - gesagt.length;
-  return `${kopf}: ${gesagt.join("; ")}${rest > 0 ? `; dazu ${rest === 1 ? "ein weiterer Punkt" : `${rest} weitere Punkte`}` : ""}. Zum Abhaken: "Die Sache mit ... ist erledigt."`;
+  return `${kopf}: ${gesagt.join("; ")}${rest > 0 ? `; dazu ${rest === 1 ? "ein weiterer Punkt" : `${rest} weitere Punkte`}` : ""}. ${ABHAK_ANLEITUNG}`;
 }
 
 /**

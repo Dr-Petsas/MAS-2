@@ -78,6 +78,26 @@ check("Guard (Lisa-Bericht): Handelnden-Tausch trotz 'Dr.' im Satz faellt durch"
   !guardOk(quelleLisa.replace("Lisa hat angerufen und alles ausgerichtet, Doktor Petsas.", "Lisa hat Dr. Petsas erreicht."),
     "Guten Tag, ich habe gerade Dr. Petsas am Telefon erreicht. Er weiss Bescheid, dass der Termin morgen um 14:30 entfaellt, und bedankt sich fuer die Info. Er bittet um einen Rueckruf naechste Woche wegen der Vertretung.").ok);
 
+// W-UMBAU-2 Werkzeug 3 (28.07.2026): Wiedervorlage-BERICHT laeuft durch
+// FreiSprech (die Abhak-Anleitung haengt die Route woertlich wieder an).
+// Chef-Regel: NIE Euro im gesprochenen Text — der Guard muss eine
+// dazuerfundene Summe genauso abfangen wie verdrehte Fristen.
+const quelleWv = "3 Punkte auf der Wiedervorlage, davon einer dringend: eine Frist von Finanzamt Bochum (Brief) — heute faellig; eine Rechnungssache von Dentallabor Nord (E-Mail, 2 Schreiben) — faellig am 30.07; eine Frist von Testanwalt (Anruf) — faellig am 02.08.";
+check("Guard (Wiedervorlage): treue Nacherzaehlung bleibt ok",
+  guardOk(quelleWv, "Auf der Wiedervorlage liegen 3 Punkte, einer davon dringend: vom Finanzamt Bochum ist eine Frist per Brief heute faellig; das Dentallabor Nord hat eine Rechnungssache offen (E-Mail, 2 Schreiben), faellig am 30.07; und vom Testanwalt kam per Anruf eine Frist zum 02.08.").ok);
+check("Guard (Wiedervorlage): dazuerfundener Euro-Betrag faellt durch",
+  !guardOk(quelleWv, quelleWv.replace("(E-Mail, 2 Schreiben)", "(E-Mail, 2 Schreiben, 456,00 Euro)")).ok);
+check("Guard (Wiedervorlage): verdrehtes Frist-Datum faellt durch",
+  !guardOk(quelleWv, quelleWv.replace("30.07", "31.07")).ok);
+// Befund beim Bau (28.07.2026): namenOk schuetzt nur Namen MIT Anrede
+// (Herr/Frau/Doktor) — Absender wie "Finanzamt Bochum" sind fuer den
+// generischen Guard unsichtbar. Deshalb prueft die wiedervorlage-ROUTE
+// selbst, dass jeder gesprochene Absender die Umformulierung ueberlebt
+// (sonst deterministischer Text). Hier gepinnt, damit niemand den
+// Routen-Check als "doppelt" wieder ausbaut.
+check("Guard (Wiedervorlage): Absender OHNE Anrede ist fuer guardOk unsichtbar (deshalb Routen-Check)",
+  guardOk(quelleWv, quelleWv.replace("von Finanzamt Bochum ", "")).ok);
+
 // --- 2) Echte Umformulierung -------------------------------------------------
 const laeufe = [];
 for (let i = 0; i < 3; i++) {

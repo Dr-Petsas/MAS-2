@@ -288,6 +288,10 @@ export async function freiFormulieren(text, { kontext = "interne Team-Ansage", t
         "8. KEINE Kausalitaeten erfinden: 'weil'/'deshalb'/'daher' NUR, wenn der Zusammenhang woertlich in der Quelle steht. Ein Termin passiert nicht 'wegen' eines Anamnese-Hinweises.",
         "9. KEINE Zeit-Einordnung dazuerfinden ('heute', 'morgen', 'gleich') — nur uebernehmen, was die Quelle sagt.",
         "10. Handelnde NIE vertauschen: Wenn LISA angerufen/erreicht hat, bleibt es 'Lisa hat ...' — NIEMALS 'ich habe angerufen/erreicht'. Du berichtest nur.",
+        // Live-Probe Wiedervorlage (28.07.2026): Die Umformulierung haengte
+        // "Bitte passt das an." an — eine Arbeitsanweisung, die niemand
+        // erteilt hat. Berichten heisst berichten.
+        "11. KEINE Aufforderungen oder Bitten dazuerfinden ('bitte anpassen', 'kuemmert euch darum', 'denkt daran') — ausser die Quelle enthaelt sie woertlich.",
         streng
             ? "STIL: Bleib nah am Original — aendere nur Satzanfaenge, Uebergaenge und Satzbau, KEINE Inhalte."
             : `STIL HEUTE: ${stil}`,

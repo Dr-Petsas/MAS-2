@@ -10,7 +10,7 @@
 // Sweep waehrend des Tests keinen Push ausloest.
 import "dotenv/config";
 import { extractAmountCents, extractDeadlineMs, extractDeadlineInfo, detectInvoiceOrPayment, assessCritical, formatEuro } from "../src/brain/critical.js";
-import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage } from "../src/brain/wiedervorlage.js";
+import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, ABHAK_ANLEITUNG } from "../src/brain/wiedervorlage.js";
 import { karteWiedervorlage } from "../src/clara/karten.js";
 import { appendEvent } from "../src/brain/eventStore.js";
 import { masCollection } from "../src/tenant.js";
@@ -63,8 +63,13 @@ const gesprochen = spokenWiedervorlage({ items: beispielItems });
 check(!/euro|€|\d+,\d{2}/i.test(gesprochen), "gesprochener Text enthaelt keinen Euro-Betrag");
 check(/Finanzamt Bochum/.test(gesprochen) && /Dentallabor Nord/.test(gesprochen), "gesprochener Text nennt beide Absender");
 check(/erledigt/i.test(gesprochen), "gesprochener Text erklaert das Abhaken");
+// W-UMBAU-2 Werkzeug 3 (28.07.2026): Die Route formuliert den BERICHT frei um
+// und haengt die Abhak-Anleitung WOERTLICH wieder an. Das Abtrennen funktioniert
+// nur, wenn der gesprochene Text exakt mit der exportierten Konstante endet.
+check(gesprochen.endsWith(ABHAK_ANLEITUNG), "gesprochener Text endet exakt mit der ABHAK_ANLEITUNG (Konstanten-Kopplung)");
 const leer = spokenWiedervorlage({ items: [] });
 check(/nichts offen/i.test(leer), "leere Liste -> beruhigender Satz");
+check(!leer.includes(ABHAK_ANLEITUNG), "leere Liste traegt KEINE Abhak-Anleitung");
 
 // --- 5) Karte: Betrag NUR hier ----------------------------------------------
 const karte = karteWiedervorlage({ items: beispielItems, euro: formatEuro });
