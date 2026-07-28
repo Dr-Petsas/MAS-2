@@ -35,11 +35,14 @@ const TZ = "Europe/Berlin";
 // Obergrenzen: lisaStartCall kappt die Instruktion bei 2200, lisaSendSms bei
 // 480 — wir bleiben mit Reserve darunter, damit NIE mitten im Satz gekappt wird.
 // (2100 seit W-OUTREACH-2: Live-Buchungs-Regeln brauchen Platz.)
-// 28.07.2026: von 2100 auf 2900 angehoben — der Einwand-Block ("Wer sind Sie?
+// 28.07.2026: von 2100 auf 3400 angehoben — der Einwand-Block ("Wer sind Sie?
 // Woher haben Sie meine Nummer? Wo muss ich hin?") gehoert FEST in jede
 // Recall-Instruktion (Patienten erwarten den Anruf nicht) und darf die
-// Motiv-Bausteine nicht aus dem Budget druecken.
-export const CALL_INSTRUCTION_LIMIT = 2900;
+// Motiv-Bausteine (was wird gemacht / warum wichtig) nicht aus dem Budget
+// druecken. Live-Probe mit ZE-Motiv: 2900 war exakt an der Kante, die
+// Kaskade schnitt routinemaessig. ~3400 Zeichen sind ~850 Tokens — fuer den
+// ElevenLabs-Prompt unkritisch.
+export const CALL_INSTRUCTION_LIMIT = 3400;
 export const SMS_LIMIT = 440;
 
 function s(v) {
