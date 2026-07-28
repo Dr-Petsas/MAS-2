@@ -1711,6 +1711,30 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 28.07.2026 (frueh, Nachtschicht): **Masterplan-Schlussstand — alle autonom
+  baubaren Pakete FERTIG.** In dieser Nacht abgeschlossen: W-STABIL-5/-6/-7/
+  -8/-9a (Protokolle, Morgenlauf, Konfig ins Tag, Fristen-/Rechnungs-
+  Waechter + Wiedervorlage, Lueckenfueller-Register), W-UMBAU-1 bis -4
+  (Absichts-Router konsolidiert; FreiSprech auf lisa_call_result/
+  comms_digest/wiedervorlage/absence_status/recall_status mit Handelnden-
+  und Pflichtwort-Wache; Werkzeug-Inventur + search_patient-Dedup;
+  Pfad-Trennung Clara/Bianca per Doppelschloss) sowie W-HUMAN-Abschluss
+  (Chat-Spur verifiziert auf Qwen 3.6). Register 33/33 strict, Morgenlauf
+  06:35 GRUEN (Ping 13 Checks, Push aufs Handy). **Was JETZT noch offen
+  ist, braucht den Chef oder externen Takt:**
+  * **Livetest Lueckenfueller (W-STABIL-9b):** 5-Minuten-Anleitung liegt in
+    `docs/LIVETEST_LUECKENFUELLER.md` — echte Anrufe nur begleitet.
+  * **Hardware/vor Ort:** Shokz pairen + Zimmer-Live-Probe (Phase 3),
+    echte Zimmer-Aufnahmen, WER-Messung Lena, iPad-Abnahme am Stuhl.
+  * **Extern getaktet:** Dens-Office-Kickoff (Phase 2), 5090-Umzug.
+  * **Groessere Folgepakete (Reihenfolge = Vorschlag):** W-LENA-4/-5
+    (Korrektur-Modell, Abrechnungs-Bruecke), Phase 6 (RBAC,
+    Gedaechtnis-Hygiene, Transparenz, Rezeptions-Flows), Phase 7-Rest
+    (Profil-Split clara_base+Overlay, Zweit-Mandant systematisch,
+    Flotten-Monitoring), Phase 5-Rest (Entity-Linking, ROI-Zaehler),
+    Phase 4 (Ambient-Doku), W-INTENT und die Warteliste (u. a.
+    Rueckgaengig-Werkzeug, Slot-Nachrueck-Angebot, comms_digest-
+    Einzelzeilen-Aufraeumen, Firestore-Datenbackup/gcloud).
 - 27.07.2026 (abends): **W-STABIL beschlossen (Chef) — Verkaufskern +
   Regressions-Register statt weiterer Einzel-Fixes.** Der Chef hat den
   Verkaufskern festgelegt (`docs/VERKAUFSKERN_CLARA.md`, 27 Punkte inkl.
