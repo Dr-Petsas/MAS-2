@@ -1775,6 +1775,59 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     pflege [1b] gruen, Subsetting 214 Zuege, Gate gruen. MAS + Worker
     laufen mit dem neuen Stand (13:56).
 
+    NACHTRAG 7 (Chef 28.07. 15:26, Gespraech 15:23-15:25 abgehoert;
+    Turn-Protokoll war der Schluessel — Feld heisst "nutzer"):
+    (1) FREIGABE-SACKGASSE ("die genehmigung des recalls funktiniert
+    nicht"): Die Mittwoch-Liste war um 13:07 bereits freigegeben
+    (in_progress). Der 15:24-Scan praesentierte sie wie frisch, aber
+    approve_recall prueft nur waiting_approval -> "Es wartet gerade
+    keine Anrufliste" — und Clara behauptete trotzdem "Lisa ruft
+    gerade an". Fix: upsertCallListCase eroeffnet bei AUSDRUECKLICHER
+    Themenwahl auf einer nicht mehr wartenden Liste eine NEUE Runde
+    (waiting_approval, approvedBy geloescht, Audit-Note); automatische
+    Scans lassen laufende Listen in Ruhe. approveAndExecute sagt bei
+    leerer Freigabe ehrlich "bereits freigegeben — Lisa arbeitet sie
+    ab". Pins: test-listen-pflege [4b].
+    (2) DOPPELTES RECALL-ANGEBOT: Auf die Fachbereichsfrage sagte der
+    Chef "ZE" -> STT: "Secret E." (13:06: "Haette E."); das Modell
+    rief kein Tool und stellte die Frage NOCHMAL. Fix: Fach-Guard im
+    Provider (_ensure_fach_thema_tool_call + intent_router-Muster
+    inkl. Live-Garbles Secret E/Haette E/Zett E/Zeh) — kurze Themen-
+    Antwort wird deterministisch gap_briefing(thema=...), Datum aus
+    den letzten Nutzer-Saetzen; Fast-Route ueberspringt Pass 1, der
+    Schwafel-Zwischenturn entfaellt. Nur ZE/Kons/Prophylaxe/Implantat/
+    alle (MAS-sicher), nie raten. Pins: test_recall_yes_no_guard.
+    (3) VERSTUMMEN ("hi chef, danach ist sie verstummt"): "Hi Chef."
+    war die Wake-Quittung 15:24:59. Danach sagte der Chef "Hallo."
+    (STT: "Hello." -> Halluzinations-Drop) und "Clara?" (leerer
+    Final) — beides zaehlte nicht als Aktivitaet, nach 30 s legte
+    Clara wegen "user inactive" auf. Fix in worker_mic: Hello/Hallo
+    mit >=8 echten Silero-Sprach-Frames wird als "Hallo?" beantwortet;
+    _note_discarded_utterance fuettert bei verworfener ECHTER Sprache
+    den Inaktivitaets-Timer und fragt nach 2 Fehlversuchen EINMAL
+    hoerbar nach (im Wake-Standby lautlos wie zuvor).
+    (4) LISA-ANSAGE PROAKTIV ("der Lisa auftrags prompt wird nicht
+    besprochen"): buildSpokenGapBriefing haengt nach den Top-Namen die
+    Kern-Ansage an ("Lisa laedt zur Zahnersatz-Kontrolle ein — die
+    Versorgung liegt lange zurueck, wir pruefen sie zur Qualitaets-
+    sicherung. Wenn das passt: Recall freigeben — oder sagen Sie mir,
+    was Lisa anders sagen soll."), je Fachbereich deterministisch
+    (lisaAnsageKurz, inhaltsgleich mit recallKontrollFokus).
+    (5) MUELLTONNEN ("fehlen definitiv"): FEHLDIAGNOSE MEINERSEITS
+    beim Bundle-Check — die Marker ("Aus Liste entfernen",
+    BUNDLE_KENNUNG) waren untauglich (falscher Text bzw. wegminifi-
+    zierter Variablenname). Live-Bundle main.192a523f traegt Tonnen
+    ("Von der Liste nehmen") UND Selbst-Updater (mas_auto_reload_)
+    seit dem letzten Deploy. Das Chef-Handy haengt auf einem Stand
+    DAVOR fest; der alte Stand hat den Selbst-Updater naturgemaess
+    nicht. EINMAL PWA schliessen + neu oeffnen, danach aktualisiert
+    sie sich selbst. Kein neuer Deploy noetig (Build blieb hash-
+    identisch). Lehre: Bundle-Checks NUR mit String-Literalen.
+    Beweise: test-listen-pflege komplett gruen (inkl. [4b]),
+    test-gap-fill ALL PASS, test_recall_yes_no_guard GRUEN (inkl.
+    Fach-Garble-Pins), Gate GRUEN. MAS (16:06) + Worker (16:07)
+    laufen mit dem neuen Stand.
+
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
 
