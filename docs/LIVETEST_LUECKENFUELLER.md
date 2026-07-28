@@ -10,11 +10,14 @@ Durchlauf mit einem ECHTEN Lisa-Anruf auf eine Testnummer.
 
 Der sauberste Beweis, weil der Anruf beim Chef selbst ankommt.
 
+**Vorab-Check (verifiziert 28.07.2026):** Der Testpatient existiert —
+**Michael Petsassss** (id `demo_petsassss`), Mobil **+491776004600**
+(= Chef-Handy), eindeutiger Suchtreffer. Gegenprobe jederzeit:
+`node scripts/check-testpatient.mjs` (nur lesend).
+
 1. Clara anrufen und sagen:
-   **"Such bitte den Patienten <Testpatient mit Chef-Handynummer> heraus."**
+   **"Such bitte den Patienten Michael Petsassss heraus."**
    -> Clara nennt den Patienten (Werkzeug `search_patient`).
-   - Falls kein Testpatient mit der eigenen Handynummer existiert: vorher in
-     Pickadoc einen Patienten "Test Livetest" mit der Chef-Handynummer anlegen.
 2. **"Bestell ihn fuer morgen um zehn Uhr zur Kontrolle ein. Sag ihm, bei uns
    ist kurzfristig ein Termin frei geworden."**
    -> Clara liest die Anweisung fuer Lisa WOERTLICH vor und fragt:
