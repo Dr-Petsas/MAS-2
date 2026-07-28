@@ -53,6 +53,9 @@ function isPublic(req) {
   if (p === "/clara/devices/register" || p === "/clara/devices/register-code") return true;
   if (p === "/clara/devices/refresh" || p === "/clara/devices/unpair") return true;
   if (p === "/clara/devices/vapid-key" || p === "/clara/devices/self-test") return true;
+  // deviceKey-gesichert (28.07.2026): Muelltonne auf der Telefon-Karte —
+  // das gekoppelte Handy nimmt Kandidaten von der Anrufliste.
+  if (p === "/clara/devices/recall-remove") return true;
   // Voice-Worker holt beim Verbinden den Anlass eines proaktiven Clara-Anrufs
   // ab (kurzer, PII-freier Sprechtext; einmalig konsumiert, 2h TTL).
   if (p === "/clara/pending-context") return true;

@@ -160,6 +160,37 @@ const instrGen = composeRecallCallInstruction({
 check("Anruf: generisch ohne Hintergrund-Block", !instrGen.includes("Hintergrund"));
 check("Anruf: generisch nennt Anlass + Regeln", instrGen.includes("Sondertermin Alpha Neun") && instrGen.includes("keine Diagnosen"));
 
+// Einwand-Sicherheit (Chef 28.07.2026: "Patienten erwarten diesen anruf
+// nicht. Lisa muss sich sicherlich verteidigen können. wer sind sie was
+// wollen Sie. woher haben Sie meine Nummer..... wo muss ich überhaupt hin,
+// adresse?") — der Block steht IMMER drin und überlebt jede Kappung.
+const instrEinwand = composeRecallCallInstruction({
+  ...baseArgs,
+  practicePhone: "0211 30293029",
+  practiceAddress: "Oststraße 34A, 40211 Düsseldorf",
+  visitMotiveName: "ZE Eingliederung groß",
+  overdueDays: 1700,
+  source: "recall",
+});
+check("Einwand: Identität (Wer sind Sie)", instrEinwand.includes("Wer sind Sie") && instrEinwand.includes("Terminassistentin"));
+check("Einwand: Nummern-Herkunft", instrEinwand.includes("Woher haben Sie meine Nummer") && instrEinwand.includes("Patientenkartei"));
+check("Einwand: nichts verkaufen", instrEinwand.includes("verkaufen") && instrEinwand.includes("Nein genügt"));
+check("Einwand: Adresse beantwortbar", instrEinwand.includes("Oststraße 34A, 40211 Düsseldorf"));
+check("Einwand: Rückruf-Angebot bei Misstrauen", instrEinwand.includes("0211 30293029"));
+check("Einwand: Länge <= Limit", instrEinwand.length <= CALL_INSTRUCTION_LIMIT, `${instrEinwand.length}`);
+// Ohne Stammdaten: Adress-/Telefon-Sätze fallen weg, der Rest bleibt.
+check("Einwand: ohne Adresse kein Adress-Satz", !instrGen.includes("wo muss ich hin"));
+check("Einwand: Identität auch ohne Stammdaten", instrGen.includes("Wer sind Sie"));
+// Kappungs-Probe: Monster-Kampagnen-Prompt darf den Einwand-Block nicht fressen.
+const instrLangEinwand = composeRecallCallInstruction({
+  ...baseArgs,
+  practicePhone: "0211 30293029",
+  practiceAddress: "Oststraße 34A, 40211 Düsseldorf",
+  visitMotiveName: "PRO Professionelle Zahnreinigung",
+  campaignPrompt: "Sehr wichtig! ".repeat(300),
+});
+check("Einwand: überlebt Kappung", instrLangEinwand.includes("Woher haben Sie meine Nummer") && instrLangEinwand.length <= CALL_INSTRUCTION_LIMIT);
+
 // ---------------------------------------------------------------------------
 // 3b) Kontroll-Fokus (Chef 28.07.2026: Live-Anruf bot "Zahnersatz
 //     eingliedern" an statt der KONTROLLE des eingegliederten Zahnersatzes).

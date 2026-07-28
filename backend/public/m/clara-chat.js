@@ -42,22 +42,33 @@ const CARD_ICONS = {
 };
 const LEVEL_FALLBACK_ICON = { alert: "alert", warn: "question", info: "note", ok: "check" };
 
+// Muelltonne fuer Kandidaten-Zeilen der Anrufliste (Chef 28.07.2026: die
+// Karten-Ansicht am Telefon hatte KEINE Bedienelemente — "keine muelltonnen").
+const TRASH_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-1 12H7L6 9zm4 2v8h1.6v-8H10zm3.4 0v8H15v-8h-1.6z"/></svg>';
+
 /**
  * Übersichts-Karte im Website-Hero-Design ("Nächster Patient" /
- * "Das Wichtigste") als DOM-Element. Reine Anzeige, keine Handler.
- * @param {object} card  { kind, tag, title, time, subtitle, heading, items, footer }
- * @param {object} opts  { when } — Uhrzeit-Label rechts unten
+ * "Das Wichtigste") als DOM-Element. Reine Anzeige — AUSSER: Kandidaten-
+ * Zeilen einer Anrufliste (kind=recall_kandidaten, Item traegt pid) bekommen
+ * eine Muelltonne, wenn onRemoveKandidat verdrahtet ist.
+ * @param {object} card  { kind, caseId, tag, title, time, subtitle, heading, items, footer }
+ * @param {object} opts  { when, onRemoveKandidat } — Uhrzeit-Label + Tonnen-Handler
  */
-export function renderOverviewCard(card, { when = "" } = {}) {
+export function renderOverviewCard(card, { when = "", onRemoveKandidat = null } = {}) {
   const el = document.createElement("div");
   el.className = "card";
   el.dataset.kind = String(card?.kind || "");
 
+  const mitTonnen = typeof onRemoveKandidat === "function"
+    && String(card?.kind) === "recall_kandidaten" && String(card?.caseId || "");
   const items = Array.isArray(card?.items) ? card.items : [];
-  const lis = items.map((it) => {
+  const lis = items.map((it, idx) => {
     const level = ["alert", "warn", "info", "ok"].includes(it?.level) ? it.level : "info";
     const iconKey = CARD_ICONS[it?.icon] ? it.icon : LEVEL_FALLBACK_ICON[level];
-    return `<li class="is-${level}"><i>${CARD_ICONS[iconKey]}</i><span>${escapeHtml(it?.text || "")}</span></li>`;
+    const tonne = (mitTonnen && it?.pid)
+      ? `<button type="button" class="card-trash" data-pid="${escapeHtml(it.pid)}" data-idx="${idx}" aria-label="Von der Liste nehmen">${TRASH_ICON}</button>`
+      : "";
+    return `<li class="is-${level}"><i>${CARD_ICONS[iconKey]}</i><span>${escapeHtml(it?.text || "")}</span>${tonne}</li>`;
   }).join("");
 
   el.innerHTML = `
@@ -80,6 +91,33 @@ export function renderOverviewCard(card, { when = "" } = {}) {
       <span class="fwhen">${escapeHtml(when)}</span>
     </div>` : ""}
   `;
+
+  // Tonnen-Klick: Zeile sofort ausblenden (optimistisch), Handler entscheidet.
+  // Meldet der Server einen Fehler, holt der Handler die Zeile zurueck.
+  if (mitTonnen) {
+    el.addEventListener("click", (e) => {
+      const btn = e.target.closest?.(".card-trash");
+      if (!btn) return;
+      e.stopPropagation();
+      const li = btn.closest("li");
+      const idx = Number(btn.dataset.idx);
+      const it = items[idx] || {};
+      if (li) li.classList.add("is-removing");
+      btn.disabled = true;
+      Promise.resolve(onRemoveKandidat({
+        caseId: String(card.caseId || ""),
+        patientId: String(btn.dataset.pid || ""),
+        name: String(it.name || it.text || ""),
+      })).then((ok) => {
+        if (ok !== false) { li?.remove(); return; }
+        li?.classList.remove("is-removing");
+        btn.disabled = false;
+      }).catch(() => {
+        li?.classList.remove("is-removing");
+        btn.disabled = false;
+      });
+    });
+  }
   return el;
 }
 

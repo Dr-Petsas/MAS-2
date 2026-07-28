@@ -7,6 +7,7 @@ import QRCode from "qrcode";
 import { assertAppEnabled } from "../entitlements.js";
 import { listOperators, normalizeRole } from "../clara/operators.js";
 import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, updateDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured } from "../clara/devices.js";
+import { removeCandidateFromList } from "../clara/gapFill.js";
 import { log } from "../log.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 
@@ -216,6 +217,34 @@ router.post("/clara/devices/self-test", async (req, res) => {
       publicBaseUrl: PUBLIC_BASE_URL,
     });
     res.status(r.ok ? 200 : 502).json(r);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Public (deviceKey-gated): Kandidat von einer Anrufliste nehmen — die
+// Muelltonne auf der Telefon-Karten-Ansicht (call.html). Chef 28.07.2026:
+// "wie du sehen kannst keine muelltonnen" — sein Foto zeigte die Karten-
+// Rueckseite am Telefon; dort gab es bis dahin keinerlei Bedienelemente.
+// Auth wie self-test: das gekoppelte Geraet weist sich mit deviceId+deviceKey
+// aus, der Name des Kopplungs-Inhabers wandert in den Audit-Eintrag.
+router.post("/clara/devices/recall-remove", async (req, res) => {
+  try {
+    const clientId = (req.body?.clientId || "").trim();
+    const caseId = (req.body?.caseId || "").trim();
+    const patientId = (req.body?.patientId || "").trim();
+    if (!clientId || !caseId || !patientId) {
+      return res.status(400).json({ ok: false, error: "client_case_patient_required" });
+    }
+    const who = await identifyByDevice(clientId, req.body?.deviceId, req.body?.deviceKey);
+    if (!who) return res.status(401).json({ ok: false, error: "device_auth_failed" });
+    const r = await removeCandidateFromList(clientId, caseId, {
+      patientId,
+      by: who.name || "Telefon-Karte",
+      via: "telefon_karte",
+    });
+    res.status(r.ok ? 200 : 404).json(r);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

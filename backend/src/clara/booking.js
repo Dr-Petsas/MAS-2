@@ -1,4 +1,4 @@
-import { masCollection } from "../tenant.js";
+import { masCollection, clientRef } from "../tenant.js";
 import { normTime } from "./gapInvite.js";
 
 // Clara's calendar actions. MAS-2 is the source of truth: it talks to the same
@@ -19,6 +19,30 @@ export async function loadBooking(clientId) {
   const snap = await masCollection(clientId, "mas_config").doc("booking").get();
   if (!snap.exists) throw new Error(`no mas_config/booking config for client ${clientId}`);
   return snap.data();
+}
+
+// Praxis-Identitaet fuer Patienten-Kontakte (Lisa-Anrufe/SMS/Zusage-Seite):
+// Name, Telefonnummer und Adresse aus dem Plattform-Stammdokument
+// clients/{clientId}. mas_config/booking traegt diese Felder NICHT — Live-
+// Befund 28.07.2026: Lisa sagte "im Auftrag von der Praxis" (practiceName war
+// leer), und Patienten, die den Anruf nicht erwarten, fragen "Wer sind Sie?
+// Wo muss ich ueberhaupt hin?". 10-Minuten-Cache: Stammdaten aendern sich selten.
+const _identitaetCache = new Map();
+const IDENTITAET_CACHE_MS = 10 * 60000;
+export async function loadPraxisIdentitaet(clientId) {
+  const hit = _identitaetCache.get(clientId);
+  if (hit && Date.now() - hit.at < IDENTITAET_CACHE_MS) return hit.wert;
+  const snap = await clientRef(clientId).get();
+  const d = snap.exists ? (snap.data() || {}) : {};
+  const strasse = norm(d.street);
+  const ort = [norm(d.postalCode), norm(d.city)].filter(Boolean).join(" ");
+  const wert = {
+    name: norm(d.name),
+    phone: norm(d.phoneNumber),
+    addressLine: [strasse, ort].filter(Boolean).join(", "),
+  };
+  _identitaetCache.set(clientId, { at: Date.now(), wert });
+  return wert;
 }
 
 function norm(s) {

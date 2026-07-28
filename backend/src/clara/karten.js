@@ -497,7 +497,7 @@ export function karteLuecken(luecken = []) {
  * candidates: {anzeigeName, name, thema, faellig, viaWort, stats}.
  */
 export function karteRecallKandidaten({
-  slotLabel = "", calendarName = "", date = "", candidates = [], status = "",
+  caseId = "", slotLabel = "", calendarName = "", date = "", candidates = [], status = "",
 } = {}) {
   const levelFor = (c) => {
     const st = c.stats || {};
@@ -505,11 +505,17 @@ export function karteRecallKandidaten({
     if ((st.contacts || 0) >= 2) return "warn";
     return "info";
   };
-  const items = (candidates || []).slice(0, 7).map((c) => item(
-    levelFor(c),
-    c.viaWort === "SMS" ? "mail" : "phone",
-    `${c.anzeigeName || c.name}${c.thema ? ` — ${c.thema}` : ""}${c.faellig ? ` (${c.faellig})` : ""}`,
-  ));
+  // pid je Item: Handgriff fuer die Muelltonne auf der Telefon-Karte
+  // (call.html) — ohne pid rendert die App eine reine Anzeige-Zeile.
+  const items = (candidates || []).slice(0, 7).map((c) => ({
+    ...item(
+      levelFor(c),
+      c.viaWort === "SMS" ? "mail" : "phone",
+      `${c.anzeigeName || c.name}${c.thema ? ` — ${c.thema}` : ""}${c.faellig ? ` (${c.faellig})` : ""}`,
+    ),
+    pid: String(c.patientId || ""),
+    name: String(c.name || ""),
+  }));
   if (!items.length) items.push(item("info", "question", "Keine Kandidaten hinterlegt"));
 
   // W-FLIP-TIEFE: volle Zeilen inkl. ausgeschriebener Zaehler fuer Rueckfragen.
@@ -522,6 +528,7 @@ export function karteRecallKandidaten({
   });
   return {
     kind: "recall_kandidaten",
+    caseId: String(caseId || ""),
     tag: "Anrufliste",
     title: `${slotLabel}${calendarName ? ` · ${calendarName}` : ""}`.trim() || "Anrufliste",
     time: date ? isoKurz(date) : "",

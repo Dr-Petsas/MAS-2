@@ -35,7 +35,11 @@ const TZ = "Europe/Berlin";
 // Obergrenzen: lisaStartCall kappt die Instruktion bei 2200, lisaSendSms bei
 // 480 — wir bleiben mit Reserve darunter, damit NIE mitten im Satz gekappt wird.
 // (2100 seit W-OUTREACH-2: Live-Buchungs-Regeln brauchen Platz.)
-export const CALL_INSTRUCTION_LIMIT = 2100;
+// 28.07.2026: von 2100 auf 2900 angehoben — der Einwand-Block ("Wer sind Sie?
+// Woher haben Sie meine Nummer? Wo muss ich hin?") gehoert FEST in jede
+// Recall-Instruktion (Patienten erwarten den Anruf nicht) und darf die
+// Motiv-Bausteine nicht aus dem Budget druecken.
+export const CALL_INSTRUCTION_LIMIT = 2900;
 export const SMS_LIMIT = 440;
 
 function s(v) {
@@ -400,10 +404,34 @@ const CALL_RULES =
 // Gespräch. Kein "die Praxis meldet sich", solange die Werkzeuge funktionieren.
 const LIVE_BOOKING_RULES =
   "Terminbuchung: Du hast Kalender-Werkzeuge. " +
-  "Sagt der Patient zu, rufe SOFORT book_slot mit dem angebotenen Termin (slot_iso) auf und bestätige den Termin ERST NACH der Werkzeug-Bestätigung verbindlich. " +
+  // 28.07.2026: slot_iso beim Auftrags-Termin WEGLASSEN — das LLM schrieb den
+  // Zeitstempel ab und vertippte sich live im Jahr (2023 statt 2026), die
+  // Buchung des voellig freien Slots platzte ("nicht mehr verfuegbar").
+  "Sagt der Patient zu, rufe SOFORT book_slot auf — OHNE slot_iso, der angebotene Termin ist serverseitig hinterlegt. Bestätige den Termin ERST NACH der Werkzeug-Bestätigung verbindlich. " +
   "Passt der Termin nicht oder wünscht der Patient einen anderen Zeitpunkt, rufe offer_slots auf (den Wunsch, z. B. 'Donnerstag nachmittags', als wish übergeben) und biete die freien Termine an — jeder Terminwunsch bekommt ein konkretes Angebot, du lehnst NIE ab. " +
+  "Wählt der Patient einen dieser Termine, übergib dessen iso-Wert UNVERÄNDERT als slot_iso an book_slot (nie selbst tippen). " +
   "Meldet book_slot, dass der Termin inzwischen vergeben ist, entschuldige dich kurz und biete die zurückgemeldeten Alternativen direkt an. " +
   "Funktionieren die Werkzeuge nicht, versprich nichts Festes, sondern kündige an, dass die Praxis kurzfristig mit Terminvorschlägen zurückruft.";
+
+// Einwand-Sicherheit (Chef 28.07.2026: "Patienten erwarten diesen Anruf
+// nicht. Lisa muss sich sicherlich verteidigen können — wer sind Sie, was
+// wollen Sie, woher haben Sie meine Nummer, wo muss ich überhaupt hin?").
+// Der Block steht FEST in jeder Recall-Instruktion und wird nie weggekürzt.
+function einwandBlock({ praxis, practicePhone, practiceAddress }) {
+  const saetze = [
+    "Der Patient erwartet diesen Anruf nicht — beantworte Rückfragen ruhig und transparent, ohne auszuweichen:",
+    `„Wer sind Sie?“ — Du bist Lisa, die Terminassistentin von ${praxis}.`,
+    "„Woher haben Sie meine Nummer?“ — Aus der Patientenkartei: Der Patient ist bei uns in Behandlung gewesen, die Nummer ist dort hinterlegt und wird nur für Terminanliegen genutzt.",
+    "„Was wollen Sie verkaufen?“ — Nichts: Es geht ausschließlich um einen fälligen Kontrolltermin, ein Nein genügt.",
+  ];
+  if (s(practiceAddress)) {
+    saetze.push(`„Wo ist die Praxis / wo muss ich hin?“ — ${praxis}, ${s(practiceAddress)}.`);
+  }
+  if (s(practicePhone)) {
+    saetze.push(`Bei Misstrauen: Der Patient kann jederzeit selbst in der Praxis anrufen und den Termin dort bestätigen — Telefon ${s(practicePhone)}.`);
+  }
+  return saetze.join(" ");
+}
 
 /**
  * Anruf-Instruktion für Lisa (Recall-/Lückenfüller-Anruf).
@@ -411,7 +439,8 @@ const LIVE_BOOKING_RULES =
  * Regeln, Angebot und Abschluss werden NIE gekürzt.
  */
 export function composeRecallCallInstruction({
-  practiceName, patientName, date, timeLabel, calendarName,
+  practiceName, practicePhone = "", practiceAddress = "",
+  patientName, date, timeLabel, calendarName,
   visitMotiveName, overdueDays = 0, source = "campaign",
   outreach = null, campaignPrompt = "", liveBooking = false,
   chefHinweis = "",
@@ -481,6 +510,10 @@ export function composeRecallCallInstruction({
     ? `Ausdrückliche Vorgabe des Praxisinhabers für dieses Gespräch (hat bei Widersprüchen Vorrang): ${s(chefHinweis)}`
     : "";
   const rules = liveBooking ? [CALL_RULES, LIVE_BOOKING_RULES] : [CALL_RULES];
+  // Einwand-Sicherheit gehoert zu den festen Bloecken (nie kuerzen): der
+  // Patient erwartet den Anruf nicht, Identitaet/Nummer-Herkunft/Adresse
+  // muessen IMMER sicher beantwortet werden.
+  rules.push(einwandBlock({ praxis, practicePhone, practiceAddress }));
   const fixe = chefBlock ? [...rules, chefBlock] : rules;
   const assemble = (blocks) => [head, ...fixe, ...blocks, offer, closing].join(" ");
 

@@ -1,6 +1,6 @@
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
-import { loadBooking, ensureBerlinTz, resolveCalendar } from "./booking.js";
+import { loadBooking, loadPraxisIdentitaet, ensureBerlinTz, resolveCalendar } from "./booking.js";
 import { commitBooking } from "./agentBooking.js";
 import { runGapFill, approveCallList } from "./gapFill.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
@@ -151,9 +151,26 @@ async function claimForCandidate(clientId, { c, cand, list, booking, timeLabel, 
   }
 }
 
+// Booking-Konfiguration + Praxis-Stammdaten (Name/Telefon/Adresse) fuer alle
+// Patienten-Texte. mas_config/booking traegt KEINE Identitaetsfelder — ohne
+// den Merge sagte Lisa live "im Auftrag von der Praxis" (28.07.2026) und
+// konnte "Wo muss ich hin?" nicht beantworten.
+async function bookingMitIdentitaet(clientId) {
+  const booking = await loadBooking(clientId).catch(() => null);
+  const ident = await loadPraxisIdentitaet(clientId).catch(() => null);
+  return {
+    ...(booking || {}),
+    practiceName: s(booking?.practiceName) || s(ident?.name),
+    practicePhone: s(booking?.practicePhone) || s(ident?.phone),
+    practiceAddress: s(booking?.practiceAddress) || s(ident?.addressLine),
+  };
+}
+
 function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey, liveBooking, chefHinweis }) {
   return composeRecallCallInstruction({
     practiceName: booking?.practiceName,
+    practicePhone: booking?.practicePhone,
+    practiceAddress: booking?.practiceAddress,
     patientName: cand?.name,
     date,
     timeLabel,
@@ -181,7 +198,7 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
   const list = c.callList;
   if (!list || !list.approvedBy) return { ok: false, reason: "not_approved" };
 
-  const booking = await loadBooking(clientId).catch(() => null);
+  const booking = await bookingMitIdentitaet(clientId);
   const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
   const timeLabel = minutesToHHMM(list.slot?.startMin);
   const slotIso = ensureBerlinTz(`${list.date}T${timeLabel}:00`);
@@ -583,7 +600,7 @@ export async function sweepRecallOutcomes(clientId) {
   for (const c of running) {
     const list = c.callList;
     const candidates = [...(list.candidates || [])];
-    const booking = await loadBooking(clientId).catch(() => null);
+    const booking = await bookingMitIdentitaet(clientId);
     const gapSlotKey = ensureBerlinTz(`${list.date}T${minutesToHHMM(list.slot?.startMin)}:00`).slice(0, 16);
     let changed = false;
 

@@ -261,6 +261,14 @@
     .card-key li.is-warn  i { background: rgba(245,197,24,.16); color: var(--amber); }
     .card-key li.is-info  i { background: rgba(46,230,200,.14); color: var(--turq); }
     .card-key li.is-ok    i { background: rgba(52,211,153,.16); color: var(--green); }
+    /* Muelltonne je Kandidat (Anrufliste): fester Button am Zeilenende —
+       bewusst KEINE Wischgeste (kollidierte mit dem Karten-Flip, Chef 28.07.). */
+    .card-key li .card-trash { margin-left: auto; flex: none; width: 32px; height: 32px;
+      border-radius: 9px; display: grid; place-items: center; padding: 0; cursor: pointer;
+      border: 1px solid rgba(255,111,97,.35); background: rgba(255,80,80,.12); color: #ff9b90; }
+    .card-key li .card-trash svg { width: 15px; height: 15px; display: block; }
+    .card-key li .card-trash:active { transform: scale(.92); }
+    .card-key li.is-removing { opacity: .35; }
     .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; padding: 0 2px; }
     .card-foot .fnote { font-size: 10.5px; font-weight: 800; color: var(--ink-soft); }
     .card-foot .fwhen { font-size: 10px; color: rgba(255,255,255,.35); }
@@ -484,7 +492,7 @@
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
-    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-1";
+    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-2";
 
     const qs = new URLSearchParams(location.search);
     const STORE_KEY = "clara.device.v1";
@@ -632,12 +640,37 @@
     try { deck = JSON.parse(sessionStorage.getItem(CARDS_KEY) || "[]"); } catch {}
     if (!Array.isArray(deck)) deck = [];
 
+    // Muelltonne auf der Kandidaten-Karte: Server-Aufruf (deviceKey-gesichert)
+    // + Deck-Pflege, damit Reload/Flip die entfernte Zeile nicht zurueckholt.
+    async function removeKandidatVomServer({ caseId, patientId }) {
+      if (!device?.deviceId || !device?.deviceKey || !caseId || !patientId) return false;
+      try {
+        const resp = await fetch("/clara/devices/recall-remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId, deviceId: device.deviceId, deviceKey: device.deviceKey,
+            caseId, patientId,
+          }),
+        });
+        const j = await resp.json().catch(() => null);
+        if (!resp.ok || j?.ok === false) return false;
+        for (const entry of deck) {
+          if (entry.card?.kind === "recall_kandidaten" && entry.card?.caseId === caseId) {
+            entry.card.items = (entry.card.items || []).filter((it) => it.pid !== patientId);
+          }
+        }
+        try { sessionStorage.setItem(CARDS_KEY, JSON.stringify(deck)); } catch {}
+        return true;
+      } catch { return false; }
+    }
+
     function renderDeck() {
       if (!els.cardsScroll) return;
       els.cardsScroll.querySelectorAll(".card").forEach((n) => n.remove());
       if (els.cardsEmpty) els.cardsEmpty.classList.toggle("hidden", deck.length > 0);
       for (const entry of deck) {
-        const el = renderOverviewCard(entry.card, { when: entry.when });
+        const el = renderOverviewCard(entry.card, { when: entry.when, onRemoveKandidat: removeKandidatVomServer });
         els.cardsScroll.appendChild(el);
       }
     }

@@ -1492,11 +1492,17 @@ export async function gapCandidateCardData(clientId, { date } = {}) {
   const day = date ? s(date) : null;
   const lists = [...(ov.pending || []), ...(ov.approved || [])].filter((l) => !day || l.date === day);
   return lists.slice(0, 4).map((l) => ({
+    // caseId + patientId je Kandidat: damit die Telefon-Karte (call.html)
+    // eine Muelltonne je Zeile anbieten kann (Chef 28.07.2026: "wie du sehen
+    // kannst keine muelltonnen" — sein Foto zeigte die KARTEN-Ansicht am
+    // Telefon, nicht den Monitor-Tab).
+    caseId: l.caseId || "",
     slotLabel: l.slot?.label || "",
     calendarName: l.calendarName || "",
     date: l.date || "",
     status: l.status === CASE_STATUS.WAITING_APPROVAL ? "wartet auf Freigabe" : "freigegeben",
     candidates: aktiveKandidaten(l).slice(0, MAX_CANDIDATES_PER_LIST).map((c) => ({
+      patientId: s(c.patientId),
       anzeigeName: nameMitZaehler(c.name, c.stats),
       name: s(c.name) || "Unbekannt",
       thema: c.campaignName ? `Kampagne »${s(c.campaignName)}«` : (s(c.visitMotiveName) || "Recall"),

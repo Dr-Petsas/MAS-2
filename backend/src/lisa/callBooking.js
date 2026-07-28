@@ -284,6 +284,32 @@ export async function bookSlotForTask(clientId, taskId, { slotIso } = {}) {
     return { ok: false, spoken: "Mir fehlt der genaue Zeitpunkt. Rufe zuerst offer_slots auf und übergib dann das iso-Feld des gewählten Termins als slot_iso." };
   }
 
+  // Abschreibfehler-Heilung (Live-Vorfall 28.07.2026 16:29): Das LLM übergab
+  // slot_iso mit Jahr 2023 statt 2026 — der Frei-Check suchte Slots am
+  // 29.07.2023, fand natürlich keine und wies den völlig freien 9-Uhr-Slot ab
+  // ("Der Termin ist leider nicht mehr verfügbar"). Der Auftrags-Slot ist die
+  // Autorität; das LLM muss Zeitstempel nicht fehlerfrei abschreiben:
+  //  a) gleicher Moment in anderer Schreibweise (UTC/Offset) -> Auftrags-ISO,
+  //  b) gleicher Tag + gleiche Uhrzeit, nur das Jahr weicht ab -> Auftrags-ISO,
+  //  c) sonstige Vergangenheit (Anrufe bieten NIE Vergangenheit an) -> Jahr
+  //     des Auftrags-Slots einsetzen; der Frei-Check darunter prüft danach
+  //     ehrlich den Kalender (deckt "lieber 8 Uhr" im falschen Jahr).
+  const auftragIso = s(ctx.slotIso);
+  if (auftragIso && iso.slice(0, 16) !== auftragIso.slice(0, 16)) {
+    const pIso = Date.parse(iso);
+    const pAuftrag = Date.parse(auftragIso);
+    if (Number.isFinite(pIso) && Number.isFinite(pAuftrag) && pIso === pAuftrag) {
+      iso = auftragIso;
+    } else if (iso.slice(4, 16) === auftragIso.slice(4, 16)) {
+      log.info("lisa.tool.book_slot_jahr_geheilt", { clientId, taskId, geliefert: s(slotIso), auftrag: auftragIso });
+      iso = auftragIso;
+    } else if (Number.isFinite(pIso) && pIso < Date.now() - 60 * 60000) {
+      const geheilt = auftragIso.slice(0, 4) + iso.slice(4);
+      log.info("lisa.tool.book_slot_vergangenheit_geheilt", { clientId, taskId, geliefert: s(slotIso), geheilt });
+      iso = geheilt;
+    }
+  }
+
   // Halluzinations-Wache: Ein ANDERER Slot als der angebotene wird nur
   // gebucht, wenn er WIRKLICH im Kalender frei ist (das LLM darf sich keine
   // Uhrzeit ausdenken — Sprechzeiten/Belegung entscheidet die Plattform).

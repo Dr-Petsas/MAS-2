@@ -1828,6 +1828,60 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     Fach-Garble-Pins), Gate GRUEN. MAS (16:06) + Worker (16:07)
     laufen mit dem neuen Stand.
 
+    NACHTRAG 8 (Chef 28.07. 16:33 + 19:18; Gespraech 16:27-16:30 und
+    Lisa-Task ronCIfHDdYYRElr2qB8g ausgewertet; ElevenLabs-Konversation
+    conv_4901... geholt — der Tool-Call stand nur DORT):
+    (1) LISA KONNTE NICHT BUCHEN ("der termin war angeblich schon
+    weg... da klappt was ueberhaupt nicht"): Der Kalender war FREI.
+    ElevenLabs uebergab book_slot mit slot_iso JAHR 2023 statt 2026
+    (LLM-Zahlendreher beim Abschreiben); der Frei-Check suchte Slots
+    am 29.07.2023, fand keine -> "nicht mehr verfuegbar". Dreifach-
+    Fix: (a) bookSlotForTask heilt Abschreibfehler (gleicher Moment
+    andere Schreibweise -> Auftrags-ISO; gleicher Tag+Uhrzeit falsches
+    Jahr -> Auftrags-ISO; sonstige Vergangenheit -> Jahr des Auftrags,
+    danach ehrlicher Frei-Check), (b) agentTools: slot_iso nicht mehr
+    required — beim Auftrags-Termin WEGLASSEN, Server bucht exakt
+    (updated:book_slot im Boot-Log 19:39 bestaetigt), (c)
+    LIVE_BOOKING_RULES sagen Lisa dasselbe.
+    (2) DOPPLER 16:28: "Das ist gut, ruf an." traf KEIN Muster (Praefix
+    "das ist gut" fehlte; "ruf an" verlangte ein Objekt) -> kein Tool,
+    Clara kuendigte nur an; erst "Ja, bitte." loeste approve aus und
+    derselbe Text kam NOCHMAL. Fix: _ZUSTIMM_PREFIX + Kurz-Ja um
+    "das ist gut/das passt/sehr gut/wunderbar" erweitert, ruf-an-
+    Objekt optional (nur generische Objekte — "Ruf Herrn Meier an"
+    bleibt delegate_call). Pins: test_recall_yes_no_guard (16:28-Block).
+    (3) LISA-EINWAND-SICHERHEIT ("Patienten erwarten diesen anruf
+    nicht. Lisa muss sich verteidigen koennen... woher haben Sie meine
+    Nummer... adresse?"): Neuer einwandBlock FEST in jeder Recall-
+    Instruktion (nie gekuerzt; Limit 2100->2900): Wer sind Sie
+    (Terminassistentin von X) / Nummer aus der Patientenkartei, nur
+    fuer Terminanliegen / nichts verkaufen, Nein genuegt / Adresse /
+    bei Misstrauen selbst in der Praxis anrufen (Nummer). Dazu
+    loadPraxisIdentitaet (clients/{id}: Name/Telefon/Strasse/PLZ/Ort,
+    10-min-Cache) + bookingMitIdentitaet in recallCoach — vorher war
+    practiceName in Anruf/SMS LEER (Lisa sagte woertlich "im Auftrag
+    von der Praxis"). Pins: test-outreach (71 Checks, Einwand-Block
+    ueberlebt Kappung).
+    (4) MUELLTONNEN AM RICHTIGEN ORT: Chefs Foto zeigte die KARTEN-
+    Ansicht am Telefon (MAS call.html), nicht den Monitor-Tab — dort
+    gab es nie Bedienelemente. Jetzt: karteRecallKandidaten traegt
+    caseId + pid je Kandidat, renderOverviewCard (clara-chat.js,
+    ?v=karten-2) zeichnet je Zeile eine Tonne (fester Button, KEINE
+    Wischgeste — Flip-Konflikt), call.html ruft die neue deviceKey-
+    gesicherte Route POST /clara/devices/recall-remove (auth.js
+    public, identifyByDevice wie self-test) -> removeCandidateFromList,
+    Deck in sessionStorage wird mitgepflegt. iPad rendert weiterhin
+    reine Anzeige (kein Handler).
+    GROK-KONTROLLE (Chef 19:18): KEINE fremden Code-Aenderungen in
+    MAS-2/Clara-Voice/pickadoc-live-base/Lena-Voice seit 16:45 —
+    offene Diffs waren die eigenen 16:43-Edits (callBooking/agentTools),
+    ein EOL-Artefakt (testlab.js, zurueckgesetzt) und dens-integration
+    .html von GESTERN 20:38 (parallele Marketing-Session).
+    Beweise: node --check 10/10, test-outreach 71/71, test-listen-
+    pflege gruen, test_recall_yes_no_guard GRUEN, Gate GRUEN.
+    MAS-Neustart 19:39 (agent_tools_synced: updated:book_slot),
+    Worker-Neustart 19:40 (LLM prewarm OK).
+
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
 

@@ -96,8 +96,9 @@ function toolDefinitions({ baseUrl, secret }) {
       type: "webhook",
       name: "book_slot",
       description:
-        "Bucht einen Termin SOFORT fest im Praxiskalender. Rufe dieses Werkzeug auf, sobald der Patient einem konkreten Termin zustimmt — " +
-        "entweder dem im Auftrag genannten Termin oder einem Termin aus offer_slots (übergib dessen iso-Wert als slot_iso). " +
+        "Bucht einen Termin SOFORT fest im Praxiskalender. Rufe dieses Werkzeug auf, sobald der Patient einem konkreten Termin zustimmt. " +
+        "Stimmt der Patient dem im Auftrag genannten Termin zu, lasse slot_iso WEG — der Server kennt den Termin und bucht ihn exakt. " +
+        "Nur wenn der Patient einen ANDEREN Termin aus offer_slots wählt, übergib dessen iso-Wert unverändert als slot_iso (nie selbst tippen). " +
         "Bestätige dem Patienten den Termin erst, wenn die Antwort booked=true meldet. Ist der Termin inzwischen vergeben, enthält die Antwort sofort neue Alternativen.",
       ...common,
       api_schema: {
@@ -106,13 +107,17 @@ function toolDefinitions({ baseUrl, secret }) {
         request_headers: { "X-Lisa-Tool-Secret": secret },
         request_body_schema: {
           type: "object",
-          required: ["slot_iso"],
+          // 28.07.2026: slot_iso war required — das LLM musste den Zeitstempel
+          // IMMER abschreiben und vertippte sich live im Jahr (2023 statt 2026,
+          // "Termin nicht mehr verfügbar" trotz freiem Kalender). Optional +
+          // Server-Default (Auftrags-Slot) macht den Standardfall tippfehlerfrei.
+          required: [],
           properties: {
             ...idProps,
             slot_iso: {
               type: "string",
               description:
-                "Exakter Zeitpunkt des zu buchenden Termins im ISO-Format, z. B. 2026-07-14T10:30:00+02:00. Bei Zusage zum im Auftrag genannten Termin: den dort genannten slot_iso-Wert verwenden; sonst den iso-Wert aus offer_slots.",
+                "NUR bei Wahl eines anderen Termins aus offer_slots: dessen iso-Wert unverändert übernehmen (z. B. 2026-07-14T10:30:00+02:00). Beim Termin aus dem Auftrag: Feld weglassen.",
             },
           },
         },
