@@ -1602,10 +1602,56 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     resolveBucketKey nimmt die Garbles + "Zeh"->ZE selbst an, (3)
     gap_briefing-Beschreibung: Datum nie raten (weglassen = heute),
     bei unklarer Antwort NUR die kurze Frage wiederholen, nie die
-    Vorrede. Sprechtext entschlackt: Thema eingewoben statt
+    Vorrede.     Sprechtext entschlackt: Thema eingewoben statt
     "Recall-Thema X."-Stummel, bei EINER Luecke EIN Satz ohne
     Behandler-Doppelung, Kurzfristig-Hinweis + Kandidaten/Freigabe-
     Hinweis je EIN Satz statt vier.
+    NACHTRAG 3 (Chef 28.07. mittags: "ich kann keine patienten
+    entfernen … am schlimmsten ist der lag … nicht fragen ob sie die
+    listen anzeigen soll, sondern direkt anzeigen … anrufen starten
+    geht auch nicht"): Vier Befunde, vier Fixes.
+    (1) FREIGABE LIEF NIE: Protokoll 11:25 — Chef sagte VIERMAL Ja
+    ("Yeah" x3, "Ja"), Clara rief nie approve_recall und BEHAUPTETE
+    "Lisa ruft jetzt die 8 Kandidaten an". Ursachen: Claras frei
+    formulierte Rueckfrage "Soll Lisa die Anrufe starten?" traf kein
+    Topic-Wort von _freigabe_offer_pending (jetzt zaehlt Lisa/
+    Kandidaten+Anruf), "Yeah/Jep/Yes" fehlte im Kurz-Ja-Muster
+    (ergaenzt) — damit greift der bestehende Approve-Guard und
+    synthetisiert approve_recall; zusaetzlich blockt response_guard
+    jetzt Praesens-Delegations-Luegen ("Lisa ruft jetzt an" ohne
+    Tool-Lauf; Fragen/Konditionale bleiben). Pins:
+    test_recall_yes_no_guard.py (28 gruen). Die haengende 13-15-Liste
+    wurde serverseitig freigegeben; Testredirect fing alles ab.
+    (2) TESTLAUF-STAFFELUNG: 8 gleichzeitige Anrufe an DIESELBE
+    Chef-Nummer — nur der erste kam durch (7x ok:false). Mit aktivem
+    Testredirect startet jetzt genau EIN Anruf pro Lauf.
+    (3) LAG: candidatePool las bei JEDEM Aufruf die Outreach-Stats
+    ALLER ~3.000 Kandidaten (1 Read/Patient) — Bucket-Zaehlung und
+    Themen-Frage laufen jetzt ohne Stats (mitStats:false), echte
+    Laeufe mit 45-s-Kurzcache; Recall-Inventar stale-while-revalidate
+    (abgelaufener Cache liefert sofort, erneuert im Hintergrund);
+    Fachbereichs-Antworten loesen die Regex OHNE Inventar-Scan auf.
+    gap-briefing ~1,0 s -> ~0,6 s warm. Der MONITOR-Lag + kaputtes
+    Wischen war ein React-Fehler: SwipeRow/CallListCard/CounterSup
+    waren INNERE Komponenten von GapFillView — jeder Poll-Render gab
+    ihnen eine neue Identitaet, React remountete alle Zeilen (Wisch
+    sprang mitten in der Geste zurueck, Puffer klappte zu, DOM-
+    Neuaufbau machte alles zaeh). Auf Modul-Ebene gehoben, onRemove
+    als Prop, removeCandidate useCallback; committet + deployt.
+    Remove-Route uebers Tunnel gegengeprueft (199 ms, sauber).
+    (4) DIREKT ANZEIGEN: gap_briefing liefert die Kandidaten jetzt
+    selbst mit — karteRecallKandidaten als card/cards in der
+    Tool-Antwort (der Worker pusht Karten aus Tool-Antworten aufs
+    Display, _stash_cards-Mechanik) plus die vordersten drei Namen
+    im Sprechtext ("Vorn stehen …"); der Schluss-Satz verweist nur
+    noch auf "Recall freigeben". Profil: gap_briefing "Karte wird
+    automatisch angezeigt — nie fragen"; list_recall_candidates
+    beantwortet auch Kontakt-Zaehler-Fragen (11:23 lief "wie oft
+    kontaktiert?" faelschlich auf list_day_appointments) und bietet
+    NIE Listen-Loeschen an (Entfernen = Wisch im Monitor).
+    Nebenbefund: start-mas-stack.ps1 zeigte noch auf den alten
+    lena_stt-Pfad in Clara-Voice (Cutover 23.07.) — auf F:\Lena-Voice
+    umgebogen.
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
