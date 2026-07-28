@@ -25,7 +25,13 @@ function check(cond, msg) {
 const C = "zzz-mas2-gapfill";
 const LOC = "locGap";
 const db = admin.firestore();
-const DATE = todayBerlin();
+// Coach-Lauf auf MORGEN: gapFillOverview schliesst verstrichene Luecken des
+// heutigen Tages (Listen-Pflege) — bei einem Lauf nach 09:00 waere die
+// 08:00–09:00-Liste sonst schon weg und der Pin bricht zeitabhaengig.
+const TODAY = todayBerlin();
+const plusDays = (n) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" })
+  .format(new Date(new Date(`${TODAY}T12:00:00Z`).getTime() + n * 86400000));
+const DATE = plusDays(1);
 const at = (h, m) => new Date(ensureBerlinTz(`${DATE}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`));
 
 const locRef = () => db.collection("clients").doc(C).collection("locations").doc(LOC);
@@ -210,10 +216,9 @@ async function run() {
   // Praxisweite Abwesenheit (kein Kalender gesetzt) muss die Lückensuche
   // blocken — Vorfall 17.07./27.07.2026: Urlaubstag wurde als "frei" gewertet
   // und Clara schlug Recall-Kandidaten für einen Abwesenheitstag vor.
-  const plusDays = (n) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" })
-    .format(new Date(new Date(`${DATE}T12:00:00Z`).getTime() + n * 86400000));
-  const DATE2 = plusDays(1);
-  const DATE3 = plusDays(2);
+  // DATE ist schon morgen (Coach-Lauf) — Abwesenheitstests auf +2/+3.
+  const DATE2 = plusDays(2);
+  const DATE3 = plusDays(3);
   const atDay = (day, h, m) => new Date(ensureBerlinTz(`${day}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`));
   await locRef().collection("appointments").doc("absFull").set({
     start: atDay(DATE2, 8, 0), end: atDay(DATE2, 12, 0),

@@ -8,7 +8,7 @@ import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, todayBe
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "../brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "../brain/livingPrompt.js";
 import { reflectOnce } from "../brain/reflect.js";
-import { runGapFill, gapFillOverview, approveCallList, removeCandidateFromList } from "../clara/gapFill.js";
+import { runGapFill, gapFillOverview, approveCallList, removeCandidateFromList, listRecallBuckets, setListBucket } from "../clara/gapFill.js";
 import { dailyInitiativeScan } from "../clara/recallCoach.js";
 import { listLisaTasks } from "../lisa/outbound.js";
 import { listCalendar as qmListCalendar } from "../qm/jobs.js";
@@ -983,6 +983,8 @@ router.post("/brain/gap-fill/run", async (req, res) => {
       date: req.body?.date,
       horizonDays: Number(req.body?.horizonDays) || 1,
       demoOnly,
+      bucketKey: req.body?.bucketKey,
+      bucketExplicit: req.body?.bucketKey != null,
     });
     res.json({ ok: true, clientId, ...out });
   } catch (e) {
@@ -1016,6 +1018,45 @@ router.post("/brain/gap-fill/:caseId/approve", async (req, res) => {
     }
     const out = await approveCallList(clientId, req.params.caseId, { by: req.body?.by || "Team" });
     if (!out.ok) return res.status(out.reason === "not_found" ? 404 : 409).json(out);
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Themen-Buckets (Chef 28.07.2026): Auswahl, aus welchem Bucket eine
+// Anrufliste geformt wird — Kons, ZE-Kontrolle, Prophylaxe ... mit Zahlen.
+router.get("/brain/gap-fill/buckets", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await listRecallBuckets(clientId);
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// EINE Liste auf ein anderes Themen-Bucket stellen (bucketKey leer = alle
+// Themen). Kontaktierte bleiben, Weggewischte kommen nicht zurueck.
+router.post("/brain/gap-fill/:caseId/set-bucket", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await setListBucket(clientId, req.params.caseId, {
+      bucketKey: req.body?.bucketKey,
+      by: req.body?.by || "Team (Monitor)",
+    });
+    if (!out.ok) {
+      const code = out.reason === "not_found" ? 404 : 409;
+      return res.status(code).json(out);
+    }
     res.json({ ok: true, clientId, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

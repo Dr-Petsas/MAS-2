@@ -26,7 +26,7 @@ import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEu
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
-import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData } from "../clara/gapFill.js";
+import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey } from "../clara/gapFill.js";
 import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../clara/gapInvite.js";
 import { outreachForClient, buildAutoInviteMessage } from "../clara/outreachTemplates.js";
 import { recordContact } from "../clara/outreachStats.js";
@@ -2592,6 +2592,11 @@ router.post("/tools/running-late", async (req, res) => {
 
 
 // Voice: "Wo ist morgen Luft und wer passt rein?" — spoken gap briefing.
+// Themen-Pflicht (Chef 28.07.2026): kurze Fachbereichsfrage — Prophylaxe,
+// Kons oder ZE; Zusatz wie Implantat nur wenn Bestand. Keine Zahlen, keine
+// Abkuerzungen (KCH/PRO). Erst die Antwort (thema) formt die Listen.
+const RECALL_ALLE_THEMEN_RE = /\b(alle|alles|egal|gemischt|querbeet|komplett|s?aemtliche)(\s+themen?)?\b/i;
+
 router.post("/tools/gap-briefing", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -2599,6 +2604,36 @@ router.post("/tools/gap-briefing", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const demoOnly = req.body?.demoOnly === true || req.body?.demoOnly === "true";
+    const thema = String(req.body?.thema || req.body?.bucket || "").trim();
+
+    // Themen-Rueckfrage (nicht im Demo-Modus — dort bleibt der Ablauf starr):
+    let bucketKey = null;
+    if (!demoOnly) {
+      const fach = await listRecallFachbereiche(clientId).catch(() => ({ ok: false, kern: [], zusatz: [], buckets: [] }));
+      const hatBestand = fach.ok && ((fach.kern?.length || 0) + (fach.zusatz?.length || 0) > 0);
+      if (hatBestand) {
+        if (!thema) {
+          return res.json({
+            ok: true,
+            needsTheme: true,
+            fachbereiche: [...(fach.kern || []), ...(fach.zusatz || [])],
+            message: spokenFachbereichFrage(fach),
+          });
+        }
+        if (!RECALL_ALLE_THEMEN_RE.test(thema)) {
+          bucketKey = resolveBucketKey(fach.buckets || [], thema);
+          if (!bucketKey) {
+            return res.json({
+              ok: true,
+              needsTheme: true,
+              fachbereiche: [...(fach.kern || []), ...(fach.zusatz || [])],
+              message: `${spokenFachbereichFrage(fach)} Ich habe „${thema}" nicht erkannt.`,
+            });
+          }
+        }
+      }
+    }
+
     // Wie day-briefing: ohne explizite Behandler-Angabe nur der Kalender des
     // angemeldeten Behandlers (sonst zaehlt Clara fremde/leere Kalender als frei).
     const { calendarId: gapCalId } = await resolveDayCalendarScope(clientId, req.body);
@@ -2607,14 +2642,21 @@ router.post("/tools/gap-briefing", async (req, res) => {
       horizonDays: Number(req.body?.horizonDays) || 1,
       demoOnly,
       calendarId: gapCalId,
+      bucketKey,
+      // Der Chef hat das Thema ausdruecklich gewaehlt (auch "alle Themen"):
+      // eine bestehende themengebundene Liste wird dann umgeformt.
+      bucketExplicit: !!thema,
     });
     const op = await getOperator(clientId);
     let message = buildSpokenGapBriefing(run, { operatorName: op?.name });
+    if (run.ok && run.bucketLabel) {
+      message = `Recall-Thema ${run.bucketLabel}. ${message}`;
+    }
     if (demoOnly) message = `[Demo-Testlauf] ${message}`;
     if (run.callLists?.length) {
       message += " Zum Loslegen sage einfach: Recall freigeben.";
     }
-    res.json({ ok: true, message, gaps: run.gaps?.length || 0, callLists: run.callLists?.length || 0 });
+    res.json({ ok: true, message, gaps: run.gaps?.length || 0, callLists: run.callLists?.length || 0, bucketKey: run.bucketKey || null, bucketLabel: run.bucketLabel || null });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

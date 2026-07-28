@@ -52,7 +52,15 @@ const MAX_CANDIDATES_STORED = Number(process.env.MAS_GAP_MAX_STORED || 24);
 // Clara weist darauf hin und bietet stattdessen das gezielte Einbestellen an.
 const RECALL_MIN_LEAD_HOURS = Number(process.env.MAS_RECALL_MIN_LEAD_HOURS || 16);
 const THROTTLE_DAYS = 14; // no patient is proposed twice within this window
-const RECALL_LOOKBACK_DAYS = 365;
+// Chef 28.07.2026 ("meine Buckets haben hunderte wenn nicht tausende
+// Patienten"): Live lagen 3072 virtuelle Recalls im Bestand, gelesen wurden
+// aber nur 300 unsortierte, und alles ueber 1 Jahr Ueberfaelligkeit flog raus
+// (213 der 300!). Deshalb: Lookback 3 Jahre (je ueberfaelliger, desto
+// wichtiger) und der Bestand wird KOMPLETT paginiert gelesen (projiziert,
+// mit Kurzzeit-Cache) statt bei 300 abgeschnitten.
+const RECALL_LOOKBACK_DAYS = Number(process.env.MAS_RECALL_LOOKBACK_DAYS || 1095);
+const RECALL_INVENTORY_CACHE_MS = Number(process.env.MAS_RECALL_INVENTORY_CACHE_MS || 10 * 60 * 1000);
+const RECALL_INVENTORY_MAX = Number(process.env.MAS_RECALL_INVENTORY_MAX || 8000);
 /** Feste Kampagnen-ID fuer `scripts/seed-gapfill-demo.mjs` — nur bei demoOnly. */
 export const DEMO_GAPFILL_CAMPAIGN_ID = "demo_gapfill_campaign";
 
@@ -274,6 +282,8 @@ async function campaignCandidates(clientId, locationId, booking, { demoOnly = fa
         phoneNorm: normalizePhone(phone),
         visitMotiveId: s(camp.visitMotiveId),
         visitMotiveName: s(camp.visitMotiveName),
+        bucketKey: bucketKeyOf(s(camp.visitMotiveName) || s(camp.name)),
+        fachbereich: fachbereichOf(s(camp.visitMotiveName) || s(camp.name)),
         durationMin: durationOfMotive(booking, s(camp.visitMotiveId), s(camp.visitMotiveName)),
         calendarId: s(camp.calendarId) || null, // null = any Behandler
         doctorName: s(camp.doctorName) || s(camp.calendarName),
@@ -290,16 +300,98 @@ async function campaignCandidates(clientId, locationId, booking, { demoOnly = fa
   return out;
 }
 
+// Kurzzeit-Cache fuer das Recall-Inventar: Ein Voll-Scan liest tausende Docs —
+// innerhalb weniger Minuten (Scan + Overview + Sprach-Rueckfrage) aendert sich
+// der Bestand nicht nennenswert.
+const recallInventoryCache = new Map(); // clientId -> { at, rows }
+
+/** Cache leeren (Tests). */
+export function clearRecallInventoryCache() {
+  recallInventoryCache.clear();
+}
+
+/**
+ * ALLE virtuellen Recalls (needsConfirmation) der Location paginiert lesen —
+ * projiziert auf die benoetigten Felder, damit tausende Docs bezahlbar sind.
+ * Vorher las der Code 300 unsortierte Docs (Chef: "meine Buckets haben
+ * hunderte wenn nicht tausende Patienten" — live 3072).
+ */
+async function loadRecallInventory(clientId, locationId) {
+  const cached = recallInventoryCache.get(clientId);
+  if (cached && Date.now() - cached.at < RECALL_INVENTORY_CACHE_MS) return cached.rows;
+
+  const rows = [];
+  const base = db.collection("clients").doc(clientId)
+    .collection("locations").doc(locationId)
+    .collection("appointments")
+    .where("status", "==", "needsConfirmation")
+    .select("createdBy", "start", "remindLaterCount",
+      "patient.id", "patient.firstName", "patient.lastName",
+      "patient.mobilePhoneNumber", "patient.phoneNumber",
+      "visitMotive.id", "visitMotive.name",
+      "calendar.id", "calendar.name")
+    .orderBy("__name__")
+    .limit(500);
+  let cursor = null;
+  while (rows.length < RECALL_INVENTORY_MAX) {
+    const snap = await (cursor ? base.startAfter(cursor) : base).get();
+    if (snap.empty) break;
+    for (const d of snap.docs) rows.push({ id: d.id, ...d.data() });
+    cursor = snap.docs[snap.docs.length - 1];
+    if (snap.size < 500) break;
+  }
+  recallInventoryCache.set(clientId, { at: Date.now(), rows });
+  return rows;
+}
+
+/** Bucket-Schluessel eines Recalls: das Behandlungs-Thema (visitMotive). */
+export function bucketKeyOf(visitMotiveName) {
+  return s(visitMotiveName).toLowerCase().replace(/\s+/g, " ").trim() || "sonstiges";
+}
+
+/**
+ * Fachbereich aus dem Motiv-Namen (Chef 28.07.2026): Praxis-Abkuerzungen
+ * KCH/PRO/IMP/ZE nicht vorlesen — sprachlich Prophylaxe, Kons, ZE, Implantat.
+ * Fein-Buckets bleiben intern; die Sprache arbeitet auf Fachbereich.
+ */
+export function fachbereichOf(visitMotiveName) {
+  const q = s(visitMotiveName).toLowerCase();
+  if (!q) return "sonstiges";
+  if (/\b(pro|pzr|prophy|prophylaxe|zahnreinigung)\b/.test(q) || q.startsWith("pro ")) return "prophylaxe";
+  if (/\b(ze|zahnersatz|prothese|krone|bruecke|brücke)\b/.test(q) || q.startsWith("ze ")) return "ze";
+  if (/\b(imp|implant|implantat)\b/.test(q) || q.startsWith("imp ")) return "implantat";
+  if (/\b(kch|kons|konservierend|chirurgie|kontrolle|erstuntersuch|neupatient)\b/.test(q) || q.startsWith("kch ")) return "kons";
+  return "sonstiges";
+}
+
+/** Gesprochener Fachbereichs-Name — nie KCH/PRO/IMP. */
+export function spokenFachbereich(fb) {
+  switch (s(fb)) {
+    case "prophylaxe": return "Prophylaxe";
+    case "kons": return "Kons";
+    case "ze": return "ZE";
+    case "implantat": return "Implantat";
+    default: return "";
+  }
+}
+
+/**
+ * Motiv-Label sprechbar machen: "KCH Kontrolluntersuchung" -> "Kontrolluntersuchung",
+ * "PRO professionelle Zahnreinigung" -> "professionelle Zahnreinigung".
+ */
+export function spokenMotiveLabel(raw) {
+  let t = s(raw).replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  t = t.replace(/^(kch|pro|imp|ze)\s+/i, "");
+  t = t.replace(/\bKCH\b/gi, "Kons").replace(/\bPRO\b/gi, "Prophylaxe").replace(/\bIMP\b/gi, "Implantat");
+  return t;
+}
+
 async function recallCandidates(clientId, locationId, booking) {
   const out = [];
   let docs = [];
   try {
-    const snap = await db.collection("clients").doc(clientId)
-      .collection("locations").doc(locationId)
-      .collection("appointments")
-      .where("status", "==", "needsConfirmation")
-      .limit(300).get();
-    docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    docs = await loadRecallInventory(clientId, locationId);
   } catch {
     return out;
   }
@@ -323,6 +415,8 @@ async function recallCandidates(clientId, locationId, booking) {
       phoneNorm: normalizePhone(phone),
       visitMotiveId: s(a.visitMotive?.id),
       visitMotiveName: s(a.visitMotive?.name),
+      bucketKey: bucketKeyOf(a.visitMotive?.name),
+      fachbereich: fachbereichOf(a.visitMotive?.name),
       durationMin: durationOfMotive(booking, s(a.visitMotive?.id), s(a.visitMotive?.name)),
       calendarId: s(a.calendar?.id) || null,
       doctorName: s(a.calendar?.name),
@@ -437,7 +531,7 @@ export function buildVoicemailScript(booking) {
   return `Guten Tag, hier ist Lisa von ${praxis}. Wir haben ein Anliegen zu Ihrem nächsten Termin. Bitte rufen Sie uns zurück${phone ? ` unter ${phone}` : ""}. Vielen Dank und einen schönen Tag.`;
 }
 
-async function upsertCallListCase(clientId, { date, calendar, gap, candidates, booking, promptTag }) {
+async function upsertCallListCase(clientId, { date, calendar, gap, candidates, booking, promptTag, bucket = null, bucketExplicit = false }) {
   const caseId = gapCaseId(clientId, calendar.id, date, gap.startMin);
   const ref = masCollection(clientId, "mas_cases").doc(caseId);
   const snap = await ref.get();
@@ -449,6 +543,9 @@ async function upsertCallListCase(clientId, { date, calendar, gap, candidates, b
     calendarName: s(calendar.name),
     slot: { startMin: gap.startMin, endMin: gap.endMin, minutes: gap.minutes, label: gap.label },
     candidates,
+    // Themen-Bucket, aus dem diese Liste geformt wurde (null = alle Themen).
+    bucketKey: s(bucket?.key) || null,
+    bucketLabel: s(bucket?.label) || null,
     voicemailScript: buildVoicemailScript(booking),
     promptVersionTag: promptTag,
     approvedBy: null,
@@ -478,6 +575,15 @@ async function upsertCallListCase(clientId, { date, calendar, gap, candidates, b
   const existing = snap.data();
   // Only a still-unapproved list is refreshed; approved/closed lists are facts.
   if (existing.status === CASE_STATUS.WAITING_APPROVAL) {
+    // Hat das Team die Liste auf ein Thema gestellt, ueberschreibt ein
+    // AUTOMATISCHER (themenloser) Scan sie NICHT — die Bucket-Wahl ist eine
+    // Chef-Entscheidung. Eine NEUE ausdrueckliche Wahl (Stimme/Monitor,
+    // bucketExplicit) darf die Liste dagegen jederzeit umformen, auch zurueck
+    // auf "alle Themen" (Chef 28.07.2026: erst Implantat, dann doch Kons).
+    const exBucket = s(existing.callList?.bucketKey);
+    if (exBucket && exBucket !== s(bucket?.key) && !bucketExplicit) {
+      return { caseId, created: false, refreshed: false, bucketKept: exBucket, status: existing.status };
+    }
     // Vom Chef weggewischte Kandidaten (removed) bleiben beim Auffrischen
     // draussen — sonst kaeme jeder entfernte Patient beim naechsten Scan zurueck.
     const removedIds = new Set(
@@ -538,34 +644,18 @@ async function closeStaleList(clientId, c, grund) {
 }
 
 /**
- * The coach run: scan [date .. date+horizonDays-1], compute real gaps per
- * Behandler, gate+rank candidates, upsert one approval-pending call-list case
- * per gap. Returns everything the voice/UI layer needs.
+ * Kandidaten-Pool (Kampagnen + faellige Recalls) inkl. Kontakt-Zaehler und
+ * Drossel-Schluessel — gemeinsame Grundlage fuer den Coach-Lauf, das
+ * Bucket-Inventar und den Bucket-Wechsel einer einzelnen Liste.
  */
-export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false, calendarId = null } = {}) {
-  const startDate = s(date) || todayBerlin();
-  const booking = await loadBooking(clientId).catch(() => null);
-  if (!booking?.locationId) return { ok: false, reason: "no_booking_config", gaps: [], callLists: [] };
+async function candidatePool(clientId, booking, { demoOnly = false } = {}) {
   const locationId = booking.locationId;
-  // Persoenlicher Assistent (17.07.2026): Ist ein Kalender vorgegeben (der des
-  // angemeldeten Behandlers), werden NUR dessen Luecken gescannt. Ohne Vorgabe
-  // bleibt das Verhalten praxisweit (alle Kalender). Vorfall: Clara meldete zu
-  // viele freie Luecken, weil sie ueber ALLE Behandler-Kalender scannte (leerer
-  // Kollegen-Kalender = ganzer Tag "frei").
-  // Kalender-Grenze (Chef 28.07.2026): Der Kalender des gekoppelten Behandlers
-  // schlaegt ALLES — auch explizite Parameter und "alle"-Anfragen. Der
-  // Monitor-Scan lief bisher praxisweit und legte eine Liste fuer Dr. Patrikis
-  // an, obwohl diese Clara Dr. Petsas gehoert.
-  const boundary = await gapFillCalendarBoundary(clientId);
-  const onlyCalId = boundary || s(calendarId) || null;
-
-  const [allCandidatesRoh, throttled, prompt] = await Promise.all([
+  const [allCandidatesRoh, throttled] = await Promise.all([
     Promise.all([
       campaignCandidates(clientId, locationId, booking, { demoOnly }),
       demoOnly ? Promise.resolve([]) : recallCandidates(clientId, locationId, booking),
     ]).then(([a, b]) => [...a, ...b]),
     recentlyContactedKeys(clientId),
-    getActivePrompt(clientId, "lisa"),
   ]);
 
   // Kontakt-Zaehler anheften (Chef 28.07.2026): Gesamtkontakte + Erfolge pro
@@ -586,6 +676,168 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
       },
     };
   });
+  return { allCandidates, throttled };
+}
+
+/** Anzeige-Name eines Buckets: sprechbar, ohne Praxis-Abkuerzungen. */
+function bucketLabelFor(candidates, bucketKey) {
+  const hit = candidates.find((c) => c.bucketKey === bucketKey && s(c.visitMotiveName));
+  const raw = s(hit?.visitMotiveName) || s(candidates.find((c) => c.bucketKey === bucketKey)?.campaignName) || bucketKey;
+  return spokenMotiveLabel(raw) || raw;
+}
+
+/**
+ * Bucket-Inventar fuer den Monitor: fein nach Motiv, plus Fachbereich.
+ * Sprache nutzt listRecallFachbereiche() — kurze Auswahl ohne Zahlen.
+ */
+export async function listRecallBuckets(clientId) {
+  const booking = await loadBooking(clientId).catch(() => null);
+  if (!booking?.locationId) return { ok: false, reason: "no_booking_config", buckets: [] };
+  const boundary = await gapFillCalendarBoundary(clientId);
+  const { allCandidates } = await candidatePool(clientId, booking);
+  const map = new Map();
+  for (const c of allCandidates) {
+    const key = c.bucketKey || "sonstiges";
+    if (!map.has(key)) {
+      map.set(key, {
+        key, label: "", fachbereich: c.fachbereich || fachbereichOf(c.visitMotiveName),
+        gesamt: 0, passend: 0,
+      });
+    }
+    const b = map.get(key);
+    b.gesamt++;
+    if (!c.calendarId || !boundary || c.calendarId === boundary) b.passend++;
+  }
+  for (const b of map.values()) b.label = bucketLabelFor(allCandidates, b.key);
+  const buckets = [...map.values()].sort((a, b) => b.passend - a.passend || b.gesamt - a.gesamt);
+  return { ok: true, buckets, candidatesTotal: allCandidates.length };
+}
+
+/** Kern-Fachbereiche fuer die kurze Sprachfrage (Reihenfolge fest). */
+const FACH_KERN = ["prophylaxe", "kons", "ze"];
+/** Zusatz, nur wenn Bestand vorhanden — nicht ausschliessen (Chef 28.07.). */
+const FACH_ZUSATZ = ["implantat"];
+
+/**
+ * Fachbereichs-Inventar fuer die Sprach-Rueckfrage: kurze Labels, ohne
+ * Patientenzahlen. Kern immer Prophylaxe/Kons/ZE; Implantat nur wenn passend.
+ */
+export async function listRecallFachbereiche(clientId) {
+  const inv = await listRecallBuckets(clientId);
+  if (!inv.ok) return inv;
+  const byFb = new Map();
+  for (const b of inv.buckets) {
+    const fb = b.fachbereich || fachbereichOf(b.label);
+    if (!byFb.has(fb)) byFb.set(fb, { key: fb, label: spokenFachbereich(fb) || b.label, passend: 0, gesamt: 0 });
+    const x = byFb.get(fb);
+    x.passend += b.passend;
+    x.gesamt += b.gesamt;
+  }
+  const kern = FACH_KERN.filter((k) => (byFb.get(k)?.passend || 0) > 0).map((k) => byFb.get(k));
+  const zusatz = FACH_ZUSATZ.filter((k) => (byFb.get(k)?.passend || 0) > 0).map((k) => byFb.get(k));
+  // Weitere Nicht-Kern-Buckets (selten) als sprechbare Zusatzoption.
+  for (const [k, v] of byFb) {
+    if (FACH_KERN.includes(k) || FACH_ZUSATZ.includes(k) || k === "sonstiges") continue;
+    if (v.passend > 0) zusatz.push(v);
+  }
+  return { ok: true, kern, zusatz, buckets: inv.buckets, candidatesTotal: inv.candidatesTotal };
+}
+
+/**
+ * Kurze Sprachfrage — keine Zahlen, keine Abkuerzungen.
+ * z.B. "Aus welchem Fachbereich soll der Recall erfolgen — Prophylaxe, Kons oder ZE? Bei Bedarf auch Implantat."
+ */
+export function spokenFachbereichFrage(fach) {
+  const kern = (fach?.kern || []).map((b) => b.label).filter(Boolean);
+  const zusatz = (fach?.zusatz || []).map((b) => b.label).filter(Boolean);
+  if (!kern.length && !zusatz.length) {
+    return "Aus welchem Fachbereich soll der Recall erfolgen — Prophylaxe, Kons oder ZE?";
+  }
+  const liste = kern.length ? kern : zusatz;
+  const letzte = liste[liste.length - 1];
+  const kopf = liste.length === 1 ? liste[0]
+    : liste.length === 2 ? `${liste[0]} oder ${liste[1]}`
+    : `${liste.slice(0, -1).join(", ")} oder ${letzte}`;
+  let satz = `Aus welchem Fachbereich soll der Recall erfolgen — ${kopf}?`;
+  if (kern.length && zusatz.length) {
+    satz += ` Bei Bedarf auch ${zusatz.map((z) => z).join(" oder ")}.`;
+  }
+  return satz;
+}
+
+/**
+ * Gesprochenes Thema -> Fachbereich ("Kons", "Prophylaxe", "ZE", "Implantat")
+ * oder genauer Bucket-Key. "alle" -> null (alle Themen).
+ */
+export function resolveBucketKey(buckets, gesprochen) {
+  const q = s(gesprochen).toLowerCase().replace(/\s+/g, " ").trim();
+  if (!q || /^(alle|alles|egal|gemischt|querbeet|komplett)(\s+themen?)?$/.test(q)) return null;
+  // Fachbereich zuerst (Sprache arbeitet so).
+  if (/^(prophy|prophylaxe|pzr|zahnreinigung)\b/.test(q)) return "fach:prophylaxe";
+  if (/^(kons|konservierend|kontrolle)\b/.test(q) && !/\bze\b/.test(q)) return "fach:kons";
+  if (/^(ze|zahnersatz)\b/.test(q)) return "fach:ze";
+  if (/^(imp|implant|implantat)\b/.test(q)) return "fach:implantat";
+  if (/^kch\b/.test(q)) return "fach:kons";
+  if (/^pro\b/.test(q)) return "fach:prophylaxe";
+
+  const list = Array.isArray(buckets) ? buckets : [];
+  const exakt = list.find((b) => b.key === q || s(b.label).toLowerCase() === q);
+  if (exakt) return exakt.key;
+  const teil = list.find((b) => b.key.includes(q) || s(b.label).toLowerCase().includes(q) || q.includes(b.key));
+  if (teil) return teil.key;
+  const wort = list.find((b) => b.key.split(/[^a-zäöüß]+/i).some((w) => w.startsWith(q) || q.startsWith(w && w.length >= 4 ? w : "\u0000")));
+  return wort?.key || null;
+}
+
+/** Kandidaten auf Fachbereich oder Fein-Bucket filtern. */
+export function filterByThema(candidates, themaKey) {
+  const want = s(themaKey);
+  if (!want) return candidates;
+  if (want.startsWith("fach:")) {
+    const fb = want.slice(5);
+    return candidates.filter((c) => (c.fachbereich || fachbereichOf(c.visitMotiveName)) === fb);
+  }
+  return candidates.filter((c) => c.bucketKey === want);
+}
+
+function themaLabel(pool, themaKey) {
+  const want = s(themaKey);
+  if (!want) return null;
+  if (want.startsWith("fach:")) return spokenFachbereich(want.slice(5)) || null;
+  return bucketLabelFor(pool, want);
+}
+
+/**
+ * The coach run: scan [date .. date+horizonDays-1], compute real gaps per
+ * Behandler, gate+rank candidates, upsert one approval-pending call-list case
+ * per gap. Returns everything the voice/UI layer needs.
+ */
+export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false, calendarId = null, bucketKey = null, bucketExplicit = false } = {}) {
+  const startDate = s(date) || todayBerlin();
+  const booking = await loadBooking(clientId).catch(() => null);
+  if (!booking?.locationId) return { ok: false, reason: "no_booking_config", gaps: [], callLists: [] };
+  const locationId = booking.locationId;
+  // Persoenlicher Assistent (17.07.2026): Ist ein Kalender vorgegeben (der des
+  // angemeldeten Behandlers), werden NUR dessen Luecken gescannt. Ohne Vorgabe
+  // bleibt das Verhalten praxisweit (alle Kalender). Vorfall: Clara meldete zu
+  // viele freie Luecken, weil sie ueber ALLE Behandler-Kalender scannte (leerer
+  // Kollegen-Kalender = ganzer Tag "frei").
+  // Kalender-Grenze (Chef 28.07.2026): Der Kalender des gekoppelten Behandlers
+  // schlaegt ALLES — auch explizite Parameter und "alle"-Anfragen. Der
+  // Monitor-Scan lief bisher praxisweit und legte eine Liste fuer Dr. Patrikis
+  // an, obwohl diese Clara Dr. Petsas gehoert.
+  const boundary = await gapFillCalendarBoundary(clientId);
+  const onlyCalId = boundary || s(calendarId) || null;
+
+  const [{ allCandidates: poolAlle, throttled }, prompt] = await Promise.all([
+    candidatePool(clientId, booking, { demoOnly }),
+    getActivePrompt(clientId, "lisa"),
+  ]);
+  // Themen-Bucket / Fachbereich (Chef 28.07.2026): Ist ein Thema gewaehlt
+  // (fach:kons, fein-Bucket, ...), werden die Listen NUR daraus geformt.
+  const wantBucket = s(bucketKey) || null;
+  const allCandidates = filterByThema(poolAlle, wantBucket);
+  const bucketLabel = themaLabel(poolAlle, wantBucket);
 
   const gaps = [];
   const callLists = [];
@@ -626,7 +878,12 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
         });
         gaps.push({ date: day, calendarId: calendar.id, calendarName: s(calendar.name), ...gap, candidateCount: candidates.length });
         if (!candidates.length) continue;
-        const upsert = await upsertCallListCase(clientId, { date: day, calendar, gap, candidates, booking, promptTag: prompt.ok ? prompt.tag : "pv:lisa:0" });
+        const upsert = await upsertCallListCase(clientId, {
+          date: day, calendar, gap, candidates, booking,
+          promptTag: prompt.ok ? prompt.tag : "pv:lisa:0",
+          bucket: wantBucket ? { key: wantBucket, label: bucketLabel } : null,
+          bucketExplicit,
+        });
         callLists.push({ ...upsert, date: day, calendarName: s(calendar.name), slot: gap.label, candidates: candidates.length });
       }
     }
@@ -649,7 +906,67 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
     } catch { /* Pflege ist Zugabe — der Scan selbst bleibt unberuehrt */ }
   }
 
-  return { ok: true, date: startDate, demoOnly: !!demoOnly, gaps, callLists, candidatesTotal: allCandidates.length };
+  return {
+    ok: true, date: startDate, demoOnly: !!demoOnly, gaps, callLists,
+    candidatesTotal: allCandidates.length,
+    bucketKey: wantBucket, bucketLabel,
+  };
+}
+
+/**
+ * EINE Liste auf ein anderes Themen-Bucket stellen (Chef 28.07.2026: "ich
+ * muss die Buckets tauschen koennen in der Liste"). Bereits Kontaktierte
+ * bleiben unveraendert vorn (Antworten laufen), Weggewischte bleiben als
+ * removed-Audit erhalten und kommen nicht zurueck; der Rest wird frisch aus
+ * dem gewaehlten Bucket gerankt. bucketKey leer/"alle" = alle Themen.
+ */
+export async function setListBucket(clientId, caseId, { bucketKey = null, by = "" } = {}) {
+  const ref = masCollection(clientId, "mas_cases").doc(s(caseId));
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "not_found" };
+  const c = snap.data();
+  const list = c.callList;
+  if (!list?.slot) return { ok: false, reason: "not_a_call_list" };
+
+  const booking = await loadBooking(clientId).catch(() => null);
+  if (!booking?.locationId) return { ok: false, reason: "no_booking_config" };
+  const { allCandidates: pool, throttled } = await candidatePool(clientId, booking);
+
+  const want = s(bucketKey) || null;
+  const scoped = filterByThema(pool, want);
+  const label = themaLabel(pool, want);
+  if (want && !scoped.length) return { ok: false, reason: "bucket_empty", bucketKey: want };
+
+  const gap = {
+    startMin: list.slot.startMin, endMin: list.slot.endMin,
+    minutes: list.slot.minutes, label: list.slot.label,
+  };
+  const ranked = rankCandidatesForGap(scoped, gap, { calendarId: list.calendarId, throttled });
+
+  const alt = Array.isArray(list.candidates) ? list.candidates : [];
+  const kontaktiert = alt.filter((x) => x.contact?.taskId);
+  const entfernt = alt.filter((x) => x.removed && !x.contact?.taskId);
+  const belegt = new Set([...kontaktiert, ...entfernt].map((x) => s(x.patientId)));
+  const frisch = ranked.filter((x) => !belegt.has(s(x.patientId)));
+  const platz = Math.max(0, MAX_CANDIDATES_STORED - kontaktiert.length - entfernt.length);
+  const candidates = [...kontaktiert, ...frisch.slice(0, platz), ...entfernt];
+
+  await ref.update({
+    "callList.candidates": candidates,
+    "callList.bucketKey": want,
+    "callList.bucketLabel": label,
+    "callList.refreshedAt": Date.now(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  const aktiv = candidates.filter((x) => !x.removed).length;
+  await addUpdate(clientId, s(caseId), {
+    by: s(by) || "Team",
+    kind: "note",
+    text: want
+      ? `Anrufliste auf Thema »${label}« umgestellt: ${aktiv} Kandidat(en)${kontaktiert.length ? `, ${kontaktiert.length} bereits Kontaktierte bleiben` : ""}.`
+      : `Anrufliste auf alle Themen gestellt: ${aktiv} Kandidat(en).`,
+  });
+  return { ok: true, bucketKey: want, bucketLabel: label, candidates: aktiv };
 }
 
 /** UI read-model: pending + approved call lists (active gap-fill cases). */
@@ -695,6 +1012,8 @@ function toOverviewItem(c) {
     calendarName: c.callList?.calendarName,
     slot: c.callList?.slot,
     candidates: c.callList?.candidates || [],
+    bucketKey: c.callList?.bucketKey || null,
+    bucketLabel: c.callList?.bucketLabel || null,
     voicemailScript: c.callList?.voicemailScript,
     promptVersionTag: c.callList?.promptVersionTag,
     approvedBy: c.callList?.approvedBy || null,

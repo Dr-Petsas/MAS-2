@@ -11,7 +11,7 @@ import { masCollection } from "../src/tenant.js";
 import { createCase } from "../src/brain/caseStore.js";
 import {
   removeCandidateFromList, gapFillOverview, gapCandidateCardData, aktiveKandidaten,
-  gapFillCalendarBoundary,
+  gapFillCalendarBoundary, listRecallBuckets, resolveBucketKey, setListBucket,
 } from "../src/clara/gapFill.js";
 
 const clientId = process.env.MAS_CLIENT_ID || "MEe4ZQHEzOPzLcexyhdT";
@@ -137,8 +137,31 @@ try {
   const meine = karten.find((k) => k.calendarName === "Dr. Pflege");
   check("Karte zeigt nur aktive Kandidaten (3)", (meine?.candidates || []).length === 3);
   check("Karte traegt Zaehler am Namen (z. B. ³ oder ✓)", (meine?.candidates || []).some((c) => /[⁰¹²³⁴⁵⁶⁷⁸⁹]/.test(c.anzeigeName)));
+
+  console.log("[4] Themen-Buckets (Auswahl + Listenwechsel)");
+  const inv = await listRecallBuckets(clientId);
+  check("Bucket-Inventar liefert", inv.ok === true && Array.isArray(inv.buckets));
+  const top = (inv.buckets || []).find((b) => b.passend > 0);
+  if (top) {
+    console.log(`  groesstes Bucket: »${top.label}« (${top.passend} passend / ${top.gesamt} gesamt, Pool ${inv.candidatesTotal})`);
+    check("resolveBucketKey: Kons -> Fachbereich", resolveBucketKey(inv.buckets, "Kons") === "fach:kons");
+    check("resolveBucketKey: Prophylaxe -> Fachbereich", resolveBucketKey(inv.buckets, "Prophylaxe") === "fach:prophylaxe");
+    check("resolveBucketKey: Implantat -> Fachbereich", resolveBucketKey(inv.buckets, "Implantat") === "fach:implantat");
+    check("resolveBucketKey: alle Themen -> null", resolveBucketKey(inv.buckets, "alle Themen") === null);
+    check("resolveBucketKey: Unbekanntes bleibt leer", resolveBucketKey(inv.buckets, "voellig-unbekanntes-thema-xyz") === null);
+
+    const sb = await setListBucket(clientId, CASE_AKTIV, { bucketKey: top.key, by: "Chef (Test)" });
+    check("setListBucket stellt um", sb.ok === true && sb.bucketKey === top.key);
+    const nachher = (await masCollection(clientId, "mas_cases").doc(CASE_AKTIV).get()).data()?.callList || {};
+    check("bucketKey/-Label gespeichert", nachher.bucketKey === top.key && !!nachher.bucketLabel);
+    const proId = new Map((nachher.candidates || []).map((c) => [c.patientId, c]));
+    check("kontaktierter Kandidat bleibt vorn", proId.get("pflege_p2")?.contact?.taskId === "t_pflege");
+    check("weggewischter Kandidat bleibt draussen", proId.get("pflege_p1")?.removed === true);
+  } else {
+    console.log("  (kein Bucket mit passenden Kandidaten — Wechsel-Pins uebersprungen)");
+  }
 } finally {
-  console.log("[4] Aufraeumen");
+  console.log("[5] Aufraeumen");
   await masCollection(clientId, "mas_cases").doc(CASE_AKTIV).delete().catch(() => {});
   await masCollection(clientId, "mas_cases").doc(CASE_ALT).delete().catch(() => {});
   await masCollection(clientId, "mas_cases").doc(CASE_FREMD).delete().catch(() => {});
