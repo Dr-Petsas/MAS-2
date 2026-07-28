@@ -444,6 +444,17 @@ export async function approveAndExecute(clientId, { date, caseId, by } = {}) {
     targets = await pendingGapCases(clientId, { date: s(date) || null });
   }
   if (!targets.length) {
+    // Vorfall 28.07.2026: Die Liste war schon um 13:07 freigegeben (in_progress);
+    // um 15:24 lief die Freigabe ins Leere und Clara behauptete trotzdem Vollzug.
+    // Ehrlich sagen, WO die Liste steht, statt in die Sackgasse zu schicken.
+    try {
+      const laufend = (await listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 }))
+        .filter((c) => c.id.startsWith("gapfill_") && c.callList && c.status !== CASE_STATUS.WAITING_APPROVAL);
+      if (laufend.length) {
+        const l = laufend[0].callList;
+        return { ok: true, approved: 0, alreadyRunning: laufend.length, message: `Die Anrufliste ${s(l.date)} ${s(l.slot?.label)} ist bereits freigegeben — Lisa arbeitet sie ab. Für eine neue Runde sagen Sie: Recall starten mit Thema, dann baue ich die Liste frisch.` };
+      }
+    } catch { /* Ehrlichkeit ist Zugabe — Standardantwort unten bleibt */ }
     return { ok: true, approved: 0, message: "Es wartet gerade keine Anrufliste auf Freigabe. Sage zuerst: Recall starten — dann baue ich die Listen." };
   }
 

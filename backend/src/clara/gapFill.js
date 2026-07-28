@@ -554,7 +554,9 @@ export function buildVoicemailScript(booking) {
   return `Guten Tag, hier ist Lisa von ${praxis}. Wir haben ein Anliegen zu Ihrem nächsten Termin. Bitte rufen Sie uns zurück${phone ? ` unter ${phone}` : ""}. Vielen Dank und einen schönen Tag.`;
 }
 
-async function upsertCallListCase(clientId, { date, calendar, gap, candidates, booking, promptTag, bucket = null, bucketExplicit = false }) {
+// Exportiert fuer scripts/test-listen-pflege.mjs (Reopen-Pin 28.07.2026) —
+// produktiv ruft nur runGapFill hier hinein.
+export async function upsertCallListCase(clientId, { date, calendar, gap, candidates, booking, promptTag, bucket = null, bucketExplicit = false }) {
   const caseId = gapCaseId(clientId, calendar.id, date, gap.startMin);
   const ref = masCollection(clientId, "mas_cases").doc(caseId);
   const snap = await ref.get();
@@ -596,6 +598,37 @@ async function upsertCallListCase(clientId, { date, calendar, gap, candidates, b
   }
 
   const existing = snap.data();
+  // Vorfall 28.07.2026 15:24: Die Mittwoch-Liste war um 13:07 schon einmal
+  // freigegeben (in_progress). Der neue Themen-Scan praesentierte sie wie
+  // frisch ("24 Kandidaten ... Recall freigeben"), aber die Freigabe fand
+  // nichts mehr ("Es wartet gerade keine Anrufliste") — Sackgasse am Telefon.
+  // Darum: Eine AUSDRUECKLICHE Themenwahl des Chefs eroeffnet auf einer
+  // bereits freigegebenen/geschlossenen Liste eine NEUE Runde, die wieder
+  // auf Freigabe wartet. Automatische Scans lassen laufende Listen in Ruhe.
+  if (existing.status !== CASE_STATUS.WAITING_APPROVAL && bucketExplicit) {
+    const removedIds = new Set(
+      (existing.callList?.candidates || [])
+        .filter((c) => c?.removed && c.patientId)
+        .map((c) => s(c.patientId))
+    );
+    if (removedIds.size) {
+      callList.candidates = callList.candidates.map((c) =>
+        removedIds.has(s(c.patientId))
+          ? { ...c, removed: true, removedBy: "uebernommen", removedAt: Date.now() }
+          : c);
+    }
+    await ref.update({
+      callList,
+      status: CASE_STATUS.WAITING_APPROVAL,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await addUpdate(clientId, caseId, {
+      by: "Clara",
+      kind: "note",
+      text: `Neue Recall-Runde${s(bucket?.label) ? ` (Thema ${s(bucket.label)})` : ""} für dieselbe Lücke — die frühere Freigabe ist abgearbeitet, die Liste wartet wieder auf Freigabe.`,
+    }).catch(() => {});
+    return { caseId, created: false, refreshed: true, reopened: true };
+  }
   // Only a still-unapproved list is refreshed; approved/closed lists are facts.
   if (existing.status === CASE_STATUS.WAITING_APPROVAL) {
     // Hat das Team die Liste auf ein Thema gestellt, ueberschreibt ein
@@ -1276,7 +1309,25 @@ export function spokenGapEuro(run) {
 }
 
 /** Spoken German summary of a coach run (for /tools/gap-briefing). */
-export function buildSpokenGapBriefing(run, { operatorName, themaLabel, kandidatenAngezeigt = false } = {}) {
+/**
+ * Kurzfassung dessen, was Lisa den Patienten sagen wird — fuer die PROAKTIVE
+ * Ansage-Besprechung im Briefing (Chef 28.07.2026: "es waere gut wenn clara
+ * zur absicherung den prompt mit mir bespricht ... und ich dann eine chance
+ * habe das umzustellen"). Muss inhaltlich zu recallKontrollFokus passen:
+ * immer Kontroll-Charakter, immer "liegt lange zurueck".
+ */
+function lisaAnsageKurz(bucketKey) {
+  const k = s(bucketKey);
+  if (k === "fach:ze") return "Lisa lädt zur Zahnersatz-Kontrolle ein — die Versorgung liegt lange zurück, wir prüfen sie zur Qualitätssicherung";
+  if (k === "fach:kons") return "Lisa lädt zur Kontrolle der Füllungen ein — die letzte Behandlung liegt lange zurück";
+  if (k === "fach:prophylaxe") return "Lisa lädt zur fälligen Prophylaxe ein — die letzte Sitzung liegt lange zurück";
+  if (k === "fach:implantat") return "Lisa lädt zur Implantat-Kontrolle ein — wir begutachten, ob alles reizfrei und ohne Entzündung sitzt";
+  if (k === "fach:paro") return "Lisa lädt zur Zahnfleisch-Kontrolle ein — wir überprüfen den Zustand nach der Parodontitis-Behandlung";
+  if (k === "fach:kfo") return "Lisa lädt zur Schienen-Kontrolle ein — die letzte Kontrolle liegt lange zurück";
+  return "Lisa lädt zur Kontrolle ein und betont, dass der letzte Termin lange zurückliegt";
+}
+
+export function buildSpokenGapBriefing(run, { operatorName, themaLabel, bucketKey = null, kandidatenAngezeigt = false } = {}) {
   const hi = operatorName ? `${operatorName}, ` : "";
   if (!run?.ok) return `${hi}der Lückenfüller ist nicht konfiguriert — es fehlt die Buchungskonfiguration.`;
   if (!run.gaps.length) return `${hi}im Kalender sind keine nennenswerten Lücken — sehr gut.`;
@@ -1329,8 +1380,12 @@ export function buildSpokenGapBriefing(run, { operatorName, themaLabel, kandidat
   const lists = run.callLists?.length || 0;
   if (lists) {
     parts.push(kandidatenAngezeigt
-      ? `Die ${lists === 1 ? "Liste liegt" : "Listen liegen"} auf Ihrem Display und im Monitor — mit „Recall freigeben“ legt Lisa los.`
-      : `${lists === 1 ? "Die Anrufliste wartet" : `${lists} Anruflisten warten`} im Monitor auf Ihre Freigabe — sagen Sie „wer sind die Kandidaten“ oder „Recall freigeben“.`);
+      ? `Die ${lists === 1 ? "Liste liegt" : "Listen liegen"} auf Ihrem Display und im Monitor.`
+      : `${lists === 1 ? "Die Anrufliste wartet" : `${lists} Anruflisten warten`} im Monitor auf Ihre Freigabe.`);
+    // Ansage-Besprechung PROAKTIV (Chef 28.07.2026: "der Lisa auftrags prompt
+    // wird nicht besprochen"): VOR der Freigabe hoert der Chef, was Lisa sagen
+    // wird, und kann direkt umformulieren — nicht erst auf Nachfrage.
+    parts.push(`${lisaAnsageKurz(bucketKey)}. Wenn das passt: „Recall freigeben“ — oder sagen Sie mir, was Lisa anders sagen soll.`);
   }
   return parts.join(" ");
 }

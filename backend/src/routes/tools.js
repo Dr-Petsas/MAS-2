@@ -2673,6 +2673,7 @@ router.post("/tools/gap-briefing", async (req, res) => {
     let message = buildSpokenGapBriefing(run, {
       operatorName: op?.name,
       themaLabel: run.ok ? run.bucketLabel : null,
+      bucketKey: run.ok ? run.bucketKey : null,
       kandidatenAngezeigt: cards.length > 0,
     });
     if (demoOnly) message = `[Demo-Testlauf] ${message}`;

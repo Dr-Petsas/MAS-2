@@ -13,7 +13,7 @@ import { masCollection } from "../src/tenant.js";
 import { createCase } from "../src/brain/caseStore.js";
 import {
   removeCandidateFromList, removeCandidateByName, gapFillOverview, gapCandidateCardData, aktiveKandidaten,
-  gapFillCalendarBoundary, listRecallBuckets, resolveBucketKey, setListBucket,
+  gapFillCalendarBoundary, listRecallBuckets, resolveBucketKey, setListBucket, upsertCallListCase,
 } from "../src/clara/gapFill.js";
 import { recallInstructionPreview, setRecallChefHinweis } from "../src/clara/recallCoach.js";
 
@@ -204,11 +204,49 @@ try {
   } else {
     console.log("  (kein Bucket mit passenden Kandidaten — Wechsel-Pins uebersprungen)");
   }
+  console.log("[4b] Freigabe-Sackgasse (Live 28.07.2026 15:24)");
+  // Die Mittwoch-Liste war um 13:07 freigegeben (in_progress); der neue
+  // Themen-Scan um 15:24 praesentierte sie wie frisch, aber approve fand
+  // nichts mehr. Seitdem gilt: Eine AUSDRUECKLICHE Themenwahl eroeffnet auf
+  // einer nicht mehr wartenden Liste eine NEUE Runde (waiting_approval),
+  // ein automatischer Scan laesst laufende Listen in Ruhe.
+  const upBasis = {
+    date: morgen,
+    calendar: { id: BOUNDARY_CAL, name: "Dr. Pflege" },
+    gap: { startMin: 16 * 60, endMin: 17 * 60, minutes: 60, label: "16:00–17:00" },
+    candidates: [kandidat(7), kandidat(8)],
+    booking: { practiceName: "Testpraxis Pflege", practicePhone: "+49300000000" },
+    promptTag: "pv:lisa:test",
+  };
+  let reopenCaseId = "";
+  {
+    const u1 = await upsertCallListCase(clientId, { ...upBasis, bucket: { key: "fach:ze", label: "ZE" }, bucketExplicit: true });
+    reopenCaseId = u1.caseId;
+    check("Aufbau: frische Liste wartet", u1.created === true);
+    // Freigabe von 13:07 simulieren.
+    await masCollection(clientId, "mas_cases").doc(reopenCaseId).update({
+      status: "in_progress",
+      "callList.approvedBy": "Dr. Test",
+      "callList.approvedAt": Date.now(),
+    });
+    const u2 = await upsertCallListCase(clientId, { ...upBasis, bucket: null, bucketExplicit: false });
+    check("automatischer Scan laesst laufende Liste in Ruhe", u2.refreshed === false && !u2.reopened);
+    const u3 = await upsertCallListCase(clientId, { ...upBasis, bucket: { key: "fach:ze", label: "ZE" }, bucketExplicit: true });
+    check("explizite Themenwahl eroeffnet neue Runde", u3.reopened === true);
+    const s3 = (await masCollection(clientId, "mas_cases").doc(reopenCaseId).get()).data();
+    check("neue Runde wartet wieder auf Freigabe", s3?.status === "waiting_approval" && s3?.callList?.approvedBy === null);
+  }
 } finally {
   console.log("[5] Aufraeumen");
   await masCollection(clientId, "mas_cases").doc(CASE_AKTIV).delete().catch(() => {});
   await masCollection(clientId, "mas_cases").doc(CASE_ALT).delete().catch(() => {});
   await masCollection(clientId, "mas_cases").doc(CASE_FREMD).delete().catch(() => {});
+  // Reopen-Testfall traegt eine echte gapCaseId — ueber das Muster loeschen.
+  try {
+    const rest = await masCollection(clientId, "mas_cases")
+      .where("title", "==", `Anrufliste: Dr. Pflege ${morgen} 16:00–17:00`).get();
+    for (const d of rest.docs) await d.ref.delete();
+  } catch { /* Aufraeumen best effort */ }
   console.log("  Testfaelle geloescht.");
 }
 
