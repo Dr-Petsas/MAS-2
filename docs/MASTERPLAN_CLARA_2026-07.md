@@ -1930,6 +1930,106 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     (17 offen) auf Freigabe; Karte liefert alle pids. MAS-Neustart
     20:27, Worker-Neustart 20:28.
 
+    NACHTRAG 10 (Chef 28.07. 20:57; Gespraech 20:52 ausgewertet — "sie
+    bejahte oder verneinte es nicht", "keine luecken mehr", "mikkel"):
+    (1) ANTWORT ZUERST: /tools/gap-briefing stellte die Themenfrage VOR
+    jeder Antwort — die Ja/Nein-Frage ("habe ich morgen eine
+    terminluecke?") blieb unbeantwortet, und die laengst gebaute,
+    wartende Liste wurde ignoriert. Neuer Fluss: (a) wartet schon eine
+    Liste -> Status + Freigabe-Angebot + Karte, KEINE Themenfrage
+    (buildSpokenListStatus); (b) sonst Luecken-Scan OHNE Listenbau
+    (runGapFill scanOnly) -> erst die Antwort ("Ja — morgen ist eine
+    Luecke von ..."), DANN die Themenfrage; (c) ohne Luecke die
+    ehrliche Verneinung MIT Hinweis auf wartende Listen anderer Tage
+    (der 20:52-Turn-2 "keine nennenswerten Luecken — sehr gut"
+    verschwieg die morgige Liste).
+    (2) ANREDE: getOperator lieferte "Dr. Michael Petsas", die TTS
+    sprach den Vornamen als "Mikkel". spokenAnrede() -> "Doktor
+    Petsas" (Titel + Nachname, nie Vorname).
+    (3) FACHFRAGE: "Bei Bedarf auch Implantat." klang komisch — neu:
+    "... — zum Beispiel Prophylaxe, Kons oder ZE?" (laesst weitere
+    Fachbereiche offen, ohne sie aufzuzaehlen; Implantat & Co. werden
+    weiter erkannt). Fach-Guard matcht ueber "Fachbereich" ✓.
+    (4) STT-KURZANTWORTEN: "Folks."/"Fox."/"cont." -> Kons, "Holly,
+    bitte" -> alle — NUR im Kontext der offenen Fachfrage (dort ist
+    das Mapping gefahrlos). stt_keywords ergaenzt um "Recall
+    freigeben", "Recall starten", "freigeben", "Terminluecke", "ZE".
+    Beweise: test_recall_yes_no_guard GRUEN (neue Garbles + neue
+    Fachfrage-Formulierung), test-gap-fill + test-listen-pflege gruen,
+    Live-Proben: "ohne Thema, Liste wartet" -> "Doktor Petsas, ja —
+    morgen ist eine Luecke von 09:00-11:15. Die Anrufliste (Kons) mit
+    17 offenen Kandidaten wartet schon auf Ihre Freigabe. ..." und
+    "2026-07-30" -> ehrliche Verneinung + Hinweis auf wartende Liste.
+    MAS-Neustart 21:02, Worker-Neustart 21:07.
+
+W-RECALL-FERTIG — Lueckenfueller/Recall von A bis Z abschliessen
+(Chef 28.07. 20:57: "analysiere ein fuer alle male was alles passieren
+muss damit dieser workflow endlich von a bis z richtig sitzt, in allen
+sprachlichen variationen"). Prinzip: Der PFAD ist deterministisch, die
+SPRACHE ist frei — an den vier Entscheidungspunkten sichern Guards die
+Kurzantworten, alles andere macht das LLM. Sprachliche Breite kommt
+NICHT aus immer mehr Regexen, sondern aus dem Variations-Katalog, der
+mit jeder Live-Panne waechst (Register-Prinzip).
+
+  Der Soll-Ablauf (A-Z), Stand der Bausteine:
+  A LUECKEN-FRAGE ("habe ich morgen luft?", jede Formulierung)
+    -> gap_briefing; Antwort ZUERST (Ja/Nein + wann), dann naechster
+    Schritt. Kalendergrenze: NUR der Kalender des gekoppelten
+    Behandlers. [FERTIG 28.07.]
+  B THEMENWAHL (kurz: "zum Beispiel Prophylaxe, Kons oder ZE?");
+    erkennt Fachbereiche, Fein-Buckets, "alle", inkl. STT-Garbles;
+    nie raten bei langen Saetzen. [FERTIG; Garbles wachsen im Katalog]
+  C LISTE BAUEN: nur eigener Kalender, Puffer 24 / kontaktiert 8,
+    Kontakt-/Erfolgs-Zaehler je Patient, Spam-Deckel, Konvertierte
+    fallen aus den Buckets. [FERTIG]
+  D ANZEIGE: Karte am Telefon + Monitor-Tab, Tonne je Zeile,
+    Nachladen aus dem Puffer, kein Auto-Flip mitten im Gespraech.
+    [FERTIG 28.07.]
+  E STREICHEN: per Stimme (jeder Name, fuzzy, Rueckfrage bei
+    Mehrdeutigkeit) und per Tonne; NIE ohne Tool-Lauf bestaetigen
+    (Waechter blockt Phantom-Streichungen). [FERTIG 28.07.]
+  F ANSAGE-BESPRECHUNG: proaktiv im Briefing (lisaAnsageKurz),
+    preview_recall_instruction / adjust_recall_instruction
+    (Chef-Hinweis wird Teil der Lisa-Instruktion). [FERTIG]
+  G FREIGABE/ABLEHNUNG: jede natuerliche Formulierung (Kurz-Ja,
+    Start-Befehle, "ruf sie an"); laufende Liste mit offenen
+    Kandidaten wird FORTGESETZT statt blockiert; Ablehnung/Aufschub
+    -> recall_snooze. [FERTIG 28.07.]
+  H LISA AM TELEFON: Kontroll-Fokus je Fachbereich (ZE/Kons/Paro/
+    Implantat/KFO), "liegt lange zurueck", Einwand-Block (wer sind
+    Sie / woher Nummer / Adresse / nichts verkaufen), Live-Buchung
+    mit slot_iso-Heilung, SMS-Fallback mit Zusage-Link (first-wins).
+    [FERTIG]
+  I RUECKMELDUNG: Sweep bucht Zusagen, recall_status spricht ehrlich
+    (gebucht/abgelehnt/offen), Zaehler aktualisieren live. [FERTIG]
+  J SONDERFAELLE: Testlauf-Umleitung (liveUntil), Feiertage/
+    Wochenenden via holidays.js, verstrichene/unmoegliche Luecken
+    schliessen sich selbst. [FERTIG]
+
+  Offene Arbeitspakete bis "fertig" (Reihenfolge = Prioritaet):
+  W-RF-1 VARIATIONS-KATALOG ALS TEST (~1/2 Tag): je Entscheidungs-
+    punkt (A Frage, B Thema, E Streichen, F Besprechen, G Freigabe/
+    Ablehnung) 30-60 ECHTE Formulierungen — Quelle: Turn-Protokolle
+    — als reiner Text-Test gegen intent_router/Guards (<1 s, Teil
+    des Gates). Jede kuenftige Live-Panne wird EINE neue Zeile, kein
+    neues Bauprojekt. DoD: Katalog-Datei + Gate-Einbindung.
+  W-RF-2 KONTEXT-DATUM (~2 h): Folgefrage ohne Datum ("habe ich DENN
+    eine luecke?") erbt das zuletzt besprochene Datum; Tool-
+    Beschreibung gap_briefing schaerfen ("bei Folgefragen das zuletzt
+    genannte Datum uebergeben"), Katalog-Fall dazu. DoD: Live-Probe.
+  W-RF-3 END-ZU-END-BEWEIS (~1/2 Tag): duo_conversation-Szenario
+    "Lueckenfueller komplett" (Frage -> Thema -> Streichen ->
+    Besprechen -> Freigeben -> Status) gegen echte MAS-Tools im
+    dryRun; dazu 2 begleitete Live-Telefonate OHNE einen einzigen
+    Eingriff. DoD: beide Telefonate sauber = Workflow ABGESCHLOSSEN,
+    danach nur noch Katalog-Pflege.
+  W-RF-4 STT-LANGFRIST (Beobachten, kein Bauauftrag): kurze
+    Einzelwoerter bleiben Parakeets schwaechster Fall; Gegenmittel
+    sind (a) Garble-Mappings im Fachfrage-Kontext (wachsen per
+    Katalog), (b) ganze Saetze statt Einzelwoerter ("Nimm bitte
+    Kons"), (c) mittelfristig Conformer-Zweitmeinung fuer Kurz-
+    Utterances (NUR nach Bench, eigenes Arbeitspaket).
+
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
 

@@ -26,7 +26,7 @@ import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEu
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
-import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey, removeCandidateByName } from "../clara/gapFill.js";
+import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey, removeCandidateByName, gapFillOverview, spokenGapAnswer, buildSpokenListStatus, spokenAnrede } from "../clara/gapFill.js";
 import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../clara/gapInvite.js";
 import { outreachForClient, buildAutoInviteMessage } from "../clara/outreachTemplates.js";
 import { recordContact } from "../clara/outreachStats.js";
@@ -2618,15 +2618,55 @@ router.post("/tools/gap-briefing", async (req, res) => {
         bucketKey = resolveBucketKey([], thema);
       }
       if (!alleThemen && !bucketKey) {
+        // ANTWORT ZUERST (Chef 28.07. 20:52: "die frage war habe ich morgen
+        // eine terminlücke und sie bejahte oder verneinte es nicht und wollte
+        // den recall starten"). Reihenfolge jetzt:
+        //  1) Wartet schon eine Liste -> Status + Freigabe-Angebot, KEINE
+        //     Themenfrage (das Thema wurde beim Bau laengst gewaehlt).
+        //  2) Sonst: Luecken-Scan OHNE Listenbau -> erst die Antwort auf die
+        //     Frage ("Ja — morgen ist eine Lücke von ..."), DANN die
+        //     Themenfrage in demselben Satzzug.
+        const ov = await gapFillOverview(clientId).catch(() => ({ pending: [], approved: [] }));
+        const reqDate = String(req.body?.date || "").trim() || null;
+        const wartend = (ov.pending || []).filter((l) => !reqDate || l.date === reqDate);
+        if (!thema && wartend.length) {
+          const op = await getOperator(clientId);
+          let cards = [];
+          try {
+            cards = (await gapCandidateCardData(clientId, { date: reqDate }))
+              .map((d) => karteRecallKandidaten(d));
+          } catch { /* Karte ist Zugabe */ }
+          return res.json({
+            ok: true,
+            message: buildSpokenListStatus(wartend, { operatorName: spokenAnrede(op?.name) }),
+            card: cards[0] || null,
+            cards,
+            gaps: wartend.length,
+            callLists: wartend.length,
+            bucketKey: wartend[0].bucketKey || null,
+            bucketLabel: wartend[0].bucketLabel || null,
+          });
+        }
         const fach = await listRecallFachbereiche(clientId).catch(() => ({ ok: false, kern: [], zusatz: [], buckets: [] }));
         const hatBestand = fach.ok && ((fach.kern?.length || 0) + (fach.zusatz?.length || 0) > 0);
         if (hatBestand) {
           if (!thema) {
+            const { calendarId: scanCalId } = await resolveDayCalendarScope(clientId, req.body);
+            const scan = await runGapFill(clientId, {
+              date: req.body?.date,
+              horizonDays: Number(req.body?.horizonDays) || 1,
+              calendarId: scanCalId,
+              scanOnly: true,
+            }).catch(() => null);
+            const antwort = scan ? spokenGapAnswer(scan, { andereWartende: ov.pending || [] }) : "";
+            const hatLuecken = !!scan?.gaps?.length;
             return res.json({
               ok: true,
-              needsTheme: true,
+              needsTheme: hatLuecken,
               fachbereiche: [...(fach.kern || []), ...(fach.zusatz || [])],
-              message: spokenFachbereichFrage(fach),
+              // Ohne Luecke ist die Themenfrage sinnlos — nur die ehrliche Antwort.
+              message: hatLuecken ? `${antwort} ${spokenFachbereichFrage(fach)}` : antwort,
+              gaps: scan?.gaps?.length || 0,
             });
           }
           bucketKey = resolveBucketKey(fach.buckets || [], thema);
@@ -2671,7 +2711,9 @@ router.post("/tools/gap-briefing", async (req, res) => {
     // Freigabe-Hinweis kommt aus dem Builder — keine doppelten Schluss-Saetze
     // (Wiederholungs-Ekel, Chef 28.07.2026).
     let message = buildSpokenGapBriefing(run, {
-      operatorName: op?.name,
+      // Nur der Nachname mit Titel (Live 20:52: TTS sprach "Michael" als
+      // "Mikkel" — der Vorname gehoert nicht in die Anrede).
+      operatorName: spokenAnrede(op?.name),
       themaLabel: run.ok ? run.bucketLabel : null,
       bucketKey: run.ok ? run.bucketKey : null,
       kandidatenAngezeigt: cards.length > 0,

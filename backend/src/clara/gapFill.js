@@ -829,18 +829,33 @@ export function spokenFachbereichFrage(fach) {
   const kern = (fach?.kern || []).map((b) => b.label).filter(Boolean);
   const zusatz = (fach?.zusatz || []).map((b) => b.label).filter(Boolean);
   if (!kern.length && !zusatz.length) {
-    return "Aus welchem Fachbereich soll der Recall erfolgen — Prophylaxe, Kons oder ZE?";
+    return "Aus welchem Fachbereich soll der Recall erfolgen — zum Beispiel Prophylaxe, Kons oder ZE?";
   }
   const liste = kern.length ? kern : zusatz;
   const letzte = liste[liste.length - 1];
   const kopf = liste.length === 1 ? liste[0]
     : liste.length === 2 ? `${liste[0]} oder ${liste[1]}`
     : `${liste.slice(0, -1).join(", ")} oder ${letzte}`;
-  let satz = `Aus welchem Fachbereich soll der Recall erfolgen — ${kopf}?`;
-  if (kern.length && zusatz.length) {
-    satz += ` Bei Bedarf auch ${zusatz.map((z) => z).join(" oder ")}.`;
-  }
-  return satz;
+  // "Bei Bedarf auch Implantat." klang komisch (Chef 28.07. 20:57) — das
+  // "zum Beispiel" laesst alle weiteren Fachbereiche offen, ohne sie
+  // aufzuzaehlen (Implantat & Co. werden weiterhin erkannt).
+  return `Aus welchem Fachbereich soll der Recall erfolgen — zum Beispiel ${kopf}?`;
+}
+
+/**
+ * Gesprochene Anrede aus dem Behandler-Namen: "Dr. Michael Petsas" ->
+ * "Doktor Petsas". Live 28.07. 20:52 sprach die TTS den Vornamen als
+ * "Mikkel" aus — der Vorname gehoert nicht in die Anrede.
+ */
+export function spokenAnrede(name) {
+  const n = s(name);
+  if (!n) return "";
+  const teile = n.replace(/,.*$/, "").trim().split(/\s+/).filter(Boolean);
+  const nachname = teile.length ? teile[teile.length - 1] : "";
+  if (!nachname) return "";
+  if (/prof/i.test(n)) return `Professor ${nachname}`;
+  if (/\bdr\.?\b|doktor/i.test(n)) return `Doktor ${nachname}`;
+  return n;
 }
 
 /**
@@ -892,7 +907,7 @@ function themaLabel(pool, themaKey) {
  * Behandler, gate+rank candidates, upsert one approval-pending call-list case
  * per gap. Returns everything the voice/UI layer needs.
  */
-export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false, calendarId = null, bucketKey = null, bucketExplicit = false } = {}) {
+export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false, calendarId = null, bucketKey = null, bucketExplicit = false, scanOnly = false } = {}) {
   const startDate = s(date) || todayBerlin();
   const booking = await loadBooking(clientId).catch(() => null);
   if (!booking?.locationId) return { ok: false, reason: "no_booking_config", gaps: [], callLists: [] };
@@ -909,10 +924,15 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
   const boundary = await gapFillCalendarBoundary(clientId);
   const onlyCalId = boundary || s(calendarId) || null;
 
-  const [{ allCandidates: poolAlle, throttled }, prompt] = await Promise.all([
-    candidatePool(clientId, booking, { demoOnly }),
-    getActivePrompt(clientId, "lisa"),
-  ]);
+  // scanOnly (Chef 28.07. 20:52 "habe ich morgen eine terminlücke" — die Frage
+  // MUSS zuerst beantwortet werden, BEVOR die Themenfrage kommt): nur Luecken
+  // finden + Listen-Pflege, KEINE Kandidaten laden, KEINE Listen bauen.
+  const [{ allCandidates: poolAlle, throttled }, prompt] = scanOnly
+    ? [{ allCandidates: [], throttled: null }, { ok: false }]
+    : await Promise.all([
+      candidatePool(clientId, booking, { demoOnly }),
+      getActivePrompt(clientId, "lisa"),
+    ]);
   // Themen-Bucket / Fachbereich (Chef 28.07.2026): Ist ein Thema gewaehlt
   // (fach:kons, fein-Bucket, ...), werden die Listen NUR daraus geformt.
   const wantBucket = s(bucketKey) || null;
@@ -948,6 +968,10 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
 
       for (const gap of computeGapWindows(wd, busy)) {
         gueltigeCaseIds.add(gapCaseId(clientId, calendar.id, day, gap.startMin));
+        if (scanOnly) {
+          gaps.push({ date: day, calendarId: calendar.id, calendarName: s(calendar.name), ...gap, candidateCount: null });
+          continue;
+        }
         const candidates = rankCandidatesForGap(allCandidates, gap, {
           calendarId: calendar.id,
           throttled,
@@ -1325,6 +1349,63 @@ function lisaAnsageKurz(bucketKey) {
   if (k === "fach:paro") return "Lisa lädt zur Zahnfleisch-Kontrolle ein — wir überprüfen den Zustand nach der Parodontitis-Behandlung";
   if (k === "fach:kfo") return "Lisa lädt zur Schienen-Kontrolle ein — die letzte Kontrolle liegt lange zurück";
   return "Lisa lädt zur Kontrolle ein und betont, dass der letzte Termin lange zurückliegt";
+}
+
+/** "2026-07-29" -> "morgen" / "heute" / "übermorgen", sonst "am <ISO>"
+ * (ISO spricht der Worker-Waechter relativ aus). */
+function tagWort(day) {
+  const heute = todayBerlin();
+  const plus = (n) => {
+    const d = new Date(`${heute}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  };
+  if (day === heute) return "heute";
+  if (day === plus(1)) return "morgen";
+  if (day === plus(2)) return "übermorgen";
+  return `am ${day}`;
+}
+
+/**
+ * Antwort-zuerst (Chef 28.07. 20:52: "die frage war habe ich morgen eine
+ * terminlücke und sie bejahte oder verneinte es nicht"): Die Luecken-Frage
+ * wird IMMER zuerst beantwortet; die Themenfrage haengt der Aufrufer an.
+ */
+export function spokenGapAnswer(run, { andereWartende = [] } = {}) {
+  if (!run?.ok) return "Der Lückenfüller ist nicht konfiguriert — es fehlt die Buchungskonfiguration.";
+  const anhang = andereWartende.length
+    ? ` Die Anrufliste für ${tagWort(s(andereWartende[0].date))} ${s(andereWartende[0].slot?.label)} wartet allerdings noch auf Ihre Freigabe.`
+    : "";
+  if (!run.gaps.length) {
+    return `Für ${tagWort(s(run.date))} sehe ich keine nennenswerten Lücken — sehr gut.${anhang}`;
+  }
+  if (run.gaps.length === 1) {
+    const g = run.gaps[0];
+    return `Ja — ${tagWort(s(g.date))} ist eine Lücke von ${g.label} (${g.minutes} Minuten).`;
+  }
+  const teile = run.gaps.slice(0, 3).map((g) => `${g.label} ${tagWort(s(g.date))}`);
+  return `Ja — ich sehe ${run.gaps.length} Lücken: ${teile.join(", ")}.`;
+}
+
+/**
+ * Wartet schon eine Liste, ist die Themenfrage FALSCH — der Chef braucht
+ * Status + Freigabe-Angebot (Live 20:52: Liste stand laengst bereit, Clara
+ * fragte trotzdem wieder nach dem Fachbereich).
+ */
+export function buildSpokenListStatus(wartende, { operatorName = "" } = {}) {
+  if (!wartende?.length) return "";
+  const hi = operatorName ? `${operatorName}, ` : "";
+  const l = wartende[0];
+  const offen = aktiveKandidaten(l).filter((k) => !k.contact?.taskId).length;
+  const thema = s(l.bucketLabel);
+  const saetze = [
+    `${hi}ja — ${tagWort(s(l.date))} ist eine Lücke von ${s(l.slot?.label)}. Die Anrufliste${thema ? ` (${thema})` : ""} mit ${offen} offenen Kandidaten wartet schon auf Ihre Freigabe.`,
+  ];
+  if (wartende.length > 1) {
+    saetze.push(wartende.length === 2 ? "Dazu wartet eine weitere Liste." : `Dazu warten ${wartende.length - 1} weitere Listen.`);
+  }
+  saetze.push(`${lisaAnsageKurz(l.bucketKey)}. Wenn das passt: „Recall freigeben“ — oder sagen Sie mir, was Lisa anders sagen soll.`);
+  return saetze.join(" ");
 }
 
 export function buildSpokenGapBriefing(run, { operatorName, themaLabel, bucketKey = null, kandidatenAngezeigt = false } = {}) {
