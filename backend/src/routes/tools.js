@@ -2965,9 +2965,8 @@ router.post("/tools/wiedervorlage", async (req, res) => {
     // (FreiSprech: LLM formuliert, Fakten-Guard sichert Zahlen/Daten und blockt
     // dazuerfundene Euro-Betraege). Die ABHAK-ANLEITUNG dahinter ist ein
     // Sprachbefehl und bleibt WOERTLICH — sonst lernt der Chef den falschen
-    // Satz. ZUSAETZLICH prueft die Route, dass jeder gesprochene ABSENDER die
-    // Umformulierung woertlich ueberlebt: namenOk im Guard sieht nur Namen mit
-    // Anrede (Herr/Frau/Doktor) — "Finanzamt Bochum" waere sonst ungeschuetzt.
+    // Satz. Die ABSENDER gehen als Pflichtwoerter mit (namenOk im Guard sieht
+    // nur Namen mit Anrede — "Finanzamt Bochum" waere sonst ungeschuetzt).
     // Die Karte behaelt immer den woertlichen Inhalt (Pruefpunkt Handy).
     try {
       const anleitung = message.endsWith(ABHAK_ANLEITUNG);
@@ -2976,11 +2975,9 @@ router.post("/tools/wiedervorlage", async (req, res) => {
         : message;
       const frei = await freiFormulieren(bericht, {
         kontext: "Bericht ueber offene Fristen und Rechnungssachen auf der Wiedervorlage (ohne Geldbetraege)",
+        pflicht: liste.items.slice(0, 4).map((i) => i.wer).filter((w) => w && w !== "Unbekannt"),
       });
-      const absenderDa = liste.items.slice(0, 4)
-        .map((i) => i.wer).filter((w) => w && w !== "Unbekannt")
-        .every((w) => frei.text.includes(w));
-      if (frei.ok && absenderDa) {
+      if (frei.ok) {
         message = anleitung ? `${frei.text} ${ABHAK_ANLEITUNG}` : frei.text;
       }
     } catch { /* deterministisch weiter */ }

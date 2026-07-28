@@ -222,6 +222,23 @@ function entdoppleUhr(text) {
     return String(text || "").replace(/(\d{1,2}\s*Uhr\s*\d{1,2})\s*Uhr\b/gi, "$1");
 }
 
+// W-UMBAU-2 Werkzeug 4 (28.07.2026): PFLICHTWOERTER. namenOk sieht nur Namen
+// MIT Anrede (Herr/Frau/Doktor) — Absender wie "Finanzamt Bochum", Kalender-
+// namen oder Zeitfenster ("vormittags") sind fuer den generischen Guard
+// unsichtbar. Der Aufrufer kennt seine kritischen Woerter und gibt sie mit;
+// fehlt eines in der Umformulierung (Gross-/Kleinschreibung egal), bleibt der
+// deterministische Text. Exportiert fuer Tests.
+export function pflichtOk(pflicht, ausgabe) {
+    const a = String(ausgabe || "").toLowerCase();
+    for (const w of pflicht || []) {
+        const wort = String(w || "").trim();
+        if (wort && !a.includes(wort.toLowerCase())) {
+            return { ok: false, warum: `Pflichtwort "${wort}" fehlt` };
+        }
+    }
+    return { ok: true };
+}
+
 /** Deterministischer Fakten-Check der Umformulierung. Exportiert fuer Tests. */
 export function guardOk(quelle, ausgabe) {
     const q = String(quelle || "").trim();
@@ -267,7 +284,7 @@ function freiSprechCfg() {
  * @param {{kontext?:string, timeoutMs?:number}} opts
  * @returns {Promise<{ok:boolean, text:string, warum?:string}>}
  */
-export async function freiFormulieren(text, { kontext = "interne Team-Ansage", timeoutMs = 6500 } = {}) {
+export async function freiFormulieren(text, { kontext = "interne Team-Ansage", timeoutMs = 6500, pflicht = [] } = {}) {
     const quelle = String(text || "").trim();
     const conf = freiSprechCfg();
     if (!conf.enabled || quelle.length < 60) return { ok: false, text: quelle, warum: "aus" };
@@ -318,6 +335,12 @@ export async function freiFormulieren(text, { kontext = "interne Team-Ansage", t
             if (!g.ok) {
                 letzterGrund = g.warum;
                 log.info("freisprech.guard_fallback", { warum: g.warum, streng });
+                continue;
+            }
+            const p = pflichtOk(pflicht, neu);
+            if (!p.ok) {
+                letzterGrund = p.warum;
+                log.info("freisprech.guard_fallback", { warum: p.warum, streng });
                 continue;
             }
             return { ok: true, text: neu };

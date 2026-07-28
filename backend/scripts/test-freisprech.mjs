@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { freiFormulieren, guardOk } from "../src/clara/freiSprech.js";
+import { freiFormulieren, guardOk, pflichtOk } from "../src/clara/freiSprech.js";
 
 // FreiSprech-Test (04.07.2026):
 //   1. Guard-Unit-Checks (deterministisch, ohne LLM).
@@ -95,8 +95,19 @@ check("Guard (Wiedervorlage): verdrehtes Frist-Datum faellt durch",
 // selbst, dass jeder gesprochene Absender die Umformulierung ueberlebt
 // (sonst deterministischer Text). Hier gepinnt, damit niemand den
 // Routen-Check als "doppelt" wieder ausbaut.
-check("Guard (Wiedervorlage): Absender OHNE Anrede ist fuer guardOk unsichtbar (deshalb Routen-Check)",
+check("Guard (Wiedervorlage): Absender OHNE Anrede ist fuer guardOk unsichtbar (deshalb Pflichtwoerter)",
   guardOk(quelleWv, quelleWv.replace("von Finanzamt Bochum ", "")).ok);
+
+// W-UMBAU-2 Werkzeug 4 (28.07.2026): Pflichtwoerter — der Aufrufer sichert
+// Woerter, die der generische Guard nicht sieht (Absender ohne Anrede,
+// Kalendernamen, Zeitfenster wie "vormittags", Tages-Kern wie "morgen").
+check("Pflicht: fehlendes Pflichtwort faellt durch",
+  !pflichtOk(["Finanzamt Bochum"], quelleWv.replace("von Finanzamt Bochum ", "")).ok);
+check("Pflicht: vorhandene Pflichtwoerter ok (Gross-/Kleinschreibung egal)",
+  pflichtOk(["finanzamt bochum", "Dentallabor Nord"], quelleWv).ok);
+check("Pflicht: leere Liste ok", pflichtOk([], "irgendein Text").ok);
+check("Pflicht: verschwundenes Zeitfenster faellt durch",
+  !pflichtOk(["vormittags"], "Morgen bei Dr. Petsas: 3 von 5 informiert.").ok);
 
 // --- 2) Echte Umformulierung -------------------------------------------------
 const laeufe = [];
@@ -114,6 +125,20 @@ for (const [i, r] of laeufe.entries()) {
 const texte = new Set(laeufe.filter((r) => r.ok).map((r) => r.text));
 check("Varianz: umformulierte Laeufe sind nicht alle woertlich identisch",
   texte.size >= Math.min(2, laeufe.filter((r) => r.ok).length) || laeufe.filter((r) => r.ok).length <= 1);
+
+// W-UMBAU-2 Werkzeug 4 (28.07.2026): Abwesenheits-Stand mit Pflichtwoertern —
+// egal ob umformuliert oder deterministisch: Tages-Kern, Kalendername und
+// Zeitfenster MUESSEN im Ergebnis stehen (pflichtOk erzwingt sonst Fallback).
+const quelleAbw = "Abwesenheits-Stand: Morgen (vormittags) bei Dr. Petsas: 3 von 5 informiert, 2 haben bereits neu gebucht, 2 noch offen. Am Donnerstag bei Dr. Patrikis: Zeitraum gesperrt, keine Termine betroffen.";
+const abwPflicht = ["morgen", "vormittags", "Dr. Petsas", "am Donnerstag", "Dr. Patrikis"];
+const abw = await freiFormulieren(quelleAbw, {
+  kontext: "Zwischenstand zu geplanten und laufenden Abwesenheiten",
+  pflicht: abwPflicht, timeoutMs: 30000,
+});
+console.log(`\nAbwesenheits-Lauf (umformuliert=${abw.ok}${abw.warum ? ", warum=" + abw.warum : ""}):\n  ${abw.text}`);
+check("Abwesenheits-Stand: alle Pflichtwoerter im Ergebnis (umformuliert ODER Fallback)",
+  abwPflicht.every((w) => abw.text.toLowerCase().includes(w.toLowerCase())));
+check("Abwesenheits-Stand: Fakten-Guard haelt", guardOk(quelleAbw, abw.text).ok || !abw.ok);
 
 console.log(fehler === 0 ? "\nALLE CHECKS BESTANDEN" : `\n${fehler} CHECK(S) FEHLGESCHLAGEN`);
 // Undici (Node-fetch) Keep-Alive-Pool schliessen und den Prozess NATUERLICH

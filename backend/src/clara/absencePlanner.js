@@ -12,6 +12,7 @@ import { proxyUpdateOrCancel } from "./cfProxy.js";
 import { buildAbsenceProof, publishProof } from "./proofCard.js";
 import { createCase, addUpdate, setStatus, listCases } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
+import { freiFormulieren } from "./freiSprech.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, DIRECTIONS, EVENT_TYPES } from "../brain/events.js";
 import { log } from "../log.js";
@@ -65,6 +66,13 @@ function dayRel(isoDate) {
 
 function capFirst(s2) {
   return s2 ? s2.charAt(0).toUpperCase() + s2.slice(1) : s2;
+}
+
+// "morgen, Samstag," -> "morgen"; "am Donnerstag, Fronleichnam," -> "am Donnerstag".
+function tagKern(label) {
+  const w = String(label || "").replace(/,/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return "";
+  return w[0].toLowerCase() === "am" && w[1] ? `${w[0]} ${w[1]}` : w[0];
 }
 
 // ----------------------------------------------------------------------------
@@ -765,10 +773,19 @@ export async function absenceStatusSpoken(clientId) {
   if (!relevant.length) return "Es gibt aktuell keine geplanten oder laufenden Abwesenheiten.";
 
   const parts = [];
+  const pflicht = [];
   for (const c of relevant) {
     const plan = c.absencePlan;
     const ps = plan.patients || [];
     const winInfo = plan.windowLabel && plan.windowLabel !== "ganztägig" ? ` (${plan.windowLabel})` : "";
+    // W-UMBAU-2 Werkzeug 4 (28.07.2026): Tages-Wort, Zeitfenster und
+    // Kalendername muessen die Umformulierung WOERTLICH ueberleben — laesst
+    // das LLM "vormittags" fallen, klingt ein halber Tag wie ein ganzer.
+    // Vom Tages-Label nur der KERN ("morgen", "am Donnerstag") — das volle
+    // Label traegt bei Wochenende/Feiertag Kommas und Zusaetze, die das LLM
+    // legitim umstellen darf.
+    pflicht.push(tagKern(dayRel(plan.date)), plan.calendarName);
+    if (winInfo) pflicht.push(plan.windowLabel);
     if (c.status === CASE_STATUS.WAITING_APPROVAL) {
       parts.push(`${capFirst(dayRel(plan.date))}${winInfo} bei ${plan.calendarName}: ${ps.length} Termin(e), wartet auf Ihre Freigabe.`);
       continue;
@@ -784,5 +801,17 @@ export async function absenceStatusSpoken(clientId) {
       `${capFirst(dayRel(plan.date))}${winInfo} bei ${plan.calendarName}: ${contacted} von ${ps.length} informiert, ${rebooked} ${rebooked === 1 ? "hat" : "haben"} bereits neu gebucht${open > 0 && c.status !== CASE_STATUS.RESOLVED ? `, ${open} noch offen` : ""}.`
     );
   }
-  return `Abwesenheits-Stand: ${parts.join(" ")}`;
+  const deterministisch = `Abwesenheits-Stand: ${parts.join(" ")}`;
+  // W-UMBAU-2 Werkzeug 4: Der Stand wird lebendig erzaehlt (FreiSprech: LLM
+  // formuliert, Fakten-Guard sichert Zahlen, Pflichtwoerter sichern Tag/
+  // Behandler/Fenster). Bei JEDEM Zweifel bleibt der deterministische Satz.
+  try {
+    const frei = await freiFormulieren(deterministisch, {
+      kontext: "Zwischenstand zu geplanten und laufenden Abwesenheiten (informiert / neu gebucht / offen / wartet auf Freigabe)",
+      pflicht,
+    });
+    return frei.text;
+  } catch {
+    return deterministisch;
+  }
 }
