@@ -11,12 +11,14 @@ import { masCollection } from "../src/tenant.js";
 import { createCase } from "../src/brain/caseStore.js";
 import {
   removeCandidateFromList, gapFillOverview, gapCandidateCardData, aktiveKandidaten,
+  gapFillCalendarBoundary,
 } from "../src/clara/gapFill.js";
 
 const clientId = process.env.MAS_CLIENT_ID || "MEe4ZQHEzOPzLcexyhdT";
 const suffix = Date.now().toString(36);
 const CASE_AKTIV = `gapfill_pflege_aktiv_${suffix}`;
 const CASE_ALT = `gapfill_pflege_alt_${suffix}`;
+const CASE_FREMD = `gapfill_pflege_fremd_${suffix}`;
 
 let fehler = 0;
 function check(was, ok) {
@@ -39,6 +41,11 @@ function kandidat(n, extra = {}) {
   };
 }
 
+// Kalender-Grenze (Chef 28.07.2026): Das Overview zeigt nur Listen des
+// gekoppelten Behandlers — Testfaelle deshalb auf DESSEN Kalender anlegen,
+// sonst wuerden sie als fremd geschlossen statt geprueft.
+const BOUNDARY_CAL = (await gapFillCalendarBoundary(clientId)) || "cal_pflege";
+
 // Testfall wie die Produktion anlegen (createCase schreibt die Zeitstempel,
 // ohne die listCases den Fall gar nicht sieht), dann callList nachtragen.
 async function seedCase(id, { date, startMin, endMin, candidates }) {
@@ -56,7 +63,7 @@ async function seedCase(id, { date, startMin, endMin, candidates }) {
     callList: {
       kind: "gap_fill",
       date,
-      calendarId: "cal_pflege",
+      calendarId: BOUNDARY_CAL,
       calendarName: "Dr. Pflege",
       slot: { startMin, endMin, minutes: endMin - startMin, label: "Test" },
       candidates,
@@ -98,15 +105,32 @@ try {
   check("removed bleibt als Audit (removedBy gesetzt)", p1?.removed === true && p1?.removedBy === "Chef (Test)");
   check("aktiveKandidaten filtert entfernte raus", aktiveKandidaten(snap.data().callList).length === 3);
 
-  console.log("[2] Verfall im Overview");
+  console.log("[2] Verfall + Kalender-Grenze im Overview");
+  const hatGrenze = BOUNDARY_CAL !== "cal_pflege";
+  if (hatGrenze) {
+    // Liste eines fremden Behandler-Kalenders (gueltiger Slot morgen) —
+    // gehoert nicht zu dieser Clara und darf nie auf Freigabe warten.
+    await seedCase(CASE_FREMD, { date: morgen, startMin: 10 * 60, endMin: 11 * 60, candidates: [kandidat(6)] });
+    await masCollection(clientId, "mas_cases").doc(CASE_FREMD).update({
+      "callList.calendarId": "fremder_kollegen_kalender",
+      "callList.calendarName": "Dr. Kollege",
+    });
+  }
   const ov = await gapFillOverview(clientId);
   const alle = [...ov.pending, ...ov.approved].map((l) => l.caseId);
   check("gueltige Liste (morgen) wird angezeigt", alle.includes(CASE_AKTIV));
   check("verstrichene Liste (gestern) ist raus", !alle.includes(CASE_ALT));
+  if (hatGrenze) check("fremder Kalender ist raus (Kalender-Grenze)", !alle.includes(CASE_FREMD));
   // Schliessen laeuft fire-and-forget — kurz warten, dann Status pruefen.
   await new Promise((r) => setTimeout(r, 1500));
   const altSnap = await masCollection(clientId, "mas_cases").doc(CASE_ALT).get();
   check("verstrichener Fall wurde geschlossen", altSnap.data()?.status === "closed");
+  if (hatGrenze) {
+    const fremdSnap = await masCollection(clientId, "mas_cases").doc(CASE_FREMD).get();
+    check("fremder Fall wurde geschlossen", fremdSnap.data()?.status === "closed");
+  } else {
+    console.log("  (kein gekoppelter Behandler aufloesbar — Grenz-Pins uebersprungen)");
+  }
 
   console.log("[3] Anzeige-Wege ohne Entfernte");
   const karten = await gapCandidateCardData(clientId);
@@ -117,6 +141,7 @@ try {
   console.log("[4] Aufraeumen");
   await masCollection(clientId, "mas_cases").doc(CASE_AKTIV).delete().catch(() => {});
   await masCollection(clientId, "mas_cases").doc(CASE_ALT).delete().catch(() => {});
+  await masCollection(clientId, "mas_cases").doc(CASE_FREMD).delete().catch(() => {});
   console.log("  Testfaelle geloescht.");
 }
 

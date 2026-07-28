@@ -1523,9 +1523,30 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     Anruflisten) fielen bis zur ersten Beruehrung aus dem
     listCases-Fenster. Beweis: `scripts/test-listen-pflege.mjs`
     (11 Pins, raeumt auf); Live gegenprobiert: Verfall schloss 12
-    Alt-Listen (20.-27.07.), Abgleich schloss die 9-15-Liste nach
-    eingetragener Abwesenheit, uebrig genau 13-15 Uhr. Frontend
-    committet + regelkonform deployt (Stash-Ablauf).
+    Alt-Listen (20.-27.07.), Abgleich schloss die 9-15-Liste, uebrig
+    genau 13-15 Uhr. Frontend committet + regelkonform deployt
+    (Stash-Ablauf). WICHTIG (Chef-Korrektur): Die Abwesenheit stand
+    laenger als eine Woche im Kalender — die 9-15-Liste entstand am
+    27.07. 18:00 unter dem damaligen Kalender-Lese-Stand, der sie beim
+    Scan uebersah; seit dem Abend-Stand liest der Scan sie korrekt,
+    der Abgleich raeumt solche Altlasten selbst weg.
+  * **Kalender-Grenze (Chef 28.07.2026: "der USER ist Petsas, seine
+    KalenderID ist das Einzige, das ueber diese Clara geprueft werden
+    darf" — Dr. Patrikis bekommt per Handy-Kopplung im eigenen Konto
+    seine eigene Clara):** `gapFillCalendarBoundary` (gapFill.js) loest
+    Operator (gekoppeltes Handy) -> Behandlername -> Kalender auf.
+    Ist die Grenze aufloesbar, schlaegt sie ALLES: `runGapFill` scannt
+    nur diesen Kalender (auch bei praxisweiten/expliziten Anfragen —
+    der Monitor-Scan lief vorher ungescopt und legte eine
+    Patrikis-Liste an), `gapFillOverview` blendet fremde Listen aus
+    und schliesst sie (solange niemand kontaktiert wurde; Ansage,
+    Karten, Abend-Briefing, ASAP hangen am Overview und erben die
+    Grenze). Ohne aufloesbaren Operator (kein Pairing) bleibt alles
+    beim alten Verhalten — kein Regress fuer andere Mandanten.
+    Beweis: test-listen-pflege jetzt 13 Pins (fremder Kalender raus +
+    geschlossen); live: ungescopter Scan beruehrt nur noch Dr. Petsas,
+    Patrikis-Liste automatisch geschlossen ("gehoert zum Kalender von
+    Dr. Patrikis — nicht zum Behandler dieser Clara").
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.

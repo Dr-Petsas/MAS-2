@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
-import { loadBooking, ensureBerlinTz } from "./booking.js";
+import { loadBooking, ensureBerlinTz, resolveCalendar } from "./booking.js";
+import { getOperator } from "./sessions.js";
 import { getDayAppointments, todayBerlin } from "./daySchedule.js";
 import { createCase, listCases, addUpdate, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
@@ -399,6 +400,27 @@ export function aktiveKandidaten(list) {
   return (list?.candidates || []).filter((c) => c && !c.removed);
 }
 
+/**
+ * Kalender-Grenze des Lueckenfuellers (Chef 28.07.2026): Diese Clara gehoert
+ * EINEM Behandler (gekoppeltes Handy = Operator). Ist sein Kalender
+ * aufloesbar, ist er das EINZIGE, was der Lueckenfueller scannt und anzeigt —
+ * Kollegen (z. B. Dr. Patrikis) bedienen ihre eigene Clara ueber ihr eigenes
+ * Konto. Ohne aufloesbaren Operator (kein Pairing, andere Mandanten) bleibt
+ * das bisherige Verhalten (praxisweit bzw. expliziter Parameter) erhalten.
+ */
+export async function gapFillCalendarBoundary(clientId) {
+  try {
+    const op = await getOperator(clientId);
+    const name = s(op?.doctorName || op?.name);
+    if (!name) return null;
+    const booking = await loadBooking(clientId).catch(() => null);
+    const cal = booking ? resolveCalendar(booking, name) : null;
+    return cal?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Call-list cases (Gesprächsaufträge) — idempotent, approval-first
 // ----------------------------------------------------------------------------
@@ -530,7 +552,12 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
   // bleibt das Verhalten praxisweit (alle Kalender). Vorfall: Clara meldete zu
   // viele freie Luecken, weil sie ueber ALLE Behandler-Kalender scannte (leerer
   // Kollegen-Kalender = ganzer Tag "frei").
-  const onlyCalId = s(calendarId) || null;
+  // Kalender-Grenze (Chef 28.07.2026): Der Kalender des gekoppelten Behandlers
+  // schlaegt ALLES — auch explizite Parameter und "alle"-Anfragen. Der
+  // Monitor-Scan lief bisher praxisweit und legte eine Liste fuer Dr. Patrikis
+  // an, obwohl diese Clara Dr. Petsas gehoert.
+  const boundary = await gapFillCalendarBoundary(clientId);
+  const onlyCalId = boundary || s(calendarId) || null;
 
   const [allCandidatesRoh, throttled, prompt] = await Promise.all([
     Promise.all([
@@ -627,7 +654,10 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
 
 /** UI read-model: pending + approved call lists (active gap-fill cases). */
 export async function gapFillOverview(clientId) {
-  const cases = await listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 });
+  const [cases, boundary] = await Promise.all([
+    listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 }),
+    gapFillCalendarBoundary(clientId),
+  ]);
   const gapCases = [];
   const now = Date.now();
   for (const c of cases) {
@@ -637,6 +667,15 @@ export async function gapFillOverview(clientId) {
     const endMs = listSlotEndMs(c);
     if (endMs && endMs < now) {
       closeStaleList(clientId, c, `die Lücke ${c.callList.slot?.label || ""} am ${c.callList.date} ist verstrichen`).catch(() => {});
+      continue;
+    }
+    // Kalender-Grenze: Listen fremder Behandler-Kalender gehoeren nicht zu
+    // dieser Clara — ausblenden und (solange niemand kontaktiert wurde)
+    // schliessen, damit sie nirgends auf Freigabe warten.
+    if (boundary && c.callList.calendarId && c.callList.calendarId !== boundary) {
+      if (!listHasContacts(c)) {
+        closeStaleList(clientId, c, `die Liste gehört zum Kalender von ${c.callList.calendarName || "einem anderen Behandler"} — nicht zum Behandler dieser Clara`).catch(() => {});
+      }
       continue;
     }
     gapCases.push(c);
