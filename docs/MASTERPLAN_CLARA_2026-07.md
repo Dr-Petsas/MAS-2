@@ -1962,6 +1962,53 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     "2026-07-30" -> ehrliche Verneinung + Hinweis auf wartende Liste.
     MAS-Neustart 21:02, Worker-Neustart 21:07.
 
+    NACHTRAG 11 (Chef 28.07. 21:40; Gespraech 21:35 ausgewertet — "es
+    klappte alles bis auf lisas anruf" + NEUSTART-DOKTRIN):
+    Das Protokoll zeigte: ab der Ansage-Korrektur lief KEIN Tool mehr.
+    "Nein, sie soll sagen, dass wir eine kostenfreie Zahnreinigung
+    anbieten." -> kein adjust_recall_instruction; "Ja, gib die bitte
+    Frage." (STT fuer "frei") -> keine Freigabe; "Ja, bitte." nach der
+    Modell-Paraphrase "gebe die Liste dann frei ... Soll ich jetzt
+    loslegen?" -> kein Topic-Wort, keine Freigabe; danach behauptete
+    das Modell "Ich gebe die Recall-Liste jetzt frei. Lisa startet
+    die Anrufe" und "Ich habe gerade nachgesehen" — alles Theater,
+    Lisa bekam nie einen Auftrag. Fixes (Clara-Voice a261432):
+    (1) ANSAGE-GUARD: Nach einem Ansage-Angebot ("... was Lisa anders
+    sagen soll" / Preview / "laedt zur ... ein") wird eine erkannte
+    Korrektur ("sie soll sagen ...", "sag den Patienten ...", "die
+    Ansage soll ...") deterministisch zu adjust_recall_instruction
+    (hinweis = woertlicher Chef-Satz) synthetisiert; Vorrang vor
+    Reject/Approve (das fuehrende "Nein" verneint die Ansage, nicht
+    den Workflow); Streichungs-/Ablehnungs-Saetze bleiben aussen vor.
+    (2) FREIGABE-HAERTUNG: "gib die bitte Frage/frei" zaehlt im
+    Freigabe-Kontext als Freigabe; die Modell-Paraphrase "... gebe
+    die Liste dann frei. Soll ich jetzt loslegen?" zaehlt als
+    offenes Freigabe-Angebot (Topic "liste"+"frei", Frage "losleg").
+    (3) BEHAUPTUNGS-WACHE: Gedankenstrich ist Satzgrenze (das "keine"
+    im erfundenen Ergebnis sprach die Behauptung davor frei);
+    "nachgesehen/nachgeschaut" als Erledigt-Partizip.
+    (4) NEUSTART-DOKTRIN (MAS 6194144, Chef-O-Ton: "wurde der
+    workflow nicht vollstaendig durchgespielt und beendet, soll beim
+    neuen anlauf nicht die spur aufgenommen werden sondern komplett
+    von vorne begonnen werden ... alles vorherige verworfen"):
+    Jeder neue gap_briefing-Einstieg (themenlos UND Themenwahl)
+    verwirft wartende, noch UNKONTAKTIERTE Listen samt Chef-Hinweis
+    (discardWaitingLists -> closeStaleList) und beginnt frisch:
+    Antwort zuerst, dann Themenfrage, dann neue Liste. Der
+    Status-Zweig aus NACHTRAG 10 (1a) ("Liste wartet schon ...") ist
+    damit BEWUSST WIEDER RAUS — er war genau die "Spur-Aufnahme",
+    die der Chef nicht will. Listen, bei denen Lisa schon Patienten
+    kontaktiert hat (in_progress mit Kontakten), sind ausgefuehrtes
+    Geschaeft: recall_status berichtet sie, approve setzt sie fort.
+    Beweise: test_recall_yes_no_guard GRUEN (Ansage-Pins, Garble-
+    Freigabe, Paraphrase-Angebot, nachgesehen-Block), speakability
+    GRUEN, Gate GRUEN, test-gap-fill + test-listen-pflege GRUEN;
+    Live-Proben: themenlos -> alte Kons-Liste verworfen + "Ja —
+    morgen ist eine Luecke von 09:00-11:15 ... Aus welchem
+    Fachbereich ...?", danach Thema Kons -> frische Liste (24
+    Kandidaten) wartet auf Freigabe. MAS-Neustart 21:55, Worker-
+    Neustart 21:56 (registriert 21:56:27).
+
 W-RECALL-FERTIG — Lueckenfueller/Recall von A bis Z abschliessen
 (Chef 28.07. 20:57: "analysiere ein fuer alle male was alles passieren
 muss damit dieser workflow endlich von a bis z richtig sitzt, in allen
@@ -1975,7 +2022,9 @@ mit jeder Live-Panne waechst (Register-Prinzip).
   A LUECKEN-FRAGE ("habe ich morgen luft?", jede Formulierung)
     -> gap_briefing; Antwort ZUERST (Ja/Nein + wann), dann naechster
     Schritt. Kalendergrenze: NUR der Kalender des gekoppelten
-    Behandlers. [FERTIG 28.07.]
+    Behandlers. NEUSTART-DOKTRIN: jeder Einstieg verwirft wartende,
+    unkontaktierte Listen — nie die alte Spur aufnehmen (Nachtrag 11).
+    [FERTIG 28.07.]
   B THEMENWAHL (kurz: "zum Beispiel Prophylaxe, Kons oder ZE?");
     erkennt Fachbereiche, Fein-Buckets, "alle", inkl. STT-Garbles;
     nie raten bei langen Saetzen. [FERTIG; Garbles wachsen im Katalog]
