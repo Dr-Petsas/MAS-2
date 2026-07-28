@@ -1504,6 +1504,30 @@ Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
   einzeln pruefen; wo der Wortlaut nicht geschuetzt sein muss, formuliert
   das LLM aus strukturierten Fakten (mit Fakten-Treue-Wache). EIN
   Werkzeug pro Neustart, Register-Fall zuerst.
+  **Stand 28.07.2026 nachts — Inventur + Werkzeuge 1 und 2:** 40 Tools
+  tragen `speak_result=verbatim`; 7 Briefings liefen schon ueber
+  FreiSprech (LLM formuliert, Fakten-Guard prueft, deterministischer
+  Rueckfall). NEU dran: **lisa_call_result** (Bericht ueber delegierte
+  Anrufe; Ausgangssatz baut den Namen in den Satz, Register vk-12) und
+  **comms_digest** (Eingaenge-Bericht, Register vk-23). Beifang mit
+  Grundsatz-Wert: NEUE Guard-Stufe **Handelnden-Wache** in
+  `clara/freiSprech.js` — die Umformulierung machte aus "Lisa hat Dr.
+  Petsas erreicht" ein "ICH habe gerade Dr. Petsas erreicht" (Clara
+  schmueckt sich mit Lisas Anruf; Zahlen/Namen stimmten, der Guard war
+  blind). Ich-Taten (erreicht/angerufen/telefoniert/hinterlassen) sind
+  nur erlaubt, wenn die Quelle sie selbst als Ich-Tat sagt; "Dr." im
+  Satz sprengte das Suchfenster (Abkuerzungspunkte werden gefaltet);
+  Prompt-Regel 10. Beweis: `scripts/test-freisprech.mjs` 24 Pruefungen,
+  3 Live-Proben je Route, Schnell-Gate + Register-Stichproben gruen.
+  Kandidaten fuer die naechsten Runden: wiedervorlage (Vorsicht:
+  Abhak-Anleitung woertlich lassen), absence_status, recall_status,
+  qm_calendar, read_ratings — weiterhin EIN Werkzeug pro Neustart.
+  Warteliste (Befund Live-Probe comms_digest): die EINZELZEILEN des
+  Eingaenge-Berichts bleiben schematisch, weil die QUELLE
+  Extractor-Artefakte enthaelt ("(buchen/verschieben/absagen)",
+  Zitat-Klammern aus der Evidenz) — das ist ein Quellseiten-Aufraeumen
+  in buildSpokenComms/Extractor-Summary, eigener Posten, NICHT per
+  Umformulierung loesbar.
 - **W-UMBAU-3 Werkzeug-Konsolidierung:** Doppel-Tools zusammenlegen,
   Beschreibungen entruempeln (Prompt-Tokens runter), Gruppen sauber.
 - **W-UMBAU-4 Pfad-Trennung:** Clara/Bianca-Erbschaft aufloesen (Bianca
