@@ -13,7 +13,7 @@ import { sweepAbsenceRebookings } from "./clara/absencePlanner.js";
 import { runRetentionSweep } from "./brain/retention.js";
 import { materializeDueJobs as qmMaterializeDueJobs } from "./qm/schedules.js";
 import { runEscalationSweep as qmRunEscalationSweep } from "./qm/notify.js";
-import { finalizeLisaCalls, callConfigured as lisaCallConfigured } from "./lisa/outbound.js";
+import { finalizeLisaCalls, startScheduledLisaCalls, callConfigured as lisaCallConfigured } from "./lisa/outbound.js";
 import { syncLisaAgentTools } from "./lisa/agentTools.js";
 import { ingestBiancaCalls, biancaConfigured } from "./bianca/ingest.js";
 import { backfillAddressBook } from "./brain/addressBook.js";
@@ -359,6 +359,10 @@ server.listen(PORT, () => {
     setInterval(() => {
       finalizeLisaCalls(DEFAULT_CLIENT_ID).catch((e) =>
         log.warn("lisa.finalize_loop_error", { error: String(e?.message || e) })
+      );
+      // L4 (29.07.2026): nachts eingeplante Anrufe im Anruf-Fenster waehlen.
+      startScheduledLisaCalls(DEFAULT_CLIENT_ID).catch((e) =>
+        log.warn("lisa.scheduled_loop_error", { error: String(e?.message || e) })
       );
     }, 15_000);
     log.info("lisa finalizer enabled", { intervalMs: 15_000 });

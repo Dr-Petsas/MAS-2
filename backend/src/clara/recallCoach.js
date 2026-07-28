@@ -948,7 +948,22 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
     (!day || c.callList.date === day)
   ).slice(0, 10);
 
+  // C6 (Chef 29.07.2026, Live 23:44): "recall_status verschwieg die wartende
+  // Liste" — der Chef fragte nach Lisas Stand, es WARTETE eine unfreigegebene
+  // Liste, und Clara sagte "keine Recall-Aktionen". Wartende Listen gehoeren
+  // IN den Bericht, inklusive Weg zur Freigabe.
+  const wartende = cases.filter((c) =>
+    c.id.startsWith("gapfill_") && c.callList && !c.callList.approvedBy &&
+    c.status === CASE_STATUS.WAITING_APPROVAL && (!day || c.callList.date === day)
+  ).slice(0, 5);
+  const wartendSatz = !wartende.length ? "" : (wartende.length === 1
+    ? `Eine Anrufliste${s(wartende[0].callList?.bucketLabel) ? ` (${wartende[0].callList.bucketLabel})` : ""}${s(wartende[0].callList?.date) ? ` für den ${wartende[0].callList.date}` : ""} wartet noch auf Ihre Freigabe — sagen Sie: gib die Liste frei.`
+    : `${wartende.length} Anruflisten warten noch auf Ihre Freigabe — sagen Sie: gib die Listen frei.`);
+
   if (!lists.length) {
+    if (wartendSatz) {
+      return `Lisa hat noch keine Anrufe gestartet. ${wartendSatz}`;
+    }
     return "Es laufen gerade keine Recall-Aktionen. Sage: Recall starten — dann schaue ich nach Lücken und Kandidaten.";
   }
 
@@ -990,6 +1005,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
   if (unclear) parts.push(`${unclear} unklar — bitte im Monitor prüfen.`);
   if (pending) parts.push(`${pending} Anruf${pending === 1 ? "" : "e"} noch offen.`);
   if (parts.length === 1) parts.push("Noch keine Kontakte gestartet.");
+  if (wartendSatz) parts.push(wartendSatz); // C6: wartende Listen mit nennen
   const deterministisch = parts.join(" ");
   // W-UMBAU-2 Werkzeug 5 (28.07.2026): Der Zaehl-Bericht wird lebendig erzaehlt
   // (FreiSprech: Fakten-Guard sichert alle Zahlen). Pflichtwoerter: bei
@@ -1001,6 +1017,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
     const pflicht = [];
     if (complaints) pflicht.push("Beschwerde", "Monitor");
     if (unclear) pflicht.push("Monitor");
+    if (wartendSatz) pflicht.push("Freigabe"); // C6: Weg zur Freigabe muss ueberleben
     const frei = await freiFormulieren(deterministisch, {
       kontext: "Zwischenstand einer laufenden Recall-Aktion (gebucht / SMS / Absagen / nicht erreicht / offen)",
       pflicht,

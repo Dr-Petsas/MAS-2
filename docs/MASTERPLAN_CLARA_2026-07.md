@@ -2059,6 +2059,81 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     Anamnese-Karte (E2), Wiederholungen/"bis"-Zeitspanne (D),
     A6-Buchungstitel.
 
+    NACHTRAG 13 (Chef 29.07. 01:12 "ist das jetzt alles sicher
+    behoben? check noch einmal alles durch"): Voll-Audit der L/C-
+    Liste gegen den Code — NEIN, es war nicht alles behoben; die
+    offenen Punkte wurden JETZT gebaut. Stand danach:
+    (L3) "Termine machen/vollmachen/reinsetzen" (PLURAL) routet
+    deterministisch auf gap_briefing (_GAPS_Q_RE + Umleitung von
+    search_patient/find_contact/delegate_call im gaps-guard);
+    /tools/delegate-call verlangt eine INHALTLICHE Botschaft
+    (blosses "Komm in die Praxis" ohne Grund-Wort -> Rueckfrage
+    statt Anruf); Lisas Regieanweisung: ohne Grund ehrlich sagen +
+    Rueckruf der Praxis anbieten, nie mauern (rahmeAuftrag).
+    (L4) Anruf-Zeitfenster in lisaStartCall: Standard 09-19 Uhr
+    Berlin (MAS_LISA_CALL_START/_END), ausserhalb wird der Anruf als
+    Task "scheduled" EINGEPLANT (naechster Fensterstart) und vom
+    neuen Sweep startScheduledLisaCalls (15-s-Takt am Finalizer)
+    gewaehlt — gleiche Task-Id bleibt (Recall-Sweep-Zuordnung).
+    Test-Redirect uebersteuert das Fenster. Fix dabei: berlinHourOf
+    mit de-DE lieferte "10 Uhr" -> NaN; jetzt en-GB + Digit-Match.
+    (L2/C4/C7a) Drei neue Anti-Theater-Klassen in
+    claims_unverified_action: Ich-Praesens-Start ("Ich starte den
+    Recall", "Die Liste ist bereit", "Ich suche die Kandidaten"),
+    Sende-Versprechen ("Ich schicke Ihnen die Kontaktkarten aufs
+    Handy") und Ansage-Zitate ("Lisa wird sagen ...", "Die Ansage
+    lautet ...") ohne Tool-Lauf werden geblockt — erfundene Angebote
+    erreichen nie wieder einen Patienten.
+    (C1) Ansage-Korrektur versteht jetzt auch STT-Pronomen ("DIESER/
+    diese/der/er soll sagen ...").
+    (C2) Freigabe: "Du sollst der Lisa sagen, sie soll anrufen" +
+    "Sag Lisa, sie soll loslegen" + Riffer-Garble ("Gib den Riffer
+    bitte Frage") erkannt; Claras eigene Ankuendigung ("Ich gebe die
+    Liste jetzt frei") zaehlt als offenes Freigabe-Angebot -> das
+    folgende "Ja, bitte." loest die ECHTE Freigabe aus.
+    (C3) approve_recall in CALL_ORDER_TOOLS — der call-promise-guard
+    meckert nicht mehr ueber das Preamble einer ECHTEN Freigabe.
+    (C4a) "Pons" -> Kons im Fach-Garble.
+    (C5) MAS: gapFillDefaultDate (ohne Datum gilt ab 18 Uhr der
+    naechste Werktag) + kappeVergangenheit (heutige Fenster, die
+    vorbei sind, fallen weg; laufende beginnen ab JETZT, auf 15 min
+    gerundet). Die "13:30-Luecke um 23:50" ist damit unmoeglich.
+    W-RF-2 (Worker erbt Datum aus letzten Zuegen) bleibt OFFEN.
+    (C6) recall_status nennt WARTENDE Listen mit Freigabe-Weg
+    (Pflichtwort "Freigabe" ueberlebt FreiSprech); neuer
+    lisa-report-guard: "Report/Bericht/Stand von Lisa" ->
+    recall_status (call_log-Umleitung; lisa_call_result MIT Namen
+    bleibt).
+    (C7c) war schon gebaut (distinctPatientLabels: Jahrgang ->
+    Telefon-Endung -> Ordinal); C7b-Synthese (Ja/Namenswahl nach
+    Karten-Rueckfrage -> push_contact) bleibt OFFEN — der C7a-Block
+    verhindert aber das Theater.
+    (C8) Prompt-Klarstellung: Patientendaten (Geburtsdatum etc.)
+    DARF Clara dem Praxisteam IMMER nennen — nie verweigern, sondern
+    search_patient/contact_card nutzen.
+    (C10) turn_protocol traegt jetzt den GESPROCHENEN (Nach-
+    Waechter-)Text; Roh-Text nur bei Abweichung unter "roh";
+    turn_spoken an allen Sprechpfaden (Stream, Slot-Angebot,
+    verbatim, farewell, tool-fehler). Tool-Jargon-Filter existierte
+    schon (_TOOL_TALK_RE) — Pin ergaenzt. Mehrfachpass-Luecke
+    (delegate_call 23:22 fehlte) nicht reproduziert — Verdacht
+    Spekulativ-Pfad, OFFEN.
+    (B) Lisa-Ergebnis-Push oeffnet jetzt /m/lisa-ergebnis.html
+    (selbsttragende Seite wie contact.html: Ausgang, Zusammenfassung,
+    eingefaerbter Gespraechsauszug; WebPush-4KB-Schutz per URL-
+    Kaskade 2400->900->0 Zeichen Auszug); Push-Text 240->480;
+    transcriptText-Kappung 8000->20000; Cockpit-detail zeigt
+    dialogSummary (700) statt roher letzter Saetze, Transkript bis
+    20000.
+    Beweise: test_recall_yes_no_guard um die W-RF-1-Katalog-Pins
+    28./29.07. erweitert (C1/C2/C3/C4/C6/C7a/L2/L3a/C10 — alle
+    GRUEN), Gate GRUEN, neuer MAS-Test test-anruf-fenster.mjs 18/18
+    GRUEN (L4-Fenster + C5-Kappung/Default), test-lisa-auftrag-
+    rahmen/-live-booking/-toolcall, test-gap-fill, test-listen-
+    pflege, test-outreach, test-patient-disambig GRUEN. OFFEN:
+    W-RF-2 Datum-Vererbung, C7b-Push-Synthese, E2 Anamnese-Karte,
+    D Wiederholungen/"bis", A6-Buchungstitel, C10-Mehrfachpass.
+
 W-RECALL-FERTIG — Lueckenfueller/Recall von A bis Z abschliessen
 (Chef 28.07. 20:57: "analysiere ein fuer alle male was alles passieren
 muss damit dieser workflow endlich von a bis z richtig sitzt, in allen

@@ -29,9 +29,55 @@ import { log } from "../log.js";
 
 const FieldValue = admin.firestore.FieldValue;
 const TASKS = "mas_lisa_tasks";
+// Basis-URL fuer oeffentliche Seiten (Lisa-Ergebnis-Push): gleiche Quelle wie
+// slotClaim.js/_shared.js — Cloudflare-Tunnel bzw. lokaler Port.
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "http://127.0.0.1:4000").trim().replace(/\/+$/, "");
 
 function tasksCol(clientId) {
   return masCollection(clientId, TASKS);
+}
+
+// --- L4 Anruf-Zeitfenster (Chef 29.07.2026) ---------------------------------
+// Lisa rief im Livetest um 23:17-23:51 Uhr Patienten an. Im Echtbetrieb ein
+// No-Go: Anrufe werden nur im Fenster gewaehlt (Standard 09-19 Uhr Berlin,
+// konfigurierbar per MAS_LISA_CALL_START/_END). Ausserhalb wird der Anruf
+// EINGEPLANT (Task-Status "scheduled") und vom Sweep beim naechsten
+// Fensterstart gewaehlt. Ein aktiver Test-Redirect (Testlabor/Livetest aufs
+// eigene Handy) uebersteuert das Fenster — Testlaeufe bleiben sofort moeglich.
+const TZ_BERLIN = "Europe/Berlin";
+export const CALL_WINDOW_START = Math.max(0, Math.min(23,
+  Number(process.env.MAS_LISA_CALL_START ?? 9)));
+export const CALL_WINDOW_END = Math.max(CALL_WINDOW_START + 1, Math.min(24,
+  Number(process.env.MAS_LISA_CALL_END ?? 19)));
+
+function berlinHourOf(ms = Date.now()) {
+  // de-DE haengt "Uhr" an ("10 Uhr" -> NaN); deshalb Ziffern herausziehen.
+  const t = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ_BERLIN, hour: "2-digit", hour12: false,
+  }).format(new Date(ms));
+  return Number((t.match(/\d+/) || ["-1"])[0]) % 24;
+}
+
+/** True, wenn zum Zeitpunkt `ms` gewaehlt werden darf (rein, testbar). */
+export function imAnrufFenster(ms = Date.now()) {
+  const h = berlinHourOf(ms);
+  return h >= CALL_WINDOW_START && h < CALL_WINDOW_END;
+}
+
+/** Naechster Fensterstart (ms) ab `ms` — heute frueh oder morgen frueh. */
+export function naechsterFensterStartMs(ms = Date.now()) {
+  const fmtTag = (t) => new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ_BERLIN, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(t));
+  const h = berlinHourOf(ms);
+  const tag = h < CALL_WINDOW_START ? fmtTag(ms) : fmtTag(ms + 86_400_000);
+  // Sommer-/Winterzeit: beide Offsets probieren, der richtige ergibt die
+  // gewuenschte Berlin-Stunde.
+  for (const off of ["+02:00", "+01:00"]) {
+    const t = Date.parse(`${tag}T${String(CALL_WINDOW_START).padStart(2, "0")}:00:00${off}`);
+    if (Number.isFinite(t) && berlinHourOf(t) === CALL_WINDOW_START) return t;
+  }
+  return Date.parse(`${tag}T${String(CALL_WINDOW_START).padStart(2, "0")}:00:00+02:00`);
 }
 
 function env(name) {
@@ -286,10 +332,13 @@ export function rahmeAuftrag(prompt) {
     + `mit Terminen zu tun. Sage in eigenen Worten genau die Nachricht, die oben `
     + `steht. Frage NICHT nach Terminwuenschen, biete KEINEN Termin an, nenne `
     + `keinen Terminanlass. Eine kurze Nachricht darf in ein bis zwei Saetzen `
-    + `erledigt sein.]`;
+    + `erledigt sein. Fragt der Angerufene nach dem WARUM und die Nachricht `
+    + `oben nennt keinen Grund: sage ehrlich, dass dir dazu keine Einzelheiten `
+    + `vorliegen, und biete an, dass die Praxis zurueckruft — niemals mauern `
+    + `oder einen Grund erfinden.]`;
 }
 
-export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext } = {}) {
+export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext, taskId } = {}) {
   if (!callConfigured()) {
     return { ok: false, message: "Outbound-Anrufe sind nicht konfiguriert." };
   }
@@ -324,6 +373,48 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   const prompt = clip(instruction, 2200);
   if (!prompt) return { ok: false, message: "Was soll Lisa am Telefon ausrichten?" };
 
+  // L4 (Chef 29.07.2026): Ausserhalb des Anruf-Fensters wird NICHT gewaehlt,
+  // sondern eingeplant. Test-Redirect (eigenes Handy) uebersteuert; die
+  // Wiedervorlage eines eingeplanten Anrufs (taskId gesetzt) laeuft ohnehin
+  // nur im Fenster los.
+  if (!redirected && !taskId && !imAnrufFenster()) {
+    const wannMs = naechsterFensterStartMs();
+    // Kein Doppel-Einplanen: gleicher Empfaenger + gleicher Auftrag wartet schon.
+    const schedSnap = await tasksCol(clientId)
+      .where("kind", "==", "call").where("status", "==", "scheduled").limit(25).get();
+    const schonGeplant = schedSnap.docs.map((d) => d.data())
+      .find((t) => t.phone === to && String(t.prompt || "") === prompt);
+    const wannTxt = new Intl.DateTimeFormat("de-DE", {
+      timeZone: TZ_BERLIN, weekday: "long", hour: "2-digit", minute: "2-digit",
+    }).format(new Date(wannMs));
+    if (schonGeplant) {
+      return { ok: true, scheduled: true, taskId: schonGeplant.id, message: `Dieser Anruf ist bereits für ${wannTxt} Uhr eingeplant.` };
+    }
+    const ref = tasksCol(clientId).doc();
+    await ref.set({
+      id: ref.id,
+      kind: "call",
+      status: "scheduled",
+      scheduledForMs: wannMs,
+      phone: to,
+      contactName: String(contactName || "").trim() || null,
+      prompt,
+      assignedBy: by || "Team",
+      callLanguage: (callLanguage || "de").toLowerCase(),
+      bookingContext: bookingContext && typeof bookingContext === "object" ? bookingContext : null,
+      outcome: null,
+      resultSummary: null,
+      transcriptText: null,
+      createdAt: FieldValue.serverTimestamp(),
+      ts: Date.now(),
+    });
+    log.info("lisa.call.scheduled_window", { clientId, taskId: ref.id, wannMs, fenster: `${CALL_WINDOW_START}-${CALL_WINDOW_END}` });
+    return {
+      ok: true, scheduled: true, taskId: ref.id,
+      message: `Es ist gerade außerhalb der Anrufzeiten (${CALL_WINDOW_START} bis ${CALL_WINDOW_END} Uhr) — ich habe den Anruf für ${wannTxt} Uhr eingeplant. Lisa ruft dann an.`,
+    };
+  }
+
   // Guard: never two parallel Lisa calls to the same number.
   const activeSnap = await tasksCol(clientId)
     .where("kind", "==", "call").where("status", "==", "calling").limit(25).get();
@@ -338,7 +429,9 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   }
 
   const name = String(contactName || "").trim();
-  const taskRef = tasksCol(clientId).doc();
+  // Wiedervorlage (L4): Ein eingeplanter Anruf behaelt seine Task-Id — so
+  // bleiben Recall-Sweep-Zuordnung (candidate.taskId) und Audit konsistent.
+  const taskRef = taskId ? tasksCol(clientId).doc(String(taskId)) : tasksCol(clientId).doc();
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
 
@@ -478,14 +571,37 @@ async function dialogZusammenfassung(transcriptText, who, fallback) {
  * vorliegt") und laeuft deshalb bewusst NICHT ueber das Spontan-Budget der
  * proaktiven Meldungen. Best-effort: wirft nie.
  */
-async function meldeErgebnis(clientId, { who, outcome, summary }) {
+async function meldeErgebnis(clientId, { who, outcome, summary, taskId, transcriptText }) {
   try {
     const op = await getOperator(clientId);
     if (!op?.id) return { ok: false, reason: "no_operator" };
+    // B (Chef 29.07.2026): "Die Push-Nachrichten über die Lisa-Telefonate
+    // lassen sich nicht öffnen, es fehlt auch die Hälfte der Zusammenfassung."
+    // Vorher: url="" (Antippen schloss die Meldung nur) und body auf 240
+    // gekappt. Jetzt: eigene Ergebnis-Seite /m/lisa-ergebnis.html mit
+    // Zusammenfassung + Gesprächsauszug in der URL (wie die Kontaktkarte:
+    // selbsttragend, kein Login nötig) und 480 Zeichen im Push-Text.
+    // WebPush-Payloads sind hart auf ~4 KB begrenzt; Umlaute blaehen die URL
+    // beim Encoden auf das Dreifache. Deshalb Kaskade: langer Auszug ->
+    // kurzer Auszug -> ohne Auszug. Die Zusammenfassung bleibt immer drin.
+    const bauUrl = (trLimit) => {
+      const qp = new URLSearchParams({
+        w: String(who || ""),
+        o: OUTCOME_SPOKEN[outcome] || String(outcome || ""),
+        ts: String(Date.now()),
+      });
+      if (summary) qp.set("s", clip(summary, 700));
+      if (trLimit > 0 && transcriptText) qp.set("tr", clip(transcriptText, trLimit));
+      if (taskId) qp.set("t", String(taskId));
+      return `${PUBLIC_BASE_URL}/m/lisa-ergebnis.html?${qp.toString()}`;
+    };
+    let url = bauUrl(2400);
+    if (url.length > 1900) url = bauUrl(900);
+    if (url.length > 1900) url = bauUrl(0);
     const r = await notifyOperator(clientId, op.id, {
       title: `Lisa: ${who} ${OUTCOME_SPOKEN[outcome] || outcome}`,
-      body: clip(summary, 240) || "Frag Clara nach dem Gesprächsverlauf.",
-      url: "",
+      body: clip(summary, 480) || "Frag Clara nach dem Gesprächsverlauf.",
+      url,
     });
     return { ok: !!r?.ok, sent: r?.sent || 0 };
   } catch (e) {
@@ -531,7 +647,10 @@ export async function finalizeLisaCalls(clientId) {
           outcome,
           resultSummary: clip(agentTail, 320) || null,
           dialogSummary: clip(dialogSummary, 700) || null,
-          transcriptText: clip(transcriptText, 8000) || null,
+          // B (29.07.2026): 8000 schnitt laengere Gespraeche ab ("Die
+          // Transkripte sind unvollstaendig") — 20000 traegt auch ein langes
+          // Beratungsgespraech; Firestore-Limit (1 MB/Dokument) bleibt fern.
+          transcriptText: clip(transcriptText, 20000) || null,
           endedAt: FieldValue.serverTimestamp(),
         });
 
@@ -551,7 +670,10 @@ export async function finalizeLisaCalls(clientId) {
           tags: ["lisa", "call", "result"],
         });
 
-        const push = await meldeErgebnis(clientId, { who, outcome, summary: dialogSummary });
+        const push = await meldeErgebnis(clientId, {
+          who, outcome, summary: dialogSummary,
+          taskId: task.id, transcriptText,
+        });
 
         finalized += 1;
         log.info("lisa.call.finalized", { clientId, taskId: task.id, outcome, gemeldet: !!push.ok });
@@ -562,6 +684,54 @@ export async function finalizeLisaCalls(clientId) {
     return { checked: snap.size, finalized };
   } finally {
     finalizeBusy = false;
+  }
+}
+
+let scheduledBusy = false;
+
+/**
+ * L4 (Chef 29.07.2026): Eingeplante Anrufe (Status "scheduled", ausserhalb
+ * des Anruf-Fensters entgegengenommen) im Fenster tatsaechlich waehlen.
+ * Laeuft im selben Takt wie der Finalizer; billig im Leerlauf (eine Abfrage).
+ * Die Task-Id bleibt erhalten (lisaStartCall mit taskId) — Recall-Sweep und
+ * Audit finden den Anruf unter derselben Id wieder.
+ */
+export async function startScheduledLisaCalls(clientId) {
+  if (scheduledBusy || !callConfigured() || !imAnrufFenster()) return { started: 0 };
+  scheduledBusy = true;
+  try {
+    const snap = await tasksCol(clientId)
+      .where("kind", "==", "call").where("status", "==", "scheduled").limit(10).get();
+    let started = 0;
+    for (const doc of snap.docs) {
+      const t = doc.data();
+      if (Number(t.scheduledForMs || 0) > Date.now()) continue;
+      // Vor dem Waehlen markieren — ein zweiter Sweep-Lauf darf denselben
+      // Anruf nicht noch einmal anfassen.
+      await doc.ref.update({ status: "promoting" });
+      const out = await lisaStartCall(clientId, {
+        phone: t.phone,
+        instruction: t.prompt,
+        contactName: t.contactName,
+        by: t.assignedBy,
+        callLanguage: t.callLanguage,
+        bookingContext: t.bookingContext || null,
+        taskId: doc.id,
+      }).catch((e) => ({ ok: false, message: String(e?.message || e) }));
+      if (out?.ok === false) {
+        await doc.ref.update({
+          status: "failed",
+          outcome: "failed",
+          resultSummary: clip(`Eingeplanter Anruf konnte nicht gestartet werden: ${out?.message || ""}`, 300),
+        }).catch(() => {});
+      } else {
+        started += 1;
+      }
+      log.info("lisa.call.scheduled_started", { clientId, taskId: doc.id, ok: out?.ok !== false });
+    }
+    return { started };
+  } finally {
+    scheduledBusy = false;
   }
 }
 

@@ -1247,12 +1247,16 @@ router.get("/brain/leitstelle", async (req, res) => {
           return {
             id: t.id,
             title: `${t.kind === "sms" ? "SMS" : "Anruf"}: ${t.contactName || t.phone || "—"}`,
-            detail: (t.resultSummary || t.text || t.prompt || "").slice(0, 220),
+            // B (29.07.2026): "Die Transkripte sind unvollständig unter
+            // MAS/Lisa" — detail zeigte die ROHEN letzten Lisa-Sätze
+            // (resultSummary, 220 Zeichen); die eigentliche Zusammenfassung
+            // (dialogSummary) fehlte, das Transkript war auf 4000 gekappt.
+            detail: (t.dialogSummary || t.resultSummary || t.text || t.prompt || "").slice(0, 700),
             status,
             ts: t.ts || 0,
             outcome: t.outcome || null,
             link: { kind: "lisa_task", id: t.id },
-            transcript: (t.transcriptText || "").slice(0, 4000) || null,
+            transcript: (t.transcriptText || "").slice(0, 20000) || null,
           };
         })
         .sort((a, b) => b.ts - a.ts);

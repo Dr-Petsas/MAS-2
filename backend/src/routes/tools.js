@@ -4485,13 +4485,29 @@ router.post("/tools/delegate-call", async (req, res) => {
     if (!target.phone) {
       return res.json({ ok: false, message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen." });
     }
+    // L3b (Chef 29.07.2026, Live 23:17): Aus "du sollst morgen frueh Termine
+    // machen" wurde ein naechtlicher Anruf mit leerer Botschaft ("Bitte
+    // kommen Sie morgen frueh in die Praxis" — auf "Wieso?" mauerte Lisa).
+    // Ein delegierter Anruf braucht eine INHALTLICHE Botschaft: Ein blosses
+    // "Komm in die Praxis" ohne jeden Grund wird nicht gewaehlt — Clara
+    // fragt stattdessen nach der Botschaft.
+    const instrText = String(req.body?.instruction || req.body?.message || req.body?.text || "").trim();
+    const nurEinbestellung = /\b(?:komm\w*|vorbei\s?kommen|erschein\w*|in\s+die\s+praxis|zu\s+uns)\b/i.test(instrText)
+      && !/\b(?:weil|wegen|grund|da\s|termin\w*|kontroll\w*|schmerz\w*|befund\w*|labor\w*|abhol\w*|besprech\w*|ergebnis\w*|unterlagen|rezept\w*|krank\w*|dringend\w*|nachricht|ausricht\w*|mitteil\w*|zahn\w*|behandl\w*|implant\w*|prothes\w*|krone\w*|fuellung\w*|füllung\w*|reinigung\w*|blutung\w*|op\b|operation\w*)\b/i.test(instrText);
+    if (instrText.replace(/\s+/g, " ").length < 15 || nurEinbestellung) {
+      return res.json({
+        ok: false,
+        needsMessage: true,
+        message: "Was genau soll Lisa ausrichten — und aus welchem Grund? Ohne inhaltliche Botschaft rufe ich niemanden an. Sagen Sie zum Beispiel: Lisa soll Herrn Meier sagen, dass sein Zahnersatz da ist und er zur Eingliederung kommen kann.",
+      });
+    }
     // Testsuite-Schutz: validiert Kontakt + Nummer, ruft aber NIEMANDEN an.
     if (req.body?.dryRun) {
       return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${target.name || target.phone} angerufen.` });
     }
     const out = await lisaStartCall(clientId, {
       phone: target.phone,
-      instruction: req.body?.instruction || req.body?.message || req.body?.text,
+      instruction: instrText,
       contactName: target.name,
       callLanguage: req.body?.callLanguage,
       by: op?.name || "Team",

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lisa — Anrufergebnis</title>
+<link rel="icon" href="/m/icon-192.png">
+<style>
+  /* B (29.07.2026): Ziel-Seite fuer den Lisa-Ergebnis-Push. Vorher hatte der
+     Push url="" — Antippen schloss die Meldung nur, der Text war auf 240
+     Zeichen gekappt und "man konnte sie nicht lesen". Diese Seite ist wie
+     contact.html selbsttragend: alle Daten stehen in der URL (kein Login,
+     kein API-Call), damit sie auch unterwegs sofort aufgeht. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(130% 95% at 50% 0%, #13203a 0%, #0a1322 55%, #060b16 100%);
+    color: #e6edf6; min-height: 100vh;
+    display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px 40px;
+  }
+  .card {
+    width: 100%; max-width: 460px; background: #11203b; border-radius: 22px;
+    padding: 28px 24px; box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  }
+  .avatar {
+    width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 12px;
+    background: linear-gradient(135deg, #2ee6c8, #1899b0); color: #08121f;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 800;
+  }
+  h1 { font-size: 20px; text-align: center; margin-bottom: 2px; }
+  .sub { font-size: 13px; color: #8fa0bd; text-align: center; margin-bottom: 6px; }
+  .outcome {
+    display: inline-block; margin: 0 auto 18px; font-size: 13px; font-weight: 700;
+    background: #0f2b26; color: #2ee6c8; border-radius: 999px; padding: 6px 14px;
+  }
+  .outcome.warn { background: #2b1f0f; color: #ffb347; }
+  .wrap { text-align: center; }
+  .block {
+    background: #0f1626; border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+    text-align: left;
+  }
+  .block .lbl {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: #8fa0bd; margin-bottom: 6px;
+  }
+  .block .txt { font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .dlg { font-size: 14px; line-height: 1.55; }
+  .dlg .who { color: #2ee6c8; font-weight: 700; }
+  .dlg .who.p { color: #ffb347; }
+  .hint { font-size: 12px; color: #8fa0bd; margin-top: 4px; }
+  .empty { color: #8fa0bd; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="avatar">L</div>
+  <h1 id="who">Anruf</h1>
+  <div class="sub" id="when">Lisas Anrufergebnis</div>
+  <div class="wrap"><span class="outcome" id="outcome">—</span></div>
+  <div class="block">
+    <div class="lbl">Zusammenfassung</div>
+    <div class="txt" id="summary">—</div>
+  </div>
+  <div class="block" id="trBlock" hidden>
+    <div class="lbl">Gesprächsauszug</div>
+    <div class="dlg" id="transcript"></div>
+    <div class="hint" id="trHint" hidden>Auszug gekürzt — das vollständige Gespräch kennt Clara („Was hat Lisa besprochen?").</div>
+  </div>
+  <div class="empty" id="empty" hidden>Keine Details übermittelt — frag Clara nach dem Gesprächsverlauf.</div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const who = (q.get("w") || "").trim();
+  const outcome = (q.get("o") || "").trim();
+  const summary = (q.get("s") || "").trim();
+  const tr = (q.get("tr") || "").trim();
+  const ts = Number(q.get("ts") || 0);
+
+  document.getElementById("who").textContent = who ? ("Anruf bei " + who) : "Lisas Anruf";
+  document.title = (who ? who + " — " : "") + "Lisa Anrufergebnis";
+  if (ts) {
+    document.getElementById("when").textContent = new Date(ts).toLocaleString("de-DE", {
+      weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    }) + " Uhr";
+  }
+  const oc = document.getElementById("outcome");
+  oc.textContent = outcome || "Ergebnis unbekannt";
+  if (/nicht|niemand|kam nicht|mailbox/i.test(outcome)) oc.classList.add("warn");
+
+  document.getElementById("summary").textContent = summary || "—";
+
+  if (tr) {
+    const box = document.getElementById("transcript");
+    // Gespeichertes Format: "agent: …\nuser: …" — Sprecher einfärben.
+    tr.split("\n").forEach((line) => {
+      const m = line.match(/^\s*(agent|assistant|lisa|user|patient|caller)\s*:\s*(.*)$/i);
+      const p = document.createElement("p");
+      if (m) {
+        const isLisa = /agent|assistant|lisa/i.test(m[1]);
+        const w = document.createElement("span");
+        w.className = "who" + (isLisa ? "" : " p");
+        w.textContent = (isLisa ? "Lisa" : (who || "Angerufener")) + ": ";
+        p.appendChild(w);
+        p.appendChild(document.createTextNode(m[2]));
+      } else {
+        p.textContent = line;
+      }
+      box.appendChild(p);
+    });
+    document.getElementById("trBlock").hidden = false;
+    // Der Push kappt den Auszug bei ~2400 Zeichen — Hinweis nur dann zeigen.
+    if (tr.length >= 2390) document.getElementById("trHint").hidden = false;
+  }
+  if (!summary && !tr) document.getElementById("empty").hidden = false;
+</script>
+</body>
+</html>

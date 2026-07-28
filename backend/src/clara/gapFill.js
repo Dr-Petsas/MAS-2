@@ -170,6 +170,38 @@ function hhmm(minutes) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+// C5 (Chef 29.07.2026, Live 23:50): gap_briefing ohne Datum nahm HEUTE und
+// meldete eine "13:30-Lücke" — um 23:50 längst vorbei. Zwei Sicherungen:
+//
+// 1. gapFillDefaultDate(): Ohne Datums-Angabe gilt nach Feierabend (ab 18 Uhr
+//    Berlin) automatisch der NÄCHSTE Werktag (Sa/So übersprungen; Feiertage
+//    prüft der Scan ohnehin je Kalender über die Öffnungszeiten).
+// 2. kappeVergangenheit(): Für HEUTE zählen nur Fenster, die noch nicht
+//    geendet haben; ein laufendes Fenster beginnt ab JETZT (auf die nächste
+//    Viertelstunde gerundet — hält die Fall-Identität 15 Minuten stabil).
+export function gapFillDefaultDate(nowMs = Date.now()) {
+  const heute = todayBerlin();
+  if (berlinMinutesOf(nowMs) < 18 * 60) return heute;
+  const d = new Date(`${heute}T12:00:00Z`);
+  do {
+    d.setUTCDate(d.getUTCDate() + 1);
+  } while ([0, 6].includes(weekdayIndexOf(d.toISOString().slice(0, 10))));
+  return d.toISOString().slice(0, 10);
+}
+
+export function kappeVergangenheit(windows, nowMin, minGap = MIN_GAP_MINUTES) {
+  const out = [];
+  for (const g of windows || []) {
+    if (g.endMin <= nowMin) continue;           // schon vorbei -> keine Lücke
+    if (g.startMin >= nowMin) { out.push(g); continue; }
+    const start = Math.ceil(nowMin / 15) * 15;  // läuft gerade -> ab jetzt
+    const minutes = g.endMin - start;
+    if (minutes < minGap) continue;
+    out.push({ ...g, startMin: start, minutes, label: `${hhmm(start)}–${hhmm(g.endMin)}` });
+  }
+  return out;
+}
+
 /** Vorlaufzeit einer Lücke ab jetzt in Stunden (Berlin). Infinity bei Fehlern. */
 export function gapLeadHours(date, startMin) {
   try {
@@ -908,7 +940,8 @@ function themaLabel(pool, themaKey) {
  * per gap. Returns everything the voice/UI layer needs.
  */
 export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false, calendarId = null, bucketKey = null, bucketExplicit = false, scanOnly = false } = {}) {
-  const startDate = s(date) || todayBerlin();
+  // C5: ohne Datum gilt nach Feierabend der naechste Werktag (23:50-Vorfall).
+  const startDate = s(date) || gapFillDefaultDate();
   const booking = await loadBooking(clientId).catch(() => null);
   if (!booking?.locationId) return { ok: false, reason: "no_booking_config", gaps: [], callLists: [] };
   const locationId = booking.locationId;
@@ -966,7 +999,12 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
         .filter((a) => a.isAbsence || (a.status !== "needsConfirmation" && a.status !== "declined"))
         .map((a) => ({ startMin: berlinMinutesOf(a.startMs), endMin: berlinMinutesOf(a.endMs || a.startMs) }));
 
-      for (const gap of computeGapWindows(wd, busy)) {
+      // C5: HEUTE zaehlen nur Fenster, die noch nicht vorbei sind.
+      let fenster = computeGapWindows(wd, busy);
+      if (day === todayBerlin()) {
+        fenster = kappeVergangenheit(fenster, berlinMinutesOf(Date.now()));
+      }
+      for (const gap of fenster) {
         gueltigeCaseIds.add(gapCaseId(clientId, calendar.id, day, gap.startMin));
         if (scanOnly) {
           gaps.push({ date: day, calendarId: calendar.id, calendarName: s(calendar.name), ...gap, candidateCount: null });
