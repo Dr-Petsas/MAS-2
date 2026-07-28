@@ -1306,6 +1306,10 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
   sind KRITISCH: ein roter Fall macht den Lauf rot (blockierend ab erstem
   gruenen Lauf, Schalter `--register-strict`). Jede neue Chef-Beschwerde wird
   ERST Register-Fall (rot), DANN Fix (gruen).
+  **SCHARF seit 28.07.2026, 02:06:** Register erstmals komplett gruen
+  (31/31) -> `--register-strict` blockiert jetzt auch das VOLL-Gate.
+  Voll-Gate gruen (Quote 91,3 %, Flip-Sperre 0 Rueckschritte), beide Repos
+  getaggt: `stabil-2026-07-28-0206` (MAS + Clara-Voice).
 - **W-STABIL-2 Flip-Sperre:** `compare_runs.py` als Pflichtschritt im Gate —
   jeder frueher gruene Fall, der kippt, wird namentlich gemeldet und macht
   das Gate rot (unabhaengig von der Quote).
