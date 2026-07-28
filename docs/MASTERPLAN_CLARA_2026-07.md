@@ -2009,6 +2009,56 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     Kandidaten) wartet auf Freigabe. MAS-Neustart 21:55, Worker-
     Neustart 21:56 (registriert 21:56:27).
 
+    NACHTRAG 12 (Chef 29.07. ~00:xx; Auswertung der letzten ~10
+    Gespraeche + Lisa-Anrufe, dann "fang an das zu fixen ... du
+    brauchst die ein oder andere cloudfunction fuer dokumente und
+    fuer lisas Mission booking"). KEINE neuen Cloud Functions noetig:
+    Lisas Mission-Buchung ist serverseitige Slot-Filterung, Dokumente
+    liegen bereits in Firestore (pdocuments). Umgesetzt (MAS + Clara):
+    (A1) LISAS MISSION = die KONKRETE LUECKE. bookingContext (gapfill)
+    traegt jetzt gapDate/gapStartMin/gapEndMin; pickSlots kennt ein
+    Fenster-Kriterium und bietet bei fehlendem abweichenden Wunsch
+    NUR Termine INNERHALB der Luecke an ihrem Tag an (sonst normale
+    Auswahl -> nie leere Haende). Ansage-Regel: Lisa schlaegt NIE von
+    sich aus andere Tage vor; erst wenn der Patient DIESEN Termin
+    ablehnt, broacht offer_slots aus (Live 28.07.: Lisa bot 14.08.
+    an, statt die 29.07.-Luecke zu fuellen).
+    (A2) CHEF-VORGABE WOERTLICH. Der Chef-Hinweis-Block sagt die
+    Vorgabe jetzt VOLLSTAENDIG und unveraendert an (Praefix "Lisa soll
+    sagen," wird gestrippt), fordert Wiederholung bei Rueckfragen und
+    hat AUSDRUECKLICH Vorrang vor "keine Preise nennen" — Lisa
+    schwaechte "kostenlose Fuellung, Angebot fuer 3 Monate" ab, weil
+    "kostenlos" wie ein Preis wirkte.
+    (A3) AUFHAENGER FOLGT FACHBEREICH. composeRecallCallInstruction
+    nimmt bucketLabel; ist ein Fachbereich gewaehlt, folgt Anlass +
+    Kontroll-Fokus dem Fachbereich statt der letzten Alt-Leistung
+    (Live: "Kontrolle der Zahnaufhellung faellig" auf Prophylaxe-
+    Liste). Kosmetik-Sicherung: Bleaching/Veneers/Whitening werden NIE
+    als "faellige Kontrolle" gesprochen, sondern als freiwilliges
+    Terminangebot ohne medizinische Notwendigkeit.
+    (A6) Buchungs-Titel = Anlass: VERTAGT — haengt am Plattform-
+    visitMotiveId (kein Freitext-Titel), eigenes Paket.
+    (DOKUMENTE) Neues Tool patient_documents: liest die ECHTEN
+    pdocuments (Name, unterschrieben/offen, Datum, Pflicht,
+    abgelaufen) + Doku-Karte (karteDokumente). Beendet die
+    Halluzination vom 00:00 Uhr (Sablon: erfundene Liste; echt sind
+    5 signierte Dokumente). Prompt-Regel + Tool-Subsetting (patient-
+    Gruppe: dokument/unterlagen/einwilligung/aufklaerung/unterschrieb)
+    + stt_keywords. PDF-INHALT vorlesen bleibt offen (Plattform-
+    pdfService, eigenes Paket).
+    (E1) Jede Karte flippt im Audio-Modus sofort (call.html) — die
+    recall_kandidaten-Badge-Ausnahme vom 28.07. ist auf Chef-Wunsch
+    wieder raus ("grundsaetzlich soll jede Karte sofort von alleine
+    flippen").
+    Beweise: test-lisa-live-booking 54/54 GRUEN (inkl. Fenster-,
+    Chef-Vorgabe-, Fachbereich-/Kosmetik-Checks), test-gap-fill +
+    test_tool_subsetting GRUEN, Gate GRUEN; patient_documents live
+    gegen Sablon geprueft (5 echte Dokumente + Karte). MAS-Neustart
+    00:5x, Worker-Neustart 01:00. OFFEN (naechste Pakete): Lisa-
+    Transkript/Push-Kappung (B), Kontaktkarten-Disambiguierung (C),
+    Anamnese-Karte (E2), Wiederholungen/"bis"-Zeitspanne (D),
+    A6-Buchungstitel.
+
 W-RECALL-FERTIG — Lueckenfueller/Recall von A bis Z abschliessen
 (Chef 28.07. 20:57: "analysiere ein fuer alle male was alles passieren
 muss damit dieser workflow endlich von a bis z richtig sitzt, in allen
