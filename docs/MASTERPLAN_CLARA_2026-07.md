@@ -1882,6 +1882,54 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     MAS-Neustart 19:39 (agent_tools_synced: updated:book_slot),
     Worker-Neustart 19:40 (LLM prewarm OK).
 
+    NACHTRAG 9 (Chef 20:15; Gespraech 20:04-20:15 im Turn-Protokoll
+    ausgewertet — "der recall wird nicht ausgeloest", "muelltonne laedt
+    nicht nach", "was heisst 'das habe ich nicht veranlasst'?"):
+    (1) PHANTOM-STREICHUNGEN 20:12: Nach EINER echten Loeschung (Tool
+    lief: Ioannis Sigianni) bestaetigte das Modell drei weitere
+    Loeschwuensche NUR mit Text ("Marion Jean ist von der Liste
+    gestrichen") — kein Tool, nichts passierte. "gestrichen/entfernt"
+    fehlten in der Partizip-Liste des Wahrheits-Waechters. Fix: eigenes
+    listen-gebundenes Muster _LIST_REMOVE_CLAIM_RE (response_guard),
+    "loesch" als Recall-Keyword (tool_subsetting), Profil-Beschreibung
+    remove_recall_candidate ("bei JEDEM Namen ERNEUT aufrufen").
+    (2) FREIGABE-SACKGASSE 20:13: "Okay, starte den Recall!" traf KEIN
+    Muster (Claras letzte Antwort war eine Streichungs-Bestaetigung,
+    kein Freigabe-Angebot => kontextgebundene Muster aus) und
+    _APPROVE_INTENT_RE kannte keine Start-Befehle -> kein Tool, Modell
+    behauptete Vollzug, Waechter sprach 3x den Fallback. Fix:
+    Start-Befehle kontextFREI in _APPROVE_INTENT_RE (starte den recall
+    / recall starten / starte die anrufe/anrufliste / loese den recall
+    aus). DAZU MAS-seitig: approveAndExecute setzt eine in_progress-
+    Liste mit unkontaktierten Kandidaten bei ausdruecklicher Freigabe
+    FORT (executeCallList idempotent) — die 16:29-Liste hing mit 7
+    Offenen fest und blockierte jede Freigabe; die alte Statusmeldung
+    ("Sage: Recall starten mit Thema") war zirkulaer.
+    (3) WAECHTER-SATZ unverstaendlich ("was ist das????"): "Das habe
+    ich nicht veranlasst und kann es ohne Nachschlagen nicht
+    bestaetigen — soll ich im Vorgang nachsehen?" -> NEU: "Moment —
+    das habe ich noch nicht wirklich ausgefuehrt. Sagen Sie es bitte
+    noch einmal, dann erledige ich es jetzt." (alle 7 Sprachen).
+    (4) TONNE LAEDT NACH: /clara/devices/recall-remove liefert nach
+    der Streichung die FRISCHE Karte (gapCandidateCardData ->
+    karteRecallKandidaten) mit; call.html ersetzt den Deck-Eintrag —
+    der Puffer-Nachruecker erscheint sofort (vorher wurde nur die
+    Zeile ausgeblendet, "wird nicht nachgeladen").
+    (5) "DER SPRINGT IN DEN ...": Jede neue Karte flippte die Telefon-
+    Ansicht automatisch in den Kartenstapel; Recall-Karten kommen aber
+    MITTEN im Gespraech. Auto-Flip nur noch fuer Doku-/Notiz-Karten.
+    STT-BEFUND (nicht gefixt, beobachten): Kurze Antworten wurden als
+    Fremdsprache geraten ("Folks."/"models."/"Holly, bitte" statt
+    Kons/alle; einmal Englisch-, einmal Griechisch-Antwort). Die
+    Fachfrage faengt das mit Wiederholen ab; Modell-Fix waere Parakeet-
+    seitig (nicht heute).
+    Beweise: test_recall_yes_no_guard GRUEN (Phantom-Streichungen,
+    Start-Befehle, Gegenproben), test_tool_subsetting GRUEN,
+    test-listen-pflege gruen, node --check sauber, Gate GRUEN.
+    Live-Probe: Liste gapfill_189ff49e... wartet mit 24 Kandidaten
+    (17 offen) auf Freigabe; Karte liefert alle pids. MAS-Neustart
+    20:27, Worker-Neustart 20:28.
+
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
 
