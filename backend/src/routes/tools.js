@@ -26,7 +26,7 @@ import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEu
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
-import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey, removeCandidateByName, gapFillOverview, spokenGapAnswer, buildSpokenListStatus, spokenAnrede } from "../clara/gapFill.js";
+import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey, removeCandidateByName, spokenGapAnswer, spokenAnrede, discardWaitingLists } from "../clara/gapFill.js";
 import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../clara/gapInvite.js";
 import { outreachForClient, buildAutoInviteMessage } from "../clara/outreachTemplates.js";
 import { recordContact } from "../clara/outreachStats.js";
@@ -2618,39 +2618,20 @@ router.post("/tools/gap-briefing", async (req, res) => {
         bucketKey = resolveBucketKey([], thema);
       }
       if (!alleThemen && !bucketKey) {
-        // ANTWORT ZUERST (Chef 28.07. 20:52: "die frage war habe ich morgen
-        // eine terminlücke und sie bejahte oder verneinte es nicht und wollte
-        // den recall starten"). Reihenfolge jetzt:
-        //  1) Wartet schon eine Liste -> Status + Freigabe-Angebot, KEINE
-        //     Themenfrage (das Thema wurde beim Bau laengst gewaehlt).
-        //  2) Sonst: Luecken-Scan OHNE Listenbau -> erst die Antwort auf die
-        //     Frage ("Ja — morgen ist eine Lücke von ..."), DANN die
-        //     Themenfrage in demselben Satzzug.
-        const ov = await gapFillOverview(clientId).catch(() => ({ pending: [], approved: [] }));
-        const reqDate = String(req.body?.date || "").trim() || null;
-        const wartend = (ov.pending || []).filter((l) => !reqDate || l.date === reqDate);
-        if (!thema && wartend.length) {
-          const op = await getOperator(clientId);
-          let cards = [];
-          try {
-            cards = (await gapCandidateCardData(clientId, { date: reqDate }))
-              .map((d) => karteRecallKandidaten(d));
-          } catch { /* Karte ist Zugabe */ }
-          return res.json({
-            ok: true,
-            message: buildSpokenListStatus(wartend, { operatorName: spokenAnrede(op?.name) }),
-            card: cards[0] || null,
-            cards,
-            gaps: wartend.length,
-            callLists: wartend.length,
-            bucketKey: wartend[0].bucketKey || null,
-            bucketLabel: wartend[0].bucketLabel || null,
-          });
-        }
         const fach = await listRecallFachbereiche(clientId).catch(() => ({ ok: false, kern: [], zusatz: [], buckets: [] }));
         const hatBestand = fach.ok && ((fach.kern?.length || 0) + (fach.zusatz?.length || 0) > 0);
         if (hatBestand) {
           if (!thema) {
+            // NEUSTART-DOKTRIN (Chef 28.07. 21:40: "wurde der workflow nicht
+            // vollstaendig durchgespielt und beendet, soll beim neuen anlauf
+            // nicht die spur aufgenommen werden sondern komplett von vorne
+            // begonnen werden — keine bereits fertige Kons-Liste anbieten,
+            // alles vorherige verworfen"): Wartende, unkontaktierte Listen
+            // werden verworfen — dann ANTWORT ZUERST (Chef 20:52) und die
+            // frische Themenfrage.
+            await discardWaitingLists(clientId, {
+              reason: "neuer Anlauf — der Lücken-Workflow startet von vorne (Chef-Vorgabe 28.07.2026)",
+            }).catch(() => 0);
             const { calendarId: scanCalId } = await resolveDayCalendarScope(clientId, req.body);
             const scan = await runGapFill(clientId, {
               date: req.body?.date,
@@ -2658,7 +2639,7 @@ router.post("/tools/gap-briefing", async (req, res) => {
               calendarId: scanCalId,
               scanOnly: true,
             }).catch(() => null);
-            const antwort = scan ? spokenGapAnswer(scan, { andereWartende: ov.pending || [] }) : "";
+            const antwort = scan ? spokenGapAnswer(scan) : "";
             const hatLuecken = !!scan?.gaps?.length;
             return res.json({
               ok: true,
@@ -2680,6 +2661,15 @@ router.post("/tools/gap-briefing", async (req, res) => {
           }
         }
       }
+    }
+    // Themenwahl (auch "alle"): ebenfalls Neustart — Reste frueherer Anlaeufe
+    // verwerfen; der Scan unten baut die Liste(n) dieses Anlaufs frisch und
+    // upsertCallListCase eroeffnet auf demselben Fall eine neue Runde
+    // (bucketExplicit), entfernte Kandidaten bleiben entfernt.
+    if (!demoOnly && thema) {
+      await discardWaitingLists(clientId, {
+        reason: `neuer Anlauf mit Thema „${thema}" — frühere wartende Listen verworfen`,
+      }).catch(() => 0);
     }
 
     // Wie day-briefing: ohne explizite Behandler-Angabe nur der Kalender des

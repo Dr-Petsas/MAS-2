@@ -1371,13 +1371,10 @@ function tagWort(day) {
  * terminlücke und sie bejahte oder verneinte es nicht"): Die Luecken-Frage
  * wird IMMER zuerst beantwortet; die Themenfrage haengt der Aufrufer an.
  */
-export function spokenGapAnswer(run, { andereWartende = [] } = {}) {
+export function spokenGapAnswer(run) {
   if (!run?.ok) return "Der Lückenfüller ist nicht konfiguriert — es fehlt die Buchungskonfiguration.";
-  const anhang = andereWartende.length
-    ? ` Die Anrufliste für ${tagWort(s(andereWartende[0].date))} ${s(andereWartende[0].slot?.label)} wartet allerdings noch auf Ihre Freigabe.`
-    : "";
   if (!run.gaps.length) {
-    return `Für ${tagWort(s(run.date))} sehe ich keine nennenswerten Lücken — sehr gut.${anhang}`;
+    return `Für ${tagWort(s(run.date))} sehe ich keine nennenswerten Lücken — sehr gut.`;
   }
   if (run.gaps.length === 1) {
     const g = run.gaps[0];
@@ -1388,24 +1385,24 @@ export function spokenGapAnswer(run, { andereWartende = [] } = {}) {
 }
 
 /**
- * Wartet schon eine Liste, ist die Themenfrage FALSCH — der Chef braucht
- * Status + Freigabe-Angebot (Live 20:52: Liste stand laengst bereit, Clara
- * fragte trotzdem wieder nach dem Fachbereich).
+ * Neustart-Doktrin (Chef 28.07. 21:40: "wurde der workflow nicht vollstaendig
+ * durchgespielt, soll beim neuen anlauf NICHT die spur aufgenommen werden,
+ * sondern komplett von vorne begonnen werden — alles vorherige verworfen"):
+ * Jeder neue Gap-Workflow-Einstieg verwirft wartende, noch UNKONTAKTIERTE
+ * Listen (inkl. Chef-Hinweis). Listen, bei denen Lisa schon Patienten
+ * kontaktiert hat, sind ausgefuehrtes Geschaeft und bleiben unangetastet.
  */
-export function buildSpokenListStatus(wartende, { operatorName = "" } = {}) {
-  if (!wartende?.length) return "";
-  const hi = operatorName ? `${operatorName}, ` : "";
-  const l = wartende[0];
-  const offen = aktiveKandidaten(l).filter((k) => !k.contact?.taskId).length;
-  const thema = s(l.bucketLabel);
-  const saetze = [
-    `${hi}ja — ${tagWort(s(l.date))} ist eine Lücke von ${s(l.slot?.label)}. Die Anrufliste${thema ? ` (${thema})` : ""} mit ${offen} offenen Kandidaten wartet schon auf Ihre Freigabe.`,
-  ];
-  if (wartende.length > 1) {
-    saetze.push(wartende.length === 2 ? "Dazu wartet eine weitere Liste." : `Dazu warten ${wartende.length - 1} weitere Listen.`);
+export async function discardWaitingLists(clientId, { reason = "neuer Anlauf — der Lücken-Workflow startet von vorne" } = {}) {
+  const cases = await listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 });
+  let n = 0;
+  for (const c of cases) {
+    if (!c.id.startsWith("gapfill_") || !c.callList) continue;
+    if (c.status !== CASE_STATUS.WAITING_APPROVAL) continue;
+    if (listHasContacts(c)) continue;
+    await closeStaleList(clientId, c, reason).catch(() => {});
+    n += 1;
   }
-  saetze.push(`${lisaAnsageKurz(l.bucketKey)}. Wenn das passt: „Recall freigeben“ — oder sagen Sie mir, was Lisa anders sagen soll.`);
-  return saetze.join(" ");
+  return n;
 }
 
 export function buildSpokenGapBriefing(run, { operatorName, themaLabel, bucketKey = null, kandidatenAngezeigt = false } = {}) {
