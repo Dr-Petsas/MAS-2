@@ -1469,6 +1469,15 @@ das nicht so steif!"** Daraus verbindlich fuer JEDE Umbau-Session:
   mehrere Zuege entwickeln (Merkzettel/dialog_state nutzen); weder
   Router noch Prompt duerfen erzwingen, dass in Zug eins alles
   verstanden UND beantwortet wird.
+- **Kleines Gespraechs-Gedaechtnis fuer relative Bezuege (Chef
+  28.07.2026, O-Ton):** "Wenn man ueber Patient A spricht, muss man auch
+  nach drei Saetzen noch etwas erzielen koennen. Beispiel: '... ok, dann
+  buch ihm einen Termin.' Nicht nach jedem Zug bei null landen."
+  Konkret: Pronomen und Rueckbezuege ("ihm", "sie", "den um vierzehn
+  Uhr") loesen sich gegen den Gespraechs-Merkzettel auf (dialog_state +
+  Namens-Carryover); der Gegenstand bleibt ueber Zuege erhalten, bis ein
+  neues Thema ihn abloest. Jeder Router-Baustein liest deshalb den
+  Verlauf mit (letzte ~3 Nutzer-Zuege), nie nur den Einzelsatz.
 
 Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
 
