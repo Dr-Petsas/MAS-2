@@ -693,16 +693,14 @@
         first.classList.add("is-new");
         els.cardsScroll.scrollTop = 0;
       }
-      // 29.07.2026 (Chef: "grundsaetzlich soll JEDE Karte sofort von alleine
-      // flippen, nicht erst manuelles Flippen abwarten"): Im Audio-Modus fluppt
-      // jede eingehende Karte sofort auf die Karten-Seite — auch Anruflisten.
+      // 29.07.2026 (Chef: "sobald schriftliche Karten verfuegbar sind, EGAL WAS,
+      // die Page automatisch auf die verschriftlichten Inhalte flippen"): JEDE
+      // eingehende Karte flippt sofort auf die Karten-Seite — unabhaengig von
+      // Kartenart UND Modus. Im Chat-Modus ist die Flip-Flaeche zwar
+      // ausgeblendet (die Karten stehen dort ohnehin im Verlauf), das Setzen
+      // schadet aber nicht; im Audio-Modus wird sofort umgeblaettert.
       // (Kehrt die Badge-nur-Sonderregel fuer recall_kandidaten vom 28.07. um.)
-      if (chatUi.getMode() === "audio") {
-        setFlipped(true);
-      } else if (!flipped) {
-        unseenCards += 1;
-        updateBadge();
-      }
+      setFlipped(true);
     }
 
     renderDeck();
