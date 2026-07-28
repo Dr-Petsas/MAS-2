@@ -2925,7 +2925,16 @@ router.post("/tools/comms-digest", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const { day, events } = await dayInboundComms(clientId, { date: req.body?.date });
-    const message = await buildSpokenComms(events, { day });
+    let message = await buildSpokenComms(events, { day });
+    // W-UMBAU-2 Werkzeug 2 (28.07.2026): Kommunikationsbericht lebendig
+    // erzaehlen statt Zeilen-Schema. Fakten-Guard sichert Anzahlen, Namen und
+    // Uhrzeiten (inkl. Handelnden-Wache); bei Zweifel bleibt der
+    // deterministische Text. Die Karte behaelt den woertlichen Inhalt.
+    try {
+      message = (await freiFormulieren(message, {
+        kontext: "Bericht ueber die heutigen Eingaenge (Anrufe, E-Mails, Briefe, Empfang)",
+      })).text;
+    } catch { /* deterministisch weiter */ }
     // W-FLIP-TIEFE (WP8): additive Eingaenge-Karte (Flip + vertiefbares detail).
     let card;
     try { card = cardInboundComms(events, { day }); } catch { /* Karte ist Komfort */ }
