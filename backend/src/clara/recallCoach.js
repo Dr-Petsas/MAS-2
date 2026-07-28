@@ -166,7 +166,7 @@ async function bookingMitIdentitaet(clientId) {
   };
 }
 
-function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey, liveBooking, chefHinweis }) {
+function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey, liveBooking, chefHinweis, bucketLabel }) {
   return composeRecallCallInstruction({
     practiceName: booking?.practiceName,
     practicePhone: booking?.practicePhone,
@@ -176,6 +176,10 @@ function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, sp
     timeLabel,
     calendarName,
     visitMotiveName: cand?.visitMotiveName,
+    // Aufhaenger folgt dem gewaehlten Fachbereich (Chef 29.07.2026), nicht der
+    // letzten Alt-Leistung des Patienten (sonst lud Lisa zur "Kontrolle der
+    // Zahnaufhellung" auf einer Prophylaxe-Liste ein).
+    bucketLabel: bucketLabel || "",
     overdueDays: cand?.overdueDays,
     source: cand?.source || (cand?.campaignId ? "campaign" : "recall"),
     outreach: resolveCandidateOutreach(cand || {}, specialtyKey),
@@ -265,7 +269,7 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
         instruction: buildCallInstruction({
           cand, booking, date: list.date, timeLabel,
           calendarName: list.calendarName, specialtyKey, liveBooking,
-          chefHinweis: list.chefHinweis,
+          chefHinweis: list.chefHinweis, bucketLabel: list.bucketLabel,
         }),
         contactName: cand.name,
         by: by || "Recall-Coach",
@@ -283,6 +287,11 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
           calendarId: list.calendarId,
           calendarName: list.calendarName || null,
           slotIso,
+          // Lueckenfueller-Mission: exakte Luecke, damit Lisa Alternativen
+          // zuerst INNERHALB dieses Fensters an diesem Tag anbietet.
+          gapDate: list.date,
+          gapStartMin: list.slot?.startMin ?? null,
+          gapEndMin: list.slot?.endMin ?? null,
           source: cand.source || null,
           campaignId: cand.campaignId || null,
           locationId: booking?.locationId || null,

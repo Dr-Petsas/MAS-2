@@ -305,6 +305,15 @@ function spanDativ(overdueDays) {
 // Zahnfleisch-Fokus bekommen, nicht den generischen Katalogtext.
 const KONTROLL_SCHON_RE = /(kontroll|check|untersuchung|prophylaxe|\bpzr\b|zahnreinigung|beratung|besprechung|aufklaerung|erstgespraech|vorsorge|recall)/;
 
+// Elektive Wunsch-/Kosmetikleistungen: NIE als "faellige Kontrolle" framen
+// (Chef 29.07.2026). Bleaching & Co. haben kein medizinisches Kontrollintervall.
+const KOSMETIK_RE = /(aufhellung|bleaching|bleach|whitening|veneer|smile|zahnschmuck|dental\s?cosmetic)/;
+
+/** True, wenn das Motiv eine elektive Kosmetikleistung ist. */
+export function istKosmetik(motiv) {
+  return KOSMETIK_RE.test(foldGerman(motiv));
+}
+
 const KONTROLL_FAELLE = [
   {
     id: "implantat",
@@ -395,6 +404,18 @@ export function recallKontrollFokus({ visitMotiveName, overdueDays = 0, source =
   };
 }
 
+// Chef-Vorgabe fuer die woertliche Wiedergabe aufbereiten: Meta-Praefixe wie
+// "Lisa soll sagen," / "sag Lisa," / "du sollst sagen," entfernen, damit das
+// Zitat als direkte Ansage an den Patienten klingt (nicht als Anweisung an
+// Lisa). Der Kern-Inhalt (kostenlos, Zeitraum, ...) bleibt unveraendert.
+export function chefHinweisSprich(hinweis) {
+  let t = s(hinweis);
+  t = t.replace(/^\s*(?:und\s+)?(?:sag(?:e|st)?|teil(?:e)?\s+mit|richte\s+aus)\s+(?:der\s+)?lisa\s*,?\s*/i, "");
+  t = t.replace(/^\s*lisa\s+soll(?:te)?\s+(?:bitte\s+)?(?:auch\s+|zus(?:ä|ae)tzlich\s+|unbedingt\s+)?(?:sagen|betonen|erw(?:ä|ae)hnen|ank(?:ü|ue)ndigen|mitteilen|anbieten)\s*,?\s*(?:dass\s+)?/i, "");
+  t = t.replace(/^\s*(?:du\s+)?soll(?:st)?\s+(?:bitte\s+)?sagen\s*,?\s*(?:dass\s+)?/i, "");
+  return s(t) || s(hinweis);
+}
+
 // Die Regeln sind der nicht verhandelbare Kern jeder Instruktion.
 const CALL_RULES =
   "Regeln: Stelle keine Diagnosen, nenne keine Preise und gib keine Heilversprechen. " +
@@ -407,11 +428,17 @@ const CALL_RULES =
 // Gespräch. Kein "die Praxis meldet sich", solange die Werkzeuge funktionieren.
 const LIVE_BOOKING_RULES =
   "Terminbuchung: Du hast Kalender-Werkzeuge. " +
+  // 29.07.2026 (Chef): Die Mission ist, GENAU diese eine Terminluecke zu
+  // schliessen. Der oben genannte Termin wird ZUERST angeboten. Lisa schlaegt
+  // NIE von sich aus andere Tage vor — erst wenn der Patient an diesem Termin
+  // nicht kann, ruft sie offer_slots (der Server bietet dann zunaechst weitere
+  // Zeiten INNERHALB derselben Luecke an, danach andere Tage).
+  "Biete von Dir aus AUSSCHLIESSLICH den oben genannten Termin an — schlage keine anderen Tage oder Zeiten vor. " +
   // 28.07.2026: slot_iso beim Auftrags-Termin WEGLASSEN — das LLM schrieb den
   // Zeitstempel ab und vertippte sich live im Jahr (2023 statt 2026), die
   // Buchung des voellig freien Slots platzte ("nicht mehr verfuegbar").
   "Sagt der Patient zu, rufe SOFORT book_slot auf — OHNE slot_iso, der angebotene Termin ist serverseitig hinterlegt. Bestätige den Termin ERST NACH der Werkzeug-Bestätigung verbindlich. " +
-  "Passt der Termin nicht oder wünscht der Patient einen anderen Zeitpunkt, rufe offer_slots auf (den Wunsch, z. B. 'Donnerstag nachmittags', als wish übergeben) und biete die freien Termine an — jeder Terminwunsch bekommt ein konkretes Angebot, du lehnst NIE ab. " +
+  "Erst wenn der Patient DIESEN Termin ablehnt oder einen anderen Zeitpunkt wünscht, rufe offer_slots auf (einen konkreten Wunsch wie 'Donnerstag nachmittags' als wish übergeben, sonst ohne wish) und biete die zurückgegebenen Termine an — jeder Terminwunsch bekommt ein konkretes Angebot, du lehnst NIE ab. " +
   "Wählt der Patient einen dieser Termine, übergib dessen iso-Wert UNVERÄNDERT als slot_iso an book_slot (nie selbst tippen). " +
   "Meldet book_slot, dass der Termin inzwischen vergeben ist, entschuldige dich kurz und biete die zurückgemeldeten Alternativen direkt an. " +
   "Funktionieren die Werkzeuge nicht, versprich nichts Festes, sondern kündige an, dass die Praxis kurzfristig mit Terminvorschlägen zurückruft.";
@@ -425,7 +452,7 @@ function einwandBlock({ praxis, practicePhone, practiceAddress }) {
     "Der Patient erwartet diesen Anruf nicht — beantworte Rückfragen ruhig und transparent, ohne auszuweichen:",
     `„Wer sind Sie?“ — Du bist Lisa, die Terminassistentin von ${praxis}.`,
     "„Woher haben Sie meine Nummer?“ — Aus der Patientenkartei: Der Patient ist bei uns in Behandlung gewesen, die Nummer ist dort hinterlegt und wird nur für Terminanliegen genutzt.",
-    "„Was wollen Sie verkaufen?“ — Nichts: Es geht ausschließlich um einen fälligen Kontrolltermin, ein Nein genügt.",
+    "„Was wollen Sie verkaufen?“ — Nichts: Es geht ausschließlich um ein Terminanliegen, ein Nein genügt.",
   ];
   if (s(practiceAddress)) {
     saetze.push(`„Wo ist die Praxis / wo muss ich hin?“ — ${praxis}, ${s(practiceAddress)}.`);
@@ -444,13 +471,18 @@ function einwandBlock({ praxis, practicePhone, practiceAddress }) {
 export function composeRecallCallInstruction({
   practiceName, practicePhone = "", practiceAddress = "",
   patientName, date, timeLabel, calendarName,
-  visitMotiveName, overdueDays = 0, source = "campaign",
+  visitMotiveName, bucketLabel = "", overdueDays = 0, source = "campaign",
   outreach = null, campaignPrompt = "", liveBooking = false,
   chefHinweis = "",
 } = {}) {
   const praxis = s(practiceName) || "der Praxis";
-  const o = outreach || resolveOutreach({ visitMotiveName });
-  const topic = o.topicLabel || s(visitMotiveName) || "ein fälliger Termin";
+  // Aufhaenger folgt dem gewaehlten Fachbereich (Chef 29.07.2026), wenn einer
+  // gesetzt ist ("Prophylaxe"/"Kons"/"ZE"/...): So laedt Lisa nie zur
+  // "Kontrolle der Zahnaufhellung" ein, nur weil das die letzte Alt-Leistung
+  // des Patienten war. Ohne Fachbereich ("alle Themen") gilt weiter das Motiv.
+  const anlassMotiv = s(bucketLabel) || s(visitMotiveName);
+  const o = s(bucketLabel) ? resolveOutreach({ visitMotiveName: bucketLabel }) : (outreach || resolveOutreach({ visitMotiveName }));
+  const topic = o.topicLabel || anlassMotiv || "ein fälliger Termin";
 
   const head = `Du rufst freundlich im Auftrag von ${praxis} an. Gesprächspartner: ${s(patientName) || "der Patient"}.`;
 
@@ -480,12 +512,21 @@ export function composeRecallCallInstruction({
     motiveBlocks = [
       `Vorgaben der Praxis für dieses Gespräch (halte dich genau an Inhalt und Reihenfolge, erfinde keine Behandlung dazu): ${s(campaignPrompt)}`,
     ];
+  } else if (istKosmetik(anlassMotiv)) {
+    // Kosmetik-Sicherung (Chef 29.07.2026): Zahnaufhellung/Bleaching/Veneers
+    // sind elektive Wunschleistungen — sie werden NIE als "faellige Kontrolle
+    // alle 6 Monate" behauptet (Live: "Kontrolltermin zur Zahnaufhellung
+    // faellig" war peinlicher Unsinn). Ehrliche, druckfreie Einladung ohne
+    // medizinische Notwendigkeit.
+    motiveBlocks = [
+      `Anlass: Es ist kurzfristig ein Termin frei geworden, den wir gern anbieten möchten. Behaupte KEINE medizinische Notwendigkeit und sage NICHT, dass etwas „fällig“ sei — es geht um ein freiwilliges Terminangebot.`,
+    ];
   } else {
     // Kontroll-Fokus (Chef 28.07.2026): Recall zu einer zurueckliegenden
     // Behandlung wird IMMER als Kontroll-Einladung gesprochen — nie als
     // Angebot, die Behandlung (erneut) durchzufuehren ("Zahnersatz
     // eingliedern lassen" war der Live-Fehlgriff).
-    fokus = recallKontrollFokus({ visitMotiveName, overdueDays, source });
+    fokus = recallKontrollFokus({ visitMotiveName: anlassMotiv, overdueDays, source });
     if (fokus) {
       motiveBlocks = [
         `Anlass: ${fokus.anlass}`,
@@ -509,8 +550,15 @@ export function composeRecallCallInstruction({
   // Chef-Vorgabe (28.07.2026: "clara bespricht den prompt mit mir und nimmt
   // korrekturen auf"): Diktierte Anpassungen des Praxisinhabers stehen als
   // eigener Block MIT VORRANG in der Instruktion und werden NIE weggekuerzt.
+  // 29.07.2026 (Chef): Lisa schwaechte "kostenlose Fuellung, Angebot fuer die
+  // naechsten 3 Monate" ab zu "wir haben ein Angebot fuer eine Fuellung" —
+  // vermutlich, weil die feste Regel "nenne keine Preise" mit "kostenlos"
+  // kollidierte. Deshalb: Vorgabe WOERTLICH und VOLLSTAENDIG aussprechen, bei
+  // Rueckfragen komplett wiederholen, NICHT abschwaechen — und diese Vorgabe
+  // hat ausdruecklich Vorrang vor der Preis-Zurueckhaltung (ein vom Chef
+  // angesagtes kostenloses Angebot DARF und MUSS genannt werden).
   const chefBlock = s(chefHinweis)
-    ? `Ausdrückliche Vorgabe des Praxisinhabers für dieses Gespräch (hat bei Widersprüchen Vorrang): ${s(chefHinweis)}`
+    ? `Ausdrückliche Vorgabe des Praxisinhabers für dieses Gespräch (hat Vorrang vor allen anderen Regeln, auch vor „keine Preise nennen“): Sage dem Patienten VOLLSTÄNDIG und unverändert Folgendes, ohne es abzuschwächen oder etwas wegzulassen — „${chefHinweisSprich(chefHinweis)}“. Fragt der Patient nach dem Angebot, wiederhole es vollständig und konkret.`
     : "";
   const rules = liveBooking ? [CALL_RULES, LIVE_BOOKING_RULES] : [CALL_RULES];
   // Einwand-Sicherheit gehoert zu den festen Bloecken (nie kuerzen): der

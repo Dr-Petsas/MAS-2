@@ -463,6 +463,44 @@ export function karteDoku({
   };
 }
 
+/**
+ * Patienten-Dokumente-Karte (Chef 29.07.2026): welche Dokumente liegen vor,
+ * unterschrieben/offen, Pflicht, abgelaufen. Ehrliche Sichtform der echten
+ * pdocuments — Gegengift zur Dokument-Halluzination.
+ */
+export function karteDokumente({ who = "", docs = [] } = {}) {
+  const liste = Array.isArray(docs) ? docs : [];
+  const signierte = liste.filter((d) => d.signed);
+  const offene = liste.filter((d) => !d.signed);
+  const items = [];
+  for (const d of signierte.slice(0, 6)) {
+    const wann = d.ms ? ` (${datumKurz(d.ms)})` : "";
+    items.push(item(d.expired ? "warn" : "ok", d.expired ? "clock" : "check", `${d.name}${wann}${d.expired ? " — abgelaufen" : ""}`));
+  }
+  for (const d of offene.slice(0, 4)) {
+    items.push(item(d.mandatory ? "alert" : "warn", "pen", `Offen: ${d.name}${d.mandatory ? " (Pflicht)" : ""}`));
+  }
+  if (!items.length) items.push(item("info", "doc", "Keine Dokumente hinterlegt"));
+
+  const dLines = [`Dokumente${who ? ` von ${who}` : ""}:`];
+  for (const d of liste) {
+    const wann = d.ms ? ` ${datumKurz(d.ms)}` : "";
+    const st = d.signed ? "unterschrieben" : (d.mandatory ? "offen (Pflicht)" : "offen");
+    dLines.push(`• ${d.name} — ${st}${wann}${d.expired ? ", abgelaufen" : ""}`);
+  }
+
+  return {
+    kind: "dokumente",
+    tag: "Dokumente",
+    title: clip(who, 40) || "Patient",
+    subtitle: liste.length ? `${signierte.length} von ${liste.length} unterschrieben` : "",
+    heading: "Dokumente",
+    items: items.slice(0, 10),
+    detail: detailText(dLines),
+    footer: offene.length ? `${offene.length} offen` : (liste.length ? "alle unterschrieben" : ""),
+  };
+}
+
 /** Praxisweite Doku-Lücken ("Welche Dokus fehlen noch?"). */
 export function karteLuecken(luecken = []) {
   const items = (luecken || []).slice(0, 7).map((l) => item(

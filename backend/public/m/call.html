@@ -693,12 +693,11 @@
         first.classList.add("is-new");
         els.cardsScroll.scrollTop = 0;
       }
-      // 28.07.2026 20:15 (Chef: "der springt in den ..."): Recall-Karten kommen
-      // MITTEN im Gespraech (jeder Luecken-Scan pusht) — das Auto-Umblaettern
-      // riss die Sprech-Ansicht weg. Nur Doku-/Notiz-Karten (Diktat-Wunsch
-      // 04.07.) fluppen weiterhin von selbst; Anruflisten zaehlen das Badge
-      // hoch, Clara sagt ohnehin an, dass die Liste im Stapel liegt.
-      if (chatUi.getMode() === "audio" && card.kind !== "recall_kandidaten") {
+      // 29.07.2026 (Chef: "grundsaetzlich soll JEDE Karte sofort von alleine
+      // flippen, nicht erst manuelles Flippen abwarten"): Im Audio-Modus fluppt
+      // jede eingehende Karte sofort auf die Karten-Seite — auch Anruflisten.
+      // (Kehrt die Badge-nur-Sonderregel fuer recall_kandidaten vom 28.07. um.)
+      if (chatUi.getMode() === "audio") {
         setFlipped(true);
       } else if (!flipped) {
         unseenCards += 1;

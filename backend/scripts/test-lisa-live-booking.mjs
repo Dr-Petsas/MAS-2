@@ -5,7 +5,7 @@
 // ============================================================================
 
 import { parseSlotWish, pickSlots, spokenSlot, spokenSlotOffer } from "../src/lisa/callBooking.js";
-import { composeRecallCallInstruction, CALL_INSTRUCTION_LIMIT } from "../src/clara/outreachTemplates.js";
+import { composeRecallCallInstruction, CALL_INSTRUCTION_LIMIT, chefHinweisSprich, istKosmetik } from "../src/clara/outreachTemplates.js";
 import { composeInviteInstruction, inviteReadback } from "../src/clara/gapInvite.js";
 
 let failed = 0;
@@ -73,6 +73,20 @@ check("Auswahl: zu kurzfristig (unter 60 min) fällt raus", p5.slots.length === 
 
 const p6 = pickSlots(SLOTS, { wish: parseSlotWish("nächste Woche vormittags"), nowMs: NOW });
 check("Auswahl: nächste Woche vormittags", p6.slots[0]?.iso.includes("2026-07-16T11:00"), p6.slots[0]?.iso || "leer");
+
+// Lueckenfueller-Mission (Chef 29.07.2026): exakt das Luecken-Fenster zuerst
+const gapWin = { date: "2026-07-07", startMin: 10 * 60, endMin: 16 * 60 };
+const pg1 = pickSlots(SLOTS, { nowMs: NOW, window: gapWin });
+check("Lücke: nur Slots im Fenster am Lücken-Tag", pg1.slots.length === 2 && pg1.slots.every((x) => x.iso.includes("2026-07-07")) && pg1.inWindow === true, JSON.stringify(pg1.slots.map((x) => x.iso)));
+
+const pg2 = pickSlots(SLOTS, { nowMs: NOW, window: { date: "2026-07-06", startMin: 9 * 60, endMin: 9 * 60 + 30 }, excludeIso: "2026-07-06T09:00:00+02:00" });
+check("Lücke: leeres Fenster -> normale Auswahl (nie leere Hände)", !pg2.inWindow && pg2.slots.length === 3);
+
+const pg3 = pickSlots(SLOTS, { nowMs: NOW, window: gapWin, wish: parseSlotWish("nächste Woche vormittags") });
+check("Lücke: expliziter Wunsch bricht aus dem Fenster aus", pg3.slots[0]?.iso.includes("2026-07-16"), pg3.slots[0]?.iso || "leer");
+
+const offerWin = spokenSlotOffer(pg1.slots, { inWindow: true });
+check("Angebots-Ansage: Fenster-Angebot benennt die Lücke", offerWin.includes("in genau dieser Lücke".slice(0, 6)) || offerWin.includes("dieser Lücke"));
 
 // ---------------------------------------------------------------------------
 // 3) Sprech-Formate
@@ -145,6 +159,44 @@ const rbLive = inviteReadback({ ...inviteArgs, liveBooking: true });
 check("Readback live: sagt 'bucht direkt fest'", rbLive.includes("bucht Lisa den Termin direkt fest"));
 const rbOld = inviteReadback({ ...inviteArgs, liveBooking: false });
 check("Readback Fallback: sagt 'bucht nichts fest'", rbOld.includes("bucht nichts fest"));
+
+// ---------------------------------------------------------------------------
+// 6) Chef-Vorgabe woertlich + konkret (A2, Chef 29.07.2026)
+// ---------------------------------------------------------------------------
+
+const chefArgs = {
+  ...baseArgs,
+  liveBooking: true,
+  chefHinweis: "Lisa soll sagen, wir bieten eine kostenlose Füllung an, das Angebot gilt für die nächsten drei Monate.",
+};
+const chefText = composeRecallCallInstruction(chefArgs);
+check("Chef-Vorgabe: kostenlos bleibt drin", chefText.includes("kostenlose Füllung"));
+check("Chef-Vorgabe: Zeitraum bleibt drin", chefText.includes("nächsten drei Monate"));
+check("Chef-Vorgabe: Vorrang vor Preis-Regel benannt", chefText.includes("keine Preise"));
+check("Chef-Vorgabe: 'Lisa soll sagen'-Präfix entfernt im Zitat", chefHinweisSprich(chefArgs.chefHinweis).startsWith("wir bieten"), chefHinweisSprich(chefArgs.chefHinweis));
+check("Chef-Vorgabe: vollständig/wörtlich verlangt", chefText.includes("VOLLSTÄNDIG") && chefText.includes("wiederhole es vollständig"));
+
+// ---------------------------------------------------------------------------
+// 7) Aufhänger folgt Fachbereich + Kosmetik-Sicherung (A3)
+// ---------------------------------------------------------------------------
+
+check("Kosmetik erkannt: Zahnaufhellung", istKosmetik("Zahnaufhellung (Bleaching)"));
+check("Kosmetik erkannt: Veneers", istKosmetik("Veneers Beratung"));
+check("Kosmetik: PZR ist keine Kosmetik", !istKosmetik("Professionelle Zahnreinigung"));
+
+// Prophylaxe-Bucket, aber Patienten-Motiv ist kosmetisch -> Aufhänger folgt dem Fachbereich
+const bucketPro = composeRecallCallInstruction({
+  ...baseArgs, liveBooking: true, visitMotiveName: "Zahnaufhellung (Bleaching)", bucketLabel: "Prophylaxe",
+});
+check("Fachbereich-Aufhänger: keine 'Zahnaufhellung' als Kontrolle", !bucketPro.toLowerCase().includes("zahnaufhellung"));
+check("Fachbereich-Aufhänger: Zahnreinigung/Kontrolle statt Kosmetik", /zahnreinigung|kontrolle|prophylaxe/i.test(bucketPro));
+
+// "alle Themen" (kein Bucket) + kosmetisches Motiv -> neutrale Einladung, kein "fällig"
+const kosmNoBucket = composeRecallCallInstruction({
+  ...baseArgs, liveBooking: true, visitMotiveName: "Zahnaufhellung (Bleaching)", bucketLabel: "",
+});
+check("Kosmetik neutral: kein 'wieder fällig' im Anlass", !/wieder fällig|empfohlen wird der Termin/i.test(kosmNoBucket));
+check("Kosmetik neutral: keine medizinische Notwendigkeit behauptet", kosmNoBucket.includes("KEINE medizinische Notwendigkeit"));
 
 // ---------------------------------------------------------------------------
 

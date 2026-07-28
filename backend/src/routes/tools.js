@@ -9,6 +9,7 @@ import { findDirectoryContact, hasColleagueTitle, spokenDirectoryEntry } from ".
 import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, relativeDayLabel, spokenOwnAbsence, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory, findSameTimeCompanions, buildSpokenCompanionQuestion, dayOfMs } from "../clara/daySchedule.js";
 import { searchContacts } from "../brain/entityProfile.js";
 import { getPatientAnamnese, buildSpokenAnamnese } from "../clara/anamnese.js";
+import { getPatientDocuments, buildSpokenDocuments } from "../clara/patientDocuments.js";
 import { polishForChannel } from "../clara/dictation.js";
 import { buildSpokenDayOverview } from "../clara/dayOverview.js";
 import { resolveDateRange } from "../clara/dateRange.js";
@@ -21,7 +22,7 @@ import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechn
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken } from "../clara/dokuWaechter.js";
 import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
 import { freiFormulieren } from "../clara/freiSprech.js";
-import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteWiedervorlage, karteRecallKandidaten } from "../clara/karten.js";
+import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteWiedervorlage, karteRecallKandidaten, karteDokumente } from "../clara/karten.js";
 import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEuro, ABHAK_ANLEITUNG } from "../brain/wiedervorlage.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
@@ -1720,6 +1721,35 @@ router.post("/tools/anamnesis-flags", async (req, res) => {
     const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
     const result = await getPatientAnamnese(clientId, { patientId: sel.id });
     return res.json({ ok: true, message: buildSpokenAnamnese(result, { who }) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// 1e2) PATIENTEN-DOKUMENTE (Chef 29.07.2026): "Welche Dokumente hat Frau X
+// unterschrieben?" -> ECHTE pdocuments lesen (Name, Status, Datum, Pflicht,
+// abgelaufen) statt zu erfinden (Live-Halluzination 00:00 Uhr). Read-only,
+// mit Karte aufs Handy/Monitor. Der PDF-INHALT wird hier NICHT gerendert
+// (haengt am Plattform-pdfService) — es geht um die ehrliche Auflistung.
+router.post("/tools/patient-documents", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const r = await resolveSpokenPatientForRead(clientId, {
+      rawName: String(req.body?.name || "").trim(),
+      hint: String(req.body?.hint || "").trim(),
+      askWho: "Zu welchem Patienten soll ich die Dokumente prüfen? Bitte den Namen nennen.",
+    });
+    if (r.done) return res.json(r.payload);
+    const sel = r.sel;
+    const who = `${sel.firstName || ""} ${sel.lastName || ""}`.trim() || "der Patient";
+    const result = await getPatientDocuments(clientId, { patientId: sel.id });
+    const message = buildSpokenDocuments(result, { who });
+    const card = result.ok ? karteDokumente({ who, docs: result.docs }) : null;
+    return res.json({ ok: true, message, card });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

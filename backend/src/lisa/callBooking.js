@@ -110,15 +110,33 @@ function weekdayOfIso(dateStr) {
  *
  * @returns {{slots:{iso:string,date:string,time:string}[], wishMatched:boolean}}
  */
-export function pickSlots(isoSlots, { wish = null, nowMs = Date.now(), excludeIso = "", max = 3 } = {}) {
+export function pickSlots(isoSlots, { wish = null, nowMs = Date.now(), excludeIso = "", max = 3, window = null } = {}) {
   const parsed = (Array.isArray(isoSlots) ? isoSlots : [])
     .map((iso) => {
       const m = String(iso).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
-      return m ? { iso: String(iso), date: m[1], time: `${m[2]}:${m[3]}`, hour: Number(m[2]), ms: new Date(iso).getTime() } : null;
+      return m ? { iso: String(iso), date: m[1], time: `${m[2]}:${m[3]}`, hour: Number(m[2]), min: Number(m[2]) * 60 + Number(m[3]), ms: new Date(iso).getTime() } : null;
     })
     .filter((p) => p && Number.isFinite(p.ms) && p.ms >= nowMs + 60 * 60000)
     .filter((p) => !excludeIso || p.iso !== excludeIso);
   parsed.sort((a, b) => a.ms - b.ms);
+
+  // Lueckenfueller-Mission (Chef 29.07.2026: "die Aufgabe ist, die KONKRETE
+  // Luecke zu schliessen. Sie muss EXAKT dieses Zeitfenster anbieten und erst
+  // wenn das abgelehnt wird, Alternativen"): Ist ein Fenster gesetzt und der
+  // Patient hat KEINEN abweichenden Tag/Zeit-Wunsch geaeussert, werden NUR
+  // Termine innerhalb der Luecke an ihrem Tag angeboten. Greift nichts im
+  // Fenster (z. B. nur der schon angebotene Slot war frei), faellt es unten
+  // auf die normale Auswahl zurueck (nie mit leeren Haenden dastehen).
+  if (window && window.date && !wish) {
+    const inWindow = parsed.filter((p) =>
+      p.date === window.date
+      && (window.startMin == null || p.min >= window.startMin)
+      && (window.endMin == null || p.min < window.endMin));
+    if (inWindow.length) {
+      const slots = inWindow.slice(0, max).map(({ iso, date, time }) => ({ iso, date, time }));
+      return { slots, wishMatched: true, inWindow: true };
+    }
+  }
 
   const applyWish = (pool) => {
     if (!wish) return pool;
@@ -153,14 +171,16 @@ export function pickSlots(isoSlots, { wish = null, nowMs = Date.now(), excludeIs
 }
 
 /** Sprechfertige Angebots-Ansage für Lisa. Pure. */
-export function spokenSlotOffer(slots, { wishMatched = true } = {}) {
+export function spokenSlotOffer(slots, { wishMatched = true, inWindow = false } = {}) {
   if (!slots.length) {
     return "Im Kalender ist aktuell leider kein freier Termin eingetragen. Sage dem Patienten, dass sich die Praxis kurzfristig mit einem Termin meldet, und bedanke dich.";
   }
   const list = slots.map((x) => spokenSlot(x.iso)).join("; oder ");
-  const prefix = wishMatched
-    ? "Frei ist:"
-    : "Zum genauen Wunsch ist nichts frei — die nächsten freien Termine sind:";
+  const prefix = inWindow
+    ? "In genau dieser Lücke ist außerdem frei:"
+    : wishMatched
+      ? "Frei ist:"
+      : "Zum genauen Wunsch ist nichts frei — die nächsten freien Termine sind:";
   return `${prefix} ${list}. Frage, welcher Termin passt, und buche ihn dann SOFORT mit book_slot (Feld slot_iso).`;
 }
 
@@ -245,7 +265,14 @@ export async function offerSlotsForTask(clientId, taskId, { wishText = "", exclu
     };
   }
 
-  const picked = pickSlots(found.slots, { wish, excludeIso });
+  // Lueckenfueller-Fenster: ist dieser Anruf einer konkreten Terminluecke
+  // zugeordnet und der Patient hat keinen abweichenden Tag/Zeit-Wunsch, bleiben
+  // die Alternativen INNERHALB der Luecke an ihrem Tag (die Mission ist, GENAU
+  // diese Luecke zu schliessen).
+  const window = ctx.kind === "gapfill" && ctx.gapDate
+    ? { date: ctx.gapDate, startMin: ctx.gapStartMin, endMin: ctx.gapEndMin }
+    : null;
+  const picked = pickSlots(found.slots, { wish, excludeIso, window });
   const slots = picked.slots.map((x) => ({ iso: x.iso, spoken: spokenSlot(x.iso) }));
 
   // Audit-Spur am Vorgang (best-effort): Wunsch + Angebot nachvollziehbar.
@@ -253,11 +280,11 @@ export async function offerSlotsForTask(clientId, taskId, { wishText = "", exclu
     addUpdate(clientId, ctx.caseId, {
       by: "Lisa",
       kind: "note",
-      text: `Im Gespräch mit ${ctx.patientName || "dem Patienten"}: Alternativtermine angefragt${s(wishText) ? ` (Wunsch: „${s(wishText)}“)` : ""} — angeboten: ${slots.map((x) => x.spoken).join("; ") || "keine (Kalender leer)"}.`,
+      text: `Im Gespräch mit ${ctx.patientName || "dem Patienten"}: Alternativtermine angefragt${s(wishText) ? ` (Wunsch: „${s(wishText)}“)` : ""} — angeboten: ${slots.map((x) => x.spoken).join("; ") || "keine (Kalender leer)"}${picked.inWindow ? " (innerhalb der Lücke)" : ""}.`,
     }).catch(() => {});
   }
 
-  return { ok: true, spoken: spokenSlotOffer(picked.slots, { wishMatched: picked.wishMatched }), slots };
+  return { ok: true, spoken: spokenSlotOffer(picked.slots, { wishMatched: picked.wishMatched, inWindow: picked.inWindow }), slots };
 }
 
 // ---------------------------------------------------------------------------
