@@ -1500,6 +1500,32 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     outcome=declined am Fall) UND ueber den oeffentlichen Tunnel
     (404-Seite "Link ungueltig" fuer fremde Tokens). Livetest-Anleitung
     komplett neu: `docs/LIVETEST_LUECKENFUELLER.md`.
+  * **Nachschlag Listen-Pflege + Monitor-Puffer (Chef 28.07. frueh:
+    "27.7. ist in der Vergangenheit, 8-15 ist unmoeglich, da steht eine
+    Abwesenheit; Kontaktzahlen sichtbar, nach links wischen zum
+    Entfernen, deutlich mehr Patienten im Puffer"):** (1) Verfall —
+    `gapFillOverview` schliesst Listen mit verstrichenem Slot-Ende
+    automatisch (Audit-Notiz) und zeigt sie nicht mehr; (2) Abgleich —
+    `runGapFill` schliesst aktive Listen des gescannten Tages, deren
+    Luecke es nicht mehr gibt (belegt/Abwesenheit nachtraeglich),
+    solange noch niemand kontaktiert wurde; (3) Puffer — Listen
+    speichern bis 24 Kandidaten (`MAS_GAP_MAX_STORED`), Lisa
+    kontaktiert nur die obersten 8 aktiven (Deckel in
+    `executeCallList`), Ansage/Karten zeigen nur Aktive; (4) Wischen —
+    `POST /brain/gap-fill/:caseId/remove-candidate` setzt removed=true
+    (Audit, Scan-Refresh uebernimmt die Markierung, Kontaktierte
+    geschuetzt), Monitor-`GapFillView` mit iOS-Wisch (Schwelle 72 px,
+    Desktop-X), hochgestellten Zaehlern am Namen (grau gesamt, gruen
+    Erfolge) und aufklappbarem Puffer; Cockpit-Freigaben zaehlen nur
+    Aktive ("+N Puffer"). (5) Kern-Bugfix `caseStore.createCase`:
+    updatedAt jetzt serverTimestamp statt Zahl — Firestore sortierte
+    Zahlen HINTER alle Timestamps, frisch angelegte Faelle (auch neue
+    Anruflisten) fielen bis zur ersten Beruehrung aus dem
+    listCases-Fenster. Beweis: `scripts/test-listen-pflege.mjs`
+    (11 Pins, raeumt auf); Live gegenprobiert: Verfall schloss 12
+    Alt-Listen (20.-27.07.), Abgleich schloss die 9-15-Liste nach
+    eingetragener Abwesenheit, uebrig genau 13-15 Uhr. Frontend
+    committet + regelkonform deployt (Stash-Ablauf).
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
