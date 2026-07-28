@@ -140,6 +140,19 @@ check("Abwesenheits-Stand: alle Pflichtwoerter im Ergebnis (umformuliert ODER Fa
   abwPflicht.every((w) => abw.text.toLowerCase().includes(w.toLowerCase())));
 check("Abwesenheits-Stand: Fakten-Guard haelt", guardOk(quelleAbw, abw.text).ok || !abw.ok);
 
+// W-UMBAU-2 Werkzeug 5 (28.07.2026): Recall-Stand — die Beschwerde-Warnung
+// samt Monitor-Verweis ist die Handlungsaufforderung an den Chef und MUSS
+// ueberleben, egal wie frei der Rest erzaehlt wird.
+const quelleRecall = "Recall-Stand für 2 Listen: WICHTIG: 1 Beschwerde beziehungsweise Opt-out — bitte sofort im Monitor prüfen. 3 Termine fest gebucht. 4 SMS mit Terminangebot verschickt. 2 nicht erreicht. 5 Anrufe noch offen.";
+const rec = await freiFormulieren(quelleRecall, {
+  kontext: "Zwischenstand einer laufenden Recall-Aktion",
+  pflicht: ["Beschwerde", "Monitor"], timeoutMs: 30000,
+});
+console.log(`\nRecall-Lauf (umformuliert=${rec.ok}${rec.warum ? ", warum=" + rec.warum : ""}):\n  ${rec.text}`);
+check("Recall-Stand: Beschwerde + Monitor ueberleben (umformuliert ODER Fallback)",
+  ["beschwerde", "monitor"].every((w) => rec.text.toLowerCase().includes(w)));
+check("Recall-Stand: Fakten-Guard haelt", guardOk(quelleRecall, rec.text).ok || !rec.ok);
+
 console.log(fehler === 0 ? "\nALLE CHECKS BESTANDEN" : `\n${fehler} CHECK(S) FEHLGESCHLAGEN`);
 // Undici (Node-fetch) Keep-Alive-Pool schliessen und den Prozess NATUERLICH
 // auslaufen lassen (exitCode statt process.exit()). Ein abruptes process.exit()

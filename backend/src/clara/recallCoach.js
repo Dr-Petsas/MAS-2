@@ -14,6 +14,7 @@ import { appendEvent } from "../brain/eventStore.js";
 import { getOperator, emitCommand } from "./sessions.js";
 import { listOperators } from "./operators.js";
 import { todayBerlin } from "./daySchedule.js";
+import { freiFormulieren } from "./freiSprech.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -686,5 +687,23 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
   if (unclear) parts.push(`${unclear} unklar — bitte im Monitor prüfen.`);
   if (pending) parts.push(`${pending} Anruf${pending === 1 ? "" : "e"} noch offen.`);
   if (parts.length === 1) parts.push("Noch keine Kontakte gestartet.");
-  return parts.join(" ");
+  const deterministisch = parts.join(" ");
+  // W-UMBAU-2 Werkzeug 5 (28.07.2026): Der Zaehl-Bericht wird lebendig erzaehlt
+  // (FreiSprech: Fakten-Guard sichert alle Zahlen). Pflichtwoerter: bei
+  // Beschwerden/Unklarem MUESSEN "Beschwerde" bzw. der Verweis auf den
+  // "Monitor" woertlich ueberleben — das ist die Handlungsaufforderung an den
+  // Chef. Der LEERE Fall oben bleibt bewusst unangetastet: "Sage: Recall
+  // starten" ist ein Sprachbefehl wie die Abhak-Anleitung der Wiedervorlage.
+  try {
+    const pflicht = [];
+    if (complaints) pflicht.push("Beschwerde", "Monitor");
+    if (unclear) pflicht.push("Monitor");
+    const frei = await freiFormulieren(deterministisch, {
+      kontext: "Zwischenstand einer laufenden Recall-Aktion (gebucht / SMS / Absagen / nicht erreicht / offen)",
+      pflicht,
+    });
+    return frei.text;
+  } catch {
+    return deterministisch;
+  }
 }
