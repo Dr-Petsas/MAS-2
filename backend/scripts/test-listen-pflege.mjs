@@ -145,6 +145,11 @@ try {
   if (top) {
     console.log(`  groesstes Bucket: »${top.label}« (${top.passend} passend / ${top.gesamt} gesamt, Pool ${inv.candidatesTotal})`);
     check("resolveBucketKey: Kons -> Fachbereich", resolveBucketKey(inv.buckets, "Kons") === "fach:kons");
+    // STT-Hoerfehler (Live 28.07.2026): "Kons" kam als "Cont."/"Funks." an —
+    // der Resolver faengt die Garbles ab, statt die Frage zu wiederholen.
+    check("resolveBucketKey: 'Cont' (Hoerfehler) -> Kons", resolveBucketKey(inv.buckets, "Cont") === "fach:kons");
+    check("resolveBucketKey: 'Funks' (Hoerfehler) -> Kons", resolveBucketKey(inv.buckets, "Funks") === "fach:kons");
+    check("resolveBucketKey: 'Zeh' (Hoerfehler) -> ZE", resolveBucketKey(inv.buckets, "Zeh") === "fach:ze");
     check("resolveBucketKey: Prophylaxe -> Fachbereich", resolveBucketKey(inv.buckets, "Prophylaxe") === "fach:prophylaxe");
     check("resolveBucketKey: Implantat -> Fachbereich", resolveBucketKey(inv.buckets, "Implantat") === "fach:implantat");
     check("resolveBucketKey: alle Themen -> null", resolveBucketKey(inv.buckets, "alle Themen") === null);

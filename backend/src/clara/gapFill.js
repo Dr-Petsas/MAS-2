@@ -774,10 +774,12 @@ export function spokenFachbereichFrage(fach) {
 export function resolveBucketKey(buckets, gesprochen) {
   const q = s(gesprochen).toLowerCase().replace(/\s+/g, " ").trim();
   if (!q || /^(alle|alles|egal|gemischt|querbeet|komplett)(\s+themen?)?$/.test(q)) return null;
-  // Fachbereich zuerst (Sprache arbeitet so).
+  // Fachbereich zuerst (Sprache arbeitet so). STT-Hoerfehler mit abdecken
+  // (Live 28.07.2026: "Kons" kam als "Cont."/"Funks." an, ZE gern als "Zeh"):
+  // im Zweifel lieber das gemeinte Thema treffen als die Frage wiederholen.
   if (/^(prophy|prophylaxe|pzr|zahnreinigung)\b/.test(q)) return "fach:prophylaxe";
-  if (/^(kons|konservierend|kontrolle)\b/.test(q) && !/\bze\b/.test(q)) return "fach:kons";
-  if (/^(ze|zahnersatz)\b/.test(q)) return "fach:ze";
+  if (/^(kons|konservierend|kontrolle|cons|conz|konz|cont|kohns|funks|konst)\b/.test(q) && !/\bze\b/.test(q)) return "fach:kons";
+  if (/^(ze|zeh|zett? ?e|zahnersatz)\b/.test(q)) return "fach:ze";
   if (/^(imp|implant|implantat)\b/.test(q)) return "fach:implantat";
   if (/^kch\b/.test(q)) return "fach:kons";
   if (/^pro\b/.test(q)) return "fach:prophylaxe";
@@ -1107,20 +1109,35 @@ export function spokenGapEuro(run) {
 }
 
 /** Spoken German summary of a coach run (for /tools/gap-briefing). */
-export function buildSpokenGapBriefing(run, { operatorName } = {}) {
+export function buildSpokenGapBriefing(run, { operatorName, themaLabel } = {}) {
   const hi = operatorName ? `${operatorName}, ` : "";
   if (!run?.ok) return `${hi}der Lückenfüller ist nicht konfiguriert — es fehlt die Buchungskonfiguration.`;
   if (!run.gaps.length) return `${hi}im Kalender sind keine nennenswerten Lücken — sehr gut.`;
 
+  // Wiederholungs-Ekel (Chef 28.07.2026): Thema EINWEBEN statt als Stummel
+  // "Recall-Thema Kons." davorzukleben, bei EINER Luecke EIN Satz ohne den
+  // Behandlernamen doppelt zu nennen (Anrede reicht), und die beiden
+  // Schluss-Hinweise (Kandidaten/Freigabe) zu EINEM Satz buendeln.
+  const thema = s(themaLabel);
+  const fuerThema = thema ? ` für ${thema}` : "";
   const parts = [];
   const total = run.gaps.length;
   const withCands = run.gaps.filter((g) => g.candidateCount > 0).length;
-  parts.push(`${hi}ich habe ${total} ${total === 1 ? "Lücke" : "Lücken"} gefunden, davon ${withCands} mit passenden Recall-Kandidaten.`);
   // Umsatzzahlen werden bewusst NICHT genannt (O-Ton Chef 12.06.2026:
   // "umsatzzahlen komplett NICHT nennen" — das wird ein separates Element
   // mit Lena und Sophie). gapRevenuePotential bleibt dafür als API erhalten.
-  for (const g of run.gaps.slice(0, 4)) {
-    parts.push(`${g.calendarName}: ${g.label} (${g.minutes} Minuten)${g.candidateCount ? ` — ${g.candidateCount} Kandidat${g.candidateCount === 1 ? "" : "en"}` : " — kein passender Kandidat"}.`);
+  if (total === 1) {
+    const g = run.gaps[0];
+    const cand = g.candidateCount === 1 ? "einen passenden Kandidaten"
+      : g.candidateCount ? `${g.candidateCount} passende Kandidaten` : "";
+    parts.push(g.candidateCount
+      ? `${hi}für die Lücke ${g.label} (${g.minutes} Minuten) habe ich ${cand}${fuerThema}.`
+      : `${hi}für die Lücke ${g.label} (${g.minutes} Minuten) finde ich${fuerThema ? ` bei ${thema}` : ""} keinen passenden Kandidaten.`);
+  } else {
+    parts.push(`${hi}ich habe ${total} Lücken gefunden, davon ${withCands} mit passenden Kandidaten${fuerThema}.`);
+    for (const g of run.gaps.slice(0, 4)) {
+      parts.push(`${g.calendarName}: ${g.label} (${g.minutes} Minuten)${g.candidateCount ? ` — ${g.candidateCount} Kandidat${g.candidateCount === 1 ? "" : "en"}` : " — kein passender Kandidat"}.`);
+    }
   }
 
   // Kurzfristigkeits-Einschätzung (Wunsch Chef 16.06.2026): liegen die Lücken
@@ -1130,14 +1147,12 @@ export function buildSpokenGapBriefing(run, { operatorName } = {}) {
   const allCandShort = candGaps.length > 0 && candGaps.every((g) => isShortNoticeGap(g));
   const anyShort = run.gaps.some((g) => isShortNoticeGap(g));
   if (allCandShort || (!candGaps.length && anyShort)) {
-    parts.push("Die Lücken liegen allerdings sehr kurzfristig — für einen klassischen Recall ist das oft zu knapp.");
-    parts.push("Wenn Sie jemand Bestimmten einbestellen möchten, nenne mir einfach den Namen, dann lasse ich ihn von Lisa anrufen.");
+    parts.push(`${total === 1 ? "Die Lücke liegt" : "Die Lücken liegen"} allerdings sehr kurzfristig — wenn Sie lieber jemand Bestimmten einbestellen möchten, nennen Sie mir einfach den Namen.`);
   }
 
   const lists = run.callLists?.length || 0;
   if (lists) {
-    parts.push(`${lists} Anrufliste${lists === 1 ? " wartet" : "n warten"} auf Ihre Freigabe im Monitor.`);
-    parts.push("Wenn Sie wissen möchten, wen ich vorschlage, sag: wer sind die Kandidaten.");
+    parts.push(`${lists === 1 ? "Die Anrufliste wartet" : `${lists} Anruflisten warten`} im Monitor auf Ihre Freigabe — sagen Sie „wer sind die Kandidaten“ oder „Recall freigeben“.`);
   }
   return parts.join(" ");
 }

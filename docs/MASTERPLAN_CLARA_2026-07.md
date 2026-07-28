@@ -1593,6 +1593,19 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     (kalendergebundene Recalls anderer Behandler gehoeren deren
     Clara). createdBy-Tor kostet nur 7, ohne Telefon nur 3 — beide
     bleiben.
+    NACHTRAG 2 (Chef 28.07., "eklige Wiederholungsphrasen"): Live-
+    Protokoll 10:31 zeigte: Parakeet hoerte die Antwort "Kons" als
+    "Cont."/"Funks." — das LLM wiederholte daraufhin woertlich
+    Vorrede + Fachbereichsfrage. Dreifach abgefangen: (1) STT-
+    Phrasen-Fix "Cont/Konz/Cons/Funks -> Kons" in stt_postcorrect
+    (Marker "Kons" in stt_keywords, Bianca unberuehrt), (2)
+    resolveBucketKey nimmt die Garbles + "Zeh"->ZE selbst an, (3)
+    gap_briefing-Beschreibung: Datum nie raten (weglassen = heute),
+    bei unklarer Antwort NUR die kurze Frage wiederholen, nie die
+    Vorrede. Sprechtext entschlackt: Thema eingewoben statt
+    "Recall-Thema X."-Stummel, bei EINER Luecke EIN Satz ohne
+    Behandler-Doppelung, Kurzfristig-Hinweis + Kandidaten/Freigabe-
+    Hinweis je EIN Satz statt vier.
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.

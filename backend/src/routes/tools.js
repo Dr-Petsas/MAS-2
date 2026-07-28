@@ -2648,14 +2648,11 @@ router.post("/tools/gap-briefing", async (req, res) => {
       bucketExplicit: !!thema,
     });
     const op = await getOperator(clientId);
-    let message = buildSpokenGapBriefing(run, { operatorName: op?.name });
-    if (run.ok && run.bucketLabel) {
-      message = `Recall-Thema ${run.bucketLabel}. ${message}`;
-    }
+    // Thema wird EINGEWOBEN (kein "Recall-Thema X."-Stummel mehr) und der
+    // Freigabe-Hinweis kommt aus dem Builder — keine doppelten Schluss-Saetze
+    // (Wiederholungs-Ekel, Chef 28.07.2026).
+    let message = buildSpokenGapBriefing(run, { operatorName: op?.name, themaLabel: run.ok ? run.bucketLabel : null });
     if (demoOnly) message = `[Demo-Testlauf] ${message}`;
-    if (run.callLists?.length) {
-      message += " Zum Loslegen sage einfach: Recall freigeben.";
-    }
     res.json({ ok: true, message, gaps: run.gaps?.length || 0, callLists: run.callLists?.length || 0, bucketKey: run.bucketKey || null, bucketLabel: run.bucketLabel || null });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
