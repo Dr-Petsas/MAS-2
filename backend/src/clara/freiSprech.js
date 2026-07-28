@@ -196,6 +196,26 @@ function verneinungOk(quelle, ausgabe) {
     return { ok: false, warum: "Verneinung dazuerfunden" };
 }
 
+// 28.07.2026 (Live-Probe Lisa-Bericht): Aus "Lisa hat Dr. Petsas erreicht"
+// machte die Umformulierung "ICH habe gerade Dr. Petsas erreicht" — Clara
+// schmueckt sich mit Lisas Anruf, der Chef glaubt, Clara haette telefoniert.
+// Namen und Zahlen stimmten, der Guard war blind. Regel: eine Ich-Tat
+// (erreicht/angerufen/telefoniert/hinterlassen) darf nur behauptet werden,
+// wenn die Quelle sie selbst als Ich-Tat formuliert.
+const ICH_TAT_RE = /\bich\s+(?:habe|hab)\b[^.!?]{0,60}\b(?:erreicht|angerufen|telefoniert|hinterlassen)\b|\bich\s+(?:rufe|telefoniere)\b/i;
+
+// "Dr." mitten im Satz sprengt sonst das [^.!?]-Fenster der Ich-Tat-Suche —
+// "ich habe gerade Dr. Petsas erreicht" rutschte genau so durch (Live-Probe 2).
+function ohneAbkPunkte(t) {
+    return String(t || "").replace(/\b(Dr|Prof|Hr|Fr|St)\./g, "$1");
+}
+
+function handelndeOk(quelle, ausgabe) {
+    if (!ICH_TAT_RE.test(ohneAbkPunkte(ausgabe))) return { ok: true };
+    if (ICH_TAT_RE.test(ohneAbkPunkte(quelle))) return { ok: true };
+    return { ok: false, warum: "Handelnden vertauscht (ich statt Lisa)" };
+}
+
 // "10 Uhr 30 Uhr" — das Modell haengt beim Umbauen gern ein zweites "Uhr" an.
 // Reine Kosmetik am Wortlaut, keine Fakten-Aenderung.
 function entdoppleUhr(text) {
@@ -221,6 +241,8 @@ export function guardOk(quelle, ausgabe) {
     if (!v.ok) return v;
     const an = anredeOk(q, a);
     if (!an.ok) return an;
+    const h = handelndeOk(q, a);
+    if (!h.ok) return h;
     return { ok: true };
 }
 
@@ -265,6 +287,7 @@ export async function freiFormulieren(text, { kontext = "interne Team-Ansage", t
         "7. Gesprochene Sprache, fluessige Saetze, aehnliche Laenge wie das Original.",
         "8. KEINE Kausalitaeten erfinden: 'weil'/'deshalb'/'daher' NUR, wenn der Zusammenhang woertlich in der Quelle steht. Ein Termin passiert nicht 'wegen' eines Anamnese-Hinweises.",
         "9. KEINE Zeit-Einordnung dazuerfinden ('heute', 'morgen', 'gleich') — nur uebernehmen, was die Quelle sagt.",
+        "10. Handelnde NIE vertauschen: Wenn LISA angerufen/erreicht hat, bleibt es 'Lisa hat ...' — NIEMALS 'ich habe angerufen/erreicht'. Du berichtest nur.",
         streng
             ? "STIL: Bleib nah am Original — aendere nur Satzanfaenge, Uebergaenge und Satzbau, KEINE Inhalte."
             : `STIL HEUTE: ${stil}`,

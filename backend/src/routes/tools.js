@@ -4303,9 +4303,30 @@ router.post("/tools/lisa-call-result", async (req, res) => {
     // die rohen letzten Lisa-Saetze vor, mitten im Satz abgeschnitten.
     const voll = await ensureDialogSummary(clientId, t).catch(() => t);
     const zusammenfassung = String(voll.dialogSummary || voll.resultSummary || "").trim();
-    const ausgang = LISA_OUTCOME_SATZ[t.outcome] || "hat angerufen";
-    const satz = `Lisa ${ausgang}${t.contactName ? `, ${t.contactName}` : ""}.`
+    // Name IN den Satz bauen ("Lisa hat Dr. Petsas erreicht.") statt als
+    // Nachklapp ("Lisa hat ihn erreicht, Dr. Petsas.") — der Nachklapp
+    // verleitete die freie Umformulierung zu Stelzen wie "er war Dr. Petsas".
+    const werName = t.contactName || "";
+    const ausgangSatz = werName
+      ? ({
+        reached: `Lisa hat ${werName} erreicht.`,
+        voicemail: `Lisa hat ${werName} nicht direkt erreicht und auf die Mailbox gesprochen.`,
+        no_answer: `Lisa hat bei ${werName} niemanden erreicht.`,
+        failed: `Lisa kam bei ${werName} nicht durch.`,
+      }[t.outcome] || `Lisa hat ${werName} angerufen.`)
+      : `Lisa ${LISA_OUTCOME_SATZ[t.outcome] || "hat angerufen"}.`;
+    let satz = ausgangSatz
       + (zusammenfassung ? ` ${zusammenfassung}` : " Zum Inhalt liegt mir nichts vor.");
+    // W-UMBAU-2 Werkzeug 1 (28.07.2026): Der Lisa-Bericht klang nach Schema
+    // ("Lisa hat angerufen, X. <Zusammenfassung>"). FreiSprech erzaehlt ihn
+    // lebendig nach; der Fakten-Guard sichert Namen/Zahlen/Uhrzeiten, bei
+    // JEDEM Zweifel bleibt der deterministische Satz. Die Karte darunter
+    // behaelt IMMER den woertlichen Inhalt (Pruefpunkt am Handy).
+    try {
+      satz = (await freiFormulieren(satz, {
+        kontext: "Bericht ueber einen von Lisa erledigten Telefonanruf (Ausgang und Gespraechsverlauf)",
+      })).text;
+    } catch { /* deterministisch weiter */ }
 
     let card = null;
     try {

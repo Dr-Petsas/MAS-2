@@ -52,6 +52,32 @@ check("Guard: Verneinung aus der Quelle darf bleiben",
   guardOk("Heute sind keine Termine gebucht, der Kalender ist leer. Es sind sechs E-Mails eingegangen.",
     "Heute ist nichts gebucht, der Kalender bleibt leer - dafuer liegen sechs E-Mails da.").ok);
 
+// W-UMBAU-2 Werkzeug 1 (28.07.2026): Lisa-Bericht laeuft jetzt durch
+// FreiSprech — der Guard muss die Berichts-Form genauso tragen.
+const quelleLisa = "Lisa hat angerufen und alles ausgerichtet, Doktor Petsas. "
+  + "Er weiss Bescheid, dass der Termin morgen um 14:30 entfaellt, und bedankt "
+  + "sich fuer die Info. Er bittet um einen Rueckruf naechste Woche wegen der "
+  + "Vertretung.";
+check("Guard (Lisa-Bericht): treue Nacherzaehlung bleibt ok",
+  guardOk(quelleLisa, "Kurzer Bericht: Lisa hat Doktor Petsas erreicht und alles ausgerichtet - er weiss Bescheid, dass der Termin morgen um 14:30 entfaellt, und bedankt sich fuer die Info. Um einen Rueckruf naechste Woche wegen der Vertretung bittet er noch.").ok);
+check("Guard (Lisa-Bericht): verdrehte Uhrzeit faellt durch",
+  !guardOk(quelleLisa, quelleLisa.replace("14:30", "15:30")).ok);
+check("Guard (Lisa-Bericht): verschwundener Name faellt durch",
+  !guardOk(quelleLisa, quelleLisa.replace("Doktor Petsas. ", "")).ok);
+// Live-Probe 28.07.2026: "Lisa hat Dr. Petsas erreicht" kam als "ICH habe
+// gerade Dr. Petsas erreicht" zurueck — Clara schmueckte sich mit Lisas Anruf.
+check("Guard (Lisa-Bericht): Handelnden-Tausch (ich statt Lisa) faellt durch",
+  !guardOk(quelleLisa, quelleLisa.replace("Lisa hat angerufen und alles ausgerichtet, Doktor Petsas",
+    "Ich habe gerade angerufen und alles ausgerichtet, Doktor Petsas")).ok);
+check("Guard (Lisa-Bericht): Ich-Tat aus der Quelle darf bleiben",
+  guardOk("Ich habe Doktor Petsas um 14:30 angerufen und alles ausgerichtet - er weiss Bescheid und bedankt sich fuer die Nachricht dazu.",
+    "Ich habe Doktor Petsas um 14:30 angerufen, alles ausgerichtet - er weiss Bescheid und bedankt sich fuer die Nachricht dazu.").ok);
+// Live-Probe 2 (28.07.2026): "Dr." im Satz sprengte das Suchfenster, der
+// Tausch rutschte durch. Der woertliche Live-Satz muss ROT sein.
+check("Guard (Lisa-Bericht): Handelnden-Tausch trotz 'Dr.' im Satz faellt durch",
+  !guardOk(quelleLisa.replace("Lisa hat angerufen und alles ausgerichtet, Doktor Petsas.", "Lisa hat Dr. Petsas erreicht."),
+    "Guten Tag, ich habe gerade Dr. Petsas am Telefon erreicht. Er weiss Bescheid, dass der Termin morgen um 14:30 entfaellt, und bedankt sich fuer die Info. Er bittet um einen Rueckruf naechste Woche wegen der Vertretung.").ok);
+
 // --- 2) Echte Umformulierung -------------------------------------------------
 const laeufe = [];
 for (let i = 0; i < 3; i++) {
