@@ -79,6 +79,10 @@ function isPublic(req) {
   if (p.startsWith("/clara-switch/")) return true;
   // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
   if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
+  // Online-Zusage aus Recall-SMS (Patient klickt den SMS-Link, nicht
+  // eingeloggt). Der Claim-Token im Pfad ist das Ticket (96 Bit Zufall,
+  // ein Kandidat, ein Slot, Ablauf mit Slot-Beginn — routes/zusage.js).
+  if (/^\/z\/[^/]+\/[^/]+$/.test(p)) return true;
   // Behandlungs-Companion (iPad/Handy per QR am Behandlungsstuhl, NICHT
   // eingeloggt): Presence-Heartbeat + geteilter Aufnahme-Zustand. Der QR-Link
   // (clientId+locationId+appointmentId, nicht erratbar) ist das Ticket —

@@ -8,6 +8,9 @@ import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { listCases, addUpdate, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
 import { resolveOutreach, composeRecallCallInstruction, composeRecallSms } from "./outreachTemplates.js";
+import { createSlotClaim } from "./slotClaim.js";
+import { recordContact, markConverted } from "./outreachStats.js";
+import { currentTestRedirect, activeTenantRedirect } from "./testRedirect.js";
 import { specialtyKeyForClient } from "./dokuPflicht.js";
 import { callOperator, setPendingCallContext, clearPendingCallContext } from "./devices.js";
 import { appendEvent } from "../brain/eventStore.js";
@@ -92,7 +95,7 @@ function resolveCandidateOutreach(cand, specialtyKey) {
   return resolveOutreach({ specialtyKey, visitMotiveName: s(cand.visitMotiveName) });
 }
 
-function buildSmsOffer({ cand, booking, date, timeLabel, specialtyKey }) {
+function buildSmsOffer({ cand, booking, date, timeLabel, specialtyKey, claimUrl }) {
   return composeRecallSms({
     practiceName: booking?.practiceName,
     practicePhone: booking?.practicePhone,
@@ -101,7 +104,50 @@ function buildSmsOffer({ cand, booking, date, timeLabel, specialtyKey }) {
     timeLabel,
     visitMotiveName: cand?.visitMotiveName,
     outreach: resolveCandidateOutreach(cand || {}, specialtyKey),
+    claimUrl: claimUrl || "",
   });
+}
+
+/** Aktive Test-Umleitung (Request-Kontext ODER Livetest-Fenster) -> Ziel. */
+async function testTargetFor(clientId) {
+  const ctx = currentTestRedirect();
+  if (ctx?.target?.patientId || ctx?.target?.phone) return ctx.target;
+  return await activeTenantRedirect(clientId);
+}
+
+/**
+ * Zusage-Ticket fuer EINEN SMS-Kandidaten anlegen (Online-Zusage, Chef
+ * 28.07.2026). Traegt alles, was Seite + Buchung + Bucket-Streichung brauchen.
+ * Schlaegt die Ticket-Anlage fehl, geht die SMS ohne Link raus (kein Blocker).
+ */
+async function claimForCandidate(clientId, { c, cand, list, booking, timeLabel, testTarget }) {
+  try {
+    const o = resolveCandidateOutreach(cand || {}, "");
+    return await createSlotClaim(clientId, {
+      caseId: c.id,
+      patientId: cand.patientId,
+      patientName: cand.name,
+      phone: cand.phone,
+      visitMotiveId: cand.visitMotiveId,
+      visitMotiveName: cand.visitMotiveName,
+      topicLabel: o.topicLabel || cand.visitMotiveName || "",
+      calendarId: list.calendarId,
+      calendarName: list.calendarName,
+      date: list.date,
+      timeLabel,
+      slotIso: ensureBerlinTz(`${list.date}T${timeLabel}:00`),
+      practiceName: booking?.practiceName,
+      practicePhone: booking?.practicePhone,
+      source: cand.source,
+      campaignId: cand.campaignId,
+      recallAppointmentId: cand.recallAppointmentId,
+      locationId: booking?.locationId,
+      testTarget: testTarget?.patientId ? { patientId: testTarget.patientId, name: testTarget.name } : null,
+    });
+  } catch (e) {
+    log.warn("recall.claim_create_failed", { clientId, caseId: c.id, error: String(e?.message || e) });
+    return null;
+  }
 }
 
 function buildCallInstruction({ cand, booking, date, timeLabel, calendarName, specialtyKey, liveBooking }) {
@@ -142,6 +188,10 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
   // vorsichtige Weg (nichts fest zusagen, Praxis meldet sich).
   const liveBooking = liveBookingConfigured();
   const candidates = Array.isArray(list.candidates) ? [...list.candidates] : [];
+  // Livetest-Fenster/Testlauf einmal aufloesen: Zusage-Tickets buchen dann den
+  // TESTPATIENTEN (nie den echten), die SMS/Anrufe selbst biegt lisaSendSms/
+  // lisaStartCall ohnehin um.
+  const testTarget = await testTargetFor(clientId).catch(() => null);
   let calls = 0;
   let smses = 0;
   let skipped = 0;
@@ -157,14 +207,19 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
     }
 
     if (channel === "sms") {
+      // Online-Zusage: Ticket anlegen, Link in die SMS — erste Zusage bucht.
+      const claim = await claimForCandidate(clientId, { c, cand, list, booking, timeLabel, testTarget });
       const out = await lisaSendSms(clientId, {
         phone: cand.phone,
-        message: buildSmsOffer({ cand, booking, date: list.date, timeLabel, specialtyKey }),
+        message: buildSmsOffer({ cand, booking, date: list.date, timeLabel, specialtyKey, claimUrl: claim?.url }),
         recipientName: cand.name,
         by: by || "Recall-Coach",
       });
-      candidates[i] = { ...cand, contact: { via: "sms", taskId: out.taskId || null, ok: out.ok !== false, at: Date.now() } };
-      if (out.ok !== false) smses++;
+      candidates[i] = { ...cand, contact: { via: "sms", taskId: out.taskId || null, ok: out.ok !== false, at: Date.now(), claimToken: claim?.token || null } };
+      if (out.ok !== false) {
+        smses++;
+        await recordContact(clientId, { patientId: cand.patientId, name: cand.name, phoneNorm: cand.phoneNorm, channel: "sms" }).catch(() => {});
+      }
     } else {
       const out = await lisaStartCall(clientId, {
         phone: cand.phone,
@@ -176,6 +231,8 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
         by: by || "Recall-Coach",
         // Kalender-Kontext für Lisas Live-Buchung: NUR damit dürfen die
         // Webhook-Tools für genau diesen Anruf Termine anbieten und buchen.
+        // source/campaignId/locationId: damit die Buchung den Patienten aus
+        // dem Recall-Bucket streichen kann (markConverted).
         bookingContext: liveBooking ? {
           kind: "gapfill",
           caseId: c.id,
@@ -186,10 +243,16 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
           calendarId: list.calendarId,
           calendarName: list.calendarName || null,
           slotIso,
+          source: cand.source || null,
+          campaignId: cand.campaignId || null,
+          locationId: booking?.locationId || null,
         } : null,
       });
       candidates[i] = { ...cand, contact: { via: "call", taskId: out.taskId || null, ok: out.ok !== false, at: Date.now() } };
-      if (out.ok !== false) calls++;
+      if (out.ok !== false) {
+        calls++;
+        await recordContact(clientId, { patientId: cand.patientId, name: cand.name, phoneNorm: cand.phoneNorm, channel: "call" }).catch(() => {});
+      }
     }
   }
 
@@ -280,10 +343,14 @@ function patientSaid(transcriptText) {
     .join(" ");
 }
 
-async function bookAcceptedCandidate(clientId, c, list, cand) {
+async function bookAcceptedCandidate(clientId, c, list, cand, { testTarget = null } = {}) {
   const slotIso = ensureBerlinTz(`${list.date}T${minutesToHHMM(list.slot?.startMin)}:00`);
+  // Testlauf: Der Anruf ging an den Testpatienten — gebucht wird dann auch der
+  // Testpatient, nie der echte Patient (der von dem Test nichts weiss).
+  const bookPatientId = testTarget?.patientId || cand.patientId;
+  const bookPatientName = testTarget?.patientId ? (testTarget.name || "Testpatient") : cand.name;
   const r = await commitBooking(clientId, {
-    patientId: cand.patientId,
+    patientId: bookPatientId,
     calendarId: list.calendarId,
     visitMotiveId: cand.visitMotiveId,
     slotIso,
@@ -295,14 +362,26 @@ async function bookAcceptedCandidate(clientId, c, list, cand) {
       slotIso,
       calendarId: list.calendarId,
       calendarName: list.calendarName,
-      patient: { firstName: "", lastName: cand.name },
+      patient: { firstName: "", lastName: bookPatientName },
       visitMotiveName: cand.visitMotiveName || null,
     }).catch(() => {});
+    const testHinweis = testTarget?.patientId
+      ? ` (TESTLAUF: gebucht wurde der Testpatient ${bookPatientName}, nicht ${cand.name})`
+      : "";
     await addUpdate(clientId, c.id, {
       by: "Recall-Coach",
       kind: "note",
-      text: `GEBUCHT: ${cand.name} hat zugesagt — Termin am ${list.date} ${minutesToHHMM(list.slot?.startMin)} Uhr bei ${list.calendarName || ""} ist fest eingetragen.`,
+      text: `GEBUCHT: ${cand.name} hat zugesagt — Termin am ${list.date} ${minutesToHHMM(list.slot?.startMin)} Uhr bei ${list.calendarName || ""} ist fest eingetragen.${testHinweis}`,
     });
+    // Zaehler + Bucket-Streichung NUR im Echtbetrieb: im Testlauf hat der
+    // echte Patient weder zugesagt noch gebucht.
+    if (!testTarget?.patientId) {
+      const booking = await loadBooking(clientId).catch(() => null);
+      await markConverted(clientId, {
+        patientId: cand.patientId, name: cand.name, via: "lisa_anruf",
+        source: cand.source, campaignId: cand.campaignId, locationId: booking?.locationId,
+      }).catch(() => {});
+    }
     return "booked";
   }
   await addUpdate(clientId, c.id, {
@@ -418,7 +497,7 @@ export async function sweepRecallOutcomes(clientId) {
           }).catch(() => {});
         }
         else if (DECLINE_RE.test(said)) outcome = "declined";
-        else if (ACCEPT_RE.test(said)) outcome = await bookAcceptedCandidate(clientId, c, list, cand);
+        else if (ACCEPT_RE.test(said)) outcome = await bookAcceptedCandidate(clientId, c, list, cand, { testTarget: task.testRedirect || null });
         else {
           outcome = "unclear";
           await addUpdate(clientId, c.id, {
@@ -438,13 +517,20 @@ export async function sweepRecallOutcomes(clientId) {
         );
         if (!gapSlotBooked) {
           const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
+          const timeLabel = minutesToHHMM(list.slot?.startMin);
+          // Auch die Fallback-SMS bekommt das Online-Zusage-Ticket.
+          const testTarget = task.testRedirect || await testTargetFor(clientId).catch(() => null);
+          const claim = await claimForCandidate(clientId, { c, cand, list, booking, timeLabel, testTarget });
           const out = await lisaSendSms(clientId, {
             phone: cand.phone,
-            message: buildSmsOffer({ cand, booking, date: list.date, timeLabel: minutesToHHMM(list.slot?.startMin), specialtyKey }),
+            message: buildSmsOffer({ cand, booking, date: list.date, timeLabel, specialtyKey, claimUrl: claim?.url }),
             recipientName: cand.name,
             by: "Recall-Coach",
           });
-          candidates[i] = { ...cand, contact: { ...contact, outcome, fallbackSmsTaskId: out.taskId || null } };
+          candidates[i] = { ...cand, contact: { ...contact, outcome, fallbackSmsTaskId: out.taskId || null, claimToken: claim?.token || null } };
+          if (out.ok !== false) {
+            await recordContact(clientId, { patientId: cand.patientId, name: cand.name, phoneNorm: cand.phoneNorm, channel: "sms" }).catch(() => {});
+          }
           changed = true;
           processed++;
           continue;
@@ -657,14 +743,22 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
     return "Es laufen gerade keine Recall-Aktionen. Sage: Recall starten — dann schaue ich nach Lücken und Kandidaten.";
   }
 
-  let booked = 0, declined = 0, noAnswer = 0, pending = 0, smsSent = 0, unclear = 0, complaints = 0, wantsOther = 0;
+  let booked = 0, declined = 0, noAnswer = 0, pending = 0, smsSent = 0, unclear = 0, complaints = 0, wantsOther = 0, webBooked = 0;
   for (const c of lists) {
     for (const cand of c.callList.candidates || []) {
       const ct = cand.contact;
       if (!ct || ct.via === "none") continue;
-      if (ct.via === "sms") { smsSent++; continue; }
+      if (ct.via === "sms") {
+        // Online-Zusage (28.07.2026): SMS-Kandidaten koennen ueber den Link
+        // zu- oder absagen — dann zaehlen sie als Buchung/Absage, nicht mehr
+        // nur als "SMS verschickt".
+        if (ct.outcome === "booked") { booked++; webBooked++; }
+        else if (ct.outcome === "declined") declined++;
+        else smsSent++;
+        continue;
+      }
       switch (ct.outcome) {
-        case "booked": booked++; break;
+        case "booked": booked++; if (ct.bookedVia === "sms_web") webBooked++; break;
         case "declined": declined++; break;
         case "voicemail":
         case "no_answer": noAnswer++; break;
@@ -679,7 +773,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
 
   const parts = [`Recall-Stand für ${lists.length} Liste${lists.length === 1 ? "" : "n"}:`];
   if (complaints) parts.push(`WICHTIG: ${complaints} Beschwerde${complaints === 1 ? "" : "n"} beziehungsweise Opt-out — bitte sofort im Monitor prüfen.`);
-  if (booked) parts.push(`${booked} Termin${booked === 1 ? "" : "e"} fest gebucht.`);
+  if (booked) parts.push(`${booked} Termin${booked === 1 ? "" : "e"} fest gebucht${webBooked ? ` (davon ${webBooked} über den SMS-Link)` : ""}.`);
   if (wantsOther) parts.push(`${wantsOther} Patient${wantsOther === 1 ? " wünscht" : "en wünschen"} eine andere Zeit — bitte heute mit Vorschlägen zurückrufen.`);
   if (smsSent) parts.push(`${smsSent} SMS mit Terminangebot verschickt.`);
   if (declined) parts.push(`${declined} Absage${declined === 1 ? "" : "n"}.`);

@@ -1,53 +1,85 @@
 # Livetest Lueckenfueller (W-STABIL-9, Beweis b)
 
-**Dauer: ~5 Minuten. Voraussetzung: Clara live (Port 8091), MAS laeuft.**
-Stand 28.07.2026: Kette gebaut, Modultest gruen (`scripts/test-gap-fill.mjs`),
-Register-Dialoge vk-18 + vk-18b gruen, Lese-Endpunkte live geprueft
-(Gap-Briefing, Kandidaten, Status). Es fehlt NUR dieser eine begleitete
-Durchlauf mit einem ECHTEN Lisa-Anruf auf eine Testnummer.
+**Dauer: ~10 Minuten. Voraussetzung: Clara live (Port 8091), MAS laeuft.**
+Stand 28.07.2026: Kette komplett — Listen-Workflow mit Anruf + SMS,
+**Online-Zusage-Seite** (SMS-Link, erste Zusage bucht den Slot), Kontakt-
+Zaehler pro Patient, Bucket-Streichung nach Buchung, befristetes
+**Livetest-Fenster** (alle Anrufe/SMS aufs Chef-Handy, Buchungen auf den
+Testpatienten). Modultests gruen: `test-gap-fill.mjs`, `test-slot-claim.mjs`,
+`test-outreach-stats.mjs`, `test-live-redirect-window.mjs`, `test-outreach.mjs`,
+`test-test-redirect.mjs`.
 
-## Weg A: Gezieltes Einbestellen auf die eigene Handynummer (empfohlen)
+## So laeuft der Listen-Workflow (das Zielbild)
 
-Der sauberste Beweis, weil der Anruf beim Chef selbst ankommt.
+1. Clara findet Luecken und baut je Luecke eine **Anrufliste** aus den
+   Recall-Buckets (Kampagnen + faellige Recalls), gerankt nach Faelligkeit,
+   Kontakt-Zaehler (wenig Kontaktierte zuerst) und Consent.
+2. Der Chef fragt **"Wer sind die Kandidaten?"** — Clara nennt sie **nach
+   Thema/Bucket mit Zweck** ("aus der Kampagne PZR — professionelle
+   Zahnreinigung: Frau X, seit 8 Monaten faellig ..."), am Handy kommt die
+   Kandidaten-Karte mit hochgestellten Zaehlern: **Name ⁵ ✓²**
+   (5 Kontakte gesamt, 2 fuehrten zum Termin; ✓-Zahl = Erfolgszahl).
+3. **"Recall freigeben"** — Lisa ruft an (nur-SMS-Consent bekommt SMS).
+   Jede SMS traegt einen **Zusage-Link** (`/z/...`): Der Patient sagt am
+   Handy mit einem Tipp zu — die **erste Zusage bucht den Slot fest**
+   (masBookAppointment), alle spaeteren sehen "schon vergeben".
+4. Nach der Buchung: Patient wird **aus dem Recall-Bucket gestrichen**
+   (Kampagne: appointmentMade; zusaetzlich 60-Tage-Sperre im Zaehler-Ledger)
+   und vom Plattform-Recaller anhand des NEUEN Termins neu einsortiert.
+5. **"Wie laeuft der Recall?"** — Zwischenstand inkl. "davon N ueber den
+   SMS-Link"; Beschwerden/Unklares zeigen auf den Monitor.
 
-**Vorab-Check (verifiziert 28.07.2026):** Der Testpatient existiert —
-**Michael Petsassss** (id `demo_petsassss`), Mobil **+491776004600**
-(= Chef-Handy), eindeutiger Suchtreffer. Gegenprobe jederzeit:
-`node scripts/check-testpatient.mjs` (nur lesend).
+## Weg A: Begleiteter Komplett-Test im Livetest-Fenster (empfohlen)
 
-1. Clara anrufen und sagen:
-   **"Such bitte den Patienten Michael Petsassss heraus."**
-   -> Clara nennt den Patienten (Werkzeug `search_patient`).
-2. **"Bestell ihn fuer morgen um zehn Uhr zur Kontrolle ein. Sag ihm, bei uns
-   ist kurzfristig ein Termin frei geworden."**
-   -> Clara liest die Anweisung fuer Lisa WOERTLICH vor und fragt:
-   "Soll Lisa jetzt so anrufen?" (noch KEIN Anruf).
-3. **"Ja, bitte genau so anrufen."**
-   -> Lisa ruft die Handynummer an. Abnehmen, kurz antworten
-   (z. B. "Ja, der Termin passt.").
-4. Danach Clara fragen: **"Was hat der Anruf von Lisa ergeben?"**
-   -> Werkzeug `lisa_call_result`: Zusammenfassung des Gespraechs + Karte
-   (`karteLisaErgebnis`) am Handy. Das ist der Beweis "Bericht kommt zurueck".
-5. Wenn im Gespraech ein Termin zugesagt wurde: im Pickadoc-Kalender
-   nachsehen, ob die Buchung steht (Cloud Function `masBookAppointment`).
+Kein echter Patient wird kontaktiert oder gebucht — trotzdem laeuft die
+ECHTE Maschine (Listen, Lisa, SMS, Zusage-Seite, Buchung, Zaehler).
 
-## Weg B: Recall-Liste (nur wenn Weg A gruen ist)
+**Vorab:** Testpatient **Michael Petsassss** (id `demo_petsassss`), Mobil
+**+491776004600** (= Chef-Handy). Gegenprobe: `node scripts/check-testpatient.mjs`.
 
-1. **"Wo habe ich morgen Luecken im Kalender?"** -> `gap_briefing`.
-2. **"Wer sind die Kandidaten?"** -> `list_recall_candidates` (echte
-   Recall-Patienten, seit N Tagen faellig).
-3. **NUR freigeben, wenn echte Anrufe gewollt sind:** "Recall freigeben."
-   -> `approve_recall`; Lisa arbeitet die Liste ab, Ergebnis-Sweep laeuft
-   alle 60 s (`sweepRecallOutcomes`).
-4. Stoppen/verschieben: **"Recall pausieren."** (`recall-snooze`).
+1. **Fenster oeffnen (PowerShell in `F:\MAS-2\backend`):**
+   `node scripts/set-live-test-redirect.mjs 120`
+   -> 120 Minuten lang gehen ALLE Lisa-Anrufe/SMS an +491776004600 (mit
+   [TESTLAUF]-Kennung), und ALLE Buchungswege (Online-Zusage, Sweep,
+   Live-Buchung im Gespraech) buchen den Testpatienten — nie den echten.
+2. Luecke erzeugen (Abwesenheit kuerzen, wie heute 13-15 Uhr) und Clara
+   fragen: **"Wo habe ich heute Luecken?"** -> `gap_briefing`.
+3. **"Wer sind die Kandidaten?"** -> Ansage nach Thema + Kandidaten-Karte
+   mit Zaehlern am Handy.
+4. **"Recall freigeben."** -> Anrufe klingeln auf dem Chef-Handy; SMS mit
+   Zusage-Link kommen auf dem Chef-Handy an.
+5. **SMS-Link antippen** -> Zusage-Seite (Praxis, Anlass, Slot). Auf
+   **"Termin verbindlich zusagen"** tippen -> Seite bestaetigt, der Slot ist
+   FEST gebucht (auf den Testpatienten), der Fall steht auf "Luecke gefuellt".
+   Einen ZWEITEN SMS-Link antippen -> "Dieser Termin ist leider schon
+   vergeben."
+6. **"Wie laeuft der Recall?"** -> Zwischenstand nennt die Buchung
+   ("davon 1 ueber den SMS-Link").
+7. Im Pickadoc-Kalender nachsehen: Termin des Testpatienten steht im Slot.
+   Danach den Testtermin loeschen.
+8. **Fenster schliessen:** `node scripts/set-live-test-redirect.mjs off`
+   (laeuft sonst nach 120 Minuten von selbst aus).
+
+## Weg B: Gezieltes Einbestellen (Einzelfall, wie gehabt)
+
+1. **"Such bitte den Patienten Michael Petsassss heraus."** -> `search_patient`.
+2. **"Bestell ihn fuer morgen um zehn Uhr zur Kontrolle ein."**
+   -> Clara liest die Lisa-Anweisung vor, fragt nach Bestaetigung.
+3. **"Ja, bitte genau so anrufen."** -> Anruf kommt auf dem Chef-Handy an.
+4. **"Was hat der Anruf von Lisa ergeben?"** -> `lisa_call_result` + Karte.
 
 ## Was bei Rot zu tun ist
 
-- Kein Anruf nach Schritt 3 (Weg A): MAS-Log nach `gapfill` durchsuchen
-  (`logs/`), Lisa-Status: `POST /tools/recall-status`.
-- Kein Bericht in Schritt 4: 2 Minuten warten (Finalize-Sweep laeuft alle
-  15 s, Transkript braucht ElevenLabs einen Moment), dann erneut fragen.
-- Abbruch jederzeit: einfach nicht freigeben — ohne "Ja" passiert nichts.
+- Kein Anruf/keine SMS nach Freigabe: MAS-Log nach `gapfill`/`recall`
+  durchsuchen (`logs/`), Status: `POST /tools/recall-status`.
+- Zusage-Seite laedt nicht: MAS-Health pruefen, Tunnel testen:
+  `https://mas.pickadoc-tunnel.com/z/<clientId>/test` muss die
+  "Link ungueltig"-Seite zeigen (404 ist dort richtig).
+- Zusage gedrueckt, aber "wir melden uns" statt Bestaetigung: Buchung schlug
+  fehl -> Fall im Monitor traegt eine ACHTUNG-Notiz mit dem Grund; der Slot
+  bleibt frei fuer andere.
+- Abbruch jederzeit: Fenster mit `set-live-test-redirect.mjs off` schliessen;
+  ohne Freigabe passiert grundsaetzlich nichts.
 
 Ergebnis bitte im VERKAUFSKERN (Punkt 16/17/18) eintragen: Datum + "Livetest
 bestanden" oder Befund.

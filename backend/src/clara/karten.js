@@ -488,6 +488,52 @@ export function karteLuecken(luecken = []) {
 }
 
 /**
+ * Recall-Kandidaten-Karte (Chef 28.07.2026): die vorgeschlagenen Patienten
+ * EINER Anrufliste, gruppiert lesbar mit Kontakt-Zaehlern am Namen —
+ * hochgestellte Gesamtzahl + ✓-Erfolgszahl ("Maria Ackermann ⁵ ✓²"). Die
+ * Rohwerte fahren strukturiert mit (stats), damit die App die Erfolgszahl
+ * echt gruen rendern kann. Level macht die Spam-Sicht farbig: ok = hat schon
+ * gebucht, warn = mehrfach kontaktiert ohne Termin, info = neutral.
+ * candidates: {anzeigeName, name, thema, faellig, viaWort, stats}.
+ */
+export function karteRecallKandidaten({
+  slotLabel = "", calendarName = "", date = "", candidates = [], status = "",
+} = {}) {
+  const levelFor = (c) => {
+    const st = c.stats || {};
+    if ((st.booked || 0) > 0) return "ok";
+    if ((st.contacts || 0) >= 2) return "warn";
+    return "info";
+  };
+  const items = (candidates || []).slice(0, 7).map((c) => item(
+    levelFor(c),
+    c.viaWort === "SMS" ? "mail" : "phone",
+    `${c.anzeigeName || c.name}${c.thema ? ` — ${c.thema}` : ""}${c.faellig ? ` (${c.faellig})` : ""}`,
+  ));
+  if (!items.length) items.push(item("info", "question", "Keine Kandidaten hinterlegt"));
+
+  // W-FLIP-TIEFE: volle Zeilen inkl. ausgeschriebener Zaehler fuer Rueckfragen.
+  const dLines = (candidates || []).map((c) => {
+    const st = c.stats || {};
+    const z = (st.contacts || 0) > 0
+      ? ` — ${st.contacts} Kontakt${st.contacts === 1 ? "" : "e"} bisher, ${st.booked || 0} Termin${(st.booked || 0) === 1 ? "" : "e"} daraus`
+      : "";
+    return `${c.name}${c.thema ? ` (${c.thema})` : ""}${c.faellig ? `, ${c.faellig}` : ""}${z}`;
+  });
+  return {
+    kind: "recall_kandidaten",
+    tag: "Anrufliste",
+    title: `${slotLabel}${calendarName ? ` · ${calendarName}` : ""}`.trim() || "Anrufliste",
+    time: date ? isoKurz(date) : "",
+    subtitle: `${candidates.length} Kandidat${candidates.length === 1 ? "" : "en"}${status ? ` · ${status}` : ""}`,
+    heading: "Vorschläge (Kontakte ✓Termine)",
+    items,
+    detail: dLines.length ? `Kandidaten (${candidates.length}):\n${detailText(dLines)}` : "",
+    footer: "Freigabe: „Recall freigeben“ — SMS-Zusage-Links buchen automatisch",
+  };
+}
+
+/**
  * Eingaenge-Karte (Post/Anrufe/Bewertungen) fuer "Was ist heute reingekommen?"
  * — W-FLIP-TIEFE (WP8). Anzeige: Zaehlung + die wichtigsten Eingaenge; `detail`:
  * ALLE Eingaenge mit vollem Inhalt, damit Clara auf "geh auf die Mails ein"

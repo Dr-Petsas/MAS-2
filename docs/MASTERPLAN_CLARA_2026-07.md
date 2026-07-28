@@ -1429,6 +1429,77 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
   `docs/LIVETEST_LUECKENFUELLER.md` (Weg A: Einbestellen auf die eigene
   Handynummer; Weg B: Recall-Liste). Nachts bewusst NICHT ausgefuehrt —
   echte Anrufe nur begleitet.
+- **W-STABIL-9c SMS-Zusage + Kontakt-Zaehler (Chef 28.07.2026 frueh) —
+  FERTIG gebaut, wartet auf den begleiteten Livetest.** Chef-Vorgaben
+  woertlich: "fuer die sms braeuchten wir eine html seite wo die zusagen
+  koennen, und dann muss bei der ersten zusage die luecke geschlossen
+  werden" + "angerufene oder angesimste patienten muessen einen laufenden
+  zaehler bekommen (sichtbar als hochgestellte zahl) ... eine
+  gesamtkontaktzahl und eine gruene zahl wo das funktioniert hat. dadurch
+  ranken wir unsere patienten und achten auf spam. ausserdem muss nach
+  termin ueber dieses verfahren der patient aus dem recallbucket
+  gestrichen und neu sortiert werden." Umsetzung:
+  * **Online-Zusage:** Jede Recall-SMS traegt einen Link auf
+    `/z/<clientId>/<token>` (oeffentlich, Token = 96-Bit-Ticket pro
+    Kandidat/Slot, Ablauf mit Slot-Beginn; `clara/slotClaim.js` +
+    `routes/zusage.js`, Auth-Freigabe wie QR-Landing). ERSTE Zusage
+    reserviert per Firestore-Transaktion am Fall (`callList.slotClaim`)
+    und bucht fest ueber `commitBooking` (derselbe Weg wie Lisas
+    Telefon-Zusagen); alle spaeteren Klicker sehen "schon vergeben",
+    nach Slot-Beginn "abgelaufen". Absage ueber die Seite wird als
+    outcome=declined am Kandidaten protokolliert. Buchungsfehler:
+    ehrliche Seite ("wir melden uns") + ACHTUNG-Notiz am Fall,
+    Reservierung wird freigegeben.
+  * **Kontakt-Zaehler** (`clara/outreachStats.js`,
+    `mas_patient_outreach/{patientId}`): jeder Anruf/jede SMS aus
+    Recall-Listen, Sweep-Fallback und gezieltem Einbestellen zaehlt
+    (recordContact); jede Buchung ueber die Strecke (Online-Zusage,
+    Sweep-Zusage, Live-Buchung im Gespraech) erhoeht die Erfolgszahl.
+    Anzeige als hochgestellte Zahlen am Namen: **"Maria Ackermann ⁵ ✓²"**
+    — ✓-Zahl = "gruene" Erfolgszahl; die neue Kandidaten-Karte
+    (`karteRecallKandidaten`, eine je Anrufliste, an
+    `/tools/recall-candidates`) faerbt per Level (ok=hat gebucht,
+    warn=mehrfach kontaktiert ohne Termin) und traegt die Rohwerte
+    strukturiert (echtes Gruen kann die Handy-App spaeter rendern —
+    Warteliste). Gesprochen nur wenn auffaellig ("schon dreimal
+    kontaktiert, bisher ohne Termin").
+  * **Ranking + Spam-Wache** (`gapFill.rankCandidatesForGap`): bei
+    gleicher Faelligkeit zuerst, wer WENIG juengste Kontakte hat; wer
+    im 90-Tage-Fenster >= 3-mal kontaktiert wurde und NIE gebucht hat,
+    fliegt raus (Notaus/Feintuning: MAS_OUTREACH_SPAM_MAX,
+    _SPAM_WINDOW_DAYS, _BOOKED_SUPPRESS_DAYS).
+  * **Bucket-Streichung nach Buchung** (`markConverted`): Kampagnen-
+    Patient bekommt appointmentMade=true (das Konversions-Flag, das
+    gapFill schon immer als "raus aus dem Bucket" liest — die Plattform
+    sortiert anhand des NEUEN Termins neu ein); zusaetzlich 60-Tage-
+    Sperre im Zaehler-Ledger, die auch virtuelle Recalls unterdrueckt
+    (deren Plattform-Platzhalter fassen wir nicht an).
+  * **Kandidaten-Ansage nach Thema** (`buildSpokenGapCandidates`): je
+    Bucket/Kampagne mit Zweck ("aus der Kampagne PZR — professionelle
+    Zahnreinigung: ..."), Faelligkeit ab 2 Monaten in Monaten gesprochen.
+  * **Livetest-Fenster** (`testRedirect.activeTenantRedirect` +
+    `scripts/set-live-test-redirect.mjs <minuten|off>`, Maximum 240):
+    befristet gehen ALLE Lisa-Anrufe/SMS des Mandanten an den
+    Testpatienten (Chef-Handy) und ALLE Buchungswege buchen den
+    TESTPATIENTEN (demo_petsassss) statt des echten Patienten —
+    Zaehler/Bucket-Streichung bleiben im Testlauf bewusst unangetastet.
+    Test-SMS-Clip 600 statt 480, damit der [TESTLAUF]-Vorspann nie den
+    Zusage-Link kappt.
+  * **Zwischenstand** zaehlt Online-Zusagen mit ("N Termine fest gebucht,
+    davon X ueber den SMS-Link"); SMS-Kandidaten mit Web-Antwort zaehlen
+    nicht mehr als "nur SMS verschickt".
+  * **Beweise:** `scripts/test-slot-claim.mjs` (12 Firestore-Pins:
+    erste gewinnt, vergeben ueber Telefon-Weg, abgelaufen, Absage-
+    Fortschreibung, Doppelklick-Idempotenz; raeumt auf),
+    `scripts/test-outreach-stats.mjs` (21 Pins: Anzeige, Fenster, Tore,
+    Ranking, SMS-Link ueberlebt jede Kuerzung),
+    `scripts/test-live-redirect-window.mjs` (8 Pins, stellt Original-
+    Konfig wieder her); Regression gruen: test-gap-fill (63),
+    test-outreach (44), test-test-redirect (8), test-karten;
+    Live-Probe: /z-Seite lokal (offen -> Absage -> persistiert,
+    outcome=declined am Fall) UND ueber den oeffentlichen Tunnel
+    (404-Seite "Link ungueltig" fuer fremde Tokens). Livetest-Anleitung
+    komplett neu: `docs/LIVETEST_LUECKENFUELLER.md`.
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.

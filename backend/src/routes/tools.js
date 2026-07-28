@@ -21,14 +21,15 @@ import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechn
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken } from "../clara/dokuWaechter.js";
 import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
 import { freiFormulieren } from "../clara/freiSprech.js";
-import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteWiedervorlage } from "../clara/karten.js";
+import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteWiedervorlage, karteRecallKandidaten } from "../clara/karten.js";
 import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEuro, ABHAK_ANLEITUNG } from "../brain/wiedervorlage.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
-import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates } from "../clara/gapFill.js";
+import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData } from "../clara/gapFill.js";
 import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../clara/gapInvite.js";
 import { outreachForClient, buildAutoInviteMessage } from "../clara/outreachTemplates.js";
+import { recordContact } from "../clara/outreachStats.js";
 import { spokenMorningBriefing } from "../clara/morningBriefing.js";
 import { spokenEveningBriefing } from "../clara/eveningBriefing.js";
 import { buildAsapQueue, spokenAsapQueue } from "../clara/asapQueue.js";
@@ -2691,7 +2692,14 @@ router.post("/tools/recall-candidates", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const message = await buildSpokenGapCandidates(clientId, { date: req.body?.date });
-    res.json({ ok: true, message });
+    // Kandidaten-Karten mit Kontakt-Zaehlern am Namen (Chef 28.07.2026):
+    // hochgestellte Gesamtzahl + ✓-Erfolgszahl, eine Karte je Anrufliste.
+    let cards = [];
+    try {
+      cards = (await gapCandidateCardData(clientId, { date: req.body?.date }))
+        .map((d) => karteRecallKandidaten(d));
+    } catch { /* Karte ist Zugabe — Sprechtext traegt die Wahrheit */ }
+    res.json({ ok: true, message, card: cards[0] || null, cards });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -2834,6 +2842,15 @@ router.post("/tools/gapfill-call-patient", async (req, res) => {
       by: op?.name || "Team",
       bookingContext,
     });
+    // Kontakt-Zaehler (Chef 28.07.2026): auch das gezielte Einbestellen zaehlt
+    // als Kontaktversuch — sofern der Patient per Suche feststeht (ID).
+    if (out.ok !== false && bookingContext?.patientId) {
+      recordContact(clientId, {
+        patientId: bookingContext.patientId,
+        name: bookingContext.patientName,
+        channel: "call",
+      }).catch(() => {});
+    }
     res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

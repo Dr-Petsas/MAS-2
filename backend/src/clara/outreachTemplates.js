@@ -370,12 +370,21 @@ export function composeRecallCallInstruction({
  */
 export function composeRecallSms({
   practiceName, practicePhone, patientName, date, timeLabel,
-  visitMotiveName, outreach = null,
+  visitMotiveName, outreach = null, claimUrl = "",
 } = {}) {
   const praxis = s(practiceName) || "Ihrer Praxis";
   const phone = s(practicePhone);
   const o = outreach || resolveOutreach({ visitMotiveName });
   const topic = o.topicLabel || s(visitMotiveName);
+
+  // Online-Zusage (Chef 28.07.2026): Mit Link sagt der Patient per Tipp zu —
+  // die erste Zusage bucht den Slot fest (routes/zusage.js). Der Link darf
+  // NIE gekappt werden, deshalb wird er nach dem Kuerzen angehaengt und sein
+  // Platz vorher vom Budget abgezogen.
+  const linkTeil = s(claimUrl) ? ` Direkt online zusagen: ${s(claimUrl)}` : "";
+  const schluss = s(claimUrl)
+    ? `wenn Sie möchten, sichern Sie sich den Termin über den Link — oder rufen Sie uns kurz an${phone ? ` unter ${phone}` : ""}.`
+    : `wenn Sie möchten, rufen Sie uns kurz an${phone ? ` unter ${phone}` : ""}, dann reservieren wir ihn für Sie.`;
 
   const base = (withPurpose) =>
     `Guten Tag${s(patientName) ? ` ${s(patientName)}` : ""}, hier ist ${praxis}. ` +
@@ -384,12 +393,13 @@ export function composeRecallSms({
       : `Bei Ihnen ist laut unserem Erinnerungssystem wieder ein Termin fällig. `) +
     (withPurpose && o.texts.purposeShort ? `${o.texts.purposeShort} ` : "") +
     `Am ${dateDe(date)} um ${s(timeLabel)} Uhr ist kurzfristig ein Termin frei geworden — ` +
-    `wenn Sie möchten, rufen Sie uns kurz an${phone ? ` unter ${phone}` : ""}, dann reservieren wir ihn für Sie.`;
+    schluss;
 
+  const budget = SMS_LIMIT - linkTeil.length;
   let text = base(true);
-  if (text.length > SMS_LIMIT) text = base(false);
-  if (text.length > SMS_LIMIT) text = text.slice(0, SMS_LIMIT - 1) + "…";
-  return text;
+  if (text.length > budget) text = base(false);
+  if (text.length > budget) text = text.slice(0, budget - 1) + "…";
+  return `${text}${linkTeil}`;
 }
 
 /**

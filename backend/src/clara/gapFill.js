@@ -9,6 +9,7 @@ import { getActivePrompt } from "../brain/livingPrompt.js";
 import { queryRecent } from "../brain/eventStore.js";
 import { normalizePhone } from "./callerLookup.js";
 import { pick as pickPhrase } from "./variation.js";
+import { loadStatsMap, contactsInWindow, isBookedSuppressed, isSpamRisk, nameMitZaehler } from "./outreachStats.js";
 
 // ============================================================================
 // Lückenfüller / Umsatz-Coach — Stufe 1 (Clara is the coach, Lisa executes).
@@ -347,21 +348,31 @@ async function recentlyContactedKeys(clientId) {
 /**
  * Gate + rank candidates for ONE gap. Pure.
  * Gate: fits duration, matches Behandler (or unbound), not throttled, not
- * already called in its campaign. Rank: most overdue first, then higher-value
- * (longer) treatments, then reachable-with-consent first.
+ * already called in its campaign, not freshly booked over this very process
+ * (aus dem Bucket gestrichen), not a spam risk (Kontakt-Zaehler, Chef
+ * 28.07.2026). Rank: most overdue first, then FEWEST recent contacts (Spam-
+ * Schutz), then proven responders (booked), then higher-value (longer)
+ * treatments, then reachable-with-consent first.
  */
-export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = new Set(), ignorePhoneThrottle = false } = {}) {
+export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = new Set(), ignorePhoneThrottle = false, ignoreOutreachGates = false } = {}) {
   const fits = candidates.filter((c) => {
     if (c.durationMin > gap.minutes) return false;
     if (c.calendarId && calendarId && c.calendarId !== calendarId) return false;
     if (c.alreadyCalled) return false;
     if (throttled.has(`p:${c.patientId}`)) return false;
     if (!ignorePhoneThrottle && c.phoneNorm && throttled.has(`t:${c.phoneNorm}`)) return false;
+    // Kontakt-Zaehler-Tore (im Demo-Modus aus, damit Testlaeufe wiederholbar
+    // bleiben): frisch ueber diese Strecke gebucht -> raus aus dem Bucket;
+    // oft kontaktiert ohne je zu buchen -> Spam-Gefahr, aussortieren.
+    if (!ignoreOutreachGates && c.stats?.suppressed) return false;
+    if (!ignoreOutreachGates && c.stats?.spamRisk) return false;
     return true;
   });
   const consentScore = (c) => (c.consent?.sms === true || c.consent?.reminder === true ? 1 : 0);
   fits.sort((a, b) =>
     (b.overdueDays - a.overdueDays) ||
+    ((a.stats?.recent || 0) - (b.stats?.recent || 0)) ||
+    ((b.stats?.booked || 0) - (a.stats?.booked || 0)) ||
     (b.durationMin - a.durationMin) ||
     (consentScore(b) - consentScore(a))
   );
@@ -457,7 +468,7 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
   // Kollegen-Kalender = ganzer Tag "frei").
   const onlyCalId = s(calendarId) || null;
 
-  const [allCandidates, throttled, prompt] = await Promise.all([
+  const [allCandidatesRoh, throttled, prompt] = await Promise.all([
     Promise.all([
       campaignCandidates(clientId, locationId, booking, { demoOnly }),
       demoOnly ? Promise.resolve([]) : recallCandidates(clientId, locationId, booking),
@@ -465,6 +476,25 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
     recentlyContactedKeys(clientId),
     getActivePrompt(clientId, "lisa"),
   ]);
+
+  // Kontakt-Zaehler anheften (Chef 28.07.2026): Gesamtkontakte + Erfolge pro
+  // Patient. Faehrt als Momentaufnahme am Kandidaten mit in die Anrufliste —
+  // Anzeige (hochgestellte Zahlen), Ranking und Spam-Wache lesen daraus.
+  const statsMap = await loadStatsMap(clientId, allCandidatesRoh.map((c) => c.patientId));
+  const allCandidates = allCandidatesRoh.map((c) => {
+    const st = statsMap.get(s(c.patientId));
+    if (!st) return c;
+    return {
+      ...c,
+      stats: {
+        contacts: st.contacts,
+        booked: st.booked,
+        recent: contactsInWindow(st),
+        suppressed: isBookedSuppressed(st),
+        spamRisk: isSpamRisk(st),
+      },
+    };
+  });
 
   const gaps = [];
   const callLists = [];
@@ -496,6 +526,9 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
           calendarId: calendar.id,
           throttled,
           ignorePhoneThrottle: demoOnly,
+          // Demo-Modus: Zaehler-Tore aus, damit der Testlauf mit den geseedeten
+          // Patienten beliebig wiederholbar bleibt (wie beim Konversions-Flag).
+          ignoreOutreachGates: demoOnly,
         });
         gaps.push({ date: day, calendarId: calendar.id, calendarName: s(calendar.name), ...gap, candidateCount: candidates.length });
         if (!candidates.length) continue;
@@ -622,10 +655,43 @@ export function buildSpokenGapBriefing(run, { operatorName } = {}) {
   return parts.join(" ");
 }
 
+/** "seit 245 Tagen" klingt technisch — ab zwei Monaten in Monaten sprechen. */
+function faelligSeit(overdueDays) {
+  const d = Number(overdueDays) || 0;
+  if (d <= 0) return "";
+  if (d < 60) return `seit ${d} Tagen fällig`;
+  const monate = Math.round(d / 30);
+  return `seit etwa ${monate} Monaten fällig`;
+}
+
+/**
+ * Themen-Schluessel eines Kandidaten: Kampagnen-Bucket oder faelliger Recall,
+ * mit dem Behandlungsgrund als Zweck ("wen Sie zu welchem Zweck anrufen").
+ */
+function kandidatThema(c) {
+  const motiv = s(c.visitMotiveName);
+  if (c.campaignName) {
+    return `aus der Kampagne »${s(c.campaignName)}«${motiv ? ` — Zweck: ${motiv}` : ""}`;
+  }
+  return motiv ? `aus dem fälligen Recall — Zweck: ${motiv}` : "aus dem fälligen Recall";
+}
+
+/** Kontakt-Zaehler nur aussprechen, wenn er etwas zu sagen hat (Spam-Blick). */
+function zaehlerSatz(stats) {
+  const c = Number(stats?.contacts) || 0;
+  const b = Number(stats?.booked) || 0;
+  if (c < 2) return "";
+  const mal = c === 2 ? "zweimal" : c === 3 ? "dreimal" : `${c}-mal`;
+  if (b > 0) return `, schon ${mal} kontaktiert, ${b === 1 ? "einmal" : `${b}-mal`} hat es geklappt`;
+  return `, schon ${mal} kontaktiert, bisher ohne Termin`;
+}
+
 /**
  * Gesprochene Aufzählung der konkreten Kandidaten der offenen Anruflisten —
- * beantwortet die Chef-Nachfrage "welche Patienten sind das denn?" (vorher
- * konnte Clara nur die Anzahl nennen). Liest pro Lücke Name + Fälligkeit vor.
+ * beantwortet die Chef-Nachfrage "welche Patienten sind das denn?". Seit
+ * 28.07.2026 nach THEMA gruppiert (Bucket/Behandlungsgrund) mit Zweck des
+ * Anrufs und Kontakt-Zaehler-Hinweis, damit der Chef sieht, wen er zu welchem
+ * Zweck kontaktieren laesst — und wo Spam-Gefahr droht.
  */
 export async function buildSpokenGapCandidates(clientId, { date } = {}) {
   const ov = await gapFillOverview(clientId).catch(() => ({ pending: [], approved: [] }));
@@ -634,16 +700,75 @@ export async function buildSpokenGapCandidates(clientId, { date } = {}) {
   if (!lists.length) {
     return "Aktuell warten keine Anruflisten mit Kandidaten. Sage Recall starten, dann suche ich passende Patienten.";
   }
+  // Mehrere Luecken teilen sich oft DIESELBEN Kandidaten (gleicher Tag,
+  // gleicher Kalender) — die Namen werden dann nur EINMAL vorgelesen und die
+  // weiteren Luecken kurz benannt, statt sechsmal dieselbe Liste zu sprechen
+  // (Live-Befund 28.07.2026: 6 Listen x 8 Namen = unzumutbare Ansage).
   const parts = [];
-  for (const l of lists.slice(0, 6)) {
+  const gesprochen = new Map(); // Kandidaten-Schluessel -> Index in parts
+  const auchFuer = new Map();   // Index in parts -> weitere Slot-Labels
+  for (const l of lists.slice(0, 8)) {
     const cands = (l.candidates || []).slice(0, MAX_CANDIDATES_PER_LIST);
     if (!cands.length) continue;
-    const names = cands.map((c) => {
-      const od = Number(c.overdueDays) > 0 ? `, seit ${c.overdueDays} Tagen fällig` : "";
-      return `${s(c.name) || "Unbekannt"}${od}`;
-    }).join("; ");
-    parts.push(`Für ${l.slot?.label || "die Lücke"}${l.calendarName ? ` bei ${l.calendarName}` : ""}: ${names}.`);
+    const wo = `${l.slot?.label || "die Lücke"}${l.calendarName ? ` bei ${l.calendarName}` : ""}`;
+
+    const kandKey = cands.map((c) => s(c.name)).sort().join("|");
+    if (gesprochen.has(kandKey)) {
+      const idx = gesprochen.get(kandKey);
+      auchFuer.set(idx, [...(auchFuer.get(idx) || []), wo]);
+      continue;
+    }
+
+    // Nach Thema buendeln (Kampagne vor Recall, Reihenfolge der Liste bleibt).
+    const gruppen = new Map();
+    for (const c of cands) {
+      const key = kandidatThema(c);
+      if (!gruppen.has(key)) gruppen.set(key, []);
+      gruppen.get(key).push(c);
+    }
+    const saetze = [];
+    for (const [thema, gruppe] of gruppen) {
+      const namen = gruppe.map((c) => {
+        const st = [faelligSeit(c.overdueDays), zaehlerSatz(c.stats).replace(/^, /, "")]
+          .filter(Boolean).join(", ");
+        return `${s(c.name) || "Unbekannt"}${st ? ` (${st})` : ""}`;
+      }).join("; ");
+      saetze.push(`${thema}: ${namen}`);
+    }
+    gesprochen.set(kandKey, parts.length);
+    parts.push(`Für ${wo} schlage ich vor — ${saetze.join(". ")}.`);
+  }
+  for (const [idx, orte] of auchFuer) {
+    const genannt = orte.slice(0, 3).join(", ");
+    const rest = orte.length - 3;
+    parts[idx] += ` Dieselben Kandidaten passen auch für ${genannt}${rest > 0 ? ` und ${rest} weitere Lücke${rest === 1 ? "" : "n"}` : ""}.`;
   }
   if (!parts.length) return "Zu den offenen Lücken sind aktuell keine konkreten Kandidaten hinterlegt.";
   return `Das sind die vorgeschlagenen Patienten. ${parts.join(" ")} Sag Recall freigeben, wenn Lisa sie kontaktieren soll — oder nenne mir jemanden, den ich gezielt einbestellen lassen soll.`;
+}
+
+/**
+ * Karten-Daten fuer die offenen Anruflisten (eine Karte je Liste): Kandidaten
+ * mit Anzeige-Namen inkl. hochgestellter Kontakt-Zaehler, Thema, Faelligkeit
+ * und Kanalwort. Die Karte selbst baut karten.karteRecallKandidaten (rein).
+ */
+export async function gapCandidateCardData(clientId, { date } = {}) {
+  const ov = await gapFillOverview(clientId).catch(() => ({ pending: [], approved: [] }));
+  const day = date ? s(date) : null;
+  const lists = [...(ov.pending || []), ...(ov.approved || [])].filter((l) => !day || l.date === day);
+  return lists.slice(0, 4).map((l) => ({
+    slotLabel: l.slot?.label || "",
+    calendarName: l.calendarName || "",
+    date: l.date || "",
+    status: l.status === CASE_STATUS.WAITING_APPROVAL ? "wartet auf Freigabe" : "freigegeben",
+    candidates: (l.candidates || []).slice(0, MAX_CANDIDATES_PER_LIST).map((c) => ({
+      anzeigeName: nameMitZaehler(c.name, c.stats),
+      name: s(c.name) || "Unbekannt",
+      thema: c.campaignName ? `Kampagne »${s(c.campaignName)}«` : (s(c.visitMotiveName) || "Recall"),
+      faellig: faelligSeit(c.overdueDays),
+      // Kanalwort wie channelFor (recallCoach): nur-SMS-Consent -> SMS.
+      viaWort: c.consent?.sms === true && c.consent?.reminder !== true ? "SMS" : "Anruf",
+      stats: c.stats || null,
+    })),
+  }));
 }

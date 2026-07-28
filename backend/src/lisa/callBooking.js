@@ -2,6 +2,7 @@ import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { findSlots } from "../clara/booking.js";
 import { commitBooking } from "../clara/agentBooking.js";
+import { markConverted } from "../clara/outreachStats.js";
 import { emitCommand } from "../clara/sessions.js";
 import { addUpdate } from "../brain/caseStore.js";
 import { appendEvent } from "../brain/eventStore.js";
@@ -354,6 +355,19 @@ export async function bookSlotForTask(clientId, taskId, { slotIso } = {}) {
         by: "Lisa",
         kind: "note",
         text: `GEBUCHT im Gespräch: ${ctx.patientName || "Patient"} — ${when}${ctx.calendarName ? ` bei ${ctx.calendarName}` : ""} ist fest eingetragen.`,
+      }).catch(() => {});
+    }
+    // Kontakt-Zaehler (gruene Erfolgszahl) + Recall-Bucket-Streichung.
+    // Im Testlauf (bookingContext.testRedirect) NICHT: da hat der echte
+    // Patient weder zugesagt noch gebucht — ctx.patientId ist der Testpatient.
+    if (!ctx.testRedirect) {
+      markConverted(clientId, {
+        patientId: ctx.patientId,
+        name: ctx.patientName,
+        via: "lisa_live_buchung",
+        source: ctx.source,
+        campaignId: ctx.campaignId,
+        locationId: ctx.locationId,
       }).catch(() => {});
     }
     log.info("lisa.tool.booked", { clientId, taskId, slotIso: iso });

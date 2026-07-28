@@ -35,6 +35,7 @@ import devicesRouter from "./routes/devices.js";
 import lisaToolsRouter from "./routes/lisaTools.js";
 import treatmentRouter from "./routes/treatment.js";
 import claraSwitchRouter from "./routes/claraSwitch.js";
+import zusageRouter from "./routes/zusage.js";
 import claraRouter from "./routes/clara.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
@@ -197,6 +198,9 @@ app.use(devicesRouter);
 app.use(lisaToolsRouter);
 app.use(treatmentRouter);
 app.use(claraSwitchRouter);
+// Online-Zusage aus Recall-SMS (oeffentlich, token-gesichert) — vor dem
+// Clara-Catch-all mounten.
+app.use(zusageRouter);
 app.use(claraRouter);
 
 

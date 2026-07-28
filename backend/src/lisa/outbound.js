@@ -5,7 +5,7 @@ import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { upsertSharedContact } from "../brain/addressBook.js";
 import { lisaDisclosurePrefix } from "../brain/aiDisclosure.js";
-import { redirectOutbound } from "../clara/testRedirect.js";
+import { resolveOutboundRedirect } from "../clara/testRedirect.js";
 import { summarizeForSpeech } from "../clara/summarize.js";
 import { getOperator } from "../clara/sessions.js";
 import { notifyOperator } from "../clara/devices.js";
@@ -143,14 +143,15 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
   if (!smsConfigured()) {
     return { ok: false, message: "SMS-Versand ist nicht konfiguriert." };
   }
-  // Testlabor (W-LABOR WP6): Laeuft der Aufruf in einem Testlauf, geht die SMS
+  // Testlabor (W-LABOR WP6) + Livetest-Fenster (28.07.2026): Laeuft der Aufruf
+  // in einem Testlauf ODER im befristeten Livetest des Mandanten, geht die SMS
   // an den hinterlegten Testpatienten statt an den echten. Der Haken sitzt hier
   // und nicht in der Route, weil auch recallCoach und absencePlanner hier
   // hereinlaufen — genau die indirekten Wege, die ein Routen-Haken uebersieht.
-  const redirected = redirectOutbound({ phone, text: message, recipientName });
+  const redirected = await resolveOutboundRedirect(clientId, { phone, text: message, recipientName });
   if (redirected) {
     log.warn("lisa.sms.test_redirect", {
-      clientId, from: redirected.originalPhone, to: redirected.phone,
+      clientId, from: redirected.originalPhone, to: redirected.phone, mode: redirected.mode,
     });
     phone = redirected.phone;
     message = redirected.text;
@@ -158,7 +159,10 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
   }
   const to = normalizePhoneE164(phone);
   if (!to) return { ok: false, message: "Die Telefonnummer habe ich nicht verstanden. Bitte noch einmal nennen." };
-  const body = clip(message, 480);
+  // Umgeleitete Test-SMS tragen den [TESTLAUF]-Vorspann ZUSAETZLICH zum
+  // regulaeren Inhalt — mit hartem 480er-Clip wuerde dann ausgerechnet der
+  // Zusage-Link am Ende abgeschnitten. Nur im Testfall mehr Platz geben.
+  const body = clip(message, redirected ? 600 : 480);
   if (!body) return { ok: false, message: "Was soll in der SMS stehen?" };
 
   const name = String(recipientName || "").trim();
@@ -289,16 +293,28 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   if (!callConfigured()) {
     return { ok: false, message: "Outbound-Anrufe sind nicht konfiguriert." };
   }
-  // Testlabor (W-LABOR WP6) — siehe lisaSendSms. Der Testempfaenger hoert am
-  // Anfang, dass es ein Testlauf ist, und fuer wen der Anruf gedacht war.
-  const redirected = redirectOutbound({ phone, text: instruction, recipientName: contactName });
+  // Testlabor (W-LABOR WP6) + Livetest-Fenster — siehe lisaSendSms. Der
+  // Testempfaenger hoert am Anfang, dass es ein Testlauf ist, und fuer wen der
+  // Anruf gedacht war.
+  const redirected = await resolveOutboundRedirect(clientId, { phone, text: instruction, recipientName: contactName });
   if (redirected) {
     log.warn("lisa.call.test_redirect", {
-      clientId, from: redirected.originalPhone, to: redirected.phone,
+      clientId, from: redirected.originalPhone, to: redirected.phone, mode: redirected.mode,
     });
     phone = redirected.phone;
     instruction = redirected.text;
     contactName = redirected.recipientName;
+    // Bucht Lisa in diesem Gespraech live (book_slot), muss der Termin auf den
+    // TESTPATIENTEN laufen — nie auf den echten Patienten, der von dem Test
+    // nichts weiss. Der Fall-Bezug (caseId) bleibt erhalten.
+    if (bookingContext && redirected.target?.patientId) {
+      bookingContext = {
+        ...bookingContext,
+        patientId: redirected.target.patientId,
+        patientName: redirected.target.name || "Testpatient",
+        testRedirect: true,
+      };
+    }
   }
   const to = normalizePhoneE164(phone);
   if (!to) return { ok: false, message: "Die Telefonnummer habe ich nicht verstanden. Bitte noch einmal nennen." };
@@ -369,6 +385,11 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     transcriptText: null,
     // Kalender-Kontext für Lisas Live-Buchungs-Tools (nur wenn übergeben).
     bookingContext: bookingContext && typeof bookingContext === "object" ? bookingContext : null,
+    // Testlauf-Stempel: der Outcome-Sweep bucht Zusagen dann auf den
+    // Testpatienten statt auf den echten (recallCoach.bookAcceptedCandidate).
+    testRedirect: redirected?.target?.patientId
+      ? { patientId: redirected.target.patientId, name: redirected.target.name || "Testpatient" }
+      : null,
     createdAt: FieldValue.serverTimestamp(),
     ts: now,
   });

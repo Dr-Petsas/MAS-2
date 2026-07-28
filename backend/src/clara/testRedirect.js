@@ -121,8 +121,67 @@ export async function saveTestPatient(clientId, input = {}) {
     note: String(input.note || "").trim(),
     updatedAt: new Date().toISOString(),
   };
+  // Begleiteter Livetest (28.07.2026): bis zu diesem Zeitstempel (ms) geht
+  // JEDE ausgehende Lisa-Nachricht des Mandanten an den Testpatienten —
+  // ohne Header/Flag im Request. Immer befristet, nie dauerhaft.
+  if (input.liveUntilMs !== undefined) doc.liveUntilMs = Number(input.liveUntilMs) || 0;
   await masCollection(clientId, "mas_config").doc("test_redirect").set(doc, { merge: true });
   return doc;
+}
+
+// --- Zeitfenster-Umleitung fuer den begleiteten Livetest ---------------------
+//
+// Anders als der Request-Kontext (Header X-Test-Redirect, unten) wirkt dieses
+// Fenster auf ALLE ausgehenden Nachrichten des Mandanten — auch die, die kein
+// Request ausloest (Recall-Ausfuehrung, Outcome-Sweep, Scheduler). Damit laesst
+// sich der komplette Lueckenfueller-Workflow (Liste -> Anrufe/SMS -> Zusagen)
+// gefahrlos am eigenen Handy durchspielen. Sicherung: hartes Ablaufdatum, kein
+// Dauerschalter; abgelaufenes Fenster verhaelt sich byte-identisch zu vorher.
+
+/** Aktives Livetest-Fenster des Mandanten -> Testpatient oder null. */
+export async function activeTenantRedirect(clientId) {
+  try {
+    const snap = await masCollection(clientId, "mas_config").doc("test_redirect").get();
+    if (!snap.exists) return null;
+    const d = snap.data() || {};
+    const until = Number(d.liveUntilMs) || 0;
+    if (!until || Date.now() >= until) return null;
+    const phone = String(d.phone || d.mobilePhoneNumber || "").trim();
+    if (!phone) return null;
+    return {
+      phone,
+      name: String(d.name || "Testpatient").trim(),
+      patientId: String(d.patientId || "").trim(),
+      liveUntilMs: until,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * EINE Frage fuer alle Wirkungs-Funktionen: Muss diese ausgehende Nachricht
+ * umgeleitet werden? Erst der Request-Kontext (Testlabor), dann das
+ * Livetest-Fenster des Mandanten. Liefert zusaetzlich ``target`` mit
+ * patientId, damit Buchungswege im Test den TESTPATIENTEN buchen.
+ */
+export async function resolveOutboundRedirect(clientId, { phone, text, recipientName } = {}) {
+  const viaContext = redirectOutbound({ phone, text, recipientName });
+  if (viaContext) {
+    return { ...viaContext, target: currentTestRedirect()?.target || null, mode: "context" };
+  }
+  const target = await activeTenantRedirect(clientId);
+  if (!target) return null;
+  const original = String(recipientName || phone || "unbekannt");
+  return {
+    phone: target.phone,
+    recipientName: target.name,
+    text: `${TEST_MARKER} (gedacht für ${original}) ${String(text || "").trim()}`.trim(),
+    originalPhone: String(phone || ""),
+    originalName: original,
+    target,
+    mode: "tenant_window",
+  };
 }
 
 // --- Laufzeit-Zustand -------------------------------------------------------
