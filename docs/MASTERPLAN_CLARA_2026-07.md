@@ -1481,12 +1481,25 @@ das nicht so steif!"** Daraus verbindlich fuer JEDE Umbau-Session:
 
 Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
 
-- **W-UMBAU-1 Router-Inventur + Konsolidierung (reiner Umzug, NULL
-  Verhaltensaenderung):** alle verstreuten deterministischen Eingriffe im
-  Provider (Fakten-Backstop, Fast-Route, Heads-up-Weiche, Einbestell-
-  Umleitung, Freigabe-Fenster, Phantom-Name-Waeche ...) in EIN Modul
-  ziehen, mit Testdatei, die das HEUTIGE Verhalten festnagelt.
-  Beweis: Register 31/31, Flip-Sperre 0 gekippt.
+- **W-UMBAU-1 Router-Inventur + Konsolidierung: FERTIG (28.07.2026).**
+  86 Namen (alle Absichts-Muster + Datums-/Personen-/Auftrags-Extraktion,
+  1.149 Zeilen) byte-identisch aus dem Provider nach
+  `services/intent_router.py` gezogen; Provider re-exportiert (Altimporte
+  und Tests tragen weiter), `_sanitize_tool_calls` + Stream-Ablauf blieben
+  im Provider. Chef-Leitplanke steht im Modulkopf. Neue Pin-Testdatei
+  `testsuite/test_intent_router.py` (39 Pins fuer bisher ungetestete
+  Erkenner, als Gate-Schritt eingehaengt); Statik-Beweis per AST (keine
+  fehlenden Namen). Beifang des Register-Nachtlaufs (reg-05 rot, als
+  eigener Commit gefixt): (1) Perfekt-Behauptung "Ich habe Lisa
+  ANGEWIESEN ... anzurufen" schluepfte am Sprech-Waechter vorbei
+  (kannte nur Praesens/Futur; Verneinung zaehlt jetzt nur im Umfeld der
+  Zusage, nicht in der Nachricht); (2) Imperativ-Auftrag "sag ihm, er
+  muss ..." war fuer den Auftragstext-Extraktor unsichtbar (kannte nur
+  Infinitive); (3) NEU Freigabe-ERDUNG: approve_absence/approve_recall
+  ohne ihr Thema im Gespraech (Claras letzte Antwort oder aktueller
+  Satz) wird verworfen — das Modell hatte auf "Ja, bitte genau so."
+  eine nie besprochene Urlaubs-Freigabe gerufen. Beweis: Register 31/31
+  strict, reg-05 zusaetzlich 2x solo gruen, Voll-Gate.
 - **W-UMBAU-2 Lebendig sprechen statt Monolog:** verbatim-Werkzeuge
   einzeln pruefen; wo der Wortlaut nicht geschuetzt sein muss, formuliert
   das LLM aus strukturierten Fakten (mit Fakten-Treue-Wache). EIN
