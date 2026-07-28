@@ -657,10 +657,14 @@
         if (!resp.ok || j?.ok === false) return false;
         for (const entry of deck) {
           if (entry.card?.kind === "recall_kandidaten" && entry.card?.caseId === caseId) {
-            entry.card.items = (entry.card.items || []).filter((it) => it.pid !== patientId);
+            // Server liefert die frische Karte mit (Puffer-Nachruecker!) —
+            // komplett ersetzen; nur zur Not lokal ausblenden.
+            if (j?.card) entry.card = j.card;
+            else entry.card.items = (entry.card.items || []).filter((it) => it.pid !== patientId);
           }
         }
         try { sessionStorage.setItem(CARDS_KEY, JSON.stringify(deck)); } catch {}
+        renderDeck();
         return true;
       } catch { return false; }
     }
@@ -689,11 +693,14 @@
         first.classList.add("is-new");
         els.cardsScroll.scrollTop = 0;
       }
-      if (chatUi.getMode() === "audio") {
-        // Diktat-Wunsch 04.07.: Während man mit Clara spricht, erscheinen die
-        // Notiz-Punkte sofort sichtbar — die App flippt von selbst zur Karte.
+      // 28.07.2026 20:15 (Chef: "der springt in den ..."): Recall-Karten kommen
+      // MITTEN im Gespraech (jeder Luecken-Scan pusht) — das Auto-Umblaettern
+      // riss die Sprech-Ansicht weg. Nur Doku-/Notiz-Karten (Diktat-Wunsch
+      // 04.07.) fluppen weiterhin von selbst; Anruflisten zaehlen das Badge
+      // hoch, Clara sagt ohnehin an, dass die Liste im Stapel liegt.
+      if (chatUi.getMode() === "audio" && card.kind !== "recall_kandidaten") {
         setFlipped(true);
-      } else {
+      } else if (!flipped) {
         unseenCards += 1;
         updateBadge();
       }

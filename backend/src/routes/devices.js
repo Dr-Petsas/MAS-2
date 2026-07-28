@@ -7,7 +7,8 @@ import QRCode from "qrcode";
 import { assertAppEnabled } from "../entitlements.js";
 import { listOperators, normalizeRole } from "../clara/operators.js";
 import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, updateDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured } from "../clara/devices.js";
-import { removeCandidateFromList } from "../clara/gapFill.js";
+import { removeCandidateFromList, gapCandidateCardData } from "../clara/gapFill.js";
+import { karteRecallKandidaten } from "../clara/karten.js";
 import { log } from "../log.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 
@@ -244,7 +245,18 @@ router.post("/clara/devices/recall-remove", async (req, res) => {
       by: who.name || "Telefon-Karte",
       via: "telefon_karte",
     });
-    res.status(r.ok ? 200 : 404).json(r);
+    // Frische Karte mitliefern (Chef 28.07. 20:15: "wenn ich loesche mit der
+    // muelltonne wird nicht nachgeladen") — der Puffer-Nachruecker erscheint
+    // sofort, die App ersetzt ihren Karten-Eintrag statt nur auszublenden.
+    let card = null;
+    if (r.ok) {
+      try {
+        const daten = await gapCandidateCardData(clientId, {});
+        const liste = daten.find((d) => d.caseId === caseId);
+        if (liste) card = karteRecallKandidaten(liste);
+      } catch { /* Karte ist Zugabe — Entfernen hat schon geklappt */ }
+    }
+    res.status(r.ok ? 200 : 404).json({ ...r, card });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

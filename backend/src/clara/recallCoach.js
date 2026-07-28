@@ -463,16 +463,33 @@ export async function approveAndExecute(clientId, { date, caseId, by } = {}) {
   if (!targets.length) {
     // Vorfall 28.07.2026: Die Liste war schon um 13:07 freigegeben (in_progress);
     // um 15:24 lief die Freigabe ins Leere und Clara behauptete trotzdem Vollzug.
-    // Ehrlich sagen, WO die Liste steht, statt in die Sackgasse zu schicken.
+    // Nachtrag 20:13: Die reine Statusmeldung war selbst eine Sackgasse — die
+    // 16:29-Liste hing mit 7 UNKONTAKTIERTEN Kandidaten in in_progress (der
+    // Testlauf startet je Lauf nur EINEN Anruf) und blockierte jede weitere
+    // Freigabe. Eine ausdrueckliche Freigabe auf einer laufenden Liste heisst
+    // deshalb: WEITERMACHEN — executeCallList ist idempotent (kontaktierte und
+    // entfernte Kandidaten werden uebersprungen).
     try {
       const laufend = (await listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 }))
         .filter((c) => c.id.startsWith("gapfill_") && c.callList && c.status !== CASE_STATUS.WAITING_APPROVAL);
+      for (const c of laufend) {
+        const offen = (c.callList.candidates || [])
+          .filter((x) => !x.removed && !x.contact?.taskId).length;
+        if (!offen) continue;
+        const r = await executeCallList(clientId, c.id, { by });
+        if (r?.ok && (r.calls || r.smses)) {
+          return {
+            ok: true, approved: 1, resumed: true,
+            message: `Die Liste ${s(c.callList.date)} ${s(c.callList.slot?.label)} war schon freigegeben — Lisa macht mit den restlichen Kandidaten weiter: ${r.calls} Anruf${r.calls === 1 ? "" : "e"}${r.smses ? ` und ${r.smses} SMS` : ""} laufen jetzt. Ich melde mich mit den Ergebnissen.`,
+          };
+        }
+      }
       if (laufend.length) {
         const l = laufend[0].callList;
-        return { ok: true, approved: 0, alreadyRunning: laufend.length, message: `Die Anrufliste ${s(l.date)} ${s(l.slot?.label)} ist bereits freigegeben — Lisa arbeitet sie ab. Für eine neue Runde sagen Sie: Recall starten mit Thema, dann baue ich die Liste frisch.` };
+        return { ok: true, approved: 0, alreadyRunning: laufend.length, message: `Die Anrufliste ${s(l.date)} ${s(l.slot?.label)} ist bereits freigegeben und alle Kandidaten sind kontaktiert — Zusagen melde ich, sobald sie eintreffen. Für eine frische Runde nennen Sie mir ein Thema: Prophylaxe, Kons oder ZE.` };
       }
     } catch { /* Ehrlichkeit ist Zugabe — Standardantwort unten bleibt */ }
-    return { ok: true, approved: 0, message: "Es wartet gerade keine Anrufliste auf Freigabe. Sage zuerst: Recall starten — dann baue ich die Listen." };
+    return { ok: true, approved: 0, message: "Es wartet gerade keine Anrufliste auf Freigabe. Soll ich die Lücken prüfen und eine neue Liste zusammenstellen?" };
   }
 
   let approved = 0;
