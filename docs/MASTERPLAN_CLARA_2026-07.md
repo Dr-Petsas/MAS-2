@@ -1451,6 +1451,24 @@ das nicht so steif!"** Daraus verbindlich fuer JEDE Umbau-Session:
   damit GESTRICHEN. `speak_result: verbatim` bleibt nur, wo Woertlichkeit
   gewollt ist (Lisa-Anweisungen woertlich vorlesen, Telefonnummern,
   Rueckfrage-Saetze mit Ja/Nein-Anker) — nicht als Standard.
+- **Abschweifungen sind ERWUENSCHT (Chef 28.07.2026):** Der Router faengt
+  nur KLARE Absichten ab (Kalenderfakten, Auftraege, Freigaben). Alles
+  andere — Smalltalk, Abschweifungen, Meinungs- und Themenwechsel-Saetze
+  — geht OHNE Umleitung ans LLM und wird VOM LLM beantwortet. Kein
+  Router-Treffer heisst: LLM antwortet frei (dasselbe Prinzip wie beim
+  Tool-Subsetting: kein Treffer -> volle Liste). Eine Clara, die jede
+  Abschweifung abwuergt, ist unverkaeuflich.
+- **Mehrzug-Gespraeche: Thema erschliessen statt Torschuss aus dem
+  Sechzehner (Chef 28.07.2026, O-Ton):** "Beim Fussball, wenn der Ball
+  beim eigenen Torwart ist, erwartet keiner, dass dieser aus seinem
+  Sechzehn-Meter-Raum ein Tor erzielt. Der Ball laeuft ueber
+  Pass-Stafetten ueber das ganze Feld, bis er im gegnerischen Tor
+  landet. Das gilt auch fuer uns und die Themenbewaeltigung: nicht
+  sofort aufs Tor schiessen, sondern das Thema erschliessen." Konkret:
+  Rueckfragen und Zwischenschritte sind GUT; ein Thema darf sich ueber
+  mehrere Zuege entwickeln (Merkzettel/dialog_state nutzen); weder
+  Router noch Prompt duerfen erzwingen, dass in Zug eins alles
+  verstanden UND beantwortet wird.
 
 Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
 
