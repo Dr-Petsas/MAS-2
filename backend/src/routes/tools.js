@@ -2609,18 +2609,26 @@ router.post("/tools/gap-briefing", async (req, res) => {
     // Themen-Rueckfrage (nicht im Demo-Modus — dort bleibt der Ablauf starr):
     let bucketKey = null;
     if (!demoOnly) {
-      const fach = await listRecallFachbereiche(clientId).catch(() => ({ ok: false, kern: [], zusatz: [], buckets: [] }));
-      const hatBestand = fach.ok && ((fach.kern?.length || 0) + (fach.zusatz?.length || 0) > 0);
-      if (hatBestand) {
-        if (!thema) {
-          return res.json({
-            ok: true,
-            needsTheme: true,
-            fachbereiche: [...(fach.kern || []), ...(fach.zusatz || [])],
-            message: spokenFachbereichFrage(fach),
-          });
-        }
-        if (!RECALL_ALLE_THEMEN_RE.test(thema)) {
+      // Lag-Fix (Chef 28.07.2026 "am schlimmsten ist der lag"): Fachbereichs-
+      // Antworten ("Prophylaxe", "Kons", "ZE", "Implantat" inkl. Hoerfehler)
+      // loesen die Regexe OHNE Bucket-Inventar auf — der Voll-Scan laeuft nur
+      // noch fuer die Themen-FRAGE selbst oder fuer Fein-Bucket-Antworten.
+      const alleThemen = thema && RECALL_ALLE_THEMEN_RE.test(thema);
+      if (thema && !alleThemen) {
+        bucketKey = resolveBucketKey([], thema);
+      }
+      if (!alleThemen && !bucketKey) {
+        const fach = await listRecallFachbereiche(clientId).catch(() => ({ ok: false, kern: [], zusatz: [], buckets: [] }));
+        const hatBestand = fach.ok && ((fach.kern?.length || 0) + (fach.zusatz?.length || 0) > 0);
+        if (hatBestand) {
+          if (!thema) {
+            return res.json({
+              ok: true,
+              needsTheme: true,
+              fachbereiche: [...(fach.kern || []), ...(fach.zusatz || [])],
+              message: spokenFachbereichFrage(fach),
+            });
+          }
           bucketKey = resolveBucketKey(fach.buckets || [], thema);
           if (!bucketKey) {
             return res.json({
@@ -2648,12 +2656,27 @@ router.post("/tools/gap-briefing", async (req, res) => {
       bucketExplicit: !!thema,
     });
     const op = await getOperator(clientId);
+    // Kandidaten DIREKT anzeigen (Chef 28.07.2026: "nicht explizit fragen ob
+    // sie die Listen anzeigen soll, sondern direkt anzeigen"): Karten mit den
+    // Kandidaten samt Kontakt-Zaehlern gehen als Zugabe mit — der Worker pusht
+    // sie aufs Display, das LLM sieht davon nichts.
+    let cards = [];
+    if (!demoOnly && run.ok && run.callLists?.length) {
+      try {
+        cards = (await gapCandidateCardData(clientId, { date: req.body?.date }))
+          .map((d) => karteRecallKandidaten(d));
+      } catch { /* Karte ist Zugabe — Sprechtext traegt die Wahrheit */ }
+    }
     // Thema wird EINGEWOBEN (kein "Recall-Thema X."-Stummel mehr) und der
     // Freigabe-Hinweis kommt aus dem Builder — keine doppelten Schluss-Saetze
     // (Wiederholungs-Ekel, Chef 28.07.2026).
-    let message = buildSpokenGapBriefing(run, { operatorName: op?.name, themaLabel: run.ok ? run.bucketLabel : null });
+    let message = buildSpokenGapBriefing(run, {
+      operatorName: op?.name,
+      themaLabel: run.ok ? run.bucketLabel : null,
+      kandidatenAngezeigt: cards.length > 0,
+    });
     if (demoOnly) message = `[Demo-Testlauf] ${message}`;
-    res.json({ ok: true, message, gaps: run.gaps?.length || 0, callLists: run.callLists?.length || 0, bucketKey: run.bucketKey || null, bucketLabel: run.bucketLabel || null });
+    res.json({ ok: true, message, card: cards[0] || null, cards, gaps: run.gaps?.length || 0, callLists: run.callLists?.length || 0, bucketKey: run.bucketKey || null, bucketLabel: run.bucketLabel || null });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

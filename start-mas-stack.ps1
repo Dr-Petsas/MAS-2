@@ -69,7 +69,8 @@ if (Test-PortListening 8140) {
 } else {
     Write-StackLog "Lena-STT: starte (Modell-Load dauert, siehe logs\lena_stt_*.log)..."
     try {
-        & 'powershell' -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice\lena_stt\start-lena-stt.ps1' -Tunnel
+        # Cutover 23.07.2026: lena_stt lebt im eigenen Repo F:\Lena-Voice.
+        & 'powershell' -NoProfile -ExecutionPolicy Bypass -File 'F:\Lena-Voice\lena_stt\start-lena-stt.ps1' -Tunnel
         Write-StackLog "Lena-STT: $(if (Test-PortListening 8140) { 'OK (Port 8140)' } else { 'noch nicht bereit - Modell laedt evtl. weiter' })"
     } catch {
         Write-StackLog "Lena-STT: Start fehlgeschlagen: $($_.Exception.Message)"

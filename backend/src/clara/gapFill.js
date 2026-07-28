@@ -321,7 +321,28 @@ export function clearRecallInventoryCache() {
 async function loadRecallInventory(clientId, locationId) {
   const cached = recallInventoryCache.get(clientId);
   if (cached && Date.now() - cached.at < RECALL_INVENTORY_CACHE_MS) return cached.rows;
+  // Stale-while-revalidate (Chef 28.07.2026 "am schlimmsten ist der lag"):
+  // Ist der Cache nur ABGELAUFEN (nicht leer), liefern wir sofort den alten
+  // Stand und erneuern im Hintergrund — der Voll-Scan (tausende Docs) blockiert
+  // nie wieder eine Sprach-Antwort oder den Monitor. Recalls aendern sich
+  // langsam; eine Minuten-alte Sicht ist fuer Listen-Bildung unkritisch.
+  if (cached?.rows?.length) {
+    if (!cached.refreshing) {
+      cached.refreshing = true;
+      scanRecallInventory(clientId, locationId)
+        .catch(() => {})
+        .finally(() => {
+          const c = recallInventoryCache.get(clientId);
+          if (c) c.refreshing = false;
+        });
+    }
+    return cached.rows;
+  }
+  return scanRecallInventory(clientId, locationId);
+}
 
+/** Der eigentliche Voll-Scan (siehe loadRecallInventory). */
+async function scanRecallInventory(clientId, locationId) {
   const rows = [];
   const base = db.collection("clients").doc(clientId)
     .collection("locations").doc(locationId)
@@ -650,7 +671,23 @@ async function closeStaleList(clientId, c, grund) {
  * Drossel-Schluessel — gemeinsame Grundlage fuer den Coach-Lauf, das
  * Bucket-Inventar und den Bucket-Wechsel einer einzelnen Liste.
  */
-async function candidatePool(clientId, booking, { demoOnly = false } = {}) {
+// Kurz-Cache fuer die Outreach-Stats-Map: loadStatsMap liest EIN Dokument pro
+// Kandidat (getAll ueber ~3000 IDs ≈ 1 s) — das lief bei JEDEM Aufruf mit,
+// auch fuer die reine Themen-Frage und die Monitor-Bucket-Zaehlung (Chef
+// 28.07.2026: "am schlimmsten ist der lag"). 45 s Frische reicht: die Zaehler
+// aendern sich nur, wenn Lisa wirklich kontaktiert.
+const statsMapCache = new Map(); // clientId -> { at, map }
+const STATS_MAP_CACHE_MS = 45000;
+
+async function cachedStatsMap(clientId, patientIds) {
+  const hit = statsMapCache.get(clientId);
+  if (hit && Date.now() - hit.at < STATS_MAP_CACHE_MS) return hit.map;
+  const map = await loadStatsMap(clientId, patientIds);
+  statsMapCache.set(clientId, { at: Date.now(), map });
+  return map;
+}
+
+async function candidatePool(clientId, booking, { demoOnly = false, mitStats = true } = {}) {
   const locationId = booking.locationId;
   const [allCandidatesRoh, throttled] = await Promise.all([
     Promise.all([
@@ -663,7 +700,11 @@ async function candidatePool(clientId, booking, { demoOnly = false } = {}) {
   // Kontakt-Zaehler anheften (Chef 28.07.2026): Gesamtkontakte + Erfolge pro
   // Patient. Faehrt als Momentaufnahme am Kandidaten mit in die Anrufliste —
   // Anzeige (hochgestellte Zahlen), Ranking und Spam-Wache lesen daraus.
-  const statsMap = await loadStatsMap(clientId, allCandidatesRoh.map((c) => c.patientId));
+  // mitStats=false: reine Zaehl-Aufrufe (Bucket-Inventar, Themen-Frage)
+  // brauchen keine Zaehler — spart den teuersten Firestore-Schritt.
+  const statsMap = mitStats
+    ? await cachedStatsMap(clientId, allCandidatesRoh.map((c) => c.patientId))
+    : new Map();
   const allCandidates = allCandidatesRoh.map((c) => {
     const st = statsMap.get(s(c.patientId));
     if (!st) return c;
@@ -696,7 +737,9 @@ export async function listRecallBuckets(clientId) {
   const booking = await loadBooking(clientId).catch(() => null);
   if (!booking?.locationId) return { ok: false, reason: "no_booking_config", buckets: [] };
   const boundary = await gapFillCalendarBoundary(clientId);
-  const { allCandidates } = await candidatePool(clientId, booking);
+  // mitStats:false — fuers Zaehlen der Buckets braucht niemand Kontakt-Zaehler
+  // (Lag-Fix 28.07.2026: sparte ~1 s pro Themen-Frage/Monitor-Dropdown).
+  const { allCandidates } = await candidatePool(clientId, booking, { mitStats: false });
   const map = new Map();
   for (const c of allCandidates) {
     const key = c.bucketKey || "sonstiges";
@@ -888,7 +931,12 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
           bucket: wantBucket ? { key: wantBucket, label: bucketLabel } : null,
           bucketExplicit,
         });
-        callLists.push({ ...upsert, date: day, calendarName: s(calendar.name), slot: gap.label, candidates: candidates.length });
+        callLists.push({
+          ...upsert, date: day, calendarName: s(calendar.name), slot: gap.label, candidates: candidates.length,
+          // Die vordersten Namen fuer den Sprechtext (Chef 28.07.2026: Kandidaten
+          // DIREKT nennen statt "sagen Sie: wer sind die Kandidaten").
+          topNamen: candidates.slice(0, 3).map((k) => s(k.name)).filter(Boolean),
+        });
       }
     }
 
@@ -1109,7 +1157,7 @@ export function spokenGapEuro(run) {
 }
 
 /** Spoken German summary of a coach run (for /tools/gap-briefing). */
-export function buildSpokenGapBriefing(run, { operatorName, themaLabel } = {}) {
+export function buildSpokenGapBriefing(run, { operatorName, themaLabel, kandidatenAngezeigt = false } = {}) {
   const hi = operatorName ? `${operatorName}, ` : "";
   if (!run?.ok) return `${hi}der Lückenfüller ist nicht konfiguriert — es fehlt die Buchungskonfiguration.`;
   if (!run.gaps.length) return `${hi}im Kalender sind keine nennenswerten Lücken — sehr gut.`;
@@ -1133,6 +1181,15 @@ export function buildSpokenGapBriefing(run, { operatorName, themaLabel } = {}) {
     parts.push(g.candidateCount
       ? `${hi}für die Lücke ${g.label} (${g.minutes} Minuten) habe ich ${cand}${fuerThema}.`
       : `${hi}für die Lücke ${g.label} (${g.minutes} Minuten) finde ich${fuerThema ? ` bei ${thema}` : ""} keinen passenden Kandidaten.`);
+    // Kandidaten DIREKT nennen (Chef 28.07.2026: "nicht fragen ob sie die
+    // Listen anzeigen soll, sondern direkt anzeigen") — die vordersten Namen
+    // in den Satz, der Rest steht auf der mitgeschickten Karte.
+    const namen = (run.callLists?.[0]?.topNamen || []).filter(Boolean);
+    if (namen.length && g.candidateCount) {
+      const aufz = namen.length === 1 ? namen[0]
+        : `${namen.slice(0, -1).join(", ")} und ${namen[namen.length - 1]}`;
+      parts.push(`Vorn ${namen.length === 1 ? "steht" : "stehen"} ${aufz}.`);
+    }
   } else {
     parts.push(`${hi}ich habe ${total} Lücken gefunden, davon ${withCands} mit passenden Kandidaten${fuerThema}.`);
     for (const g of run.gaps.slice(0, 4)) {
@@ -1152,7 +1209,9 @@ export function buildSpokenGapBriefing(run, { operatorName, themaLabel } = {}) {
 
   const lists = run.callLists?.length || 0;
   if (lists) {
-    parts.push(`${lists === 1 ? "Die Anrufliste wartet" : `${lists} Anruflisten warten`} im Monitor auf Ihre Freigabe — sagen Sie „wer sind die Kandidaten“ oder „Recall freigeben“.`);
+    parts.push(kandidatenAngezeigt
+      ? `Die ${lists === 1 ? "Liste liegt" : "Listen liegen"} auf Ihrem Display und im Monitor — mit „Recall freigeben“ legt Lisa los.`
+      : `${lists === 1 ? "Die Anrufliste wartet" : `${lists} Anruflisten warten`} im Monitor auf Ihre Freigabe — sagen Sie „wer sind die Kandidaten“ oder „Recall freigeben“.`);
   }
   return parts.join(" ");
 }

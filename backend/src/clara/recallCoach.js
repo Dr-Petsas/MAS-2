@@ -202,12 +202,24 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
   // wenn der Chef vorher jemanden von der Liste wischt.
   let kontaktiert = candidates.filter((x) => x.contact?.taskId).length;
 
+  // Testlauf-Staffelung (Befund 28.07.2026): Mit aktivem Testredirect gehen
+  // ALLE Anrufe an DIESELBE Nummer (Chef-Handy) — 8 gleichzeitige Anrufe
+  // dorthin schlagen bis auf den ersten fehl (ok:false). Im Testmodus wird
+  // deshalb nur EIN Anruf gestartet; die restlichen Kandidaten bleiben
+  // unkontaktiert und kaemen beim naechsten Lauf dran. SMS sind unkritisch
+  // (mehrere ans selbe Handy funktionieren).
+  let testCallStarted = false;
+
   for (let i = 0; i < candidates.length; i++) {
     const cand = candidates[i];
     if (cand.contact?.taskId) continue; // bereits kontaktiert (idempotent)
     if (cand.removed) continue;         // vom Chef von der Liste gewischt
     if (kontaktiert >= MAX_CANDIDATES_PER_LIST) break; // Puffer bleibt Reserve
     const channel = channelFor(cand);
+    if (channel === "call" && testTarget?.phone && testCallStarted) {
+      skipped++;
+      continue; // Testlauf: nur ein Anruf aufs Chef-Handy
+    }
     if (!channel || !cand.phone) {
       skipped++;
       candidates[i] = { ...cand, contact: { via: "none", reason: !cand.phone ? "no_phone" : "no_channel", at: Date.now() } };
@@ -260,6 +272,7 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
       candidates[i] = { ...cand, contact: { via: "call", taskId: out.taskId || null, ok: out.ok !== false, at: Date.now() } };
       if (out.ok !== false) {
         calls++;
+        if (testTarget?.phone) testCallStarted = true;
         await recordContact(clientId, { patientId: cand.patientId, name: cand.name, phoneNorm: cand.phoneNorm, channel: "call" }).catch(() => {});
       }
     }
