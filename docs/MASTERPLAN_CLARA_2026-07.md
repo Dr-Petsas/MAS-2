@@ -1426,9 +1426,43 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
 
-Danach (nicht davor): Umbau-Phase — deterministischer Absichts-Router statt
-verstreuter Regex-Waechter, Faktenantworten ohne LLM-Umformulierung,
-Werkzeug-Konsolidierung, Pfad-Trennung (Clara/Bianca-Erbschaft aufloesen).
+Danach (nicht davor): **W-UMBAU** — Aufraeumen OHNE Verhaltensbruch.
+
+**CHEF-LEITPLANKE (28.07.2026, O-Ton): "Mir gefiel der deterministische
+Kern eingebettet in ein LLM-Konstrukt, damit sich das lebendiger anhoert
+— das LLM ist total wichtig in der Konstruktion des Satzes. Bitte macht
+das nicht so steif!"** Daraus verbindlich fuer JEDE Umbau-Session:
+
+- Der Router entscheidet nur, WELCHES Werkzeug laeuft und WELCHE Fakten
+  gelten — deterministisch, nachvollziehbar, an EINER Stelle.
+- Den gesprochenen SATZ baut weiterhin das LLM. Umformulieren ist erlaubt
+  und ERWUENSCHT (lebendig, variantenreich, Kontextbezug) — Clara soll
+  sich NICHT wie ein Automat anhoeren.
+- Dazwischen steht die Fakten-Treue-Wache: Zahlen, Daten, Uhrzeiten und
+  Namen aus dem Tool-Ergebnis duerfen beim Formulieren nicht veraendert
+  oder erfunden werden (inventsNumbers-Muster aus `clara/summarize.js`;
+  `response_guard` bleibt die letzte Instanz vor dem Mund).
+- Die alte Formulierung "Faktenantworten ohne LLM-Umformulierung" ist
+  damit GESTRICHEN. `speak_result: verbatim` bleibt nur, wo Woertlichkeit
+  gewollt ist (Lisa-Anweisungen woertlich vorlesen, Telefonnummern,
+  Rueckfrage-Saetze mit Ja/Nein-Anker) — nicht als Standard.
+
+Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
+
+- **W-UMBAU-1 Router-Inventur + Konsolidierung (reiner Umzug, NULL
+  Verhaltensaenderung):** alle verstreuten deterministischen Eingriffe im
+  Provider (Fakten-Backstop, Fast-Route, Heads-up-Weiche, Einbestell-
+  Umleitung, Freigabe-Fenster, Phantom-Name-Waeche ...) in EIN Modul
+  ziehen, mit Testdatei, die das HEUTIGE Verhalten festnagelt.
+  Beweis: Register 31/31, Flip-Sperre 0 gekippt.
+- **W-UMBAU-2 Lebendig sprechen statt Monolog:** verbatim-Werkzeuge
+  einzeln pruefen; wo der Wortlaut nicht geschuetzt sein muss, formuliert
+  das LLM aus strukturierten Fakten (mit Fakten-Treue-Wache). EIN
+  Werkzeug pro Neustart, Register-Fall zuerst.
+- **W-UMBAU-3 Werkzeug-Konsolidierung:** Doppel-Tools zusammenlegen,
+  Beschreibungen entruempeln (Prompt-Tokens runter), Gruppen sauber.
+- **W-UMBAU-4 Pfad-Trennung:** Clara/Bianca-Erbschaft aufloesen (Bianca
+  wird eigenstaendig neu gebaut — Hochzeit erst, wenn Clara steht).
 
 ## Reihenfolge
 
