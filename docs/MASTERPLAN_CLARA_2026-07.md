@@ -865,22 +865,29 @@ mit Tool-Pflicht ans LLM, daher das steife "nicht verstanden".
       laeuft er unveraendert ans LLM+Tools. Ja/Nein/Okay wird NIE geschluckt
       (gehoert laufenden Rueckfragen). Unit-Test erzwingt: KEIN Fall des
       131er-Katalogs landet in der Schicht (`testsuite/test_human_layer.py`).
-- [~] **Chat-Spur** fuer erkennbar persoenliche Saetze ("Was haeltst du
+- [x] **Chat-Spur** fuer erkennbar persoenliche Saetze ("Was haeltst du
       von...", "Mir ist langweilig"): Mini-LLM-Call mit eigenem kleinen
       Persona-Prompt (warm, Augenzwinkern, Selbstironie), OHNE Tools und
       OHNE Praxisdaten im Kontext (kann nichts Echtes verraten). Nach-Guard
       verwirft Ziffern + Erledigt-/Gebucht-Behauptungen -> ehrliche
-      Ausweich-Zeile. OFFEN: auf Qwen 3.6 (pickadoc1) schalten — das 4b
-      plaudert hoelzern (Test 16:41: bot ungefragt "Beratungstermin" an).
-- [ ] Voll-Suite + Release-Gate gruen, Worker-Neustart, Tag.
-- [ ] **Bewertung Intent-Schicht (Auftrag Chef):** Zwei-Stufen-Architektur
+      Ausweich-Zeile. Qwen-3.6-Umschaltung ERLEDIGT (verifiziert
+      28.07.2026): `.env` traegt CLARA_CHAT_LLM_BASE_URL/-MODEL fest auf
+      qwen3.6:35b-a3b (pickadoc1/vLLM); Server-Live-Probe gruen. Das
+      hoelzerne 4b ist nur noch Rueckfall, wenn die Env-Schluessel fehlen
+      (Startabbruch-Wache W-STABIL-7 prueft die Schluessel-Liste mit).
+- [x] Voll-Suite + Release-Gate gruen, Worker-Neustart, Tag — laufend
+      erfuellt; zuletzt Voll-Gate + Register strict 28.07.2026 mit Tag
+      (siehe W-STABIL-1/W-UMBAU-Beweise).
+- [x] **Bewertung Intent-Schicht (Auftrag Chef):** Zwei-Stufen-Architektur
       "flexibel verstehen, strikt handeln" ist RICHTIG, aber das
       Verstehens-Problem ist ein EIGENES Paket (Eingabe-Robustheit), nicht
       der Hebel fuer "steif": W1.1-Subsetting ist bereits die halbe
       Intent-Schicht (deterministisches Keyword-Routing). Der volle
       Resolver (R0 Regex -> R1 Keywords -> R2 Mini-LLM-JSON + Fast-Path +
       Clarify statt Leer-Turn) steht als Folgepaket W-INTENT auf der
-      Warteliste — erst W-HUMAN abschliessen und messen.
+      Warteliste — erst W-HUMAN abschliessen und messen. (Bewertung
+      abgeschlossen; seit W-UMBAU-1 ist die deterministische Schicht
+      zusaetzlich in `services/intent_router.py` konsolidiert.)
 
 ## Phase W-HUMAN Stufe 2 - Lockerheit 1-4 (Auftrag Chef 09.07., praezisiert 10.07.)
 
