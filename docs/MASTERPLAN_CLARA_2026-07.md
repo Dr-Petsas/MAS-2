@@ -1500,38 +1500,101 @@ Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
   Satz) wird verworfen — das Modell hatte auf "Ja, bitte genau so."
   eine nie besprochene Urlaubs-Freigabe gerufen. Beweis: Register 31/31
   strict, reg-05 zusaetzlich 2x solo gruen, Voll-Gate.
-- **W-UMBAU-2 Lebendig sprechen statt Monolog:** verbatim-Werkzeuge
-  einzeln pruefen; wo der Wortlaut nicht geschuetzt sein muss, formuliert
-  das LLM aus strukturierten Fakten (mit Fakten-Treue-Wache). EIN
-  Werkzeug pro Neustart, Register-Fall zuerst.
-  **Stand 28.07.2026 nachts — Inventur + Werkzeuge 1 und 2:** 40 Tools
-  tragen `speak_result=verbatim`; 7 Briefings liefen schon ueber
-  FreiSprech (LLM formuliert, Fakten-Guard prueft, deterministischer
-  Rueckfall). NEU dran: **lisa_call_result** (Bericht ueber delegierte
-  Anrufe; Ausgangssatz baut den Namen in den Satz, Register vk-12) und
-  **comms_digest** (Eingaenge-Bericht, Register vk-23). Beifang mit
-  Grundsatz-Wert: NEUE Guard-Stufe **Handelnden-Wache** in
-  `clara/freiSprech.js` — die Umformulierung machte aus "Lisa hat Dr.
-  Petsas erreicht" ein "ICH habe gerade Dr. Petsas erreicht" (Clara
-  schmueckt sich mit Lisas Anruf; Zahlen/Namen stimmten, der Guard war
-  blind). Ich-Taten (erreicht/angerufen/telefoniert/hinterlassen) sind
-  nur erlaubt, wenn die Quelle sie selbst als Ich-Tat sagt; "Dr." im
-  Satz sprengte das Suchfenster (Abkuerzungspunkte werden gefaltet);
-  Prompt-Regel 10. Beweis: `scripts/test-freisprech.mjs` 24 Pruefungen,
-  3 Live-Proben je Route, Schnell-Gate + Register-Stichproben gruen.
-  Kandidaten fuer die naechsten Runden: wiedervorlage (Vorsicht:
-  Abhak-Anleitung woertlich lassen), absence_status, recall_status,
-  qm_calendar, read_ratings — weiterhin EIN Werkzeug pro Neustart.
+- **W-UMBAU-2 Lebendig sprechen statt Monolog: FERTIG (28.07.2026).**
+  Alle Kandidaten entschieden — 5 Werkzeuge erzaehlen jetzt frei
+  (FreiSprech: LLM formuliert, Fakten-Guard prueft, deterministischer
+  Rueckfall), 2 bleiben BEGRUENDET woertlich:
+  * **lisa_call_result** (Register vk-12) + **comms_digest** (vk-23):
+    Bericht ueber delegierte Anrufe / Eingaenge. Beifang: NEUE Guard-
+    Stufe **Handelnden-Wache** — die Umformulierung machte aus "Lisa hat
+    Dr. Petsas erreicht" ein "ICH habe gerade Dr. Petsas erreicht"
+    (Zahlen/Namen stimmten, der Guard war blind); Ich-Taten nur, wenn
+    die Quelle sie selbst sagt; "Dr." sprengte das Suchfenster
+    (Abkuerzungspunkte gefaltet); Prompt-Regel 10.
+  * **wiedervorlage** (vk-24/25): Bericht frei, die ABHAK-ANLEITUNG
+    ('Zum Abhaken: "Die Sache mit ... ist erledigt."') bleibt als
+    exportierte Konstante WOERTLICH — sie ist ein Sprachbefehl. Beifang:
+    Prompt-Regel 11 (keine dazuerfundenen Aufforderungen — "Bitte passt
+    das an" aus der Live-Probe).
+  * **absence_status** (NEU Register vk-22b) + **recall_status** (NEU
+    vk-18c): Zwischenstaende frei. Beifang mit Grundsatz-Wert: NEUE
+    zentrale **Pflichtwort-Wache** `pflichtOk` in freiFormulieren — der
+    generische namenOk sieht nur Namen MIT Anrede; Absender ("Finanzamt
+    Bochum"), Kalendernamen, Zeitfenster ("vormittags"), Tages-Kern
+    ("morgen") und Handlungsanker ("Beschwerde", "Monitor") gehen als
+    Pflichtwoerter mit; fehlt eines, bleibt der deterministische Satz.
+    Der LEERE Recall-Fall bleibt woertlich ("Sage: Recall starten" =
+    Sprachbefehl).
+  * **read_ratings**: bleibt verbatim — Patienten-Zitate + autorisierte
+    Pointen aus humor.js sind gewollter Wortlaut. **qm_calendar**:
+    bleibt verbatim — Compliance-Antworten (Prueffristen), viele
+    ungeschuetzte Eigennamen. Die 7 Briefings liefen schon vorher ueber
+    FreiSprech.
+  Beweis: `scripts/test-freisprech.mjs` (Guard-Units + 5 LLM-Laeufe mit
+  Pflichtwort-Invarianten), `scripts/test-wiedervorlage.mjs`
+  (Konstanten-Kopplung), Live-Proben je Route, Register-Stichproben +
+  voller Register-Lauf strict.
+  **Beifang vk-18b (Register-Nachtlauf):** (1) Der Fall lief auf eine
+  ECHTE Mehrdeutigkeit (zwei Ackermanns im Bestand, Clara fragt korrekt
+  zurueck; das Drehbuch kann nicht antworten) -> Fall nutzt jetzt den
+  vollen Namen "Marina Ackermann". Mehrdeutigkeits-DIALOG als eigener
+  Register-Fall: Warteliste. (2) SUITE-PARITAETS-LOCH geschlossen:
+  run_tests.py wandte die Anruf-Waechter (call_outcome_claim /
+  call_promise_claim, Live-Worker Z. 835-860) NICHT an — der Report
+  zeigte ein leeres Versprechen ("Ich rufe Marina Ackermann an ...",
+  tool=none, Guard-Zaehler 0), das Clara live nie gesagt haette. Jetzt
+  Paritaet + call_claim_blocked im Halluzinations-Zaehler.
+  **Beifang vk-17 (zweiter Nachtlauf, Flake):** Die Kandidaten-Synthese
+  verlangte Recall-Kontext in der VORHERIGEN Antwort — die
+  selbsttragende Erstfrage ("Welche RECALL-Patienten schlaegst du fuer
+  die LUECKEN vor?") hatte keinen Verlauf, das Modell stellte statt
+  Tool-Call eine Tages-Rueckfrage (mit leerer "Ich schaue nach"-Floskel).
+  Jetzt zaehlen starke Themen-Woerter (recall/anruflist/lueck) auch im
+  Satz selbst; "Kandidat" allein bleibt kontextgebunden. Pins in
+  test_intent_router; vk-17/vk-18/vk-18b 3/3 gruen, Schnell-Gate gruen,
+  Worker neu gestartet (registered 05:48).
   Warteliste (Befund Live-Probe comms_digest): die EINZELZEILEN des
   Eingaenge-Berichts bleiben schematisch, weil die QUELLE
   Extractor-Artefakte enthaelt ("(buchen/verschieben/absagen)",
   Zitat-Klammern aus der Evidenz) — das ist ein Quellseiten-Aufraeumen
   in buildSpokenComms/Extractor-Summary, eigener Posten, NICHT per
   Umformulierung loesbar.
-- **W-UMBAU-3 Werkzeug-Konsolidierung:** Doppel-Tools zusammenlegen,
-  Beschreibungen entruempeln (Prompt-Tokens runter), Gruppen sauber.
-- **W-UMBAU-4 Pfad-Trennung:** Clara/Bianca-Erbschaft aufloesen (Bianca
-  wird eigenstaendig neu gebaut — Hochzeit erst, wenn Clara steht).
+- **W-UMBAU-3 Werkzeug-Konsolidierung: FERTIG (28.07.2026).** Befund per
+  Inventur (`testsuite/tool_inventur.py`, neu): 67 Werkzeuge, ALLE mit
+  group-Feld, KEINE zwei Tools auf derselben Route, keine deaktivierten
+  Leichen; Faehigkeits-Ping meldet 67/67 Routen im MAS vorhanden, 9/9
+  Cloud Functions erreichbar. Doppel-Tools zusammenlegen und Gruppen
+  saeubern war also durch fruehere Pakete bereits erledigt. Beschreibungen
+  (~11.400 Tokens gesamt, pro Zug durch Tool-Subsetting auf 15-30 Tools
+  begrenzt): Sichtpruefung der laengsten (save_treatment_dictation,
+  gapfill_call_patient, termin_abrechnen, alle Briefings) ergab — das
+  sind VERHALTENSREGELN aus echten Vorfaellen (Hint-Protokoll, confirm-
+  Ablauf, needsMotive/needsOverride, Morgen-Auftakt-Abgrenzung), KEIN
+  Geruempel; grosses Kuerzen waere Rueckbau von Fixes. Einzige echte
+  woertliche Doppelung: search_patient trug das Hint-Protokoll ZWEIMAL —
+  jetzt EIN Satz mit der Vereinigungsmenge der Ausloeser. Beweis:
+  Subsetting-Test, vk-18b + reg-04 gruen, Schnell-Gate gruen, Worker mit
+  gestagtem Profil neu registriert (06:00).
+- **W-UMBAU-4 Pfad-Trennung: FERTIG (28.07.2026).** Befund: Die Trennung
+  hing an EINER Weiche (`_patient_gates_enabled` in worker_llm_turn —
+  Clara faehrt assistant_mode=internal, damit sind alle 11 Bianca-Gates
+  an den Aufrufstellen abgeschaltet); die Bianca-Strecke selbst vertraute
+  blind darauf. Jetzt DOPPELSCHLOSS: jeder Gate-Einstieg des
+  BiancaFlowMixin (intent_router, doctor_presence, fast_side, manage_flow,
+  smalltalk, ask_doctor_first, slot_search, reprompt_pick, booking_flow,
+  finalize, ask_confirmation) sichert sich SELBST ab und kehrt fuer
+  interne Profile sofort um — haelt auch, wenn eine kuenftige
+  Aufrufstelle die Weiche vergisst. Patienten-Strecke byte-gleich
+  (Gegenprobe im Test). Die Booking-Restberuehrungen im Session-Kern
+  (`_has_active_booking` an Begruessung/Reconnect) sind ohne aktive
+  Buchung No-ops und bleiben. PHYSISCH bleibt das Bianca-Erbe (ruhend)
+  im Worker, bis die neue eigenstaendige Bianca steht — Hochzeit spaeter,
+  ein Herausreissen jetzt waere Rueckbau erreichter Funktionen
+  (pickadoc_demo/Patienten-Demo laeuft ueber dieselbe Strecke). Beweis:
+  NEU `testsuite/test_pfad_trennung.py` (17 Pins: Weichen-Wahrheitstafel,
+  alle 11 Doppelschloesser, Gegenprobe Patientenpfad offen, Live-Profil
+  traegt internal) — im Schnell-Gate verankert; Gate gruen, Worker neu
+  registriert.
 
 ## Reihenfolge
 
