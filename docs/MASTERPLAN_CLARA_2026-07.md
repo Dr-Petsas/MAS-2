@@ -1547,6 +1547,42 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     geschlossen); live: ungescopter Scan beruehrt nur noch Dr. Petsas,
     Patrikis-Liste automatisch geschlossen ("gehoert zum Kalender von
     Dr. Patrikis — nicht zum Behandler dieser Clara").
+  * **Recall-Buckets nach Fachbereich + kompletter Bestand (Chef
+    28.07.2026 vormittags: "meine Buckets haben hunderte wenn nicht
+    tausende Patienten"; "der vermeintliche Recall-Grund muss angegeben
+    werden; ich muss die Buckets tauschen koennen; das muss Clara erst
+    erfragen"; "KCH und PRO — Abkuerzungen filtern; nicht langwierig
+    alle Buckets mit Zahlen vorlesen; einfach fragen: Prophylaxe, Kons
+    oder ZE?"; "Implantat auch anbieten, die anderen nicht
+    ausschliessen"):** Ursache der mickrigen 8 Kandidaten: von 3.072
+    virtuellen Recalls las der Code 300 unsortierte und warf alles
+    ueber 1 Jahr Ueberfaelligkeit weg. Jetzt: (1) Bestand KOMPLETT
+    paginiert + feld-projiziert gelesen (Cache 10 min,
+    `MAS_RECALL_INVENTORY_*`), Lookback 3 Jahre (`MAS_RECALL_LOOKBACK_DAYS`)
+    — Pool live 980 faellige Kandidaten. (2) Fachbereichs-Schicht
+    (`fachbereichOf`: KCH->Kons, PRO/PZR->Prophylaxe, IMP->Implantat,
+    ZE->ZE; `spokenMotiveLabel` filtert Abkuerzungen aus Labels).
+    (3) Sprach-Fluss `/tools/gap-briefing`: ohne thema EINE kurze Frage
+    "Aus welchem Fachbereich soll der Recall erfolgen — Prophylaxe,
+    Kons oder ZE? Bei Bedarf auch Implantat." (keine Zahlen, keine
+    Abkuerzungen; Implantat/Sonstige nur wenn Bestand); Antwort formt
+    die Listen aus dem Thema, Ansage beginnt mit "Recall-Thema X".
+    Tool-Schema gap_briefing um Parameter thema erweitert (Clara-Voice
+    profile.json, additiv). (4) Themenwechsel: ausdrueckliche Wahl
+    (Stimme/Monitor, bucketExplicit) formt eine bestehende Liste um —
+    erst Implantat (13 Kandidaten), dann Kons (24) live verifiziert;
+    automatische Scans (Morgen-Briefing, Initiative) ueberschreiben
+    eine themengebundene Liste NIE. (5) Monitor: Bucket-Auswahl pro
+    Liste (`GET /brain/gap-fill/buckets`, `POST .../set-bucket` —
+    Kontaktierte bleiben vorn, Weggewischte bleiben draussen),
+    Recall-Grund als Pill am Kandidaten. (6) Livetest-Fenster kann
+    jetzt den ganzen Tag laufen (`set-live-test-redirect.mjs day`,
+    bis Mitternacht Berlin, fest auf Petsas-Handy). Beweis:
+    test-listen-pflege 18 Pins (Fachbereichs-Aufloesung, setListBucket,
+    Schutzregeln), test-gap-fill auf Morgen-Termine umgestellt (der
+    Overview-Verfall schloss sonst nach 09:00 die heutige
+    08-09-Testliste — zeitabhaengiger Fehlalarm), Fachbereichsfrage +
+    Implantat->Kons-Wechsel live am Endpunkt gegengeprueft.
 
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
