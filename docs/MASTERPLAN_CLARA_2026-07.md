@@ -1702,6 +1702,43 @@ festgelegt). Arbeitspakete in dieser Reihenfolge, jedes einzeln FERTIG:
     Live-Zaehler "Tatjana Kruse ¹"). Frontend deployt
     (main.9ba1ba25.js), MAS + Worker neu gestartet.
 
+    NACHTRAG 5 (Chef 28.07. 13:11: "lisa labert scheisse beim anruf —
+    die will zahnersatz eingliedern lassen und redet nicht von
+    kontrolltermin-vereinbarung … es muss immer einen kontrollcharakter
+    haben und betonen dass der letzte termin sehr weit in der
+    vergangenheit liegt … ausserdem fehlen die tonnen zum loeschen"):
+    (1) KONTROLL-FOKUS (outreachTemplates.js, recallKontrollFokus):
+    Recall zu einer ZURUECKLIEGENDEN Behandlung wird IMMER als
+    Kontroll-Einladung gesprochen, nie als Behandlungs-Angebot.
+    Deterministisch aus dem Motivnamen (kein Katalog-Fuzzy, kein
+    LLM-Raten), Chef-Formulierungen woertlich: ZE/Krone/Bruecke/
+    Prothese -> "vor ueber X Jahren eingegliedert, zur Einhaltung
+    unserer Qualitaetssicherung kontrollieren"; Fuellung/KCH/Kons ->
+    "kontrollieren, ob dicht und intakt"; PAR/UPT/PA/Nachsorge ->
+    "Zustand des Zahnfleisches ueberpruefen"; Implantat ->
+    "begutachten, ob chronische Entzuendung mit Knochenabbau";
+    KB/Schiene/Aufbiss -> "Sitz und Zustand der Schiene". Jede
+    Fokus-Instruktion traegt das KONTROLL_VERBOT (nie 'eingliedern
+    lassen', keine neue Fuellung/Implantat/Schiene anbieten) und den
+    Zeitbezug (recall=ueberfaellig: "vor ueber X"; campaign=letzter
+    Besuch: "vor etwa X" — nie mehr behaupten als die Daten hergeben).
+    Gilt fuer Anruf-Instruktion, Recall-SMS ("faellig: Kontrolle Ihres
+    Zahnersatzes") und Auto-Einbestell-Botschaft. Beratung/Vorsorge/
+    Prophylaxe/Kontroll-Motive behalten den Katalog-Weg (kein Bestand
+    zu pruefen); Kampagnen-Prompts bleiben unangetastet (17.07.).
+    Weitere Faelle ("usw.") kommen auf Chef-Zuruf in KONTROLL_FAELLE.
+    Beweis: test-outreach.mjs 59/59 gruen (15 neue Kontroll-Pins).
+    (2) TONNEN-RAETSEL GELOEST: Hosting lieferte laengst das
+    Tonnen-Bundle (main.9ba1ba25.js, "Von der Liste nehmen" im JS),
+    aber die eingefrorene PWA am Handy laedt nach dem Aufwachen NIE
+    neu. Jetzt prueft der Lueckenfueller-Tab beim Sichtbarwerden und
+    im 45s-Poll die index.html (no-store) auf den deployten
+    Bundle-Hash und laedt sich bei Abweichung EINMAL selbst neu
+    (sessionStorage-Marker gegen Reload-Schleifen). Ab Bundle
+    192a523f entfaellt damit das manuelle Neuladen fuer immer;
+    EINMALIG muss der Chef die App noch von Hand frisch laden
+    (alter Stand kennt den Selbst-Update-Code nicht).
+
 Feste Regeln ab sofort: eine Verhaltensaenderung pro Neustart; kein Neustart
 waehrend der Chef telefoniert; kein "fertig" ohne Register-Zahlen.
 
