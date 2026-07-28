@@ -8,7 +8,7 @@ import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, todayBe
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "../brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "../brain/livingPrompt.js";
 import { reflectOnce } from "../brain/reflect.js";
-import { runGapFill, gapFillOverview, approveCallList } from "../clara/gapFill.js";
+import { runGapFill, gapFillOverview, approveCallList, removeCandidateFromList } from "../clara/gapFill.js";
 import { dailyInitiativeScan } from "../clara/recallCoach.js";
 import { listLisaTasks } from "../lisa/outbound.js";
 import { listCalendar as qmListCalendar } from "../qm/jobs.js";
@@ -1016,6 +1016,30 @@ router.post("/brain/gap-fill/:caseId/approve", async (req, res) => {
     }
     const out = await approveCallList(clientId, req.params.caseId, { by: req.body?.by || "Team" });
     if (!out.ok) return res.status(out.reason === "not_found" ? 404 : 409).json(out);
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Kandidat von einer Anrufliste wischen (Chef 28.07.2026, iOS-Stil im
+// Monitor): removed=true bleibt als Audit stehen, der naechste Kandidat
+// rueckt aus dem Puffer nach. Bereits Kontaktierte sind nicht entfernbar.
+router.post("/brain/gap-fill/:caseId/remove-candidate", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await removeCandidateFromList(clientId, req.params.caseId, {
+      patientId: req.body?.patientId,
+      by: req.body?.by || "Team (Monitor)",
+    });
+    if (!out.ok) {
+      const code = out.reason === "not_found" || out.reason === "candidate_not_found" ? 404 : 409;
+      return res.status(code).json(out);
+    }
     res.json({ ok: true, clientId, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

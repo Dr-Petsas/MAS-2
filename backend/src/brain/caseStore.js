@@ -35,7 +35,16 @@ function col(clientId) {
 
 export async function createCase(clientId, input) {
   const c = buildCase({ ...input, clientId });
-  await col(clientId).doc(c.id).set({ ...c, createdAt: FieldValue.serverTimestamp() });
+  // updatedAt MUSS derselbe Typ sein wie bei allen spaeteren Schreibwegen
+  // (serverTimestamp). buildCase liefert eine Zahl — Firestore ordnet Zahlen
+  // in orderBy("updatedAt") aber HINTER alle Timestamps, womit frisch
+  // angelegte Faelle aus dem listCases-Fenster fielen und z. B. neue
+  // Anruflisten bis zur ersten Beruehrung unsichtbar waren (Befund 28.07.2026).
+  await col(clientId).doc(c.id).set({
+    ...c,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
   return c;
 }
 

@@ -9,6 +9,7 @@ import { listCases, addUpdate, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
 import { resolveOutreach, composeRecallCallInstruction, composeRecallSms } from "./outreachTemplates.js";
 import { createSlotClaim } from "./slotClaim.js";
+import { MAX_CANDIDATES_PER_LIST } from "./gapFill.js";
 import { recordContact, markConverted } from "./outreachStats.js";
 import { currentTestRedirect, activeTenantRedirect } from "./testRedirect.js";
 import { specialtyKeyForClient } from "./dokuPflicht.js";
@@ -195,16 +196,24 @@ export async function executeCallList(clientId, caseId, { by } = {}) {
   let calls = 0;
   let smses = 0;
   let skipped = 0;
+  // Kontakt-Deckel (Chef 28.07.2026): Die Liste traegt einen groesseren Puffer
+  // (bis MAS_GAP_MAX_STORED), kontaktiert werden aber nur die obersten
+  // MAX_CANDIDATES_PER_LIST aktiven Kandidaten — der Rest rueckt nur nach,
+  // wenn der Chef vorher jemanden von der Liste wischt.
+  let kontaktiert = candidates.filter((x) => x.contact?.taskId).length;
 
   for (let i = 0; i < candidates.length; i++) {
     const cand = candidates[i];
     if (cand.contact?.taskId) continue; // bereits kontaktiert (idempotent)
+    if (cand.removed) continue;         // vom Chef von der Liste gewischt
+    if (kontaktiert >= MAX_CANDIDATES_PER_LIST) break; // Puffer bleibt Reserve
     const channel = channelFor(cand);
     if (!channel || !cand.phone) {
       skipped++;
       candidates[i] = { ...cand, contact: { via: "none", reason: !cand.phone ? "no_phone" : "no_channel", at: Date.now() } };
       continue;
     }
+    kontaktiert++;
 
     if (channel === "sms") {
       // Online-Zusage: Ticket anlegen, Link in die SMS — erste Zusage bucht.

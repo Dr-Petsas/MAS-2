@@ -10,6 +10,7 @@ import { queryRecent } from "../brain/eventStore.js";
 import { normalizePhone } from "./callerLookup.js";
 import { pick as pickPhrase } from "./variation.js";
 import { loadStatsMap, contactsInWindow, isBookedSuppressed, isSpamRisk, nameMitZaehler } from "./outreachStats.js";
+import { log } from "../log.js";
 
 // ============================================================================
 // Lückenfüller / Umsatz-Coach — Stufe 1 (Clara is the coach, Lisa executes).
@@ -39,7 +40,12 @@ const MIN_GAP_MINUTES = 25; // a gap must fit a short treatment incl. buffer
 // Wieviele Kandidaten pro Lücke vorgeschlagen werden (Chef-Frage "warum nur 5?":
 // jetzt konfigurierbar, Default 8). Zu viele Namen am Telefon überfordern; 8
 // gibt der Praxis spürbar mehr Auswahl als die alte feste 5.
-const MAX_CANDIDATES_PER_LIST = Number(process.env.MAS_GAP_MAX_CANDIDATES || 8);
+export const MAX_CANDIDATES_PER_LIST = Number(process.env.MAS_GAP_MAX_CANDIDATES || 8);
+// Puffer (Chef 28.07.2026): In der Liste liegen DEUTLICH mehr Kandidaten, als
+// gesprochen/kontaktiert werden — wischt der Chef einen Patienten weg, rueckt
+// sofort der naechste aus dem Puffer nach. Lisa kontaktiert weiterhin nur die
+// obersten MAX_CANDIDATES_PER_LIST aktiven Kandidaten.
+const MAX_CANDIDATES_STORED = Number(process.env.MAS_GAP_MAX_STORED || 24);
 // Vorlaufzeit, ab der eine Lücke noch sinnvoll per Recall zu füllen ist. Liegt
 // eine Lücke näher (z. B. heute), ist klassischer Recall meist zu kurzfristig —
 // Clara weist darauf hin und bietet stattdessen das gezielte Einbestellen an.
@@ -385,7 +391,12 @@ export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = 
     seen.add(key);
     unique.push(c);
   }
-  return unique.slice(0, MAX_CANDIDATES_PER_LIST);
+  return unique.slice(0, MAX_CANDIDATES_STORED);
+}
+
+/** Nicht weggewischte Kandidaten einer Liste (Chef entfernt per Swipe). */
+export function aktiveKandidaten(list) {
+  return (list?.candidates || []).filter((c) => c && !c.removed);
 }
 
 // ----------------------------------------------------------------------------
@@ -445,10 +456,63 @@ async function upsertCallListCase(clientId, { date, calendar, gap, candidates, b
   const existing = snap.data();
   // Only a still-unapproved list is refreshed; approved/closed lists are facts.
   if (existing.status === CASE_STATUS.WAITING_APPROVAL) {
+    // Vom Chef weggewischte Kandidaten (removed) bleiben beim Auffrischen
+    // draussen — sonst kaeme jeder entfernte Patient beim naechsten Scan zurueck.
+    const removedIds = new Set(
+      (existing.callList?.candidates || [])
+        .filter((c) => c?.removed && c.patientId)
+        .map((c) => s(c.patientId))
+    );
+    if (removedIds.size) {
+      callList.candidates = callList.candidates.map((c) =>
+        removedIds.has(s(c.patientId))
+          ? { ...c, removed: true, removedBy: "uebernommen", removedAt: Date.now() }
+          : c);
+    }
     await ref.update({ callList, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
     return { caseId, created: false, refreshed: true };
   }
   return { caseId, created: false, refreshed: false, status: existing.status };
+}
+
+// ----------------------------------------------------------------------------
+// Listen-Pflege (Chef 28.07.2026: "27.7. ist in der Vergangenheit, 8-15 Uhr
+// ist unmoeglich, da steht eine Abwesenheit") — Listen verfallen von selbst.
+// ----------------------------------------------------------------------------
+
+/** Ende der Luecke als Zeitstempel (Berlin). Unparsebar -> 0 (nie verfallen). */
+function listSlotEndMs(l) {
+  const date = s(l?.callList?.date || l?.date);
+  const endMin = Number(l?.callList?.slot?.endMin ?? l?.slot?.endMin);
+  if (!date || !Number.isFinite(endMin)) return 0;
+  const hh = String(Math.floor(endMin / 60)).padStart(2, "0");
+  const mm = String(endMin % 60).padStart(2, "0");
+  const t = new Date(ensureBerlinTz(`${date}T${hh}:${mm}:00`)).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Schon jemand kontaktiert? Dann ist die Liste ein Fakt, kein Entwurf mehr. */
+function listHasContacts(l) {
+  const cands = l?.callList?.candidates || l?.candidates || [];
+  return cands.some((c) => c?.contact?.taskId);
+}
+
+/**
+ * Verstrichene Liste schliessen (Slot-Ende liegt in der Vergangenheit).
+ * Fire-and-forget aus dem Overview heraus — idempotent, auditiert.
+ */
+async function closeStaleList(clientId, c, grund) {
+  try {
+    await setStatus(clientId, c.id, CASE_STATUS.CLOSED, { by: "Clara", note: "" });
+    await addUpdate(clientId, c.id, {
+      by: "Clara",
+      kind: "note",
+      text: `Anrufliste automatisch geschlossen: ${grund}.`,
+    });
+    log.info("gapfill.list_closed", { clientId, caseId: c.id, grund });
+  } catch (e) {
+    log.warn("gapfill.list_close_failed", { clientId, caseId: c.id, error: String(e?.message || e) });
+  }
 }
 
 /**
@@ -507,6 +571,8 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
     const dayData = await getDayAppointments(clientId, { date: day });
     if (!dayData.ok) continue;
 
+    // Gueltige Luecken-Identitaeten dieses Tages — alles andere ist ueberholt.
+    const gueltigeCaseIds = new Set();
     const scopedCalendars = (booking.calendars || []).filter((c) => !onlyCalId || c.id === onlyCalId);
     for (const calendar of scopedCalendars) {
       const hours = await loadOpeningHoursForCalendar(clientId, locationId, calendar.id);
@@ -522,6 +588,7 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
         .map((a) => ({ startMin: berlinMinutesOf(a.startMs), endMin: berlinMinutesOf(a.endMs || a.startMs) }));
 
       for (const gap of computeGapWindows(wd, busy)) {
+        gueltigeCaseIds.add(gapCaseId(clientId, calendar.id, day, gap.startMin));
         const candidates = rankCandidatesForGap(allCandidates, gap, {
           calendarId: calendar.id,
           throttled,
@@ -536,6 +603,23 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
         callLists.push({ ...upsert, date: day, calendarName: s(calendar.name), slot: gap.label, candidates: candidates.length });
       }
     }
+
+    // Abgleich (Chef 28.07.2026: "8-15 Uhr ist unmoeglich, da steht eine
+    // Abwesenheit"): Aktive Listen dieses Tages, deren Luecke es nach dem
+    // frischen Scan NICHT mehr gibt (inzwischen belegt/Abwesenheit), werden
+    // geschlossen — ausser es wurde schon jemand kontaktiert (dann laufen
+    // Antworten, der Ergebnis-Sweep behandelt sie ehrlich weiter).
+    try {
+      const aktive = await listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 });
+      for (const c of aktive) {
+        if (!c.id.startsWith("gapfill_") || !c.callList) continue;
+        if (c.callList.date !== day) continue;
+        if (onlyCalId && c.callList.calendarId !== onlyCalId) continue;
+        if (gueltigeCaseIds.has(c.id)) continue;
+        if (listHasContacts(c)) continue;
+        await closeStaleList(clientId, c, "die Lücke existiert nicht mehr (inzwischen belegt oder Abwesenheit eingetragen)");
+      }
+    } catch { /* Pflege ist Zugabe — der Scan selbst bleibt unberuehrt */ }
   }
 
   return { ok: true, date: startDate, demoOnly: !!demoOnly, gaps, callLists, candidatesTotal: allCandidates.length };
@@ -544,7 +628,19 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
 /** UI read-model: pending + approved call lists (active gap-fill cases). */
 export async function gapFillOverview(clientId) {
   const cases = await listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 });
-  const gapCases = cases.filter((c) => c.id.startsWith("gapfill_") && c.callList);
+  const gapCases = [];
+  const now = Date.now();
+  for (const c of cases) {
+    if (!c.id.startsWith("gapfill_") || !c.callList) continue;
+    // Verstrichene Luecken (Chef 28.07.2026: "27.7. ist in der Vergangenheit")
+    // verschwinden von selbst: nicht mehr anzeigen und den Fall schliessen.
+    const endMs = listSlotEndMs(c);
+    if (endMs && endMs < now) {
+      closeStaleList(clientId, c, `die Lücke ${c.callList.slot?.label || ""} am ${c.callList.date} ist verstrichen`).catch(() => {});
+      continue;
+    }
+    gapCases.push(c);
+  }
   return {
     pending: gapCases.filter((c) => c.status === CASE_STATUS.WAITING_APPROVAL).map(toOverviewItem),
     approved: gapCases.filter((c) => c.status !== CASE_STATUS.WAITING_APPROVAL).map(toOverviewItem),
@@ -568,6 +664,36 @@ function toOverviewItem(c) {
 }
 
 /**
+ * Kandidat von einer Anrufliste nehmen (Chef 28.07.2026: nach links wischen
+ * zum Entfernen, iOS-Stil). Der Eintrag bleibt als removed=true erhalten
+ * (Audit + damit der naechste Scan ihn nicht wieder hereinholt); kontaktiert
+ * wird er nicht mehr, der naechste Puffer-Kandidat rueckt automatisch nach.
+ */
+export async function removeCandidateFromList(clientId, caseId, { patientId, by } = {}) {
+  const ref = masCollection(clientId, "mas_cases").doc(s(caseId));
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "not_found" };
+  const c = snap.data();
+  const cands = c.callList?.candidates;
+  if (!Array.isArray(cands)) return { ok: false, reason: "not_a_call_list" };
+  const idx = cands.findIndex((x) => s(x.patientId) === s(patientId));
+  if (idx < 0) return { ok: false, reason: "candidate_not_found" };
+  if (cands[idx].contact?.taskId) return { ok: false, reason: "already_contacted" };
+  if (cands[idx].removed) return { ok: true, already: true };
+
+  const neu = [...cands];
+  neu[idx] = { ...neu[idx], removed: true, removedBy: s(by) || "Team", removedAt: Date.now() };
+  await ref.update({ "callList.candidates": neu, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  await addUpdate(clientId, s(caseId), {
+    by: s(by) || "Team",
+    kind: "note",
+    text: `Kandidat ${neu[idx].name || patientId} von der Anrufliste genommen (per Wisch entfernt).`,
+  });
+  const verbleibend = neu.filter((x) => !x.removed).length;
+  return { ok: true, remaining: verbleibend };
+}
+
+/**
  * Approve ONE call list (per your decision: each list individually). Audited:
  * who approved, how many candidates, under which Lisa prompt version.
  */
@@ -585,10 +711,11 @@ export async function approveCallList(clientId, caseId, { by } = {}) {
     "callList.approvedAt": Date.now(),
   });
   await setStatus(clientId, c.id, CASE_STATUS.IN_PROGRESS, { by: who, note: "" });
+  const aktiv = aktiveKandidaten(c.callList).length;
   await addUpdate(clientId, c.id, {
     by: who,
     kind: "note",
-    text: `Anrufliste freigegeben: ${c.callList.candidates?.length || 0} Kandidat(en), Slot ${c.callList.slot?.label || ""} bei ${c.callList.calendarName || ""}. Gilt Prompt-Version ${c.callList.promptVersionTag || "pv:lisa:0"}. Lisa darf kontaktieren, sobald der Anrufkanal aktiv ist.`,
+    text: `Anrufliste freigegeben: ${Math.min(aktiv, MAX_CANDIDATES_PER_LIST)} Kandidat(en) werden kontaktiert (${aktiv} aktiv in der Liste), Slot ${c.callList.slot?.label || ""} bei ${c.callList.calendarName || ""}. Gilt Prompt-Version ${c.callList.promptVersionTag || "pv:lisa:0"}. Lisa darf kontaktieren, sobald der Anrufkanal aktiv ist.`,
   });
   return { ok: true, caseId: c.id, approvedBy: who, candidates: c.callList.candidates?.length || 0 };
 }
@@ -708,7 +835,7 @@ export async function buildSpokenGapCandidates(clientId, { date } = {}) {
   const gesprochen = new Map(); // Kandidaten-Schluessel -> Index in parts
   const auchFuer = new Map();   // Index in parts -> weitere Slot-Labels
   for (const l of lists.slice(0, 8)) {
-    const cands = (l.candidates || []).slice(0, MAX_CANDIDATES_PER_LIST);
+    const cands = aktiveKandidaten(l).slice(0, MAX_CANDIDATES_PER_LIST);
     if (!cands.length) continue;
     const wo = `${l.slot?.label || "die Lücke"}${l.calendarName ? ` bei ${l.calendarName}` : ""}`;
 
@@ -761,7 +888,7 @@ export async function gapCandidateCardData(clientId, { date } = {}) {
     calendarName: l.calendarName || "",
     date: l.date || "",
     status: l.status === CASE_STATUS.WAITING_APPROVAL ? "wartet auf Freigabe" : "freigegeben",
-    candidates: (l.candidates || []).slice(0, MAX_CANDIDATES_PER_LIST).map((c) => ({
+    candidates: aktiveKandidaten(l).slice(0, MAX_CANDIDATES_PER_LIST).map((c) => ({
       anzeigeName: nameMitZaehler(c.name, c.stats),
       name: s(c.name) || "Unbekannt",
       thema: c.campaignName ? `Kampagne »${s(c.campaignName)}«` : (s(c.visitMotiveName) || "Recall"),
