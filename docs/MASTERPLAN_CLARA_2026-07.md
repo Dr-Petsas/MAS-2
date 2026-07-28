@@ -1442,6 +1442,11 @@ das nicht so steif!"** Daraus verbindlich fuer JEDE Umbau-Session:
   Namen aus dem Tool-Ergebnis duerfen beim Formulieren nicht veraendert
   oder erfunden werden (inventsNumbers-Muster aus `clara/summarize.js`;
   `response_guard` bleibt die letzte Instanz vor dem Mund).
+- **Relative Zeitangaben sind menschlicher (Chef 28.07.2026):** gesprochen
+  wird "morgen", "am kommenden Dienstag", "in zwei Wochen" — das nackte
+  Datum NUR bei Nachfrage oder wenn es sonst unklar waere. (Genau so
+  arbeitet `response_guard.sanitize_reply` seit 12.06. — beim Umbau
+  NICHT rueckbauen, sondern als Sprachregel uebernehmen.)
 - Die alte Formulierung "Faktenantworten ohne LLM-Umformulierung" ist
   damit GESTRICHEN. `speak_result: verbatim` bleibt nur, wo Woertlichkeit
   gewollt ist (Lisa-Anweisungen woertlich vorlesen, Telefonnummern,
