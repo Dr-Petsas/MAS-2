@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Fernsteuerung — Korrekturen</title>
+<link rel="icon" href="/m/icon-192.png">
+<style>
+  /* Fernsteuerungs-Chat (Urlaub 29.07.2026): Dr. Petsas tippt vom Handy
+     Korrekturen; sie landen token-gated in /remote/message (Firestore
+     mas_remote_chat). Ein lokaler Waechter (tools/remote_chat_watch.ps1)
+     holt jede neue Nachricht ab, startet eine cursor-agent-Session
+     (Session-Resume = ein durchgehendes Gespraech) und schreibt die
+     Antwort per /remote/message (role=agent) + ein Kurz-Board zurueck.
+     Selbsttragend: der Token steht in der URL, die Seite laeuft ueber
+     denselben Tunnel wie MAS. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(130% 95% at 50% 0%, #13203a 0%, #0a1322 55%, #060b16 100%);
+    color: #e6edf6; display: flex; flex-direction: column;
+    height: 100dvh; overflow: hidden;
+  }
+  header {
+    flex: 0 0 auto; padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+    background: #0d1830; border-bottom: 1px solid #1c2c4a;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .avatar {
+    width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
+    background: linear-gradient(135deg, #2ee6c8, #1899b0); color: #08121f;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 800;
+  }
+  header h1 { font-size: 16px; line-height: 1.2; }
+  header .sub { font-size: 12px; color: #8fa0bd; }
+  #dot { width: 9px; height: 9px; border-radius: 50%; background: #4a5a78; margin-left: auto; flex: 0 0 auto; }
+  #dot.on { background: #2ee6c8; box-shadow: 0 0 8px #2ee6c8; }
+  #dot.err { background: #ff6b6b; }
+
+  #board {
+    flex: 0 0 auto; margin: 0; padding: 0 16px; max-height: 0; overflow: hidden;
+    background: #0f1c34; transition: max-height .25s ease, padding .25s ease;
+    border-bottom: 1px solid transparent;
+  }
+  #board.show { max-height: 42vh; overflow-y: auto; padding: 12px 16px; border-bottom-color: #1c2c4a; }
+  #board .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #7fe6d3; margin-bottom: 6px; display: flex; justify-content: space-between; }
+  #board .txt { font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: #cfe6df; }
+
+  #log { flex: 1 1 auto; overflow-y: auto; padding: 16px 12px 8px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
+  .msg { max-width: 84%; padding: 10px 13px; border-radius: 16px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; position: relative; }
+  .msg.user { align-self: flex-end; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; border-bottom-right-radius: 5px; }
+  .msg.agent { align-self: flex-start; background: #172642; color: #e6edf6; border-bottom-left-radius: 5px; }
+  .msg .meta { font-size: 10px; opacity: .6; margin-top: 5px; text-align: right; }
+  .msg.user.pending { opacity: .72; }
+  .msg.user.working .meta::after { content: " · wird bearbeitet …"; color: #ffd98a; }
+  .msg.user.done .meta::after { content: " · erledigt"; color: #8fe6c8; }
+  .empty { color: #8fa0bd; font-size: 14px; text-align: center; margin: auto 20px; line-height: 1.6; }
+
+  footer { flex: 0 0 auto; padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px); background: #0d1830; border-top: 1px solid #1c2c4a; }
+  .row { display: flex; gap: 8px; align-items: flex-end; }
+  textarea {
+    flex: 1 1 auto; resize: none; background: #0f1626; color: #e6edf6;
+    border: 1px solid #26375a; border-radius: 18px; padding: 11px 14px;
+    font-size: 16px; font-family: inherit; line-height: 1.4; max-height: 40vh;
+  }
+  textarea:focus { outline: none; border-color: #2ee6c8; }
+  button#send {
+    flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, #2ee6c8, #1899b0); color: #08121f;
+    font-size: 20px; font-weight: 800; cursor: pointer;
+  }
+  button#send:disabled { opacity: .4; }
+  #tokenGate { margin: auto; max-width: 340px; text-align: center; padding: 24px; }
+  #tokenGate h2 { font-size: 18px; margin-bottom: 10px; }
+  #tokenGate p { font-size: 14px; color: #8fa0bd; margin-bottom: 14px; }
+  #tokenGate input { width: 100%; background: #0f1626; color: #e6edf6; border: 1px solid #26375a; border-radius: 12px; padding: 11px 14px; font-size: 15px; margin-bottom: 12px; }
+  #tokenGate button { background: linear-gradient(135deg, #2ee6c8, #1899b0); color: #08121f; border: none; border-radius: 12px; padding: 11px 20px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  #boardToggle { background: none; border: none; color: #7fe6d3; font-size: 11px; cursor: pointer; text-transform: none; letter-spacing: 0; }
+</style>
+</head>
+<body>
+<header id="hdr" hidden>
+  <div class="avatar">✎</div>
+  <div>
+    <h1>Korrektur-Draht</h1>
+    <div class="sub" id="hdrSub">verbinde …</div>
+  </div>
+  <div id="dot"></div>
+</header>
+
+<div id="board"><div class="lbl"><span>Stand / Board</span><button id="boardToggle" type="button">ausblenden</button></div><div class="txt" id="boardTxt"></div></div>
+
+<div id="log">
+  <div class="empty" id="empty">Lade Verlauf …</div>
+</div>
+
+<div id="tokenGate" hidden>
+  <h2>Zugang</h2>
+  <p>Dieser Draht ist token-geschützt. Bitte den Zugangs-Token einfügen (steht in der E-Mail).</p>
+  <input id="tokenInput" type="text" placeholder="Token" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button id="tokenSave" type="button">Verbinden</button>
+</div>
+
+<footer id="foot" hidden>
+  <div class="row">
+    <textarea id="input" rows="1" placeholder="Korrektur / Frage tippen …"></textarea>
+    <button id="send" type="button" title="Senden">➤</button>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const API = window.location.origin;
+  const qs = new URLSearchParams(window.location.search);
+  let token = (qs.get("token") || localStorage.getItem("remoteChatToken") || "").trim();
+
+  const els = {
+    hdr: document.getElementById("hdr"), hdrSub: document.getElementById("hdrSub"),
+    dot: document.getElementById("dot"), board: document.getElementById("board"),
+    boardTxt: document.getElementById("boardTxt"), boardToggle: document.getElementById("boardToggle"),
+    log: document.getElementById("log"), empty: document.getElementById("empty"),
+    gate: document.getElementById("tokenGate"), tokenInput: document.getElementById("tokenInput"),
+    tokenSave: document.getElementById("tokenSave"), foot: document.getElementById("foot"),
+    input: document.getElementById("input"), send: document.getElementById("send"),
+  };
+
+  // Wenn der Token aus der URL kam, in localStorage sichern und die URL
+  // bereinigen (Token nicht im Verlauf/Screenshot stehen lassen).
+  if (qs.get("token")) {
+    localStorage.setItem("remoteChatToken", token);
+    history.replaceState(null, "", window.location.pathname);
+  }
+
+  function showGate() {
+    els.gate.hidden = false; els.hdr.hidden = true; els.foot.hidden = true; els.log.hidden = true; els.board.classList.remove("show");
+  }
+  function showChat() {
+    els.gate.hidden = true; els.hdr.hidden = false; els.foot.hidden = false; els.log.hidden = false;
+  }
+
+  els.tokenSave.addEventListener("click", () => {
+    const t = els.tokenInput.value.trim();
+    if (!t) return;
+    token = t; localStorage.setItem("remoteChatToken", t);
+    showChat(); poll(); startPolling();
+  });
+
+  let boardHidden = false;
+  els.boardToggle.addEventListener("click", () => {
+    boardHidden = !boardHidden;
+    els.board.classList.toggle("show", !boardHidden && !!els.boardTxt.textContent.trim());
+    els.boardToggle.textContent = boardHidden ? "einblenden" : "ausblenden";
+  });
+
+  // Auto-Groesse der Textarea.
+  els.input.addEventListener("input", () => {
+    els.input.style.height = "auto";
+    els.input.style.height = Math.min(els.input.scrollHeight, window.innerHeight * 0.4) + "px";
+    els.send.disabled = !els.input.value.trim();
+  });
+  els.input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); }
+  });
+  els.send.addEventListener("click", doSend);
+  els.send.disabled = true;
+
+  let lastRenderKey = "";
+  let localPending = []; // optimistisch angezeigte, noch nicht bestaetigte User-Zeilen
+  function fmtTime(ms) {
+    if (!ms) return "";
+    try { return new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
+  }
+
+  function render(state) {
+    const msgs = (state.messages || []).slice();
+    // optimistische Zeilen anhaengen, die der Server noch nicht kennt
+    for (const p of localPending) {
+      if (!msgs.some((m) => m.role === "user" && m.text === p.text)) msgs.push(p);
+      else localPending = localPending.filter((x) => x !== p);
+    }
+    const key = msgs.map((m) => m.id + m.role + m.status + (m.text || "").length).join("|") + "#" + (state.board?.updatedAt || 0);
+    if (key === lastRenderKey) return;
+    lastRenderKey = key;
+
+    // Board
+    const bt = (state.board?.text || "").trim();
+    els.boardTxt.textContent = bt;
+    els.board.classList.toggle("show", !!bt && !boardHidden);
+
+    if (!msgs.length) {
+      els.log.innerHTML = '<div class="empty">Noch keine Nachrichten.<br>Tippe unten deine erste Korrektur — sie wird hier bearbeitet und beantwortet.</div>';
+      return;
+    }
+    const atBottom = els.log.scrollHeight - els.log.scrollTop - els.log.clientHeight < 80;
+    els.log.innerHTML = "";
+    for (const m of msgs) {
+      const div = document.createElement("div");
+      const statusCls = m.role === "user" ? (m.status === "fertig" ? "done" : m.status === "in_arbeit" ? "working" : "pending") : "";
+      div.className = "msg " + (m.role === "agent" ? "agent" : "user") + (statusCls ? " " + statusCls : "");
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = fmtTime(m.createdAt);
+      div.textContent = m.text || "";
+      div.appendChild(meta);
+      els.log.appendChild(div);
+    }
+    if (atBottom) els.log.scrollTop = els.log.scrollHeight;
+  }
+
+  async function poll() {
+    if (!token) { showGate(); return; }
+    try {
+      const r = await fetch(API + "/remote/state?limit=120&token=" + encodeURIComponent(token), { cache: "no-store" });
+      if (r.status === 401) { setDot("err"); showGate(); return; }
+      const data = await r.json();
+      if (!data.ok) { setDot("err"); return; }
+      showChat();
+      setDot("on");
+      els.hdrSub.textContent = "verbunden";
+      render(data);
+    } catch (e) {
+      setDot("err");
+      els.hdrSub.textContent = "offline — versuche erneut …";
+    }
+  }
+
+  function setDot(state) {
+    els.dot.className = state === "on" ? "on" : state === "err" ? "err" : "";
+  }
+
+  async function doSend() {
+    const text = els.input.value.trim();
+    if (!text || !token) return;
+    els.input.value = ""; els.input.style.height = "auto"; els.send.disabled = true;
+    const optimistic = { id: "local-" + Date.now(), role: "user", text, status: "neu", createdAt: Date.now() };
+    localPending.push(optimistic);
+    lastRenderKey = ""; render({ messages: [], board: { text: els.boardTxt.textContent } });
+    poll();
+    try {
+      const r = await fetch(API + "/remote/message", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, role: "user", text }),
+      });
+      const data = await r.json();
+      if (!data.ok) throw new Error(data.error || "senden fehlgeschlagen");
+      setTimeout(poll, 400);
+    } catch (e) {
+      alert("Konnte nicht senden: " + e.message + "\nText ist noch im Verlauf markiert.");
+    }
+  }
+
+  let pollTimer = null;
+  function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    // schneller pollen, solange etwas in Arbeit ist; sonst gemaechlich
+    pollTimer = setInterval(poll, 4000);
+  }
+
+  if (!token) showGate(); else { showChat(); }
+  poll();
+  startPolling();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+})();
+</script>
+</body>
+</html>

@@ -1,133 +1,159 @@
-# ============================================================================
-# FERNSTEUERUNGS-WACHE (alle 5 Minuten via Aufgabenplanung "MASFernsteuerung")
-#
-# Holt neue Auftraege von der Fernsteuerungs-Seite (https://mas-fernsteuerung.web.app)
-# ab, die im MAS-2-Backend unter /remote/pending liegen. Gibt es welche, wird
-# eine unbeaufsichtigte Cursor-Agent-Session gestartet, die den Auftrag
-# ausfuehrt, eine kurze Antwort in den Chat schreibt und das Board (Resuemee +
-# Empfehlungen) aktualisiert. Siehe tools/remote_chat_prompt.md.
-#
-# Laeuft bis 15.08.2026, 08:00 — danach traegt sich der Task selbst aus.
-# (Reaktiviert 16.06.2026 und erneut 14.07.2026; Enddatum verlaengert.)
-# Token kommt aus backend\.env (REMOTE_CHAT_TOKEN).
-# ============================================================================
-$ErrorActionPreference = 'Continue'
-$root     = 'F:\MAS-2'
-$watchDir = Join-Path $root '.run\remote'
-$lockFile = Join-Path $watchDir 'agent.lock'
-$MasLocal = 'http://127.0.0.1:4000'
-New-Item -ItemType Directory -Path $watchDir -Force | Out-Null
-$stamp = Get-Date -Format 'yyyyMMdd_HHmm'
-$logFile = Join-Path $watchDir "lauf_$stamp.log"
+<#
+  Fernsteuerungs-Waechter (Urlaub 29.07.2026)
+  --------------------------------------------
+  Holt neue Handy-Nachrichten aus /remote/pending (Firestore mas_remote_chat),
+  startet pro Nachricht eine cursor-agent-Session (Prompt via stdin, damit
+  mehrzeilige Korrekturtexte kein Quoting-Problem sind), setzt das Gespraech
+  ueber die gespeicherte session_id fort (ein durchgehender Faden) und schreibt
+  die Antwort per /remote/message (role=agent) zurueck. Ein Kurz-Board haelt den
+  letzten Stand fest.
 
-function Log([string]$Msg) {
-    Add-Content -Path $logFile -Value "$(Get-Date -Format 'HH:mm:ss') $Msg"
-}
+  Der Agent laeuft im Force-Modus (schreiben + Shell) im Workspace F:\, damit er
+  echte Korrekturen an MAS/Clara/Frontend/Lena durchfuehren kann. Er ist an die
+  AGENTS.md-Regeln jedes Repos gebunden (Release-Gate vor Neustart, deutsche
+  Commits, nichts Ungetestetes an den Live-Worker) - das steht im Prompt und in
+  den Repo-Regeln, die cursor-agent automatisch laedt.
 
-# Endzeit: 15.08.2026 08:00 — danach Task entfernen und beenden.
-$ende = Get-Date -Year 2026 -Month 8 -Day 15 -Hour 8 -Minute 0 -Second 0
-if ((Get-Date) -gt $ende) {
-    Log 'Endzeit erreicht - Task wird ausgetragen.'
-    schtasks /Delete /TN "MASFernsteuerung" /F 2>&1 | Out-Null
-    exit 0
-}
+  Kill-Switch: dieses Fenster schliessen / Strg+C. Dann nimmt niemand mehr
+  Nachrichten an (die Handy-Seite zeigt sie weiter als "neu").
+
+  Start:  powershell -ExecutionPolicy Bypass -File F:\MAS-2\tools\remote_chat_watch.ps1
+#>
+
+param(
+  [string]$MasBase = "http://127.0.0.1:4000",
+  [string]$Workspace = "F:\",
+  [int]$IntervalSeconds = 6,
+  # Chef spricht IMMER mit Opus 4.8 (Wunsch 29.07.2026). Fest verdrahtet; der
+  # Urlaubs-Waechter (watchdog.ps1) prueft das und startet neu, falls abweichend.
+  [string]$Model = "claude-opus-4-8-thinking-high"
+)
+
+$ErrorActionPreference = "Continue"
+$ProgressPreference = "SilentlyContinue"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$CursorAgent = "C:\Users\Anmeldung2\AppData\Local\cursor-agent\cursor-agent.cmd"
+$RunDir = "F:\MAS-2\.run"
+$SessionFile = Join-Path $RunDir "remote_chat_session.txt"
+$LogFile = Join-Path $RunDir "remote_chat_watch.log"
+$HeartbeatFile = Join-Path $RunDir "remote_chat_watch.hb"
+$ModelFile = Join-Path $RunDir "remote_chat_watch.model"
+if (-not (Test-Path $RunDir)) { New-Item -ItemType Directory -Path $RunDir -Force | Out-Null }
+
+function Beat() { try { Set-Content -Path $HeartbeatFile -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {} }
 
 # Token aus backend\.env lesen.
-$tokLine = Get-Content (Join-Path $root 'backend\.env') -ErrorAction SilentlyContinue |
-    Where-Object { $_ -match '^\s*REMOTE_CHAT_TOKEN\s*=' } | Select-Object -First 1
-if (-not $tokLine) { Log 'REMOTE_CHAT_TOKEN fehlt in backend\.env - Abbruch'; exit 1 }
-$token = ($tokLine -split '=', 2)[1].Trim()
+$envPath = "F:\MAS-2\backend\.env"
+$Token = ""
+if (Test-Path $envPath) {
+  $line = Get-Content $envPath | Where-Object { $_ -match "^REMOTE_CHAT_TOKEN=" } | Select-Object -First 1
+  if ($line) { $Token = ($line -split "=", 2)[1].Trim() }
+}
+if (-not $Token) { Write-Host "ABBRUCH: REMOTE_CHAT_TOKEN fehlt in $envPath"; exit 1 }
+if (-not (Test-Path $CursorAgent)) { Write-Host "ABBRUCH: cursor-agent nicht gefunden ($CursorAgent)"; exit 1 }
 
-# Modell fuer den unbeaufsichtigten Agenten aus backend\.env (REMOTE_AGENT_MODEL).
-# Der gespeicherte Standard des cursor-agent zeigte auf ein zurueckgezogenes
-# Anthropic-Modell ("Model not available ... removed"), wodurch JEDER Lauf sofort
-# scheiterte (Vorfall 23.06.2026). Darum hier immer explizit setzen.
-$mdlLine = Get-Content (Join-Path $root 'backend\.env') -ErrorAction SilentlyContinue |
-    Where-Object { $_ -match '^\s*REMOTE_AGENT_MODEL\s*=' } | Select-Object -First 1
-$model = if ($mdlLine) { ($mdlLine -split '=', 2)[1].Trim() } else { 'claude-4.6-sonnet-medium' }
-
-# Laeuft schon ein Agent? Frische Sperre (<50 min) respektieren, alte aufraeumen.
-if (Test-Path $lockFile) {
-    $age = (Get-Date) - (Get-Item $lockFile).LastWriteTime
-    if ($age.TotalMinutes -lt 50) { Log "Agent-Sperre aktiv ($([int]$age.TotalMinutes) min) - ueberspringe"; exit 0 }
-    Log 'Alte Sperre (>50 min) - wird entfernt.'
-    Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+function Log([string]$msg) {
+  $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+  $line = "$stamp  $msg"
+  Write-Host $line
+  Add-Content -Path $LogFile -Value $line -Encoding UTF8
 }
 
-# Neue Auftraege abholen (lokal; das Backend selbst kuemmert sich um Firestore).
-try {
-    $pending = Invoke-RestMethod -Uri "$MasLocal/remote/pending?token=$token" -TimeoutSec 30
-} catch {
-    Log "Backend nicht erreichbar: $($_.Exception.Message)"
-    exit 1
+function Api-Get([string]$path) {
+  return Invoke-RestMethod -Uri ("{0}{1}{2}token={3}" -f $MasBase, $path, ($(if ($path.Contains("?")) { "&" } else { "?" })), [uri]::EscapeDataString($Token)) -TimeoutSec 20
 }
-if (-not $pending.ok -or -not $pending.messages -or $pending.messages.Count -eq 0) {
-    # Nichts zu tun - Log-Datei wieder loeschen, damit kein Muell entsteht.
-    Remove-Item $logFile -Force -ErrorAction SilentlyContinue
-    exit 0
+function Api-Post([string]$path, [hashtable]$body) {
+  $body["token"] = $Token
+  return Invoke-RestMethod -Uri ($MasBase + $path) -Method Post -ContentType "application/json; charset=utf-8" -Body ($body | ConvertTo-Json -Depth 6) -TimeoutSec 20
 }
 
-Log "$($pending.messages.Count) neue(r) Auftrag/Auftraege gefunden."
-
-# Auftraege als 'in_arbeit' markieren (damit der naechste Tick nicht doppelt zieht)
-# und in eine Job-Datei fuer den Agenten schreiben.
-$ids = @($pending.messages | ForEach-Object { $_.id })
-$ack = @{ token = $token; ids = $ids; status = 'in_arbeit' } | ConvertTo-Json
-Invoke-RestMethod -Uri "$MasLocal/remote/ack" -Method Post -ContentType 'application/json; charset=utf-8' `
-    -Body $ack -TimeoutSec 30 | Out-Null
-
-$jobFile = Join-Path $watchDir "job_$stamp.txt"
-$lines = @("Auftraege von Dr. Petsas ueber die Fernsteuerungs-Seite (aelteste zuerst):", "")
-foreach ($m in $pending.messages) {
-    $t = [DateTimeOffset]::FromUnixTimeMilliseconds([long]$m.createdAt).ToLocalTime().ToString('dd.MM. HH:mm')
-    $lines += "[$t] (id=$($m.id))"
-    $lines += $m.text
-    $lines += ""
+function Get-Session() {
+  if (Test-Path $SessionFile) { return (Get-Content $SessionFile -Raw).Trim() }
+  return ""
 }
-$lines | Out-File $jobFile -Encoding utf8
+function Set-Session([string]$id) {
+  if ($id) { Set-Content -Path $SessionFile -Value $id -Encoding ASCII -NoNewline }
+}
 
-# Sperre setzen und Agent starten.
-New-Item -ItemType File -Path $lockFile -Force | Out-Null
-$agent = "$env:LOCALAPPDATA\cursor-agent\agent.cmd"
-$prompt = "Lies die Datei F:\MAS-2\tools\remote_chat_prompt.md und fuehre den Auftrag darin vollstaendig aus. Die aktuellen Auftraege stehen in $jobFile."
+function Build-Prompt([string]$userText) {
+  return @"
+[SYSTEM] Du bist der Cursor-Coding-Agent fuer Dr. Petsas' System (Pickadoc-Frontend F:\pickadoc-live-base, Backend F:\MAS-2, Sprach-Stack F:\Clara-Voice, Doku F:\Lena-Voice). Dr. Petsas schreibt dir gerade VOM HANDY AUS DEM URLAUB. Er sieht nur kurze Chat-Antworten, keinen Code.
 
-Log "Starte Agent mit Modell: $model"
+Verbindliche Regeln:
+- Halte dich strikt an die AGENTS.md jedes betroffenen Repos: Release-Gate vor jedem Neustart/Commit, deutsche Commit-Messages (was + warum), NICHTS Ungetestetes an den Live-Worker, Clara darf keinen Schaden nehmen.
+- Ist die Korrektur klar und sicher: fuehre sie VOLLSTAENDIG aus (Code aendern, testen, committen). Nenne in der Antwort, was du getan, getestet und committet hast.
+- Ist die Anweisung unklar, ODER waere sie riskant (Deploy nach Firebase, Loeschen/Migrieren von Daten, Neustart des Live-Workers ohne gruenes Gate): fuehre sie NICHT blind aus - frage in einem Satz zurueck bzw. beschreibe, was du vorschlaegst, und warte auf sein OK.
+- Erfinde nichts. Wenn du etwas nicht sicher weisst, sag das.
 
-try {
-    $proc = Start-Process -FilePath $agent -ArgumentList @(
-        '-p', '--force', '--trust',
-        '--output-format', 'text',
-        '--model', $model,
-        "`"$prompt`""
-    ) -WorkingDirectory $root -NoNewWindow -PassThru `
-        -RedirectStandardOutput (Join-Path $watchDir "agent_$stamp.out.log") `
-        -RedirectStandardError (Join-Path $watchDir "agent_$stamp.err.log")
-    if (-not $proc.WaitForExit(45 * 60 * 1000)) {
-        Log 'ZEITUEBERSCHREITUNG nach 45 min - Agent wird beendet.'
-        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+Antworte AUSSCHLIESSLICH auf Deutsch, kurz und laientauglich (2 bis 6 Saetze), ohne Code-Bloecke und ohne Tool-Namen.
+
+[NACHRICHT VON DR. PETSAS]
+$userText
+"@
+}
+
+function Run-Agent([string]$prompt, [string]$sessionId) {
+  $outFile = Join-Path $RunDir ("agent-out-{0}.json" -f ([guid]::NewGuid().ToString("N").Substring(0,8)))
+  $agentArgs = @("-p", "--output-format", "json", "--force", "--trust", "--workspace", $Workspace)
+  if ($Model) { $agentArgs += @("--model", $Model) }
+  if ($sessionId) { $agentArgs += @("--resume", $sessionId) }
+  try {
+    # Prompt ueber stdin (kein Windows-Quoting-Problem). Stdout -> Datei, damit
+    # grosse/mehrzeilige Antworten sicher als eine JSON-Zeile ankommen.
+    $prompt | & $CursorAgent @agentArgs 1> $outFile 2>$null
+    $raw = (Get-Content $outFile -Raw -ErrorAction SilentlyContinue)
+    Remove-Item $outFile -ErrorAction SilentlyContinue
+    if (-not $raw) { return @{ ok = $false; text = "(keine Ausgabe vom Agenten)"; session = $sessionId } }
+    # letzte nicht-leere Zeile ist das JSON-Ergebnis
+    $jsonLine = ($raw -split "`n" | Where-Object { $_.Trim() -like "{*}" } | Select-Object -Last 1)
+    if (-not $jsonLine) { return @{ ok = $false; text = ("Unerwartete Agent-Ausgabe: " + $raw.Substring(0, [Math]::Min(400, $raw.Length))); session = $sessionId } }
+    $obj = $jsonLine | ConvertFrom-Json
+    $text = if ($obj.result) { [string]$obj.result } else { "(leere Antwort)" }
+    $sid = if ($obj.session_id) { [string]$obj.session_id } else { $sessionId }
+    $isErr = ($obj.is_error -eq $true)
+    return @{ ok = (-not $isErr); text = $text; session = $sid }
+  } catch {
+    Remove-Item $outFile -ErrorAction SilentlyContinue
+    return @{ ok = $false; text = ("Agent-Fehler: " + $_.Exception.Message); session = $sessionId }
+  }
+}
+
+Beat
+# Aktives Modell hinterlegen, damit der Urlaubs-Waechter es gegenpruefen kann.
+try { Set-Content -Path $ModelFile -Value $Model -Encoding ASCII -NoNewline } catch {}
+Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$Model Intervall=${IntervalSeconds}s"
+try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + " - bereit fuer Korrekturen.") } | Out-Null } catch {}
+
+while ($true) {
+  Beat
+  try {
+    $pending = Api-Get "/remote/pending"
+    $msgs = @($pending.messages)
+    if ($msgs.Count -gt 0) {
+      foreach ($m in $msgs) {
+        $id = [string]$m.id
+        $text = [string]$m.text
+        if (-not $id -or -not $text) { continue }
+        Log "Neue Nachricht $id : $($text.Substring(0, [Math]::Min(80, $text.Length)))"
+        try { Api-Post "/remote/ack" @{ ids = @($id); status = "in_arbeit" } | Out-Null } catch {}
+        try { Api-Post "/remote/board" @{ text = ("In Arbeit seit " + (Get-Date).ToString("HH:mm") + ":`n" + $text.Substring(0, [Math]::Min(200, $text.Length))) } | Out-Null } catch {}
+
+        $sid = Get-Session
+        $prompt = Build-Prompt $text
+        $res = Run-Agent $prompt $sid
+        if ($res.session) { Set-Session $res.session }
+
+        $reply = [string]$res.text
+        if (-not $reply.Trim()) { $reply = "(Der Agent hat keine Textantwort geliefert.)" }
+        try { Api-Post "/remote/message" @{ role = "agent"; text = $reply } | Out-Null } catch { Log "FEHLER beim Zurueckschreiben: $($_.Exception.Message)" }
+        try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
+        try { Api-Post "/remote/board" @{ text = ("Zuletzt beantwortet " + (Get-Date).ToString("HH:mm") + ".`n" + $reply.Substring(0, [Math]::Min(300, $reply.Length))) } | Out-Null } catch {}
+        Log "Beantwortet $id (ok=$($res.ok), session=$($res.session))"
+      }
     }
-    Log "Agent-Exit-Code: $($proc.ExitCode)"
-} finally {
-    Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+  } catch {
+    Log "Schleifen-Fehler: $($_.Exception.Message)"
+  }
+  Start-Sleep -Seconds $IntervalSeconds
 }
-
-# Sicherheitsnetz: Wenn der Agent keine Antwort in den Chat geschrieben hat
-# (Marker FERN-FERTIG fehlt), wenigstens eine Kurzmeldung posten, damit auf
-# dem Handy nicht einfach Stille herrscht.
-$out = Join-Path $watchDir "agent_$stamp.out.log"
-$done = (Test-Path $out) -and ((Get-Content $out -Raw -ErrorAction SilentlyContinue) -match 'FERN-FERTIG')
-if (-not $done) {
-    $msg = @{ token = $token; role = 'agent'
-              text = "Der Lauf $stamp ist nicht sauber durchgelaufen - ich schaue es mir beim naechsten Abruf nochmal an. (Automatische Meldung)" } | ConvertTo-Json
-    try {
-        Invoke-RestMethod -Uri "$MasLocal/remote/message" -Method Post `
-            -ContentType 'application/json; charset=utf-8' -Body $msg -TimeoutSec 30 | Out-Null
-    } catch { Log "Notfall-Antwort fehlgeschlagen: $($_.Exception.Message)" }
-    # Auftraege wieder auf 'neu', damit der naechste Lauf sie erneut zieht.
-    $requeue = @{ token = $token; ids = $ids; status = 'neu' } | ConvertTo-Json
-    try {
-        Invoke-RestMethod -Uri "$MasLocal/remote/ack" -Method Post `
-            -ContentType 'application/json; charset=utf-8' -Body $requeue -TimeoutSec 30 | Out-Null
-    } catch { }
-}
-exit 0

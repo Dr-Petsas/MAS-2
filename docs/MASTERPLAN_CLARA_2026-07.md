@@ -2878,3 +2878,37 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   neue amtliche Regeln (9050-9010, 9100-9130, 9110-9120/9130, 9003-9005);
   (4) Abrechnungs-Schritt ohne Schieberegler — Faktor 2,3/3,5/frei bleibt,
   Positionen nachtragen per Suche, entfernen per Haekchen. TS-Check gruen.
+- 29.07.2026 (Chef 3 Wochen AFK): FERNSTEUERUNGS-CHAT + URLAUBS-WAECHTER.
+  Der Chef erreicht die Entwicklung im Urlaub NUR ueber eine Handy-Chatseite
+  und will, dass die Dienste selbsttaetig laufen.
+  * Chatseite `backend/public/m/fernsteuerung.html` (selbsttragend, Token in
+    URL -> localStorage, pollt /remote/state, sendet /remote/message). Die
+    /remote/*-Routen (misc.js -> remoteChat.js, Firestore mas_remote_chat,
+    REMOTE_CHAT_TOKEN) existierten schon vom Wochenend-Provisorium und sind
+    ueber den benannten Tunnel (mas.pickadoc-tunnel.com) erreichbar.
+  * Antwort-Waechter `tools/remote_chat_watch.ps1`: holt neue Nachrichten,
+    fuehrt pro Nachricht `cursor-agent -p --output-format json --force --trust
+    --workspace F:\` aus (Prompt via stdin -> kein Quoting-Problem), setzt das
+    Gespraech ueber die session_id fort (ein Faden), schreibt Antwort +
+    Board zurueck. Modell FEST `claude-opus-4-8-thinking-high` (Chef spricht
+    IMMER mit Opus 4.8). Kein CURSOR_API_KEY noetig — der eingeloggte
+    cursor-agent (info@pickadoc.de) ist der Runner. Heartbeat-Datei
+    `.run/remote_chat_watch.hb` + Modell-Datei `.run/remote_chat_watch.model`.
+  * Urlaubs-Waechter `tools/watchdog.ps1` prueft/repariert 7 Saeulen: Ollama,
+    MAS (4000), Cloudflare-Tunnel (extern /health = Wahrheitssignal, kein
+    Prozess-Zaehlen -> kein Doppel-Tunnel), Clara (8091 via clara-switch live,
+    Zombie-sicher), Lena (8140), Chat-Waechter (Heartbeat < 90s + Opus-4.8-
+    Modellpruefung, sonst genau EINEN neu starten -> nie zwei Agenten parallel),
+    Chat-Seite (lokal+extern; fehlt die Datei -> cursor-agent-Selbstheilung).
+    Zwei geplante Aufgaben: `MAS-Urlaubswaechter-Morgen` (taeglich 08:00,
+    -Report -> Statusbericht in den Chat) und `MAS-Urlaubswaechter-Guard`
+    (alle 15 min + AtLogOn, still, meldet nur bei Reparatur).
+  * Link + Token per Mail an dr.petsas@pickadoc.de (Praxis-Postfach) versandt.
+  * Beweise: End-zu-End getestet — Testfrage in ~6 s beantwortet; Modellfrage
+    bestaetigt "Claude Opus 4.8"; watchdog-Lauf meldet alle 7 gruen ohne
+    Falsch-Reparatur. Beide PS-Skripte ASCII-only (Windows-PowerShell-5.1) +
+    Parser-Syntaxcheck gruen. NICHT-Ziel/Risiko dokumentiert: der Agent laeuft
+    im Force-Modus und kann live committen/neustarten; er ist an die AGENTS.md
+    (Release-Gate, keine ungetesteten Worker-Neustarts) gebunden und fragt bei
+    Unklarheit/Deploy-Risiko im Chat zurueck. Kill-Switch: geplante Aufgaben
+    "MAS-Urlaubswaechter*" deaktivieren bzw. Waechter-Fenster schliessen.
