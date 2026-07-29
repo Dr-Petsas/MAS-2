@@ -44,8 +44,10 @@ $LenaPy       = "F:\Lena-Voice\.venv-lena-gpu\Scripts\python.exe"
 $LenaRoot     = "F:\Lena-Voice"
 $CfConfig     = "C:\Users\Anmeldung2\.cloudflared\config.yml"
 $ChatPage     = "F:\MAS-2\backend\public\m\fernsteuerung.html"
-# Chef spricht IMMER mit Opus 4.8 (Wunsch 29.07.2026).
+# Chef spricht IMMER mit Opus 4.8 (Wunsch 29.07.2026) - AUSSER das Guthaben ist
+# erschoepft (dann Ersatzmodell, bis der Chef nach dem Aufladen zurueckschaltet).
 $ExpectedModel = "claude-opus-4-8-thinking-high"
+$BillingFile  = Join-Path $RunDir "opus_billing_block.txt"
 if (-not (Test-Path $RunDir)) { New-Item -ItemType Directory -Path $RunDir -Force | Out-Null }
 
 $script:Repairs = @()   # Liste der durchgefuehrten Reparaturen
@@ -180,11 +182,17 @@ function ChatWatcher-Model() {
   try { return (Get-Content $mf -Raw).Trim() } catch { return "" }
 }
 function Check-ChatWatcher() {
-  # Lebt der Waechter UND spricht er mit dem richtigen Modell (Opus 4.8)?
-  $modelOk = (ChatWatcher-Model) -eq $ExpectedModel
-  if ((ChatWatcher-Alive) -and $modelOk) { $script:Status["Chat-Waechter"] = "ok (Opus 4.8)"; return }
+  # Bei erschoepftem Opus-Guthaben ist das Ersatzmodell ausdruecklich ERLAUBT -
+  # dann NICHT auf Opus zurueckzwingen (das wuerde nur erneut scheitern).
+  $billingBlock = Test-Path $BillingFile
+  $model = ChatWatcher-Model
+  $modelOk = $billingBlock -or ($model -eq $ExpectedModel)
+  if ((ChatWatcher-Alive) -and $modelOk) {
+    $script:Status["Chat-Waechter"] = if ($billingBlock) { "ok (Ersatz - Opus-Guthaben aus)" } else { "ok (Opus 4.8)" }
+    return
+  }
   if ((ChatWatcher-Alive) -and -not $modelOk) {
-    Log ("Chat-Waechter laeuft, aber falsches Modell ('" + (ChatWatcher-Model) + "' statt $ExpectedModel) - Neustart erzwingen")
+    Log ("Chat-Waechter laeuft, aber falsches Modell ('" + $model + "' statt $ExpectedModel, keine Guthaben-Sperre) - Neustart erzwingen")
     $script:Repairs += "Chat-Modell auf Opus 4.8 zurueckgestellt"
   }
   Log "Fernsteuerungs-Waechter tot/haengt/falsches Modell - alte beenden, genau einen starten"
@@ -253,7 +261,8 @@ $hatReparatur = $script:Repairs.Count -gt 0
 if ($Report) {
   # Chef will, dass ich mich mit meinem Modellnamen melde.
   $model = ChatWatcher-Model; if (-not $model) { $model = $ExpectedModel }
-  $modelSchoen = if ($model -like "claude-opus-4-8*") { "Claude Opus 4.8" } else { $model }
+  $billingBlock = Test-Path $BillingFile
+  $modelSchoen = if ($billingBlock) { "einem Ersatzmodell (Opus 4.8 pausiert)" } elseif ($model -like "claude-opus-4-8*") { "Claude Opus 4.8" } else { $model }
   $tunnelOk = ($script:Status["Tunnel"] -like "ok*") -or ($script:Status["Tunnel"] -like "repariert*")
   $pageOk   = ($script:Status["Chat-Seite"] -like "*ok*") -or ($script:Status["Chat-Seite"] -like "repariert*")
 
@@ -263,6 +272,9 @@ if ($Report) {
     $body += "`n`nTunnel (mas.pickadoc-tunnel.com) und diese Chat-Seite sind von aussen erreichbar und funktionsfaehig."
   } else {
     $body += "`n`nACHTUNG: Tunnel oder Chat-Seite brauchen Aufmerksamkeit (siehe Liste oben)."
+  }
+  if ($billingBlock) {
+    $body += "`n`nWICHTIG: Opus 4.8 ist wegen erschoepftem Guthaben pausiert - ich laufe gerade auf einem Ersatzmodell. Sobald du aufgeladen hast, schreib 'opus wieder an', dann stelle ich auf Opus 4.8 zurueck."
   }
   if ($hatReparatur) { $body += "`n`nReparaturen:`n" + (($script:Repairs | ForEach-Object { "- $_" }) -join "`n") }
   $body += "`n`n(Automatischer 8-Uhr-Bericht. Antworte einfach, wenn du eine Korrektur brauchst.)"

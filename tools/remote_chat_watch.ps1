@@ -39,9 +39,27 @@ $SessionFile = Join-Path $RunDir "remote_chat_session.txt"
 $LogFile = Join-Path $RunDir "remote_chat_watch.log"
 $HeartbeatFile = Join-Path $RunDir "remote_chat_watch.hb"
 $ModelFile = Join-Path $RunDir "remote_chat_watch.model"
+# Opus-Guthaben-Sperre: liegt diese Datei vor, ist Opus mangels Guthaben aus und
+# der Draht laeuft auf dem Ersatzmodell. Der Urlaubs-Waechter liest sie ebenfalls.
+$BillingFile = Join-Path $RunDir "opus_billing_block.txt"
+$OpusModel = $Model                      # Wunschmodell (Opus 4.8)
+$FallbackModel = "auto"                   # Ersatz: Konto-Standard, haelt den Draht offen
+$script:ActiveModel = $OpusModel
+if (Test-Path $BillingFile) { $script:ActiveModel = $FallbackModel }
 if (-not (Test-Path $RunDir)) { New-Item -ItemType Directory -Path $RunDir -Force | Out-Null }
 
 function Beat() { try { Set-Content -Path $HeartbeatFile -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {} }
+
+# Fehlertext deutet auf erschoepftes Guthaben / Kontingent / Zahlung hin?
+function Test-BillingError([string]$t) {
+  if (-not $t) { return $false }
+  return ($t -match "(?i)(insufficient|not enough|no .{0,12}credit|out of .{0,12}credit|credits?\b|quota|usage limit|spend limit|payment required|payment method|402|upgrade your plan|billing|balance|guthaben|kontingent|zahlungs|limit reached|exceeded your|hard limit)")
+}
+# Nutzer will nach dem Aufladen zurueck auf Opus 4.8?
+function Test-OpusRestoreCmd([string]$t) {
+  if (-not $t) { return $false }
+  return (($t -match "(?i)opus") -and ($t -match "(?i)(wieder|zur(ü|ue)ck|aktivier|umstell|einstell|\ban\b|4\.?8|aufgeladen|aufgeld|geladen)"))
+}
 
 # Token aus backend\.env lesen.
 $envPath = "F:\MAS-2\backend\.env"
@@ -93,36 +111,44 @@ $userText
 "@
 }
 
-function Run-Agent([string]$prompt, [string]$sessionId) {
+function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride = "__ACTIVE__") {
+  $mdl = if ($modelOverride -eq "__ACTIVE__") { $script:ActiveModel } else { $modelOverride }
   $outFile = Join-Path $RunDir ("agent-out-{0}.json" -f ([guid]::NewGuid().ToString("N").Substring(0,8)))
+  $errFile = "$outFile.err"
   $agentArgs = @("-p", "--output-format", "json", "--force", "--trust", "--workspace", $Workspace)
-  if ($Model) { $agentArgs += @("--model", $Model) }
+  if ($mdl -and $mdl -ne "auto") { $agentArgs += @("--model", $mdl) }
   if ($sessionId) { $agentArgs += @("--resume", $sessionId) }
   try {
-    # Prompt ueber stdin (kein Windows-Quoting-Problem). Stdout -> Datei, damit
-    # grosse/mehrzeilige Antworten sicher als eine JSON-Zeile ankommen.
-    $prompt | & $CursorAgent @agentArgs 1> $outFile 2>$null
+    # Prompt ueber stdin (kein Windows-Quoting-Problem). Stdout + Stderr in
+    # Dateien, damit grosse Antworten sicher ankommen UND Fehlertexte (z.B.
+    # Guthaben) fuer die Billing-Erkennung sichtbar sind.
+    $prompt | & $CursorAgent @agentArgs 1> $outFile 2> $errFile
     $raw = (Get-Content $outFile -Raw -ErrorAction SilentlyContinue)
-    Remove-Item $outFile -ErrorAction SilentlyContinue
-    if (-not $raw) { return @{ ok = $false; text = "(keine Ausgabe vom Agenten)"; session = $sessionId } }
+    $err = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
+    Remove-Item $outFile, $errFile -ErrorAction SilentlyContinue
+    $combined = "$raw`n$err"
+    $billing = Test-BillingError $combined
+    if (-not $raw) { return @{ ok = $false; text = ("(keine Ausgabe vom Agenten) " + $err); session = $sessionId; billing = $billing } }
     # letzte nicht-leere Zeile ist das JSON-Ergebnis
     $jsonLine = ($raw -split "`n" | Where-Object { $_.Trim() -like "{*}" } | Select-Object -Last 1)
-    if (-not $jsonLine) { return @{ ok = $false; text = ("Unerwartete Agent-Ausgabe: " + $raw.Substring(0, [Math]::Min(400, $raw.Length))); session = $sessionId } }
+    if (-not $jsonLine) { return @{ ok = $false; text = ("Unerwartete Agent-Ausgabe: " + $raw.Substring(0, [Math]::Min(400, $raw.Length))); session = $sessionId; billing = $billing } }
     $obj = $jsonLine | ConvertFrom-Json
     $text = if ($obj.result) { [string]$obj.result } else { "(leere Antwort)" }
     $sid = if ($obj.session_id) { [string]$obj.session_id } else { $sessionId }
     $isErr = ($obj.is_error -eq $true)
-    return @{ ok = (-not $isErr); text = $text; session = $sid }
+    if ($isErr -and -not $billing) { $billing = Test-BillingError $text }
+    return @{ ok = (-not $isErr); text = $text; session = $sid; billing = $billing }
   } catch {
-    Remove-Item $outFile -ErrorAction SilentlyContinue
-    return @{ ok = $false; text = ("Agent-Fehler: " + $_.Exception.Message); session = $sessionId }
+    Remove-Item $outFile, $errFile -ErrorAction SilentlyContinue
+    $emsg = $_.Exception.Message
+    return @{ ok = $false; text = ("Agent-Fehler: " + $emsg); session = $sessionId; billing = (Test-BillingError $emsg) }
   }
 }
 
 Beat
 # Aktives Modell hinterlegen, damit der Urlaubs-Waechter es gegenpruefen kann.
-try { Set-Content -Path $ModelFile -Value $Model -Encoding ASCII -NoNewline } catch {}
-Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$Model Intervall=${IntervalSeconds}s"
+try { Set-Content -Path $ModelFile -Value $script:ActiveModel -Encoding ASCII -NoNewline } catch {}
+Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$script:ActiveModel (Wunsch=$OpusModel) Intervall=${IntervalSeconds}s"
 try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + " - bereit fuer Korrekturen.") } | Out-Null } catch {}
 
 while ($true) {
@@ -139,17 +165,52 @@ while ($true) {
         try { Api-Post "/remote/ack" @{ ids = @($id); status = "in_arbeit" } | Out-Null } catch {}
         try { Api-Post "/remote/board" @{ text = ("In Arbeit seit " + (Get-Date).ToString("HH:mm") + ":`n" + $text.Substring(0, [Math]::Min(200, $text.Length))) } | Out-Null } catch {}
 
+        # --- Steuerbefehl: nach dem Aufladen zurueck auf Opus 4.8 -----------
+        if ((Test-Path $BillingFile) -and (Test-OpusRestoreCmd $text)) {
+          Log "Opus-Wiederherstellung angefragt - teste Opus 4.8"
+          $test = Run-Agent "Antworte mit genau dem Wort: OPUSBEREIT" "" $OpusModel
+          if ($test.ok -and -not $test.billing) {
+            $script:ActiveModel = $OpusModel
+            try { Set-Content -Path $ModelFile -Value $OpusModel -Encoding ASCII -NoNewline } catch {}
+            Remove-Item $BillingFile -ErrorAction SilentlyContinue
+            $rep = "Erledigt - ich spreche wieder mit Claude Opus 4.8. Danke fuers Aufladen."
+          } elseif ($test.billing) {
+            $rep = "Ich kann Opus 4.8 noch nicht aktivieren - das Guthaben reicht offenbar noch nicht. Bitte (weiter) aufladen und danach erneut 'opus wieder an' schreiben. Ich bleibe solange als Ersatzmodell erreichbar."
+          } else {
+            $rep = "Der Opus-Test meldete: " + [string]$test.text + " - ich bleibe vorerst auf dem Ersatzmodell."
+          }
+          try { Api-Post "/remote/message" @{ role = "agent"; text = $rep } | Out-Null } catch {}
+          try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
+          Log "Opus-Restore: $rep"
+          continue
+        }
+
         $sid = Get-Session
         $prompt = Build-Prompt $text
         $res = Run-Agent $prompt $sid
         if ($res.session) { Set-Session $res.session }
 
+        # --- Opus-Guthaben erschoepft? -> Fallback, Draht offen halten ------
+        if ($res.billing -and $script:ActiveModel -eq $OpusModel) {
+          Log "Opus-Guthaben erschoepft - schalte auf Ersatzmodell und antworte erneut"
+          $script:ActiveModel = $FallbackModel
+          try { Set-Content -Path $ModelFile -Value $FallbackModel -Encoding ASCII -NoNewline } catch {}
+          try { Set-Content -Path $BillingFile -Value ("Opus-Guthaben erschoepft seit " + (Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
+          $hinweis = "WICHTIG: Dein Guthaben fuer Opus 4.8 ist gerade erschoepft. Damit du mich weiter erreichst, antworte ich vorlaeufig mit einem Ersatzmodell (Konto-Standard). Sobald du aufgeladen hast, schreib einfach 'opus wieder an' - dann stelle ich sofort auf Opus 4.8 zurueck."
+          try { Api-Post "/remote/message" @{ role = "agent"; text = $hinweis } | Out-Null } catch {}
+          $res = Run-Agent $prompt $res.session $FallbackModel
+          if ($res.session) { Set-Session $res.session }
+        }
+
         $reply = [string]$res.text
         if (-not $reply.Trim()) { $reply = "(Der Agent hat keine Textantwort geliefert.)" }
+        if ($res.billing -and $script:ActiveModel -eq $FallbackModel) {
+          $reply = "Auch das Ersatzmodell ist gerade nicht verfuegbar - das Konto scheint komplett ohne Guthaben zu sein. Bitte lade auf; danach 'opus wieder an' schreiben. (Urspruengliche Meldung: " + $reply + ")"
+        }
         try { Api-Post "/remote/message" @{ role = "agent"; text = $reply } | Out-Null } catch { Log "FEHLER beim Zurueckschreiben: $($_.Exception.Message)" }
         try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
-        try { Api-Post "/remote/board" @{ text = ("Zuletzt beantwortet " + (Get-Date).ToString("HH:mm") + ".`n" + $reply.Substring(0, [Math]::Min(300, $reply.Length))) } | Out-Null } catch {}
-        Log "Beantwortet $id (ok=$($res.ok), session=$($res.session))"
+        try { Api-Post "/remote/board" @{ text = ("Zuletzt beantwortet " + (Get-Date).ToString("HH:mm") + " (Modell: $script:ActiveModel).`n" + $reply.Substring(0, [Math]::Min(280, $reply.Length))) } | Out-Null } catch {}
+        Log "Beantwortet $id (ok=$($res.ok), billing=$($res.billing), modell=$script:ActiveModel, session=$($res.session))"
       }
     }
   } catch {
