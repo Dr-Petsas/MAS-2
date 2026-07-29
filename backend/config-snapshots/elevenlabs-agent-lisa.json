@@ -1,6 +1,6 @@
 {
   "label": "lisa",
-  "hash": "25c1c0975ac14e22",
+  "hash": "60d62f121aa6afc4",
   "config": {
     "agent_id": "agent_9601khqxjp0nfrp9nv276txh8xd1",
     "name": "LISA",
@@ -57,7 +57,7 @@
         "text_normalisation_type": "elevenlabs",
         "pronunciation_dictionary_locators": [],
         "enable_phoneme_tags": false,
-        "audio_filter": null
+        "audio_effects": null
       },
       "conversation": {
         "text_only": false,
@@ -71,6 +71,7 @@
         ],
         "file_input": {
           "enabled": true,
+          "max_files_in_memory": 10,
           "max_files_per_conversation": 10
         },
         "monitoring_enabled": false,
@@ -413,7 +414,8 @@
             "max_documents_length": 50000,
             "max_retrieved_rag_chunks_count": 20,
             "num_candidates": null,
-            "query_rewrite_prompt_override": null
+            "query_rewrite_prompt_override": null,
+            "knowledge_base_tool_info": null
           },
           "timezone": null,
           "backup_llm_config": {
@@ -779,7 +781,7 @@
             {
               "type": "webhook",
               "name": "book_slot",
-              "description": "Bucht einen Termin SOFORT fest im Praxiskalender. Rufe dieses Werkzeug auf, sobald der Patient einem konkreten Termin zustimmt — entweder dem im Auftrag genannten Termin oder einem Termin aus offer_slots (übergib dessen iso-Wert als slot_iso). Bestätige dem Patienten den Termin erst, wenn die Antwort booked=true meldet. Ist der Termin inzwischen vergeben, enthält die Antwort sofort neue Alternativen.",
+              "description": "Bucht einen Termin SOFORT fest im Praxiskalender. Rufe dieses Werkzeug auf, sobald der Patient einem konkreten Termin zustimmt. Stimmt der Patient dem im Auftrag genannten Termin zu, lasse slot_iso WEG — der Server kennt den Termin und bucht ihn exakt. Nur wenn der Patient einen ANDEREN Termin aus offer_slots wählt, übergib dessen iso-Wert unverändert als slot_iso (nie selbst tippen). Bestätige dem Patienten den Termin erst, wenn die Antwort booked=true meldet. Ist der Termin inzwischen vergeben, enthält die Antwort sofort neue Alternativen.",
               "response_timeout_secs": 20,
               "disable_interruptions": false,
               "interruption_mode": "allow",
@@ -804,9 +806,7 @@
                   "dynamic_variable": "",
                   "is_omitted": false,
                   "type": "object",
-                  "required": [
-                    "slot_iso"
-                  ],
+                  "required": [],
                   "properties": {
                     "task_id": {
                       "type": "string",
@@ -830,7 +830,7 @@
                     },
                     "slot_iso": {
                       "type": "string",
-                      "description": "Exakter Zeitpunkt des zu buchenden Termins im ISO-Format, z. B. 2026-07-14T10:30:00+02:00. Bei Zusage zum im Auftrag genannten Termin: den dort genannten slot_iso-Wert verwenden; sonst den iso-Wert aus offer_slots.",
+                      "description": "NUR bei Wahl eines anderen Termins aus offer_slots: dessen iso-Wert unverändert übernehmen (z. B. 2026-07-14T10:30:00+02:00). Beim Termin aus dem Auftrag: Feld weglassen.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",

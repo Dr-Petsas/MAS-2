@@ -1,6 +1,6 @@
 {
   "label": "bianca",
-  "hash": "aba10ea712716f97",
+  "hash": "f7e5030b5829aedb",
   "config": {
     "agent_id": "pSUVNVsczM4risVkBNAt",
     "name": "Med Dent Zahnklinik",
@@ -73,7 +73,7 @@
         "text_normalisation_type": "system_prompt",
         "pronunciation_dictionary_locators": [],
         "enable_phoneme_tags": false,
-        "audio_filter": null
+        "audio_effects": null
       },
       "conversation": {
         "text_only": false,
@@ -90,6 +90,7 @@
         ],
         "file_input": {
           "enabled": true,
+          "max_files_in_memory": 10,
           "max_files_per_conversation": 10
         },
         "monitoring_enabled": false,
@@ -372,7 +373,8 @@
             "max_documents_length": 50000,
             "max_retrieved_rag_chunks_count": 20,
             "num_candidates": null,
-            "query_rewrite_prompt_override": null
+            "query_rewrite_prompt_override": null,
+            "knowledge_base_tool_info": null
           },
           "timezone": "Europe/Berlin",
           "backup_llm_config": {
