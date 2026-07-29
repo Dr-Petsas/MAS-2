@@ -39,7 +39,7 @@
       --pink: #ff4ddb; --purple: #b84dff; --green: #34d399;
       --lena: #0f766e; --lena-soft: #7ec9c1;
       --accent: var(--purple);
-      /* â”€â”€ Preview-Tokens (Lena-Doku-Wizard + Besonderheiten) â”€â”€ */
+      /* ── Preview-Tokens (Lena-Doku-Wizard + Besonderheiten) ── */
       --card: rgba(255,255,255,.045); --card-strong: rgba(255,255,255,.07);
       --line: rgba(255,255,255,.10); --mute: #b3a6bf; --mute2: #7a6d86;
       --voice: #34d399; --magenta: #d862c8; --magenta-hot: #e072d1; --magenta-deep: #b13fa0;
@@ -73,7 +73,7 @@
     }
     body > * { position: relative; z-index: 1; }
 
-    /* â”€â”€ Kopf-Chrome: Marke · Clara|Dokumentation · Uhr â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    /* ── Kopf-Chrome: Marke · Clara|Dokumentation · Uhr ──────────────────────
        Der Umschalter oben wechselt zwischen Clara-Modus (Sprechzimmer) und
        Dokumentation-Modus (Lena-Wizard). Die Audio/Chat-Leiste in der
        Clara-Spalte bleibt davon unberührt. */
@@ -182,12 +182,12 @@
     #micToggle { display: none !important; }
     .roommic-bar { display: none !important; }
 
-    /* â”€â”€ Panes (Clara-Modus â†” Dokumentation-Modus) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    /* ── Panes (Clara-Modus ↔ Dokumentation-Modus) ─────────────────────────── */
     .app-body { flex: 1; min-height: 0; position: relative; }
     .pane { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .25s ease; display: flex; flex-direction: column; }
     .pane.is-active { opacity: 1; pointer-events: auto; }
 
-    /* â”€â”€ Clara-Split-Gerüst â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    /* ── Clara-Split-Gerüst ───────────────────────────────────────────────── */
     .split { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .clara-col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .clara-right { display: none; }
@@ -363,7 +363,7 @@
     .card.is-new { animation: cardIn .5s cubic-bezier(.2,.9,.3,1.2); }
     @keyframes cardIn { 0% { opacity: 0; transform: translateY(14px) scale(.97); } 100% { opacity: 1; transform: none; } }
 
-    /* â”€â”€ Chat-Vollbild â”€â”€ */
+    /* ── Chat-Vollbild ── */
     .chat-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 8px; }
     .chat-scroll { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 2px 12px; -webkit-overflow-scrolling: touch; }
     .chat-scroll .card { align-self: stretch; }
@@ -414,7 +414,7 @@
     .chat-st-writing .chat-ring.r1 { animation: rip 1.5s ease-out infinite; }
     .chat-st-writing .chat-ring.r2 { animation: rip 1.5s ease-out .75s infinite; }
 
-    /* â”€â”€ Rechte Clara-Spalte (Querformat): Patient + Heads-up-Karten â”€â”€
+    /* ── Rechte Clara-Spalte (Querformat): Patient + Heads-up-Karten ──
        Hochkant: Karten hinter dem Flip. Quer: dieselbe Deck-Quelle hier. */
     .clara-right { min-height: 0; flex-direction: column; padding: 2px 4px 6px 16px; overflow: hidden; }
     .right-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex: none; }
@@ -1100,8 +1100,8 @@
       display: flex; align-items: center; gap: 8px; flex: none;
     }
     details.raw-dialog summary::-webkit-details-marker { display: none; }
-    details.raw-dialog summary::before { content: "â–¸"; color: var(--mute2); }
-    details.raw-dialog[open] summary::before { content: "â–¾"; }
+    details.raw-dialog summary::before { content: "▸"; color: var(--mute2); }
+    details.raw-dialog[open] summary::before { content: "▾"; }
     .dialog {
       flex: 1 1 auto; min-height: 0; max-height: 220px; overflow-x: hidden; overflow-y: auto;
       display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px;
@@ -1435,8 +1435,8 @@
         <!-- â•â• CLARA-SPALTE (Sprechzimmer, live LiveKit) â•â• -->
         <section class="clara-col">
       <div class="mode-bar" data-clara-mode-bar>
-        <button type="button" class="active" data-clara-mode-audio aria-pressed="true">ðŸŽ™ Audio</button>
-        <button type="button" data-clara-mode-chat aria-pressed="false">ðŸ’¬ Chat</button>
+        <button type="button" class="active" data-clara-mode-audio aria-pressed="true">🎙 Audio</button>
+        <button type="button" data-clara-mode-chat aria-pressed="false">💬 Chat</button>
       </div>
 
       <div data-clara-audio-pane>
@@ -1483,8 +1483,8 @@
         </div>
 
         <div class="flip-labels" data-clara-flip-labels aria-hidden="true">
-          <span class="on" data-clara-lbl-voice>ðŸŽ™ Sprache</span>
-          <span data-clara-lbl-cards>ðŸ—‚ Karten<b class="badge" data-clara-card-badge></b></span>
+          <span class="on" data-clara-lbl-voice>🎙 Sprache</span>
+          <span data-clara-lbl-cards>🗂 Karten<b class="badge" data-clara-card-badge></b></span>
         </div>
 
         <div class="bottom" data-clara-bottom-bar>
@@ -1593,7 +1593,7 @@
               <div class="picker-quick">
                 <button type="button" data-jump="today">Heute</button>
                 <button type="button" data-jump="-1">Gestern</button>
-                <button type="button" data-jump="-7">âˆ’7 Tage</button>
+                <button type="button" data-jump="-7">−7 Tage</button>
               </div>
             </div>
           </div>
@@ -1760,7 +1760,7 @@
                 <div class="nd-gaps" id="ndGaps" aria-live="polite"></div>
                 <textarea id="dictFree" placeholder="Antwort diktieren oder tippen …"></textarea>
                 <div class="nd-mic">
-                  <button type="button" id="ndMic">â— Diktieren</button>
+                  <button type="button" id="ndMic">● Diktieren</button>
                   <span id="ndMicHint">Kanal · Arzt · Parakeet (Clara)</span>
                 </div>
                 <div class="nd-merge" id="ndMerge" hidden></div>
@@ -1808,9 +1808,9 @@
               <div class="sum-block sum-block--export">
                 <h3>Weiter</h3>
                 <div class="export-stack">
-                  <button type="button" class="export-btn" id="btnExportPdf"><span class="ico">ðŸ“„</span><span>PDF Akte<small>Druck / Ablage</small></span></button>
-                  <button type="button" class="export-btn" id="btnExportPms" disabled title="folgt Dens"><span class="ico">â†—</span><span>An PMS<small>Charly</small></span></button>
-                  <button type="button" class="export-btn" id="btnExportNadine" disabled title="Folgt"><span class="ico">âœ‰</span><span>An Nadine<small>Mail-Entwurf</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportPdf"><span class="ico">📄</span><span>PDF Akte<small>Druck / Ablage</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportPms" disabled title="folgt Dens"><span class="ico">↗</span><span>An PMS<small>Charly</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportNadine" disabled title="Folgt"><span class="ico">✉</span><span>An Nadine<small>Mail-Entwurf</small></span></button>
                   <button type="button" class="export-btn" id="btnSaveDoc"><span class="ico">✓</span><span>Speichern<small>Doku für Clara</small></span></button>
                 </div>
               </div>
@@ -1939,7 +1939,7 @@
       els.chatEnableBtn?.classList.toggle("show", !!on);
     }
 
-    // â”€â”€ Flip (nur Hochkant sinnvoll) â”€â”€
+    // ── Flip (nur Hochkant sinnvoll) ──
     let flipped = false;
     let unseenCards = 0;
     function setFlipped(on) {
@@ -2482,7 +2482,7 @@
   <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    //  Kopf-Umschalter Clara â†” Dokumentation + Lena-Wizard.
+    //  Kopf-Umschalter Clara ↔ Dokumentation + Lena-Wizard.
     //  Soft-Switch: LiveKit bleibt offen (kein Hangup, kein Reconnect, kein BT-Drop).
     //  Lena: Clara stumm, Parakeet an (Aufnahme + Nachdiktat). Clara: wieder sprechen.
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2508,7 +2508,7 @@
       let ndLive = false;
       let ndKnownIds = new Set();
 
-      /* â”€â”€ Akustik: nur Stop-Signal (keine Browser-Begrüßung) â”€â”€ */
+      /* ── Akustik: nur Stop-Signal (keine Browser-Begrüßung) ── */
       let audioCtx = null;
       function ensureAudio() {
         if (!audioCtx) {
@@ -2538,7 +2538,7 @@
         try { window.speechSynthesis.cancel(); } catch (_) {}
       }
 
-      /* â”€â”€ Modus-Umschalter Clara | Dokumentation â”€â”€ */
+      /* ── Modus-Umschalter Clara | Dokumentation ── */
       const brand = $("brand");
       const brandName = $("brandName");
       const brandSub = $("brandSub");
@@ -3787,7 +3787,7 @@
       }
       function bubbleHtml(who, text, segId) {
         const ops = segId
-          ? '<div class="bubble-ops"><button type="button" class="bubble-edit" title="Bearbeiten">âœŽ</button>' +
+          ? '<div class="bubble-ops"><button type="button" class="bubble-edit" title="Bearbeiten">✎</button>' +
             '<button type="button" class="bubble-del" title="Löschen">×</button></div>'
           : "";
         return '<span class="who">' + who + '</span><span class="bubble-text">' +
@@ -4332,7 +4332,7 @@
         const btn = $("ndMic");
         if (btn) {
           btn.classList.remove("is-live");
-          btn.textContent = "â— Diktieren";
+          btn.textContent = "● Diktieren";
         }
         if ($("ndMicHint")) $("ndMicHint").textContent = "Kanal · Arzt · Parakeet (Clara)";
         try { publishLenaTee(false); } catch (_) {}
@@ -4408,7 +4408,7 @@
         );
         const btn = $("ndMic");
         btn.classList.add("is-live");
-        btn.textContent = "â–  Stop";
+        btn.textContent = "■ Stop";
         $("ndMicHint").textContent = "live · Parakeet über Clara — sprechen";
       });
       $("ndToSum")?.addEventListener("click", async () => {
@@ -4594,7 +4594,7 @@
           feats.push({ ico: "cyan", title: name ? "Keine besonderen Hinweise" : "Warte auf Termin", desc: name ? "Keine Notiz / Ampel am Termin." : "Gerät koppeln und Kalender prüfen." });
         }
         list.innerHTML = feats.map((f) =>
-          '<div class="feat"><div class="feat-ico ' + f.ico + '">' + (f.ico === "red" ? "âš " : f.ico === "yellow" ? "âœŽ" : f.ico === "green" ? "âœ“" : "•") +
+          '<div class="feat"><div class="feat-ico ' + f.ico + '">' + (f.ico === "red" ? "⚠" : f.ico === "yellow" ? "✎" : f.ico === "green" ? "✓" : "•") +
           '</div><div><div class="feat-title">' + f.title + '</div><div class="feat-desc">' + f.desc.replace(/</g, "&lt;") + "</div></div></div>"
         ).join("");
         // Sichtbarkeit featList vs. Heads-up-Karten vom Clara-Modul steuern lassen.
@@ -5257,8 +5257,8 @@
       if (onRecStep()) void startMicPreview();
       const fmt = (s) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
       function toDb(v) {
-        // Feste Zeichenbreite → Spalte springt nicht (âˆ’âˆž / âˆ’12 dB).
-        if (v < 0.02) return "âˆ’âˆž  ";
+        // Feste Zeichenbreite → Spalte springt nicht (−∞ / −12 dB).
+        if (v < 0.02) return "−∞  ";
         const db = 20 * Math.log10(v);
         const n = db > -1 ? -1 : Math.round(db);
         const s = String(n);
