@@ -251,8 +251,19 @@ Post-Board $boardLine
 
 $hatReparatur = $script:Repairs.Count -gt 0
 if ($Report) {
-  $emo = if ($hatReparatur) { "Guten Morgen! Ich habe heute Nacht etwas nachjustiert:" } else { "Guten Morgen! Alle Systeme laufen:" }
-  $body = $emo + "`n`n" + (($script:Status.GetEnumerator() | ForEach-Object { "- $($_.Key): $($_.Value)" }) -join "`n")
+  # Chef will, dass ich mich mit meinem Modellnamen melde.
+  $model = ChatWatcher-Model; if (-not $model) { $model = $ExpectedModel }
+  $modelSchoen = if ($model -like "claude-opus-4-8*") { "Claude Opus 4.8" } else { $model }
+  $tunnelOk = ($script:Status["Tunnel"] -like "ok*") -or ($script:Status["Tunnel"] -like "repariert*")
+  $pageOk   = ($script:Status["Chat-Seite"] -like "*ok*") -or ($script:Status["Chat-Seite"] -like "repariert*")
+
+  $emo = if ($hatReparatur) { "Guten Morgen! Ich habe heute Nacht etwas nachjustiert:" } else { "Guten Morgen! Alle Systeme stehen:" }
+  $body = "Hier ist $modelSchoen, dein Korrektur-Agent.`n`n" + $emo + "`n`n" + (($script:Status.GetEnumerator() | ForEach-Object { "- $($_.Key): $($_.Value)" }) -join "`n")
+  if ($tunnelOk -and $pageOk) {
+    $body += "`n`nTunnel (mas.pickadoc-tunnel.com) und diese Chat-Seite sind von aussen erreichbar und funktionsfaehig."
+  } else {
+    $body += "`n`nACHTUNG: Tunnel oder Chat-Seite brauchen Aufmerksamkeit (siehe Liste oben)."
+  }
   if ($hatReparatur) { $body += "`n`nReparaturen:`n" + (($script:Repairs | ForEach-Object { "- $_" }) -join "`n") }
   $body += "`n`n(Automatischer 8-Uhr-Bericht. Antworte einfach, wenn du eine Korrektur brauchst.)"
   Post-Chat $body
