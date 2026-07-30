@@ -167,13 +167,16 @@ function Check-Lena() {
 
 # --- 6) Fernsteuerungs-Waechter -------------------------------------------
 function ChatWatcher-Alive() {
-  # Zuverlaessiges Signal: der Waechter schreibt jede Runde einen Heartbeat.
-  # Frisch (< 90 s) = lebt und arbeitet (faengt auch einen HAENGENDEN Waechter).
+  # Zuverlaessiges Signal: der Waechter schreibt jede Runde UND waehrend eines
+  # laufenden Agent-Laufs (alle ~4 s) einen Heartbeat. Schwelle 180 s: ein
+  # beschaeftigter Waechter (langer Coding-Lauf) bleibt "frisch" und wird NICHT
+  # mehr faelschlich gekillt (Vorfall 30.07.2026); ein wirklich toter/haengender
+  # Waechter wird trotzdem binnen 3 Minuten gefangen.
   $hb = Join-Path $RunDir "remote_chat_watch.hb"
   if (-not (Test-Path $hb)) { return $false }
   try {
     $ts = [datetime]::Parse((Get-Content $hb -Raw).Trim())
-    return (((Get-Date) - $ts).TotalSeconds -lt 90)
+    return (((Get-Date) - $ts).TotalSeconds -lt 180)
   } catch { return $false }
 }
 function ChatWatcher-Model() {

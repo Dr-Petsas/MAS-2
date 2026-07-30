@@ -26,7 +26,10 @@ param(
   [int]$IntervalSeconds = 6,
   # Chef spricht IMMER mit Opus 4.8 (Wunsch 29.07.2026). Fest verdrahtet; der
   # Urlaubs-Waechter (watchdog.ps1) prueft das und startet neu, falls abweichend.
-  [string]$Model = "claude-opus-4-8-thinking-high"
+  [string]$Model = "claude-opus-4-8-thinking-high",
+  # Harte Obergrenze pro Agent-Lauf. Bricht ein Lauf hier ab, wird die Nachricht
+  # NICHT als Waise verloren, sondern als "neu" zurueckgereiht (siehe Schleife).
+  [int]$AgentTimeoutMin = 25
 )
 
 $ErrorActionPreference = "Continue"
@@ -115,17 +118,39 @@ function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride =
   $mdl = if ($modelOverride -eq "__ACTIVE__") { $script:ActiveModel } else { $modelOverride }
   $outFile = Join-Path $RunDir ("agent-out-{0}.json" -f ([guid]::NewGuid().ToString("N").Substring(0,8)))
   $errFile = "$outFile.err"
+  $inFile  = "$outFile.in"
   $agentArgs = @("-p", "--output-format", "json", "--force", "--trust", "--workspace", $Workspace)
   if ($mdl -and $mdl -ne "auto") { $agentArgs += @("--model", $mdl) }
   if ($sessionId) { $agentArgs += @("--resume", $sessionId) }
   try {
-    # Prompt ueber stdin (kein Windows-Quoting-Problem). Stdout + Stderr in
-    # Dateien, damit grosse Antworten sicher ankommen UND Fehlertexte (z.B.
-    # Guthaben) fuer die Billing-Erkennung sichtbar sind.
-    $prompt | & $CursorAgent @agentArgs 1> $outFile 2> $errFile
+    # Prompt als UTF-8-Datei OHNE BOM (Umlaute kommen sauber an) und ueber stdin
+    # rein (kein Windows-Quoting-Problem). Der Agent laeuft als UEBERWACHTER
+    # Prozess: waehrend des - evtl. minutenlangen - Laufs schlaegt der Heartbeat
+    # WEITER, damit der Urlaubs-Waechter den beschaeftigten Draht nicht faelschlich
+    # als "haengt" killt (Vorfall 30.07.2026). Stdout/Stderr in Dateien, damit
+    # grosse Antworten sicher ankommen UND Fehlertexte (Guthaben) sichtbar sind.
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($inFile, $prompt, $enc)
+    $p = Start-Process -FilePath $CursorAgent -ArgumentList $agentArgs `
+      -RedirectStandardInput $inFile -RedirectStandardOutput $outFile -RedirectStandardError $errFile `
+      -NoNewWindow -PassThru
+    $deadline = (Get-Date).AddMinutes($AgentTimeoutMin)
+    while (-not $p.HasExited) {
+      Beat
+      Start-Sleep -Seconds 4
+      if ((Get-Date) -gt $deadline) {
+        # Ganzen Prozessbaum killen (cmd -> node), sonst laeuft der Agent verwaist weiter.
+        try { Start-Process taskkill -ArgumentList "/PID",$p.Id,"/T","/F" -NoNewWindow -Wait -ErrorAction SilentlyContinue } catch {}
+        Start-Sleep -Seconds 1
+        Remove-Item $inFile, $outFile, $errFile -ErrorAction SilentlyContinue
+        return @{ ok = $false; timeout = $true; session = $sessionId; billing = $false;
+          text = ("Diese Aufgabe hat laenger als $AgentTimeoutMin Minuten gebraucht und wurde abgebrochen, damit der Draht frei bleibt. Bitte in kleineren Schritten anfragen oder erneut senden - ich nehme sie dann neu auf.") }
+      }
+    }
+    Beat
     $raw = (Get-Content $outFile -Raw -ErrorAction SilentlyContinue)
     $err = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
-    Remove-Item $outFile, $errFile -ErrorAction SilentlyContinue
+    Remove-Item $inFile, $outFile, $errFile -ErrorAction SilentlyContinue
     $combined = "$raw`n$err"
     $billing = Test-BillingError $combined
     if (-not $raw) { return @{ ok = $false; text = ("(keine Ausgabe vom Agenten) " + $err); session = $sessionId; billing = $billing } }
@@ -139,16 +164,33 @@ function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride =
     if ($isErr -and -not $billing) { $billing = Test-BillingError $text }
     return @{ ok = (-not $isErr); text = $text; session = $sid; billing = $billing }
   } catch {
-    Remove-Item $outFile, $errFile -ErrorAction SilentlyContinue
+    Remove-Item $inFile, $outFile, $errFile -ErrorAction SilentlyContinue
     $emsg = $_.Exception.Message
     return @{ ok = $false; text = ("Agent-Fehler: " + $emsg); session = $sessionId; billing = (Test-BillingError $emsg) }
   }
 }
 
+# Verwaiste Nachrichten wieder aufnehmen: bricht ein frueherer Lauf mittendrin ab
+# (Wächter gekillt/neu gestartet), bleibt die Nachricht auf "in_arbeit" haengen und
+# wuerde NIE beantwortet. Beim Start (genau ein Waechter laeuft) sind alle
+# "in_arbeit" sicher verwaist -> zurueck auf "neu", damit sie neu bearbeitet werden.
+function Requeue-Orphans() {
+  try {
+    $st = Api-Get "/remote/state?limit=200"
+    $orphans = @($st.messages | Where-Object { $_.role -eq "user" -and $_.status -eq "in_arbeit" })
+    if ($orphans.Count -gt 0) {
+      $ids = @($orphans | ForEach-Object { [string]$_.id })
+      Api-Post "/remote/ack" @{ ids = $ids; status = "neu" } | Out-Null
+      Log ("Verwaiste Nachrichten wieder eingereiht (in_arbeit -> neu): " + ($ids -join ", "))
+    }
+  } catch { Log "Waisen-Pruefung fehlgeschlagen: $($_.Exception.Message)" }
+}
+
 Beat
 # Aktives Modell hinterlegen, damit der Urlaubs-Waechter es gegenpruefen kann.
 try { Set-Content -Path $ModelFile -Value $script:ActiveModel -Encoding ASCII -NoNewline } catch {}
-Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$script:ActiveModel (Wunsch=$OpusModel) Intervall=${IntervalSeconds}s"
+Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$script:ActiveModel (Wunsch=$OpusModel) Intervall=${IntervalSeconds}s Timeout=${AgentTimeoutMin}min"
+Requeue-Orphans
 try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + " - bereit fuer Korrekturen.") } | Out-Null } catch {}
 
 while ($true) {
