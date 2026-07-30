@@ -168,8 +168,11 @@ function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride =
       }
     }
     Beat
-    $raw = (Get-Content $outFile -Raw -ErrorAction SilentlyContinue)
-    $err = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
+    # UTF-8 lesen: der cursor-agent schreibt UTF-8; ohne -Encoding liest
+    # Windows-PowerShell 5.1 die Datei als ANSI und macht aus Umlauten
+    # Zeichensalat ("Fuer" -> "FÃ¼r") auf dem Handy des Chefs (30.07.2026).
+    $raw = (Get-Content $outFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)
+    $err = (Get-Content $errFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)
     Remove-Item $inFile, $outFile, $errFile -ErrorAction SilentlyContinue
     $combined = "$raw`n$err"
     $billing = Test-BillingError $combined
