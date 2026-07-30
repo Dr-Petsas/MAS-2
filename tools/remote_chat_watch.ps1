@@ -53,6 +53,24 @@ if (-not (Test-Path $RunDir)) { New-Item -ItemType Directory -Path $RunDir -Forc
 
 function Beat() { try { Set-Content -Path $HeartbeatFile -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {} }
 
+# Live-Puls fuers Handy (30.07.2026): Waehrend eines - evtl. minutenlangen -
+# Agent-Laufs aktualisiert der Waechter das Board alle ~15 s mit einer laufenden
+# Uhr. So bewegt sich board.updatedAt weiter und die Handy-Seite kann "arbeitet
+# noch (Puls vor X s)" von "haengt/abgestuerzt" (kein Puls) unterscheiden. Der
+# Chef sah bei langen Laeufen sonst nur Stille und wusste nicht, ob ich lebe.
+$script:PulseText = ""
+$script:PulseStart = Get-Date
+function Post-Pulse() {
+  if (-not $script:PulseText) { return }
+  $now = Get-Date
+  $secs = [int](($now - $script:PulseStart).TotalSeconds)
+  $t = [string]$script:PulseText
+  $short = if ($t.Length -gt 160) { $t.Substring(0, 160) + "..." } else { $t }
+  $body = ("Arbeite seit {0} (laeuft {1}s, Puls {2}) an:`n{3}" -f `
+    $script:PulseStart.ToString("HH:mm"), $secs, $now.ToString("HH:mm:ss"), $short)
+  try { Api-Post "/remote/board" @{ text = $body } | Out-Null } catch {}
+}
+
 # Fehlertext deutet auf erschoepftes Guthaben / Kontingent / Zahlung hin?
 function Test-BillingError([string]$t) {
   if (-not $t) { return $false }
@@ -135,9 +153,11 @@ function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride =
       -RedirectStandardInput $inFile -RedirectStandardOutput $outFile -RedirectStandardError $errFile `
       -NoNewWindow -PassThru
     $deadline = (Get-Date).AddMinutes($AgentTimeoutMin)
+    $nextPulse = (Get-Date).AddSeconds(15)
     while (-not $p.HasExited) {
       Beat
       Start-Sleep -Seconds 4
+      if ((Get-Date) -gt $nextPulse) { Post-Pulse; $nextPulse = (Get-Date).AddSeconds(15) }
       if ((Get-Date) -gt $deadline) {
         # Ganzen Prozessbaum killen (cmd -> node), sonst laeuft der Agent verwaist weiter.
         try { Start-Process taskkill -ArgumentList "/PID",$p.Id,"/T","/F" -NoNewWindow -Wait -ErrorAction SilentlyContinue } catch {}
@@ -227,6 +247,9 @@ while ($true) {
           continue
         }
 
+        # Live-Puls fuers Handy aktivieren (laeuft in Run-Agents Warteschleife).
+        $script:PulseStart = Get-Date
+        $script:PulseText = $text
         $sid = Get-Session
         $prompt = Build-Prompt $text
         $res = Run-Agent $prompt $sid
@@ -244,6 +267,7 @@ while ($true) {
           if ($res.session) { Set-Session $res.session }
         }
 
+        $script:PulseText = ""   # Puls aus - Lauf fertig
         $reply = [string]$res.text
         if (-not $reply.Trim()) { $reply = "(Der Agent hat keine Textantwort geliefert.)" }
         if ($res.billing -and $script:ActiveModel -eq $FallbackModel) {
