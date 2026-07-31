@@ -46,7 +46,7 @@ import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } fr
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
-import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName } from "../clara/patientDisambig.js";
+import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName, collapseSamePerson } from "../clara/patientDisambig.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
 import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary } from "../lisa/outbound.js";
@@ -219,10 +219,20 @@ const SPOKEN_NAME_VARIANTS = [
   [/sagen/, "shagen"], [/shagen/, "sagen"],               // Diedersagen -> Diedershagen
   [/iu$/, "iou"], [/iou$/, "iu"],                         // Vassiliu -> Vassiliou
 ];
+// Doppelt angelegte / nur minimal anders geschriebene Patienten (dieselbe
+// Person) werden ZENTRAL zusammengefasst, bevor irgendein Aufrufer die Liste
+// sieht — sonst landet Clara bei "Xenofon oder Xenofon?" in einer Schleife
+// (Chef-Regel 31.07.2026). Wirklich verschiedene Personen bleiben getrennt.
+function collapseResultPatients(res) {
+  if (res && Array.isArray(res.patients) && res.patients.length > 1) {
+    return { ...res, patients: collapseSamePerson(res.patients) };
+  }
+  return res;
+}
 async function searchPatientSpoken(clientId, name) {
   const first = await searchPatient(clientId, name);
   if (!first.ok) return first;
-  if ((first.patients || []).length) return first;
+  if ((first.patients || []).length) return collapseResultPatients(first);
 
   const tokens = String(name).split(/\s+/).filter(Boolean);
   const variants = [];
@@ -238,7 +248,7 @@ async function searchPatientSpoken(clientId, name) {
   }
   for (const v of [...new Set(variants)].slice(0, 12)) {
     const r = await searchPatient(clientId, v).catch(() => null);
-    if (r?.ok && (r.patients || []).length) return { ...r, variantUsed: v };
+    if (r?.ok && (r.patients || []).length) return collapseResultPatients({ ...r, variantUsed: v });
   }
   return first; // ok:true, patients:[]
 }

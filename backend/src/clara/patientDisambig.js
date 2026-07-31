@@ -150,3 +150,85 @@ export function narrowByExactName(nameOrHintLower, candidates = []) {
   });
   return hits.length && hits.length < candidates.length ? hits : [];
 }
+
+// ============================================================================
+// Gleiche-Person-Duplikate zusammenfassen (Chef-Regel 31.07.2026)
+//
+// Anlass: "Thermos" liefert DREI Treffer — Nadine Thermos (1985) und ZWEIMAL
+// Xenofon Thermos (einer mit Jahrgang 1982, einer ganz ohne Geburtsdatum =
+// doppelt angelegt). Bei doppelten Eintraegen mit gleichen Daten (oder nur
+// minimal anders geschriebenem Namen) soll Clara einfach EINEN nehmen, statt
+// den Nutzer in eine unaufloesbare "Xenofon oder Xenofon?"-Schleife zu treiben.
+// NUR wirklich verschiedene Personen (Nadine vs. Xenofon) bleiben als echte
+// Auswahl uebrig. Rein additiv — die bestehende Disambiguierung bekommt danach
+// eine schon entdoppelte Liste.
+// ============================================================================
+
+function normName(v) {
+  return s(v).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// Levenshtein-Distanz (klein gehalten; nur fuer kurze Namens-Token genutzt).
+function editDistance(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(
+        prev[j] + 1,
+        prev[j - 1] + 1,
+        diag + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+/**
+ * Zwei Treffer sind DIESELBE Person, wenn Vor- und Nachname exakt gleich sind
+ * (oder nur minimal abweichen = Tippfehler) UND die Geburtsjahre nicht
+ * widersprechen (leeres Jahr passt zu jedem). Bei nur AEHNLICHEM Namen wird
+ * zur Sicherheit ein uebereinstimmendes, echtes Geburtsjahr verlangt — damit
+ * echte verschiedene Personen (Meier/Meyer) NICHT faelschlich verschmelzen.
+ */
+export function samePerson(a, b) {
+  const lnA = normName(a.lastName), lnB = normName(b.lastName);
+  const fnA = normName(a.firstName), fnB = normName(b.firstName);
+  const nameExact = lnA === lnB && fnA === fnB && !!(lnA || fnA);
+  const nameNear = lnA && lnB && fnA && fnB
+    && editDistance(lnA, lnB) <= 1 && editDistance(fnA, fnB) <= 1;
+  if (!nameExact && !nameNear) return false;
+  const yA = birthYear(a.birthDate), yB = birthYear(b.birthDate);
+  if (yA && yB && yA !== yB) return false;         // echte, verschiedene Jahre
+  if (!nameExact && !(yA && yB && yA === yB)) return false; // Fast-Name nur mit gleichem Jahr
+  return true;
+}
+
+// Vollstaendigerer Datensatz gewinnt (Geburtsdatum, dann Telefon), damit der
+// gemerkte Patient fuers spaetere Buchen/Anrufen die besten Daten traegt.
+function completeness(p) {
+  return (birthYear(p.birthDate) ? 2 : 0) + (phoneDigits(p) ? 1 : 0);
+}
+
+/**
+ * Fasst Treffer, die DIESELBE Person sind, zu je einem Eintrag zusammen
+ * (bester Datensatz gewinnt). Reihenfolge der zuerst gesehenen Personen bleibt
+ * erhalten. Verschiedene Personen bleiben getrennt.
+ */
+export function collapseSamePerson(patients = []) {
+  const groups = [];
+  for (const p of patients) {
+    const g = groups.find((grp) => samePerson(grp[0], p));
+    if (g) g.push(p); else groups.push([p]);
+  }
+  return groups.map((grp) => grp.slice().sort((x, y) => completeness(y) - completeness(x))[0]);
+}
