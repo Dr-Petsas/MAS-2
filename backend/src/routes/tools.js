@@ -47,6 +47,8 @@ import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandid
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName, collapseSamePerson } from "../clara/patientDisambig.js";
+import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
+import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
 import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary } from "../lisa/outbound.js";
@@ -210,6 +212,7 @@ const SPOKEN_NAME_VARIANTS = [
   [/ay/, "ei"], [/ey/, "ei"], [/ai/, "ei"], [/ei/, "ay"], // Mayer/Meyer/Maier -> Meier
   [/äu/, "eu"], [/eu/, "äu"],                             // Häuser -> Heuser
   [/^tr/, "thr"], [/^thr/, "tr"],                         // Trandorf -> Thrandorf
+  [/^t(?!h)/, "th"], [/^th/, "t"],                        // Termos -> Thermos
   [/t/, "d"], [/d/, "t"],                                 // Dietershagen -> Diedershagen
   [/id/, "ied"], [/ied/, "id"],                           // Didershagen -> Diedershagen
   [/ahn/, "ann"], [/ann/, "ahn"],                         // Zahnis -> Zannis/Tzannis
@@ -250,7 +253,59 @@ async function searchPatientSpoken(clientId, name) {
     const r = await searchPatient(clientId, v).catch(() => null);
     if (r?.ok && (r.patients || []).length) return collapseResultPatients({ ...r, variantUsed: v });
   }
+
+  // Phonetische Rettung ueber die Praesenzliste (Chef 31.07.2026): findet die
+  // exakte Transliterations-Tabelle nichts, gleichen wir jedes gesprochene
+  // Token per KLANG (Koelner Phonetik) gegen die Patientennamen aus dem
+  // Kalenderfenster (+-2 Wochen) + Praxisgedaechtnis ab und suchen mit der so
+  // wiederhergestellten, echten Schreibweise erneut. So wird "Termos"/"Dermos"
+  // zu "Thermos", sobald die Person im Praesenzfenster steht. Best-effort:
+  // faellt die Liste aus, bleibt exakt das bisherige Verhalten.
+  try {
+    const recovered = await recoverNamePhonetically(clientId, name, tokens);
+    if (recovered && recovered.toLowerCase() !== String(name).toLowerCase()) {
+      const r = await searchPatient(clientId, recovered).catch(() => null);
+      if (r?.ok && (r.patients || []).length) {
+        return collapseResultPatients({ ...r, variantUsed: recovered, phonetic: true });
+      }
+    }
+  } catch (e) { /* Praesenzliste optional — kein Regress */ }
+
   return first; // ok:true, patients:[]
+}
+
+// Ersetzt jedes gesprochene Namens-Token durch einen klanggleichen, ECHTEN
+// Namen aus der Praesenzliste (Einzel-Token-Namen: Vor-/Nachnamen). Liefert die
+// wiederhergestellte Such-Query oder "" wenn nichts Klanggleiches gefunden wurde.
+const _presenceKeyCache = new Map(); // clientId -> { at, byKey: Map<code, name> }
+async function _presenceKeyIndex(clientId) {
+  const hit = _presenceKeyCache.get(clientId);
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.byKey;
+  const byKey = new Map();
+  const data = await listPatientNamesForStt(clientId).catch(() => null);
+  for (const nm of (data?.names || [])) {
+    const parts = String(nm).trim().split(/\s+/);
+    if (parts.length !== 1) continue;          // nur Einzel-Token-Namen
+    const code = koelnerPhonetikToken(parts[0]);
+    if (code && !byKey.has(code)) byKey.set(code, parts[0]);
+  }
+  _presenceKeyCache.set(clientId, { at: Date.now(), byKey });
+  return byKey;
+}
+async function recoverNamePhonetically(clientId, name, tokens) {
+  const toks = (tokens && tokens.length ? tokens : String(name).split(/\s+/)).filter((t) => t && t.length >= 3);
+  if (!toks.length) return "";
+  const byKey = await _presenceKeyIndex(clientId);
+  if (!byKey.size) return "";
+  let changed = false;
+  const out = toks.map((tok) => {
+    const code = koelnerPhonetikToken(tok);
+    if (!code) return tok;
+    const real = byKey.get(code);
+    if (real && real.toLowerCase() !== tok.toLowerCase()) { changed = true; return real; }
+    return real || tok;
+  });
+  return changed ? out.join(" ") : "";
 }
 
 // Token-Match eines gesprochenen Namens gegen den Vorgangs-Betreff. Erlaubt
