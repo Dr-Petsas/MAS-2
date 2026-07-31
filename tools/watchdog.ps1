@@ -141,6 +141,17 @@ function Check-Tunnel() {
 
 # --- 4) Clara --------------------------------------------------------------
 function Check-Clara() {
+  # Wartungsfenster (bewusster Dev-/Test-Betrieb auf der Leitung): solange die
+  # Flag-Datei existiert, fasst der Waechter Clara NICHT an - kein Auto-Zurueck
+  # auf Live, das sonst einen laufenden Sprachtest auf dem Dev-Stand abschiessen
+  # wuerde. Ollama/MAS/Tunnel bleiben weiter bewacht. Flag loeschen = wieder scharf.
+  $claraMaint = 'F:\Clara-Voice\.run\clara-maintenance.flag'
+  if (Test-Path $claraMaint) {
+    if (Test-Port 8091) { $script:Status["Clara"] = "wartung" }
+    else { $script:Status["Clara"] = "wartung (8091 aus)" }
+    Log "Clara-Check pausiert (Wartungs-Flag $claraMaint) - kein Auto-Zurueck auf Live"
+    return
+  }
   if (Test-Port 8091) { $script:Status["Clara"] = "ok"; return }
   Log "Clara-Worker (8091) tot - clara-switch live (killt Zombies)"
   if (Test-Path $ClaraSwitch) {
