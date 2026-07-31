@@ -213,16 +213,35 @@ export function samePerson(a, b) {
   return true;
 }
 
-// Vollstaendigerer Datensatz gewinnt (Geburtsdatum, dann Telefon), damit der
-// gemerkte Patient fuers spaetere Buchen/Anrufen die besten Daten traegt.
+// Vollstaendigerer Datensatz (Geburtsdatum, dann Telefon) als Rueckfall-Kriterium.
 function completeness(p) {
   return (birthYear(p.birthDate) ? 2 : 0) + (phoneDigits(p) ? 1 : 0);
 }
 
+// Erstell-Zeitpunkt in Millisekunden aus verschiedenen moeglichen Formaten
+// (ISO-String, Millis-Zahl, Firestore-Timestamp {seconds}/{_seconds}/toMillis).
+// 0 = unbekannt (Feld wird von der Suche erst geliefert, wenn masSearchPatients
+// es mitgibt) -> dann greift der Vollstaendigkeits-Rueckfall.
+export function createdMillis(p) {
+  const c = p && (p.createdAt ?? p.created ?? p.creationDate);
+  if (c == null) return 0;
+  if (typeof c === "number") return c;
+  if (typeof c === "object") {
+    if (typeof c.toMillis === "function") { try { return c.toMillis(); } catch { /* noop */ } }
+    if (typeof c._seconds === "number") return c._seconds * 1000;
+    if (typeof c.seconds === "number") return c.seconds * 1000;
+  }
+  const t = Date.parse(String(c));
+  return Number.isNaN(t) ? 0 : t;
+}
+
 /**
- * Fasst Treffer, die DIESELBE Person sind, zu je einem Eintrag zusammen
- * (bester Datensatz gewinnt). Reihenfolge der zuerst gesehenen Personen bleibt
- * erhalten. Verschiedene Personen bleiben getrennt.
+ * Fasst Treffer, die DIESELBE Person sind, zu je einem Eintrag zusammen.
+ * Sieger-Wahl (Chef-Regel 31.07.2026): bei sonst gleichen/aehnlichen Daten,
+ * aber unterschiedlichem Telefon/E-Mail zaehlt der ZULETZT erstellte (aktuellste)
+ * Eintrag. Ist kein Erstell-Datum bekannt, gewinnt der vollstaendigste Datensatz.
+ * Reihenfolge der zuerst gesehenen Personen bleibt erhalten; verschiedene
+ * Personen bleiben getrennt.
  */
 export function collapseSamePerson(patients = []) {
   const groups = [];
@@ -230,5 +249,9 @@ export function collapseSamePerson(patients = []) {
     const g = groups.find((grp) => samePerson(grp[0], p));
     if (g) g.push(p); else groups.push([p]);
   }
-  return groups.map((grp) => grp.slice().sort((x, y) => completeness(y) - completeness(x))[0]);
+  return groups.map((grp) => grp.slice().sort((x, y) => {
+    const dc = createdMillis(y) - createdMillis(x); // neuester zuerst
+    if (dc !== 0) return dc;
+    return completeness(y) - completeness(x);       // sonst vollstaendigster
+  })[0]);
 }

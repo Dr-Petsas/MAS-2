@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import {
   samePerson,
   collapseSamePerson,
+  createdMillis,
 } from "../src/clara/patientDisambig.js";
 
 let ok = 0;
@@ -69,6 +70,30 @@ t("Aehnlicher Name OHNE Jahresbeleg bleibt getrennt (Meier/Meyer)", () => {
 t("Verschiedene Personen bleiben unveraendert", () => {
   const out = collapseSamePerson([nadine, xeno1982]);
   assert.equal(out.length, 2);
+});
+
+// Chef-Regel 31.07.2026: gleicher/aehnlicher Patient, aber Telefon+E-Mail
+// unterschiedlich -> der ZULETZT erstellte (aktuellere) Eintrag gewinnt.
+t("createdMillis liest ISO, Millis und Firestore-Timestamp", () => {
+  assert.equal(createdMillis({ createdAt: "2025-01-01T00:00:00.000Z" }) > 0, true);
+  assert.equal(createdMillis({ createdAt: 1700000000000 }), 1700000000000);
+  assert.equal(createdMillis({ createdAt: { seconds: 1700000000 } }), 1700000000000);
+  assert.equal(createdMillis({}), 0);
+});
+
+t("Bei unterschiedl. Telefon/E-Mail gewinnt der neuere Eintrag", () => {
+  const alt = { firstName: "Xenofon", lastName: "Thermos", birthDate: "1982-09-14", mobilePhoneNumber: "+49 171 1111111", email: "alt@example.de", createdAt: "2023-05-01T10:00:00.000Z" };
+  const neu = { firstName: "Xenofon", lastName: "Thermos", birthDate: "1982-09-14", mobilePhoneNumber: "+49 160 9999999", email: "neu@example.de", createdAt: "2026-02-01T10:00:00.000Z" };
+  const out = collapseSamePerson([alt, neu]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].email, "neu@example.de");
+  assert.equal(out[0].mobilePhoneNumber, "+49 160 9999999");
+});
+
+t("Ohne Erstell-Datum bleibt Vollstaendigkeits-Rueckfall (mit Geburtsdatum gewinnt)", () => {
+  const out = collapseSamePerson([xenoNoDob, xeno1982]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].birthDate, "1982-09-14");
 });
 
 console.log(`\nAlle ${ok} Faelle gruen.`);
