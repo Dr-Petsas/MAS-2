@@ -564,6 +564,7 @@
   var current = -1;
   var fadeTimer = null;
   var unlocked = false;
+  var started = false;   // Tour genau einmal wirklich starten (erster Tipp/Scroll)
   var chatOpen = false;  // solange das Gespräch offen ist, keine Kapitel-Ansage dazwischenfunken
   var seq = 0;
   var audioEl = new Audio();
@@ -892,6 +893,8 @@
 
   // ── Start (iOS-Tonfreigabe): Kapitel 1 sofort mit Ton ──
   function doStart() {
+    if (started) return;   // nur einmal
+    started = true;
     unlocked = true;
     startOverlay.style.display = "none";
     current = 0; chapters[0].classList.add("on");
@@ -909,7 +912,7 @@
   // Hintergrundmusik: der von Dr. Petsas gelieferte Track "Neon Pulse" als leise
   // Dauerschleife (leiser als Claras Stimme, damit die Ansage klar bleibt).
   var bgAudio = null, musicOn = false, musicFadeTimer = null;
-  var MUSIC_VOL = 0.22;
+  var MUSIC_VOL = 0.10;
 
   function startMusic() {
     try {
@@ -933,10 +936,22 @@
   }
   btnMusic.addEventListener("click", function () { if (musicOn) stopMusic(); else startMusic(); });
 
-  // Schon vor dem Start alle Kapitel im Hintergrund vorwärmen (nur laden, kein Ton),
-  // damit beim Einscrollen sofort gespielt wird — ohne Warten.
-  if (clientId) warmAll();
+  // Direkt in der Tour landen — keine Zwischen-Einblendung. Man sieht sofort
+  // Kapitel 1 und Clara; der erste Tipp/Scroll gibt (iOS-Vorgabe) Ton + Mikro
+  // frei und startet Claras Ansage und das Dauer-Zuhören.
+  startOverlay.style.display = "none";
   chapters[0].classList.add("on");
+  clara.classList.remove("hide");
+  ask.classList.add("show");
+  if (clientId) warmAll();
+
+  var GESTURES = ["pointerdown", "touchstart", "click", "keydown", "scroll", "wheel"];
+  function onFirstGesture() {
+    GESTURES.forEach(function (ev) { window.removeEventListener(ev, onFirstGesture, true); });
+    doStart();
+  }
+  GESTURES.forEach(function (ev) { window.addEventListener(ev, onFirstGesture, { capture: true, passive: true }); });
+  setHear("live", "Tippe oder scrolle – dann legt Clara los. Danach einfach mit ihr reden.");
 })();
 </script>
 </body>
