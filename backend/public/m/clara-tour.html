@@ -669,6 +669,7 @@
     current = 0; chapters[0].classList.add("on");
     dots.forEach(function (d, k) { d.classList.toggle("on", k === 0); });
     clara.classList.remove("hide");
+    startMusic();   // Musik läuft ab jetzt automatisch leise mit (Ton-Freigabe durch den Start-Tipp)
     warmAll();
     narrate(0);
   }
