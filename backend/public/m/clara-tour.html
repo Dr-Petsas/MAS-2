@@ -113,7 +113,7 @@
 <div class="progress" id="progress"></div>
 
 <div class="top">
-  <a class="back" href="/m/ipad-app.html" id="backLink">‹ Zurück</a>
+  <a class="back" href="/m/ipad-app.html" id="backLink" onclick="if(history.length>1){history.back();return false;}">‹ Zurück</a>
   <span class="brand">picka<b>doc</b> · Tour</span>
   <span class="spacer"></span>
   <button id="btnMusic" title="Hintergrundmusik">♪</button>
@@ -491,7 +491,13 @@
   "use strict";
   var qs = new URLSearchParams(location.search);
   var clientId = (qs.get("c") || "").trim();
-  if (!clientId) { try { var d = JSON.parse(localStorage.getItem("pickadoc.ipad.v1") || "null"); clientId = (d && d.clientId) || ""; } catch (e) {} }
+  // Praxis-ID aus dem gekoppelten Gerät: iPad-App (pickadoc.ipad.v1) ODER Handy-App (clara.device.v1).
+  if (!clientId) {
+    ["pickadoc.ipad.v1", "clara.device.v1"].some(function (k) {
+      try { var d = JSON.parse(localStorage.getItem(k) || "null"); if (d && d.clientId) { clientId = String(d.clientId).trim(); return true; } } catch (e) {}
+      return false;
+    });
+  }
 
   var chapters = Array.prototype.slice.call(document.querySelectorAll(".chapter"));
   var clara = document.getElementById("clara");
