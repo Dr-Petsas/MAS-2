@@ -675,64 +675,29 @@
   startBtn.addEventListener("click", doStart);
   startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
 
-  // Hintergrundmusik (WebAudio, keine Datei): sanfte Lo-Fi-Akkordfolge mit
-  // echten Harmoniewechseln + leisem Arpeggio — KEIN Dauerton mehr.
-  var audioCtx = null, musicOn = false, musicMaster = null, musicFilter = null, chordTimer = null, chordIx = 0, musicVoices = [];
-  // Akkorde in Hz: Cmaj7 · Am7 · Fmaj7 · G7 — ruhiger, warmer Loop.
-  var CHORDS = [
-    { bass: 130.81, pad: [329.63, 392.00, 493.88], arp: [523.25, 659.25, 493.88, 587.33] },
-    { bass: 110.00, pad: [261.63, 329.63, 392.00], arp: [523.25, 587.33, 659.25, 392.00] },
-    { bass: 174.61, pad: [349.23, 440.00, 523.25], arp: [659.25, 698.46, 523.25, 440.00] },
-    { bass: 196.00, pad: [392.00, 493.88, 587.33], arp: [587.33, 493.88, 698.46, 392.00] }
-  ];
-  var CHORD_MS = 5200;
-
-  function voice(freq, type, t0, attack, hold, release, peak) {
-    if (!audioCtx || !musicFilter) return;
-    var o = audioCtx.createOscillator(); o.type = type; o.frequency.value = freq;
-    var g = audioCtx.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
-    g.gain.setValueAtTime(peak, t0 + attack + hold);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + hold + release);
-    o.connect(g); g.connect(musicFilter);
-    o.start(t0); o.stop(t0 + attack + hold + release + 0.05);
-    musicVoices.push(o);
-    o.onended = function () { var i = musicVoices.indexOf(o); if (i >= 0) musicVoices.splice(i, 1); try { g.disconnect(); } catch (e) {} };
-  }
-
-  function playChord() {
-    if (!musicOn || !audioCtx) return;
-    var c = CHORDS[chordIx % CHORDS.length]; chordIx++;
-    var t = audioCtx.currentTime + 0.03;
-    var dur = CHORD_MS / 1000;
-    voice(c.bass, "triangle", t, 0.9, dur - 1.6, 1.2, 0.10);
-    c.pad.forEach(function (f) { voice(f, "sine", t, 1.1, dur - 2.0, 1.3, 0.045); });
-    var steps = c.arp.length, stepDur = dur / (steps + 1);
-    c.arp.forEach(function (f, k) { voice(f, "sine", t + (k + 1) * stepDur, 0.02, 0.05, 0.55, 0.03); });
-  }
+  // Hintergrundmusik: der echte Pickadoc-Jingle als leise Dauerschleife.
+  var bgAudio = null, musicOn = false, musicFadeTimer = null;
+  var MUSIC_VOL = 0.30;
 
   function startMusic() {
     try {
-      var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-      if (!audioCtx) audioCtx = new AC();
-      if (audioCtx.state === "suspended") audioCtx.resume();
-      musicMaster = audioCtx.createGain(); musicMaster.gain.value = 0.0001;
-      musicMaster.gain.exponentialRampToValueAtTime(0.6, audioCtx.currentTime + 2.2);
-      musicFilter = audioCtx.createBiquadFilter(); musicFilter.type = "lowpass"; musicFilter.frequency.value = 1500; musicFilter.Q.value = 0.6;
-      var delay = audioCtx.createDelay(); delay.delayTime.value = 0.42;
-      var fb = audioCtx.createGain(); fb.gain.value = 0.26; delay.connect(fb); fb.connect(delay);
-      musicFilter.connect(musicMaster); musicFilter.connect(delay); delay.connect(musicMaster); musicMaster.connect(audioCtx.destination);
-      musicOn = true; chordIx = 0; btnMusic.classList.add("on");
-      playChord(); chordTimer = setInterval(playChord, CHORD_MS);
+      if (!bgAudio) { bgAudio = new Audio("/m/pickadoc-jingle.mp3"); bgAudio.loop = true; bgAudio.preload = "auto"; }
+      if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
+      bgAudio.volume = 0.0;
+      var p = bgAudio.play();
+      if (p && p.catch) p.catch(function () {});
+      var k = 0, steps = 22;
+      musicFadeTimer = setInterval(function () { k++; try { bgAudio.volume = Math.min(MUSIC_VOL, MUSIC_VOL * k / steps); } catch (e) {} if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; } }, 80);
+      musicOn = true; btnMusic.classList.add("on");
     } catch (e) {}
   }
 
   function stopMusic() {
     musicOn = false; btnMusic.classList.remove("on");
-    if (chordTimer) { clearInterval(chordTimer); chordTimer = null; }
-    if (musicMaster && audioCtx) { try { musicMaster.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.8); } catch (e) {} }
-    setTimeout(function () { musicVoices.forEach(function (o) { try { o.stop(); } catch (e) {} }); musicVoices = []; }, 900);
+    if (!bgAudio) return;
+    if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
+    var start = bgAudio.volume, k = 0, steps = 14;
+    musicFadeTimer = setInterval(function () { k++; try { bgAudio.volume = Math.max(0, start * (1 - k / steps)); } catch (e) {} if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; try { bgAudio.pause(); } catch (e) {} } }, 60);
   }
   btnMusic.addEventListener("click", function () { if (musicOn) stopMusic(); else startMusic(); });
 
