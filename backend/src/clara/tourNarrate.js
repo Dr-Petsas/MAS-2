@@ -73,9 +73,10 @@ export async function narrateChapter({ title = "", prompt = "", fallbackText = "
     return { ok: false, text: "", source: "fallback" };
   }
   const s = strongLlm(); // starker 5090-Server für flüssige Sprache
+  // Der Server erlaubt nur EINE System-Nachricht am Anfang — Persona + Katalog
+  // deshalb in einem Block bündeln.
   const messages = [
-    { role: "system", content: SYSTEM },
-    { role: "system", content: "Dein vollständiger Funktionskatalog (nur daraus schöpfen):\n" + CAPABILITIES },
+    { role: "system", content: SYSTEM + "\n\nDein vollständiger Funktionskatalog (nur daraus schöpfen):\n" + CAPABILITIES },
     {
       role: "user",
       content:
