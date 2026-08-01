@@ -26,6 +26,7 @@ import { runClaraHealth, statusPageHtml } from "../clara/health.js";
 import { runMorgenlauf } from "../clara/morgenlauf.js";
 import { recordToolError, recentToolErrors } from "../clara/toolErrors.js";
 import { loadProof, proofToSvg } from "../clara/proofCard.js";
+import { narrateChapter, synthClaraVoice, ttsConfigured } from "../clara/tourNarrate.js";
 import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, qmRoute, resolveClientId } from "./_shared.js";
 
 const router = express.Router();
@@ -41,6 +42,29 @@ router.get("/clara/team/ask", qmRoute(async (clientId, req, res) => {
   const q = String(req.query?.q || "").trim();
   const r = await wfAsk(clientId, q);
   res.json({ ok: true, clientId, ...r });
+}));
+
+
+// --- Fähigkeits-Tour (Audio-Menü): Clara erzählt pro Kapitel, was sie kann ---
+// Volle Prompt-Anpassung: das Frontend schickt Titel + Kapitel-Prompt, Clara
+// formuliert die Ansage über das lokale LLM und (falls ElevenLabs konfiguriert)
+// liefert das Audio in ihrer Stimme gleich mit. Kein Patientenbezug.
+router.post("/clara/tour/narrate", qmRoute(async (clientId, req, res) => {
+  const body = { ...(req.body || {}) };
+  const title = String(body.title || "").slice(0, 160);
+  const prompt = String(body.prompt || "").slice(0, 2000);
+  const fallbackText = String(body.text || body.fallbackText || "").slice(0, 2000);
+  const wantAudio = body.audio !== false && body.audio !== "false";
+
+  const spoken = await narrateChapter({ title, prompt, fallbackText });
+  const out = { ok: !!spoken.text, clientId, text: spoken.text, source: spoken.source, model: spoken.model || null, ttsConfigured: ttsConfigured() };
+
+  if (wantAudio && spoken.text && ttsConfigured()) {
+    const audio = await synthClaraVoice(spoken.text);
+    if (audio.ok) { out.audioBase64 = audio.audioBase64; out.mime = audio.mime; }
+    else out.audioReason = audio.reason;
+  }
+  res.json(out);
 }));
 
 
