@@ -95,6 +95,7 @@
   .top .spacer { flex: 1; }
   .top a.back, .top button { font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; background: color-mix(in srgb, var(--card) 80%, transparent); border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
   .top button.on { color: var(--turq); border-color: color-mix(in srgb, var(--turq) 55%, transparent); }
+  .top button.talk { color: #06121f; font-weight: 800; border: 0; background: linear-gradient(135deg, var(--turq), var(--green)); box-shadow: 0 6px 18px rgba(46,230,200,.32); }
   .progress { position: fixed; top: 0; left: 0; height: 3px; width: 0; z-index: 60; background: linear-gradient(90deg, var(--turq), var(--green)); transition: width .2s ease; }
   .dots { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); z-index: 45; display: flex; flex-direction: column; gap: 9px; }
   @media (max-width: 720px){ .dots { display: none; } .clara .bubble{ max-width: 62vw; } }
@@ -117,6 +118,7 @@
   <a class="back" href="/m/ipad-app.html" id="backLink" onclick="if(history.length>1){history.back();return false;}">‹ Zurück</a>
   <span class="brand">picka<b>doc</b> · Tour</span>
   <span class="spacer"></span>
+  <button id="btnTalk" class="talk" title="Zurück zu Clara – jetzt mit ihr sprechen">🎙 Sprechen</button>
   <button id="btnMusic" title="Hintergrundmusik">♪</button>
   <button id="btnVoice" class="on" title="Claras Ansage">🔊</button>
 </div>
@@ -651,6 +653,14 @@
     else if (current >= 0) narrate(current);
   });
   btnReplay.addEventListener("click", function () { if (current >= 0) { unlocked = true; narrate(current); } });
+
+  // Zurück in die echte, laufende Clara — dort kann live gesprochen werden.
+  document.getElementById("btnTalk").addEventListener("click", function () {
+    try { audioEl.pause(); } catch (e) {}
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+    if (history.length > 1) history.back();
+    else location.href = "/m/call.html";
+  });
 
   // ── Start (iOS-Tonfreigabe): Kapitel 1 sofort mit Ton ──
   function doStart() {
