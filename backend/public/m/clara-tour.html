@@ -131,6 +131,13 @@
   @keyframes micpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,77,219,.5); } 50% { box-shadow: 0 0 0 8px rgba(255,77,219,0); } }
   .ask-send { color: #06121f; background: linear-gradient(135deg, var(--turq), var(--green)); font-weight: 900; }
   .ask-send:disabled { opacity: .5; }
+  /* Immer-Zuhören: aktiver Mikro-Knopf + „Ich höre zu“-Anzeige */
+  #btnTalk.rec { color: #06121f; background: linear-gradient(135deg, var(--pink), var(--purple)); box-shadow: 0 0 0 0 rgba(255,77,219,.5); animation: micpulse 1.3s ease-in-out infinite; }
+  .hear { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 54; display: flex; align-items: center; gap: 8px; max-width: min(90vw, 560px); padding: 8px 14px; border-radius: 999px; background: color-mix(in srgb, var(--bg-2) 92%, transparent); border: 1px solid var(--line); backdrop-filter: blur(6px); font-size: 13.5px; color: var(--ink-soft); box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+  .hear #hearTxt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hear.live { color: var(--ink); border-color: color-mix(in srgb, var(--turq) 45%, transparent); }
+  .hear .hdot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--pink); box-shadow: 0 0 0 0 rgba(255,77,219,.6); animation: micpulse 1.3s ease-in-out infinite; }
+  .hear.think .hdot { background: var(--turq); }
 </style>
 </head>
 <body>
@@ -141,10 +148,12 @@
   <a class="back" href="/m/ipad-app.html" id="backLink" onclick="if(history.length>1){history.back();return false;}">‹ Zurück</a>
   <span class="brand">picka<b>doc</b> · Tour</span>
   <span class="spacer"></span>
-  <button id="btnTalk" class="talk" title="Zurück zu Clara – jetzt mit ihr sprechen">🎙 Sprechen</button>
+  <button id="btnTalk" class="talk" title="Sofort mit Clara reden – Mikro an/aus">🎙 Reden</button>
   <button id="btnMusic" title="Hintergrundmusik">♪</button>
   <button id="btnVoice" class="on" title="Claras Ansage">🔊</button>
 </div>
+
+<div class="hear" id="hear" hidden><span class="hdot"></span><span id="hearTxt">Ich höre zu …</span></div>
 
 <div class="dots" id="dots"></div>
 
@@ -526,6 +535,7 @@
   <div class="ssub">Einmal tippen — danach erzählt Clara und du scrollst dich durch die Kapitel.</div>
 </div>
 
+<script src="/m/lena-stt-capture.js"></script>
 <script>
 (function () {
   "use strict";
@@ -692,12 +702,11 @@
   });
   btnReplay.addEventListener("click", function () { if (current >= 0) { unlocked = true; narrate(current); } });
 
-  // Zurück in die echte, laufende Clara — dort kann live gesprochen werden.
-  document.getElementById("btnTalk").addEventListener("click", function () {
-    try { audioEl.pause(); } catch (e) {}
-    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
-    if (history.length > 1) history.back();
-    else location.href = "/m/call.html";
+  // "Reden": Dauer-Zuhören an/aus (sofort-an, kein Antippen pro Frage nötig).
+  var btnTalk = document.getElementById("btnTalk");
+  btnTalk.addEventListener("click", function () {
+    if (listenOn || cap) stopListening(true);
+    else startListening();
   });
 
   // ── Gesprächs-Modus: mit Clara reden (erklärt ihr Können, nennt Beispiele) ──
@@ -713,6 +722,31 @@
   var chatAudio = new Audio();
   var chatBusy = false;
   var chatSeeded = false;
+
+  // Echo-Schutz: solange Clara (Ansage ODER Antwort) spricht, hören wir weg.
+  var claraSpeaking = false;
+  var speakCooldownUntil = 0;
+  function onSpeakStart() { claraSpeaking = true; try { clara.classList.add("speaking"); } catch (e) {} }
+  function onSpeakStop() { claraSpeaking = false; speakCooldownUntil = Date.now() + 700; try { clara.classList.remove("speaking"); } catch (e) {} }
+  chatAudio.addEventListener("play", onSpeakStart);
+  chatAudio.addEventListener("ended", onSpeakStop);
+  chatAudio.addEventListener("pause", onSpeakStop);
+  audioEl.addEventListener("play", onSpeakStart);
+  audioEl.addEventListener("ended", onSpeakStop);
+  audioEl.addEventListener("pause", onSpeakStop);
+
+  // "Ich höre zu"-Anzeige unter der Kopfleiste
+  var hear = document.getElementById("hear");
+  var hearTxt = document.getElementById("hearTxt");
+  var HEAR_IDLE = "Ich höre zu — sprich einfach los …";
+  function setHear(mode, text) {
+    if (!hear) return;
+    hear.hidden = false;
+    hear.classList.toggle("live", mode === "live");
+    hear.classList.toggle("think", mode === "think");
+    hearTxt.textContent = text;
+  }
+  function hideHear() { if (hear) hear.hidden = true; }
 
   function askBubble(role, text, extra) {
     var b = document.createElement("div");
@@ -741,14 +775,16 @@
   askToggle.addEventListener("click", openChat);
   askClose.addEventListener("click", closeChat);
 
-  function sendChat(text) {
+  // Kernfunktion: Frage an Clara (aus Text ODER Stimme), Antwort mit Stimme.
+  function askClara(text) {
     var q = String(text || "").trim();
     if (!q || chatBusy) return;
+    if (askPanel.hidden) openChat();   // Gespräch sichtbar machen (pausiert Kapitel-Ansage)
     chatBusy = true; askSend.disabled = true;
-    askInput.value = "";
     askBubble("me", q);
     chatHistory.push({ role: "user", content: q });
     if (chatHistory.length > 16) chatHistory = chatHistory.slice(-16);
+    if (listenOn) setHear("think", "Clara überlegt …");
     var think = askBubble("clara", "Clara denkt nach …", "think");
     try { chatAudio.pause(); } catch (e) {}
     try { audioEl.pause(); } catch (e) {}
@@ -763,8 +799,6 @@
       chatHistory.push({ role: "assistant", content: answer });
       if (data && data.audioBase64) {
         try {
-          clara.classList.add("speaking");
-          chatAudio.onended = function () { clara.classList.remove("speaking"); };
           chatAudio.src = "data:" + (data.mime || "audio/mpeg") + ";base64," + data.audioBase64;
           chatAudio.volume = 1;
           var p = chatAudio.play(); if (p && p.catch) p.catch(function () {});
@@ -773,9 +807,11 @@
     }).catch(function () {
       try { askLog.removeChild(think); } catch (e) {}
       askBubble("clara", "Ups, das hat gerade nicht geklappt. Versuch es bitte gleich noch einmal.");
-    }).finally(function () { chatBusy = false; askSend.disabled = false; });
+    }).finally(function () { chatBusy = false; askSend.disabled = false; if (listenOn) setHear("live", HEAR_IDLE); });
   }
 
+  // Schreib-Eingabe: sendet und leert das Feld.
+  function sendChat(text) { var q = String(text || "").trim(); if (!q) return; askInput.value = ""; askClara(q); }
   askSend.addEventListener("click", function () { sendChat(askInput.value); });
   askInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); sendChat(askInput.value); } });
 
@@ -804,6 +840,56 @@
     askMic.title = "Tippen und die Mikrofon-Taste deiner Tastatur nutzen";
   }
 
+  // ── Sofort-an: Dauer-Zuhören über den Server-STT (läuft auch auf iPhone/iPad) ──
+  var cap = null;            // laufende STT-Aufnahme
+  var listenOn = false;      // Mikro aktiv?
+  var listenStarting = false;
+
+  function updateMicUi() {
+    if (!btnTalk) return;
+    btnTalk.classList.toggle("rec", !!listenOn);
+    btnTalk.innerHTML = listenOn ? "🎙 An" : "🎙 Reden";
+    if (listenOn) setHear("live", HEAR_IDLE); else hideHear();
+  }
+
+  // Ein fertig gehörter Satz -> Frage an Clara (wenn sie gerade nicht selbst spricht).
+  function onHeard(text) {
+    var q = String(text || "").trim();
+    if (q.length < 3) return;
+    if (claraSpeaking || Date.now() < speakCooldownUntil) return;
+    if (chatBusy) return;
+    askClara(q);
+  }
+
+  async function startListening() {
+    if (listenOn || listenStarting) return;
+    if (!window.LenaSttCapture) { setHear("live", "Sprechen hier nicht verfügbar — nutze das Textfeld unten."); setTimeout(hideHear, 3500); return; }
+    listenStarting = true;
+    setHear("think", "Mikro wird verbunden …");
+    try {
+      var c = new window.LenaSttCapture();
+      var ok = await c.start({ micMode: "ipad", session: "tour", lang: "de-DE" }, {
+        onReady: function () { cap = c; listenOn = true; listenStarting = false; updateMicUi(); },
+        onPartial: function (t) { if (claraSpeaking || Date.now() < speakCooldownUntil) return; if (t) setHear("live", "… " + t); },
+        onFinal: function (t) { onHeard(t); },
+        onWarn: function () {},
+        onError: function (msg) { listenOn = false; listenStarting = false; cap = null; setHear("live", "Mikro nicht möglich — nutze das Textfeld unten."); setTimeout(hideHear, 3500); updateMicUi(); },
+        onClose: function () { listenOn = false; cap = null; updateMicUi(); }
+      });
+      if (ok) { cap = c; listenOn = true; listenStarting = false; updateMicUi(); }
+      else { listenStarting = false; if (!listenOn) updateMicUi(); }
+    } catch (e) { listenStarting = false; listenOn = false; cap = null; updateMicUi(); }
+  }
+
+  async function stopListening(byUser) {
+    var c = cap; cap = null; listenOn = false; updateMicUi();
+    if (byUser) { setHear("live", "Mikro aus — tippe „🎙 Reden“, um wieder zu sprechen."); setTimeout(hideHear, 2600); }
+    if (c) { try { await c.stop(); } catch (e) {} }
+  }
+
+  // Nach iOS-Standby/Tab-Wechsel Mikro wieder anwerfen.
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && cap && cap.resume) { try { cap.resume(); } catch (e) {} } });
+
   // ── Start (iOS-Tonfreigabe): Kapitel 1 sofort mit Ton ──
   function doStart() {
     unlocked = true;
@@ -815,6 +901,7 @@
     startMusic();   // Musik läuft ab jetzt automatisch leise mit (Ton-Freigabe durch den Start-Tipp)
     warmAll();
     narrate(0);
+    startListening();   // sofort-an: Mikro hört von selbst zu (Freigabe durch den Start-Tipp)
   }
   startBtn.addEventListener("click", doStart);
   startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
