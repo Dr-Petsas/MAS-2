@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Clara · Tour</title>
+<meta name="theme-color" content="#0a1322" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<!--
+  Clara-Tour (Geräte-App): interne Fähigkeits-Tour mit Claras ECHTER Stimme.
+  Läuft unter /m/clara-tour.html, aufgerufen aus /m/ipad-app.html. Die Ansage
+  kommt vom Backend-Endpunkt /clara/tour/narrate (LLM-Text + ElevenLabs-Stimme,
+  braucht nur die Praxis-ID). iOS erlaubt Ton nur nach einem Tipp: deshalb der
+  Start-Knopf. Danach erzählt Clara pro Kapitel; beim Scrollen wechselt das
+  Thema. Rückfall ist die Browser-Stimme, damit nie etwas hängen bleibt.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg-1: #13203a; --bg-2: #0a1322; --bg-3: #060b16;
+    --ink: #e6edf6; --ink-soft: #8fa3bd; --ink-faint: #5f719a;
+    --turq: #2ee6c8; --amber: #ffb347; --red: #ff4d6d;
+    --pink: #ff4ddb; --purple: #b84dff; --green: #34d399;
+    --line: #22324f; --card: #101b30;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+    margin: 0; color: var(--ink);
+    background: radial-gradient(130% 90% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 52%, var(--bg-3) 100%);
+    background-attachment: fixed; min-height: 100vh; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  .deck { scroll-snap-type: y proximity; }
+  .chapter {
+    min-height: 100svh; scroll-snap-align: start;
+    display: flex; flex-direction: column; justify-content: center;
+    max-width: 1000px; margin: 0 auto; padding: 84px 20px 120px; position: relative;
+  }
+  .chapter .kicker { font-size: 12.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent, var(--turq)); margin-bottom: 12px; display: flex; gap: 10px; align-items: center; }
+  .chapter .kicker .no { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent, var(--turq)) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent, var(--turq)) 40%, transparent); font-size: 12px; }
+  .chapter h2 { font-size: clamp(28px, 6vw, 46px); line-height: 1.05; margin: 0 0 12px; font-weight: 800; letter-spacing: -.5px; }
+  .chapter h2 .accent { background: linear-gradient(100deg, var(--accent, var(--turq)), var(--green)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .chapter .lead { color: var(--ink-soft); font-size: 17px; max-width: 640px; margin: 0 0 26px; }
+  .chapter .inner { opacity: 0; transform: translateY(26px); transition: opacity .6s ease, transform .6s ease; }
+  .chapter.on .inner { opacity: 1; transform: none; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .flip { background: transparent; perspective: 1200px; height: 148px; }
+  .flip-in { position: relative; width: 100%; height: 100%; transition: transform .6s cubic-bezier(.2,.7,.2,1); transform-style: preserve-3d; cursor: pointer; }
+  .flip:hover .flip-in, .flip.flipped .flip-in { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 16px; border: 1px solid var(--line); background: var(--card); padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
+  .face::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--accent, var(--turq)); opacity: .55; }
+  .face h3 { font-size: 15.5px; margin: 0 0 6px; font-weight: 700; }
+  .face p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+  .face .hint { margin-top: auto; font-size: 11.5px; color: var(--accent, var(--turq)); font-weight: 600; letter-spacing: .3px; }
+  .back { transform: rotateY(180deg); background: linear-gradient(150deg, color-mix(in srgb, var(--accent, var(--turq)) 16%, var(--card)), var(--card)); }
+  .back .say-l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-soft); margin-bottom: 6px; }
+  .back .say { font-size: 14.5px; color: var(--ink); font-weight: 600; }
+  .back .say::before { content: "\201E"; color: var(--accent, var(--turq)); }
+  .back .say::after { content: "\201C"; color: var(--accent, var(--turq)); }
+  .team { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+  .mate { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 15px 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .mate .av { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 800; color: #06121f; background: linear-gradient(140deg, var(--accent, var(--turq)), var(--green)); }
+  .mate h3 { margin: 0 0 2px; font-size: 15px; } .mate p { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
+  .steer { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px){ .steer { grid-template-columns: 1fr; } }
+  .steer .box { border-radius: 16px; padding: 18px; border: 1px solid var(--line); background: var(--card); }
+  .steer .box.no { border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+  .steer .box.yes { border-color: color-mix(in srgb, var(--green) 40%, transparent); }
+  .steer .lab { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; font-weight: 700; margin-bottom: 10px; }
+  .steer .no .lab { color: var(--red); } .steer .yes .lab { color: var(--green); }
+  .steer .line { font-size: 15px; margin: 7px 0; color: var(--ink); }
+  .steer .no .line { color: var(--ink-soft); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--red) 60%, transparent); }
+  .clara { position: fixed; right: 22px; bottom: 22px; z-index: 40; display: flex; align-items: flex-end; gap: 12px; transition: opacity .45s ease, transform .45s ease; }
+  .clara.hide { opacity: 0; transform: translateY(18px) scale(.96); }
+  .clara .bubble { max-width: min(52vw, 360px); background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid color-mix(in srgb, var(--accent, var(--turq)) 40%, transparent); border-radius: 16px 16px 4px 16px; padding: 12px 14px; box-shadow: 0 18px 40px rgba(0,0,0,.45); backdrop-filter: blur(6px); }
+  .clara .bubble .who { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--accent, var(--turq)); font-weight: 700; margin-bottom: 3px; }
+  .clara .bubble .txt { font-size: 13.5px; color: var(--ink); }
+  .clara .orb { width: 62px; height: 62px; border-radius: 50%; flex: none; position: relative; display: grid; place-items: center; background: radial-gradient(60% 60% at 50% 35%, color-mix(in srgb, var(--accent, var(--turq)) 55%, transparent), color-mix(in srgb, var(--purple) 30%, transparent)); border: 1px solid color-mix(in srgb, var(--accent, var(--turq)) 60%, transparent); box-shadow: 0 0 30px color-mix(in srgb, var(--accent, var(--turq)) 40%, transparent); }
+  .clara .orb svg { width: 30px; height: 30px; }
+  .clara .orb .ring { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent, var(--turq)) 45%, transparent); opacity: 0; }
+  .clara.speaking .orb .ring { animation: pulse 1.6s ease-out infinite; }
+  @keyframes pulse { 0%{ transform: scale(.9); opacity: .7; } 100%{ transform: scale(1.35); opacity: 0; } }
+  .clara .re { margin-top: 8px; display: flex; gap: 8px; }
+  .clara .re button { font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-soft); cursor: pointer; background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; }
+  details.prompt { margin-top: 22px; border: 1px dashed var(--line); border-radius: 12px; background: color-mix(in srgb, var(--card) 60%, transparent); }
+  details.prompt > summary { cursor: pointer; list-style: none; padding: 10px 14px; font-size: 12.5px; color: var(--ink-soft); font-weight: 600; }
+  details.prompt > summary::-webkit-details-marker { display: none; }
+  details.prompt textarea { width: 100%; min-height: 90px; resize: vertical; border: none; border-top: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 13px; padding: 12px 14px; outline: none; }
+  .top { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; align-items: center; gap: 10px; padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top)); background: linear-gradient(180deg, rgba(6,11,22,.9), rgba(6,11,22,0)); }
+  .top .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; } .top .brand b { color: var(--turq); }
+  .top .spacer { flex: 1; }
+  .top a.back, .top button { font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; background: color-mix(in srgb, var(--card) 80%, transparent); border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .top button.on { color: var(--turq); border-color: color-mix(in srgb, var(--turq) 55%, transparent); }
+  .progress { position: fixed; top: 0; left: 0; height: 3px; width: 0; z-index: 60; background: linear-gradient(90deg, var(--turq), var(--green)); transition: width .2s ease; }
+  .dots { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); z-index: 45; display: flex; flex-direction: column; gap: 9px; }
+  @media (max-width: 720px){ .dots { display: none; } .clara .bubble{ max-width: 62vw; } }
+  .dots a { width: 9px; height: 9px; border-radius: 50%; background: var(--line); transition: all .2s ease; }
+  .dots a.on { background: var(--turq); transform: scale(1.35); box-shadow: 0 0 10px var(--turq); }
+  footer { text-align: center; color: var(--ink-faint); font-size: 12.5px; padding: 40px 20px 80px; }
+  /* Start-Einblendung (iOS: Ton erst nach Tipp) */
+  #startOverlay { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center; background: radial-gradient(120% 90% at 50% 0%, rgba(19,32,58,.96), rgba(6,11,22,.98)); }
+  #startOverlay .sorb { width: 116px; height: 116px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(60% 60% at 50% 35%, color-mix(in srgb, var(--turq) 55%, transparent), color-mix(in srgb, var(--purple) 30%, transparent)); border: 1px solid color-mix(in srgb, var(--turq) 60%, transparent); box-shadow: 0 0 46px color-mix(in srgb, var(--turq) 40%, transparent); }
+  #startOverlay .sorb svg { width: 56px; height: 56px; }
+  #startOverlay .sbtn { font: inherit; font-size: 17px; font-weight: 800; color: #06121f; cursor: pointer; border: 0; border-radius: 999px; padding: 15px 26px; background: linear-gradient(135deg, var(--turq), var(--green)); box-shadow: 0 14px 34px rgba(46,230,200,.35); }
+  #startOverlay .ssub { color: var(--ink-soft); font-size: 13.5px; max-width: 320px; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<div class="top">
+  <a class="back" href="/m/ipad-app.html" id="backLink">‹ Zurück</a>
+  <span class="brand">picka<b>doc</b> · Tour</span>
+  <span class="spacer"></span>
+  <button id="btnMusic" title="Hintergrundmusik">♪</button>
+  <button id="btnVoice" class="on" title="Claras Ansage">🔊</button>
+</div>
+
+<div class="dots" id="dots"></div>
+
+<div class="clara hide" id="clara">
+  <div class="bubble">
+    <div class="who">Clara</div>
+    <div class="txt" id="claraTxt">Ich zeig dir, was ich alles kann.</div>
+    <div class="re"><button id="btnReplay">▷ Nochmal erzählen</button></div>
+  </div>
+  <div class="orb" aria-hidden="true">
+    <span class="ring"></span>
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 21s-6.5-4.3-6.5-9.4C5.5 8 7.6 6 10 6c1 0 1.7.4 2 .9.3-.5 1-.9 2-.9 2.4 0 4.5 2 4.5 5.6 0 5.1-6.5 9.4-6.5 9.4Z" stroke="#2ee6c8" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M9 11.5l2 2 4-4" stroke="#34d399" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+</div>
+
+<main class="deck" id="deck">
+
+  <section class="chapter on" style="--accent: var(--turq)" data-title="Willkommen"
+    data-narr="Hallo, ich bin Clara, die interne Sprach-Assistentin deiner Praxis. Scroll dich einfach durch die Kapitel — bei jedem erzähle ich dir, was ich dort für dich tun kann. Über mich erreichst du außerdem das ganze Team."
+    data-prompt="Begrüße das Team herzlich als Clara und erkläre in zwei Sätzen, dass man sich durch die Kapitel scrollt und du zu jedem erzählst, was du kannst.">
+    <div class="inner">
+      <div class="kicker"><span class="no">01</span> Willkommen</div>
+      <h2>Hallo, ich bin <span class="accent">Clara</span>.</h2>
+      <p class="lead">Deine interne Sprach-Assistentin. Scroll dich durch die Kapitel — zu jedem erzähle ich dir, was ich kann. Über mich erreichst du das ganze Team der Praxis.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Auf Zuruf</h3><p>Sag es mir in einem Satz — ich mach den Rest.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Guten Morgen, Clara!</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Das ganze Team</h3><p>Nadine, Bianca, Lisa, Julia, Lena, Sophie, Marie.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Lass Nadine den Brief schreiben.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Ehrlich</h3><p>Ich behaupte nie etwas, das nicht passiert ist.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Heißt konkret</div><div class="say">Erst wenn's erledigt ist, sag ich's.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Begrüße das Team herzlich als Clara und erkläre in zwei Sätzen, dass man sich durch die Kapitel scrollt und du zu jedem erzählst, was du kannst.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--green)" data-title="So steuerst du mich"
+    data-narr="Ein Tipp vorweg: Sprich in ganzen Sätzen mit mir, nicht in einzelnen Stichworten. Sag lieber 'Sag den Termin von Herrn Meier am Dienstag ab', statt nur 'Termin absagen'. Je mehr Kontext du mir in einem Satz gibst, desto sicherer treffe ich das Richtige."
+    data-prompt="Erkläre freundlich, dass man dich am besten in ganzen Sätzen steuert und Stichworte vermeidet. Gib ein Beispiel für einen guten Satz.">
+    <div class="inner">
+      <div class="kicker"><span class="no">02</span> So steuerst du mich</div>
+      <h2>Sprich mit mir wie mit einer <span class="accent">Kollegin</span>.</h2>
+      <p class="lead">Ganze Sätze statt Stichworte. Je mehr Zusammenhang du mir in einem Satz gibst, desto sicherer treffe ich das Richtige — Name, Tag und Absicht am besten zusammen.</p>
+      <div class="steer">
+        <div class="box no"><div class="lab">✗ lieber nicht</div><div class="line">„Termin. Meier. Absagen."</div><div class="line">„Nummer."</div><div class="line">„SMS."</div></div>
+        <div class="box yes"><div class="lab">✓ so verstehe ich dich sicher</div><div class="line">„Sag den Termin von Herrn Meier am Dienstag ab."</div><div class="line">„Wie ist die Handynummer von Herrn Tzannis?"</div><div class="line">„Schick Frau Skiba eine SMS: Ihr Rezept liegt bereit."</div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre freundlich, dass man dich am besten in ganzen Sätzen steuert und Stichworte vermeidet. Gib ein Beispiel für einen guten Satz.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--purple)" data-title="Dein Team über mich"
+    data-narr="Über mich erreichst du das ganze Team: Nadine schreibt Briefe und E-Mails, Bianca nimmt die Anrufe an, Lisa ruft raus und verschickt SMS, Julia kümmert sich ums Qualitätsmanagement, Lena um die Dokumentation, Sophie um die Abrechnung und Marie um die Arbeitszeiterfassung."
+    data-prompt="Stelle das Team kurz vor (Nadine, Bianca, Lisa, Julia für QM, Lena für Doku, Sophie für Abrechnung, Marie für Arbeitszeit) und betone, dass man alle über dich erreicht.">
+    <div class="inner">
+      <div class="kicker"><span class="no">03</span> Dein Team über mich</div>
+      <h2>Ein Zuruf — das <span class="accent">ganze Team</span>.</h2>
+      <p class="lead">Alle Kolleginnen erreichst du über mich. Sag einfach, wer was tun soll.</p>
+      <div class="team">
+        <div class="mate"><div class="av">N</div><div><h3>Nadine</h3><p>Briefe & E-Mails, Posteingang</p></div></div>
+        <div class="mate"><div class="av">B</div><div><h3>Bianca</h3><p>nimmt die Praxisanrufe an</p></div></div>
+        <div class="mate"><div class="av">L</div><div><h3>Lisa</h3><p>ruft raus & verschickt SMS</p></div></div>
+        <div class="mate"><div class="av">J</div><div><h3>Julia</h3><p>Qualitätsmanagement</p></div></div>
+        <div class="mate"><div class="av">L</div><div><h3>Lena</h3><p>Dokumentation</p></div></div>
+        <div class="mate"><div class="av">S</div><div><h3>Sophie</h3><p>Abrechnung</p></div></div>
+        <div class="mate"><div class="av">M</div><div><h3>Marie</h3><p>Arbeitszeiterfassung</p></div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Stelle das Team kurz vor (Nadine, Bianca, Lisa, Julia für QM, Lena für Doku, Sophie für Abrechnung, Marie für Arbeitszeit) und betone, dass man alle über dich erreicht.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--turq)" data-title="Patienten & Termine"
+    data-narr="Bei Terminen finde ich erst den richtigen Patienten und buche dann sicher — mit Beleg aufs Handy. Ich kann buchen, absagen, verschieben, nachschlagen und freie Zeiten prüfen. Storniert oder gebucht wird erst, wenn der richtige Patient eindeutig feststeht."
+    data-prompt="Erkläre, dass du bei Terminen immer erst den richtigen Patienten sicher findest und dann buchst, absagst oder verschiebst — mit Beleg aufs Handy.">
+    <div class="inner">
+      <div class="kicker"><span class="no">04</span> Patienten & Termine</div>
+      <h2>Erst den <span class="accent">Richtigen</span>, dann sicher buchen.</h2>
+      <p class="lead">Patient finden, Termin buchen, absagen, verschieben oder nachschlagen — mit Beleg aufs gekoppelte Handy.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Patient finden</h3><p>Über den gesprochenen Namen. Bei mehreren frage ich nach.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Trag Frau Thrandorf für Montag früh ein.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Termin buchen</h3><p>Der Kalender springt live, Beleg kommt aufs Handy.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Buch ihr morgen um zehn eine Kontrolle.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Termin absagen</h3><p>Ich finde ihn über Name und Datum selbst.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Sag den Termin von Herrn Meier am Dienstag ab.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Termin verschieben</h3><p>Ich schlage freie Slots vor und buche erst nach deinem Ja um.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Der Termin von Frau Wagner muss verschoben werden.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Freie Zeiten</h3><p>Was ist bei einem Arzt an einem Tag noch frei.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Was ist am Mittwoch bei Doktor Patrikis frei?</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre, dass du bei Terminen immer erst den richtigen Patienten sicher findest und dann buchst, absagst oder verschiebst — mit Beleg aufs Handy.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--green)" data-title="Kalender & Briefings"
+    data-narr="Ich gebe dir den Tagesüberblick, lese die Patienten des Tages vor und mache Morgen- und Abend-Briefing. Wochenenden und Feiertage erkenne ich und gaukle keinen Arbeitstag vor. Und wenn du im Verzug bist, rechne ich die kommenden Termine neu und schicke dir das Lagebild aufs Handy."
+    data-prompt="Erkläre den Tagesüberblick, die Patientenliste, Morgen-/Abend-Briefing und den Verzugs-Retter. Betone, dass du Wochenende und Feiertage erkennst.">
+    <div class="inner">
+      <div class="kicker"><span class="no">05</span> Kalender & Briefings</div>
+      <h2>Dein Tag in einem <span class="accent">Rutsch</span>.</h2>
+      <p class="lead">Tagesüberblick, Patientenliste, Morgen- und Abend-Briefing — mit Wochenend- und Feiertags-Erkennung und einem Verzugs-Retter aufs Handy.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Tagesüberblick</h3><p>Wie voll ist der Tag, wo sind Lücken.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Heads-up für morgen — wie voll wird's?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Patienten des Tages</h3><p>Wer kommt heute alles.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Wer kommt heute bei Doktor Nikolaou?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Verzugs-Retter</h3><p>Ich rechne um und schicke das Lagebild aufs Handy.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Ich häng zwanzig Minuten hinterher — wer kommt noch?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Morgen & Abend</h3><p>Auftakt und Tagesabschluss auf Zuruf.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Feierabend, Clara — mach den Tagesabschluss.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre den Tagesüberblick, die Patientenliste, Morgen-/Abend-Briefing und den Verzugs-Retter. Betone, dass du Wochenende und Feiertage erkennst.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--purple)" data-title="Praxis-Gedächtnis & Vorgänge"
+    data-narr="Ich teile mit dem Team ein gemeinsames Praxis-Gedächtnis. Frag mich 'Was war mit Herrn Meier?', und ich lese seine ganze Spur vor. Sag 'Merk dir …', und die Notiz kommt beim nächsten Termin von allein wieder hoch. Vorgänge kann ich öffnen, delegieren, ergänzen und schließen."
+    data-prompt="Erkläre das geteilte Praxis-Gedächtnis: Zeitstrahl auf Zuruf, Notizen die wiederkommen, Vorgänge delegieren und schließen.">
+    <div class="inner">
+      <div class="kicker"><span class="no">06</span> Praxis-Gedächtnis & Vorgänge</div>
+      <h2>Einmal gesagt, nie <span class="accent">vergessen</span>.</h2>
+      <p class="lead">Das geteilte Gedächtnis der Praxis: Patienten-Zeitstrahl, Notizen, die wiederkommen, und Vorgänge zum Delegieren.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Patienten-Zeitstrahl</h3><p>Die komplette Spur, neueste zuerst.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Was war eigentlich mit Herrn Meier?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Notiz, die wiederkommt</h3><p>Taucht beim nächsten Termin von allein auf.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Merk dir, Herr Fountas braucht eine neue Schiene.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Delegieren</h3><p>Vorgang an Nadine oder Lisa mit Auftrag.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Pack das auf Nadine, sie soll wegen der Rechnung schreiben.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Der Patient von vorhin</h3><p>Ich knüpfe auch im nächsten Gespräch an.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Der Patient von vorhin — buch ihm morgen um zehn.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre das geteilte Praxis-Gedächtnis: Zeitstrahl auf Zuruf, Notizen die wiederkommen, Vorgänge delegieren und schließen.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--amber)" data-title="Kommunikation"
+    data-narr="Ich verschicke SMS, beauftrage Anrufe über Lisa und lasse Nadine E-Mails entwerfen — gesendet wird eine E-Mail aber erst nach deiner Freigabe. Ich lese Kontaktdaten vor, schicke die Kontaktkarte aufs Handy und sage dir, wer angerufen hat."
+    data-prompt="Erkläre SMS, Anruf-Beauftragung und E-Mail-Entwurf (mit Freigabe-Pflicht) sowie Kontaktdaten und Anrufliste.">
+    <div class="inner">
+      <div class="kicker"><span class="no">07</span> Kommunikation</div>
+      <h2>Anrufen, schreiben, <span class="accent">nachschlagen</span>.</h2>
+      <p class="lead">SMS und Anrufe über Lisa, E-Mail-Entwürfe über Nadine — gesendet wird erst nach deiner Freigabe. Plus Kontaktdaten und Anrufliste.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>SMS verschicken</h3><p>Lisa schickt sie — Inhalt wörtlich übernommen.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Schick Frau Meier eine SMS: die Unterlagen sind fertig.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Anruf beauftragen</h3><p>Lisa ruft an und richtet es aus.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Lass Herrn Kasper anrufen, die Montage ist Montag.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>E-Mail (Freigabe)</h3><p>Nadine entwirft, gesendet erst nach deinem Ja.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Schreib der Frau Müller, dass ihr Termin rutscht.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Kontaktdaten</h3><p>Nummer vorlesen + Karte aufs Handy.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Wie ist die Handynummer von Herrn Tzannis?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Wer hat angerufen</h3><p>Immer aus dem frischen Protokoll.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Hat heute jemand angerufen?</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre SMS, Anruf-Beauftragung und E-Mail-Entwurf (mit Freigabe-Pflicht) sowie Kontaktdaten und Anrufliste.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--pink)" data-title="Aufgaben, Recall & Abwesenheit"
+    data-narr="Ich notiere Aufgaben, starte den Recall für Terminlücken und plane deine Abwesenheit. Bei einer Abwesenheit zeige ich erst, welche Termine betroffen sind — abgesagt wird erst nach deiner Freigabe, und jeder Patient bekommt genau eine Absage mit Buchungslink."
+    data-prompt="Erkläre Aufgaben, Recall (mit Freigabe) und Abwesenheitsplanung. Betone, dass Massen-Absagen erst nach Freigabe rausgehen — je Patient eine Absage mit Buchungslink.">
+    <div class="inner">
+      <div class="kicker"><span class="no">08</span> Aufgaben, Recall & Abwesenheit</div>
+      <h2>Lücken schließen, Abwesenheit <span class="accent">planen</span>.</h2>
+      <p class="lead">Aufgaben notieren, Recall starten und freigeben, Abwesenheiten planen — abgesagt wird erst nach deiner Freigabe, mit Beleg.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Aufgabe notieren</h3><p>Rückruf, Erinnerung, To-do.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Erinnere mich, das Röntgenbild nachzufordern.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Recall starten</h3><p>Lücken + Kandidaten, nie ungefragt gebucht.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Starte den Recall.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Abwesenheit planen</h3><p>Erst der Plan — noch wird nichts abgesagt.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Nächsten Freitag bin ich nicht da.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Stand der Absagen</h3><p>Wer hat schon neu gebucht.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Haben die Patienten vom Freitag neu gebucht?</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre Aufgaben, Recall (mit Freigabe) und Abwesenheitsplanung. Betone, dass Massen-Absagen erst nach Freigabe rausgehen — je Patient eine Absage mit Buchungslink.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--turq)" data-title="Sprach-Intelligenz"
+    data-narr="Bevor ich spreche, mache ich jeden Satz natürlich: aus einem Datum wird 'heute' oder 'nächste Woche Montag', aus neun Uhr zehn keine Ziffern, aus Prozent ein Wort. Telefonnummern bleiben unangetastet. Diese Schicht ist fest im Release-Gate abgesichert."
+    data-prompt="Erkläre, dass du jeden Satz vor dem Sprechen natürlich machst (Datum, Uhrzeit, Mengen, Abkürzungen) und Telefonnummern unangetastet lässt.">
+    <div class="inner">
+      <div class="kicker"><span class="no">09</span> Sprach-Intelligenz</div>
+      <h2>Ich klinge wie ein <span class="accent">Mensch</span>.</h2>
+      <p class="lead">Jeder Satz wird vor dem Sprechen natürlich gemacht — Datum, Uhrzeit, Mengen und Abkürzungen. Telefonnummern bleiben, wie sie sind.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Relatives Datum</h3><p>14.06. → heute · +1 Woche → nächste Woche Montag</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Gesprochen</div><div class="say">Das ist nächste Woche Montag.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Uhrzeit & Menge</h3><p>09:10 → neun Uhr zehn · 12 → zwölf</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Gesprochen</div><div class="say">Du hast zwölf Termine.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Nummer bleibt</h3><p>0211 41 66 02 84 — unangetastet.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Warum</div><div class="say">Nummern muss man Ziffer für Ziffer hören.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre, dass du jeden Satz vor dem Sprechen natürlich machst (Datum, Uhrzeit, Mengen, Abkürzungen) und Telefonnummern unangetastet lässt.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--amber)" data-title="Feiertage & Wochenende"
+    data-narr="Einen Feiertag oder ein Wochenende behandle ich nie wie einen normalen Arbeitstag. Ich rechne die beweglichen Feiertage jedes Jahr neu und sage dir zum Beispiel, wenn morgen Samstag ist."
+    data-prompt="Erkläre, dass du Feiertage (NRW, jahresgenau) und Wochenenden erkennst und nie einen Arbeitstag vorgaukelst.">
+    <div class="inner">
+      <div class="kicker"><span class="no">10</span> Feiertage & Wochenende</div>
+      <h2>Kein <span class="accent">Feiertag</span> als Arbeitstag.</h2>
+      <p class="lead">NRW-Kalender, jahresgenau berechnet. Bewegliche Feiertage werden pro Jahr neu bestimmt, Samstag und Sonntag klar benannt.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>11 Feiertage</h3><p>Von Neujahr bis zweiter Weihnachtstag.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Gesprochen</div><div class="say">Morgen ist Fronleichnam — die Praxis bleibt zu.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Wochenende erkannt</h3><p>Samstag und Sonntag werden genannt.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Gesprochen</div><div class="say">Morgen ist Samstag.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre, dass du Feiertage (NRW, jahresgenau) und Wochenenden erkennst und nie einen Arbeitstag vorgaukelst.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--purple)" data-title="Persönlichkeit & Sprachen"
+    data-narr="Ich klinge wie eine Kollegin — mit trockenem Humor an den richtigen Stellen, aber ohne mir etwas auszudenken. Ich verstehe Deutsch und Griechisch, ordne griechische Namen richtig zu und stelle immer nur eine Frage nach der anderen."
+    data-prompt="Beschreibe deine Persönlichkeit: kollegial, trockener Humor aus festen Pools (nie erfunden), Deutsch und Griechisch, immer nur eine Frage auf einmal.">
+    <div class="inner">
+      <div class="kicker"><span class="no">11</span> Persönlichkeit & Sprachen</div>
+      <h2>Wie eine <span class="accent">Kollegin</span> — mit Haltung.</h2>
+      <p class="lead">Humor aus festen Pools statt erfunden. Deutsch und Griechisch. Eine Frage nach der anderen, nie Stichpunkte.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Humor mit Haltung</h3><p>Trockene Sprüche an den richtigen Stellen.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Klingt dann so</div><div class="say">Schon wieder rot. Passt hier keiner auf?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Deutsch & Griechisch</h3><p>Petsas, Patrikis, Nikolaou — richtig zugeordnet.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagst du es</div><div class="say">Kalimera, ti rantevou exoume símera?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Eine Frage nach der anderen</h3><p>Natürlicher Fluss statt Protokoll.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Spürbar in</div><div class="say">jedem Gespräch.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Beschreibe deine Persönlichkeit: kollegial, trockener Humor aus festen Pools (nie erfunden), Deutsch und Griechisch, immer nur eine Frage auf einmal.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--red)" data-title="Halluzinations-Schutz"
+    data-narr="Und das Wichtigste: Ich behaupte nie etwas, das nicht passiert ist. 'Erledigt', 'gebucht' oder 'verschickt' sage ich erst, wenn das Werkzeug es in genau diesem Moment bestätigt hat. Im Zweifel frage ich lieber nach, statt zu raten."
+    data-prompt="Erkläre den Halluzinations-Schutz: keine Aktion ohne Bestätigung, nur frische Tool-Daten, ehrliche Belege, im Zweifel nachfragen.">
+    <div class="inner">
+      <div class="kicker"><span class="no">12</span> Halluzinations-Schutz</div>
+      <h2>Ich sage nie, was nicht <span class="accent">passiert</span> ist.</h2>
+      <p class="lead">Keine Aktion ohne Bestätigung, nur frische Daten, ehrliche Belege — und im Zweifel eine Rückfrage statt Raten.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Keine Aktion ohne Bestätigung</h3><p>„gebucht" erst, wenn es wirklich gebucht ist.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Heißt</div><div class="say">Erst das Werkzeug, dann die Ansage.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Nur frische Daten</h3><p>Nie aus dem Gedächtnis geraten.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Heißt</div><div class="say">Ich schaue immer frisch nach.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Erst fragen statt raten</h3><p>Bei Unklarheit genau eine Rückfrage.</p><span class="hint">Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Heißt</div><div class="say">Lieber einmal nachfragen.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erkläre den Halluzinations-Schutz: keine Aktion ohne Bestätigung, nur frische Tool-Daten, ehrliche Belege, im Zweifel nachfragen.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <footer>picka<b style="color:var(--turq)">doc</b> · Clara — interne Fähigkeits-Tour. Scroll zum Anfang, um von vorn zu hören.</footer>
+</main>
+
+<div id="startOverlay">
+  <div class="sorb">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 21s-6.5-4.3-6.5-9.4C5.5 8 7.6 6 10 6c1 0 1.7.4 2 .9.3-.5 1-.9 2-.9 2.4 0 4.5 2 4.5 5.6 0 5.1-6.5 9.4-6.5 9.4Z" stroke="#2ee6c8" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M9 11.5l2 2 4-4" stroke="#34d399" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <button class="sbtn" id="startBtn">▶ Tour mit Claras Stimme starten</button>
+  <div class="ssub">Einmal tippen — danach erzählt Clara und du scrollst dich durch die Kapitel.</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var qs = new URLSearchParams(location.search);
+  var clientId = (qs.get("c") || "").trim();
+  if (!clientId) { try { var d = JSON.parse(localStorage.getItem("pickadoc.ipad.v1") || "null"); clientId = (d && d.clientId) || ""; } catch (e) {} }
+
+  var chapters = Array.prototype.slice.call(document.querySelectorAll(".chapter"));
+  var clara = document.getElementById("clara");
+  var claraTxt = document.getElementById("claraTxt");
+  var progress = document.getElementById("progress");
+  var dotsWrap = document.getElementById("dots");
+  var btnVoice = document.getElementById("btnVoice");
+  var btnMusic = document.getElementById("btnMusic");
+  var btnReplay = document.getElementById("btnReplay");
+  var startOverlay = document.getElementById("startOverlay");
+  var startBtn = document.getElementById("startBtn");
+
+  var voiceOn = true;
+  var current = -1;
+  var fadeTimer = null;
+  var unlocked = false;
+  var seq = 0;
+  var audioEl = new Audio();
+  audioEl.preload = "auto";
+  var firstPre = null; // vorab geladenes Kapitel 1
+
+  chapters.forEach(function (ch, i) {
+    var a = document.createElement("a");
+    a.title = ch.getAttribute("data-title") || ("Kapitel " + (i + 1));
+    a.addEventListener("click", function () { ch.scrollIntoView({ behavior: "smooth" }); });
+    dotsWrap.appendChild(a);
+  });
+  var dots = Array.prototype.slice.call(dotsWrap.children);
+
+  function chapterText(ch) { return ch.getAttribute("data-narr") || ""; }
+  function chapterPrompt(ch) {
+    var ta = ch.querySelector("details.prompt textarea");
+    return (ta && ta.value.trim()) || ch.getAttribute("data-prompt") || "";
+  }
+
+  function speakBrowser(text) {
+    if (!("speechSynthesis" in window) || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = "de-DE"; u.rate = 1.02;
+      var de = (window.speechSynthesis.getVoices() || []).filter(function (v) { return /de(-|_)/i.test(v.lang); });
+      if (de.length) u.voice = de[0];
+      u.onstart = function () { clara.classList.add("speaking"); };
+      u.onend = function () { clara.classList.remove("speaking"); };
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+
+  // Claras Ansage vom Server holen (Text + Audio in ihrer Stimme).
+  function fetchNarration(idx) {
+    var ch = chapters[idx];
+    return fetch("/clara/tour/narrate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: clientId, title: ch.getAttribute("data-title") || "", prompt: chapterPrompt(ch), text: chapterText(ch) })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      return { text: (data && data.text) || chapterText(ch), audioUrl: (data && data.audioBase64) ? ("data:" + (data.mime || "audio/mpeg") + ";base64," + data.audioBase64) : null };
+    }).catch(function () { return { text: chapterText(ch), audioUrl: null }; });
+  }
+
+  function playUrl(url, text, my) {
+    audioEl.onended = function () { if (my === seq) clara.classList.remove("speaking"); };
+    audioEl.onerror = function () { if (my === seq) speakBrowser(text); };
+    audioEl.src = url;
+    clara.classList.add("speaking");
+    var p = audioEl.play();
+    if (p && p.catch) p.catch(function () { if (my === seq) speakBrowser(text); });
+  }
+
+  function narrate(idx) {
+    if (!voiceOn || idx < 0) return;
+    var my = ++seq;
+    try { audioEl.pause(); } catch (e) {}
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+    clara.classList.add("speaking");
+    var pre = (idx === current && firstPre) ? Promise.resolve(firstPre) : fetchNarration(idx);
+    firstPre = null;
+    pre.then(function (res) {
+      if (my !== seq || !voiceOn) return;
+      if (res.audioUrl) playUrl(res.audioUrl, res.text, my);
+      else speakBrowser(res.text);
+    });
+  }
+
+  function stopVoice() {
+    try { audioEl.pause(); } catch (e) {}
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+    clara.classList.remove("speaking");
+    seq++;
+  }
+
+  function activate(i) {
+    if (i === current || i < 0 || i >= chapters.length) return;
+    current = i;
+    var ch = chapters[i];
+    ch.classList.add("on");
+    dots.forEach(function (d, k) { d.classList.toggle("on", k === i); });
+    var accent = getComputedStyle(ch).getPropertyValue("--accent") || "var(--turq)";
+    clara.style.setProperty("--accent", accent.trim());
+    clara.classList.add("hide");
+    stopVoice();
+    if (fadeTimer) clearTimeout(fadeTimer);
+    fadeTimer = setTimeout(function () {
+      claraTxt.textContent = chapterText(ch) || (ch.getAttribute("data-title") || "");
+      clara.classList.remove("hide");
+      if (unlocked) narrate(i);
+    }, 460);
+  }
+
+  var io = new IntersectionObserver(function (entries) {
+    var best = null;
+    entries.forEach(function (e) { if (e.isIntersecting && (!best || e.intersectionRatio > best.intersectionRatio)) best = e; });
+    if (best) { best.target.classList.add("on"); activate(chapters.indexOf(best.target)); }
+  }, { threshold: [0.25, 0.5, 0.75], rootMargin: "-10% 0px -10% 0px" });
+  chapters.forEach(function (ch) { io.observe(ch); });
+
+  window.addEventListener("scroll", function () {
+    var h = document.documentElement;
+    var max = h.scrollHeight - h.clientHeight;
+    progress.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+  }, { passive: true });
+
+  document.querySelectorAll(".flip").forEach(function (f) {
+    f.addEventListener("click", function () { f.classList.toggle("flipped"); });
+  });
+
+  btnVoice.addEventListener("click", function () {
+    voiceOn = !voiceOn;
+    btnVoice.classList.toggle("on", voiceOn);
+    btnVoice.textContent = voiceOn ? "🔊" : "🔇";
+    if (!voiceOn) stopVoice();
+    else if (current >= 0) narrate(current);
+  });
+  btnReplay.addEventListener("click", function () { if (current >= 0) { unlocked = true; narrate(current); } });
+
+  // ── Start (iOS-Tonfreigabe): Kapitel 1 sofort mit Ton ──
+  function doStart() {
+    unlocked = true;
+    startOverlay.style.display = "none";
+    current = 0; chapters[0].classList.add("on");
+    dots.forEach(function (d, k) { d.classList.toggle("on", k === 0); });
+    clara.classList.remove("hide");
+    claraTxt.textContent = chapterText(chapters[0]);
+    var my = ++seq;
+    if (firstPre && firstPre.audioUrl) { playUrl(firstPre.audioUrl, firstPre.text, my); firstPre = null; }
+    else narrate(0);
+  }
+  startBtn.addEventListener("click", doStart);
+  startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
+
+  // Hintergrundmusik (WebAudio, keine Datei)
+  var audioCtx = null, musicOn = false, musicNodes = null;
+  function startMusic() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      var master = audioCtx.createGain(); master.gain.value = 0.0;
+      master.gain.linearRampToValueAtTime(0.05, audioCtx.currentTime + 2.5);
+      var filter = audioCtx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = 700; filter.Q.value = 0.7;
+      var delay = audioCtx.createDelay(); delay.delayTime.value = 0.45;
+      var fb = audioCtx.createGain(); fb.gain.value = 0.32; delay.connect(fb); fb.connect(delay);
+      filter.connect(master); filter.connect(delay); delay.connect(master); master.connect(audioCtx.destination);
+      var freqs = [110, 164.81, 220, 329.63];
+      var oscs = freqs.map(function (f, idx) {
+        var o = audioCtx.createOscillator(); o.type = idx % 2 ? "sine" : "triangle";
+        o.frequency.value = f; o.detune.value = (idx - 1.5) * 4;
+        var g = audioCtx.createGain(); g.gain.value = 0.25 / freqs.length; o.connect(g); g.connect(filter); o.start(); return o;
+      });
+      var lfo = audioCtx.createOscillator(); lfo.frequency.value = 0.05;
+      var lfoGain = audioCtx.createGain(); lfoGain.gain.value = 220; lfo.connect(lfoGain); lfoGain.connect(filter.frequency); lfo.start();
+      musicNodes = { master: master, oscs: oscs, lfo: lfo }; musicOn = true; btnMusic.classList.add("on");
+    } catch (e) {}
+  }
+  function stopMusic() {
+    if (!musicNodes || !audioCtx) { musicOn = false; btnMusic.classList.remove("on"); return; }
+    try {
+      musicNodes.master.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 1.2);
+      var nodes = musicNodes; setTimeout(function () { try { nodes.oscs.forEach(function (o) { o.stop(); }); nodes.lfo.stop(); } catch (e) {} }, 1300);
+    } catch (e) {}
+    musicNodes = null; musicOn = false; btnMusic.classList.remove("on");
+  }
+  btnMusic.addEventListener("click", function () { if (musicOn) stopMusic(); else startMusic(); });
+
+  // Kapitel 1 vorab laden, damit der Start-Tipp sofort losgeht.
+  if (clientId) fetchNarration(0).then(function (r) { firstPre = r; });
+  chapters[0].classList.add("on");
+})();
+</script>
+</body>
+</html>
