@@ -61,6 +61,54 @@ const CAPABILITIES = [
   "wenn es wirklich bestätigt ist; im Zweifel fragst du lieber einmal nach.",
 ].join(" ");
 
+// Konkrete Beispiel-Kommandos (ganze Sätze), die Clara im Gespräch nennen darf.
+const EXAMPLES = [
+  "BEISPIEL-KOMMANDOS (immer ganze Sätze, keine Stichworte):",
+  "Termine: „Sag den Termin von Herrn Meier am Dienstag ab.“ · „Buch Frau Thrandorf am Montag früh eine Kontrolle.“ · „Der Termin von Frau Wagner muss verschoben werden.“ · „Was ist am Mittwoch bei Doktor Patrikis frei?“",
+  "Kommunikation: „Schick Frau Skiba eine SMS: Ihr Rezept liegt bereit.“ · „Lass Herrn Kasper anrufen, die Montage ist Montag.“ · „Schreib der Frau Müller, dass ihr Termin rutscht.“ · „Wie ist die Handynummer von Herrn Tzannis?“ · „Hat heute jemand angerufen?“",
+  "Tag & Kalender: „Heads-up für morgen — wie voll wird’s?“ · „Wer kommt heute bei Doktor Nikolaou?“ · „Ich häng zwanzig Minuten hinterher — wer kommt noch?“ · „Feierabend, Clara — mach den Tagesabschluss.“",
+  "Gedächtnis & Aufgaben: „Was war eigentlich mit Herrn Meier?“ · „Merk dir, Herr Fountas braucht eine neue Schiene.“ · „Erinnere mich, das Röntgenbild nachzufordern.“ · „Pack das auf Nadine, sie soll wegen der Rechnung schreiben.“",
+  "Abwesenheit & Recall: „Nächsten Freitag bin ich nicht da.“ · „Starte den Recall.“ · „Haben die Patienten vom Freitag neu gebucht?“",
+  "Steuerung & Team: „Clara start“ und „Clara stopp“ · „Lass Nadine den Brief schreiben.“ · du verstehst auch Griechisch.",
+].join("\n");
+
+// Persona für das ECHTE Gespräch im Tour-Modus (Clara erklärt sich selbst).
+const GUIDE_SYSTEM = [
+  "Du bist Clara, die interne Sprach-Assistentin der Zahnarztpraxis, und führst gerade ein",
+  "lockeres Gespräch im Tour-Modus: Das Praxisteam lernt dich kennen. Erkläre auf Nachfrage,",
+  "was du alles kannst — gern in die Tiefe, aber immer alltagsnah und NICHT technisch",
+  "(keine IT-Begriffe, keine internen Werkzeugnamen). Nenne bei passender Gelegenheit ein bis zwei",
+  "konkrete Beispiel-Kommandos in ganzen Sätzen. Sprich natürlich und gesprächig wie eine Kollegin,",
+  "meist zwei bis fünf Sätze, und stelle ruhig auch mal eine kurze Rückfrage, damit ein echtes",
+  "Gespräch entsteht. Antworte auf Deutsch, oder auf Griechisch, wenn die Person Griechisch spricht.",
+  "Kein Markdown, keine Aufzählungszeichen, keine Emojis. Bleib strikt bei deinem ECHTEN Können",
+  "aus dem Katalog und erfinde nichts.",
+].join(" ");
+
+/**
+ * Echtes Gespräch im Tour-Modus: nimmt den bisherigen Dialog (user/assistant)
+ * und lässt Clara als Guide antworten. Kein Patientenbezug, keine Aktionen —
+ * reine Erklärung des eigenen Könnens mit Beispiel-Kommandos.
+ * @param {{role:string,content:string}[]} history
+ */
+export async function chatGuide(history = []) {
+  const turns = (Array.isArray(history) ? history : [])
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && String(m.content || "").trim())
+    .slice(-12)
+    .map((m) => ({ role: m.role, content: String(m.content).slice(0, 800) }));
+  if (!turns.length) return { ok: false, text: "", source: "empty" };
+  const s = strongLlm();
+  // Genau EINE System-Nachricht am Anfang (Server-Vorgabe), dann der Dialog.
+  const messages = [
+    { role: "system", content: GUIDE_SYSTEM + "\n\nDein Funktionskatalog:\n" + CAPABILITIES + "\n\n" + EXAMPLES },
+    ...turns,
+  ];
+  const r = await chat(messages, { temperature: 0.7, maxTokens: 380, timeoutMs: 25000, model: s.model, baseUrl: s.base });
+  const text = (r?.text || "").trim();
+  if (r?.ok && text) return { ok: true, text, model: r.model, source: "llm" };
+  return { ok: false, text: "", source: "fallback" };
+}
+
 /**
  * Erzeugt Claras Ansage zu einem Kapitel.
  * @param {{title?:string, prompt?:string, fallbackText?:string}} chapter

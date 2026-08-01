@@ -26,7 +26,7 @@ import { runClaraHealth, statusPageHtml } from "../clara/health.js";
 import { runMorgenlauf } from "../clara/morgenlauf.js";
 import { recordToolError, recentToolErrors } from "../clara/toolErrors.js";
 import { loadProof, proofToSvg } from "../clara/proofCard.js";
-import { narrateChapter, synthClaraVoice, ttsConfigured } from "../clara/tourNarrate.js";
+import { narrateChapter, chatGuide, synthClaraVoice, ttsConfigured } from "../clara/tourNarrate.js";
 import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, qmRoute, resolveClientId } from "./_shared.js";
 
 const router = express.Router();
@@ -57,6 +57,28 @@ router.post("/clara/tour/narrate", qmRoute(async (clientId, req, res) => {
   const wantAudio = body.audio !== false && body.audio !== "false";
 
   const spoken = await narrateChapter({ title, prompt, fallbackText });
+  const out = { ok: !!spoken.text, clientId, text: spoken.text, source: spoken.source, model: spoken.model || null, ttsConfigured: ttsConfigured() };
+
+  if (wantAudio && spoken.text && ttsConfigured()) {
+    const audio = await synthClaraVoice(spoken.text);
+    if (audio.ok) { out.audioBase64 = audio.audioBase64; out.mime = audio.mime; }
+    else out.audioReason = audio.reason;
+  }
+  res.json(out);
+}));
+
+
+// Echtes Gespräch im Tour-Modus: Clara erklärt als Guide ihr Können und nennt
+// Beispiel-Kommandos. Das Frontend schickt den bisherigen Dialog (messages) oder
+// einen einzelnen Text; Clara antwortet mit Text + (falls möglich) ihrer Stimme.
+// Kein Patientenbezug, keine Aktionen — reine Selbst-Erklärung.
+router.post("/clara/tour/chat", qmRoute(async (clientId, req, res) => {
+  const body = { ...(req.body || {}) };
+  const wantAudio = body.audio !== false && body.audio !== "false";
+  let history = Array.isArray(body.messages) ? body.messages : [];
+  if (!history.length && body.text) history = [{ role: "user", content: String(body.text) }];
+
+  const spoken = await chatGuide(history);
   const out = { ok: !!spoken.text, clientId, text: spoken.text, source: spoken.source, model: spoken.model || null, ttsConfigured: ttsConfigured() };
 
   if (wantAudio && spoken.text && ttsConfigured()) {

@@ -108,6 +108,29 @@
   #startOverlay .sorb svg { width: 56px; height: 56px; }
   #startOverlay .sbtn { font: inherit; font-size: 17px; font-weight: 800; color: #06121f; cursor: pointer; border: 0; border-radius: 999px; padding: 15px 26px; background: linear-gradient(135deg, var(--turq), var(--green)); box-shadow: 0 14px 34px rgba(46,230,200,.35); }
   #startOverlay .ssub { color: var(--ink-soft); font-size: 13.5px; max-width: 320px; }
+  /* Gesprächs-Modus: mit Clara reden */
+  .ask { position: fixed; left: 0; right: 0; bottom: 0; z-index: 55; display: none; flex-direction: column; align-items: center; pointer-events: none; }
+  .ask.show { display: flex; }
+  .ask > * { pointer-events: auto; }
+  .ask-toggle { margin-bottom: calc(14px + env(safe-area-inset-bottom)); font: inherit; font-size: 15px; font-weight: 800; color: #06121f; cursor: pointer; border: 0; border-radius: 999px; padding: 13px 20px; background: linear-gradient(135deg, var(--turq), var(--green)); box-shadow: 0 10px 26px rgba(46,230,200,.4); }
+  .ask-panel { width: min(680px, 100%); background: color-mix(in srgb, var(--bg-2) 94%, transparent); border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; box-shadow: 0 -18px 50px rgba(0,0,0,.5); backdrop-filter: blur(8px); display: flex; flex-direction: column; max-height: 74vh; }
+  .ask-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--turq); }
+  .ask-close { font: inherit; font-size: 16px; color: var(--ink-soft); background: transparent; border: 0; cursor: pointer; padding: 4px 8px; }
+  .ask-log { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-height: 120px; }
+  .ask-b { max-width: 86%; padding: 10px 13px; border-radius: 14px; font-size: 14.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .ask-b.me { align-self: flex-end; background: color-mix(in srgb, var(--turq) 16%, var(--card)); border: 1px solid color-mix(in srgb, var(--turq) 35%, transparent); border-bottom-right-radius: 4px; }
+  .ask-b.clara { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .ask-b.clara .lab { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--turq); font-weight: 700; margin-bottom: 3px; }
+  .ask-b.think { color: var(--ink-soft); font-style: italic; }
+  .ask-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+  .ask-input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--ink); background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 999px; padding: 12px 15px; outline: none; }
+  .ask-input:focus { border-color: color-mix(in srgb, var(--turq) 55%, transparent); }
+  .ask-mic, .ask-send { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 0; cursor: pointer; font-size: 18px; display: grid; place-items: center; }
+  .ask-mic { color: var(--ink); background: rgba(255,255,255,.08); border: 1px solid var(--line); }
+  .ask-mic.rec { color: #06121f; background: linear-gradient(135deg, var(--pink), var(--purple)); animation: micpulse 1.1s ease-in-out infinite; }
+  @keyframes micpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,77,219,.5); } 50% { box-shadow: 0 0 0 8px rgba(255,77,219,0); } }
+  .ask-send { color: #06121f; background: linear-gradient(135deg, var(--turq), var(--green)); font-weight: 900; }
+  .ask-send:disabled { opacity: .5; }
 </style>
 </head>
 <body>
@@ -478,6 +501,20 @@
   <footer>picka<b style="color:var(--turq)">doc</b> · Clara — interne Fähigkeits-Tour. Scroll zum Anfang, um von vorn zu hören.</footer>
 </main>
 
+<div class="ask" id="ask">
+  <button class="ask-toggle" id="askToggle">💬 Mit Clara reden</button>
+  <div class="ask-panel" id="askPanel" hidden>
+    <div class="ask-head"><span>Frag Clara — sie erklärt dir alles</span><button class="ask-close" id="askClose" aria-label="Schließen">✕</button></div>
+    <div class="ask-log" id="askLog"></div>
+    <div class="ask-row">
+      <button class="ask-mic" id="askMic" title="Sprechen">🎙</button>
+      <input class="ask-input" id="askInput" type="text" enterkeyhint="send" autocomplete="off"
+             placeholder="Frag mich etwas … z. B. Was kannst du bei Terminen?" />
+      <button class="ask-send" id="askSend" aria-label="Senden">➤</button>
+    </div>
+  </div>
+</div>
+
 <div id="startOverlay">
   <div class="sorb">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -517,6 +554,7 @@
   var current = -1;
   var fadeTimer = null;
   var unlocked = false;
+  var chatOpen = false;  // solange das Gespräch offen ist, keine Kapitel-Ansage dazwischenfunken
   var seq = 0;
   var audioEl = new Audio();
   audioEl.preload = "auto";
@@ -592,7 +630,7 @@
   }
 
   function narrate(idx) {
-    if (!voiceOn || idx < 0) return;
+    if (!voiceOn || idx < 0 || chatOpen) return;
     var my = ++seq;
     try { audioEl.pause(); } catch (e) {}
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
@@ -662,6 +700,110 @@
     else location.href = "/m/call.html";
   });
 
+  // ── Gesprächs-Modus: mit Clara reden (erklärt ihr Können, nennt Beispiele) ──
+  var ask = document.getElementById("ask");
+  var askToggle = document.getElementById("askToggle");
+  var askPanel = document.getElementById("askPanel");
+  var askClose = document.getElementById("askClose");
+  var askLog = document.getElementById("askLog");
+  var askMic = document.getElementById("askMic");
+  var askInput = document.getElementById("askInput");
+  var askSend = document.getElementById("askSend");
+  var chatHistory = [];
+  var chatAudio = new Audio();
+  var chatBusy = false;
+  var chatSeeded = false;
+
+  function askBubble(role, text, extra) {
+    var b = document.createElement("div");
+    b.className = "ask-b " + (role === "me" ? "me" : "clara") + (extra ? " " + extra : "");
+    if (role === "clara" && !extra) { var l = document.createElement("span"); l.className = "lab"; l.textContent = "Clara"; b.appendChild(l); b.appendChild(document.createTextNode(text)); }
+    else { b.textContent = text; }
+    askLog.appendChild(b);
+    askLog.scrollTop = askLog.scrollHeight;
+    return b;
+  }
+
+  function openChat() {
+    chatOpen = true;
+    stopVoice(); // Kapitel-Ansage nicht dazwischenreden lassen
+    askPanel.hidden = false;
+    askToggle.style.display = "none";
+    if (!chatSeeded) { chatSeeded = true; askBubble("clara", "Frag mich einfach, was du willst — ich erkläre dir alles, was ich kann, und sage dir auch, wie du es mir am besten sagst."); }
+    setTimeout(function () { try { askInput.focus(); } catch (e) {} }, 150);
+  }
+  function closeChat() {
+    chatOpen = false;
+    try { chatAudio.pause(); } catch (e) {}
+    askPanel.hidden = true;
+    askToggle.style.display = "";
+  }
+  askToggle.addEventListener("click", openChat);
+  askClose.addEventListener("click", closeChat);
+
+  function sendChat(text) {
+    var q = String(text || "").trim();
+    if (!q || chatBusy) return;
+    chatBusy = true; askSend.disabled = true;
+    askInput.value = "";
+    askBubble("me", q);
+    chatHistory.push({ role: "user", content: q });
+    if (chatHistory.length > 16) chatHistory = chatHistory.slice(-16);
+    var think = askBubble("clara", "Clara denkt nach …", "think");
+    try { chatAudio.pause(); } catch (e) {}
+    try { audioEl.pause(); } catch (e) {}
+    fetch("/clara/tour/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: clientId, messages: chatHistory, audio: true })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      try { askLog.removeChild(think); } catch (e) {}
+      var answer = (data && data.text) ? data.text : "Da komme ich gerade nicht durch — magst du es gleich noch einmal versuchen?";
+      askBubble("clara", answer);
+      chatHistory.push({ role: "assistant", content: answer });
+      if (data && data.audioBase64) {
+        try {
+          clara.classList.add("speaking");
+          chatAudio.onended = function () { clara.classList.remove("speaking"); };
+          chatAudio.src = "data:" + (data.mime || "audio/mpeg") + ";base64," + data.audioBase64;
+          chatAudio.volume = 1;
+          var p = chatAudio.play(); if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+      }
+    }).catch(function () {
+      try { askLog.removeChild(think); } catch (e) {}
+      askBubble("clara", "Ups, das hat gerade nicht geklappt. Versuch es bitte gleich noch einmal.");
+    }).finally(function () { chatBusy = false; askSend.disabled = false; });
+  }
+
+  askSend.addEventListener("click", function () { sendChat(askInput.value); });
+  askInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); sendChat(askInput.value); } });
+
+  // Mikrofon: wo die Spracherkennung im Browser läuft (z. B. Android/Chrome),
+  // direkt diktieren; sonst tut die Mikrofon-Taste der Handy-Tastatur denselben Dienst.
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var rec = null, recActive = false;
+  if (SR) {
+    askMic.addEventListener("click", function () {
+      if (recActive) { try { rec && rec.stop(); } catch (e) {} return; }
+      try {
+        rec = new SR(); rec.lang = "de-DE"; rec.interimResults = true; rec.maxAlternatives = 1;
+        rec.onstart = function () { recActive = true; askMic.classList.add("rec"); };
+        rec.onerror = function () { recActive = false; askMic.classList.remove("rec"); };
+        rec.onend = function () { recActive = false; askMic.classList.remove("rec"); var v = askInput.value.trim(); if (v) sendChat(v); };
+        rec.onresult = function (ev) {
+          var t = ""; for (var i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+          askInput.value = t;
+        };
+        rec.start();
+      } catch (e) { askInput.focus(); }
+    });
+  } else {
+    // Kein Browser-Mikro (z. B. iPhone): Tastatur öffnen — dort das Mikrofon-Symbol nutzen.
+    askMic.addEventListener("click", function () { try { askInput.focus(); } catch (e) {} });
+    askMic.title = "Tippen und die Mikrofon-Taste deiner Tastatur nutzen";
+  }
+
   // ── Start (iOS-Tonfreigabe): Kapitel 1 sofort mit Ton ──
   function doStart() {
     unlocked = true;
@@ -669,6 +811,7 @@
     current = 0; chapters[0].classList.add("on");
     dots.forEach(function (d, k) { d.classList.toggle("on", k === 0); });
     clara.classList.remove("hide");
+    ask.classList.add("show");   // Gesprächs-Knopf ab jetzt sichtbar
     startMusic();   // Musik läuft ab jetzt automatisch leise mit (Ton-Freigabe durch den Start-Tipp)
     warmAll();
     narrate(0);
