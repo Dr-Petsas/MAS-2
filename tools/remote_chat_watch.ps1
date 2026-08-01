@@ -81,6 +81,15 @@ function Test-OpusRestoreCmd([string]$t) {
   if (-not $t) { return $false }
   return (($t -match "(?i)opus") -and ($t -match "(?i)(wieder|zur(ü|ue)ck|aktivier|umstell|einstell|\ban\b|4\.?8|aufgeladen|aufgeld|geladen)"))
 }
+# VORUEBERGEHENDER (transienter) Ausfall des Cursor-/Modell-Dienstes? Solche
+# Fehler ("[unavailable]", overloaded, Netz/Timeout, 5xx, "keine Ausgabe vom
+# Agenten") sind KEIN inhaltliches Ergebnis - der Chef darf sie nicht als
+# "Antwort" sehen. Sie werden kurz erneut versucht (siehe Schleife unten).
+# Guthaben-Fehler sind hier bewusst NICHT enthalten (die haben ihren eigenen Weg).
+function Test-TransientError([string]$t) {
+  if (-not $t) { return $false }
+  return ($t -match "(?i)(unavailable|overloaded|temporar|try again|rate.?limit|too many requests|timeout|timed out|econnreset|econnrefused|socket hang|network error|network\b|502|503|504|bad gateway|gateway timeout|internal (server )?error|service (error|unavailable)|no response|connection (reset|closed|refused)|keine ausgabe vom agenten)")
+}
 
 # Token aus backend\.env lesen.
 $envPath = "F:\MAS-2\backend\.env"
@@ -257,6 +266,29 @@ while ($true) {
         $prompt = Build-Prompt $text
         $res = Run-Agent $prompt $sid
         if ($res.session) { Set-Session $res.session }
+
+        # --- Voruebergehender Dienst-Ausfall? -> nachfassen statt Fehler zeigen -
+        # Der Cursor-/Modell-Dienst meldete nachts zeitweise "[unavailable]" o.ae.
+        # Bisher ging dieser Rohfehler direkt ans Handy -> der Chef bekam "keine
+        # Antwort". Jetzt: bis zu 2x mit kurzem Abstand erneut versuchen; haelt der
+        # Ausfall an UND laeuft der Draht noch auf Opus, EINMAL aufs Ersatzmodell
+        # ausweichen, damit ueberhaupt eine echte Antwort ankommt.
+        $tRetry = 0
+        while ((-not $res.ok) -and (-not $res.billing) -and (Test-TransientError $res.text) -and ($tRetry -lt 2)) {
+          $tRetry++
+          $snip = [string]$res.text; if ($snip.Length -gt 70) { $snip = $snip.Substring(0,70) }
+          Log ("Transienter Dienst-Fehler ('" + $snip + "') - Versuch " + ($tRetry + 1) + " nach kurzer Pause")
+          Start-Sleep -Seconds (6 * $tRetry)
+          Beat
+          $res = Run-Agent $prompt (Get-Session)
+          if ($res.session) { Set-Session $res.session }
+        }
+        if ((-not $res.ok) -and (-not $res.billing) -and (Test-TransientError $res.text) -and ($script:ActiveModel -ne $FallbackModel)) {
+          Log "Transienter Fehler bleibt - einmaliger Versuch mit Ersatzmodell, um den Draht offen zu halten"
+          Beat
+          $res = Run-Agent $prompt (Get-Session) $FallbackModel
+          if ($res.session) { Set-Session $res.session }
+        }
 
         # --- Opus-Guthaben erschoepft? -> Fallback, Draht offen halten ------
         if ($res.billing -and $script:ActiveModel -eq $OpusModel) {
