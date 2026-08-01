@@ -78,6 +78,7 @@
   .clara .bubble { max-width: min(52vw, 360px); background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid color-mix(in srgb, var(--accent, var(--turq)) 40%, transparent); border-radius: 16px 16px 4px 16px; padding: 12px 14px; box-shadow: 0 18px 40px rgba(0,0,0,.45); backdrop-filter: blur(6px); }
   .clara .bubble .who { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--accent, var(--turq)); font-weight: 700; margin-bottom: 3px; }
   .clara .bubble .txt { font-size: 13.5px; color: var(--ink); }
+  .clara .bubble { display: none !important; }
   .clara .orb { width: 62px; height: 62px; border-radius: 50%; flex: none; position: relative; display: grid; place-items: center; background: radial-gradient(60% 60% at 50% 35%, color-mix(in srgb, var(--accent, var(--turq)) 55%, transparent), color-mix(in srgb, var(--purple) 30%, transparent)); border: 1px solid color-mix(in srgb, var(--accent, var(--turq)) 60%, transparent); box-shadow: 0 0 30px color-mix(in srgb, var(--accent, var(--turq)) 40%, transparent); }
   .clara .orb svg { width: 30px; height: 30px; }
   .clara .orb .ring { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent, var(--turq)) 45%, transparent); opacity: 0; }
@@ -517,7 +518,7 @@
   var seq = 0;
   var audioEl = new Audio();
   audioEl.preload = "auto";
-  var firstPre = null; // vorab geladenes Kapitel 1
+  var cache = {};        // idx -> Promise<{text, audioUrl}> (einmal holen, dann sofort spielen)
 
   chapters.forEach(function (ch, i) {
     var a = document.createElement("a");
@@ -559,10 +560,30 @@
     }).catch(function () { return { text: chapterText(ch), audioUrl: null }; });
   }
 
+  // Einmal holen und merken — beim nächsten Mal ist es sofort da.
+  function getNarration(idx) {
+    if (!cache[idx]) cache[idx] = fetchNarration(idx);
+    return cache[idx];
+  }
+
+  // Alle Kapitel der Reihe nach im Hintergrund vorwärmen, damit beim Einscrollen
+  // nichts mehr geladen werden muss. Läuft sanft nacheinander (schont den Server).
+  var warming = false;
+  function warmAll() {
+    if (warming) return; warming = true;
+    var i = 0;
+    (function step() {
+      if (i >= chapters.length) return;
+      var j = i++;
+      getNarration(j).then(function () { setTimeout(step, 120); }, function () { setTimeout(step, 120); });
+    })();
+  }
+
   function playUrl(url, text, my) {
     audioEl.onended = function () { if (my === seq) clara.classList.remove("speaking"); };
     audioEl.onerror = function () { if (my === seq) speakBrowser(text); };
     audioEl.src = url;
+    try { audioEl.volume = 1; } catch (e) {}
     clara.classList.add("speaking");
     var p = audioEl.play();
     if (p && p.catch) p.catch(function () { if (my === seq) speakBrowser(text); });
@@ -574,9 +595,7 @@
     try { audioEl.pause(); } catch (e) {}
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
     clara.classList.add("speaking");
-    var pre = (idx === current && firstPre) ? Promise.resolve(firstPre) : fetchNarration(idx);
-    firstPre = null;
-    pre.then(function (res) {
+    getNarration(idx).then(function (res) {
       if (my !== seq || !voiceOn) return;
       if (res.audioUrl) playUrl(res.audioUrl, res.text, my);
       else speakBrowser(res.text);
@@ -602,10 +621,9 @@
     stopVoice();
     if (fadeTimer) clearTimeout(fadeTimer);
     fadeTimer = setTimeout(function () {
-      claraTxt.textContent = chapterText(ch) || (ch.getAttribute("data-title") || "");
       clara.classList.remove("hide");
       if (unlocked) narrate(i);
-    }, 460);
+    }, 130);
   }
 
   var io = new IntersectionObserver(function (entries) {
@@ -641,10 +659,8 @@
     current = 0; chapters[0].classList.add("on");
     dots.forEach(function (d, k) { d.classList.toggle("on", k === 0); });
     clara.classList.remove("hide");
-    claraTxt.textContent = chapterText(chapters[0]);
-    var my = ++seq;
-    if (firstPre && firstPre.audioUrl) { playUrl(firstPre.audioUrl, firstPre.text, my); firstPre = null; }
-    else narrate(0);
+    warmAll();
+    narrate(0);
   }
   startBtn.addEventListener("click", doStart);
   startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
@@ -683,8 +699,9 @@
   }
   btnMusic.addEventListener("click", function () { if (musicOn) stopMusic(); else startMusic(); });
 
-  // Kapitel 1 vorab laden, damit der Start-Tipp sofort losgeht.
-  if (clientId) fetchNarration(0).then(function (r) { firstPre = r; });
+  // Schon vor dem Start alle Kapitel im Hintergrund vorwärmen (nur laden, kein Ton),
+  // damit beim Einscrollen sofort gespielt wird — ohne Warten.
+  if (clientId) warmAll();
   chapters[0].classList.add("on");
 })();
 </script>
