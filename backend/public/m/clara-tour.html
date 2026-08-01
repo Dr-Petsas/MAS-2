@@ -675,13 +675,14 @@
   startBtn.addEventListener("click", doStart);
   startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
 
-  // Hintergrundmusik: der echte Pickadoc-Jingle als leise Dauerschleife.
+  // Hintergrundmusik: der von Dr. Petsas gelieferte Track "Neon Pulse" als leise
+  // Dauerschleife (leiser als Claras Stimme, damit die Ansage klar bleibt).
   var bgAudio = null, musicOn = false, musicFadeTimer = null;
-  var MUSIC_VOL = 0.30;
+  var MUSIC_VOL = 0.22;
 
   function startMusic() {
     try {
-      if (!bgAudio) { bgAudio = new Audio("/m/pickadoc-jingle.mp3"); bgAudio.loop = true; bgAudio.preload = "auto"; }
+      if (!bgAudio) { bgAudio = new Audio("/m/tour-music.mp3"); bgAudio.loop = true; bgAudio.preload = "auto"; }
       if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
       bgAudio.volume = 0.0;
       var p = bgAudio.play();
