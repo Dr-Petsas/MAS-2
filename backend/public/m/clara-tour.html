@@ -149,12 +149,10 @@
   <a class="back" href="/m/ipad-app.html" id="backLink" onclick="if(history.length>1){history.back();return false;}">‹ Zurück</a>
   <span class="brand">picka<b>doc</b> · Tour</span>
   <span class="spacer"></span>
-  <button id="btnTalk" class="talk" title="Sofort mit Clara reden – Mikro an/aus">🎙 Reden</button>
   <button id="btnMusic" title="Hintergrundmusik">♪</button>
   <button id="btnVoice" class="on" title="Claras Ansage">🔊</button>
 </div>
 
-<div class="hear" id="hear" hidden><span class="hdot"></span><span id="hearTxt">Ich höre zu …</span></div>
 
 <div class="dots" id="dots"></div>
 
@@ -511,20 +509,6 @@
   <footer>picka<b style="color:var(--turq)">doc</b> · Clara — interne Fähigkeits-Tour. Scroll zum Anfang, um von vorn zu hören.</footer>
 </main>
 
-<div class="ask" id="ask">
-  <button class="ask-toggle" id="askToggle">💬 Mit Clara reden</button>
-  <div class="ask-panel" id="askPanel" hidden>
-    <div class="ask-head"><span>Frag Clara — sie erklärt dir alles</span><button class="ask-close" id="askClose" aria-label="Schließen">✕</button></div>
-    <div class="ask-log" id="askLog"></div>
-    <div class="ask-row">
-      <button class="ask-mic" id="askMic" title="Sprechen">🎙</button>
-      <input class="ask-input" id="askInput" type="text" enterkeyhint="send" autocomplete="off"
-             placeholder="Frag mich etwas … z. B. Was kannst du bei Terminen?" />
-      <button class="ask-send" id="askSend" aria-label="Senden">➤</button>
-    </div>
-  </div>
-</div>
-
 <div id="startOverlay">
   <div class="sorb">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -536,7 +520,6 @@
   <div class="ssub">Einmal tippen — danach erzählt Clara und du scrollst dich durch die Kapitel.</div>
 </div>
 
-<script src="/m/lena-stt-capture.js"></script>
 <script>
 (function () {
   "use strict";
@@ -693,7 +676,7 @@
   }
 
   function narrate(idx) {
-    if (!voiceOn || idx < 0 || chatOpen || answering) return;
+    if (!voiceOn || idx < 0 || chatOpen) return;
     var my = ++seq;
     try { audioEl.pause(); } catch (e) {}
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
@@ -755,206 +738,8 @@
   });
   btnReplay.addEventListener("click", function () { if (current >= 0) { unlocked = true; narrate(current); } });
 
-  // "Reden": Dauer-Zuhören an/aus (sofort-an, kein Antippen pro Frage nötig).
-  var btnTalk = document.getElementById("btnTalk");
-  btnTalk.addEventListener("click", function () {
-    if (listenOn || cap) stopListening(true);
-    else startListening();
-  });
-
-  // ── Gesprächs-Modus: mit Clara reden (erklärt ihr Können, nennt Beispiele) ──
-  var ask = document.getElementById("ask");
-  var askToggle = document.getElementById("askToggle");
-  var askPanel = document.getElementById("askPanel");
-  var askClose = document.getElementById("askClose");
-  var askLog = document.getElementById("askLog");
-  var askMic = document.getElementById("askMic");
-  var askInput = document.getElementById("askInput");
-  var askSend = document.getElementById("askSend");
-  var chatHistory = [];
-  var chatAudio = new Audio();
-  var chatBusy = false;
-  var chatSeeded = false;
-
-  // Echo-Schutz: solange Clara (Ansage ODER Antwort) spricht, hören wir weg.
-  var claraSpeaking = false;
-  var answering = false;   // Clara beantwortet gerade eine Sprachfrage -> Kapitel-Ansagen zurückhalten
-  var speakCooldownUntil = 0;
-  function onSpeakStart() { claraSpeaking = true; try { clara.classList.add("speaking"); } catch (e) {} }
-  function onSpeakStop() { claraSpeaking = false; speakCooldownUntil = Date.now() + 700; try { clara.classList.remove("speaking"); } catch (e) {} }
-  chatAudio.addEventListener("play", function () { answering = true; onSpeakStart(); });
-  chatAudio.addEventListener("ended", function () { answering = false; onSpeakStop(); });
-  chatAudio.addEventListener("pause", function () { answering = false; onSpeakStop(); });
-  audioEl.addEventListener("play", onSpeakStart);
-  audioEl.addEventListener("ended", onSpeakStop);
-  audioEl.addEventListener("pause", onSpeakStop);
-
-  // "Ich höre zu"-Anzeige unter der Kopfleiste
-  var hear = document.getElementById("hear");
-  var hearTxt = document.getElementById("hearTxt");
-  var HEAR_IDLE = "Ich höre zu — sprich einfach los …";
-  function setHear(mode, text) {
-    if (!hear) return;
-    hear.hidden = false;
-    hear.classList.toggle("live", mode === "live");
-    hear.classList.toggle("think", mode === "think");
-    hearTxt.textContent = text;
-  }
-  function hideHear() { if (hear) hear.hidden = true; }
-
-  function askBubble(role, text, extra) {
-    var b = document.createElement("div");
-    b.className = "ask-b " + (role === "me" ? "me" : "clara") + (extra ? " " + extra : "");
-    if (role === "clara" && !extra) { var l = document.createElement("span"); l.className = "lab"; l.textContent = "Clara"; b.appendChild(l); b.appendChild(document.createTextNode(text)); }
-    else { b.textContent = text; }
-    askLog.appendChild(b);
-    askLog.scrollTop = askLog.scrollHeight;
-    return b;
-  }
-
-  function openChat() {
-    chatOpen = true;
-    stopVoice(); // Kapitel-Ansage nicht dazwischenreden lassen
-    askPanel.hidden = false;
-    askToggle.style.display = "none";
-    if (!chatSeeded) { chatSeeded = true; askBubble("clara", "Frag mich einfach, was du willst — ich erkläre dir alles, was ich kann, und sage dir auch, wie du es mir am besten sagst."); }
-    setTimeout(function () { try { askInput.focus(); } catch (e) {} }, 150);
-  }
-  function closeChat() {
-    chatOpen = false;
-    try { chatAudio.pause(); } catch (e) {}
-    askPanel.hidden = true;
-    askToggle.style.display = "";
-  }
-  askToggle.addEventListener("click", openChat);
-  askClose.addEventListener("click", closeChat);
-
-  // Kernfunktion: Frage an Clara (aus Text ODER Stimme), Antwort mit Stimme.
-  function askClara(text) {
-    var q = String(text || "").trim();
-    if (!q || chatBusy) return;
-    // Kein Text-Fenster beim Sprechen: laufende Kapitel-Ansage nur kurz stoppen,
-    // damit Claras Antwort frei kommt. Der Verlauf wird still mitgeschrieben und
-    // ist nur sichtbar, wenn man das Fenster über "💬" selbst öffnet.
-    stopVoice();
-    chatBusy = true; askSend.disabled = true;
-    askBubble("me", q);
-    chatHistory.push({ role: "user", content: q });
-    if (chatHistory.length > 16) chatHistory = chatHistory.slice(-16);
-    if (listenOn) setHear("think", "Clara überlegt …");
-    var think = askBubble("clara", "Clara denkt nach …", "think");
-    try { chatAudio.pause(); } catch (e) {}
-    try { audioEl.pause(); } catch (e) {}
-    fetch("/clara/tour/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: clientId, messages: chatHistory, audio: true })
-    }).then(function (r) { return r.json(); }).then(function (data) {
-      try { askLog.removeChild(think); } catch (e) {}
-      var answer = (data && data.text) ? data.text : "Da komme ich gerade nicht durch — magst du es gleich noch einmal versuchen?";
-      askBubble("clara", answer);
-      chatHistory.push({ role: "assistant", content: answer });
-      if (data && data.audioBase64) {
-        try {
-          chatAudio.src = "data:" + (data.mime || "audio/mpeg") + ";base64," + data.audioBase64;
-          chatAudio.volume = 1;
-          var p = chatAudio.play(); if (p && p.catch) p.catch(function () {});
-        } catch (e) {}
-      }
-    }).catch(function () {
-      try { askLog.removeChild(think); } catch (e) {}
-      askBubble("clara", "Ups, das hat gerade nicht geklappt. Versuch es bitte gleich noch einmal.");
-    }).finally(function () { chatBusy = false; askSend.disabled = false; if (listenOn) setHear("live", HEAR_IDLE); });
-  }
-
-  // Schreib-Eingabe: sendet und leert das Feld.
-  function sendChat(text) { var q = String(text || "").trim(); if (!q) return; askInput.value = ""; askClara(q); }
-  askSend.addEventListener("click", function () { sendChat(askInput.value); });
-  askInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); sendChat(askInput.value); } });
-
-  // Mikrofon: wo die Spracherkennung im Browser läuft (z. B. Android/Chrome),
-  // direkt diktieren; sonst tut die Mikrofon-Taste der Handy-Tastatur denselben Dienst.
-  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var rec = null, recActive = false;
-  if (SR) {
-    askMic.addEventListener("click", function () {
-      if (recActive) { try { rec && rec.stop(); } catch (e) {} return; }
-      try {
-        rec = new SR(); rec.lang = "de-DE"; rec.interimResults = true; rec.maxAlternatives = 1;
-        rec.onstart = function () { recActive = true; askMic.classList.add("rec"); };
-        rec.onerror = function () { recActive = false; askMic.classList.remove("rec"); };
-        rec.onend = function () { recActive = false; askMic.classList.remove("rec"); var v = askInput.value.trim(); if (v) sendChat(v); };
-        rec.onresult = function (ev) {
-          var t = ""; for (var i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
-          askInput.value = t;
-        };
-        rec.start();
-      } catch (e) { askInput.focus(); }
-    });
-  } else {
-    // Kein Browser-Mikro (z. B. iPhone): Tastatur öffnen — dort das Mikrofon-Symbol nutzen.
-    askMic.addEventListener("click", function () { try { askInput.focus(); } catch (e) {} });
-    askMic.title = "Tippen und die Mikrofon-Taste deiner Tastatur nutzen";
-  }
-
-  // ── Reden über den Server-STT (läuft auch auf iPhone/iPad) ──
-  var cap = null;            // laufende STT-Aufnahme
-  var listenOn = false;      // Mikro aktiv?
-  var listenStarting = false;
-  var musicWasOn = false;    // lief Musik, als das Mikro anging? (dann danach wieder an)
-  // Bluetooth: Musik (A2DP) und Mikro (HFP) vertragen sich nicht gleichzeitig —
-  // nach dem Reden die Musik kurz verzögert wieder starten (Route muss zurück).
-  function resumeMusicIfWanted() { if (musicWasOn) { musicWasOn = false; setTimeout(function () { startMusic(); }, 600); } }
-
-  function updateMicUi() {
-    if (!btnTalk) return;
-    btnTalk.classList.toggle("rec", !!listenOn);
-    btnTalk.innerHTML = listenOn ? "🎙 An" : "🎙 Reden";
-    if (listenOn) setHear("live", HEAR_IDLE); else hideHear();
-  }
-
-  // Ein fertig gehörter Satz -> Frage an Clara (wenn sie gerade nicht selbst spricht).
-  function onHeard(text) {
-    var q = String(text || "").trim();
-    if (q.length < 3) return;
-    if (claraSpeaking || Date.now() < speakCooldownUntil) return;
-    if (chatBusy) return;
-    askClara(q);
-  }
-
-  async function startListening() {
-    if (listenOn || listenStarting) return;
-    if (!window.LenaSttCapture) { setHear("live", "Sprechen hier nicht verfügbar — nutze das Textfeld unten."); setTimeout(hideHear, 3500); return; }
-    listenStarting = true;
-    setHear("think", "Mikro wird verbunden …");
-    // Musik zuerst sauber ausblenden, DANN Mikro anfordern (Bluetooth-Route),
-    // damit die Wiedergabe nicht abreißt und laut aufs Handy springt.
-    musicWasOn = musicOn;
-    if (musicOn) { try { stopMusic(); } catch (e) {} }
-    try {
-      var c = new window.LenaSttCapture();
-      var ok = await c.start({ micMode: "ipad", session: "tour", lang: "de-DE" }, {
-        onReady: function () { cap = c; listenOn = true; listenStarting = false; updateMicUi(); },
-        onPartial: function (t) { if (claraSpeaking || Date.now() < speakCooldownUntil) return; if (t) setHear("live", "… " + t); },
-        onFinal: function (t) { onHeard(t); },
-        onWarn: function () {},
-        onError: function (msg) { listenOn = false; listenStarting = false; cap = null; setHear("live", "Mikro nicht möglich — nutze das Textfeld unten."); setTimeout(hideHear, 3500); updateMicUi(); resumeMusicIfWanted(); },
-        onClose: function () { listenOn = false; cap = null; updateMicUi(); }
-      });
-      if (ok) { cap = c; listenOn = true; listenStarting = false; updateMicUi(); }
-      else { listenStarting = false; if (!listenOn) { updateMicUi(); resumeMusicIfWanted(); } }
-    } catch (e) { listenStarting = false; listenOn = false; cap = null; updateMicUi(); resumeMusicIfWanted(); }
-  }
-
-  async function stopListening(byUser) {
-    var c = cap; cap = null; listenOn = false; updateMicUi();
-    if (byUser) { setHear("live", "Mikro aus."); setTimeout(hideHear, 1600); }
-    if (c) { try { await c.stop(); } catch (e) {} }
-    resumeMusicIfWanted();
-  }
-
-  // Nach iOS-Standby/Tab-Wechsel Mikro wieder anwerfen.
-  document.addEventListener("visibilitychange", function () { if (!document.hidden && cap && cap.resume) { try { cap.resume(); } catch (e) {} } });
+  // Reiner Vorführ-Modus: NUR Clara erzählt pro Kapitel. Kein Gespräch, kein
+  // Mikrofon, keine Spracherkennung — bewusst ohne interaktive Elemente.
 
   // ── Start (iOS-Tonfreigabe): Kapitel 1 sofort mit Ton ──
   function doStart() {
@@ -965,13 +750,9 @@
     current = 0; chapters[0].classList.add("on");
     dots.forEach(function (d, k) { d.classList.toggle("on", k === 0); });
     clara.classList.remove("hide");
-    startMusic();   // Musik läuft ab jetzt automatisch leise mit (Ton-Freigabe durch den Start-Tipp)
+    startMusic();   // Musik läuft ab jetzt automatisch leise mit
     warmAll();
     narrate(0);
-    // Mikro NICHT automatisch anfordern: bei Bluetooth-Headsets schaltet die
-    // Mikro-Freigabe die Wiedergabe (A2DP) auf Telefonie (HFP) — die Musik reißt
-    // ab und startet laut am Handy. Reden startet erst auf Tipp ("🎙 Reden").
-    hideHear();
   }
   startBtn.addEventListener("click", doStart);
   startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
@@ -1022,7 +803,7 @@
   var GESTURES = ["pointerdown", "touchstart", "touchmove", "click", "keydown", "scroll", "wheel"];
   function kickAudio() {
     try { if (musicOn && bgAudio && bgAudio.paused) { var p = bgAudio.play(); if (p && p.catch) p.catch(function () {}); } } catch (e) {}
-    try { if (!answering && current >= 0 && audioEl.paused) narrate(current); } catch (e) {}
+    try { if (current >= 0 && audioEl.paused) narrate(current); } catch (e) {}
   }
   GESTURES.forEach(function (ev) { window.addEventListener(ev, kickAudio, { capture: true, passive: true }); });
   audioEl.addEventListener("play", function () {
