@@ -103,7 +103,9 @@
   .dots a.on { background: var(--turq); transform: scale(1.35); box-shadow: 0 0 10px var(--turq); }
   footer { text-align: center; color: var(--ink-faint); font-size: 12.5px; padding: 40px 20px 80px; }
   /* Start-Einblendung (iOS: Ton erst nach Tipp) */
-  #startOverlay { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center; background: radial-gradient(120% 90% at 50% 0%, rgba(19,32,58,.96), rgba(6,11,22,.98)); }
+  /* Reiner Vorfuehr-Modus: die Tour startet automatisch — der Start-Bildschirm
+     wird NIE gezeigt (sonst flackert er beim Laden kurz auf). */
+  #startOverlay { display: none !important; position: fixed; inset: 0; z-index: 70; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center; background: radial-gradient(120% 90% at 50% 0%, rgba(19,32,58,.96), rgba(6,11,22,.98)); }
   #startOverlay .sorb { width: 116px; height: 116px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(60% 60% at 50% 35%, color-mix(in srgb, var(--turq) 55%, transparent), color-mix(in srgb, var(--purple) 30%, transparent)); border: 1px solid color-mix(in srgb, var(--turq) 60%, transparent); box-shadow: 0 0 46px color-mix(in srgb, var(--turq) 40%, transparent); }
   #startOverlay .sorb svg { width: 56px; height: 56px; }
   #startOverlay .sbtn { font: inherit; font-size: 17px; font-weight: 800; color: #06121f; cursor: pointer; border: 0; border-radius: 999px; padding: 15px 26px; background: linear-gradient(135deg, var(--turq), var(--green)); box-shadow: 0 14px 34px rgba(46,230,200,.35); }
