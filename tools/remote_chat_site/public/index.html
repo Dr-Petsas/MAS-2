@@ -71,6 +71,14 @@
   #agent.dead .pdot { background: var(--err); }
   #agent.dead { color: #ffc2c2; }
   @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(1.6); } 100% { opacity: 1; transform: scale(1); } }
+  #toEnd {
+    position: fixed; right: 14px;
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    width: 44px; height: 44px; border-radius: 50%; padding: 0;
+    background: var(--accent); color: #fff; font-size: 22px; line-height: 44px;
+    box-shadow: 0 3px 12px rgba(0,0,0,.45); z-index: 20; text-align: center;
+  }
+  #toEnd:active { transform: scale(.94); }
 </style>
 </head>
 <body>
@@ -81,6 +89,7 @@
 <div id="agent" class="hidden"><span class="pdot"></span><span id="agentTxt"></span></div>
 <div id="board" class="empty"><span class="lbl">Resümee &amp; Empfehlungen</span><span id="boardText"></span></div>
 <div id="chat"></div>
+<button id="toEnd" type="button" title="Zum Ende springen" aria-label="Zum Ende springen">↓</button>
 <div id="err"></div>
 <form id="f">
   <textarea id="t" placeholder="Auftrag an den Agenten…" rows="1"></textarea>
@@ -104,6 +113,12 @@
   var btn = document.getElementById("send");
   var agentBox = document.getElementById("agent");
   var agentTxt = document.getElementById("agentTxt");
+  var toEnd = document.getElementById("toEnd");
+
+  // Sofort ans Ende des Verlaufs springen (auf Wunsch von Dr. Petsas).
+  if (toEnd) toEnd.addEventListener("click", function () {
+    chat.scrollTop = chat.scrollHeight;
+  });
 
   // Lebenspuls-Verfolgung ausschliesslich mit der GERAETE-Uhr (kein Vergleich von
   // Server- gegen Handy-Zeit -> keine Zeitzonen-/Uhr-Verschiebung). Wir merken uns
