@@ -159,10 +159,23 @@ export async function narrateChapter({ title = "", prompt = "", fallbackText = "
     model: s.model,
     baseUrl: s.base,
   });
-  const text = (r?.text || "").trim();
+  const text = stripGreeting((r?.text || "").trim());
   if (r?.ok && text) return { ok: true, text, model: r.model, source: "llm" };
   // LLM offline/leer → ehrlicher Rückfall auf den hinterlegten Kapiteltext.
   return { ok: !!fallback, text: fallback, source: "fallback" };
+}
+
+/**
+ * Entfernt einen führenden Tageszeit-/Begrüßungs-Gruß deterministisch —
+ * das Modell setzt trotz Anweisung manchmal noch "Guten Tag" davor, und der
+ * Chef mag keine Grüße (schon gar nicht in jedem Kapitel). Ein evtl. direkt
+ * folgender Name bleibt erhalten; der erste Buchstabe wird groß gemacht.
+ */
+function stripGreeting(t) {
+  if (!t) return t;
+  let s = t.replace(/^\s*(?:Guten\s+(?:Morgen|Tag|Abend)|Hallo|Hi|Hey|Servus|Moin|Grüß\s+Gott|Schönen\s+guten\s+(?:Morgen|Tag|Abend))\b[\s,;:!.–—-]*/i, "");
+  if (s && s !== t) s = s.charAt(0).toUpperCase() + s.slice(1);
+  return s.trim() || t.trim();
 }
 
 /** ElevenLabs verfügbar? (API-Key gesetzt) */
