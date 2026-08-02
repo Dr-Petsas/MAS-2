@@ -641,7 +641,7 @@
   }
 
   function narrate(idx) {
-    if (!voiceOn || idx < 0 || chatOpen) return;
+    if (!voiceOn || idx < 0 || chatOpen || answering) return;
     var my = ++seq;
     try { audioEl.pause(); } catch (e) {}
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
@@ -726,12 +726,13 @@
 
   // Echo-Schutz: solange Clara (Ansage ODER Antwort) spricht, hören wir weg.
   var claraSpeaking = false;
+  var answering = false;   // Clara beantwortet gerade eine Sprachfrage -> Kapitel-Ansagen zurückhalten
   var speakCooldownUntil = 0;
   function onSpeakStart() { claraSpeaking = true; try { clara.classList.add("speaking"); } catch (e) {} }
   function onSpeakStop() { claraSpeaking = false; speakCooldownUntil = Date.now() + 700; try { clara.classList.remove("speaking"); } catch (e) {} }
-  chatAudio.addEventListener("play", onSpeakStart);
-  chatAudio.addEventListener("ended", onSpeakStop);
-  chatAudio.addEventListener("pause", onSpeakStop);
+  chatAudio.addEventListener("play", function () { answering = true; onSpeakStart(); });
+  chatAudio.addEventListener("ended", function () { answering = false; onSpeakStop(); });
+  chatAudio.addEventListener("pause", function () { answering = false; onSpeakStop(); });
   audioEl.addEventListener("play", onSpeakStart);
   audioEl.addEventListener("ended", onSpeakStop);
   audioEl.addEventListener("pause", onSpeakStop);
@@ -780,7 +781,10 @@
   function askClara(text) {
     var q = String(text || "").trim();
     if (!q || chatBusy) return;
-    if (askPanel.hidden) openChat();   // Gespräch sichtbar machen (pausiert Kapitel-Ansage)
+    // Kein Text-Fenster beim Sprechen: laufende Kapitel-Ansage nur kurz stoppen,
+    // damit Claras Antwort frei kommt. Der Verlauf wird still mitgeschrieben und
+    // ist nur sichtbar, wenn man das Fenster über "💬" selbst öffnet.
+    stopVoice();
     chatBusy = true; askSend.disabled = true;
     askBubble("me", q);
     chatHistory.push({ role: "user", content: q });
