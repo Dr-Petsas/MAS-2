@@ -775,18 +775,34 @@
   // verlangt dort zwingend eine Geste, was den Autostart verhindert hat.)
   var MUSIC_VOL = 1.0;
 
+  // Mehrfach versuchen: manche Webviews lassen Autoplay erst zu, wenn die Datei
+  // gepuffert/„eingerichtet“ ist. Wir probieren beim Laden ein paar Mal kurz
+  // hintereinander — klappt es, läuft die Musik ohne jede Berührung sofort.
+  function playMusicWithRetry() {
+    if (!bgAudio) return;
+    var tries = 0;
+    (function attempt() {
+      if (!musicOn || !bgAudio || !bgAudio.paused) return;
+      var p = bgAudio.play();
+      if (p && p.then) p.then(function () {}, function () { if (musicOn && bgAudio && bgAudio.paused && tries++ < 8) setTimeout(attempt, 220); });
+    })();
+  }
+
   function startMusic() {
     try {
-      if (!bgAudio) { bgAudio = new Audio("/m/tour-music-soft.mp3"); bgAudio.loop = true; bgAudio.preload = "auto"; }
+      if (!bgAudio) { bgAudio = new Audio("/m/tour-music-soft.mp3"); bgAudio.loop = true; bgAudio.preload = "auto"; bgAudio.setAttribute("playsinline", ""); }
       if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
       bgAudio.volume = 0.0;   // sanftes Einblenden (Desktop); iOS ignoriert dies, spielt die leise Datei direkt
-      var p = bgAudio.play();
-      if (p && p.catch) p.catch(function () {});
+      musicOn = true; btnMusic.classList.add("on");
+      playMusicWithRetry();
       var k = 0, steps = 18;
       musicFadeTimer = setInterval(function () { k++; try { bgAudio.volume = Math.min(MUSIC_VOL, MUSIC_VOL * k / steps); } catch (e) {} if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; } }, 70);
-      musicOn = true; btnMusic.classList.add("on");
     } catch (e) {}
   }
+
+  // Wenn die Seite (nach App-Wechsel/Standby) wieder sichtbar wird, Musik weiter.
+  window.addEventListener("pageshow", function () { if (musicOn && bgAudio && bgAudio.paused) playMusicWithRetry(); });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && musicOn && bgAudio && bgAudio.paused) playMusicWithRetry(); });
 
   function stopMusic() {
     musicOn = false; btnMusic.classList.remove("on");
