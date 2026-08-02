@@ -683,10 +683,10 @@
     audioEl.onended = function () { if (my === seq) clara.classList.remove("speaking"); };
     audioEl.onerror = function () { if (my === seq) speakBrowser(text); };
     audioEl.src = url;
-    try { audioEl.volume = 1; } catch (e) {}
+    try { audioEl.muted = false; audioEl.volume = 1; } catch (e) {}
     clara.classList.add("speaking");
     var p = audioEl.play();
-    if (p && p.catch) p.catch(function () { if (my === seq) speakBrowser(text); });
+    if (p && p.then) p.then(function () { disarmGestures(); }, function () { if (my === seq) speakBrowser(text); });
   }
 
   function narrate(idx) {
@@ -842,17 +842,51 @@
   // Musik + Claras Ansage SOFORT starten (die Companion-App erlaubt Autoplay).
   doStart();
 
-  // Sicherheitsnetz: Falls die Wiedergabe doch blockiert war, startet der erste
-  // echte Tipp Ton + Ansage neu. Sobald etwas spielt, entfernen wir die Helfer.
+  // ── iOS-Tonfreigabe für Claras STIMME ────────────────────────────────────
+  // Die Musik startet direkt beim Tippen (synchron, erlaubt). Claras Ansage wird
+  // aber erst NACH dem Laden (asynchron) abgespielt — und iOS blockiert ein
+  // asynchrones play() außerhalb der Geste. Deshalb geben wir das Stimm-Element
+  // beim ERSTEN Tipp mit einem winzigen, lautlosen Ton frei; danach darf jede
+  // Ansage von selbst spielen (ein Tipp genügt, kein zweiter Knopf mehr nötig).
+  var voiceUnlocked = false;
+  function silentWavUri() {
+    var n = 800, buf = new ArrayBuffer(44 + n), dv = new DataView(buf);
+    function ws(o, s) { for (var i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); }
+    ws(0, "RIFF"); dv.setUint32(4, 36 + n, true); ws(8, "WAVE"); ws(12, "fmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+    ws(36, "data"); dv.setUint32(40, n, true);
+    for (var i = 0; i < n; i++) dv.setUint8(44 + i, 128);
+    var b = new Uint8Array(buf), s = ""; for (var j = 0; j < b.length; j++) s += String.fromCharCode(b[j]);
+    return "data:audio/wav;base64," + btoa(s);
+  }
+  function unlockVoice() {
+    if (voiceUnlocked) return;
+    voiceUnlocked = true;
+    try {
+      audioEl.muted = true;
+      audioEl.src = silentWavUri();
+      var p = audioEl.play();
+      if (p && p.then) p.then(function () { audioEl.muted = false; }, function () { audioEl.muted = false; });
+      else audioEl.muted = false;
+    } catch (e) { try { audioEl.muted = false; } catch (e2) {} }
+  }
+
+  // Sicherheitsnetz: Falls die Wiedergabe beim Laden blockiert war, startet der
+  // erste echte Tipp/Scroll Musik + Ansage. Sobald die ECHTE Ansage spielt,
+  // entfernen wir die Helfer (disarmGestures wird aus playUrl aufgerufen).
   var GESTURES = ["pointerdown", "touchstart", "touchmove", "click", "keydown", "scroll", "wheel"];
+  var gesturesArmed = true;
+  function disarmGestures() {
+    if (!gesturesArmed) return; gesturesArmed = false;
+    GESTURES.forEach(function (ev) { window.removeEventListener(ev, kickAudio, true); });
+  }
   function kickAudio() {
     try { if (musicOn && bgAudio && bgAudio.paused) { var p = bgAudio.play(); if (p && p.catch) p.catch(function () {}); } } catch (e) {}
+    unlockVoice();   // Stimme im selben Tipp freischalten (synchron in der Geste)
     try { if (current >= 0 && audioEl.paused) narrate(current); } catch (e) {}
   }
   GESTURES.forEach(function (ev) { window.addEventListener(ev, kickAudio, { capture: true, passive: true }); });
-  audioEl.addEventListener("play", function () {
-    GESTURES.forEach(function (ev) { window.removeEventListener(ev, kickAudio, true); });
-  }, { once: true });
 })();
 </script>
 </body>
