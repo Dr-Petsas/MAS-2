@@ -55,11 +55,11 @@
   .face h3 { font-size: 15.5px; margin: 0 0 6px; font-weight: 700; }
   .face p { margin: 0; color: var(--ink-soft); font-size: 13px; }
   .face .hint { margin-top: auto; font-size: 11.5px; color: var(--accent, var(--turq)); font-weight: 600; letter-spacing: .3px; }
-  .back { transform: rotateY(180deg); background: linear-gradient(150deg, color-mix(in srgb, var(--accent, var(--turq)) 16%, var(--card)), var(--card)); }
-  .back .say-l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-soft); margin-bottom: 6px; }
-  .back .say { font-size: 14.5px; color: var(--ink); font-weight: 600; }
-  .back .say::before { content: "\201E"; color: var(--accent, var(--turq)); }
-  .back .say::after { content: "\201C"; color: var(--accent, var(--turq)); }
+  .face.back { transform: rotateY(180deg); background: linear-gradient(150deg, color-mix(in srgb, var(--accent, var(--turq)) 16%, var(--card)), var(--card)); }
+  .face.back .say-l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-soft); margin-bottom: 6px; }
+  .face.back .say { font-size: 14.5px; color: var(--ink); font-weight: 600; }
+  .face.back .say::before { content: "\201E"; color: var(--accent, var(--turq)); }
+  .face.back .say::after { content: "\201C"; color: var(--accent, var(--turq)); }
   .team { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
   .mate { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 15px 16px; display: flex; gap: 12px; align-items: flex-start; }
   .mate .av { width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 800; color: #06121f; background: linear-gradient(140deg, var(--accent, var(--turq)), var(--green)); }
@@ -896,7 +896,7 @@
 
   async function stopListening(byUser) {
     var c = cap; cap = null; listenOn = false; updateMicUi();
-    if (byUser) { setHear("live", "Mikro aus — tippe „🎙 Reden“, um wieder zu sprechen."); setTimeout(hideHear, 2600); }
+    if (byUser) { setHear("live", "Mikro aus."); setTimeout(hideHear, 1600); }
     if (c) { try { await c.stop(); } catch (e) {} }
     resumeMusicIfWanted();
   }
@@ -919,8 +919,7 @@
     // Mikro NICHT automatisch anfordern: bei Bluetooth-Headsets schaltet die
     // Mikro-Freigabe die Wiedergabe (A2DP) auf Telefonie (HFP) — die Musik reißt
     // ab und startet laut am Handy. Reden startet erst auf Tipp ("🎙 Reden").
-    setHear("live", "Zum Reden oben auf „🎙 Reden“ tippen.");
-    setTimeout(function () { if (!listenOn && !listenStarting) hideHear(); }, 6000);
+    hideHear();
   }
   startBtn.addEventListener("click", doStart);
   startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
@@ -966,7 +965,6 @@
     doStart();
   }
   GESTURES.forEach(function (ev) { window.addEventListener(ev, onFirstGesture, { capture: true, passive: true }); });
-  setHear("live", "Tippe oder scrolle – dann legt Clara los. Zum Reden oben auf „🎙 Reden“ tippen.");
 })();
 </script>
 </body>
