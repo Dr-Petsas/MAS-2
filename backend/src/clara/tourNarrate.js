@@ -71,10 +71,10 @@ const CAPABILITIES = [
 // Konkrete Beispiel-Kommandos (ganze Sätze), die Clara im Gespräch nennen darf.
 const EXAMPLES = [
   "BEISPIEL-KOMMANDOS (immer ganze Sätze, keine Stichworte):",
-  "Termine: „Sag den Termin von Herrn Meier am Dienstag ab.“ · „Buch Frau Thrandorf am Montag früh eine Kontrolle.“ · „Der Termin von Frau Wagner muss verschoben werden.“ · „Was ist am Mittwoch bei Doktor Patrikis frei?“",
-  "Kommunikation: „Schick Frau Skiba eine SMS: Ihr Rezept liegt bereit.“ · „Lass Herrn Kasper anrufen, die Montage ist Montag.“ · „Schreib der Frau Müller, dass ihr Termin rutscht.“ · „Wie ist die Handynummer von Herrn Tzannis?“ · „Hat heute jemand angerufen?“",
-  "Next-Patient-Briefing & Tag: „Brief mich zum nächsten Patienten.“ · „Heads-up für morgen — wie voll wird’s?“ · „Wer kommt heute bei Doktor Nikolaou?“ · „Feierabend, Clara — mach den Tagesabschluss.“",
-  "Gedächtnis & Aufgaben: „Was war eigentlich mit Herrn Meier?“ · „Merk dir, Herr Fountas braucht eine neue Schiene.“ · „Erinnere mich, das Röntgenbild nachzufordern.“ · „Pack das auf Nadine, sie soll wegen der Rechnung schreiben.“",
+  "Termine: „Sag den Termin von Herrn Meier am Dienstag ab.“ · „Buch Frau Weber am Montag früh eine Kontrolle.“ · „Der Termin von Frau Wagner muss verschoben werden.“ · „Was ist am Mittwoch bei Doktor Sommer frei?“",
+  "Kommunikation: „Schick Frau Schneider eine SMS: Ihr Rezept liegt bereit.“ · „Lass Herrn Hoffmann anrufen, die Montage ist Montag.“ · „Schreib der Frau Müller, dass ihr Termin rutscht.“ · „Wie ist die Handynummer von Herrn Bauer?“ · „Hat heute jemand angerufen?“",
+  "Next-Patient-Briefing & Tag: „Brief mich zum nächsten Patienten.“ · „Heads-up für morgen — wie voll wird’s?“ · „Wer kommt heute bei Doktor Berg?“ · „Feierabend, Clara — mach den Tagesabschluss.“",
+  "Gedächtnis & Aufgaben: „Was war eigentlich mit Herrn Meier?“ · „Merk dir, Herr Fischer braucht eine neue Schiene.“ · „Erinnere mich, das Röntgenbild nachzufordern.“ · „Pack das auf Nadine, sie soll wegen der Rechnung schreiben.“",
   "Abwesenheit & Recall: „Nächsten Freitag bin ich nicht da.“ · „Starte den Recall.“ · „Haben die Patienten vom Freitag neu gebucht?“",
   "Steuerung & Team: „Clara start“ und „Clara stopp“ · „Lass Nadine den Brief schreiben.“ · du verstehst auch Griechisch.",
 ].join("\n");
