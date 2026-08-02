@@ -612,9 +612,60 @@
     }).catch(function () { return { text: chapterText(ch), audioUrl: null }; });
   }
 
-  // Einmal holen und merken — beim nächsten Mal ist es sofort da.
+  // Dauerhafter Zwischenspeicher im Gerät (IndexedDB): Text + fertige Stimme
+  // pro Kapitel. So muss beim erneuten Öffnen NICHTS mehr erzeugt werden — die
+  // Ansage ist sofort da, ohne LLM-/Vertonungs-Wartezeit. Beim allerersten Mal
+  // (leerer Speicher) wird einmalig geladen und dann behalten.
+  var idbP = null;
+  function idb() {
+    if (idbP) return idbP;
+    idbP = new Promise(function (resolve) {
+      try {
+        var rq = indexedDB.open("claraTour", 1);
+        rq.onupgradeneeded = function () { try { rq.result.createObjectStore("narr"); } catch (e) {} };
+        rq.onsuccess = function () { resolve(rq.result); };
+        rq.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+    return idbP;
+  }
+  function idbGet(key) {
+    return idb().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (resolve) {
+        try {
+          var t = db.transaction("narr", "readonly").objectStore("narr").get(key);
+          t.onsuccess = function () { resolve(t.result || null); };
+          t.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+    });
+  }
+  function idbSet(key, val) {
+    return idb().then(function (db) {
+      if (!db) return;
+      try { db.transaction("narr", "readwrite").objectStore("narr").put(val, key); } catch (e) {}
+    });
+  }
+  // Schlüssel je Kapitel aus Titel + Prompt (ändert sich der Text, wird neu geladen).
+  function narrHash(s) { var h = 5381; for (var i = 0; i < s.length; i++) { h = ((h << 5) + h) ^ s.charCodeAt(i); } return (h >>> 0).toString(36); }
+  function narrKey(idx) {
+    var ch = chapters[idx];
+    return "v1:" + idx + ":" + narrHash((ch.getAttribute("data-title") || "") + "|" + chapterPrompt(ch) + "|" + (idx === 0 ? "1" : "0"));
+  }
+
+  // Einmal holen und merken — im Speicher (Sitzung) und dauerhaft (Gerät).
   function getNarration(idx) {
-    if (!cache[idx]) cache[idx] = fetchNarration(idx);
+    if (!cache[idx]) {
+      var key = narrKey(idx);
+      cache[idx] = idbGet(key).then(function (hit) {
+        if (hit && hit.text) return { text: hit.text, audioUrl: hit.audioUrl || null };
+        return fetchNarration(idx).then(function (res) {
+          if (res && res.text && res.audioUrl) { idbSet(key, { text: res.text, audioUrl: res.audioUrl, t: Date.now() }); }
+          return res;
+        });
+      });
+    }
     return cache[idx];
   }
 
