@@ -30,6 +30,7 @@ const SYSTEM = [
   "keine Emojis, kein 'Als KI'. Sei warm, souverän und kompetent: drei bis vier Sätze.",
   "Bleibe beim Thema des Kapitels, darfst aber selbstbewusst auf verwandte, ECHTE Funktionen",
   "aus deinem Katalog verweisen, wenn es den Eindruck abrundet. Erfinde NICHTS außerhalb des Katalogs.",
+  "Erfinde NIEMALS Personennamen — sprich den Nutzer nur mit seinem echten, übergebenen Namen an, sonst neutral.",
 ].join(" ");
 
 // Claras vollständiger, ECHTER Funktionskatalog (Stand der ausgereiften Blöcke).
@@ -118,18 +119,24 @@ export async function chatGuide(history = []) {
  * @param {{title?:string, prompt?:string, fallbackText?:string}} chapter
  * @returns {Promise<{ok:boolean, text:string, model?:string, source:"llm"|"fallback"}>}
  */
-export async function narrateChapter({ title = "", prompt = "", fallbackText = "", first = false } = {}) {
+export async function narrateChapter({ title = "", prompt = "", fallbackText = "", first = false, userName = "" } = {}) {
   const instruction = (prompt || "").trim() || (fallbackText || "").trim();
   const fallback = (fallbackText || prompt || "").trim();
   if (!instruction) {
     return { ok: false, text: "", source: "fallback" };
   }
   const s = strongLlm(); // starker 5090-Server für flüssige Sprache
-  // Gruß/Vorstellung NUR beim ersten Kapitel — sonst wiederholt Clara in jedem
-  // Abschnitt "Hallo, ich bin Clara" / "Guten Morgen", was nervt.
+  const name = String(userName || "").trim();
+  // Clara spricht den ECHTEN eingeloggten Nutzer an — niemals einen erfundenen
+  // Namen (Vorfall: sie erfand "Dr. Müller"). Ist kein Name bekannt: neutral, ohne Namen.
+  const nameRule = name
+    ? `Der eingeloggte Nutzer heißt „${name}“. Wenn du überhaupt jemanden ansprichst, dann ausschließlich diese Person mit genau diesem Namen. Erfinde NIEMALS einen anderen Namen (auf keinen Fall „Dr. Müller“ o. Ä.).`
+    : `Du kennst den Namen des Nutzers NICHT. Erfinde deshalb KEINEN Namen (auf keinen Fall „Dr. Müller“ o. Ä.) und sprich neutral mit „Sie“.`;
+  // Anrede/Vorstellung NUR im ersten Kapitel — und OHNE Tageszeit-Gruß, weil das
+  // sonst in jedem Abschnitt nervt ("Guten Morgen …").
   const greetRule = first
-    ? "Dies ist der Auftakt der Tour: ein kurzer, respektvoller Gruß an den Praxis-Chef (mit „Sie“) und eine knappe Vorstellung sind hier erlaubt."
-    : "WICHTIG: Kein Gruß und keine Vorstellung — sag nicht „Hallo“, „Guten Morgen“ oder „Ich bin Clara“. Steig direkt beim Thema ein.";
+    ? "Dies ist der Auftakt der Tour: eine knappe, respektvolle Anrede (mit „Sie“) und eine kurze Vorstellung sind hier erlaubt — aber OHNE Tageszeit-Gruß, also KEIN „Guten Morgen“, „Guten Tag“ oder „Hallo“."
+    : "WICHTIG: Keine Anrede, kein Gruß, keine Vorstellung — steig direkt beim Thema ein. Sag NICHT „Hallo“, „Guten Morgen“ oder „Ich bin Clara“.";
   // Der Server erlaubt nur EINE System-Nachricht am Anfang — Persona + Katalog
   // deshalb in einem Block bündeln.
   const messages = [
@@ -139,6 +146,7 @@ export async function narrateChapter({ title = "", prompt = "", fallbackText = "
       content:
         `Kapitel: ${title || "Fähigkeiten"}.\n` +
         `Aufgabe: ${instruction}\n` +
+        `${nameRule}\n` +
         `${greetRule}\n` +
         `Erzähle dazu lebendig und souverän aus deinem echten Können. ` +
         `Antworte NUR mit Claras gesprochenem Text.`,

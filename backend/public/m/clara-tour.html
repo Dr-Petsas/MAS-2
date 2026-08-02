@@ -534,13 +534,18 @@
   "use strict";
   var qs = new URLSearchParams(location.search);
   var clientId = (qs.get("c") || "").trim();
-  // Praxis-ID aus dem gekoppelten Gerät: iPad-App (pickadoc.ipad.v1) ODER Handy-App (clara.device.v1).
-  if (!clientId) {
-    ["pickadoc.ipad.v1", "clara.device.v1"].some(function (k) {
-      try { var d = JSON.parse(localStorage.getItem(k) || "null"); if (d && d.clientId) { clientId = String(d.clientId).trim(); return true; } } catch (e) {}
-      return false;
-    });
-  }
+  // Name des eingeloggten Nutzers (Arzt/Bediener) aus dem gekoppelten Gerät —
+  // damit Clara IHN anspricht und keinen erfundenen Namen benutzt.
+  var userName = (qs.get("u") || "").trim();
+  // Praxis-ID + Name aus dem gekoppelten Gerät: iPad-App (pickadoc.ipad.v1) ODER Handy-App (clara.device.v1).
+  ["pickadoc.ipad.v1", "clara.device.v1"].forEach(function (k) {
+    try {
+      var d = JSON.parse(localStorage.getItem(k) || "null");
+      if (!d) return;
+      if (!clientId && d.clientId) clientId = String(d.clientId).trim();
+      if (!userName && (d.doctorName || d.operatorName)) userName = String(d.doctorName || d.operatorName).trim();
+    } catch (e) {}
+  });
 
   var chapters = Array.prototype.slice.call(document.querySelectorAll(".chapter"));
   var clara = document.getElementById("clara");
@@ -598,7 +603,7 @@
     return fetch("/clara/tour/narrate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: clientId, title: ch.getAttribute("data-title") || "", prompt: chapterPrompt(ch), text: chapterText(ch), first: idx === 0 })
+      body: JSON.stringify({ clientId: clientId, userName: userName, title: ch.getAttribute("data-title") || "", prompt: chapterPrompt(ch), text: chapterText(ch), first: idx === 0 })
     }).then(function (r) { return r.json(); }).then(function (data) {
       return { text: (data && data.text) || chapterText(ch), audioUrl: (data && data.audioBase64) ? ("data:" + (data.mime || "audio/mpeg") + ";base64," + data.audioBase64) : null };
     }).catch(function () { return { text: chapterText(ch), audioUrl: null }; });
@@ -643,7 +648,7 @@
   function narrHash(s) { var h = 5381; for (var i = 0; i < s.length; i++) { h = ((h << 5) + h) ^ s.charCodeAt(i); } return (h >>> 0).toString(36); }
   function narrKey(idx) {
     var ch = chapters[idx];
-    return "v2:" + idx + ":" + narrHash((ch.getAttribute("data-title") || "") + "|" + chapterPrompt(ch) + "|" + (idx === 0 ? "1" : "0"));
+    return "v3:" + idx + ":" + narrHash((ch.getAttribute("data-title") || "") + "|" + chapterPrompt(ch) + "|" + (userName || "") + "|" + (idx === 0 ? "1" : "0"));
   }
 
   // Einmal holen und merken — im Speicher (Sitzung) und dauerhaft (Gerät).

@@ -56,8 +56,9 @@ router.post("/clara/tour/narrate", qmRoute(async (clientId, req, res) => {
   const fallbackText = String(body.text || body.fallbackText || "").slice(0, 2000);
   const wantAudio = body.audio !== false && body.audio !== "false";
   const first = body.first === true || body.first === "true" || body.first === 1;
+  const userName = String(body.userName || "").slice(0, 80);
 
-  const spoken = await narrateChapter({ title, prompt, fallbackText, first });
+  const spoken = await narrateChapter({ title, prompt, fallbackText, first, userName });
   const out = { ok: !!spoken.text, clientId, text: spoken.text, source: spoken.source, model: spoken.model || null, ttsConfigured: ttsConfigured() };
 
   if (wantAudio && spoken.text && ttsConfigured()) {
