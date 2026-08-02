@@ -22,7 +22,7 @@ const CLARA_VOICE_ID = () => env("CLARA_VOICE_ID") || "cgSgspJ2msm6clMCkdW9";
 // Sätzen, ohne Markdown/Emojis, ohne "Als KI …", und erfindet NICHTS.
 const SYSTEM = [
   "Du bist Clara, die interne Sprach-Assistentin einer Zahnarztpraxis.",
-  "Du führst das Praxisteam durch eine Fähigkeits-Tour und stellst dich mit Schwung vor.",
+  "Du führst das Praxisteam locker durch eine Fähigkeits-Tour.",
   "Sprich in natürlichen, gesprochenen Sätzen — kein Markdown, keine Aufzählungszeichen,",
   "keine Emojis, kein 'Als KI'. Sei warm, selbstbewusst, kompetent und lebendig: drei bis vier Sätze.",
   "Bleibe beim Thema des Kapitels, darfst aber selbstbewusst auf verwandte, ECHTE Funktionen",
@@ -114,13 +114,18 @@ export async function chatGuide(history = []) {
  * @param {{title?:string, prompt?:string, fallbackText?:string}} chapter
  * @returns {Promise<{ok:boolean, text:string, model?:string, source:"llm"|"fallback"}>}
  */
-export async function narrateChapter({ title = "", prompt = "", fallbackText = "" } = {}) {
+export async function narrateChapter({ title = "", prompt = "", fallbackText = "", first = false } = {}) {
   const instruction = (prompt || "").trim() || (fallbackText || "").trim();
   const fallback = (fallbackText || prompt || "").trim();
   if (!instruction) {
     return { ok: false, text: "", source: "fallback" };
   }
   const s = strongLlm(); // starker 5090-Server für flüssige Sprache
+  // Gruß/Vorstellung NUR beim ersten Kapitel — sonst wiederholt Clara in jedem
+  // Abschnitt "Hallo, ich bin Clara" / "Guten Morgen", was nervt.
+  const greetRule = first
+    ? "Dies ist der Auftakt der Tour: ein kurzer, warmer Gruß und eine knappe Vorstellung sind hier erlaubt."
+    : "WICHTIG: Kein Gruß und keine Vorstellung — sag nicht „Hallo“, „Guten Morgen“ oder „Ich bin Clara“. Steig direkt beim Thema ein.";
   // Der Server erlaubt nur EINE System-Nachricht am Anfang — Persona + Katalog
   // deshalb in einem Block bündeln.
   const messages = [
@@ -130,6 +135,7 @@ export async function narrateChapter({ title = "", prompt = "", fallbackText = "
       content:
         `Kapitel: ${title || "Fähigkeiten"}.\n` +
         `Aufgabe: ${instruction}\n` +
+        `${greetRule}\n` +
         `Erzähle dazu lebendig und souverän aus deinem echten Können. ` +
         `Antworte NUR mit Claras gesprochenem Text.`,
     },

@@ -605,7 +605,7 @@
     return fetch("/clara/tour/narrate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: clientId, title: ch.getAttribute("data-title") || "", prompt: chapterPrompt(ch), text: chapterText(ch) })
+      body: JSON.stringify({ clientId: clientId, title: ch.getAttribute("data-title") || "", prompt: chapterPrompt(ch), text: chapterText(ch), first: idx === 0 })
     }).then(function (r) { return r.json(); }).then(function (data) {
       return { text: (data && data.text) || chapterText(ch), audioUrl: (data && data.audioBase64) ? ("data:" + (data.mime || "audio/mpeg") + ";base64," + data.audioBase64) : null };
     }).catch(function () { return { text: chapterText(ch), audioUrl: null }; });
