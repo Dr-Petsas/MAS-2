@@ -591,8 +591,8 @@
       u.lang = "de-DE"; u.rate = 1.02;
       var de = (window.speechSynthesis.getVoices() || []).filter(function (v) { return /de(-|_)/i.test(v.lang); });
       if (de.length) u.voice = de[0];
-      u.onstart = function () { clara.classList.add("speaking"); duckForVoice(); };
-      u.onend = function () { clara.classList.remove("speaking"); restoreMusic(); };
+      u.onstart = function () { clara.classList.add("speaking"); };
+      u.onend = function () { clara.classList.remove("speaking"); };
       window.speechSynthesis.speak(u);
     } catch (e) {}
   }
@@ -671,69 +671,22 @@
   var warming = false;
   function warmAll() {
     if (warming) return; warming = true;
-    // Mehrere Kapitel gleichzeitig vorwärmen (kleine Parallelität), damit ALLE
-    // Ansagen schnell fertig im Gerät liegen — danach dauerhaft aus dem Speicher.
-    var i = 0, active = 0, CONC = 3;
-    function done() { active--; pump(); }
-    function pump() {
-      while (active < CONC && i < chapters.length) {
-        var j = i++; active++;
-        try { getNarration(j).then(done, done); } catch (e) { done(); }
-      }
-    }
-    pump();
-  }
-
-  // ── Musik-Ducking + Crossfade ────────────────────────────────────────────
-  // Zwischen den Ansagen läuft die Musik auf der freigegebenen Lautstärke; sobald
-  // Clara spricht, wird sie sanft abgesenkt und danach wieder angehoben — gegen-
-  // läufig zu Claras Stimme (Ein-/Ausblenden = Crossfade). Alles latenzfrei.
-  var MUSIC_IDLE = 1.0;   // zwischen den Ansagen (die von Dr. Petsas freigegebene Lautstärke)
-  var MUSIC_DUCK = 0.5;   // während Clara spricht (~6 dB leiser)
-  var duckTimer = null, voiceFadeTimer = null;
-  function rampMusic(to, ms) {
-    if (!bgAudio) return;
-    if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
-    if (duckTimer) { clearInterval(duckTimer); duckTimer = null; }
-    var from = bgAudio.volume, steps = Math.max(1, Math.round(ms / 40)), k = 0;
-    duckTimer = setInterval(function () {
-      k++; try { bgAudio.volume = Math.max(0, Math.min(1, from + (to - from) * (k / steps))); } catch (e) {}
-      if (k >= steps) { clearInterval(duckTimer); duckTimer = null; }
-    }, 40);
-  }
-  function duckForVoice() { if (musicOn && bgAudio) rampMusic(MUSIC_DUCK, 240); }
-  function restoreMusic() { if (musicOn && bgAudio) rampMusic(MUSIC_IDLE, 420); }
-  function rampVoice(to, ms, my) {
-    if (voiceFadeTimer) { clearInterval(voiceFadeTimer); voiceFadeTimer = null; }
-    var from = 0; try { from = audioEl.volume; } catch (e) {}
-    var steps = Math.max(1, Math.round(ms / 30)), k = 0;
-    voiceFadeTimer = setInterval(function () {
-      if (my !== seq) { clearInterval(voiceFadeTimer); voiceFadeTimer = null; return; }
-      k++; try { audioEl.volume = Math.max(0, Math.min(1, from + (to - from) * (k / steps))); } catch (e) {}
-      if (k >= steps) { clearInterval(voiceFadeTimer); voiceFadeTimer = null; }
-    }, 30);
+    var i = 0;
+    (function step() {
+      if (i >= chapters.length) return;
+      var j = i++;
+      getNarration(j).then(function () { setTimeout(step, 120); }, function () { setTimeout(step, 120); });
+    })();
   }
 
   function playUrl(url, text, my) {
-    audioEl.onended = function () { if (my === seq) { clara.classList.remove("speaking"); restoreMusic(); } };
-    audioEl.onerror = function () { if (my === seq) { restoreMusic(); speakBrowser(text); } };
-    // Kurz vor Schluss Stimme aus- und Musik einblenden = weicher Crossfade am Ende.
-    audioEl.ontimeupdate = function () {
-      if (my !== seq) return;
-      var d = audioEl.duration;
-      if (isFinite(d) && d > 0 && (d - audioEl.currentTime) < 0.35) {
-        audioEl.ontimeupdate = null;
-        rampVoice(0, Math.max(90, (d - audioEl.currentTime) * 1000), my);
-        restoreMusic();
-      }
-    };
-    try { audioEl.src = url; } catch (e) {}
-    try { audioEl.volume = 0; } catch (e) {}   // Stimme blendet ein
+    audioEl.onended = function () { if (my === seq) clara.classList.remove("speaking"); };
+    audioEl.onerror = function () { if (my === seq) speakBrowser(text); };
+    audioEl.src = url;
+    try { audioEl.volume = 1; } catch (e) {}
     clara.classList.add("speaking");
-    duckForVoice();                            // Musik blendet gegenläufig aus
     var p = audioEl.play();
-    if (p && p.then) p.then(function () { rampVoice(1, 200, my); }, function () { if (my === seq) { restoreMusic(); speakBrowser(text); } });
-    else rampVoice(1, 200, my);
+    if (p && p.catch) p.catch(function () { if (my === seq) speakBrowser(text); });
   }
 
   function narrate(idx) {
@@ -751,21 +704,9 @@
 
   function stopVoice() {
     try { audioEl.pause(); } catch (e) {}
-    try { audioEl.ontimeupdate = null; } catch (e) {}
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
-    if (voiceFadeTimer) { clearInterval(voiceFadeTimer); voiceFadeTimer = null; }
-    try { audioEl.volume = 1; } catch (e) {}
     clara.classList.remove("speaking");
-    restoreMusic();
     seq++;
-  }
-
-  // Nachbarkapitel in BEIDE Richtungen sofort vorladen, damit egal wohin/wie
-  // schnell gescrollt wird, die Ansage schon fertig im Gerät liegt (kein Lag).
-  function prefetchAround(i) {
-    [i, i + 1, i - 1, i + 2, i - 2, i + 3].forEach(function (k) {
-      if (k >= 0 && k < chapters.length) { try { getNarration(k); } catch (e) {} }
-    });
   }
 
   function activate(i) {
@@ -778,14 +719,11 @@
     clara.style.setProperty("--accent", accent.trim());
     clara.classList.add("hide");
     stopVoice();
-    prefetchAround(i);
-    // Kurzer Entprell-Timer: beim schnellen Durchscrollen spricht nur das Kapitel,
-    // auf dem man landet — die Ansage kommt dann aber SOFORT (vorgewärmt), kein Lag.
     if (fadeTimer) clearTimeout(fadeTimer);
     fadeTimer = setTimeout(function () {
       clara.classList.remove("hide");
       if (unlocked) narrate(i);
-    }, 80);
+    }, 130);
   }
 
   var io = new IntersectionObserver(function (entries) {
@@ -840,7 +778,7 @@
   // kommt sie ohne Web-Audio-Technik aus — und nur ein einfaches Audio-Element
   // darf auf iPhone/iPad OHNE erste Beruehrung automatisch starten. (Web-Audio
   // verlangt dort zwingend eine Geste, was den Autostart verhindert hat.)
-  // Grund-Lautstärke = MUSIC_IDLE (weiter oben definiert; zwischen den Ansagen).
+  var MUSIC_VOL = 1.0;
 
   // Mehrfach versuchen: manche Webviews lassen Autoplay erst zu, wenn die Datei
   // gepuffert/„eingerichtet“ ist. Wir probieren beim Laden ein paar Mal kurz
@@ -863,13 +801,27 @@
       musicOn = true; btnMusic.classList.add("on");
       playMusicWithRetry();
       var k = 0, steps = 18;
-      musicFadeTimer = setInterval(function () { k++; try { bgAudio.volume = Math.min(MUSIC_IDLE, MUSIC_IDLE * k / steps); } catch (e) {} if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; } }, 70);
+      musicFadeTimer = setInterval(function () { k++; try { bgAudio.volume = Math.min(MUSIC_VOL, MUSIC_VOL * k / steps); } catch (e) {} if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; } }, 70);
     } catch (e) {}
   }
 
   // Wenn die Seite (nach App-Wechsel/Standby) wieder sichtbar wird, Musik weiter.
+  // Musik UND Stimme sofort STOPPEN, sobald die App in den Hintergrund geht oder
+  // geschlossen/gewechselt wird — sonst spielt die Musik im Hintergrund weiter
+  // (Vorfall Dr. Petsas: Musik hörte beim App-Beenden nicht auf). Kommt die App
+  // in den Vordergrund zurück, läuft die Musik wieder an.
+  function pauseAllAudio() {
+    try { if (bgAudio) bgAudio.pause(); } catch (e) {}
+    try { audioEl.pause(); } catch (e) {}
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+  }
   window.addEventListener("pageshow", function () { if (musicOn && bgAudio && bgAudio.paused) playMusicWithRetry(); });
-  document.addEventListener("visibilitychange", function () { if (!document.hidden && musicOn && bgAudio && bgAudio.paused) playMusicWithRetry(); });
+  window.addEventListener("pagehide", pauseAllAudio);
+  window.addEventListener("blur", function () { if (document.hidden) pauseAllAudio(); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) pauseAllAudio();
+    else if (musicOn && bgAudio && bgAudio.paused) playMusicWithRetry();
+  });
 
   function stopMusic() {
     musicOn = false; btnMusic.classList.remove("on");
