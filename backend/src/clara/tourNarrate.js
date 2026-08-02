@@ -45,8 +45,11 @@ const CAPABILITIES = [
   "PATIENTEN & TERMINE: den richtigen Patienten am gesprochenen Namen finden (auch bei ähnlichem Klang,",
   "Namensliste der Praxis, sauberer Umgang mit Dubletten); Termine buchen, absagen, verschieben, nachschlagen,",
   "freie Zeiten prüfen — immer erst den Richtigen, dann handeln, mit Beleg aufs gekoppelte Handy.",
+  "NEXT-PATIENT-BRIEFING (deine WICHTIGSTE Funktion): In rund zehn Sekunden — bevor der nächste Patient",
+  "ins Zimmer gerufen wird — bringst du alles Wesentliche zu ihm auf den Punkt: aus Anamnese, bisherigen",
+  "Behandlungen und Vorgeschichte, eingegangenen Telefonaten sowie Briefen und E-Mails zu diesem Patienten.",
+  "So geht niemand unvorbereitet ins Behandlungszimmer.",
   "KALENDER & BRIEFINGS: Tagesüberblick, Patienten des Tages, Morgen- und Abend-Briefing;",
-  "ein Verzugs-Retter, der bei Verspätung die kommenden Termine neu rechnet und aufs Handy schickt;",
   "Wochenenden und Feiertage (NRW, jahresgenau) werden erkannt — nie ein Feiertag als Arbeitstag.",
   "PRAXIS-GEDÄCHTNIS: ein mit dem Team geteilter Patienten-Zeitstrahl auf Zuruf; Notizen, die beim nächsten",
   "Termin von allein wieder hochkommen; Vorgänge öffnen, delegieren und schließen; auch „der Patient von vorhin“.",
@@ -70,7 +73,7 @@ const EXAMPLES = [
   "BEISPIEL-KOMMANDOS (immer ganze Sätze, keine Stichworte):",
   "Termine: „Sag den Termin von Herrn Meier am Dienstag ab.“ · „Buch Frau Thrandorf am Montag früh eine Kontrolle.“ · „Der Termin von Frau Wagner muss verschoben werden.“ · „Was ist am Mittwoch bei Doktor Patrikis frei?“",
   "Kommunikation: „Schick Frau Skiba eine SMS: Ihr Rezept liegt bereit.“ · „Lass Herrn Kasper anrufen, die Montage ist Montag.“ · „Schreib der Frau Müller, dass ihr Termin rutscht.“ · „Wie ist die Handynummer von Herrn Tzannis?“ · „Hat heute jemand angerufen?“",
-  "Tag & Kalender: „Heads-up für morgen — wie voll wird’s?“ · „Wer kommt heute bei Doktor Nikolaou?“ · „Ich häng zwanzig Minuten hinterher — wer kommt noch?“ · „Feierabend, Clara — mach den Tagesabschluss.“",
+  "Next-Patient-Briefing & Tag: „Brief mich zum nächsten Patienten.“ · „Heads-up für morgen — wie voll wird’s?“ · „Wer kommt heute bei Doktor Nikolaou?“ · „Feierabend, Clara — mach den Tagesabschluss.“",
   "Gedächtnis & Aufgaben: „Was war eigentlich mit Herrn Meier?“ · „Merk dir, Herr Fountas braucht eine neue Schiene.“ · „Erinnere mich, das Röntgenbild nachzufordern.“ · „Pack das auf Nadine, sie soll wegen der Rechnung schreiben.“",
   "Abwesenheit & Recall: „Nächsten Freitag bin ich nicht da.“ · „Starte den Recall.“ · „Haben die Patienten vom Freitag neu gebucht?“",
   "Steuerung & Team: „Clara start“ und „Clara stopp“ · „Lass Nadine den Brief schreiben.“ · du verstehst auch Griechisch.",
@@ -127,11 +130,14 @@ export async function narrateChapter({ title = "", prompt = "", fallbackText = "
   }
   const s = strongLlm(); // starker 5090-Server für flüssige Sprache
   const name = String(userName || "").trim();
-  // Clara spricht den ECHTEN eingeloggten Nutzer an — niemals einen erfundenen
-  // Namen (Vorfall: sie erfand "Dr. Müller"). Ist kein Name bekannt: neutral, ohne Namen.
-  const nameRule = name
-    ? `Der eingeloggte Nutzer heißt „${name}“. Wenn du überhaupt jemanden ansprichst, dann ausschließlich diese Person mit genau diesem Namen. Erfinde NIEMALS einen anderen Namen (auf keinen Fall „Dr. Müller“ o. Ä.).`
-    : `Du kennst den Namen des Nutzers NICHT. Erfinde deshalb KEINEN Namen (auf keinen Fall „Dr. Müller“ o. Ä.) und sprich neutral mit „Sie“.`;
+  // Persönliche Anrede NUR in der allerersten Ansage (first) — Dr. Petsas will
+  // nicht in jedem Kapitel mit Namen angesprochen werden. Ab Kapitel 2: gar keine
+  // Anrede. Und niemals einen erfundenen Namen (Vorfall: sie erfand "Dr. Müller").
+  const nameRule = first
+    ? (name
+        ? `Der eingeloggte Nutzer heißt „${name}“. Sprich ihn in DIESER ersten Ansage genau einmal persönlich mit diesem Namen an. Erfinde NIEMALS einen anderen Namen (auf keinen Fall „Dr. Müller“ o. Ä.).`
+        : `Du kennst den Namen des Nutzers NICHT. Erfinde deshalb KEINEN Namen (auf keinen Fall „Dr. Müller“ o. Ä.) und sprich neutral mit „Sie“.`)
+    : `Sprich die Person NICHT mit Namen an und benutze KEINE persönliche Anrede (kein Name, kein „Herr/Frau Doktor“). Steig direkt beim Thema ein. Erfinde NIEMALS einen Namen.`;
   // Anrede/Vorstellung NUR im ersten Kapitel — und OHNE Tageszeit-Gruß, weil das
   // sonst in jedem Abschnitt nervt ("Guten Morgen …").
   const greetRule = first
