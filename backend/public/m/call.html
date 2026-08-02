@@ -383,10 +383,11 @@
 </head>
 <body class="st-idle clara-mode-audio" data-clara-root>
   <header class="brand">
-    <a class="tourlink" href="/m/clara-tour.html" aria-label="Clara-Tour" title="Clara-Tour – was ich alles kann">&#127911;</a>
     <img src="/m/logo-mark.png" alt="" />
-    <span class="word">pickadoc</span>
-    <a class="gear" href="/m/pair.html?manage=1" aria-label="Einstellungen">&#9881;</a>
+    <span class="word" id="brandWord">pickadoc</span>
+    <!-- Rechts: klarer Tour-Knopf (früher das nutzlose Einstellungs-Zahnrad).
+         Die selten nötige Geräte-Kopplung bleibt per langem Tippen aufs Logo erreichbar. -->
+    <a class="gear" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">&#127911;</a>
   </header>
 
   <div class="mode-bar" data-clara-mode-bar>
@@ -434,7 +435,7 @@
           </div>
           <div class="cards-scroll" data-clara-cards>
             <div class="cards-empty" data-clara-cards-empty>
-              Noch keine Karten.<br/>
+              Noch keine Übersicht.<br/>
               Frag mich z.&nbsp;B. <b>„Heads up zum nächsten Patienten"</b> oder diktiere eine
               Behandlung — die Notizen erscheinen hier auf der Rückseite.
             </div>
@@ -445,8 +446,8 @@
     </div>
 
     <div class="flip-labels" data-clara-flip-labels aria-hidden="true">
-      <span class="on" data-clara-lbl-voice>🎙 Sprache</span>
-      <span data-clara-lbl-cards>🗂 Karten<b class="badge" data-clara-card-badge></b></span>
+      <span class="on" data-clara-lbl-voice>🎙 Live</span>
+      <span data-clara-lbl-cards>🗂 Übersicht<b class="badge" data-clara-card-badge></b></span>
     </div>
 
     <div class="bottom" data-clara-bottom-bar>
@@ -1126,6 +1127,21 @@
         })
         .catch(() => {});
     }
+  </script>
+  <script>
+    // Geräte-Kopplung (früher hinter dem Zahnrad): jetzt per langem Tippen aufs
+    // Logo erreichbar, damit der Header aufgeräumt bleibt und nichts verloren geht.
+    (function () {
+      var w = document.getElementById("brandWord");
+      if (!w) return;
+      var t = null;
+      function down() { t = setTimeout(function () { location.href = "/m/pair.html?manage=1"; }, 750); }
+      function up() { if (t) { clearTimeout(t); t = null; } }
+      w.addEventListener("pointerdown", down);
+      w.addEventListener("pointerup", up);
+      w.addEventListener("pointerleave", up);
+      w.addEventListener("pointercancel", up);
+    })();
   </script>
 </body>
 </html>
