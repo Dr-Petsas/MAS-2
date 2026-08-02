@@ -913,7 +913,6 @@
     current = 0; chapters[0].classList.add("on");
     dots.forEach(function (d, k) { d.classList.toggle("on", k === 0); });
     clara.classList.remove("hide");
-    ask.classList.add("show");   // Gesprächs-Knopf ab jetzt sichtbar
     startMusic();   // Musik läuft ab jetzt automatisch leise mit (Ton-Freigabe durch den Start-Tipp)
     warmAll();
     narrate(0);
@@ -929,7 +928,7 @@
   // Hintergrundmusik: der von Dr. Petsas gelieferte Track "Neon Pulse" als leise
   // Dauerschleife (leiser als Claras Stimme, damit die Ansage klar bleibt).
   var bgAudio = null, musicOn = false, musicFadeTimer = null;
-  var MUSIC_VOL = 0.06;
+  var MUSIC_VOL = 0.03;
 
   function startMusic() {
     try {
@@ -959,7 +958,6 @@
   startOverlay.style.display = "none";
   chapters[0].classList.add("on");
   clara.classList.remove("hide");
-  ask.classList.add("show");
   if (clientId) warmAll();
 
   var GESTURES = ["pointerdown", "touchstart", "click", "keydown", "scroll", "wheel"];
