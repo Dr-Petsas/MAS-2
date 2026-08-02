@@ -73,6 +73,8 @@
             font-size: 17px; padding: 8px; opacity: .65; }
     .tourlink { position: absolute; left: -6px; top: -2px; color: var(--ink-soft); text-decoration: none;
             font-size: 17px; padding: 8px; opacity: .65; }
+    /* Rechts als klarer Text-Knopf statt Icon (auf Wunsch von Dr. Petsas). */
+    .gear.tourbtn { font-size: 12px; font-weight: 800; letter-spacing: .08em; opacity: .85; color: var(--turq); }
 
     /* ── Audio / Chat Umschalter (dezent oben, wie cp-mode im Hero) ─────── */
     .mode-bar {
@@ -387,7 +389,7 @@
     <span class="word" id="brandWord">pickadoc</span>
     <!-- Rechts: klarer Tour-Knopf (früher das nutzlose Einstellungs-Zahnrad).
          Die selten nötige Geräte-Kopplung bleibt per langem Tippen aufs Logo erreichbar. -->
-    <a class="gear" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">&#127911;</a>
+    <a class="gear tourbtn" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">TOUR</a>
   </header>
 
   <div class="mode-bar" data-clara-mode-bar>
