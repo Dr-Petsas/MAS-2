@@ -766,7 +766,8 @@
     clara.classList.remove("hide");
     startMusic();   // Musik läuft ab jetzt automatisch leise mit
     warmAll();
-    narrate(0);
+    // Claras erste Ansage NICHT sofort: sie startet ~1s nach dem Musikstart
+    // (siehe onMusicPlaying) — verhindert das Knacken/Ueberlappen am Anfang.
   }
   startBtn.addEventListener("click", doStart);
   startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
@@ -795,14 +796,39 @@
 
   function startMusic() {
     try {
-      if (!bgAudio) { bgAudio = new Audio("/m/tour-music-soft.mp3"); bgAudio.loop = true; bgAudio.preload = "auto"; bgAudio.setAttribute("playsinline", ""); }
+      if (!bgAudio) {
+        bgAudio = new Audio("/m/tour-music-soft.mp3"); bgAudio.loop = true; bgAudio.preload = "auto"; bgAudio.setAttribute("playsinline", "");
+        // Sobald die Musik WIRKLICH spielt, startet Claras erste Ansage ~1s
+        // spaeter (kein Knacken/Ueberlappen am Anfang) — gilt fuer Desktop
+        // (Autostart) UND iPhone (Start beim ersten Tipp).
+        bgAudio.addEventListener("playing", onMusicPlaying);
+      }
       if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
-      bgAudio.volume = 0.0;   // sanftes Einblenden (Desktop); iOS ignoriert dies, spielt die leise Datei direkt
+      bgAudio.volume = 0.0;   // langsames Einfaedeln (Desktop); iOS ignoriert dies, spielt die leise Datei direkt
       musicOn = true; btnMusic.classList.add("on");
       playMusicWithRetry();
-      var k = 0, steps = 18;
-      musicFadeTimer = setInterval(function () { k++; try { bgAudio.volume = Math.min(MUSIC_VOL, MUSIC_VOL * k / steps); } catch (e) {} if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; } }, 70);
+      // Sanftes Einfaedeln ueber ~2,5s mit weichem Ease-in (frac^2), damit es am
+      // Anfang nicht knackt/ploppt, sondern die Musik leise hereinschwebt.
+      var k = 0, steps = 50;
+      musicFadeTimer = setInterval(function () {
+        k++;
+        var frac = k / steps;
+        try { bgAudio.volume = Math.min(MUSIC_VOL, MUSIC_VOL * frac * frac); } catch (e) {}
+        if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
+      }, 50);
     } catch (e) {}
+  }
+
+  // Erste Ansage genau EINMAL ~1s nach dem echten Musikstart auslösen.
+  var firstVoiceArmed = false;
+  function onMusicPlaying() {
+    if (firstVoiceArmed) return;
+    firstVoiceArmed = true;
+    var baseSeq = seq;
+    setTimeout(function () {
+      if (seq !== baseSeq) return;                      // Nutzer hat weitergescrollt
+      if (voiceOn && unlocked && current >= 0 && !chatOpen) narrate(current);
+    }, 1000);
   }
 
   // Wenn die Seite (nach App-Wechsel/Standby) wieder sichtbar wird, Musik weiter.
@@ -884,7 +910,12 @@
   function kickAudio() {
     try { if (musicOn && bgAudio && bgAudio.paused) { var p = bgAudio.play(); if (p && p.catch) p.catch(function () {}); } } catch (e) {}
     unlockVoice();   // Stimme im selben Tipp freischalten (synchron in der Geste)
-    try { if (current >= 0 && audioEl.paused) narrate(current); } catch (e) {}
+    // War die erste Ansage schon einmal ausgeloest, darf ein Tipp sie sofort
+    // fortsetzen; die ALLERERSTE Ansage bleibt aber die ~1s-verzoegerte
+    // (ueber onMusicPlaying), damit der Start nicht knackt.
+    var wasArmed = firstVoiceArmed;
+    try { if (musicOn && bgAudio && !bgAudio.paused) onMusicPlaying(); } catch (e) {}
+    try { if (wasArmed && current >= 0 && audioEl.paused) narrate(current); } catch (e) {}
   }
   GESTURES.forEach(function (ev) { window.addEventListener(ev, kickAudio, { capture: true, passive: true }); });
 })();
