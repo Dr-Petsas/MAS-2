@@ -84,9 +84,15 @@
     }
     .mode-bar button {
       border: 0; background: transparent; color: var(--ink-soft); font-size: 12px;
-      font-weight: 700; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+      font-weight: 700; padding: 6px 12px; border-radius: 999px; cursor: pointer;
     }
     .mode-bar button.active { background: rgba(46,230,200,.18); color: var(--turq); }
+    .mode-bar .badge {
+      display: inline-grid; place-items: center; min-width: 15px; height: 15px; margin-left: 5px;
+      padding: 0 4px; border-radius: 999px; background: var(--pink); color: #fff;
+      font-size: 9px; font-weight: 900; vertical-align: 1px;
+    }
+    .mode-bar .badge:empty { display: none; }
 
     /* Strikt entweder Audio ODER Chat – kein gleichzeitiges Layout */
     body.clara-mode-audio [data-clara-chat-pane] { display: none !important; }
@@ -395,6 +401,7 @@
   <div class="mode-bar" data-clara-mode-bar>
     <button type="button" class="active" data-clara-mode-audio aria-pressed="true">🎙 Audio</button>
     <button type="button" data-clara-mode-chat aria-pressed="false">💬 Chat</button>
+    <button type="button" data-clara-mode-cards aria-pressed="false">🗂 Infocards<b class="badge" data-clara-card-badge></b></button>
   </div>
 
   <div data-clara-audio-pane>
@@ -445,10 +452,6 @@
         </div>
 
       </div>
-    </div>
-
-    <div class="flip-labels" data-clara-flip-labels aria-hidden="true">
-      <span data-clara-lbl-cards>🗂 Übersicht<b class="badge" data-clara-card-badge></b></span>
     </div>
 
     <div class="bottom" data-clara-bottom-bar>
@@ -542,6 +545,7 @@
         connect({ textOnly: chatUi.getMode() === "chat" });
       },
       onModeChange(mode) {
+        refreshModeButtons();
         syncMicForMode(mode);
         if (connected && room?.localParticipant) {
           const wantText = mode === "chat";
@@ -580,8 +584,6 @@
       cardsScroll: document.querySelector("[data-clara-cards]"),
       cardsEmpty: document.querySelector("[data-clara-cards-empty]"),
       cardBadge: document.querySelector("[data-clara-card-badge]"),
-      lblVoice: document.querySelector("[data-clara-lbl-voice]"),
-      lblCards: document.querySelector("[data-clara-lbl-cards]"),
       cardsStateLabel: document.getElementById("cardsStateLabel"),
       agents: document.getElementById("agents"),
     };
@@ -596,26 +598,50 @@
       els.chatEnableBtn?.classList.toggle("show", !!on);
     }
 
-    // ── Flip: Sprache <-> Karten (Klick auf Label/Fläche oder Swipe) ─────────
+    // ── Dreier-Umschalter oben: Audio (Sprach-Orb) · Chat (Text) · Infocards ──
+    // Chat ist ein echter clara-chat.js-Modus; Audio<->Infocards ist der Flip
+    // der Audio-Seite. Der aktive Knopf ergibt sich aus Modus + Flip-Zustand,
+    // egal ob per Knopf, Klick auf die Fläche oder Wisch umgeblättert wurde.
     let flipped = false;
     let unseenCards = 0;
+    var uiReady = false; // var: schon beim Mount-Aufruf von onModeChange lesbar (kein TDZ)
+
+    const btnModeAudio = document.querySelector("[data-clara-mode-audio]");
+    const btnModeChat = document.querySelector("[data-clara-mode-chat]");
+    const btnModeCards = document.querySelector("[data-clara-mode-cards]");
+
+    function refreshModeButtons() {
+      if (!uiReady) return;
+      const chatOn = chatUi.getMode() === "chat";
+      const cardsOn = !chatOn && flipped;
+      const audioOn = !chatOn && !flipped;
+      btnModeAudio?.classList.toggle("active", audioOn);
+      btnModeChat?.classList.toggle("active", chatOn);
+      btnModeCards?.classList.toggle("active", cardsOn);
+      btnModeAudio?.setAttribute("aria-pressed", audioOn ? "true" : "false");
+      btnModeChat?.setAttribute("aria-pressed", chatOn ? "true" : "false");
+      btnModeCards?.setAttribute("aria-pressed", cardsOn ? "true" : "false");
+    }
 
     function setFlipped(on) {
       flipped = !!on;
       els.flip?.classList.toggle("is-flipped", flipped);
-      els.lblVoice?.classList.toggle("on", !flipped);
-      els.lblCards?.classList.toggle("on", flipped);
       if (flipped) {
         unseenCards = 0;
         updateBadge();
       }
+      refreshModeButtons();
     }
     function updateBadge() {
       if (els.cardBadge) els.cardBadge.textContent = unseenCards > 0 ? String(unseenCards) : "";
     }
 
-    els.lblVoice?.addEventListener("click", () => setFlipped(false));
-    els.lblCards?.addEventListener("click", () => setFlipped(true));
+    // Infocards = Audio-Seite umgeblättert; Audio = zurück auf den Orb.
+    btnModeCards?.addEventListener("click", () => { chatUi.setMode("audio"); setFlipped(true); });
+    btnModeAudio?.addEventListener("click", () => setFlipped(false));
+
+    uiReady = true;
+    refreshModeButtons();
 
     // Klick auf freie Fläche flippt (Orb, Buttons, Links und die Karten
     // selbst bleiben bedienbar — die Karte anzutippen blättert NICHT um).
