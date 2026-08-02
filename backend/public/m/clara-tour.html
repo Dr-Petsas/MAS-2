@@ -928,17 +928,54 @@
   // Hintergrundmusik: der von Dr. Petsas gelieferte Track "Neon Pulse" als leise
   // Dauerschleife (leiser als Claras Stimme, damit die Ansage klar bleibt).
   var bgAudio = null, musicOn = false, musicFadeTimer = null;
-  var MUSIC_VOL = 0.03;
+  // WICHTIG: iOS/iPadOS ignoriert die .volume-Eigenschaft von Audio-Elementen —
+  // die Musik liefe sonst trotz kleiner Zahl in voller Lautstaerke. Deshalb regeln
+  // wir die Lautstaerke ueber einen Web-Audio-GainNode, den iOS respektiert.
+  var MUSIC_VOL = 0.06;
+  var musicCtx = null, musicGain = null, musicSrc = null;
+
+  function ensureMusicGraph() {
+    if (musicGain) return true;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      musicCtx = new AC();
+      musicSrc = musicCtx.createMediaElementSource(bgAudio);
+      musicGain = musicCtx.createGain();
+      musicGain.gain.value = 0;
+      musicSrc.connect(musicGain).connect(musicCtx.destination);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function rampMusic(target, ms) {
+    if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
+    var haveGain = !!musicGain;
+    var start = haveGain ? musicGain.gain.value : (bgAudio ? bgAudio.volume : 0);
+    var k = 0, steps = Math.max(1, Math.round(ms / 60));
+    musicFadeTimer = setInterval(function () {
+      k++;
+      var v = start + (target - start) * (k / steps);
+      try { if (haveGain) musicGain.gain.value = Math.max(0, v); else if (bgAudio) bgAudio.volume = Math.max(0, Math.min(1, v)); } catch (e) {}
+      if (k >= steps) {
+        clearInterval(musicFadeTimer); musicFadeTimer = null;
+        if (target <= 0 && bgAudio) { try { bgAudio.pause(); } catch (e) {} }
+      }
+    }, 60);
+  }
 
   function startMusic() {
     try {
       if (!bgAudio) { bgAudio = new Audio("/m/tour-music.mp3"); bgAudio.loop = true; bgAudio.preload = "auto"; }
-      if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
-      bgAudio.volume = 0.0;
+      var graphed = ensureMusicGraph();
+      // Bei aktivem GainNode laeuft das Element auf voller Element-Lautstaerke,
+      // die eigentliche Regelung macht der GainNode. Ohne Graph (alte Browser)
+      // fallen wir auf .volume zurueck.
+      bgAudio.volume = graphed ? 1.0 : 0.0;
+      try { if (musicCtx && musicCtx.state === "suspended") musicCtx.resume(); } catch (e) {}
       var p = bgAudio.play();
       if (p && p.catch) p.catch(function () {});
-      var k = 0, steps = 22;
-      musicFadeTimer = setInterval(function () { k++; try { bgAudio.volume = Math.min(MUSIC_VOL, MUSIC_VOL * k / steps); } catch (e) {} if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; } }, 80);
+      rampMusic(MUSIC_VOL, 1400);
       musicOn = true; btnMusic.classList.add("on");
     } catch (e) {}
   }
@@ -946,9 +983,7 @@
   function stopMusic() {
     musicOn = false; btnMusic.classList.remove("on");
     if (!bgAudio) return;
-    if (musicFadeTimer) { clearInterval(musicFadeTimer); musicFadeTimer = null; }
-    var start = bgAudio.volume, k = 0, steps = 14;
-    musicFadeTimer = setInterval(function () { k++; try { bgAudio.volume = Math.max(0, start * (1 - k / steps)); } catch (e) {} if (k >= steps) { clearInterval(musicFadeTimer); musicFadeTimer = null; try { bgAudio.pause(); } catch (e) {} } }, 60);
+    rampMusic(0, 500);
   }
   btnMusic.addEventListener("click", function () { if (musicOn) stopMusic(); else startMusic(); });
 
@@ -966,6 +1001,7 @@
   // echte Tipp Ton + Ansage neu. Sobald etwas spielt, entfernen wir die Helfer.
   var GESTURES = ["pointerdown", "touchstart", "click", "keydown"];
   function kickAudio() {
+    try { if (musicCtx && musicCtx.state === "suspended") musicCtx.resume(); } catch (e) {}
     try { if (musicOn && bgAudio && bgAudio.paused) { var p = bgAudio.play(); if (p && p.catch) p.catch(function () {}); } } catch (e) {}
     try { if (!answering && current >= 0 && audioEl.paused) narrate(current); } catch (e) {}
   }
