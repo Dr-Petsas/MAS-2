@@ -845,10 +845,14 @@
     askMic.title = "Tippen und die Mikrofon-Taste deiner Tastatur nutzen";
   }
 
-  // ── Sofort-an: Dauer-Zuhören über den Server-STT (läuft auch auf iPhone/iPad) ──
+  // ── Reden über den Server-STT (läuft auch auf iPhone/iPad) ──
   var cap = null;            // laufende STT-Aufnahme
   var listenOn = false;      // Mikro aktiv?
   var listenStarting = false;
+  var musicWasOn = false;    // lief Musik, als das Mikro anging? (dann danach wieder an)
+  // Bluetooth: Musik (A2DP) und Mikro (HFP) vertragen sich nicht gleichzeitig —
+  // nach dem Reden die Musik kurz verzögert wieder starten (Route muss zurück).
+  function resumeMusicIfWanted() { if (musicWasOn) { musicWasOn = false; setTimeout(function () { startMusic(); }, 600); } }
 
   function updateMicUi() {
     if (!btnTalk) return;
@@ -871,6 +875,10 @@
     if (!window.LenaSttCapture) { setHear("live", "Sprechen hier nicht verfügbar — nutze das Textfeld unten."); setTimeout(hideHear, 3500); return; }
     listenStarting = true;
     setHear("think", "Mikro wird verbunden …");
+    // Musik zuerst sauber ausblenden, DANN Mikro anfordern (Bluetooth-Route),
+    // damit die Wiedergabe nicht abreißt und laut aufs Handy springt.
+    musicWasOn = musicOn;
+    if (musicOn) { try { stopMusic(); } catch (e) {} }
     try {
       var c = new window.LenaSttCapture();
       var ok = await c.start({ micMode: "ipad", session: "tour", lang: "de-DE" }, {
@@ -878,18 +886,19 @@
         onPartial: function (t) { if (claraSpeaking || Date.now() < speakCooldownUntil) return; if (t) setHear("live", "… " + t); },
         onFinal: function (t) { onHeard(t); },
         onWarn: function () {},
-        onError: function (msg) { listenOn = false; listenStarting = false; cap = null; setHear("live", "Mikro nicht möglich — nutze das Textfeld unten."); setTimeout(hideHear, 3500); updateMicUi(); },
+        onError: function (msg) { listenOn = false; listenStarting = false; cap = null; setHear("live", "Mikro nicht möglich — nutze das Textfeld unten."); setTimeout(hideHear, 3500); updateMicUi(); resumeMusicIfWanted(); },
         onClose: function () { listenOn = false; cap = null; updateMicUi(); }
       });
       if (ok) { cap = c; listenOn = true; listenStarting = false; updateMicUi(); }
-      else { listenStarting = false; if (!listenOn) updateMicUi(); }
-    } catch (e) { listenStarting = false; listenOn = false; cap = null; updateMicUi(); }
+      else { listenStarting = false; if (!listenOn) { updateMicUi(); resumeMusicIfWanted(); } }
+    } catch (e) { listenStarting = false; listenOn = false; cap = null; updateMicUi(); resumeMusicIfWanted(); }
   }
 
   async function stopListening(byUser) {
     var c = cap; cap = null; listenOn = false; updateMicUi();
     if (byUser) { setHear("live", "Mikro aus — tippe „🎙 Reden“, um wieder zu sprechen."); setTimeout(hideHear, 2600); }
     if (c) { try { await c.stop(); } catch (e) {} }
+    resumeMusicIfWanted();
   }
 
   // Nach iOS-Standby/Tab-Wechsel Mikro wieder anwerfen.
@@ -908,7 +917,11 @@
     startMusic();   // Musik läuft ab jetzt automatisch leise mit (Ton-Freigabe durch den Start-Tipp)
     warmAll();
     narrate(0);
-    startListening();   // sofort-an: Mikro hört von selbst zu (Freigabe durch den Start-Tipp)
+    // Mikro NICHT automatisch anfordern: bei Bluetooth-Headsets schaltet die
+    // Mikro-Freigabe die Wiedergabe (A2DP) auf Telefonie (HFP) — die Musik reißt
+    // ab und startet laut am Handy. Reden startet erst auf Tipp ("🎙 Reden").
+    setHear("live", "Zum Reden oben auf „🎙 Reden“ tippen.");
+    setTimeout(function () { if (!listenOn && !listenStarting) hideHear(); }, 6000);
   }
   startBtn.addEventListener("click", doStart);
   startOverlay.addEventListener("click", function (e) { if (e.target === startOverlay) doStart(); });
@@ -955,7 +968,7 @@
     doStart();
   }
   GESTURES.forEach(function (ev) { window.addEventListener(ev, onFirstGesture, { capture: true, passive: true }); });
-  setHear("live", "Tippe oder scrolle – dann legt Clara los. Danach einfach mit ihr reden.");
+  setHear("live", "Tippe oder scrolle – dann legt Clara los. Zum Reden oben auf „🎙 Reden“ tippen.");
 })();
 </script>
 </body>
