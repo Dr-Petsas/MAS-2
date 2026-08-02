@@ -739,8 +739,15 @@
     progress.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
   }, { passive: true });
 
+  // Nur EINE Detailkarte pro Gruppe bleibt umgedreht: klickt man eine andere,
+  // klappen die restlichen Karten derselben ".cards"-Gruppe wieder zurueck.
   document.querySelectorAll(".flip").forEach(function (f) {
-    f.addEventListener("click", function () { f.classList.toggle("flipped"); });
+    f.addEventListener("click", function () {
+      var willFlip = !f.classList.contains("flipped");
+      var group = f.closest(".cards") || document;
+      group.querySelectorAll(".flip.flipped").forEach(function (o) { if (o !== f) o.classList.remove("flipped"); });
+      f.classList.toggle("flipped", willFlip);
+    });
   });
 
   btnVoice.addEventListener("click", function () {
