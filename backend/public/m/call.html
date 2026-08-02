@@ -78,9 +78,10 @@
 
     /* ── Audio / Chat Umschalter (dezent oben, wie cp-mode im Hero) ─────── */
     .mode-bar {
-      display: flex; justify-content: center; margin: 8px auto 0; gap: 4px;
+      display: flex; justify-content: center; margin: 10px auto 0; gap: 4px;
       padding: 3px; border-radius: 999px; background: rgba(255,255,255,.06);
       border: 1px solid rgba(255,255,255,.08); width: fit-content; flex: none;
+      order: 10; /* Dr. Petsas: Umschalter gehoert nach UNTEN, unter die Panes */
     }
     .mode-bar button {
       border: 0; background: transparent; color: var(--ink-soft); font-size: 12px;
