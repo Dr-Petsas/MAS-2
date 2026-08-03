@@ -336,7 +336,10 @@ async function recordInboundMail(clientId, msgId, doc) {
   const senderName = doc.from?.name || "";
   const senderAddr = doc.from?.address || "";
 
-  let subject = { name: senderName, matchStatus: "unmatched", matchMethod: null };
+  // resolveTriedAt (Dr. Petsas 03.08.2026): Zeitstempel des letzten Suchversuchs.
+  // Nicht-Patienten werden damit vom 14-Tage-Nachtrag 7 Tage lang nicht erneut
+  // teuer durchsucht (Kosten-Stopp), erst danach ein frischer Versuch.
+  let subject = { name: senderName, matchStatus: "unmatched", matchMethod: null, resolveTriedAt: Date.now() };
   let isPatient = false;
   if (senderName || senderAddr) {
     const subj = await resolvePatientSubject(clientId, { name: senderName, email: senderAddr }).catch(() => null);
@@ -344,7 +347,7 @@ async function recordInboundMail(clientId, msgId, doc) {
       subject = { patientId: subj.patientId, name: subj.name || senderName, matchStatus: "matched", matchMethod: subj.matchMethod || "email" };
       isPatient = true;
     } else if (subj) {
-      subject = { name: subj.name || senderName, matchStatus: subj.matchStatus || "unmatched", matchMethod: null };
+      subject = { name: subj.name || senderName, matchStatus: subj.matchStatus || "unmatched", matchMethod: null, resolveTriedAt: Date.now() };
     }
   }
   // Prefer the resolved patient name over a raw address — the summary is read
@@ -439,11 +442,23 @@ export async function backfillInboundMailBrain(clientId, { sinceDays = 14, max =
     // cross-agent context (Clara's day list) can find it by patientId.
     const evData = ev.data();
     if (evData?.subject?.patientId) continue;
+    // Kosten-Stopp (Dr. Petsas 03.08.2026): Absender, die schon einmal erfolglos
+    // gesucht wurden (kein Patient -> Labor/Kasse/Newsletter), NICHT bei jedem
+    // Sync-Takt (alle 120 s) erneut ueber die teure Patientensuche (5000er-Klang-
+    // Scan) jagen. Fehlversuch wird markiert und 7 Tage uebersprungen; danach ein
+    // neuer Versuch, falls die Adresse spaeter doch einem Patienten gehoert.
+    const triedAt = Number(evData?.subject?.resolveTriedAt || 0);
+    if (evData?.subject?.matchStatus === "unmatched" && (Date.now() - triedAt) < 7 * 86400000) continue;
     const senderAddr = m.from?.address || "";
     const senderName = m.from?.name || "";
     if (!senderAddr && !senderName) continue;
     const subj = await resolvePatientSubject(clientId, { name: senderName, email: senderAddr }).catch(() => null);
-    if (!subj?.patientId) continue;
+    if (!subj?.patientId) {
+      // Fehlversuch merken (kleiner Feld-Update), damit der naechste Takt diesen
+      // Absender nicht wieder teuer durchsucht (siehe 7-Tage-Skip oben).
+      await ev.ref.update({ "subject.matchStatus": "unmatched", "subject.resolveTriedAt": Date.now() }).catch(() => null);
+      continue;
+    }
     const patched = {
       patientId: subj.patientId,
       name: subj.name || senderName || senderAddr,
