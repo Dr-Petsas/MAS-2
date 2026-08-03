@@ -24,12 +24,18 @@ param(
   [string]$MasBase = "http://127.0.0.1:4000",
   [string]$Workspace = "F:\",
   [int]$IntervalSeconds = 6,
-  # Chef spricht IMMER mit Opus 4.8 (Wunsch 29.07.2026). Fest verdrahtet; der
-  # Urlaubs-Waechter (watchdog.ps1) prueft das und startet neu, falls abweichend.
-  [string]$Model = "claude-opus-4-8-thinking-high",
+  # Chef spricht mit Opus (Wunsch 29.07.2026). Der Urlaubs-Waechter (watchdog.ps1)
+  # prueft das Modell und startet neu, falls abweichend.
+  # 03.08.2026 (Dr. Petsas): VORUEBERGEHEND Opus 5 zum Durchtesten. Morgen zurueck
+  # auf "claude-opus-4-8-thinking-high" (auch $ExpectedModel in watchdog.ps1).
+  [string]$Model = "claude-opus-5-thinking-high",
   # Harte Obergrenze pro Agent-Lauf. Bricht ein Lauf hier ab, wird die Nachricht
   # NICHT als Waise verloren, sondern als "neu" zurueckgereiht (siehe Schleife).
-  [int]$AgentTimeoutMin = 25
+  [int]$AgentTimeoutMin = 25,
+  # Wie alt darf eine haengengebliebene ("verwaiste") Nachricht hoechstens sein,
+  # um beim Start noch einmal ausgefuehrt zu werden? Aeltere werden nur
+  # abgeschlossen - siehe Requeue-Orphans (Vorfall 03.08.2026: MAS-Stopp).
+  [int]$OrphanMaxAgeMin = 30
 )
 
 $ErrorActionPreference = "Continue"
@@ -45,7 +51,11 @@ $ModelFile = Join-Path $RunDir "remote_chat_watch.model"
 # Opus-Guthaben-Sperre: liegt diese Datei vor, ist Opus mangels Guthaben aus und
 # der Draht laeuft auf dem Ersatzmodell. Der Urlaubs-Waechter liest sie ebenfalls.
 $BillingFile = Join-Path $RunDir "opus_billing_block.txt"
-$OpusModel = $Model                      # Wunschmodell (Opus 4.8)
+$OpusModel = $Model                      # Wunschmodell (aktuell Opus 5)
+# Sprechender Name fuers Handy: der Chef soll lesen, WELCHES Opus gerade laeuft.
+# Vorher stand in allen Hinweistexten fest "Opus 4.8" - nach dem Umschalten auf
+# Opus 5 war das schlicht falsch und stiftete Verwirrung (03.08.2026).
+$OpusName = if ($OpusModel -match "opus-?5") { "Opus 5" } elseif ($OpusModel -match "opus-?4[-.]?8") { "Opus 4.8" } else { $OpusModel }
 $FallbackModel = "auto"                   # Ersatz: Konto-Standard, haelt den Draht offen
 $script:ActiveModel = $OpusModel
 if (Test-Path $BillingFile) { $script:ActiveModel = $FallbackModel }
@@ -76,7 +86,7 @@ function Test-BillingError([string]$t) {
   if (-not $t) { return $false }
   return ($t -match "(?i)(insufficient|not enough|no .{0,12}credit|out of .{0,12}credit|credits?\b|quota|usage limit|spend limit|payment required|payment method|402|upgrade your plan|billing|balance|guthaben|kontingent|zahlungs|limit reached|exceeded your|hard limit)")
 }
-# Nutzer will nach dem Aufladen zurueck auf Opus 4.8?
+# Nutzer will zurueck auf das Wunsch-Opus (siehe $OpusName)?
 function Test-OpusRestoreCmd([string]$t) {
   if (-not $t) { return $false }
   return (($t -match "(?i)opus") -and ($t -match "(?i)(wieder|zur(ü|ue)ck|aktivier|umstell|einstell|\ban\b|4\.?8|aufgeladen|aufgeld|geladen)"))
@@ -183,8 +193,15 @@ function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride =
     $raw = (Get-Content $outFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)
     $err = (Get-Content $errFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)
     Remove-Item $inFile, $outFile, $errFile -ErrorAction SilentlyContinue
-    $combined = "$raw`n$err"
-    $billing = Test-BillingError $combined
+    # FEHLALARM-SCHUTZ (Dr. Petsas 03.08.2026): Der Konto-Test darf NUR den
+    # Fehlerkanal pruefen - NIEMALS die normale Antwort des Agenten. Vorher lief
+    # der Test ueber stdout, also ueber den Antworttext selbst: Sobald in einer
+    # Antwort ueber ein leeres Konto geschrieben wurde, hielt der Waechter das fuer
+    # eine echte Fehlermeldung, sperrte Opus und fiel aufs Ersatzmodell zurueck
+    # (Vorfall 22:38/22:41 Uhr, hat die frisch gestellte Opus-5-Leitung gekippt).
+    # Eine echte Dienst-Meldung steht auf stderr oder in einer Fehler-Antwort
+    # (is_error) - beides wird weiterhin geprueft (siehe unten).
+    $billing = Test-BillingError $err
     if (-not $raw) { return @{ ok = $false; text = ("(keine Ausgabe vom Agenten) " + $err); session = $sessionId; billing = $billing } }
     # letzte nicht-leere Zeile ist das JSON-Ergebnis
     $jsonLine = ($raw -split "`n" | Where-Object { $_.Trim() -like "{*}" } | Select-Object -Last 1)
@@ -210,10 +227,23 @@ function Requeue-Orphans() {
   try {
     $st = Api-Get "/remote/state?limit=200"
     $orphans = @($st.messages | Where-Object { $_.role -eq "user" -and $_.status -eq "in_arbeit" })
-    if ($orphans.Count -gt 0) {
-      $ids = @($orphans | ForEach-Object { [string]$_.id })
+    # ALTLAST-SCHUTZ (Dr. Petsas 03.08.2026): Nur FRISCHE Waisen neu einreihen.
+    # Ein alter, laengst erledigter Befehl darf nicht Stunden spaeter erneut
+    # ausgefuehrt werden - heute Abend wurde so "Beende den MAS-Server" aus einem
+    # abgebrochenen Lauf wiedervorgelegt und hat den MAS-Server (den Chat-Draht
+    # des Chefs) tatsaechlich gestoppt. Aeltere Waisen werden nur abgeschlossen.
+    $now = [double](([DateTimeOffset](Get-Date)).ToUnixTimeMilliseconds())
+    $fresh = @($orphans | Where-Object { ($now - [double]($_.createdAt)) -le ($OrphanMaxAgeMin * 60000) })
+    $stale = @($orphans | Where-Object { ($now - [double]($_.createdAt)) -gt ($OrphanMaxAgeMin * 60000) })
+    if ($fresh.Count -gt 0) {
+      $ids = @($fresh | ForEach-Object { [string]$_.id })
       Api-Post "/remote/ack" @{ ids = $ids; status = "neu" } | Out-Null
       Log ("Verwaiste Nachrichten wieder eingereiht (in_arbeit -> neu): " + ($ids -join ", "))
+    }
+    if ($stale.Count -gt 0) {
+      $sids = @($stale | ForEach-Object { [string]$_.id })
+      Api-Post "/remote/ack" @{ ids = $sids; status = "fertig" } | Out-Null
+      Log ("Alte Waisen (aelter als ${OrphanMaxAgeMin} min) NICHT erneut ausgefuehrt, nur abgeschlossen: " + ($sids -join ", "))
     }
   } catch { Log "Waisen-Pruefung fehlgeschlagen: $($_.Exception.Message)" }
 }
@@ -239,17 +269,17 @@ while ($true) {
         try { Api-Post "/remote/ack" @{ ids = @($id); status = "in_arbeit" } | Out-Null } catch {}
         try { Api-Post "/remote/board" @{ text = ("In Arbeit seit " + (Get-Date).ToString("HH:mm") + ":`n" + $text.Substring(0, [Math]::Min(200, $text.Length))) } | Out-Null } catch {}
 
-        # --- Steuerbefehl: nach dem Aufladen zurueck auf Opus 4.8 -----------
+        # --- Steuerbefehl: zurueck auf das Wunsch-Opus ----------------------
         if ((Test-Path $BillingFile) -and (Test-OpusRestoreCmd $text)) {
-          Log "Opus-Wiederherstellung angefragt - teste Opus 4.8"
+          Log "Opus-Wiederherstellung angefragt - teste $OpusName ($OpusModel)"
           $test = Run-Agent "Antworte mit genau dem Wort: OPUSBEREIT" "" $OpusModel
           if ($test.ok -and -not $test.billing) {
             $script:ActiveModel = $OpusModel
             try { Set-Content -Path $ModelFile -Value $OpusModel -Encoding ASCII -NoNewline } catch {}
             Remove-Item $BillingFile -ErrorAction SilentlyContinue
-            $rep = "Erledigt - ich spreche wieder mit Claude Opus 4.8. Danke fuers Aufladen."
+            $rep = "Erledigt - ich spreche wieder mit Claude $OpusName."
           } elseif ($test.billing) {
-            $rep = "Ich kann Opus 4.8 noch nicht aktivieren - das Guthaben reicht offenbar noch nicht. Bitte (weiter) aufladen und danach erneut 'opus wieder an' schreiben. Ich bleibe solange als Ersatzmodell erreichbar."
+            $rep = "Ich kann $OpusName noch nicht aktivieren - der Dienst meldet weiterhin ein Konto-Problem. Bitte pruefen und danach erneut 'opus wieder an' schreiben. Ich bleibe solange als Ersatzmodell erreichbar."
           } else {
             $rep = "Der Opus-Test meldete: " + [string]$test.text + " - ich bleibe vorerst auf dem Ersatzmodell."
           }
@@ -296,7 +326,7 @@ while ($true) {
           $script:ActiveModel = $FallbackModel
           try { Set-Content -Path $ModelFile -Value $FallbackModel -Encoding ASCII -NoNewline } catch {}
           try { Set-Content -Path $BillingFile -Value ("Opus-Guthaben erschoepft seit " + (Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
-          $hinweis = "WICHTIG: Dein Guthaben fuer Opus 4.8 ist gerade erschoepft. Damit du mich weiter erreichst, antworte ich vorlaeufig mit einem Ersatzmodell (Konto-Standard). Sobald du aufgeladen hast, schreib einfach 'opus wieder an' - dann stelle ich sofort auf Opus 4.8 zurueck."
+          $hinweis = "WICHTIG: Der Dienst meldet gerade ein Konto-Problem fuer $OpusName. Damit du mich weiter erreichst, antworte ich vorlaeufig mit einem Ersatzmodell (Konto-Standard). Sobald das geklaert ist, schreib einfach 'opus wieder an' - dann stelle ich sofort auf $OpusName zurueck."
           try { Api-Post "/remote/message" @{ role = "agent"; text = $hinweis } | Out-Null } catch {}
           $res = Run-Agent $prompt $res.session $FallbackModel
           if ($res.session) { Set-Session $res.session }

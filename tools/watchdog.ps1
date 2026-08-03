@@ -44,9 +44,11 @@ $LenaPy       = "F:\Lena-Voice\.venv-lena-gpu\Scripts\python.exe"
 $LenaRoot     = "F:\Lena-Voice"
 $CfConfig     = "C:\Users\Anmeldung2\.cloudflared\config.yml"
 $ChatPage     = "F:\MAS-2\backend\public\m\fernsteuerung.html"
-# Chef spricht IMMER mit Opus 4.8 (Wunsch 29.07.2026) - AUSSER das Guthaben ist
-# erschoepft (dann Ersatzmodell, bis der Chef nach dem Aufladen zurueckschaltet).
-$ExpectedModel = "claude-opus-4-8-thinking-high"
+# Chef spricht mit Opus (Wunsch 29.07.2026) - AUSSER das Guthaben ist erschoepft
+# (dann Ersatzmodell, bis der Chef nach dem Aufladen zurueckschaltet).
+# 03.08.2026 (Dr. Petsas): VORUEBERGEHEND Opus 5 zum Durchtesten; morgen zurueck
+# auf "claude-opus-4-8-thinking-high".
+$ExpectedModel = "claude-opus-5-thinking-high"
 $BillingFile  = Join-Path $RunDir "opus_billing_block.txt"
 if (-not (Test-Path $RunDir)) { New-Item -ItemType Directory -Path $RunDir -Force | Out-Null }
 
