@@ -80,21 +80,14 @@ export async function resolvePatientByEmail(clientId, email) {
       }
       if (snap.size > 1) return null; // shared family address — never guess
     }
-  } catch { /* fall through to the search index */ }
+  } catch { /* direkter Index-Read fehlgeschlagen — als unaufgeloest behandeln */ }
 
-  // 2) Legacy fallback: the search index (in case it learns e-mail one day).
-  let result;
-  try {
-    result = await searchPatient(clientId, mail);
-  } catch {
-    return null;
-  }
-  if (!result?.ok) return null;
-  const exact = (result.patients || []).filter((p) => String(p.email || "").trim().toLowerCase() === mail);
-  if (exact.length === 1) {
-    const p = exact[0];
-    return { patientId: p.id, name: fullName(p, mail), matchStatus: "matched", matchMethod: "email", confidence: "high", candidates: exact };
-  }
+  // Kosten-Stopp (Dr. Petsas 03.08.2026): KEINE Namens-/Volltextsuche mehr als
+  // E-Mail-Fallback. Die Patientensuche indiziert keine E-Mail-Adressen, lieferte
+  // fuer Fremd-Absender also 0 Treffer und loeste dabei den teuren 5000-Datensatz-
+  // Klang-Scan aus — bei JEDER Sync-Mail. Der exakte Firestore-Read oben ist die
+  // verlaessliche und billige Quelle; findet er nichts, ist der Absender eben
+  // (noch) kein Patient.
   return null;
 }
 
@@ -120,11 +113,16 @@ export async function resolvePatientSubject(clientId, nameOrOpts) {
   if (email) {
     const byEmail = await resolvePatientByEmail(clientId, email).catch(() => null);
     if (byEmail) return byEmail;
+    // Kosten-Stopp (Dr. Petsas 03.08.2026): Bei schriftlichem Kontakt (E-Mail
+    // vorhanden) NICHT ueber den Anzeigenamen weitersuchen. Anzeigenamen von
+    // Fremd-Absendern (Labor, Kasse, DHL) sind zur Patientenzuordnung unbrauchbar,
+    // und der Namens-Scan ist teuer. Kein E-Mail-Treffer -> schlicht unaufgeloest.
+    return { patientId: null, name: nm, matchStatus: "unmatched", matchMethod: null };
   }
 
   if (!nm) return { patientId: null, name: "", matchStatus: "unmatched", matchMethod: null };
 
-  // 2) Fall back to the name search.
+  // 2) Fall back to the name search (nur bei reinem Namens-Kontext, z. B. Anruf).
   let result;
   try {
     result = await searchPatient(clientId, nm);
