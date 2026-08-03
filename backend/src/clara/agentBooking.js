@@ -1,4 +1,5 @@
 import { loadBooking, ensureBerlinTz } from "./booking.js";
+import { listContextPatientIds } from "./sttPatientNames.js";
 
 // Internal-team booking flow (Clara on behalf of the practice staff).
 //
@@ -105,10 +106,17 @@ export function defaultControlMotive(booking) {
 export async function searchPatient(clientId, name) {
   let booking = {};
   try { booking = await loadBooking(clientId); } catch { booking = {}; }
+  const searchClientId = norm(booking.clientId) || clientId;
+  // Kandidaten-Schicht (additiv): Termin-Patienten der naechsten Tage als
+  // Kontext mitgeben, damit bei Namensvettern der wahrscheinlich Gemeinte oben
+  // steht. Best-effort + gecacht; faellt es aus, sucht die CF wie bisher.
+  let contextPatientIds = [];
+  try { contextPatientIds = await listContextPatientIds(searchClientId); } catch { contextPatientIds = []; }
   const { status, data } = await cfPost("masSearchPatients", {
-    clientId: norm(booking.clientId) || clientId,
+    clientId: searchClientId,
     locationId: norm(booking.locationId),
     query: norm(name),
+    contextPatientIds,
   });
   if (status === 200 && data?.status === "success") {
     return { ok: true, patients: Array.isArray(data.patients) ? data.patients : [] };

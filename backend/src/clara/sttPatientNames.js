@@ -210,6 +210,23 @@ export async function listPatientNamesForStt(clientId, opts = {}) {
   collectFromAppts(tomorrowAppts, priLast, priFirst);
   collectFromAppts(restAppts, restLast, restFirst);
 
+  // Kandidaten-Schicht (Dr. Petsas 03.08.2026): Patienten-IDs der Termine im
+  // Fenster, Heute/Morgen zuerst. Die Klara-Suche gibt diese IDs an
+  // masSearchPatients mit, damit bei Namensvettern der wahrscheinlich Gemeinte
+  // (naher Termin) oben steht. Gedeckelt, damit der Request klein bleibt.
+  const CONTEXT_ID_CAP = 300;
+  const ctxIds = [];
+  const ctxSeen = new Set();
+  const pushCtxId = (a) => {
+    const id = a && a.patientId ? String(a.patientId) : "";
+    if (!id || ctxSeen.has(id) || ctxIds.length >= CONTEXT_ID_CAP) return;
+    ctxSeen.add(id);
+    ctxIds.push(id);
+  };
+  todayAppts.forEach(pushCtxId);
+  tomorrowAppts.forEach(pushCtxId);
+  restAppts.forEach(pushCtxId);
+
   const calendarNames = orderedNames(priLast, priFirst, restLast, restFirst);
   const lastCount = new Set([...priLast, ...restLast]).size;
   const firstCount = calendarNames.length - lastCount;
@@ -249,7 +266,26 @@ export async function listPatientNamesForStt(clientId, opts = {}) {
     source: memoryNames.length ? "calendar+memory" : "calendar",
     todayCount: todayAppts.length,
     tomorrowCount: tomorrowAppts.length,
+    patientIds: ctxIds,
   };
   cache.set(cid, row);
   return { ...row, cached: false };
+}
+
+/**
+ * Kandidaten-Schicht: Patienten-IDs aus dem Terminfenster (Heute/Morgen zuerst)
+ * fuer das Kontext-Ranking der Patientensuche. Nutzt denselben (gecachten)
+ * Termin-Abruf wie die STT-Namen. Best-effort: Fehler => leere Liste
+ * (die Suche verhaelt sich dann exakt wie bisher, kein Regress).
+ * @param {string} clientId
+ * @param {{ force?: boolean }} [opts]
+ * @returns {Promise<string[]>}
+ */
+export async function listContextPatientIds(clientId, opts = {}) {
+  try {
+    const r = await listPatientNamesForStt(clientId, opts);
+    return Array.isArray(r.patientIds) ? r.patientIds : [];
+  } catch (e) {
+    return [];
+  }
 }
