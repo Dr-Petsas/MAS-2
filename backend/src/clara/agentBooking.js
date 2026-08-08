@@ -1,5 +1,6 @@
 import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { listContextPatientIds } from "./sttPatientNames.js";
+import { findInCatalog, fetchPatientsByIds } from "./patientCatalog.js";
 
 // Internal-team booking flow (Clara on behalf of the practice staff).
 //
@@ -184,6 +185,31 @@ export async function searchPatient(clientId, name) {
     // Genug gefunden? Dann keine weitere Abfrage — spart Lesevorgaenge.
     if (seen.size >= 3) break;
   }
+
+  // NAMENSKATALOG — letzte Instanz (Dr. Petsas 04.08.2026).
+  // Der Plattform-Index kennt bei Doppelnamen nur den ganzen Nachnamen am
+  // Stueck ("el hajjami"), nie den unterscheidenden Teil ("hajjami"). Findet
+  // die Plattform-Suche deshalb nichts, halten wir den gehoerten Namen gegen
+  // ALLE Namen der Praxis — je Wort und nach Klang. Die Stammdaten holen wir
+  // danach gezielt zu den gefundenen Kennungen (kein zweiter Suchlauf).
+  if (!seen.size) {
+    try {
+      const hits = await findInCatalog(searchClientId, name, { limit: 6 });
+      if (hits.length) {
+        const rows = await fetchPatientsByIds(searchClientId, hits.map((h) => h.i));
+        const order = new Map(hits.map((h, idx) => [h.i, idx]));
+        rows.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
+        for (const p of rows) {
+          const key = norm(p?.id);
+          if (key && !seen.has(key)) seen.set(key, p);
+        }
+        if (seen.size) lastError = null;
+      }
+    } catch {
+      // Katalog ist eine Zugabe — faellt er aus, bleibt es beim bisherigen Ergebnis.
+    }
+  }
+
   if (!seen.size && lastError) return { ok: false, error: lastError };
   return { ok: true, patients: [...seen.values()] };
 }
