@@ -103,6 +103,51 @@ export function defaultControlMotive(booking) {
 // Patient lookup must work even when the practice has no mas_config/booking yet
 // (that config is only needed for the booking flow). So we load it softly and
 // fall back to the MAS clientId — the lookup is read-only and harmless.
+// Namensteilchen, die einen Nachnamen NICHT unterscheidbar machen. Sie stehen
+// in der Kartei mit im Nachnamen ("El Hajjami"), taugen aber als Suchbegriff
+// nichts: eine Suche nach "El" liefert das halbe Alphabet, eine Suche nach
+// "El Hajjami" dagegen NICHTS, weil die Suche mehrteilige Begriffe nicht
+// aufloest. Wir zerlegen den gesprochenen Namen deshalb selbst.
+const NAME_PARTICLES = new Set([
+  "el", "al", "ale", "ben", "bin", "ibn", "abu", "van", "von", "der", "den",
+  "de", "di", "da", "do", "du", "le", "la", "los", "las", "dos", "das", "st",
+  "mac", "mc", "ter", "zu", "zum", "zur", "auf", "am", "im",
+]);
+
+/**
+ * Suchvarianten aus einem gesprochenen Namen (PUR, unit-testbar).
+ *
+ * Anlass (Live-Anruf Dr. Petsas 04.08.2026): "Ouafa El Hajjami" — die Suche
+ * nach dem VOLLSTAENDIG richtigen Namen lieferte null Treffer, ebenso "El
+ * Hajjami" und "Hajjami"; nur der Vorname allein fand die Patientin. Clara
+ * drehte sich daraufhin minutenlang im Kreis. Wir probieren deshalb bewusst
+ * mehrere Zuschnitte: den ganzen Namen, den Nachnamen-Kern und den Vornamen.
+ *
+ * Bewusst auf drei Varianten gedeckelt — jede Variante ist eine Datenbank-
+ * Abfrage, und die Suche laeuft bei tausenden Mandanten sehr oft.
+ */
+export function nameQueryVariants(spoken, { max = 3 } = {}) {
+  const clean = norm(spoken).replace(/[^\p{L}\p{N}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const out = [];
+  const push = (v) => {
+    const t = norm(v);
+    if (t.length < 2) return;
+    if (out.some((x) => x.toLowerCase() === t.toLowerCase())) return;
+    if (out.length < max) out.push(t);
+  };
+  push(clean);
+  const tokens = clean.split(" ").filter(Boolean);
+  const core = tokens.filter((t) => t.length >= 3 && !NAME_PARTICLES.has(t.toLowerCase()));
+  if (tokens.length > 1 && core.length) {
+    // Nachname zuerst: der letzte Kern-Bestandteil ist im Deutschen wie im
+    // Arabischen der unterscheidende Teil ("Hajjami", "Tzannis").
+    push(core[core.length - 1]);
+    if (core.length > 1) push(core[0]);
+  }
+  return out;
+}
+
 export async function searchPatient(clientId, name) {
   let booking = {};
   try { booking = await loadBooking(clientId); } catch { booking = {}; }
@@ -112,16 +157,35 @@ export async function searchPatient(clientId, name) {
   // steht. Best-effort + gecacht; faellt es aus, sucht die CF wie bisher.
   let contextPatientIds = [];
   try { contextPatientIds = await listContextPatientIds(searchClientId); } catch { contextPatientIds = []; }
-  const { status, data } = await cfPost("masSearchPatients", {
-    clientId: searchClientId,
-    locationId: norm(booking.locationId),
-    query: norm(name),
-    contextPatientIds,
-  });
-  if (status === 200 && data?.status === "success") {
-    return { ok: true, patients: Array.isArray(data.patients) ? data.patients : [] };
+  // Mehrere Zuschnitte des gesprochenen Namens probieren (siehe
+  // nameQueryVariants). Treffer werden ueber die Patienten-Kennung
+  // zusammengefuehrt, Reihenfolge der ersten erfolgreichen Variante gewinnt.
+  // Mandantenfaehig: jede Abfrage traegt die Kennung dieses Standorts, es wird
+  // NICHTS zwischen Mandanten geteilt oder zwischengespeichert.
+  const variants = nameQueryVariants(name);
+  if (!variants.length) return { ok: true, patients: [] };
+  const seen = new Map();
+  let lastError = null;
+  for (const query of variants) {
+    const { status, data } = await cfPost("masSearchPatients", {
+      clientId: searchClientId,
+      locationId: norm(booking.locationId),
+      query,
+      contextPatientIds,
+    });
+    if (status !== 200 || data?.status !== "success") {
+      lastError = data?.message || `masSearchPatients failed (${status})`;
+      continue;
+    }
+    for (const p of Array.isArray(data.patients) ? data.patients : []) {
+      const key = norm(p?.id) || `${norm(p?.firstName)} ${norm(p?.lastName)}`.toLowerCase();
+      if (key && !seen.has(key)) seen.set(key, p);
+    }
+    // Genug gefunden? Dann keine weitere Abfrage — spart Lesevorgaenge.
+    if (seen.size >= 3) break;
   }
-  return { ok: false, error: data?.message || `masSearchPatients failed (${status})` };
+  if (!seen.size && lastError) return { ok: false, error: lastError };
+  return { ok: true, patients: [...seen.values()] };
 }
 
 // Step 1 of booking: resolve the calendar + visit motive + start time from the
