@@ -162,6 +162,34 @@ export function nameQueryVariants(spoken, { max = 3 } = {}) {
  *   Fehlt der Beobachter, aendert sich NICHTS am Ablauf; Fehler im Beobachter
  *   duerfen die Suche nie stoeren.
  */
+/**
+ * Ist der beste Katalog-Treffer wirklich EINDEUTIG? (PUR, unit-testbar)
+ *
+ * GEWISSHEIT BRAUCHT ABSTAND — Befund der Hoerprobe vom 09.08.2026 an echtem
+ * Anrufton: Wird die Wortgrenze verhoert ("Hayla Elot Mani" statt "El
+ * Otmani"), erreicht eine voellig fremde Patientin durch einen Klang-Zufall
+ * 10 Punkte, die naechsten liegen bei 8. Bisher galt damit EIN Treffer als
+ * eindeutig, und Clara haette ohne Rueckfrage bei der falschen Person
+ * gehandelt. Das ist die gefaehrlichste Fehlerklasse ueberhaupt, weil ein
+ * Fehlgriff niemandem auffaellt.
+ *
+ * Ein knapper Vorsprung ist kein Wissen, sondern Rauschen. Vier Punkte
+ * Abstand entsprechen mindestens einem zusaetzlich passenden Wort — darunter
+ * wird nachgefragt statt gehandelt. Echte Namensvettern (gleicher Wert)
+ * fallen damit ebenfalls in die Rueckfrage, und das ist richtig so.
+ *
+ * @param {Array<{score?:number}>} hits nach Punkten absteigend sortiert
+ */
+export function katalogtrefferIstEindeutig(hits) {
+  const liste = Array.isArray(hits) ? hits : [];
+  const stark = liste.filter((h) => (h?.score || 0) >= 10);
+  if (stark.length !== 1) return false;
+  if (liste.length < 2) return true;
+  const bester = stark[0].score || 0;
+  const zweiter = liste.find((h) => h !== stark[0]);
+  return bester - (zweiter?.score || 0) >= 4;
+}
+
 export async function searchPatient(clientId, name, opts = {}) {
   const t0 = Date.now();
   const melde = (stufe, daten) => {
@@ -229,21 +257,27 @@ export async function searchPatient(clientId, name, opts = {}) {
   // Ab 10 Punkten passt mindestens ein Wort buchstabengetreu oder der ganze
   // Name klanglich — das ist sicher genug, um die Reihenfolge zu bestimmen.
   const strong = catalogHits.filter((h) => (h.score || 0) >= 10);
+  const eindeutig = katalogtrefferIstEindeutig(catalogHits);
   melde("katalog", {
     treffer: catalogHits.map((h) => ({
       name: `${h?.f || ""} ${h?.l || ""}`.trim(), punkte: h?.score || 0, sicher: (h?.score || 0) >= 10,
     })),
+    eindeutig,
   });
 
   try {
     if (strong.length) {
-      const rows = await fetchPatientsByIds(searchClientId, strong.map((h) => h.i));
+      // Ohne klaren Vorsprung bewusst die Verfolger mitnehmen: Clara soll dann
+      // nachfragen statt zu raten. Mit klarem Vorsprung bleibt es beim
+      // direkten Weg — die Rueckfragerei von damals kommt nicht zurueck.
+      const auswahl = eindeutig ? strong : catalogHits.slice(0, 4);
+      const rows = await fetchPatientsByIds(searchClientId, auswahl.map((h) => h.i));
       if (rows.length) {
-        const order = new Map(strong.map((h, idx) => [h.i, idx]));
+        const order = new Map(auswahl.map((h, idx) => [h.i, idx]));
         rows.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
         // EIN eindeutiger Volltreffer -> genau diese Person. Chef-Beschwerde
         // 04.08.2026: "Ich nannte den Vornamen — trotzdem fragt Clara nach."
-        if (rows.length === 1) return { ok: true, patients: rows };
+        if (rows.length === 1 && eindeutig) return { ok: true, patients: rows };
         // Mehrere gleich starke (echte Namensvettern) -> nach vorn, Rest dahinter.
         const merged = new Map(rows.map((p) => [norm(p.id), p]));
         for (const [k, v] of seen) if (!merged.has(k)) merged.set(k, v);
