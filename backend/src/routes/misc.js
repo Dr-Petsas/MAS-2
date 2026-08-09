@@ -13,6 +13,7 @@ import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
+import { leseZuege, kennzahlen, zuegeFuerAnzeige, meldeFall, listeFaelle, passendeZuege } from "../improve.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
 import { exportTenant, eraseTenant, applyRetention } from "../dsgvo.js";
@@ -305,6 +306,53 @@ router.post("/remote/message", async (req, res) => {
       role: req.body?.role, text: req.body?.text,
     });
     res.status(out.ok ? 200 : 400).json(out);
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+// --- AI IMPROVE: Pflege-/Verbesserungs-Modul der Praxis --------------------
+// Auftrag Dr. Petsas 09.08.2026: sichtbares Modul statt internes Testwerkzeug.
+// Auth laeuft wie bei allen Routen hier ueber die globale Pruefung in
+// server.js — die Seite zeigt Gespraechsinhalte und ist entsprechend geschuetzt.
+// Siehe src/improve.js (dort auch die Ehrlichkeitsregel zu Kennzahlen).
+
+router.get("/improve/overview", async (req, res) => {
+  try {
+    const tage = Math.min(90, Math.max(1, Number(req.query?.tage) || 7));
+    const zuege = await leseZuege({ tage });
+    res.json({
+      ok: true,
+      tage,
+      kennzahlen: kennzahlen(zuege),
+      zuege: zuegeFuerAnzeige(zuege, Number(req.query?.limit) || 60),
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+router.post("/improve/case", async (req, res) => {
+  try {
+    const out = await meldeFall(resolveClientId(req), {
+      text: req.body?.text, meldung_von: req.body?.von,
+    });
+    if (!out.ok) return res.status(400).json(out);
+    // Passende Gespraeche gleich mitliefern: Der Inhaber soll sofort sehen,
+    // dass seine Meldung an echten Aufnahmen haengt und nicht im Nichts landet.
+    const zuege = await leseZuege({ tage: 30 });
+    res.json({ ...out, treffer: zuegeFuerAnzeige(passendeZuege(zuege, req.body?.text), 10) });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+router.get("/improve/cases", async (req, res) => {
+  try {
+    res.json({ ok: true, faelle: await listeFaelle(resolveClientId(req), { limit: Number(req.query?.limit) || 50 }) });
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
   }

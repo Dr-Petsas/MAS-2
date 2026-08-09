@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Pickadoc AI Improve</title>
+<style>
+  /* PICKADOC AI IMPROVE (Auftrag Dr. Petsas, 09.08.2026)
+     Kein internes Testwerkzeug, sondern ein Modul fuer die Praxis: Der Inhaber
+     meldet im Klartext, was nicht funktioniert, und sieht, was das System
+     daraus macht.
+     EHRLICHKEITSREGEL: Was wir noch nicht messen, steht hier als "noch nicht
+     gemessen" — nie als schoene Zahl. Alle angezeigten Werte stammen aus dem
+     echten Gespraechsprotokoll. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(130% 95% at 50% 0%, #13203a 0%, #0a1322 55%, #060b16 100%);
+    color: #e8eefc; min-height: 100%; padding-bottom: 40px;
+  }
+  header { padding: 18px 16px 10px; }
+  h1 { font-size: 19px; font-weight: 650; letter-spacing: .2px; }
+  .sub { color: #8ea3c6; font-size: 12.5px; margin-top: 3px; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 16px; }
+  .kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+  .k {
+    background: #131d31; border: 1px solid #24314d; border-radius: 14px; padding: 12px 13px;
+  }
+  .k .lbl { color: #8ea3c6; font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; }
+  .k .val { font-size: 25px; font-weight: 650; margin-top: 5px; }
+  .k .val.offen { font-size: 14px; font-weight: 500; color: #ffcf8b; line-height: 1.35; }
+  .k .hint { color: #6f83a6; font-size: 11.5px; margin-top: 4px; }
+  h2 { font-size: 14.5px; margin: 22px 0 8px; color: #cfe0ff; }
+  .karte { background: #131d31; border: 1px solid #24314d; border-radius: 14px; padding: 14px; }
+  textarea {
+    width: 100%; min-height: 84px; background: #0d1626; color: #e8eefc; font: inherit;
+    border: 1px solid #2c3954; border-radius: 11px; padding: 11px 12px; resize: vertical;
+  }
+  button {
+    border: 0; border-radius: 11px; background: #3b6df5; color: #fff; font-weight: 600;
+    font-size: 14.5px; padding: 11px 18px; margin-top: 10px;
+  }
+  button:disabled { opacity: .5; }
+  .beispiele { color: #6f83a6; font-size: 12px; margin-top: 8px; line-height: 1.5; }
+  .zug { border-top: 1px solid #24314d; padding: 10px 0; font-size: 13.5px; }
+  .zug:first-child { border-top: 0; }
+  .zug .zeit { color: #6f83a6; font-size: 11.5px; }
+  .zug .hoert { margin-top: 3px; }
+  .zug .sagt { color: #a9bcdc; margin-top: 3px; }
+  .marken { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .m { font-size: 11px; border-radius: 7px; padding: 2px 7px; background: #1d2a45; color: #9fb6dd; }
+  .m.w { background: #24344f; color: #b9d1ff; }
+  .m.g { background: #3a3020; color: #ffcf8b; }
+  .m.t { background: #1e3a2c; color: #93e4bb; }
+  .meld { font-size: 13px; color: #93e4bb; margin-top: 10px; display: none; }
+  .fehler { font-size: 13px; color: #ff9b9b; margin-top: 10px; display: none; }
+  .fuss { color: #6f83a6; font-size: 12px; margin-top: 18px; line-height: 1.55; }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <h1>Pickadoc AI Improve</h1>
+  <div class="sub">Was Clara in Ihrer Praxis tut — und was wir gemeinsam verbessern.</div>
+</header>
+
+<div class="wrap">
+  <div class="kacheln" id="kacheln"></div>
+
+  <h2>Was funktioniert nicht?</h2>
+  <div class="karte">
+    <textarea id="text" placeholder="Einfach beschreiben, wie im Gespräch mit einer Kollegin."></textarea>
+    <div class="beispiele">
+      Zum Beispiel: „Clara versteht Frau El Hajjami immer falsch.“ ·
+      „Bei Terminverschiebungen fragt sie zu oft nach.“ ·
+      „Sie hat die Karte doppelt aufs Handy geschickt.“
+    </div>
+    <button id="senden" type="button">Melden</button>
+    <div class="meld" id="meld"></div>
+    <div class="fehler" id="fehler"></div>
+  </div>
+
+  <h2>Letzte Gespräche</h2>
+  <div class="karte" id="zuege">wird geladen …</div>
+
+  <div class="fuss">
+    Alle Zahlen stammen aus echten Gesprächen dieser Praxis. Steht dort „noch
+    nicht gemessen“, heißt das genau das — wir zeigen lieber eine Lücke als
+    eine Zahl, die niemand belegen kann.<br>
+    Einstellungen wie Namensliste, Rückfrage-Empfindlichkeit und Gesprächston
+    pflegen Sie selbst. Zeigt die Analyse dagegen einen technischen Fehler,
+    wird daraus ein Fall für die Pickadoc-Entwicklung — der geht nie ungeprüft
+    in Ihre Praxis, sondern erst nach bestandenem Regressionstest.
+  </div>
+</div>
+
+<script>
+(function () {
+  var API = window.location.origin;
+  var elK = document.getElementById("kacheln");
+  var elZ = document.getElementById("zuege");
+  var elT = document.getElementById("text");
+  var elB = document.getElementById("senden");
+  var elM = document.getElementById("meld");
+  var elF = document.getElementById("fehler");
+
+  function ms(v) { return v === null || v === undefined ? null : (v >= 1000 ? (v / 1000).toFixed(1) + " s" : Math.round(v) + " ms"); }
+
+  // Eine Kachel. Ist der Wert null, steht dort ehrlich, dass wir es noch nicht
+  // messen — statt einer erfundenen Zahl.
+  function kachel(lbl, wert, hint, offenText) {
+    var d = document.createElement("div");
+    d.className = "k";
+    var l = document.createElement("div"); l.className = "lbl"; l.textContent = lbl;
+    var v = document.createElement("div");
+    if (wert === null || wert === undefined) {
+      v.className = "val offen";
+      v.textContent = offenText || "noch nicht gemessen";
+    } else {
+      v.className = "val";
+      v.textContent = wert;
+    }
+    d.appendChild(l); d.appendChild(v);
+    if (hint) { var h = document.createElement("div"); h.className = "hint"; h.textContent = hint; d.appendChild(h); }
+    return d;
+  }
+
+  function marke(text, art) {
+    var s = document.createElement("span");
+    s.className = "m" + (art ? " " + art : "");
+    s.textContent = text;
+    return s;
+  }
+
+  function zeichneZuege(liste) {
+    elZ.textContent = "";
+    if (!liste.length) {
+      elZ.textContent = "Noch keine Gespräche aufgezeichnet.";
+      return;
+    }
+    liste.forEach(function (z) {
+      var d = document.createElement("div"); d.className = "zug";
+      var t = document.createElement("div"); t.className = "zeit";
+      t.textContent = (z.ts || "").replace("T", " ") + (z.dauer_ms ? " · " + ms(z.dauer_ms) : "");
+      var h = document.createElement("div"); h.className = "hoert"; h.textContent = z.gehoert || "—";
+      var s = document.createElement("div"); s.className = "sagt"; s.textContent = z.gesprochen || "";
+      d.appendChild(t); d.appendChild(h); if (z.gesprochen) d.appendChild(s);
+      var m = document.createElement("div"); m.className = "marken";
+      (z.werkzeuge || []).forEach(function (w) { m.appendChild(marke(w, "w")); });
+      (z.waechter || []).forEach(function (w) { m.appendChild(marke("korrigiert: " + w, "g")); });
+      if (z.audio) m.appendChild(marke("Tonaufnahme vorhanden", "t"));
+      if (z.abgebrochen) m.appendChild(marke("abgebrochen", "g"));
+      if (m.children.length) d.appendChild(m);
+      elZ.appendChild(d);
+    });
+  }
+
+  function laden() {
+    fetch(API + "/improve/overview?tage=30", { credentials: "include" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || "Fehler");
+        var k = d.kennzahlen || {};
+        elK.textContent = "";
+        elK.appendChild(kachel("Gespräche (30 Tage)", k.zuege, "aufgezeichnete Züge"));
+        elK.appendChild(kachel("Antwortzeit Mitte", ms(k.antwortzeit_median_ms), "je Zug"));
+        elK.appendChild(kachel("Antwortzeit langsam", ms(k.antwortzeit_p95_ms), "obere 5 Prozent"));
+        elK.appendChild(kachel("Patient erkannt", k.patient_erkannt, "kommt mit dem Prüfstand"));
+        elK.appendChild(kachel("Falsche Aktionen", k.falsche_aktionen, "wichtigste Zahl", "kommt mit dem Prüfstand"));
+        elK.appendChild(kachel("Namen richtig gehört", k.namensgenauigkeit, "kommt mit dem Prüfstand"));
+        elK.appendChild(kachel("Züge mit Tonaufnahme", k.anteil_mit_tonbezug === null ? null : k.anteil_mit_tonbezug + " %", "wiederholbar prüfbar"));
+        elK.appendChild(kachel("Technische Aussetzer", k.werkzeug_fehler, "Werkzeug lief nicht durch"));
+        zeichneZuege(d.zuege || []);
+      })
+      .catch(function (e) {
+        elK.textContent = "";
+        elZ.textContent = "Daten gerade nicht abrufbar: " + e.message;
+      });
+  }
+
+  elB.addEventListener("click", function () {
+    var text = elT.value.trim();
+    if (!text) return;
+    elB.disabled = true; elM.style.display = "none"; elF.style.display = "none";
+    fetch(API + "/improve/case", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      credentials: "include", body: JSON.stringify({ text: text }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) throw new Error(d.reason || d.error || "Melden fehlgeschlagen");
+      var wo = d.ebene === "einstellung"
+        ? "Das können wir in Ihrer Praxis selbst einstellen."
+        : "Das geht als technischer Fall an die Pickadoc-Entwicklung.";
+      var n = (d.treffer || []).length;
+      elM.textContent = "Aufgenommen. " + wo
+        + (n ? " " + n + " passende Gespräche gefunden — die dienen als Beleg für vorher und nachher."
+             : " In den aufgezeichneten Gesprächen taucht dazu nichts auf."
+               + " Bei Namen heißt das meist: Clara hat den Namen ganz anders"
+               + " verstanden und er steht so gar nicht im Protokoll.");
+      elM.style.display = "block";
+      elT.value = "";
+    }).catch(function (e) {
+      elF.textContent = "Konnte nicht gemeldet werden: " + e.message;
+      elF.style.display = "block";
+    }).then(function () { elB.disabled = false; });
+  });
+
+  laden();
+})();
+</script>
+</body>
+</html>
