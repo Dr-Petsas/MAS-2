@@ -14,6 +14,7 @@ import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
 import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, KATEGORIEN } from "../improve.js";
+import { zentraleListe, zentraleAnzahl, setzeStand } from "../improveZentrale.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
 import { exportTenant, eraseTenant, applyRetention } from "../dsgvo.js";
@@ -389,8 +390,13 @@ router.get("/improve/nametest", async (req, res) => {
 
 router.post("/improve/case", async (req, res) => {
   try {
+    // WER hat gemeldet? Bisher blieb das Feld leer, weil die Seite es nie
+    // mitschickte — im zentralen Eingang stand dann "unbekannt". Der Name
+    // kommt jetzt aus der Anmeldung, damit niemand ihn tippen muss und er
+    // trotzdem immer dabei ist (Auftrag Dr. Petsas 10.08.2026).
+    const von = String(req.body?.von || "").trim() || String(req.auth?.name || req.auth?.email || "").trim();
     const out = await meldeFall(resolveClientId(req), {
-      text: req.body?.text, meldung_von: req.body?.von,
+      text: req.body?.text, meldung_von: von,
       kategorie: req.body?.kategorie, schwere: req.body?.schwere, name: req.body?.name,
     });
     if (!out.ok) return res.status(400).json(out);
@@ -404,6 +410,57 @@ router.post("/improve/case", async (req, res) => {
 router.get("/improve/cases", async (req, res) => {
   try {
     res.json({ ok: true, faelle: await listeFaelle(resolveClientId(req), { limit: Number(req.query?.limit) || 50 }) });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+// --- ZENTRALER MELDEEINGANG (nur Superuser) -------------------------------
+// Auftrag Dr. Petsas 10.08.2026: alle Kunden auf einem Blatt, damit die Faelle
+// sichtbar werden, die nur per Code zu loesen sind. Diese Routen sehen ueber
+// ALLE Praxen — deshalb hier eine eigene, harte Schranke: Ein Praxis-Konto
+// darf sie nie oeffnen, auch nicht versehentlich ueber einen geteilten Link.
+function nurSuperuser(req, res) {
+  const a = req.auth || {};
+  if (a.kind === "user" && !a.superUser) {
+    res.status(403).json({ ok: false, error: "superuser_only" });
+    return false;
+  }
+  return true;
+}
+
+router.get("/improve/zentrale", async (req, res) => {
+  if (!nurSuperuser(req, res)) return;
+  try {
+    const meldungen = await zentraleListe({
+      nurCode: String(req.query?.code || "") === "1",
+      nurOffen: String(req.query?.offen || "") === "1",
+      limit: Number(req.query?.limit) || 100,
+    });
+    res.json({ ok: true, meldungen });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Zaehler fuer den Hinweis im Superuser-Konto ("3 neue Meldungen").
+router.get("/improve/zentrale/anzahl", async (req, res) => {
+  if (!nurSuperuser(req, res)) return;
+  try {
+    res.json({ ok: true, ...(await zentraleAnzahl()) });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.post("/improve/zentrale/stand", async (req, res) => {
+  if (!nurSuperuser(req, res)) return;
+  try {
+    const out = await setzeStand(req.body?.id, {
+      gelesen: req.body?.gelesen, status: req.body?.status, notiz: req.body?.notiz,
+    });
+    res.status(out.ok ? 200 : 400).json(out);
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
   }

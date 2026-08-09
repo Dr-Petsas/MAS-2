@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Meldungen aller Praxen</title>
+<meta name="theme-color" content="#0b0410" />
+<style>
+/* ==========================================================================
+   ZENTRALER MELDEEINGANG (10.08.2026, Auftrag Dr. Petsas)
+   Alle Praxen auf einem Blatt. Die Seite liegt im MAS-Backend und wird im
+   Superuser-Bereich eingebettet — dieselbe Bauart wie das Clara-Testlabor:
+   waechst der Inhalt, genuegt ein Neustart des Backends statt eines Deploys.
+   Lesbar auch auf dem Handy, denn genau dort wird sie unterwegs geoeffnet.
+   ========================================================================== */
+:root{
+  color-scheme: dark;
+  --bg-1:#1a0d26; --bg-2:#0b0410; --bg-3:#0f0616;
+  --panel:rgba(255,255,255,.045); --panel-2:rgba(255,255,255,.07);
+  --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.16);
+  --ink:#f2e9f6; --ink-soft:#b3a6bf; --ink-dim:#8a7d96;
+  --pink:#e072d1;
+  --ok:#4ade80; --warn:#fbbf24; --bad:#ff4d6d; --info:#60a5fa;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:system-ui,"Segoe UI",Roboto,sans-serif; color:var(--ink); font-size:14px;
+  background:radial-gradient(120% 90% at 50% 0%, var(--bg-1) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
+}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
+
+header{
+  position:sticky; top:0; z-index:5;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:10px 14px; border-bottom:1px solid var(--line);
+  background:rgba(10,4,16,.86); backdrop-filter:blur(8px);
+}
+h1{font-size:16px;margin:0;font-weight:800;letter-spacing:.2px}
+.spacer{flex:1 1 auto}
+.btn{
+  border:1px solid var(--line-2); background:var(--panel-2); border-radius:9px;
+  padding:7px 12px; cursor:pointer; font-weight:600; white-space:nowrap;
+}
+.btn:hover{background:rgba(255,255,255,.13)}
+.btn.an{background:rgba(224,114,209,.22); border-color:var(--pink)}
+.btn.klein{padding:5px 9px;font-size:12px}
+
+/* Zahlenband: was offen ist, muss man sehen, bevor man scrollt. */
+.zahlen{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px 0}
+.zahl{
+  flex:1 1 130px; border:1px solid var(--line); border-radius:12px;
+  background:var(--panel); padding:10px 12px;
+}
+.zahl b{display:block;font-size:24px;line-height:1.1}
+.zahl span{color:var(--ink-dim);font-size:12px}
+.zahl.rot b{color:var(--bad)} .zahl.gelb b{color:var(--warn)} .zahl.blau b{color:var(--info)}
+
+main{padding:12px 14px 40px;max-width:1100px;margin:0 auto}
+.leer{color:var(--ink-dim);padding:28px 4px;text-align:center}
+
+.karte{
+  border:1px solid var(--line); border-radius:14px; background:var(--panel);
+  padding:12px 14px; margin:10px 0;
+}
+.karte.neu{border-color:rgba(224,114,209,.55); box-shadow:0 0 0 1px rgba(224,114,209,.18) inset}
+.karte.erledigt{opacity:.55}
+.kopf{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.praxis{font-weight:800}
+.zeit{color:var(--ink-dim);font-size:12px;margin-left:auto}
+.marken{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 0}
+.marke{
+  border:1px solid var(--line-2); border-radius:999px; padding:3px 9px;
+  font-size:12px; background:rgba(0,0,0,.25);
+}
+.marke.code{border-color:var(--info);color:var(--info)}
+.marke.blocker{border-color:var(--bad);color:var(--bad);font-weight:700}
+.marke.einstellung{border-color:var(--ok);color:var(--ok)}
+.marke.mailweg{border-color:var(--warn);color:var(--warn)}
+.satz{margin:10px 0 0;line-height:1.5}
+.satz.leer-text{color:var(--ink-dim);font-style:italic}
+.fuss{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;
+  padding-top:10px;border-top:1px solid var(--line)}
+.klein-grau{color:var(--ink-dim);font-size:12px}
+.hinweis{
+  border:1px solid var(--bad); border-radius:12px; background:rgba(255,77,109,.10);
+  padding:12px 14px; margin:12px 0;
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Meldungen aller Praxen</h1>
+  <span class="klein-grau" id="stand"></span>
+  <span class="spacer"></span>
+  <button class="btn klein" id="fCode">Nur Code-Fälle</button>
+  <button class="btn klein" id="fOffen">Nur offene</button>
+  <button class="btn klein" id="neu">Aktualisieren</button>
+</header>
+
+<div class="zahlen" id="zahlen"></div>
+<main id="liste"><div class="leer">Wird geladen …</div></main>
+
+<script>
+/* Mandant und Anmeldung reisen per Adresse an (?t=) — dasselbe Muster wie im
+   Clara-Testlabor, damit die Seite eingebettet funktioniert. */
+const QS = new URLSearchParams(location.search);
+const TOKEN = QS.get("t") || "";
+const S = { nurCode: false, nurOffen: true, meldungen: [] };
+
+function kopf(json) {
+  const h = {};
+  if (json) h["Content-Type"] = "application/json";
+  if (TOKEN) h["Authorization"] = "Bearer " + TOKEN;
+  h["ngrok-skip-browser-warning"] = "1";
+  return h;
+}
+
+async function hole(pfad) {
+  const r = await fetch(pfad, { headers: kopf(false) });
+  if (r.status === 403) throw new Error("Diese Übersicht ist dem Superuser vorbehalten.");
+  if (!r.ok) throw new Error("Server meldet " + r.status);
+  return r.json();
+}
+
+function zeit(ms) {
+  if (!ms) return "";
+  const d = new Date(ms);
+  return d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function sicher(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function zeichneZahlen(z) {
+  document.getElementById("zahlen").innerHTML = `
+    <div class="zahl rot"><b>${z.blocker || 0}</b><span>blockieren den Betrieb</span></div>
+    <div class="zahl blau"><b>${z.offen_code || 0}</b><span>offen, nur per Code lösbar</span></div>
+    <div class="zahl gelb"><b>${z.ungelesen || 0}</b><span>noch nicht gelesen</span></div>
+    <div class="zahl"><b>${z.gesamt || 0}</b><span>Meldungen insgesamt</span></div>`;
+}
+
+function zeichneListe() {
+  const ziel = document.getElementById("liste");
+  if (!S.meldungen.length) {
+    ziel.innerHTML = '<div class="leer">Keine Meldungen in dieser Auswahl.</div>';
+    return;
+  }
+  ziel.innerHTML = S.meldungen.map((m) => {
+    const marken = [
+      m.code_noetig ? '<span class="marke code">Nur per Code lösbar</span>'
+                    : '<span class="marke einstellung">Einstellung in der Praxis</span>',
+      m.schwere === "blocker" ? '<span class="marke blocker">Blockiert den Betrieb</span>'
+                              : `<span class="marke">${sicher(m.schwere_text)}</span>`,
+      `<span class="marke">${sicher(m.kategorie_text)}</span>`,
+      `<span class="marke">Fehlerklasse: ${sicher(m.fehlerklasse)}</span>`,
+      m.gemeinter_name ? `<span class="marke">Gemeint: ${sicher(m.gemeinter_name)}</span>` : "",
+      m.mail_status === "fehlgeschlagen"
+        ? `<span class="marke mailweg">E-Mail kam nicht raus: ${sicher(m.mail_fehler)}</span>` : "",
+    ].filter(Boolean).join("");
+
+    const klasse = "karte" + (m.status === "erledigt" ? " erledigt" : (m.gelesen ? "" : " neu"));
+    const text = m.text
+      ? `<p class="satz">„${sicher(m.text)}“</p>`
+      : '<p class="satz leer-text">Kein Freitext — die Praxis hat nur die Art des Problems gewählt.</p>';
+
+    return `<article class="${klasse}">
+      <div class="kopf">
+        <span class="praxis">${sicher(m.praxis_name || m.praxis || "Unbekannte Praxis")}</span>
+        <span class="klein-grau">gemeldet von ${sicher(m.gemeldet_von)}</span>
+        <span class="zeit">${zeit(m.createdAt)}</span>
+      </div>
+      <div class="marken">${marken}</div>
+      ${text}
+      <div class="fuss">
+        <span class="klein-grau">Stand: ${sicher(m.status)}${m.anruf ? " · Anruf " + sicher(m.anruf) : ""}</span>
+        <span class="spacer"></span>
+        ${m.gelesen ? "" : `<button class="btn klein" data-id="${m.id}" data-tat="gelesen">Gelesen</button>`}
+        ${m.status === "in_arbeit" ? "" : `<button class="btn klein" data-id="${m.id}" data-tat="in_arbeit">In Arbeit</button>`}
+        ${m.status === "erledigt" ? "" : `<button class="btn klein" data-id="${m.id}" data-tat="erledigt">Erledigt</button>`}
+      </div>
+    </article>`;
+  }).join("");
+}
+
+async function laden() {
+  const ziel = document.getElementById("liste");
+  try {
+    const p = new URLSearchParams();
+    if (S.nurCode) p.set("code", "1");
+    if (S.nurOffen) p.set("offen", "1");
+    const [liste, zahlen] = await Promise.all([
+      hole("/improve/zentrale?" + p.toString()),
+      hole("/improve/zentrale/anzahl"),
+    ]);
+    S.meldungen = liste.meldungen || [];
+    zeichneZahlen(zahlen);
+    zeichneListe();
+    document.getElementById("stand").textContent = "Stand " + zeit(Date.now());
+  } catch (e) {
+    ziel.innerHTML = `<div class="hinweis"><b>Übersicht nicht erreichbar.</b><br>${sicher(e.message || e)}</div>`;
+  }
+}
+
+document.getElementById("liste").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-tat]");
+  if (!b) return;
+  const tat = b.dataset.tat;
+  b.disabled = true;
+  const koerper = tat === "gelesen"
+    ? { id: b.dataset.id, gelesen: true }
+    : { id: b.dataset.id, gelesen: true, status: tat };
+  try {
+    await fetch("/improve/zentrale/stand", { method: "POST", headers: kopf(true), body: JSON.stringify(koerper) });
+    await laden();
+  } catch {
+    b.disabled = false;
+  }
+});
+
+function schalter(id, feld) {
+  const el = document.getElementById(id);
+  el.addEventListener("click", () => { S[feld] = !S[feld]; el.classList.toggle("an", S[feld]); laden(); });
+  el.classList.toggle("an", S[feld]);
+}
+schalter("fCode", "nurCode");
+schalter("fOffen", "nurOffen");
+document.getElementById("neu").addEventListener("click", laden);
+laden();
+</script>
+</body>
+</html>

@@ -32,6 +32,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { masCollection } from "./tenant.js";
+import { zentralEintragen } from "./improveZentrale.js";
+import { log } from "./log.js";
 
 const COL_FAELLE = "mas_improve_faelle";
 
@@ -457,6 +459,20 @@ export async function meldeFall(clientId, { text, meldung_von = "", kategorie = 
     funde,
     createdAt: Date.now(),
   });
+
+  // Weiter an Pickadoc: Bisher blieb die Meldung still bei der Praxis liegen.
+  // Seit dem 10.08.2026 legt jede Meldung zusaetzlich eine Zeile im zentralen
+  // Eingang ab und loest eine E-Mail aus — sonst versanden genau die Faelle,
+  // die nur per Code zu loesen sind. Scheitert das, ist die Meldung der Praxis
+  // trotzdem gespeichert; der Fehler wird protokolliert, nicht verschluckt.
+  try {
+    await zentralEintragen({
+      clientId, fallId: ref.id, einordnung, schwere: stufe, text: sauber,
+      meldung_von, gemeinter_name: String(name || "").trim(), anruf: gespraech?.id || "",
+    });
+  } catch (e) {
+    log.warn?.("improve.zentral_eintrag_fehlgeschlagen", { fehler: String(e?.message || e) });
+  }
 
   return {
     ok: true, id: ref.id, ...einordnung,

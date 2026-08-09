@@ -3,20 +3,34 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-// Test runner for `npm test`. Discovers every scripts/test-*.mjs, runs each in a
-// child process, and aggregates pass/fail by exit code. Each test isolates its
-// own zzz-mas2-* tenant and cleans up after itself. Network-dependent tests
+// Test runner for `npm test`. Discovers every test file, runs each in a child
+// process, and aggregates pass/fail by exit code. Each test isolates its own
+// zzz-mas2-* tenant and cleans up after itself. Network-dependent tests
 // (LLM/IMAP) degrade to offline fallbacks, so they pass without those services.
+//
+// ZWEI Ordner, seit 10.08.2026: Neben `scripts/` wird auch `tests/` gelesen.
+// Dort lagen acht Testdateien, die nie jemand ausgefuehrt hat, weil der Lauf
+// nur in `scripts/` nachgesehen hat — darunter die Pruefungen zur Patienten-
+// suche und zum Meldeweg. Ein Test, der im Gate nicht mitlaeuft, schuetzt vor
+// gar nichts.
 //
 // Requires Firestore credentials (GOOGLE_APPLICATION_CREDENTIALS) — most tests
 // touch an isolated test tenant. Set MAIL_DRY_RUN=1 to keep SMTP offline.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(__dirname, "..");
 const PER_TEST_TIMEOUT_MS = Number(process.env.TEST_TIMEOUT_MS || 180000);
 
-const files = readdirSync(__dirname)
-  .filter((f) => /^test-.*\.mjs$/.test(f))
-  .sort();
+// Beide Namensformen zulassen: test-*.mjs (scripts) und *.test.mjs (tests).
+const istTest = (f) => /^test-.*\.mjs$/.test(f) || /\.test\.mjs$/.test(f);
+const ordner = (name) => {
+  try {
+    return readdirSync(path.join(ROOT, name)).filter(istTest).sort().map((f) => path.join(name, f));
+  } catch {
+    return [];
+  }
+};
+const files = [...ordner("scripts"), ...ordner("tests")];
 
 // Allow narrowing to a subset: `node scripts/run-tests.mjs cases nadine`.
 const filter = process.argv.slice(2);
@@ -25,8 +39,8 @@ const selected = filter.length ? files.filter((f) => filter.some((p) => f.includ
 function runOne(file) {
   return new Promise((resolve) => {
     const start = Date.now();
-    const child = spawn(process.execPath, [path.join(__dirname, file)], {
-      cwd: path.join(__dirname, ".."),
+    const child = spawn(process.execPath, [path.join(ROOT, file)], {
+      cwd: ROOT,
       env: { ...process.env, MAIL_DRY_RUN: process.env.MAIL_DRY_RUN || "1", MAS_BOOKING_DRY_RUN: process.env.MAS_BOOKING_DRY_RUN || "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });

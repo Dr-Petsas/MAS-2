@@ -272,6 +272,22 @@
   var API = window.location.origin;
   var S = { kategorien: [], kategorie: null, schwere: "stoerend" };
 
+  // Anmeldung reist per Adresse an (?t=), damit die Seite auch eingebettet im
+  // Praxis-Programm laeuft — dasselbe Muster wie im Clara-Testlabor. Ohne das
+  // wuerde jeder Aufruf aus dem Programm heraus abgewiesen.
+  var QS = new URLSearchParams(window.location.search);
+  var TOKEN = QS.get("t") || "";
+  function kopf(json) {
+    var h = {};
+    if (json) h["Content-Type"] = "application/json";
+    if (TOKEN) h["Authorization"] = "Bearer " + TOKEN;
+    h["ngrok-skip-browser-warning"] = "1";
+    return h;
+  }
+  // Fuer den laufenden Datenstrom (EventSource) gibt es keine Kopfzeilen —
+  // dort muss die Anmeldung mit in die Adresse.
+  function mitToken(pfad) { return TOKEN ? pfad + (pfad.indexOf("?") < 0 ? "?" : "&") + "t=" + encodeURIComponent(TOKEN) : pfad; }
+
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) {
     var d = document.createElement(tag);
@@ -309,7 +325,7 @@
 
   // ---- Schritt 1: Kategorien --------------------------------------------
   function ladeKategorien() {
-    fetch(API + "/improve/kategorien", { credentials: "include" })
+    fetch(API + "/improve/kategorien", { credentials: "include", headers: kopf(false) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         S.kategorien = d.kategorien || [];
@@ -361,7 +377,7 @@
 
   // ---- Anhang: welches Gespraech haengt dran? ----------------------------
   function ladeAnhang() {
-    fetch(API + "/improve/last", { credentials: "include" })
+    fetch(API + "/improve/last", { credentials: "include", headers: kopf(false) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var a = $("anhang");
@@ -483,7 +499,7 @@
     erg.appendChild(h);
     h.scrollIntoView({ behavior: "smooth", block: "start" });
 
-    var quelle = new EventSource("/improve/nametest?name=" + encodeURIComponent(name));
+    var quelle = new EventSource(mitToken("/improve/nametest?name=" + encodeURIComponent(name)));
     quelle.onmessage = function (ev) {
       var d;
       try { d = JSON.parse(ev.data); } catch (e) { return; }
@@ -639,7 +655,7 @@
       s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
     }
     return fetch(API + "/improve/hoertest", {
-      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+      method: "POST", headers: kopf(true), credentials: "include",
       body: JSON.stringify({ audio: btoa(s) }),
     }).then(function (r) { return r.json(); }).catch(function () { return null; });
   }
@@ -655,7 +671,7 @@
 
     var senden = function () {
       fetch(API + "/improve/case", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: kopf(true),
         credentials: "include",
         body: JSON.stringify({
           text: text, kategorie: S.kategorie.id, schwere: S.schwere, name: name,
