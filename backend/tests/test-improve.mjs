@@ -1,14 +1,17 @@
 /**
  * Test des AI-Improve-Moduls (Auftrag Dr. Petsas, 09.08.2026).
  *
- * Der wichtigste Punkt ist die EHRLICHKEITSREGEL: Kennzahlen, die wir noch
- * nicht messen, muessen ausdruecklich als "nicht gemessen" zurueckkommen und
- * duerfen niemals als schoene Zahl erscheinen. Eine erfundene 97,8 % waere
- * schlimmer als ein Fragezeichen, weil der Chef darauf Entscheidungen baut.
+ * Zweite Fassung nach seiner Rueckmeldung: Kennzahlen und Gespraechsliste sind
+ * weg. Geprueft wird jetzt das, worauf es ihm ankommt:
+ *   - Das letzte Gespraech wird als Beleg an die Meldung gehaengt.
+ *   - Die Verarbeitungskette (gehoert -> Werkzeug -> Antwort) wird richtig
+ *     zusammengesetzt.
+ *   - Auffaelligkeiten werden nur mit Beleg benannt, nie geraten.
+ *   - Der LAUF zeigt keinen Schritt als erledigt, der nur geplant ist.
  *
  * Aufruf:  node tests/test-improve.mjs
  */
-import { perzentil, kennzahlen, zuegeFuerAnzeige, ordneEin, passendeZuege } from "../src/improve.js";
+import { ketteBauen, auffaelligkeiten, baueLauf, ordneEin } from "../src/improve.js";
 
 let ok = 0;
 let fail = 0;
@@ -17,88 +20,88 @@ function pruefe(name, bedingung, info = "") {
   else { fail++; console.log(`  FEHL ${name} ${info}`); }
 }
 
-console.log("1) Perzentile");
-pruefe("Median von 1..5", perzentil([1, 2, 3, 4, 5], 0.5) === 3);
-pruefe("p95 nimmt den oberen Rand", perzentil([1, 2, 3, 4, 100], 0.95) === 100);
-pruefe("leere Reihe -> nicht gemessen", perzentil([], 0.5) === null);
-pruefe("Unfug wird aussortiert", perzentil([1, null, "x", 3], 0.5) === 1);
-
-console.log("\n2) Kennzahlen aus echten Zugformen");
-const zuege = [
-  { ts: "2026-08-09T10:00:00", nutzer: "Was steht heute an?", gesprochen: "Drei Termine.",
-    tools: [{ name: "list_day_appointments", status: "ok" }], waechter: [], dauer_ms: 1200 },
-  { ts: "2026-08-09T10:01:00", nutzer: "Sag Frau Meier ab.", gesprochen: "Erledigt.",
-    tools: [{ name: "cancel_appointment", status: "ok" }], waechter: ["storno-guard"],
-    dauer_ms: 2400, anruf: "raum_1", audio: "seg_003_user.wav" },
-  { ts: "2026-08-09T10:02:00", nutzer: "Danke.", gesprochen: "Gern.", tools: [], waechter: [],
-    dauer_ms: 300 },
-  { ts: "2026-08-09T10:03:00", nutzer: "Und weiter?", gesprochen: "", tools: [{ name: "x", status: "500" }],
-    waechter: [], dauer_ms: 900, abgebrochen: true },
+// Ein Gespraech, wie es der Sprach-Dienst aufzeichnet.
+const gespraech = {
+  id: "clara_test_1",
+  begonnen: "2026-08-09T18:12:00",
+  zuege: [
+    { seq: 1, rolle: "assistant", text: "Was brauchen Sie?", audio: "seg_001_assistant.wav" },
+    { seq: 2, rolle: "user", text: "Schick mir die Karte von Frau Hajjami.", audio: "seg_002_user.wav" },
+    { seq: 3, rolle: "assistant", text: "Ich finde niemanden mit dem Namen.", audio: "seg_003_assistant.wav" },
+    { seq: 4, rolle: "user", text: "Schick mir die Karte von Frau Hajjami.", audio: "seg_004_user.wav" },
+    { seq: 5, rolle: "assistant", text: "Wen meinen Sie genau?", audio: "seg_005_assistant.wav" },
+  ],
+};
+const protokoll = [
+  { anruf: "clara_test_1", nutzer: "Schick mir die Karte von Frau Hajjami.",
+    tools: [{ name: "search_patient" }], waechter: [] },
+  { anruf: "clara_test_1", nutzer: "Schick mir die Karte von Frau Hajjami.",
+    tools: [{ name: "search_patient" }], waechter: [] },
 ];
-const k = kennzahlen(zuege);
-pruefe("Zuege gezaehlt", k.zuege === 4, String(k.zuege));
-// Rangmethode (wie bei p95 ueblich): bei [300, 900, 1200, 2400] ist der
-// mittlere Rang der zweite Wert. Bewusst nicht der Durchschnitt der beiden
-// mittleren — sonst stuende in der Anzeige eine Antwortzeit, die so nie
-// gemessen wurde.
-pruefe("Median nach Rangmethode", k.antwortzeit_median_ms === 900, String(k.antwortzeit_median_ms));
-pruefe("Anteil mit Werkzeug", k.anteil_mit_werkzeug === 75, String(k.anteil_mit_werkzeug));
-pruefe("Abbruch gezaehlt", k.abgebrochen === 1, String(k.abgebrochen));
-pruefe("Werkzeugfehler gezaehlt", k.werkzeug_fehler === 1, String(k.werkzeug_fehler));
-pruefe("Absicherung gezaehlt", k.top_waechter[0]?.name === "storno-guard", JSON.stringify(k.top_waechter));
-pruefe("Tonbezug ausgewiesen", k.anteil_mit_tonbezug === 25, String(k.anteil_mit_tonbezug));
 
-console.log("\n3) EHRLICHKEIT: was wir nicht messen, wird nicht erfunden");
-for (const feld of ["namensgenauigkeit", "patient_erkannt", "falsche_aktionen", "rueckfragequote"]) {
-  pruefe(`${feld} ist ausdruecklich nicht gemessen`, k[feld] === null, String(k[feld]));
-}
-const leer = kennzahlen([]);
-pruefe("ohne Daten keine erfundene Antwortzeit", leer.antwortzeit_median_ms === null);
-pruefe("ohne Daten kein erfundener Anteil", leer.anteil_mit_werkzeug === null);
-pruefe("ohne Daten null Zuege", leer.zuege === 0);
-pruefe("kaputte Eingabe stuerzt nicht ab", kennzahlen(null).zuege === 0);
+console.log("1) Verarbeitungskette");
+const kette = ketteBauen(gespraech, protokoll);
+pruefe("nur die Fragen des Nutzers werden Schritte", kette.length === 2, String(kette.length));
+pruefe("Antwort der Assistentin haengt am richtigen Schritt",
+  kette[0].geantwortet === "Ich finde niemanden mit dem Namen.", kette[0].geantwortet);
+pruefe("Werkzeug aus dem Protokoll verknuepft",
+  kette[0].werkzeuge[0] === "search_patient", JSON.stringify(kette[0].werkzeuge));
+pruefe("Tonaufnahme durchgereicht", kette[0].audio === "seg_002_user.wav", kette[0].audio);
+pruefe("Protokollbezug wird ehrlich vermerkt", kette[0].protokoll === true);
 
-console.log("\n4) Anzeige");
-const anzeige = zuegeFuerAnzeige(zuege, 2);
-pruefe("neueste zuerst", anzeige[0].gehoert === "Und weiter?", anzeige[0]?.gehoert);
-pruefe("Grenze eingehalten", anzeige.length === 2, String(anzeige.length));
-pruefe("Tonbezug durchgereicht", zuegeFuerAnzeige(zuege, 4)[2].audio === "seg_003_user.wav");
+console.log("\n2) Ohne Protokoll bleibt der Wortlaut nutzbar");
+const nurTon = ketteBauen(gespraech, []);
+pruefe("Schritte entstehen trotzdem", nurTon.length === 2);
+pruefe("fehlender Protokollbezug wird zugegeben", nurTon[0].protokoll === false);
+pruefe("keine erfundenen Werkzeuge", nurTon[0].werkzeuge.length === 0);
 
-console.log("\n5) Einordnung der Klartext-Meldung");
-pruefe("Namensproblem -> Hoeren, Praxis darf pflegen",
-  JSON.stringify(ordneEin("Clara versteht Frau El Hajjami immer falsch")) === JSON.stringify({ bereich: "hoeren", ebene: "einstellung" }));
-pruefe("zu viele Rueckfragen -> Denken, Praxis darf pflegen",
-  ordneEin("Bei Terminverschiebungen fragt sie zu oft nach").ebene === "einstellung");
-pruefe("falsche Aktion -> technisch",
-  ordneEin("Sie hat den falschen Termin abgesagt").ebene === "technisch");
-pruefe("doppelt geschickt -> technisch",
-  ordneEin("Die Karte wurde doppelt geschickt").ebene === "technisch");
-pruefe("Unklares landet technisch, nicht bei der Praxis",
-  ordneEin("Irgendwas stimmt nicht").ebene === "technisch");
+console.log("\n3) Auffaelligkeiten — nur mit Beleg");
+const funde = auffaelligkeiten(kette);
+pruefe("Schleife erkannt", funde.some((f) => f.art === "schleife"), JSON.stringify(funde));
+pruefe("jeder Fund nennt einen Bereich", funde.every((f) => !!f.bereich));
+const sauber = auffaelligkeiten([
+  { gehoert: "Was steht heute an?", werkzeuge: ["list_day_appointments"], waechter: [], protokoll: true, audio: "a.wav", geantwortet: "Drei Termine." },
+]);
+pruefe("sauberes Gespraech erzeugt keine Fehlermeldung", sauber.length === 0, JSON.stringify(sauber));
+const ohneTool = auffaelligkeiten([
+  { gehoert: "Schick ihr bitte die Karte.", werkzeuge: [], waechter: [], protokoll: true, audio: "a.wav", geantwortet: "Mache ich." },
+]);
+pruefe("Auftrag ohne Aktion wird erkannt",
+  ohneTool.some((f) => f.art === "nicht_ausgefuehrt"), JSON.stringify(ohneTool));
+pruefe("ohne Protokoll wird das offen gelegt",
+  auffaelligkeiten([{ gehoert: "Test", werkzeuge: [], waechter: [], protokoll: false, audio: "", geantwortet: "" }])
+    .some((f) => f.art === "kein_protokoll"));
 
-console.log("\n6) Passende Gespraeche zur Meldung");
-const treffer = passendeZuege(zuege, "Frau Meier absagen");
-pruefe("findet den richtigen Zug", treffer.length > 0 && treffer[0].nutzer.includes("Meier"),
-  JSON.stringify(treffer[0] || null));
-pruefe("ohne brauchbare Woerter kein Rateergebnis", passendeZuege(zuege, "ab").length === 0);
+console.log("\n4) Der Lauf");
+const lauf = baueLauf({ text: "Clara findet Frau Hajjami nicht", gespraech, schritte: kette, funde,
+  einordnung: ordneEin("Clara versteht Frau Hajjami falsch") });
+pruefe("sechs Schritte", lauf.length === 6, String(lauf.length));
+pruefe("Meldung ist erledigt", lauf[0].zustand === "fertig");
+pruefe("Gespraech ist angehaengt", lauf[1].zustand === "fertig" && /Anruf vom/.test(lauf[1].text), lauf[1].text);
+pruefe("Kette haengt am Ablaufschritt", (lauf[2].kette || []).length === 2);
+pruefe("Funde haengen am Fehlerschritt", (lauf[3].funde || []).length > 0);
+// Das Wichtigste: Der Nachweis ist NICHT gebaut und darf nicht so aussehen.
+pruefe("Nachweis wird NICHT als erledigt behauptet", lauf[5].zustand !== "fertig", lauf[5].zustand);
+pruefe("Nachweis nennt den Grund", /Wiederholungslauf/.test(lauf[5].text), lauf[5].text);
 
-// Der teuerste Fehler waere eine lange Liste unbeteiligter Gespraeche als
-// angeblicher Beleg. Allerweltswoerter duerfen deshalb nichts anziehen.
-const viele = [];
-for (let i = 0; i < 40; i++) {
-  viele.push({ nutzer: `Clara, bitte Termine am ${i}.`, gesprochen: "Alles klar.", tools: [] });
-}
-viele.push({ nutzer: "Kontaktkarte von Frau Hajjami bitte", gesprochen: "Schicke ich.", tools: [] });
-const gezielt = passendeZuege(viele, "Clara versteht Frau Hajjami immer falsch");
-pruefe("seltener Name gewinnt", gezielt[0]?.nutzer.includes("Hajjami"), gezielt[0]?.nutzer);
-pruefe("Allerweltswoerter ziehen nichts an", gezielt.length === 1, String(gezielt.length));
-pruefe("nur Allerweltswoerter -> kein Ergebnis",
-  passendeZuege(viele, "Clara bitte Termine").length === 0);
-// Der Fall aus der Praxis: Der gemeldete Name steht in KEINEM Protokoll, weil
-// die Spracherkennung ihn anders verstanden hat. Dann ist "nichts gefunden"
-// die einzig richtige Antwort — kein Ersatzbeleg aus fremden Gespraechen.
-pruefe("unbekannter Name -> ehrlich nichts, statt Ersatzbelege",
-  passendeZuege(viele, "Clara versteht Frau Unbekanntname immer falsch").length === 0);
+console.log("\n5) Lauf ohne Gespraech — ehrlich statt beschoenigt");
+const leer = baueLauf({ text: "Irgendwas klappt nicht", gespraech: null, schritte: [], funde: [],
+  einordnung: ordneEin("Irgendwas klappt nicht") });
+pruefe("Anhang fehlt sichtbar", leer[1].zustand === "fehlt", leer[1].zustand);
+pruefe("Ablauf kann nicht geprueft werden", leer[2].zustand === "fehlt", leer[2].zustand);
+pruefe("Nachweis ohne Ton nicht moeglich", leer[5].zustand === "fehlt", leer[5].zustand);
+pruefe("kein Schritt behauptet Erfolg ohne Grundlage",
+  leer.filter((s) => s.zustand === "fertig").length === 2, JSON.stringify(leer.map((s) => s.zustand)));
+
+console.log("\n6) Einordnung der Klartext-Meldung");
+pruefe("Namensproblem -> Praxis darf pflegen", ordneEin("Clara versteht Frau El Hajjami immer falsch").ebene === "einstellung");
+pruefe("zu viele Rueckfragen -> Praxis darf pflegen", ordneEin("Bei Terminverschiebungen fragt sie zu oft nach").ebene === "einstellung");
+pruefe("falsche Aktion -> technisch", ordneEin("Sie hat den falschen Termin abgesagt").ebene === "technisch");
+pruefe("Unklares landet technisch, nicht bei der Praxis", ordneEin("Irgendwas stimmt nicht").ebene === "technisch");
+
+console.log("\n7) Grenzfaelle");
+pruefe("kaputte Eingabe stuerzt nicht ab", ketteBauen(null, null).length === 0);
+pruefe("leere Kette erzeugt keine Funde", auffaelligkeiten(null).length === 0);
 
 console.log("");
 if (fail) {
