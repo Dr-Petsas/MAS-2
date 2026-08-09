@@ -90,6 +90,12 @@
     box-shadow: 0 3px 12px rgba(0,0,0,.5); z-index: 20; cursor: pointer;
   }
   #toEnd:active { transform: scale(.94); }
+  /* Buero-Klammer: Dateien vom Handy an den Agenten (Chef 09.08.2026). */
+  #clip {
+    background: #22304d; color: #cdd8ec; font-size: 19px; border: 0;
+    padding: 0 12px; min-height: 42px; border-radius: 12px; flex-shrink: 0;
+  }
+  #clip:disabled { opacity: .5; }
 </style>
 </head>
 <body>
@@ -118,6 +124,8 @@
 
 <footer id="foot" hidden>
   <div class="row">
+    <input id="datei" type="file" multiple hidden>
+    <button id="clip" type="button" title="Datei anhängen" aria-label="Datei anhängen">📎</button>
     <textarea id="input" rows="1" placeholder="Korrektur / Frage tippen …"></textarea>
     <button id="send" type="button" title="Senden">➤</button>
   </div>
@@ -138,6 +146,7 @@
     tokenSave: document.getElementById("tokenSave"), foot: document.getElementById("foot"),
     input: document.getElementById("input"), send: document.getElementById("send"),
     toEnd: document.getElementById("toEnd"),
+    clip: document.getElementById("clip"), datei: document.getElementById("datei"),
   };
 
   // Wenn der Token aus der URL kam, in localStorage sichern und die URL
@@ -267,6 +276,46 @@
     } catch (e) {
       alert("Konnte nicht senden: " + e.message + "\nText ist noch im Verlauf markiert.");
     }
+  }
+
+  // --- Dateien anhaengen (Chef 09.08.2026) --------------------------------
+  // Die Datei geht an den Rechner zu Hause und landet dort in einem
+  // Posteingang-Ordner; in den Chat kommt eine Nachricht mit dem Ablageort,
+  // damit der Agent sie sich ansehen kann. Ein bereits getippter Text wird als
+  // Bemerkung mitgeschickt ("schau dir den Fehler oben rechts an").
+  async function doUpload(dateien) {
+    const liste = Array.prototype.slice.call(dateien || []);
+    if (!liste.length || !token) return;
+    els.clip.disabled = true;
+    let bemerkung = els.input.value.trim();
+    try {
+      for (const f of liste) {
+        const daten = await new Promise((fertig, fehler) => {
+          const leser = new FileReader();
+          leser.onerror = () => fehler(new Error("Datei nicht lesbar"));
+          leser.onload = () => fertig(String(leser.result || ""));
+          leser.readAsDataURL(f);
+        });
+        const r = await fetch(API + "/remote/upload", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, name: f.name, data: daten, note: bemerkung }),
+        });
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.reason || data.error || "senden fehlgeschlagen");
+        bemerkung = "";  // Bemerkung gehoert nur an die erste Datei
+      }
+      els.input.value = ""; els.input.style.height = "auto";
+      setTimeout(poll, 400);
+    } catch (e) {
+      alert("Datei kam nicht an: " + e.message + "\nBitte nochmal versuchen.");
+    } finally {
+      els.clip.disabled = false;
+      els.datei.value = "";
+    }
+  }
+  if (els.clip && els.datei) {
+    els.clip.addEventListener("click", () => els.datei.click());
+    els.datei.addEventListener("change", () => doUpload(els.datei.files));
   }
 
   let pollTimer = null;

@@ -1,4 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { masCollection } from "./tenant.js";
 
 // Fernsteuerungs-Chat (provisorisch, Wochenende): eine kleine statische Seite
@@ -33,6 +36,61 @@ export async function addRemoteMessage(clientId, { role, text }) {
     createdAt: Date.now(),
   });
   return { ok: true, id: ref.id };
+}
+
+// --- Dateien vom Handy (Chef 09.08.2026) ----------------------------------
+// Der Chef wollte dem Agenten aus dem Urlaub Dateien schicken koennen
+// (Bildschirmfoto eines Fehlers, Sprachaufnahme, Logdatei). Die Datei landet
+// in einem Posteingang-Ordner auf DIESEM Rechner; in den Chat wandert nur eine
+// normale Nachricht mit dem Ablageort. Der Waechter holt sie wie jede andere
+// ab, der Agent liest die Datei direkt von der Platte.
+//
+// Bewusst NICHT in die Datenbank: Ein Foto als Text kostet Speicher und
+// Lesevorgaenge (Google-Kosten), und der Agent kaeme ohnehin nur ueber die
+// Platte an den Inhalt.
+const INBOX = process.env.REMOTE_CHAT_INBOX
+  || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "_posteingang");
+const MAX_BYTES = 24 * 1024 * 1024;  // passt unter das 25-MB-Limit des Servers
+
+/** Dateiname entschaerfen: nur Buchstaben, Ziffern, Punkt, Strich, Unterstrich. */
+function safeName(name) {
+  const roh = String(name || "").split(/[\\/]/).pop() || "datei";
+  const sauber = roh.normalize("NFKD").replace(/[^\w.-]+/g, "_").replace(/^_+|_+$/g, "");
+  return (sauber || "datei").slice(0, 80);
+}
+
+function stempel() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+export async function saveRemoteFile(clientId, { name, dataBase64, note } = {}) {
+  const roh = String(dataBase64 || "");
+  // Browser liefern "data:image/png;base64,AAAA..." — der Kopf muss weg.
+  const b64 = roh.includes(",") ? roh.slice(roh.indexOf(",") + 1) : roh;
+  if (!b64.trim()) return { ok: false, reason: "file_required" };
+  let buf;
+  try {
+    buf = Buffer.from(b64, "base64");
+  } catch {
+    return { ok: false, reason: "file_broken" };
+  }
+  if (!buf.length) return { ok: false, reason: "file_empty" };
+  if (buf.length > MAX_BYTES) return { ok: false, reason: "file_too_big" };
+  const datei = `${stempel()}_${safeName(name)}`;
+  const ziel = path.join(INBOX, datei);
+  await mkdir(INBOX, { recursive: true });
+  await writeFile(ziel, buf);
+  const kb = Math.max(1, Math.round(buf.length / 1024));
+  const bemerkung = String(note || "").trim();
+  const text = [
+    `[DATEI] ${datei} (${kb} KB) liegt unter: ${ziel}`,
+    bemerkung ? `Dazu vom Chef: ${bemerkung}` : "",
+    "Lies die Datei von diesem Pfad und schau sie dir an.",
+  ].filter(Boolean).join("\n");
+  const msg = await addRemoteMessage(clientId, { role: "user", text });
+  return { ok: true, path: ziel, bytes: buf.length, messageId: msg.id || "" };
 }
 
 export async function remoteState(clientId, { limit = 80 } = {}) {

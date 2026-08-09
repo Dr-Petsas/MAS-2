@@ -12,7 +12,7 @@ import { listLisaTasks, getLisaTaskDetail, getLisaTaskAudio, smsConfigured as li
 import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
-import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages } from "../remoteChat.js";
+import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
 import { exportTenant, eraseTenant, applyRetention } from "../dsgvo.js";
@@ -303,6 +303,21 @@ router.post("/remote/message", async (req, res) => {
     if (!remoteGuard(req, res)) return;
     const out = await addRemoteMessage(DEFAULT_CLIENT_ID, {
       role: req.body?.role, text: req.body?.text,
+    });
+    res.status(out.ok ? 200 : 400).json(out);
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+// Datei vom Handy (Chef 09.08.2026): landet im Posteingang-Ordner auf diesem
+// Rechner, in den Chat wandert nur eine Nachricht mit dem Ablageort.
+router.post("/remote/upload", async (req, res) => {
+  try {
+    if (!remoteGuard(req, res)) return;
+    const out = await saveRemoteFile(DEFAULT_CLIENT_ID, {
+      name: req.body?.name, dataBase64: req.body?.data, note: req.body?.note,
     });
     res.status(out.ok ? 200 : 400).json(out);
   } catch (e) {

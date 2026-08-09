@@ -79,6 +79,13 @@
     box-shadow: 0 3px 12px rgba(0,0,0,.45); z-index: 20; text-align: center;
   }
   #toEnd:active { transform: scale(.94); }
+  /* Buero-Klammer: Dateien vom Handy an den Agenten (Chef 09.08.2026). */
+  #clip {
+    background: #2c3954; color: #cdd8ec; font-size: 19px;
+    padding: 0 13px; min-height: 44px; border-radius: 12px;
+  }
+  #clip.busy { opacity: .5; }
+  #datei { display: none; }
 </style>
 </head>
 <body>
@@ -92,6 +99,8 @@
 <button id="toEnd" type="button" title="Zum Ende springen" aria-label="Zum Ende springen">↓</button>
 <div id="err"></div>
 <form id="f">
+  <input id="datei" type="file" multiple>
+  <button id="clip" type="button" title="Datei anhängen" aria-label="Datei anhängen">📎</button>
   <textarea id="t" placeholder="Auftrag an den Agenten…" rows="1"></textarea>
   <button id="send" type="submit">Senden</button>
 </form>
@@ -294,6 +303,59 @@
       showErr("Senden fehlgeschlagen: " + e.message + " — bitte nochmal versuchen.");
     }).then(function () { btn.disabled = false; ta.focus(); });
   });
+
+  // --- Dateien anhaengen (Chef 09.08.2026) --------------------------------
+  // Die Datei geht an den Rechner zu Hause und landet dort in einem
+  // Posteingang-Ordner; in den Chat kommt eine Nachricht mit dem Ablageort,
+  // damit der Agent sie sich ansehen kann. Der Text im Eingabefeld wird als
+  // Bemerkung mitgeschickt ("schau dir den Fehler oben rechts an").
+  var clip = document.getElementById("clip");
+  var datei = document.getElementById("datei");
+  if (clip && datei) {
+    clip.addEventListener("click", function () { datei.click(); });
+    datei.addEventListener("change", function () {
+      var liste = Array.prototype.slice.call(datei.files || []);
+      if (!liste.length || !TOKEN) return;
+      clip.classList.add("busy");
+      clip.disabled = true;
+      var bemerkung = ta.value.trim();
+      showErr("");
+      var go = base ? Promise.resolve() : resolveBase();
+      // Nacheinander, nicht gleichzeitig: So bleibt die Reihenfolge im Chat
+      // erhalten und ein Handy-Netz wird nicht ueberfahren.
+      liste.forEach(function (f) {
+        go = go.then(function () {
+          return new Promise(function (fertig, fehler) {
+            var leser = new FileReader();
+            leser.onerror = function () { fehler(new Error("Datei nicht lesbar")); };
+            leser.onload = function () { fertig(String(leser.result || "")); };
+            leser.readAsDataURL(f);
+          });
+        }).then(function (daten) {
+          return fetch(base + "/remote/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: TOKEN, name: f.name, data: daten, note: bemerkung }),
+          });
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.ok) throw new Error(d.reason || d.error || "Senden fehlgeschlagen");
+          bemerkung = "";  // Bemerkung gehoert nur an die erste Datei
+        });
+      });
+      go.then(function () {
+        ta.value = "";
+        ta.style.height = "auto";
+        poll();
+      }).catch(function (e) {
+        base = "";
+        showErr("Datei kam nicht an: " + e.message + " — bitte nochmal versuchen.");
+      }).then(function () {
+        clip.classList.remove("busy");
+        clip.disabled = false;
+        datei.value = "";
+      });
+    });
+  }
 
   ta.addEventListener("input", function () {
     ta.style.height = "auto";
