@@ -69,7 +69,13 @@
     .brand img { height: 22px; width: auto; display: block; opacity: .95; }
     .brand .word { font-size: 19px; font-weight: 700; letter-spacing: .3px; color: var(--ink); }
     .brand .word b { color: var(--turq); font-weight: 700; }
-    .gear { position: absolute; right: -6px; top: -2px; color: var(--ink-soft); text-decoration: none;
+    /* Die Knoepfe rechts sitzen in EINER Ecke — deshalb wird die Ecke einmal
+       gesetzt und die Knoepfe darin nebeneinander gelegt. Waeren beide
+       einzeln an die Ecke geheftet, laegen sie uebereinander (Meldung
+       Dr. Petsas 10.08.2026). Das Logo bleibt dabei mittig. */
+    .brand-actions { position: absolute; right: -6px; top: -2px; display: flex; align-items: center; gap: 0; }
+    .brand-actions .gear { padding: 8px 5px; }
+    .gear { color: var(--ink-soft); text-decoration: none;
             font-size: 17px; padding: 8px; opacity: .65; }
     .tourlink { position: absolute; left: -6px; top: -2px; color: var(--ink-soft); text-decoration: none;
             font-size: 17px; padding: 8px; opacity: .65; }
@@ -396,11 +402,13 @@
     <span class="word" id="brandWord">pickadoc</span>
     <!-- Rechts: klarer Tour-Knopf (früher das nutzlose Einstellungs-Zahnrad).
          Die selten nötige Geräte-Kopplung bleibt per langem Tippen aufs Logo erreichbar. -->
-    <a class="gear tourbtn" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">TOUR</a>
-    <!-- Problem melden, direkt nach dem misslungenen Gespraech: Genau hier
-         faellt es auf, und bisher gab es keinen Weg, es loszuwerden. Ziel wird
-         unten gesetzt (Praxis + Person vom gekoppelten Geraet). -->
-    <a class="gear tourbtn" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">&#128295;</a>
+    <div class="brand-actions">
+      <a class="gear tourbtn" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">TOUR</a>
+      <!-- Problem melden, direkt nach dem misslungenen Gespraech: Genau hier
+           faellt es auf, und bisher gab es keinen Weg, es loszuwerden. Ziel wird
+           unten gesetzt (Praxis + Person vom gekoppelten Geraet). -->
+      <a class="gear" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">&#128295;</a>
+    </div>
   </header>
 
   <div class="mode-bar" data-clara-mode-bar>
