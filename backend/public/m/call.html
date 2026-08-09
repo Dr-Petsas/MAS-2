@@ -397,6 +397,10 @@
     <!-- Rechts: klarer Tour-Knopf (früher das nutzlose Einstellungs-Zahnrad).
          Die selten nötige Geräte-Kopplung bleibt per langem Tippen aufs Logo erreichbar. -->
     <a class="gear tourbtn" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">TOUR</a>
+    <!-- Problem melden, direkt nach dem misslungenen Gespraech: Genau hier
+         faellt es auf, und bisher gab es keinen Weg, es loszuwerden. Ziel wird
+         unten gesetzt (Praxis + Person vom gekoppelten Geraet). -->
+    <a class="gear tourbtn" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">&#128295;</a>
   </header>
 
   <div class="mode-bar" data-clara-mode-bar>
@@ -514,6 +518,19 @@
     if (!clientId) {
       location.replace("/m/pair.html?manage=1");
       throw new Error("no clientId");
+    }
+
+    // "Clara verbessern": Die Seite hat keine eigene Anmeldung, deshalb reisen
+    // Praxis und Person hier mit. Ohne den Namen stuende in der Meldung nur
+    // "unbekannt" — und der Chef will wissen, WER etwas gemeldet hat.
+    {
+      const link = document.getElementById("improveLink");
+      if (link) {
+        const p = new URLSearchParams({ client: clientId, zurueck: "/m/call.html" });
+        const wer = (device?.doctorName || device?.operatorName || device?.label || "").trim();
+        if (wer) p.set("von", wer);
+        link.href = "/m/improve.html?" + p.toString();
+      }
     }
 
     // State must exist before mountClaraChat — setMode("audio") calls onModeChange

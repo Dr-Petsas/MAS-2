@@ -183,6 +183,12 @@
   .fehler { font-size: 13px; color: var(--rot); margin-top: 10px; display: none; }
   .fuss { color: var(--dunkelgrau); font-size: 12px; margin-top: 22px; }
   .versteckt { display: none; }
+  .zurueck {
+    margin-left: auto; flex-shrink: 0; text-decoration: none;
+    color: var(--grau); font-size: 14px; font-weight: 600;
+    border: 1px solid var(--rand); border-radius: 10px; padding: 7px 12px;
+  }
+  .zurueck:active { background: var(--karte); }
 </style>
 </head>
 <body>
@@ -198,6 +204,10 @@
       <h1>AI Improve</h1>
       <div class="sub">Problem melden — und sehen, wie es gelöst wird.</div>
     </div>
+    <!-- Rueckweg fuer iPad und Handy: Dort laeuft die Geraete-App im Vollbild
+         ohne Browser-Leiste — ohne diesen Knopf kaeme man nicht zurueck.
+         Eingebettet im Praxis-Programm waere er sinnlos und bleibt aus. -->
+    <a class="zurueck versteckt" id="zurueck" href="/m/ipad-app.html">‹ Zurück</a>
   </header>
 
   <div class="fortschritt">
@@ -277,18 +287,42 @@
   // wuerde jeder Aufruf aus dem Programm heraus abgewiesen.
   var QS = new URLSearchParams(window.location.search);
   var TOKEN = QS.get("t") || "";
+  // Praxis und Melder kommen von der aufrufenden Seite. Auf dem iPad und dem
+  // Handy gibt es keine Anmeldung — dort weiss nur das gekoppelte Geraet,
+  // fuer welche Praxis und fuer wen es spricht (Auftrag Dr. Petsas 10.08.2026).
+  var CLIENT = QS.get("client") || QS.get("c") || "";
+  var VON = QS.get("von") || "";
   function kopf(json) {
     var h = {};
     if (json) h["Content-Type"] = "application/json";
     if (TOKEN) h["Authorization"] = "Bearer " + TOKEN;
+    if (CLIENT) h["X-Client-Id"] = CLIENT;
     h["ngrok-skip-browser-warning"] = "1";
     return h;
   }
   // Fuer den laufenden Datenstrom (EventSource) gibt es keine Kopfzeilen —
-  // dort muss die Anmeldung mit in die Adresse.
-  function mitToken(pfad) { return TOKEN ? pfad + (pfad.indexOf("?") < 0 ? "?" : "&") + "t=" + encodeURIComponent(TOKEN) : pfad; }
+  // dort muessen Anmeldung und Praxis mit in die Adresse.
+  function mitToken(pfad) {
+    var p = pfad;
+    if (TOKEN) p += (p.indexOf("?") < 0 ? "?" : "&") + "t=" + encodeURIComponent(TOKEN);
+    if (CLIENT) p += (p.indexOf("?") < 0 ? "?" : "&") + "clientId=" + encodeURIComponent(CLIENT);
+    return p;
+  }
 
   function $(id) { return document.getElementById(id); }
+
+  // Rueckweg nur auf den Geraeten anzeigen. Im Praxis-Programm sitzt die Seite
+  // in einem Rahmen — dort fuehrt ein Zurueck ins Leere.
+  (function () {
+    var imRahmen = window.self !== window.top;
+    var z = document.getElementById("zurueck");
+    if (!z || imRahmen) return;
+    z.href = QS.get("zurueck") || "/m/ipad-app.html";
+    z.classList.remove("versteckt");
+    z.addEventListener("click", function (ev) {
+      if (window.history.length > 1) { ev.preventDefault(); window.history.back(); }
+    });
+  })();
   function el(tag, cls, text) {
     var d = document.createElement(tag);
     if (cls) d.className = cls;
@@ -674,7 +708,7 @@
         method: "POST", headers: kopf(true),
         credentials: "include",
         body: JSON.stringify({
-          text: text, kategorie: S.kategorie.id, schwere: S.schwere, name: name,
+          text: text, kategorie: S.kategorie.id, schwere: S.schwere, name: name, von: VON,
         }),
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok) throw new Error(d.reason || d.error || "Melden fehlgeschlagen");

@@ -1426,6 +1426,10 @@
     </div>
     <div class="clock" id="clock">--:--</div>
     <a class="gear" href="/m/clara-tour.html" aria-label="Clara-Tour" title="Clara-Tour – was ich alles kann">&#127911;</a>
+    <!-- Problem melden, direkt am Behandlungsplatz. Genau dort faellt auf, dass
+         Clara etwas falsch verstanden hat — und genau dort war bisher kein Weg,
+         es loszuwerden. Ziel wird unten gesetzt (Praxis + Person vom Geraet). -->
+    <a class="gear" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">&#128295;</a>
     <a class="gear" href="/m/ipad.html?manage=1" aria-label="Einstellungen">&#9881;</a>
   </header>
 
@@ -1865,6 +1869,19 @@
     const clientId = (device?.clientId || qs.get("c") || "").trim();
 
     if (!clientId) { location.replace("/m/ipad.html"); throw new Error("not paired"); }
+
+    // "Clara verbessern": Die Seite hat keine eigene Anmeldung, deshalb reisen
+    // Praxis und Person hier mit. Ohne den Namen stuende in der Meldung nur
+    // "unbekannt" — und der Chef will wissen, WER etwas gemeldet hat.
+    {
+      const link = document.getElementById("improveLink");
+      if (link) {
+        const p = new URLSearchParams({ client: clientId });
+        const wer = (device?.doctorName || device?.operatorName || device?.label || "").trim();
+        if (wer) p.set("von", wer);
+        link.href = "/m/improve.html?" + p.toString();
+      }
+    }
 
     // Querformat-Erkennung: im Split NICHT automatisch auf die Kartenseite umblättern.
     const isLandscape = () => window.matchMedia("(orientation: landscape)").matches;
