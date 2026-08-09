@@ -13,7 +13,7 @@ import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
-import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, KATEGORIEN } from "../improve.js";
+import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, KATEGORIEN } from "../improve.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
 import { exportTenant, eraseTenant, applyRetention } from "../dsgvo.js";
@@ -344,6 +344,21 @@ router.get("/improve/last", async (req, res) => {
     });
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+
+// HOERPROBE: Der gesprochene Name geht an denselben Erkennungsdienst, den
+// Clara im Anruf benutzt. Erst dessen Ergebnis geht danach in die Suche —
+// getippte Namen beweisen nichts ueber das Hoeren.
+router.post("/improve/hoertest", async (req, res) => {
+  try {
+    const roh = String(req.body?.audio || "");
+    const wav = Buffer.from(roh.replace(/^data:[^,]*,/, ""), "base64");
+    if (wav.length > 12 * 1024 * 1024) return res.status(400).json({ ok: false, fehler: "Aufnahme zu lang" });
+    res.json(await hoerprobe(wav));
+  } catch (e) {
+    res.status(400).json({ ok: false, fehler: String(e?.message || e) });
   }
 });
 

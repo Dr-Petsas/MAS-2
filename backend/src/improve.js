@@ -504,6 +504,37 @@ export function probeErlaubt(jetzt = Date.now()) {
 }
 
 /**
+ * HOERPROBE: gesprochenen Namen durch die echte Spracherkennung schicken.
+ *
+ * Einwand des Chefs (09.08.2026), und er hat recht: Einen Namen einzutippen
+ * beweist gar nichts — dass die Suche einen richtig geschriebenen Namen
+ * findet, wissen wir. Der schwere Teil ist das HOEREN. Deshalb wird hier
+ * wirklich gesprochen: Das Aufgenommene geht an denselben Erkennungsdienst,
+ * den Clara im Anruf benutzt, und erst das Ergebnis geht in die Suche.
+ *
+ * BEWUSST NICHT angefasst: die Namensliste des Dienstes. Sie gilt dort
+ * global, und der Live-Dienst arbeitet gerade damit — eine Testprobe darf
+ * Clara im laufenden Betrieb nicht verstellen.
+ */
+export async function hoerprobe(wav) {
+  const dienst = String(process.env.NEMO_STT_URL || "http://127.0.0.1:8130").replace(/\/$/, "");
+  if (!wav || !wav.length) return { ok: false, fehler: "keine Aufnahme" };
+  try {
+    const r = await fetch(`${dienst}/transcribe`, {
+      method: "POST",
+      headers: { "Content-Type": "audio/wav" },
+      body: wav,
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, fehler: String(d?.error || `Dienst antwortete ${r.status}`) };
+    return { ok: true, gehoert: String(d?.text || "").trim(), ms: Number(d?.ms) || 0 };
+  } catch (e) {
+    // Ehrlich benennen: Ohne laufenden Erkennungsdienst gibt es keinen Hoertest.
+    return { ok: false, fehler: "Erkennungsdienst nicht erreichbar" };
+  }
+}
+
+/**
  * Einen Namen durch die ECHTE Suche schicken und jede Stufe melden.
  *
  * Das ist die Demo, die sich der Chef vorstellt: Man nennt den schwierigsten

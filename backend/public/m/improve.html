@@ -158,6 +158,28 @@
   .urteil.warn { background: rgba(255, 196, 107, .1); border: 1px solid rgba(255, 196, 107, .32); color: var(--gelb); }
   .urteil.schlecht { background: rgba(255, 141, 141, .1); border: 1px solid rgba(255, 141, 141, .32); color: var(--rot); }
 
+  /* Aufnahme */
+  .aufnahmezeile { display: flex; align-items: center; gap: 13px; }
+  .micknopf {
+    width: 54px; height: 54px; border-radius: 50%; border: 0; flex-shrink: 0;
+    background: linear-gradient(135deg, #4f8cff, #6b5cff); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 18px rgba(79, 140, 255, .32); transition: transform .16s;
+  }
+  .micknopf:active { transform: scale(.94); }
+  .micknopf.laeuft {
+    background: linear-gradient(135deg, #ff6b6b, #ff9b5c);
+    animation: puls 1.3s ease-in-out infinite;
+  }
+  @keyframes puls {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, .5); }
+    50% { box-shadow: 0 0 0 13px rgba(255, 107, 107, 0); }
+  }
+  .micinfo { flex: 1; min-width: 0; }
+  #micstatus { font-size: 13.5px; color: var(--grau); }
+  .pegel { height: 4px; border-radius: 2px; background: #1e2c48; margin-top: 8px; overflow: hidden; }
+  .pegel span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #4f8cff, #46d18a); transition: width .1s; }
+
   .fehler { font-size: 13px; color: var(--rot); margin-top: 10px; display: none; }
   .fuss { color: var(--dunkelgrau); font-size: 12px; margin-top: 22px; }
   .versteckt { display: none; }
@@ -205,8 +227,25 @@
     <div class="frage" id="s3frage">Ein Satz genügt</div>
     <div class="frageSub" id="s3sub"></div>
     <div class="karte">
+      <!-- HOERPROBE statt Tippen: Einen Namen einzutippen beweist nichts —
+           dass die Suche einen richtig geschriebenen Namen findet, ist klar.
+           Der schwere Teil ist das Hoeren, also wird hier gesprochen. -->
       <div id="namensfeld" class="versteckt">
-        <div class="feldname">Wie heißt die Person wirklich?</div>
+        <div class="feldname">Sprechen Sie den Namen so aus, wie im Anruf</div>
+        <div class="aufnahmezeile">
+          <button id="mic" class="micknopf" type="button" aria-label="Aufnahme starten">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+              <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+            </svg>
+          </button>
+          <div class="micinfo">
+            <div id="micstatus">Antippen und den Namen sagen</div>
+            <div class="pegel" id="pegel"><span></span></div>
+          </div>
+        </div>
+        <div class="feldname" style="margin-top:12px">Und wie heißt die Person wirklich?</div>
         <input id="gemeint" type="text" placeholder="z. B. Ouafa El Hajjami" autocomplete="off">
       </div>
       <div style="margin-top:11px">
@@ -396,6 +435,42 @@
     box.appendChild(wschritt(art, TITEL[d.stufe] || d.stufe, wert, chips, d.ms));
   }
 
+  // Was hat die Maschine wirklich gehoert? Diese Karte ist der eigentliche
+  // Beweis — sie zeigt den Unterschied zwischen gesagt und verstanden.
+  function zeigeHoerkarte() {
+    var erg = $("ergebnis");
+    var h = el("div", "abschnitt");
+    h.appendChild(el("div", "frage", "Was Clara gehört hat"));
+    h.appendChild(el("div", "frageSub", "Ihre Aufnahme läuft durch dieselbe Erkennung wie im Anruf."));
+    var karte = el("div", "karte");
+    karte.appendChild(wschritt("", "wird erkannt", "einen Moment …", null, undefined));
+    h.appendChild(karte);
+    erg.appendChild(h);
+    h.scrollIntoView({ behavior: "smooth", block: "start" });
+    return karte;
+  }
+
+  function hoerkarteFuellen(karte, h, gemeint, fehler) {
+    karte.textContent = "";
+    if (!h) {
+      karte.appendChild(wschritt("schlecht", "Hörprobe",
+        fehler || "Die Aufnahme konnte nicht erkannt werden.", null, undefined));
+      return;
+    }
+    var gleich = gemeint && h.gehoert.toLowerCase().replace(/\s+/g, " ").trim()
+      === gemeint.toLowerCase().replace(/\s+/g, " ").trim();
+    karte.appendChild(wschritt(gleich ? "gut" : "warn", "So verstanden", h.gehoert, null, h.ms));
+    if (gemeint) {
+      karte.appendChild(wschritt(gleich ? "gut" : "warn", "Gemeint war", gemeint, null, undefined));
+      var u = el("div", "urteil " + (gleich ? "gut" : "warn"));
+      u.appendChild(el("span", null, gleich ? "\u2713" : "!"));
+      u.appendChild(el("span", null, gleich
+        ? "Wort für Wort richtig gehört."
+        : "Falsch gehört — jetzt zeigt sich, ob die Suche es trotzdem findet."));
+      karte.appendChild(u);
+    }
+  }
+
   function zeigeProbe(name, danach) {
     var erg = $("ergebnis");
     var h = el("div", "abschnitt");
@@ -465,6 +540,110 @@
     erg.appendChild(h);
   }
 
+  // ---- Aufnahme ----------------------------------------------------------
+  // 16 kHz Mono als WAV, weil der Erkennungsdienst genau das erwartet — und
+  // weil es dasselbe Format ist, das im Telefonat ankommt.
+  var A = { ctx: null, strom: null, knoten: null, teile: [], laeuft: false, rate: 16000, wav: null };
+
+  function wavBauen(daten, rate) {
+    var n = daten.length;
+    var puffer = new ArrayBuffer(44 + n * 2);
+    var s = new DataView(puffer);
+    var txt = function (o, t) { for (var i = 0; i < t.length; i++) s.setUint8(o + i, t.charCodeAt(i)); };
+    txt(0, "RIFF"); s.setUint32(4, 36 + n * 2, true); txt(8, "WAVE");
+    txt(12, "fmt "); s.setUint32(16, 16, true); s.setUint16(20, 1, true); s.setUint16(22, 1, true);
+    s.setUint32(24, rate, true); s.setUint32(28, rate * 2, true);
+    s.setUint16(32, 2, true); s.setUint16(34, 16, true);
+    txt(36, "data"); s.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) {
+      var v = Math.max(-1, Math.min(1, daten[i]));
+      s.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    return puffer;
+  }
+
+  function verkleinern(ein, von, nach) {
+    if (nach >= von) return ein;
+    var faktor = von / nach;
+    var laenge = Math.floor(ein.length / faktor);
+    var aus = new Float32Array(laenge);
+    for (var i = 0; i < laenge; i++) {
+      // Mittelwert ueber das Fenster: verhindert das Kratzen, das beim
+      // blossen Herauspicken einzelner Werte entsteht.
+      var a = Math.floor(i * faktor);
+      var b = Math.min(ein.length, Math.floor((i + 1) * faktor));
+      var summe = 0;
+      for (var j = a; j < b; j++) summe += ein[j];
+      aus[i] = b > a ? summe / (b - a) : 0;
+    }
+    return aus;
+  }
+
+  function aufnahmeStart() {
+    navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+    }).then(function (strom) {
+      A.strom = strom;
+      A.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var quelle = A.ctx.createMediaStreamSource(strom);
+      var knoten = A.ctx.createScriptProcessor(4096, 1, 1);
+      A.teile = [];
+      A.laeuft = true;
+      knoten.onaudioprocess = function (ev) {
+        if (!A.laeuft) return;
+        var d = ev.inputBuffer.getChannelData(0);
+        A.teile.push(new Float32Array(d));
+        var spitze = 0;
+        for (var i = 0; i < d.length; i += 16) spitze = Math.max(spitze, Math.abs(d[i]));
+        $("pegel").firstElementChild.style.width = Math.min(100, spitze * 190) + "%";
+      };
+      quelle.connect(knoten);
+      knoten.connect(A.ctx.destination);
+      A.knoten = knoten;
+      $("mic").className = "micknopf laeuft";
+      $("micstatus").textContent = "Ich höre zu — noch einmal antippen, wenn Sie fertig sind.";
+    }).catch(function () {
+      $("micstatus").textContent = "Kein Zugriff aufs Mikrofon.";
+    });
+  }
+
+  function aufnahmeStop() {
+    A.laeuft = false;
+    try { A.knoten.disconnect(); } catch (e) { /* egal */ }
+    try { A.strom.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { /* egal */ }
+    $("mic").className = "micknopf";
+    $("pegel").firstElementChild.style.width = "0";
+
+    var gesamt = 0;
+    A.teile.forEach(function (t) { gesamt += t.length; });
+    if (gesamt < 2000) { $("micstatus").textContent = "Zu kurz — bitte noch einmal."; return; }
+    var alles = new Float32Array(gesamt);
+    var pos = 0;
+    A.teile.forEach(function (t) { alles.set(t, pos); pos += t.length; });
+    var klein = verkleinern(alles, A.ctx.sampleRate, 16000);
+    A.wav = wavBauen(klein, 16000);
+    var sek = (klein.length / 16000).toFixed(1);
+    $("micstatus").textContent = "Aufnahme steht (" + sek + " s) — wird beim Melden geprüft.";
+    try { A.ctx.close(); } catch (e) { /* egal */ }
+  }
+
+  $("mic").addEventListener("click", function () {
+    if (A.laeuft) aufnahmeStop(); else aufnahmeStart();
+  });
+
+  function wavSenden() {
+    if (!A.wav) return Promise.resolve(null);
+    var bytes = new Uint8Array(A.wav);
+    var s = "";
+    for (var i = 0; i < bytes.length; i += 8192) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    }
+    return fetch(API + "/improve/hoertest", {
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+      body: JSON.stringify({ audio: btoa(s) }),
+    }).then(function (r) { return r.json(); }).catch(function () { return null; });
+  }
+
   // ---- Absenden ----------------------------------------------------------
   $("senden").addEventListener("click", function () {
     if (!S.kategorie) return;
@@ -490,10 +669,25 @@
       }).then(function () { $("senden").disabled = false; });
     };
 
-    // Bei einem Hoerfehler mit Namen zuerst live pruefen — das ist der
-    // Moment, in dem sichtbar wird, WO es hakte und was greift.
-    if (S.kategorie.fragtNamen && name.length >= 3) zeigeProbe(name, senden);
-    else senden();
+    // Bei einem Hoerfehler zuerst live pruefen. Wurde gesprochen, laeuft die
+    // ECHTE Erkennung — und danach geht das GEHOERTE in die Suche, nicht der
+    // getippte Name. Nur so zeigt der Test etwas, das wir nicht ohnehin wissen.
+    if (S.kategorie.fragtNamen && (A.wav || name.length >= 3)) {
+      if (A.wav) {
+        var karte = zeigeHoerkarte();
+        wavSenden().then(function (h) {
+          if (!h || !h.ok || !h.gehoert) {
+            hoerkarteFuellen(karte, null, name, h && h.fehler);
+            if (name.length >= 3) zeigeProbe(name, senden); else senden();
+            return;
+          }
+          hoerkarteFuellen(karte, h, name, "");
+          zeigeProbe(h.gehoert, senden);
+        });
+      } else {
+        zeigeProbe(name, senden);
+      }
+    } else senden();
   });
 
   ladeKategorien();
