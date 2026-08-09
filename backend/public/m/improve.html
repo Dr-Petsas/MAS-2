@@ -7,367 +7,496 @@
 <title>Pickadoc AI Improve</title>
 <style>
   /* PICKADOC AI IMPROVE (Auftrag Dr. Petsas, 09.08.2026)
-     Zweite Fassung nach seiner Rueckmeldung: KEINE Kennzahlen und KEINE Liste
-     der letzten Gespraeche mehr. Stattdessen genau zwei Dinge:
-       1. Melden — dabei wird automatisch das letzte Gespraech als Beleg
-          angehaengt, weil der Fehler fast immer aus genau diesem Anruf stammt.
-       2. Der LAUF — an diesem einen Fall sichtbar machen, wie das Problem
-          angegangen und geloest wird. Das ist ihm mehr wert als jede Kennzahl.
-     EHRLICHKEITSREGEL bleibt: Ein Schritt wird nie als erledigt gezeigt, wenn
-     er nur geplant ist. Offene Schritte sagen, woran es liegt. */
-  :root { color-scheme: dark; }
+     Dritte Fassung. Seine Vorgabe: Der Kunde soll GEFUEHRT werden, nicht Romane
+     schreiben — klare Kategorien zum Auswaehlen, und Problem wie Loesung
+     grafisch verstaendlich. Deshalb drei Schritte statt eines leeren Feldes:
+       1. Was ist passiert?  (sechs Bilder, eine Sekunde Entscheidung)
+       2. Wie schlimm?       (drei Stufen)
+       3. Kurz konkret       (eine Zeile, kein Aufsatz)
+     Danach der Korrekturweg — bei Hoerfehlern live durch die echte Suche.
+     EHRLICHKEITSREGEL: Kein Schritt wird als erledigt gezeigt, der nur geplant
+     ist; wo etwas fehlt, steht der Grund dabei. */
+  :root {
+    color-scheme: dark;
+    --bg1: #101c33; --bg2: #070d1a;
+    --karte: #141f36; --rand: #253355;
+    --hell: #e8eefc; --grau: #8ea3c6; --dunkelgrau: #6f83a6;
+    --blau: #3b6df5; --gruen: #46d18a; --gelb: #ffc46b; --rot: #ff8d8d;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: radial-gradient(130% 95% at 50% 0%, #13203a 0%, #0a1322 55%, #060b16 100%);
-    color: #e8eefc; min-height: 100%; padding-bottom: 46px; line-height: 1.45;
+    background: radial-gradient(120% 80% at 50% -10%, var(--bg1) 0%, var(--bg2) 70%);
+    background-attachment: fixed;
+    color: var(--hell); min-height: 100vh; line-height: 1.45; padding-bottom: 50px;
   }
-  .wrap { max-width: 780px; margin: 0 auto; padding: 0 16px; }
-  header { padding: 20px 0 6px; }
-  h1 { font-size: 19px; font-weight: 650; }
-  .sub { color: #8ea3c6; font-size: 12.5px; margin-top: 3px; }
-  h2 { font-size: 14.5px; margin: 22px 0 8px; color: #cfe0ff; }
-  .karte { background: #131d31; border: 1px solid #24314d; border-radius: 14px; padding: 14px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 
-  textarea {
-    width: 100%; min-height: 92px; background: #0d1626; color: #e8eefc; font: inherit;
-    border: 1px solid #2c3954; border-radius: 11px; padding: 11px 12px; resize: vertical;
+  header { padding: 22px 0 4px; display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+    background: linear-gradient(140deg, #4f8cff, #7b5cff);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 18px rgba(79, 140, 255, .3);
   }
-  .beispiele { color: #6f83a6; font-size: 12px; margin-top: 8px; }
+  h1 { font-size: 18.5px; font-weight: 650; letter-spacing: .2px; }
+  .sub { color: var(--grau); font-size: 12.5px; }
+
+  /* Fortschritt */
+  .fortschritt { display: flex; gap: 6px; margin: 18px 0 4px; }
+  .fs { flex: 1; height: 3px; border-radius: 2px; background: #22304d; transition: background .35s; }
+  .fs.an { background: linear-gradient(90deg, #4f8cff, #7b5cff); }
+
+  .abschnitt { margin-top: 20px; animation: rein .4s ease both; }
+  @keyframes rein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .frage { font-size: 16px; font-weight: 600; margin-bottom: 3px; }
+  .frageSub { color: var(--grau); font-size: 12.5px; margin-bottom: 11px; }
+
+  /* Kategorie-Kacheln */
+  .kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .kachel {
+    background: var(--karte); border: 1px solid var(--rand); border-radius: 15px;
+    padding: 14px 13px; cursor: pointer; transition: transform .16s, border-color .16s, background .16s;
+    display: flex; flex-direction: column; gap: 8px; text-align: left;
+  }
+  .kachel:active { transform: scale(.975); }
+  .kachel.an { border-color: #4f8cff; background: #1a2946; box-shadow: 0 0 0 1px #4f8cff inset; }
+  .kachel .sym {
+    width: 38px; height: 38px; border-radius: 11px; background: #1e2c48;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .kachel.an .sym { background: #24406f; }
+  .kachel .kt { font-size: 14.5px; font-weight: 600; }
+  .kachel .kh { font-size: 12.5px; color: var(--grau); }
+  .kachel .kb { font-size: 12px; color: var(--dunkelgrau); font-style: italic; }
+
+  /* Schweregrad */
+  .stufen3 { display: flex; gap: 9px; }
+  .stufe3 {
+    flex: 1; background: var(--karte); border: 1px solid var(--rand); border-radius: 13px;
+    padding: 12px 10px; text-align: center; cursor: pointer; transition: border-color .16s, background .16s;
+  }
+  .stufe3 .st { font-size: 14px; font-weight: 600; }
+  .stufe3 .sh { font-size: 11.5px; color: var(--grau); margin-top: 2px; }
+  .stufe3.an { border-color: #4f8cff; background: #1a2946; }
+
+  /* Eingaben */
+  .karte { background: var(--karte); border: 1px solid var(--rand); border-radius: 15px; padding: 14px; }
+  input[type=text], textarea {
+    width: 100%; background: #0d1626; color: var(--hell); font: inherit;
+    border: 1px solid #2c3954; border-radius: 11px; padding: 12px; resize: vertical;
+  }
+  textarea { min-height: 74px; }
+  input[type=text]:focus, textarea:focus { outline: none; border-color: #4f8cff; }
+  .feldname { font-size: 12.5px; color: var(--grau); margin-bottom: 6px; }
   .anhang {
-    margin-top: 11px; background: #0f1b2e; border: 1px solid #24314d; border-radius: 11px;
-    padding: 10px 12px; font-size: 13px; color: #a9bcdc;
+    margin-top: 11px; background: #0f1b2e; border: 1px solid var(--rand); border-radius: 11px;
+    padding: 10px 12px; font-size: 12.5px; color: var(--grau);
   }
-  .anhang b { color: #e8eefc; font-weight: 600; }
-  .anhang .zitat { color: #8ea3c6; font-style: italic; margin-top: 4px; }
-  .anhang.leer { color: #ffcf8b; }
-  button {
-    border: 0; border-radius: 11px; background: #3b6df5; color: #fff; font-weight: 600;
-    font-size: 15px; padding: 12px 20px; margin-top: 12px; width: 100%;
-  }
-  button:disabled { opacity: .5; }
+  .anhang b { color: var(--hell); }
+  .anhang.leer { color: var(--gelb); }
 
-  /* Der Lauf: senkrechte Kette mit Zustand je Schritt */
-  .lauf { margin-top: 6px; }
-  .schritt { position: relative; padding: 0 0 16px 30px; }
-  .schritt:before {
-    content: ""; position: absolute; left: 9px; top: 20px; bottom: 0; width: 2px; background: #24314d;
+  button.haupt {
+    border: 0; border-radius: 13px; width: 100%; margin-top: 13px; padding: 14px;
+    background: linear-gradient(135deg, #4f8cff, #6b5cff); color: #fff;
+    font-weight: 650; font-size: 15.5px; letter-spacing: .2px;
+    box-shadow: 0 8px 22px rgba(79, 140, 255, .28);
   }
-  .schritt:last-child:before { display: none; }
-  .punkt {
-    position: absolute; left: 0; top: 3px; width: 20px; height: 20px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+  button.haupt:disabled { opacity: .45; box-shadow: none; }
+  button.neben {
+    border: 1px solid var(--rand); background: transparent; color: var(--grau);
+    border-radius: 11px; padding: 11px 16px; font-size: 13.5px; margin-top: 11px;
   }
-  .punkt.fertig { background: #1e3a2c; color: #93e4bb; }
-  .punkt.offen  { background: #3a3020; color: #ffcf8b; }
-  .punkt.fehlt  { background: #3a2226; color: #ff9b9b; }
-  .schritt h3 { font-size: 14px; font-weight: 600; }
-  .schritt p { font-size: 13.5px; color: #a9bcdc; margin-top: 3px; }
-  .zustand { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin-left: 7px; }
-  .zustand.fertig { color: #93e4bb; }
-  .zustand.offen { color: #ffcf8b; }
-  .zustand.fehlt { color: #ff9b9b; }
+
+  /* Korrekturweg */
+  .weg { margin-top: 4px; }
+  .wschritt {
+    display: flex; gap: 12px; padding: 12px 0 0;
+    animation: rein .34s ease both;
+  }
+  .wschritt .punkt {
+    width: 28px; height: 28px; border-radius: 9px; flex-shrink: 0; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;
+    background: #1e2c48; color: var(--grau);
+  }
+  .wschritt.gut .punkt { background: rgba(70, 209, 138, .16); color: var(--gruen); }
+  .wschritt.warn .punkt { background: rgba(255, 196, 107, .16); color: var(--gelb); }
+  .wschritt.schlecht .punkt { background: rgba(255, 141, 141, .16); color: var(--rot); }
+  .wschritt .inhalt { flex: 1; min-width: 0; }
+  .wschritt .wname { font-size: 11.5px; color: var(--grau); text-transform: uppercase; letter-spacing: .6px; }
+  .wschritt .wwert { font-size: 14.5px; margin-top: 2px; word-break: break-word; }
+  .wschritt .wdauer { font-size: 11.5px; color: var(--dunkelgrau); margin-top: 2px; }
+  .zustand { font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; margin-left: 8px; }
+  .zustand.fertig { color: var(--gruen); }
+  .zustand.offen { color: var(--gelb); }
+  .zustand.fehlt { color: var(--rot); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+  .chip {
+    font-size: 12.5px; border-radius: 9px; padding: 4px 9px;
+    background: #1d2a45; color: #9fb6dd; border: 1px solid transparent;
+  }
+  .chip.stark { background: rgba(70, 209, 138, .13); color: var(--gruen); border-color: rgba(70, 209, 138, .3); }
 
   .fund {
-    background: #16233a; border-left: 3px solid #ffcf8b; border-radius: 0 9px 9px 0;
-    padding: 8px 11px; margin-top: 8px; font-size: 13.5px;
+    background: #182741; border-left: 3px solid var(--gelb); border-radius: 0 10px 10px 0;
+    padding: 9px 12px; margin-top: 9px; font-size: 13.5px;
   }
-  .fund .beleg { color: #8ea3c6; font-size: 12.5px; margin-top: 3px; font-style: italic; }
+  .fund .beleg { color: var(--grau); font-size: 12.5px; margin-top: 3px; font-style: italic; }
 
-  .kette { margin-top: 10px; }
-  .kzug { border-top: 1px solid #24314d; padding: 9px 0; font-size: 13.5px; }
+  .kzug { border-top: 1px solid var(--rand); padding: 9px 0; font-size: 13.5px; }
   .kzug:first-child { border-top: 0; }
-  .kzug .frage:before { content: "Sie: "; color: #6f83a6; }
+  .kzug .frage2:before { content: "Sie: "; color: var(--dunkelgrau); }
   .kzug .antwort { color: #a9bcdc; margin-top: 2px; }
-  .kzug .antwort:before { content: "Clara: "; color: #6f83a6; }
-  .marken { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
-  .m { font-size: 11px; border-radius: 7px; padding: 2px 7px; background: #1d2a45; color: #9fb6dd; }
-  .m.g { background: #3a3020; color: #ffcf8b; }
-  .m.t { background: #1e3a2c; color: #93e4bb; }
-  .fehler { font-size: 13px; color: #ff9b9b; margin-top: 10px; display: none; }
-  .fuss { color: #6f83a6; font-size: 12px; margin-top: 20px; }
+  .kzug .antwort:before { content: "Clara: "; color: var(--dunkelgrau); }
 
-  /* Live-Namensprobe: Stufen erscheinen einzeln, sobald sie fertig sind. */
-  .probezeile { display: flex; gap: 8px; }
-  #probename {
-    flex: 1; background: #0d1626; color: #e8eefc; font: inherit;
-    border: 1px solid #2c3954; border-radius: 11px; padding: 11px 12px; min-width: 0;
+  .urteil {
+    border-radius: 14px; padding: 15px; margin-top: 4px; font-size: 15.5px; font-weight: 600;
+    display: flex; align-items: center; gap: 11px;
   }
-  button.klein { width: auto; margin-top: 0; padding: 11px 17px; flex-shrink: 0; }
-  .stufen { margin-top: 4px; }
-  .stufe {
-    display: flex; gap: 11px; padding: 11px 0 0; opacity: 0; transform: translateY(6px);
-    animation: rein .32s ease forwards;
-  }
-  @keyframes rein { to { opacity: 1; transform: none; } }
-  .stufe .icon {
-    width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0; margin-top: 1px;
-    display: flex; align-items: center; justify-content: center; font-size: 13px;
-    background: #1d2a45; color: #9fb6dd;
-  }
-  .stufe.gut .icon { background: #1e3a2c; color: #93e4bb; }
-  .stufe.warn .icon { background: #3a3020; color: #ffcf8b; }
-  .stufe.schlecht .icon { background: #3a2226; color: #ff9b9b; }
-  .stufe .inhalt { flex: 1; min-width: 0; }
-  .stufe .name { font-size: 12px; color: #8ea3c6; text-transform: uppercase; letter-spacing: .5px; }
-  .stufe .wert { font-size: 14px; margin-top: 2px; word-break: break-word; }
-  .stufe .dauer { font-size: 11.5px; color: #6f83a6; margin-top: 2px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
-  .chip { font-size: 12px; border-radius: 8px; padding: 3px 8px; background: #1d2a45; color: #9fb6dd; }
-  .chip.stark { background: #1e3a2c; color: #93e4bb; }
-  .laeuft { display: inline-block; width: 11px; text-align: left; }
+  .urteil.gut { background: rgba(70, 209, 138, .12); border: 1px solid rgba(70, 209, 138, .35); color: var(--gruen); }
+  .urteil.warn { background: rgba(255, 196, 107, .1); border: 1px solid rgba(255, 196, 107, .32); color: var(--gelb); }
+  .urteil.schlecht { background: rgba(255, 141, 141, .1); border: 1px solid rgba(255, 141, 141, .32); color: var(--rot); }
+
+  .fehler { font-size: 13px; color: var(--rot); margin-top: 10px; display: none; }
+  .fuss { color: var(--dunkelgrau); font-size: 12px; margin-top: 22px; }
+  .versteckt { display: none; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>Pickadoc AI Improve</h1>
-    <div class="sub">Melden, was nicht funktioniert — und verfolgen, wie es gelöst wird.</div>
+    <div class="logo">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/>
+      </svg>
+    </div>
+    <div>
+      <h1>AI Improve</h1>
+      <div class="sub">Problem melden — und sehen, wie es gelöst wird.</div>
+    </div>
   </header>
 
-  <!-- LIVE-NAMENSPROBE: der sichtbare Korrekturweg. Hier laeuft die echte
-       Suche, Stufe fuer Stufe, so wie Clara sie im Anruf durchlaeuft. -->
-  <h2>Namensprobe — schwierigsten Patientennamen nennen</h2>
-  <div class="karte">
-    <div class="probezeile">
-      <input id="probename" type="text" placeholder="z. B. Ouafa El Hajjami" autocomplete="off">
-      <button id="probe" class="klein" type="button">Testen</button>
-    </div>
-    <div class="stufen" id="stufen"></div>
+  <div class="fortschritt">
+    <div class="fs an" id="fs1"></div><div class="fs" id="fs2"></div><div class="fs" id="fs3"></div>
   </div>
 
-  <h2>Etwas melden</h2>
-  <div class="karte">
-    <textarea id="text" placeholder="Was ist schiefgelaufen? Einfach beschreiben, wie einer Kollegin gegenüber."></textarea>
-    <div class="beispiele">
-      z. B. „Clara hat den Namen nicht verstanden.“ · „Die Karte ging doppelt raus.“
+  <!-- Schritt 1 -->
+  <div class="abschnitt" id="s1">
+    <div class="frage">Was ist passiert?</div>
+    <div class="frageSub">Wählen Sie das Bild, das am besten passt.</div>
+    <div class="kacheln" id="kacheln"></div>
+  </div>
+
+  <!-- Schritt 2 -->
+  <div class="abschnitt versteckt" id="s2">
+    <div class="frage">Wie sehr stört es Sie?</div>
+    <div class="frageSub">Das entscheidet, wie schnell wir rangehen.</div>
+    <div class="stufen3">
+      <div class="stufe3" data-schwere="blocker"><div class="st">Blockiert</div><div class="sh">geht so nicht</div></div>
+      <div class="stufe3 an" data-schwere="stoerend"><div class="st">Stört</div><div class="sh">nervt im Alltag</div></div>
+      <div class="stufe3" data-schwere="kosmetik"><div class="st">Kleinigkeit</div><div class="sh">wäre schöner</div></div>
     </div>
-    <div class="anhang" id="anhang">Letztes Gespräch wird geprüft …</div>
-    <button id="senden" type="button">Melden — mit diesem Gespräch</button>
-    <div class="fehler" id="fehler"></div>
+  </div>
+
+  <!-- Schritt 3 -->
+  <div class="abschnitt versteckt" id="s3">
+    <div class="frage" id="s3frage">Ein Satz genügt</div>
+    <div class="frageSub" id="s3sub"></div>
+    <div class="karte">
+      <div id="namensfeld" class="versteckt">
+        <div class="feldname">Wie heißt die Person wirklich?</div>
+        <input id="gemeint" type="text" placeholder="z. B. Ouafa El Hajjami" autocomplete="off">
+      </div>
+      <div style="margin-top:11px">
+        <div class="feldname" id="textlabel">Was ist passiert? (optional)</div>
+        <textarea id="text" placeholder=""></textarea>
+      </div>
+      <div class="anhang" id="anhang">Letztes Gespräch wird geprüft …</div>
+      <button class="haupt" id="senden" type="button">Problem melden</button>
+      <div class="fehler" id="fehler"></div>
+    </div>
   </div>
 
   <div id="ergebnis"></div>
 
   <div class="fuss">
-    Was sich einstellen lässt (Namen, Rückfragen, Ton), ändern wir in Ihrer
-    Praxis. Technische Fälle gehen an die Entwicklung und kommen erst nach
-    bestandenem Test zurück.
+    Einstellbares ändern wir in Ihrer Praxis. Technische Fälle gehen an die
+    Entwicklung und kommen erst nach bestandenem Test zurück — als Fehlerklasse,
+    von der alle Praxen profitieren.
   </div>
 </div>
 
 <script>
 (function () {
   var API = window.location.origin;
-  var elAnhang = document.getElementById("anhang");
-  var elText = document.getElementById("text");
-  var elBtn = document.getElementById("senden");
-  var elFehler = document.getElementById("fehler");
-  var elErg = document.getElementById("ergebnis");
+  var S = { kategorien: [], kategorie: null, schwere: "stoerend" };
 
+  function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) {
     var d = document.createElement(tag);
     if (cls) d.className = cls;
     if (text !== undefined && text !== null) d.textContent = text;
     return d;
   }
+  function svg(pfade) {
+    var ns = "http://www.w3.org/2000/svg";
+    var s = document.createElementNS(ns, "svg");
+    s.setAttribute("width", "20"); s.setAttribute("height", "20");
+    s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", "none");
+    s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "2");
+    s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
+    pfade.forEach(function (d) {
+      var p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d);
+      s.appendChild(p);
+    });
+    return s;
+  }
+  var SYMBOLE = {
+    ohr: ["M6 8a6 6 0 0 1 12 0c0 3-2 4-3 6s-1 4-3 4-3-1.5-3-3"],
+    kalender: ["M3 9h18M7 3v4M17 3v4M4 5h16v16H4z"],
+    warnung: ["M12 3 2 20h20L12 3z", "M12 9v5", "M12 17.5v.5"],
+    leer: ["M4 12h16", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"],
+    kreuz: ["M6 6l12 12M18 6L6 18"],
+    uhr: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z", "M12 7v5l3 2"],
+  };
 
-  // Vorschau: Welches Gespraech haengt an? Der Inhaber soll das VOR dem
-  // Absenden sehen, damit klar ist, worauf sich die Meldung bezieht.
+  function fortschritt(n) {
+    $("fs2").className = "fs" + (n >= 2 ? " an" : "");
+    $("fs3").className = "fs" + (n >= 3 ? " an" : "");
+  }
+
+  // ---- Schritt 1: Kategorien --------------------------------------------
+  function ladeKategorien() {
+    fetch(API + "/improve/kategorien", { credentials: "include" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        S.kategorien = d.kategorien || [];
+        var box = $("kacheln");
+        box.textContent = "";
+        S.kategorien.forEach(function (k) {
+          var c = el("div", "kachel");
+          var sym = el("div", "sym");
+          sym.appendChild(svg(SYMBOLE[k.symbol] || SYMBOLE.warnung));
+          c.appendChild(sym);
+          c.appendChild(el("div", "kt", k.titel));
+          c.appendChild(el("div", "kh", k.hinweis));
+          if (k.beispiel) c.appendChild(el("div", "kb", k.beispiel));
+          c.addEventListener("click", function () { waehle(k, c); });
+          box.appendChild(c);
+        });
+      })
+      .catch(function () {
+        $("kacheln").appendChild(el("div", "anhang leer", "Kategorien gerade nicht abrufbar."));
+      });
+  }
+
+  function waehle(k, kachel) {
+    S.kategorie = k;
+    Array.prototype.forEach.call($("kacheln").children, function (c) { c.className = "kachel"; });
+    kachel.className = "kachel an";
+    $("s2").className = "abschnitt";
+    $("s3").className = "abschnitt";
+    fortschritt(3);
+
+    // Bei Hoerfehlern ist der gemeinte Name das Wertvollste am Fall: Er sagt,
+    // was RICHTIG gewesen waere — und wird sofort live durch die Suche geprueft.
+    $("namensfeld").className = k.fragtNamen ? "" : "versteckt";
+    $("s3frage").textContent = k.fragtNamen ? "Um wen ging es?" : "Ein Satz genügt";
+    $("s3sub").textContent = k.fragtNamen
+      ? "Mit dem richtigen Namen prüfe ich sofort, woran es lag."
+      : "Kein Aufsatz nötig — ein Beispiel reicht.";
+    $("text").placeholder = k.beispiel ? k.beispiel.replace(/[„“]/g, "") : "";
+    $("s3").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".stufe3"), function (s) {
+    s.addEventListener("click", function () {
+      Array.prototype.forEach.call(document.querySelectorAll(".stufe3"), function (x) { x.className = "stufe3"; });
+      s.className = "stufe3 an";
+      S.schwere = s.getAttribute("data-schwere");
+    });
+  });
+
+  // ---- Anhang: welches Gespraech haengt dran? ----------------------------
   function ladeAnhang() {
     fetch(API + "/improve/last", { credentials: "include" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        elAnhang.textContent = "";
+        var a = $("anhang");
+        a.textContent = "";
         if (!d.ok || !d.gespraech) {
-          elAnhang.className = "anhang leer";
-          elAnhang.textContent = "Kein aufgezeichnetes Gespräch gefunden — die Meldung geht ohne Beleg raus.";
+          a.className = "anhang leer";
+          a.textContent = "Kein aufgezeichnetes Gespräch gefunden — die Meldung geht ohne Beleg raus.";
           return;
         }
         var g = d.gespraech;
-        elAnhang.className = "anhang";
-        var kopf = el("div");
-        kopf.appendChild(el("b", null, "Angehängt: letztes Gespräch"));
-        kopf.appendChild(document.createTextNode(
-          " vom " + String(g.begonnen || "").replace("T", " ").slice(0, 16)
+        a.className = "anhang";
+        a.appendChild(el("b", null, "Angehängt: "));
+        a.appendChild(document.createTextNode(
+          "letztes Gespräch vom " + String(g.begonnen || "").replace("T", " ").slice(0, 16)
           + " · " + g.fragen + " Fragen"
-          + (g.mit_ton ? " · Tonaufnahme vorhanden" : " · ohne Tonaufnahme")));
-        elAnhang.appendChild(kopf);
-        if (g.letzte_frage) elAnhang.appendChild(el("div", "zitat", "zuletzt: „" + g.letzte_frage + "“"));
+          + (g.mit_ton ? " · mit Tonaufnahme" : " · ohne Tonaufnahme")));
       })
       .catch(function () {
-        elAnhang.className = "anhang leer";
-        elAnhang.textContent = "Letztes Gespräch gerade nicht abrufbar.";
+        $("anhang").className = "anhang leer";
+        $("anhang").textContent = "Letztes Gespräch gerade nicht abrufbar.";
       });
   }
 
-  function zeichneKette(kette) {
-    var box = el("div", "kette");
-    kette.forEach(function (z) {
-      var d = el("div", "kzug");
-      d.appendChild(el("div", "frage", z.gehoert));
-      if (z.geantwortet) d.appendChild(el("div", "antwort", z.geantwortet));
-      var m = el("div", "marken");
-      (z.werkzeuge || []).forEach(function (w) { m.appendChild(el("span", "m", w)); });
-      (z.waechter || []).forEach(function (w) { m.appendChild(el("span", "m g", "abgefangen: " + w)); });
-      if (z.audio) m.appendChild(el("span", "m t", "Ton"));
-      if (m.children.length) d.appendChild(m);
-      box.appendChild(d);
-    });
-    return box;
+  // ---- Korrekturweg zeichnen --------------------------------------------
+  function wschritt(art, name, wert, chips, dauer) {
+    var d = el("div", "wschritt " + (art || ""));
+    var z = art === "gut" ? "\u2713" : (art === "schlecht" ? "\u2717" : (art === "warn" ? "!" : "\u2022"));
+    d.appendChild(el("div", "punkt", z));
+    var i = el("div", "inhalt");
+    i.appendChild(el("div", "wname", name));
+    if (wert) i.appendChild(el("div", "wwert", wert));
+    if (chips && chips.length) {
+      var box = el("div", "chips");
+      chips.forEach(function (c) { box.appendChild(el("span", "chip" + (c.stark ? " stark" : ""), c.text)); });
+      i.appendChild(box);
+    }
+    if (typeof dauer === "number") i.appendChild(el("div", "wdauer", dauer + " ms"));
+    d.appendChild(i);
+    return d;
   }
 
-  function zeichneLauf(lauf) {
-    elErg.textContent = "";
-    elErg.appendChild(el("h2", null, "So wird Ihr Fall bearbeitet"));
+  var TITEL = {
+    gehoert: "So verstanden", varianten: "Suchzuschnitte",
+    plattform: "Patientensuche", katalog: "Namenskatalog (klanglich)", ergebnis: "Ergebnis",
+  };
+
+  function probeStufe(box, d) {
+    var art = "", wert = "", chips = [];
+    if (d.stufe === "gehoert") wert = d.name;
+    else if (d.stufe === "varianten") {
+      chips = (d.varianten || []).map(function (v) { return { text: v }; });
+      if (!chips.length) { wert = "kein brauchbarer Zuschnitt"; art = "warn"; }
+    } else if (d.stufe === "plattform") {
+      var t = d.treffer || [];
+      art = t.length ? "gut" : "warn";
+      if (!t.length) wert = "keine Treffer";
+      chips = t.map(function (x) { return { text: x.name, stark: true }; });
+    } else if (d.stufe === "katalog") {
+      var k = d.treffer || [];
+      art = k.length ? "gut" : "warn";
+      if (!k.length) wert = "kein klanglicher Treffer";
+      chips = k.map(function (x) { return { text: x.name + " · " + x.punkte, stark: x.sicher }; });
+    } else if (d.stufe === "ergebnis") {
+      var u = d.urteil || {};
+      art = u.art === "eindeutig" ? "gut" : (u.art === "mehrdeutig" ? "warn" : "schlecht");
+      wert = u.text || "";
+      chips = (d.treffer || []).map(function (x) {
+        return { text: x.name + (x.geboren ? " · " + x.geboren : ""), stark: true };
+      });
+    }
+    box.appendChild(wschritt(art, TITEL[d.stufe] || d.stufe, wert, chips, d.ms));
+  }
+
+  function zeigeProbe(name, danach) {
+    var erg = $("ergebnis");
+    var h = el("div", "abschnitt");
+    h.appendChild(el("div", "frage", "Woran lag es?"));
+    h.appendChild(el("div", "frageSub", "Der Name läuft gerade durch dieselbe Suche wie im Anruf."));
     var karte = el("div", "karte");
-    var liste = el("div", "lauf");
+    var weg = el("div", "weg");
+    karte.appendChild(weg);
+    h.appendChild(karte);
+    erg.appendChild(h);
+    h.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    var quelle = new EventSource("/improve/nametest?name=" + encodeURIComponent(name));
+    quelle.onmessage = function (ev) {
+      var d;
+      try { d = JSON.parse(ev.data); } catch (e) { return; }
+      if (d.stufe === "fertig") { quelle.close(); if (danach) danach(); return; }
+      if (d.stufe === "ergebnis") {
+        var u = d.urteil || {};
+        var art = u.art === "eindeutig" ? "gut" : (u.art === "mehrdeutig" ? "warn" : "schlecht");
+        var k = el("div", "urteil " + art);
+        k.appendChild(el("span", null, art === "gut" ? "\u2713" : (art === "warn" ? "!" : "\u2717")));
+        k.appendChild(el("span", null, u.text || ""));
+        karte.appendChild(k);
+      }
+      probeStufe(weg, d);
+    };
+    quelle.onerror = function () { quelle.close(); if (danach) danach(); };
+  }
+
+  function zeigeLauf(lauf) {
+    var erg = $("ergebnis");
+    var h = el("div", "abschnitt");
+    h.appendChild(el("div", "frage", "So wird Ihr Fall bearbeitet"));
+    var karte = el("div", "karte");
     lauf.forEach(function (s) {
-      var d = el("div", "schritt");
-      var zeichen = s.zustand === "fertig" ? "\u2713" : (s.zustand === "offen" ? "\u2026" : "!");
-      d.appendChild(el("div", "punkt " + s.zustand, zeichen));
-      var h = el("h3", null, s.titel);
+      var art = s.zustand === "fertig" ? "gut" : (s.zustand === "offen" ? "warn" : "schlecht");
+      var d = wschritt(art, s.titel, s.text, null, undefined);
       var badge = el("span", "zustand " + s.zustand,
         s.zustand === "fertig" ? "erledigt" : (s.zustand === "offen" ? "steht an" : "geht noch nicht"));
-      h.appendChild(badge);
-      d.appendChild(h);
-      if (s.text) d.appendChild(el("p", null, s.text));
+      d.querySelector(".wname").appendChild(badge);
       (s.funde || []).forEach(function (f) {
         var fd = el("div", "fund");
         fd.appendChild(el("div", null, f.text));
         if (f.beleg) fd.appendChild(el("div", "beleg", "belegt durch: „" + f.beleg + "“"));
-        d.appendChild(fd);
+        d.querySelector(".inhalt").appendChild(fd);
       });
-      if (s.kette && s.kette.length) d.appendChild(zeichneKette(s.kette));
-      liste.appendChild(d);
+      (s.kette || []).forEach(function (z) {
+        var kz = el("div", "kzug");
+        kz.appendChild(el("div", "frage2", z.gehoert));
+        if (z.geantwortet) kz.appendChild(el("div", "antwort", z.geantwortet));
+        var chips = (z.werkzeuge || []).map(function (w) { return { text: w }; });
+        (z.waechter || []).forEach(function (w) { chips.push({ text: "abgefangen: " + w }); });
+        if (chips.length) {
+          var cb = el("div", "chips");
+          chips.forEach(function (c) { cb.appendChild(el("span", "chip", c.text)); });
+          kz.appendChild(cb);
+        }
+        d.querySelector(".inhalt").appendChild(kz);
+      });
+      karte.appendChild(d);
     });
-    karte.appendChild(liste);
-    elErg.appendChild(karte);
-    elErg.scrollIntoView({ behavior: "smooth", block: "start" });
+    h.appendChild(karte);
+    var neu = el("button", "neben", "Weiteres Problem melden");
+    neu.addEventListener("click", function () { location.reload(); });
+    h.appendChild(neu);
+    erg.appendChild(h);
   }
 
-  elBtn.addEventListener("click", function () {
-    var text = elText.value.trim();
-    if (!text) { elText.focus(); return; }
-    elBtn.disabled = true;
-    elFehler.style.display = "none";
-    fetch(API + "/improve/case", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      credentials: "include", body: JSON.stringify({ text: text }),
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      if (!d.ok) throw new Error(d.reason || d.error || "Melden fehlgeschlagen");
-      elText.value = "";
-      zeichneLauf(d.lauf || []);
-    }).catch(function (e) {
-      elFehler.textContent = "Konnte nicht gemeldet werden: " + e.message;
-      elFehler.style.display = "block";
-    }).then(function () { elBtn.disabled = false; });
+  // ---- Absenden ----------------------------------------------------------
+  $("senden").addEventListener("click", function () {
+    if (!S.kategorie) return;
+    var name = $("gemeint").value.trim();
+    var text = $("text").value.trim();
+    $("senden").disabled = true;
+    $("fehler").style.display = "none";
+    $("ergebnis").textContent = "";
+
+    var senden = function () {
+      fetch(API + "/improve/case", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          text: text, kategorie: S.kategorie.id, schwere: S.schwere, name: name,
+        }),
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) throw new Error(d.reason || d.error || "Melden fehlgeschlagen");
+        zeigeLauf(d.lauf || []);
+      }).catch(function (e) {
+        $("fehler").textContent = "Konnte nicht gemeldet werden: " + e.message;
+        $("fehler").style.display = "block";
+      }).then(function () { $("senden").disabled = false; });
+    };
+
+    // Bei einem Hoerfehler mit Namen zuerst live pruefen — das ist der
+    // Moment, in dem sichtbar wird, WO es hakte und was greift.
+    if (S.kategorie.fragtNamen && name.length >= 3) zeigeProbe(name, senden);
+    else senden();
   });
 
-  // ---- Live-Namensprobe ----------------------------------------------------
-  // Der Datenstrom liefert jede Stufe, sobald sie fertig ist. Die Anzeige
-  // wartet also nicht auf das Endergebnis, sondern waechst mit — genau das
-  // macht aus einem Fehlschlag einen nachvollziehbaren Vorgang.
-  var elProbe = document.getElementById("probe");
-  var elProbeName = document.getElementById("probename");
-  var elStufen = document.getElementById("stufen");
-
-  var TITEL = {
-    gehoert: "So verstanden",
-    varianten: "Suchzuschnitte",
-    plattform: "Patientensuche",
-    katalog: "Namenskatalog (klanglich)",
-    ergebnis: "Ergebnis",
-  };
-
-  function stufeZeigen(d) {
-    var art = "";
-    var wert = "";
-    var chips = [];
-
-    if (d.stufe === "gehoert") { wert = d.name; }
-    else if (d.stufe === "varianten") {
-      chips = (d.varianten || []).map(function (v) { return { text: v }; });
-      wert = chips.length ? "" : "kein brauchbarer Zuschnitt";
-      art = chips.length ? "" : "warn";
-    } else if (d.stufe === "plattform") {
-      var tr = d.treffer || [];
-      wert = tr.length ? "" : "keine Treffer";
-      art = tr.length ? "gut" : "warn";
-      chips = tr.map(function (t) { return { text: t.name, stark: true }; });
-    } else if (d.stufe === "katalog") {
-      var kt = d.treffer || [];
-      wert = kt.length ? "" : "kein klanglicher Treffer";
-      art = kt.length ? "gut" : "warn";
-      chips = kt.map(function (t) {
-        return { text: t.name + " · " + t.punkte, stark: t.sicher };
-      });
-    } else if (d.stufe === "ergebnis") {
-      wert = (d.urteil && d.urteil.text) || "";
-      art = d.urteil && d.urteil.art === "eindeutig" ? "gut"
-        : (d.urteil && d.urteil.art === "mehrdeutig" ? "warn" : "schlecht");
-      chips = (d.treffer || []).map(function (t) {
-        return { text: t.name + (t.geboren ? " · " + t.geboren : ""), stark: true };
-      });
-    }
-
-    var el0 = el("div", "stufe " + art);
-    var zeichen = art === "gut" ? "\u2713" : (art === "schlecht" ? "\u2717" : (art === "warn" ? "!" : "\u2022"));
-    el0.appendChild(el("div", "icon", zeichen));
-    var inhalt = el("div", "inhalt");
-    inhalt.appendChild(el("div", "name", TITEL[d.stufe] || d.stufe));
-    if (wert) inhalt.appendChild(el("div", "wert", wert));
-    if (chips.length) {
-      var box = el("div", "chips");
-      chips.forEach(function (c) { box.appendChild(el("span", "chip" + (c.stark ? " stark" : ""), c.text)); });
-      inhalt.appendChild(box);
-    }
-    if (typeof d.ms === "number") inhalt.appendChild(el("div", "dauer", d.ms + " ms"));
-    el0.appendChild(inhalt);
-    elStufen.appendChild(el0);
-  }
-
-  function probeStarten() {
-    var name = elProbeName.value.trim();
-    if (name.length < 3) { elProbeName.focus(); return; }
-    elStufen.textContent = "";
-    elProbe.disabled = true;
-    var laeuft = el("div", "stufe");
-    laeuft.appendChild(el("div", "icon", "\u2026"));
-    var li = el("div", "inhalt");
-    li.appendChild(el("div", "name", "läuft"));
-    li.appendChild(el("div", "wert", "Suche läuft …"));
-    laeuft.appendChild(li);
-    elStufen.appendChild(laeuft);
-
-    var quelle = new EventSource("/improve/nametest?name=" + encodeURIComponent(name));
-    var ersteAntwort = true;
-    quelle.onmessage = function (ev) {
-      var d;
-      try { d = JSON.parse(ev.data); } catch (e) { return; }
-      if (ersteAntwort) { elStufen.textContent = ""; ersteAntwort = false; }
-      if (d.stufe === "fertig") { quelle.close(); elProbe.disabled = false; return; }
-      stufeZeigen(d);
-    };
-    quelle.onerror = function () {
-      quelle.close();
-      elProbe.disabled = false;
-      if (ersteAntwort) {
-        elStufen.textContent = "";
-        var f = el("div", "stufe schlecht");
-        f.appendChild(el("div", "icon", "\u2717"));
-        var fi = el("div", "inhalt");
-        fi.appendChild(el("div", "name", "Probe"));
-        fi.appendChild(el("div", "wert", "Verbindung unterbrochen."));
-        f.appendChild(fi);
-        elStufen.appendChild(f);
-      }
-    };
-  }
-
-  elProbe.addEventListener("click", probeStarten);
-  elProbeName.addEventListener("keydown", function (e) { if (e.key === "Enter") probeStarten(); });
-
+  ladeKategorien();
   ladeAnhang();
 })();
 </script>

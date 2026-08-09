@@ -13,7 +13,7 @@ import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
-import { meldeFall, listeFaelle, letztesGespraech, probiereNamen } from "../improve.js";
+import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, KATEGORIEN } from "../improve.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
 import { exportTenant, eraseTenant, applyRetention } from "../dsgvo.js";
@@ -318,6 +318,13 @@ router.post("/remote/message", async (req, res) => {
 // server.js — die Seite zeigt Gespraechsinhalte und ist entsprechend geschuetzt.
 // Siehe src/improve.js (dort auch die Ehrlichkeitsregel zu Kennzahlen).
 
+// Feste Auswahl statt Freitext: fuehrt den Inhaber in Sekunden zur richtigen
+// Schublade, statt ihn Romane schreiben zu lassen.
+router.get("/improve/kategorien", (req, res) => {
+  res.json({ ok: true, kategorien: KATEGORIEN });
+});
+
+
 // Vorschau: Welches Gespraech wird beim Melden angehaengt? Der Inhaber soll
 // VOR dem Absenden sehen, worauf sich seine Meldung bezieht.
 router.get("/improve/last", async (req, res) => {
@@ -369,6 +376,7 @@ router.post("/improve/case", async (req, res) => {
   try {
     const out = await meldeFall(resolveClientId(req), {
       text: req.body?.text, meldung_von: req.body?.von,
+      kategorie: req.body?.kategorie, schwere: req.body?.schwere, name: req.body?.name,
     });
     if (!out.ok) return res.status(400).json(out);
     res.json(out);

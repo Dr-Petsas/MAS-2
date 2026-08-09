@@ -11,7 +11,10 @@
  *
  * Aufruf:  node tests/test-improve.mjs
  */
-import { ketteBauen, auffaelligkeiten, baueLauf, ordneEin, urteile, probeErlaubt } from "../src/improve.js";
+import {
+  ketteBauen, auffaelligkeiten, baueLauf, ordneEin, urteile, probeErlaubt,
+  KATEGORIEN, findeKategorie,
+} from "../src/improve.js";
 
 let ok = 0;
 let fail = 0;
@@ -120,7 +123,67 @@ for (let i = 0; i < 60; i++) if (probeErlaubt(start)) erlaubt++;
 pruefe("Deckel greift bei 40 Proben je Stunde", erlaubt === 40, String(erlaubt));
 pruefe("nach einer Stunde wieder frei", probeErlaubt(start + 3600001) === true);
 
-console.log("\n9) Grenzfaelle");
+console.log("\n9) Kundenkategorien");
+// Feste Auswahl statt Freitext: Der Inhaber soll gefuehrt werden, nicht Romane
+// schreiben. Jede Kategorie MUSS auf eine Fehlerklasse zeigen — sonst gaebe es
+// spaeter nichts, woran alle Praxen gemeinsam profitieren koennten.
+pruefe("sechs Kategorien zur Auswahl", KATEGORIEN.length === 6, String(KATEGORIEN.length));
+pruefe("jede hat Titel, Hinweis und Beispiel",
+  KATEGORIEN.every((k) => k.titel && k.hinweis && k.beispiel));
+pruefe("jede zeigt auf eine Fehlerklasse",
+  KATEGORIEN.every((k) => !!k.fehlerklasse && k.fehlerklasse !== "unklar"));
+pruefe("Fehlerklassen sind eindeutig",
+  new Set(KATEGORIEN.map((k) => k.fehlerklasse)).size === KATEGORIEN.length);
+pruefe("jede sagt, wo die Loesung liegt",
+  KATEGORIEN.every((k) => k.ebene === "einstellung" || k.ebene === "technisch"));
+pruefe("nur der Hoerfehler fragt nach dem Namen",
+  KATEGORIEN.filter((k) => k.fragtNamen).length === 1);
+pruefe("Hoerfehler ist die Kategorie mit Namensfrage",
+  KATEGORIEN.find((k) => k.fragtNamen).id === "verhoert");
+// Erfundene Daten und falsche Aktionen duerfen NIE als Praxis-Einstellung
+// durchgehen — die repariert man baulich, nicht per Schieberegler.
+pruefe("Erfundenes ist ein technischer Fall",
+  findeKategorie("erfunden").ebene === "technisch");
+pruefe("falsche Aktion ist ein technischer Fall",
+  findeKategorie("falsche_aktion").ebene === "technisch");
+pruefe("unbekannte Kategorie wird nicht geraten", findeKategorie("gibtsnicht") === null);
+pruefe("leere Kategorie ergibt nichts", findeKategorie("") === null);
+
+console.log("\n10) Fehlerklasse steht im Lauf");
+const laufKat = baueLauf({
+  text: "", gespraech, schritte: kette, funde,
+  einordnung: { bereich: "hoeren", ebene: "einstellung", fehlerklasse: "verhoert_name" },
+});
+pruefe("Fehlerklasse wird genannt", /verhoert_name/.test(laufKat[4].text), laufKat[4].text);
+pruefe("Nutzen fuer alle Praxen wird erklaert", /alle Praxen/.test(laufKat[4].text));
+const laufOhne = baueLauf({
+  text: "", gespraech, schritte: kette, funde,
+  einordnung: { bereich: "unklar", ebene: "technisch", fehlerklasse: "unklar" },
+});
+pruefe("ohne Klasse wird nichts behauptet", !/Fehlerklasse/.test(laufOhne[4].text), laufOhne[4].text);
+
+// Der Inhaber soll KEINEN Aufsatz schreiben muessen. Laesst er das Textfeld
+// leer, muss die Kategorie die Meldung tragen — ein leerer erster Schritt
+// waere schlicht kaputt.
+const laufOhneText = baueLauf({
+  text: "", gespraech, schritte: kette, funde,
+  einordnung: { ebene: "einstellung", fehlerklasse: "verhoert_name" },
+  kategorie: findeKategorie("verhoert"), schwere: "blocker",
+});
+pruefe("Kategorie traegt die Meldung ohne Text",
+  /Falsch verstanden/.test(laufOhneText[0].text), laufOhneText[0].text);
+pruefe("Schweregrad steht dabei", /blockiert/.test(laufOhneText[0].text), laufOhneText[0].text);
+const laufMitText = baueLauf({
+  text: "Ging dreimal schief", gespraech, schritte: kette, funde,
+  einordnung: { ebene: "einstellung", fehlerklasse: "verhoert_name" },
+  kategorie: findeKategorie("verhoert"), schwere: "stoerend",
+});
+pruefe("eigener Text bleibt erhalten",
+  /Ging dreimal schief/.test(laufMitText[0].text), laufMitText[0].text);
+pruefe("erster Schritt ist nie leer",
+  baueLauf({ text: "", gespraech: null, schritte: [], funde: [], einordnung: {} })[0].text.length > 0);
+
+console.log("\n11) Grenzfaelle");
 pruefe("kaputte Eingabe stuerzt nicht ab", ketteBauen(null, null).length === 0);
 pruefe("leere Kette erzeugt keine Funde", auffaelligkeiten(null).length === 0);
 

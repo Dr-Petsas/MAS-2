@@ -81,12 +81,96 @@ export async function leseZuege({ tage = 7, max = 2000 } = {}) {
 }
 
 /**
- * Einordnung einer Klartext-Meldung: Darf die Praxis das selbst richten oder
- * ist es ein technischer Fall fuer die zentrale Entwicklung? (PUR)
+ * KATEGORIEN, die der Kunde auswaehlt.
  *
- * Bewusst grob: Die Einordnung entscheidet nur, WO die Meldung landet — nie,
- * was tatsaechlich geaendert wird. Unklares geht absichtlich an die
- * Entwicklung und nicht an die Praxis.
+ * Warum feste Auswahl statt Freitext (Chef 09.08.2026): "Das Erkennen des
+ * Problems ist der erste Schritt." Ein Praxisinhaber, der einen Roman
+ * schreibt, liefert keine verwertbare Meldung; sechs klare Bilder dagegen
+ * fuehren ihn in zwei Sekunden zur richtigen Schublade.
+ *
+ * Jede Kategorie zeigt auf eine FEHLERKLASSE — dieselbe Sprache, in der das
+ * Testlabor Befunde fuehrt (siehe testlab/store.js). Genau diese Klasse ist
+ * spaeter die Klammer, an der alle Praxen gemeinsam profitieren: Nicht die
+ * einzelne Loesung wird geteilt, sondern der abstrakte Fehlerfall.
+ *
+ * `ebene` sagt, WO die Loesung liegt:
+ *   "einstellung" — die Praxis kann das selbst pflegen
+ *   "technisch"   — geht als Fall an die Entwicklung, nie ungeprueft zurueck
+ */
+export const KATEGORIEN = [
+  {
+    id: "verhoert",
+    titel: "Falsch verstanden",
+    hinweis: "Ein Name oder Wort kam falsch an.",
+    beispiel: "„Aus Ouafa El Hajjami wurde El Hayani.“",
+    symbol: "ohr",
+    fehlerklasse: "verhoert_name",
+    bereich: "hoeren",
+    ebene: "einstellung",
+    fragtNamen: true,
+  },
+  {
+    id: "falsche_daten",
+    titel: "Falsche Auskunft",
+    hinweis: "Termin, Uhrzeit oder Zahl stimmte nicht.",
+    beispiel: "„Sie nannte den Dienstag statt den Mittwoch.“",
+    symbol: "kalender",
+    fehlerklasse: "falsche_daten",
+    bereich: "denken",
+    ebene: "technisch",
+  },
+  {
+    id: "erfunden",
+    titel: "Etwas erfunden",
+    hinweis: "Sie behauptete etwas, das es nicht gibt.",
+    beispiel: "„Sie sagte, die SMS sei raus — war sie nicht.“",
+    symbol: "warnung",
+    fehlerklasse: "halluziniert",
+    bereich: "handeln",
+    ebene: "technisch",
+  },
+  {
+    id: "nichts_passiert",
+    titel: "Nichts passiert",
+    hinweis: "Der Auftrag wurde nicht ausgeführt.",
+    beispiel: "„Sie hat geantwortet, aber nichts verschickt.“",
+    symbol: "leer",
+    fehlerklasse: "keine_aktion",
+    bereich: "handeln",
+    ebene: "technisch",
+  },
+  {
+    id: "falsche_aktion",
+    titel: "Falsche Aktion",
+    hinweis: "Falscher Patient, falscher Termin, doppelt.",
+    beispiel: "„Der Termin der falschen Frau Meier wurde abgesagt.“",
+    symbol: "kreuz",
+    fehlerklasse: "falsches_tool",
+    bereich: "handeln",
+    ebene: "technisch",
+  },
+  {
+    id: "umstaendlich",
+    titel: "Umständlich oder langsam",
+    hinweis: "Zu viele Rückfragen, zu lang, zu langsam.",
+    beispiel: "„Sie fragt dreimal nach, bevor etwas passiert.“",
+    symbol: "uhr",
+    fehlerklasse: "gespraechsfluss",
+    bereich: "gespraech",
+    ebene: "einstellung",
+  },
+];
+
+/** Kategorie nachschlagen. Unbekanntes ergibt null — nie geraten. */
+export function findeKategorie(id) {
+  return KATEGORIEN.find((k) => k.id === String(id || "")) || null;
+}
+
+/**
+ * Einordnung einer FREITEXT-Meldung (Rueckfallweg, wenn keine Kategorie
+ * gewaehlt wurde). Entscheidet nur, WO die Meldung landet — nie, was
+ * tatsaechlich geaendert wird. Unklares geht absichtlich an die Entwicklung
+ * und nicht an die Praxis.
  */
 export function ordneEin(text) {
   const t = String(text || "").toLowerCase();
@@ -253,13 +337,19 @@ export function auffaelligkeiten(schritte) {
  *   "offen"  — steht an, wir koennen es aber
  *   "fehlt"  — geht heute noch nicht; dann steht der Grund dabei
  */
-export function baueLauf({ text, gespraech, schritte, funde, einordnung }) {
+export function baueLauf({ text, gespraech, schritte, funde, einordnung, kategorie, schwere }) {
   const kette = Array.isArray(schritte) ? schritte : [];
   const mitTon = kette.filter((x) => x.audio).length;
   const mitProtokoll = kette.filter((x) => x.protokoll).length;
 
+  // Der Inhaber darf das Textfeld leer lassen — dann traegt die gewaehlte
+  // Kategorie die Meldung. Ein leerer erster Schritt waere schlicht kaputt.
+  const SCHWERE_WORT = { blocker: "blockiert mich", stoerend: "stört im Alltag", kosmetik: "Kleinigkeit" };
+  const kopf = [kategorie?.titel || "", SCHWERE_WORT[schwere] || ""].filter(Boolean).join(" · ");
+  const meldung = [kopf, String(text || "").trim()].filter(Boolean).join(" — ");
+
   const lauf = [];
-  lauf.push({ titel: "Ihre Meldung", zustand: "fertig", text: String(text || "") });
+  lauf.push({ titel: "Ihre Meldung", zustand: "fertig", text: meldung || "(ohne Angabe)" });
 
   lauf.push(gespraech ? {
     titel: "Gespräch angehängt",
@@ -297,12 +387,17 @@ export function baueLauf({ text, gespraech, schritte, funde, einordnung }) {
     text: "In diesem Gespräch ist mir maschinell nichts aufgefallen — den Fall sehe ich mir persönlich an.",
   });
 
+  // Die Fehlerklasse ist der Hebel fuer ALLE Praxen: Geteilt wird nie ein
+  // Patient und nie eine Einzelloesung, sondern der abstrakte Fehlerfall.
+  const klasse = einordnung?.fehlerklasse && einordnung.fehlerklasse !== "unklar"
+    ? ` Fehlerklasse „${einordnung.fehlerklasse}“ — daraus wird ein Testfall, von dem alle Praxen profitieren.`
+    : "";
   lauf.push({
     titel: "Einordnung",
     zustand: "fertig",
-    text: einordnung?.ebene === "einstellung"
+    text: (einordnung?.ebene === "einstellung"
       ? "Das lässt sich in Ihrer Praxis einstellen — ohne Eingriff in die Software."
-      : "Das ist ein technischer Fall für die Pickadoc-Entwicklung.",
+      : "Das ist ein technischer Fall für die Pickadoc-Entwicklung.") + klasse,
   });
 
   // EHRLICH: Der Wiederholungslauf ist noch nicht gebaut. Ohne ihn gibt es
@@ -327,10 +422,16 @@ export function baueLauf({ text, gespraech, schritte, funde, einordnung }) {
  * Eine Klartext-Meldung der Praxis aufnehmen — mit dem letzten Gespraech als
  * Beleg und dem vollstaendigen Lauf als Antwort.
  */
-export async function meldeFall(clientId, { text, meldung_von = "" } = {}) {
+export async function meldeFall(clientId, { text, meldung_von = "", kategorie = "", schwere = "", name = "" } = {}) {
   const sauber = String(text || "").trim().slice(0, 2000);
-  if (!sauber) return { ok: false, reason: "text_required" };
-  const einordnung = ordneEin(sauber);
+  const kat = findeKategorie(kategorie);
+  // Ohne Kategorie UND ohne Text gibt es nichts zu melden. Mit Kategorie darf
+  // der Text leer bleiben — genau darum geht es: keine Romane erzwingen.
+  if (!kat && !sauber) return { ok: false, reason: "text_required" };
+  const einordnung = kat
+    ? { bereich: kat.bereich, ebene: kat.ebene, fehlerklasse: kat.fehlerklasse, kategorie: kat.id }
+    : { ...ordneEin(sauber), fehlerklasse: "unklar", kategorie: "" };
+  const stufe = ["blocker", "stoerend", "kosmetik"].includes(String(schwere)) ? String(schwere) : "stoerend";
 
   const gespraech = await letztesGespraech();
   const prot = await leseZuege({ tage: 30 });
@@ -341,6 +442,11 @@ export async function meldeFall(clientId, { text, meldung_von = "" } = {}) {
   await ref.set({
     text: sauber,
     ...einordnung,
+    schwere: stufe,
+    // Der gemeinte Name ist bei Hoerfehlern das Wertvollste am ganzen Fall:
+    // Er sagt, was RICHTIG gewesen waere, und macht daraus einen pruefbaren
+    // Testfall statt einer Beschwerde.
+    gemeinter_name: String(name || "").trim().slice(0, 120),
     status: "neu",
     meldung_von: String(meldung_von || "").slice(0, 120),
     // Anrufkennung fest am Fall: Ohne sie liesse sich der Fall spaeter nicht
@@ -354,7 +460,7 @@ export async function meldeFall(clientId, { text, meldung_von = "" } = {}) {
 
   return {
     ok: true, id: ref.id, ...einordnung,
-    lauf: baueLauf({ text: sauber, gespraech, schritte, funde, einordnung }),
+    lauf: baueLauf({ text: sauber, gespraech, schritte, funde, einordnung, kategorie: kat, schwere: stufe }),
   };
 }
 
