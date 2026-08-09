@@ -51,9 +51,54 @@ function norm(s) {
 // Anker): nur Begriffe, die klinisch praktisch nie vorkommen.
 const ABRECHNUNG_MARKER = /\b(berechn\w*|abrechn\w*|rechne\s+(das|den|die|es)?\s*ab|setz\w*\s+an|angesetzt|goz|bema|faktor\s+\d|steigerungsfaktor|privatleistung|privatrechnung|ziffer\w*|gebuehr\w*|geb[uü]hr\w*|rechnung|kostenvoranschlag|heil-?\s*und\s*kostenplan|hkp)\b/i;
 
+/** Memo in Saetze zerlegen (gemeinsame Grundlage fuer Fallback und Einrasten). */
+function satzListe(text) {
+  return String(text || "").split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+}
+
+function wortMenge(s) {
+  return new Set(
+    String(s || "").toLowerCase()
+      .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+      .split(/[^a-z0-9]+/).filter((w) => w.length >= 2),
+  );
+}
+
+/**
+ * Eine vom Modell genannte Passage auf den ECHTEN Satz im Memo einrasten (PUR).
+ *
+ * Warum (Testlauf 09.08.2026): Das Modell soll woertlich zitieren, weicht aber
+ * ab — aus "Berechne das privat mit Faktor 3,5." wurde "Berechne das privat mit
+ * Fakt-3,5.". Die woertliche Suche fand nichts, also blieb die Abrechnungs-
+ * anweisung IN DER BEHANDLUNGSDOKUMENTATION stehen (§ 630f: dort gehoert sie
+ * nicht hin) und der Abrechnungstext war zusaetzlich verstuemmelt.
+ *
+ * Wir suchen deshalb den Satz mit der groessten Wort-Ueberschneidung. Damit
+ * niemals Klinik verloren geht, gilt doppelt: der Satz muss Abrechnungssprache
+ * enthalten UND der Grossteil der genannten Woerter muss wirklich darin stehen.
+ * Zurueck kommt der ORIGINALSATZ des Arztes, nie die Fassung des Modells.
+ *
+ * @returns {string} passender Originalsatz oder "" (dann lieber nichts anfassen)
+ */
+export function satzZuPassage(passage, text, { minAnteil = 0.6 } = {}) {
+  const pWorte = wortMenge(passage);
+  if (!pWorte.size) return "";
+  let bester = "";
+  let besteQuote = 0;
+  for (const satz of satzListe(text)) {
+    if (!ABRECHNUNG_MARKER.test(satz)) continue;
+    const sWorte = wortMenge(satz);
+    let treffer = 0;
+    for (const w of pWorte) if (sWorte.has(w)) treffer++;
+    const quote = treffer / pWorte.size;
+    if (quote > besteQuote) { besteQuote = quote; bester = satz; }
+  }
+  return besteQuote >= minAnteil ? bester : "";
+}
+
 /** Satzweise Fallback-Trennung, wenn das LLM nicht antwortet. */
 function trenneFallback(memo) {
-  const saetze = String(memo).split(/(?<=[.!?])\s+/);
+  const saetze = satzListe(memo);
   const doku = [];
   const abrechnung = [];
   for (const s of saetze) {
@@ -141,8 +186,21 @@ export async function trenneMemo(memo, { offeneAbrechnungsFrage = "", timeoutMs 
     if (idx >= 0 && plausibel) {
       doku = (doku.slice(0, idx) + " " + doku.slice(idx + passage.length)).replace(/\s{2,}/g, " ").trim();
       abrechnung.push(passage);
-    } else if (plausibel && ABRECHNUNG_MARKER.test(passage)) {
-      // nicht woertlich gefunden (STT-Abweichung): mitnehmen, Doku unangetastet
+      continue;
+    }
+    if (!plausibel) continue;
+    // Nicht woertlich gefunden: auf den echten Satz einrasten (siehe
+    // satzZuPassage). Nur so verlaesst die Abrechnungsanweisung die Kartei —
+    // und zwar im Originalwortlaut des Arztes, nicht in der Fassung des Modells.
+    const satz = satzZuPassage(passage, doku);
+    if (satz) {
+      const sIdx = doku.toLowerCase().indexOf(satz.toLowerCase());
+      if (sIdx >= 0) {
+        doku = (doku.slice(0, sIdx) + " " + doku.slice(sIdx + satz.length)).replace(/\s{2,}/g, " ").trim();
+      }
+      abrechnung.push(satz);
+    } else if (ABRECHNUNG_MARKER.test(passage)) {
+      // Kein passender Satz: mitnehmen, Doku sicherheitshalber unangetastet.
       abrechnung.push(passage);
     }
   }
