@@ -186,28 +186,50 @@ export async function searchPatient(clientId, name) {
     if (seen.size >= 3) break;
   }
 
-  // NAMENSKATALOG — letzte Instanz (Dr. Petsas 04.08.2026).
-  // Der Plattform-Index kennt bei Doppelnamen nur den ganzen Nachnamen am
-  // Stueck ("el hajjami"), nie den unterscheidenden Teil ("hajjami"). Findet
-  // die Plattform-Suche deshalb nichts, halten wir den gehoerten Namen gegen
-  // ALLE Namen der Praxis — je Wort und nach Klang. Die Stammdaten holen wir
-  // danach gezielt zu den gefundenen Kennungen (kein zweiter Suchlauf).
-  if (!seen.size) {
-    try {
-      const hits = await findInCatalog(searchClientId, name, { limit: 6 });
-      if (hits.length) {
-        const rows = await fetchPatientsByIds(searchClientId, hits.map((h) => h.i));
-        const order = new Map(hits.map((h, idx) => [h.i, idx]));
+  // NAMENSKATALOG (Dr. Petsas 04.08.2026) — wird IMMER befragt, nicht nur als
+  // Notnagel. Zwei Gruende:
+  //   1. Der Plattform-Index kennt bei Doppelnamen nur den ganzen Nachnamen am
+  //      Stueck ("el hajjami"), nie den unterscheidenden Teil ("hajjami").
+  //   2. Findet die Plattform-Suche ueber ihren Klang-Notbehelf IRGENDETWAS,
+  //      liefert sie auch Fremdnamen — bei "Makhoukhi" standen zwei voellig
+  //      andere Patienten VOR der richtigen. Ein Notnagel haette nie gegriffen.
+  // Der Katalog liegt lokal im Speicher (rund 50 ms, keine Datenbank-Kosten).
+  let catalogHits = [];
+  try {
+    catalogHits = await findInCatalog(searchClientId, name, { limit: 6 });
+  } catch {
+    catalogHits = [];
+  }
+  // Ab 10 Punkten passt mindestens ein Wort buchstabengetreu oder der ganze
+  // Name klanglich — das ist sicher genug, um die Reihenfolge zu bestimmen.
+  const strong = catalogHits.filter((h) => (h.score || 0) >= 10);
+
+  try {
+    if (strong.length) {
+      const rows = await fetchPatientsByIds(searchClientId, strong.map((h) => h.i));
+      if (rows.length) {
+        const order = new Map(strong.map((h, idx) => [h.i, idx]));
         rows.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
-        for (const p of rows) {
-          const key = norm(p?.id);
-          if (key && !seen.has(key)) seen.set(key, p);
-        }
-        if (seen.size) lastError = null;
+        // EIN eindeutiger Volltreffer -> genau diese Person. Chef-Beschwerde
+        // 04.08.2026: "Ich nannte den Vornamen — trotzdem fragt Clara nach."
+        if (rows.length === 1) return { ok: true, patients: rows };
+        // Mehrere gleich starke (echte Namensvettern) -> nach vorn, Rest dahinter.
+        const merged = new Map(rows.map((p) => [norm(p.id), p]));
+        for (const [k, v] of seen) if (!merged.has(k)) merged.set(k, v);
+        return { ok: true, patients: [...merged.values()] };
       }
-    } catch {
-      // Katalog ist eine Zugabe — faellt er aus, bleibt es beim bisherigen Ergebnis.
+    } else if (!seen.size && catalogHits.length) {
+      // Kein sicherer Treffer, aber die Plattform fand gar nichts: dann sind die
+      // Klang-Kandidaten des Katalogs besser als eine leere Antwort.
+      const rows = await fetchPatientsByIds(searchClientId, catalogHits.map((h) => h.i));
+      if (rows.length) {
+        const order = new Map(catalogHits.map((h, idx) => [h.i, idx]));
+        rows.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
+        return { ok: true, patients: rows };
+      }
     }
+  } catch {
+    // Katalog ist eine Zugabe — faellt er aus, bleibt es beim bisherigen Ergebnis.
   }
 
   if (!seen.size && lastError) return { ok: false, error: lastError };

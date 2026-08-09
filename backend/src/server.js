@@ -10,6 +10,8 @@ import { runMorgenlauf } from "./clara/morgenlauf.js";
 import { runProaktivSweep } from "./clara/interruptPolicy.js";
 import { sweepRecallOutcomes, dailyInitiativeScan } from "./clara/recallCoach.js";
 import { sweepAbsenceRebookings } from "./clara/absencePlanner.js";
+import { ensureCatalog } from "./clara/patientCatalog.js";
+import { listContextPatientIds } from "./clara/sttPatientNames.js";
 import { runRetentionSweep } from "./brain/retention.js";
 import { materializeDueJobs as qmMaterializeDueJobs } from "./qm/schedules.js";
 import { runEscalationSweep as qmRunEscalationSweep } from "./qm/notify.js";
@@ -161,7 +163,7 @@ app.get("/m/ipad.webmanifest", (req, res) => {
 // altem lena-doku-template-zahn.js aus dem Safari-Cache (?v= nicht gebumpt) —
 // Befund-Diktate verschwanden, obwohl der Server laengst den Fix auslieferte.
 app.use((req, res, next) => {
-  if (/^\/m\/(ipad|ipad-app|preview|pair|call|lena-01|cx7|clara-tour)\.html$/.test(req.path) ||
+  if (/^\/m\/(ipad|ipad-app|preview|pair|call|lena-01|cx7|clara-tour|clara-testreport)\.html$/.test(req.path) ||
       /^\/m\/lena-01\//.test(req.path) ||
       /^\/m\/lena-[\w-]+\.js$/.test(req.path)) {
     res.set("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -353,6 +355,19 @@ server.listen(PORT, () => {
   publishRuntimeConfig();
   syncLisaTools();
   startMailScheduler();
+  // Namenskatalog vorwaermen: sonst zahlt der ERSTE Anrufer nach einem Neustart
+  // die Ladezeit (aus der Datei ~0,4 s, beim allerersten Aufbau ~2,5 s).
+  // Fehler sind unkritisch — die Suche laeuft dann wie vor dem Katalog.
+  // Zweiter Anlaufweg der Suche (Termin-Patienten als Kontext) gleich mit —
+  // sonst zahlt der erste Anrufer dessen Aufbau (gemessen: rund 9 s).
+  if (DEFAULT_CLIENT_ID) {
+    Promise.all([
+      ensureCatalog(DEFAULT_CLIENT_ID),
+      listContextPatientIds(DEFAULT_CLIENT_ID).catch(() => []),
+    ])
+      .then(([c, ids]) => log.info("patient search warm", { names: c?.count || 0, contextIds: ids.length }))
+      .catch((e) => log.warn("patient_search_warmup_failed", { error: String(e?.message || e) }));
+  }
   // Lisa call finalizer: fetch transcripts of finished outbound calls and
   // write the outcome to the shared brain. Cheap no-op when nothing is calling.
   if (lisaCallConfigured() && DEFAULT_CLIENT_ID) {
