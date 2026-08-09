@@ -11,7 +11,7 @@
  *
  * Aufruf:  node tests/test-improve.mjs
  */
-import { ketteBauen, auffaelligkeiten, baueLauf, ordneEin } from "../src/improve.js";
+import { ketteBauen, auffaelligkeiten, baueLauf, ordneEin, urteile, probeErlaubt } from "../src/improve.js";
 
 let ok = 0;
 let fail = 0;
@@ -99,7 +99,28 @@ pruefe("zu viele Rueckfragen -> Praxis darf pflegen", ordneEin("Bei Terminversch
 pruefe("falsche Aktion -> technisch", ordneEin("Sie hat den falschen Termin abgesagt").ebene === "technisch");
 pruefe("Unklares landet technisch, nicht bei der Praxis", ordneEin("Irgendwas stimmt nicht").ebene === "technisch");
 
-console.log("\n7) Grenzfaelle");
+console.log("\n7) Urteil der Namensprobe");
+pruefe("ein Treffer ist eindeutig",
+  urteile([{ firstName: "Ouafa", lastName: "El Hajjami" }]).art === "eindeutig");
+pruefe("Name steht im Urteil",
+  /Ouafa El Hajjami/.test(urteile([{ firstName: "Ouafa", lastName: "El Hajjami" }]).text));
+// Zwei aehnliche Namen sind KEIN Erfolg — genau daran ist Clara im Live-Anruf
+// gescheitert, als sie zwischen Kandidaten hin und her sprang.
+pruefe("zwei Treffer gelten als mehrdeutig, nicht als Erfolg",
+  urteile([{ firstName: "A", lastName: "X" }, { firstName: "B", lastName: "X" }]).art === "mehrdeutig");
+pruefe("nichts gefunden wird nicht beschoenigt", urteile([]).art === "nichts");
+pruefe("kaputte Eingabe stuerzt nicht ab", urteile(null).art === "nichts");
+
+console.log("\n8) Kostendeckel der Live-Probe");
+// Jede Probe fragt die Plattform-Suche bis zu dreimal ab und kostet damit
+// Geld. Nach dem Kostenvorfall vom 09.08.2026 laeuft hier nichts ohne Deckel.
+let erlaubt = 0;
+const start = Date.now();
+for (let i = 0; i < 60; i++) if (probeErlaubt(start)) erlaubt++;
+pruefe("Deckel greift bei 40 Proben je Stunde", erlaubt === 40, String(erlaubt));
+pruefe("nach einer Stunde wieder frei", probeErlaubt(start + 3600001) === true);
+
+console.log("\n9) Grenzfaelle");
 pruefe("kaputte Eingabe stuerzt nicht ab", ketteBauen(null, null).length === 0);
 pruefe("leere Kette erzeugt keine Funde", auffaelligkeiten(null).length === 0);
 

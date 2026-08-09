@@ -149,7 +149,26 @@ export function nameQueryVariants(spoken, { max = 3 } = {}) {
   return out;
 }
 
-export async function searchPatient(clientId, name) {
+/**
+ * @param {string} clientId
+ * @param {string} name  gesprochener Name
+ * @param {{onStage?: (stufe: string, daten: object) => void}} [opts]
+ *   Optionaler BEOBACHTER (Chef 09.08.2026, AI Improve): meldet jede Stufe der
+ *   Suche mit Zwischenergebnis und Dauer. Damit zeigt das Verbesserungs-Modul
+ *   den echten Korrekturweg — Suchvarianten, Plattform-Suche, Namenskatalog —
+ *   statt ihn nachzubauen. Bewusst so geloest: Eine nachgebaute Anzeige wuerde
+ *   frueher oder spaeter etwas anderes zeigen als das, was Clara wirklich tut,
+ *   und damit genau das Vertrauen zerstoeren, das sie schaffen soll.
+ *   Fehlt der Beobachter, aendert sich NICHTS am Ablauf; Fehler im Beobachter
+ *   duerfen die Suche nie stoeren.
+ */
+export async function searchPatient(clientId, name, opts = {}) {
+  const t0 = Date.now();
+  const melde = (stufe, daten) => {
+    try {
+      if (typeof opts?.onStage === "function") opts.onStage(stufe, { ...daten, ms: Date.now() - t0 });
+    } catch { /* Beobachter darf die Suche nie kosten */ }
+  };
   let booking = {};
   try { booking = await loadBooking(clientId); } catch { booking = {}; }
   const searchClientId = norm(booking.clientId) || clientId;
@@ -164,6 +183,7 @@ export async function searchPatient(clientId, name) {
   // Mandantenfaehig: jede Abfrage traegt die Kennung dieses Standorts, es wird
   // NICHTS zwischen Mandanten geteilt oder zwischengespeichert.
   const variants = nameQueryVariants(name);
+  melde("varianten", { name, varianten: variants });
   if (!variants.length) return { ok: true, patients: [] };
   const seen = new Map();
   let lastError = null;
@@ -185,6 +205,12 @@ export async function searchPatient(clientId, name) {
     // Genug gefunden? Dann keine weitere Abfrage — spart Lesevorgaenge.
     if (seen.size >= 3) break;
   }
+  melde("plattform", {
+    treffer: [...seen.values()].map((p) => ({
+      name: `${p?.firstName || ""} ${p?.lastName || ""}`.trim(), id: norm(p?.id),
+    })),
+    fehler: lastError || "",
+  });
 
   // NAMENSKATALOG (Dr. Petsas 04.08.2026) — wird IMMER befragt, nicht nur als
   // Notnagel. Zwei Gruende:
@@ -203,6 +229,11 @@ export async function searchPatient(clientId, name) {
   // Ab 10 Punkten passt mindestens ein Wort buchstabengetreu oder der ganze
   // Name klanglich — das ist sicher genug, um die Reihenfolge zu bestimmen.
   const strong = catalogHits.filter((h) => (h.score || 0) >= 10);
+  melde("katalog", {
+    treffer: catalogHits.map((h) => ({
+      name: `${h?.f || ""} ${h?.l || ""}`.trim(), punkte: h?.score || 0, sicher: (h?.score || 0) >= 10,
+    })),
+  });
 
   try {
     if (strong.length) {

@@ -13,7 +13,7 @@ import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
-import { meldeFall, listeFaelle, letztesGespraech } from "../improve.js";
+import { meldeFall, listeFaelle, letztesGespraech, probiereNamen } from "../improve.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
 import { exportTenant, eraseTenant, applyRetention } from "../dsgvo.js";
@@ -338,6 +338,30 @@ router.get("/improve/last", async (req, res) => {
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
   }
+});
+
+
+// LIVE-NAMENSPROBE: schickt einen Namen durch die echte Suche und meldet jede
+// Stufe, sobald sie fertig ist (laufender Datenstrom). So sieht man den
+// Korrekturweg entstehen, statt am Ende nur ein Ergebnis zu bekommen.
+router.get("/improve/nametest", async (req, res) => {
+  res.set({
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders?.();
+  const sende = (stufe, daten) => {
+    res.write(`data: ${JSON.stringify({ stufe, ...daten })}\n\n`);
+  };
+  try {
+    await probiereNamen(resolveClientId(req), req.query?.name, sende);
+  } catch (e) {
+    sende("ergebnis", { urteil: { art: "nichts", text: "Probe fehlgeschlagen: " + String(e?.message || e) } });
+  }
+  res.write("data: {\"stufe\":\"fertig\"}\n\n");
+  res.end();
 });
 
 

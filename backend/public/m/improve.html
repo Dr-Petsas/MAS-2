@@ -86,6 +86,36 @@
   .m.t { background: #1e3a2c; color: #93e4bb; }
   .fehler { font-size: 13px; color: #ff9b9b; margin-top: 10px; display: none; }
   .fuss { color: #6f83a6; font-size: 12px; margin-top: 20px; }
+
+  /* Live-Namensprobe: Stufen erscheinen einzeln, sobald sie fertig sind. */
+  .probezeile { display: flex; gap: 8px; }
+  #probename {
+    flex: 1; background: #0d1626; color: #e8eefc; font: inherit;
+    border: 1px solid #2c3954; border-radius: 11px; padding: 11px 12px; min-width: 0;
+  }
+  button.klein { width: auto; margin-top: 0; padding: 11px 17px; flex-shrink: 0; }
+  .stufen { margin-top: 4px; }
+  .stufe {
+    display: flex; gap: 11px; padding: 11px 0 0; opacity: 0; transform: translateY(6px);
+    animation: rein .32s ease forwards;
+  }
+  @keyframes rein { to { opacity: 1; transform: none; } }
+  .stufe .icon {
+    width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+    background: #1d2a45; color: #9fb6dd;
+  }
+  .stufe.gut .icon { background: #1e3a2c; color: #93e4bb; }
+  .stufe.warn .icon { background: #3a3020; color: #ffcf8b; }
+  .stufe.schlecht .icon { background: #3a2226; color: #ff9b9b; }
+  .stufe .inhalt { flex: 1; min-width: 0; }
+  .stufe .name { font-size: 12px; color: #8ea3c6; text-transform: uppercase; letter-spacing: .5px; }
+  .stufe .wert { font-size: 14px; margin-top: 2px; word-break: break-word; }
+  .stufe .dauer { font-size: 11.5px; color: #6f83a6; margin-top: 2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+  .chip { font-size: 12px; border-radius: 8px; padding: 3px 8px; background: #1d2a45; color: #9fb6dd; }
+  .chip.stark { background: #1e3a2c; color: #93e4bb; }
+  .laeuft { display: inline-block; width: 11px; text-align: left; }
 </style>
 </head>
 <body>
@@ -95,6 +125,18 @@
     <div class="sub">Melden, was nicht funktioniert — und verfolgen, wie es gelöst wird.</div>
   </header>
 
+  <!-- LIVE-NAMENSPROBE: der sichtbare Korrekturweg. Hier laeuft die echte
+       Suche, Stufe fuer Stufe, so wie Clara sie im Anruf durchlaeuft. -->
+  <h2>Namensprobe — schwierigsten Patientennamen nennen</h2>
+  <div class="karte">
+    <div class="probezeile">
+      <input id="probename" type="text" placeholder="z. B. Ouafa El Hajjami" autocomplete="off">
+      <button id="probe" class="klein" type="button">Testen</button>
+    </div>
+    <div class="stufen" id="stufen"></div>
+  </div>
+
+  <h2>Etwas melden</h2>
   <div class="karte">
     <textarea id="text" placeholder="Was ist schiefgelaufen? Einfach beschreiben, wie einer Kollegin gegenüber."></textarea>
     <div class="beispiele">
@@ -221,6 +263,110 @@
       elFehler.style.display = "block";
     }).then(function () { elBtn.disabled = false; });
   });
+
+  // ---- Live-Namensprobe ----------------------------------------------------
+  // Der Datenstrom liefert jede Stufe, sobald sie fertig ist. Die Anzeige
+  // wartet also nicht auf das Endergebnis, sondern waechst mit — genau das
+  // macht aus einem Fehlschlag einen nachvollziehbaren Vorgang.
+  var elProbe = document.getElementById("probe");
+  var elProbeName = document.getElementById("probename");
+  var elStufen = document.getElementById("stufen");
+
+  var TITEL = {
+    gehoert: "So verstanden",
+    varianten: "Suchzuschnitte",
+    plattform: "Patientensuche",
+    katalog: "Namenskatalog (klanglich)",
+    ergebnis: "Ergebnis",
+  };
+
+  function stufeZeigen(d) {
+    var art = "";
+    var wert = "";
+    var chips = [];
+
+    if (d.stufe === "gehoert") { wert = d.name; }
+    else if (d.stufe === "varianten") {
+      chips = (d.varianten || []).map(function (v) { return { text: v }; });
+      wert = chips.length ? "" : "kein brauchbarer Zuschnitt";
+      art = chips.length ? "" : "warn";
+    } else if (d.stufe === "plattform") {
+      var tr = d.treffer || [];
+      wert = tr.length ? "" : "keine Treffer";
+      art = tr.length ? "gut" : "warn";
+      chips = tr.map(function (t) { return { text: t.name, stark: true }; });
+    } else if (d.stufe === "katalog") {
+      var kt = d.treffer || [];
+      wert = kt.length ? "" : "kein klanglicher Treffer";
+      art = kt.length ? "gut" : "warn";
+      chips = kt.map(function (t) {
+        return { text: t.name + " · " + t.punkte, stark: t.sicher };
+      });
+    } else if (d.stufe === "ergebnis") {
+      wert = (d.urteil && d.urteil.text) || "";
+      art = d.urteil && d.urteil.art === "eindeutig" ? "gut"
+        : (d.urteil && d.urteil.art === "mehrdeutig" ? "warn" : "schlecht");
+      chips = (d.treffer || []).map(function (t) {
+        return { text: t.name + (t.geboren ? " · " + t.geboren : ""), stark: true };
+      });
+    }
+
+    var el0 = el("div", "stufe " + art);
+    var zeichen = art === "gut" ? "\u2713" : (art === "schlecht" ? "\u2717" : (art === "warn" ? "!" : "\u2022"));
+    el0.appendChild(el("div", "icon", zeichen));
+    var inhalt = el("div", "inhalt");
+    inhalt.appendChild(el("div", "name", TITEL[d.stufe] || d.stufe));
+    if (wert) inhalt.appendChild(el("div", "wert", wert));
+    if (chips.length) {
+      var box = el("div", "chips");
+      chips.forEach(function (c) { box.appendChild(el("span", "chip" + (c.stark ? " stark" : ""), c.text)); });
+      inhalt.appendChild(box);
+    }
+    if (typeof d.ms === "number") inhalt.appendChild(el("div", "dauer", d.ms + " ms"));
+    el0.appendChild(inhalt);
+    elStufen.appendChild(el0);
+  }
+
+  function probeStarten() {
+    var name = elProbeName.value.trim();
+    if (name.length < 3) { elProbeName.focus(); return; }
+    elStufen.textContent = "";
+    elProbe.disabled = true;
+    var laeuft = el("div", "stufe");
+    laeuft.appendChild(el("div", "icon", "\u2026"));
+    var li = el("div", "inhalt");
+    li.appendChild(el("div", "name", "läuft"));
+    li.appendChild(el("div", "wert", "Suche läuft …"));
+    laeuft.appendChild(li);
+    elStufen.appendChild(laeuft);
+
+    var quelle = new EventSource("/improve/nametest?name=" + encodeURIComponent(name));
+    var ersteAntwort = true;
+    quelle.onmessage = function (ev) {
+      var d;
+      try { d = JSON.parse(ev.data); } catch (e) { return; }
+      if (ersteAntwort) { elStufen.textContent = ""; ersteAntwort = false; }
+      if (d.stufe === "fertig") { quelle.close(); elProbe.disabled = false; return; }
+      stufeZeigen(d);
+    };
+    quelle.onerror = function () {
+      quelle.close();
+      elProbe.disabled = false;
+      if (ersteAntwort) {
+        elStufen.textContent = "";
+        var f = el("div", "stufe schlecht");
+        f.appendChild(el("div", "icon", "\u2717"));
+        var fi = el("div", "inhalt");
+        fi.appendChild(el("div", "name", "Probe"));
+        fi.appendChild(el("div", "wert", "Verbindung unterbrochen."));
+        f.appendChild(fi);
+        elStufen.appendChild(f);
+      }
+    };
+  }
+
+  elProbe.addEventListener("click", probeStarten);
+  elProbeName.addEventListener("keydown", function (e) { if (e.key === "Enter") probeStarten(); });
 
   ladeAnhang();
 })();

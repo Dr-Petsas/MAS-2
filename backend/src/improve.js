@@ -358,6 +358,85 @@ export async function meldeFall(clientId, { text, meldung_von = "" } = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// LIVE-NAMENSPROBE — der sichtbare Korrekturweg
+// ---------------------------------------------------------------------------
+
+/**
+ * Urteil aus dem Suchergebnis (PUR).
+ *
+ * Drei Zustaende, bewusst hart getrennt: Nur EIN Treffer ist ein Erfolg. Zwei
+ * aehnliche Namen sind KEIN Erfolg — genau daran ist Clara im Live-Anruf
+ * gescheitert, als sie zwischen Kandidaten hin und her sprang.
+ */
+export function urteile(patienten) {
+  const p = Array.isArray(patienten) ? patienten : [];
+  if (!p.length) return { art: "nichts", text: "Kein Patient gefunden." };
+  if (p.length === 1) {
+    const n = `${p[0]?.firstName || ""} ${p[0]?.lastName || ""}`.trim();
+    return { art: "eindeutig", text: `Eindeutig: ${n}` };
+  }
+  return { art: "mehrdeutig", text: `${p.length} mögliche Personen — Clara müsste nachfragen.` };
+}
+
+/**
+ * Begrenzung der Live-Proben.
+ *
+ * Jede Probe fragt die Plattform-Suche bis zu dreimal ab, und die kostet Geld.
+ * Nach dem Kostenvorfall am 09.08.2026 (eine Schleife im Mailabgleich trieb die
+ * Google-Rechnung hoch) laeuft hier nichts mehr ohne Deckel.
+ */
+const probenFenster = [];
+const PROBEN_MAX = 40;
+const PROBEN_FENSTER_MS = 3600000;
+
+export function probeErlaubt(jetzt = Date.now()) {
+  while (probenFenster.length && jetzt - probenFenster[0] > PROBEN_FENSTER_MS) probenFenster.shift();
+  if (probenFenster.length >= PROBEN_MAX) return false;
+  probenFenster.push(jetzt);
+  return true;
+}
+
+/**
+ * Einen Namen durch die ECHTE Suche schicken und jede Stufe melden.
+ *
+ * Das ist die Demo, die sich der Chef vorstellt: Man nennt den schwierigsten
+ * Patientennamen, und statt eines peinlichen Fehlschlags sieht man, WO es
+ * hakt und was greift. Es laeuft ausdruecklich die Produktionssuche — was hier
+ * zu sehen ist, tut Clara im Anruf genauso.
+ */
+export async function probiereNamen(clientId, name, onStage) {
+  const gesprochen = String(name || "").trim().slice(0, 120);
+  const melde = (stufe, daten) => {
+    try { onStage(stufe, daten); } catch { /* Anzeige darf die Probe nie stoeren */ }
+  };
+  if (gesprochen.length < 3) {
+    melde("ergebnis", { urteil: { art: "nichts", text: "Bitte einen vollständigen Namen nennen." } });
+    return;
+  }
+  if (!probeErlaubt()) {
+    melde("ergebnis", {
+      urteil: { art: "nichts", text: "Zu viele Proben in kurzer Zeit — bitte später erneut." },
+    });
+    return;
+  }
+
+  melde("gehoert", { name: gesprochen });
+  const { searchPatient } = await import("./clara/agentBooking.js");
+  const res = await searchPatient(clientId, gesprochen, {
+    onStage: (stufe, daten) => melde(stufe, daten),
+  });
+  const patienten = Array.isArray(res?.patients) ? res.patients : [];
+  melde("ergebnis", {
+    urteil: urteile(patienten),
+    treffer: patienten.slice(0, 6).map((p) => ({
+      name: `${p?.firstName || ""} ${p?.lastName || ""}`.trim(),
+      geboren: String(p?.birthDate || p?.birthday || "").slice(0, 10),
+    })),
+    fehler: res?.ok === false ? String(res?.error || "") : "",
+  });
+}
+
 /** Gemeldete Faelle, neueste zuerst. */
 export async function listeFaelle(clientId, { limit = 50 } = {}) {
   const snap = await masCollection(clientId, COL_FAELLE)
