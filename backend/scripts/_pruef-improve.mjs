@@ -73,14 +73,33 @@ if (!knopf) {
   console.log("   URTEIL: " + (await page.textContent(".vurteil").catch(() => "—")).trim());
 }
 
-console.log("\n6) Ihre bisherigen Meldungen");
-const verlaufAn = await page.$("#sVerlauf:not(.versteckt)");
-if (!verlaufAn) console.log("   Abschnitt nicht sichtbar");
+console.log("\n6) Verlauf — eigener Knopf, eigener Bildschirm");
+const vKnopf = await page.$("#verlaufKnopf:not(.versteckt)");
+if (!vKnopf) console.log("   KEIN Verlaufs-Knopf sichtbar");
 else {
-  console.log("   " + (await page.textContent("#verlaufSub")).trim());
-  const eintraege = await page.$$eval(".meldung", (els) =>
-    els.slice(0, 4).map((e) => e.textContent.replace(/\s+/g, " ").trim().slice(0, 110)));
-  eintraege.forEach((e) => console.log("   " + e));
+  console.log("   Knopf: " + (await page.textContent("#verlaufKnopf")).replace(/\s+/g, " ").trim());
+  await vKnopf.click();
+  await page.waitForTimeout(1200);
+  // Melden und Nachschauen duerfen sich nie denselben Bildschirm teilen.
+  const meldeteilSichtbar = await page.$eval("#s1", (e) => e.style.display !== "none");
+  console.log("   Meldeteil ausgeblendet: " + !meldeteilSichtbar);
+  console.log("   " + ((await page.textContent("#verlaufSub")) || "").trim());
+  const leer = await page.$(".mleer");
+  if (leer) console.log("   Leerzustand: " + (await leer.textContent()).replace(/\s+/g, " ").trim());
+  const eintraege = await page.$$eval(".meldung", (els) => els.map((e) => ({
+    kopf: (e.querySelector(".mtitel") || {}).textContent || "",
+    // Genau das ist das Bild: vier Halte, davon so viele hell, wie erreicht sind.
+    halte: Array.from(e.querySelectorAll(".halt")).map((h) =>
+      ((h.querySelector(".hname") || {}).textContent || "")
+      + (h.className.includes("an") ? " [erreicht]" : h.className.includes("laeuft") ? " [laeuft]" : " [offen]")),
+    vergleich: Array.from(e.querySelectorAll(".gseite")).map((g) => g.textContent.replace(/\s+/g, " ").trim()),
+  })));
+  eintraege.slice(0, 4).forEach((e) => {
+    console.log("   • " + e.kopf + ": " + e.halte.join(" > "));
+    if (e.vergleich.length) console.log("     Bild: " + e.vergleich.join("  ->  "));
+  });
+  const bilder = eintraege.filter((e) => e.vergleich.length).length;
+  console.log("   Eintraege gesamt: " + eintraege.length + ", davon mit Vorher/Nachher-Bild: " + bilder);
 }
 
 console.log("\n7) Browser-Konsole");

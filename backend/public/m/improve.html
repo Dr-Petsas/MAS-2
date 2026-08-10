@@ -185,21 +185,93 @@
   .versteckt { display: none; }
   /* Nachweis: damals gegen heute, Zug fuer Zug. Was sich geaendert hat, muss
      ins Auge springen — sonst liest es niemand zu Ende. */
-  /* Verlauf der eigenen Meldungen mit Bearbeitungsstand. */
-  .meldung { padding: 11px 0; border-bottom: 1px solid var(--rand); }
-  .meldung:last-child { border-bottom: 0; }
-  .mkopf { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .mtitel { font-size: 14.5px; font-weight: 600; }
-  .mdatum { font-size: 12px; color: var(--dunkelgrau); margin-left: auto; }
-  .mstand {
-    font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px;
-    border: 1px solid var(--rand); border-radius: 999px; padding: 2px 8px;
+  /* ---- Verlauf: der Weg einer Meldung als Bild -------------------------
+     Eine Liste mit Zustandswoertern liest niemand. Deshalb bekommt jede
+     Meldung eine Strecke mit vier Halten — man sieht auf einen Blick, wie
+     weit sie gekommen ist und wo sie gerade steht. */
+  .meldung {
+    background: var(--karte); border: 1px solid var(--rand); border-radius: var(--radius);
+    padding: 16px 15px 15px; margin-bottom: 13px;
   }
-  .mstand.neu { color: var(--gelb); border-color: var(--gelb); }
-  .mstand.in_arbeit { color: var(--blau); border-color: var(--blau); }
-  .mstand.erledigt { color: var(--gruen); border-color: var(--gruen); }
-  .mtext { font-size: 14px; color: var(--grau); margin-top: 5px; }
-  .mantwort { font-size: 14px; margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--gruen); }
+  .mkopf { display: flex; align-items: center; gap: 9px; }
+  .msym {
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #1d2a45; border: 1px solid var(--rand); color: var(--blau);
+  }
+  .mtitel { font-size: 15px; font-weight: 600; }
+  .mdatum { font-size: 12px; color: var(--dunkelgrau); margin-left: auto; text-align: right; }
+
+  /* Die Strecke: vier Halte, verbunden durch eine Linie, die nur so weit
+     eingefaerbt ist, wie die Meldung wirklich gekommen ist. */
+  .pfad { display: flex; margin: 17px 0 3px; }
+  .halt { flex: 1; text-align: center; position: relative; }
+  .halt:not(:first-child):before {
+    content: ""; position: absolute; left: -50%; top: 15px; width: 100%; height: 2px;
+    background: var(--rand);
+  }
+  .halt.an:before { background: var(--gruen); }
+  .halt.laeuft:before { background: linear-gradient(90deg, var(--gruen), var(--blau)); }
+  .halt.lose:before { background: var(--rand); }
+  .hkreis {
+    position: relative; z-index: 1; width: 32px; height: 32px; border-radius: 50%;
+    margin: 0 auto; display: flex; align-items: center; justify-content: center;
+    background: #16233c; border: 2px solid var(--rand); color: var(--dunkelgrau);
+    font-size: 14px; font-weight: 700;
+  }
+  .halt.an .hkreis { border-color: var(--gruen); color: var(--gruen); background: rgba(70, 209, 138, .14); }
+  .halt.laeuft .hkreis {
+    border-color: var(--blau); color: var(--blau); background: rgba(79, 140, 255, .16);
+    animation: haltpuls 1.9s ease-in-out infinite;
+  }
+  @keyframes haltpuls {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(79, 140, 255, .45); }
+    60% { box-shadow: 0 0 0 9px rgba(79, 140, 255, 0); }
+  }
+  .hname { font-size: 11px; margin-top: 7px; color: var(--dunkelgrau); line-height: 1.25; }
+  .halt.an .hname, .halt.laeuft .hname { color: var(--grau); }
+  .halt.laeuft .hname { color: var(--blau); }
+
+  .mtext { font-size: 14px; color: var(--grau); margin-top: 13px; }
+  .mantwort {
+    font-size: 14px; margin-top: 10px; padding: 9px 11px; border-radius: 10px;
+    background: rgba(70, 209, 138, .09); border-left: 3px solid var(--gruen);
+  }
+  .mklasse {
+    display: inline-block; margin-top: 10px; font-size: 11px; letter-spacing: .4px;
+    color: var(--blau); border: 1px solid rgba(79, 140, 255, .4);
+    border-radius: 999px; padding: 3px 10px; background: rgba(79, 140, 255, .09);
+  }
+
+  /* Der Beweis: vorher gegen nachher, nebeneinander. Das ist das Bild, an
+     dem man sieht, WAS behoben wurde — nicht nur, DASS etwas geschah. */
+  .gegen { display: grid; grid-template-columns: 1fr 26px 1fr; gap: 8px; align-items: stretch; margin-top: 13px; }
+  .gseite { border-radius: 12px; padding: 10px 11px; border: 1px solid var(--rand); background: #16233c; }
+  .gseite.vorher { border-color: rgba(255, 141, 141, .42); }
+  .gseite.nachher { border-color: rgba(70, 209, 138, .5); }
+  .gtitel { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--dunkelgrau); }
+  .gseite.vorher .gtitel { color: var(--rot); }
+  .gseite.nachher .gtitel { color: var(--gruen); }
+  .gtext { font-size: 13.5px; margin-top: 5px; line-height: 1.4; }
+  .gpfeil { display: flex; align-items: center; justify-content: center; color: var(--dunkelgrau); font-size: 17px; }
+  @media (max-width: 430px) {
+    .gegen { grid-template-columns: 1fr; }
+    .gpfeil { transform: rotate(90deg); height: 14px; }
+  }
+  .mleer { color: var(--dunkelgrau); font-size: 14px; text-align: center; padding: 26px 12px; }
+
+  .kopfaktionen { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .kopfknopf {
+    background: transparent; color: var(--grau); font-size: 14px; font-weight: 600;
+    border: 1px solid var(--rand); border-radius: 10px; padding: 7px 12px;
+    display: flex; align-items: center; gap: 6px; touch-action: manipulation;
+  }
+  .kopfknopf:active { background: var(--karte); }
+  .kzahl {
+    font-size: 11px; font-weight: 700; color: var(--blau);
+    background: rgba(79, 140, 255, .16); border-radius: 999px; padding: 1px 7px;
+  }
+  .kzahl:empty { display: none; }
 
   .nachweis { margin-top: 10px; }
   .vergleich {
@@ -223,7 +295,7 @@
   .vurteil.offen { border-color: var(--gelb); }
 
   .zurueck {
-    margin-left: auto; flex-shrink: 0; text-decoration: none;
+    flex-shrink: 0; text-decoration: none;
     color: var(--grau); font-size: 14px; font-weight: 600;
     border: 1px solid var(--rand); border-radius: 10px; padding: 7px 12px;
   }
@@ -243,13 +315,19 @@
       <h1>AI Improve</h1>
       <div class="sub">Problem melden — und sehen, wie es gelöst wird.</div>
     </div>
-    <!-- Rueckweg fuer iPad und Handy: Dort laeuft die Geraete-App im Vollbild
-         ohne Browser-Leiste — ohne diesen Knopf kaeme man nicht zurueck.
-         Eingebettet im Praxis-Programm waere er sinnlos und bleibt aus. -->
-    <a class="zurueck versteckt" id="zurueck" href="/m/ipad-app.html">‹ Zurück</a>
+    <div class="kopfaktionen">
+      <!-- Der Verlauf liegt bewusst HINTER einem Knopf: Beim Melden will man
+           melden. Was aus alten Meldungen wurde, ist eine eigene Frage und
+           bekommt eine eigene Seite (Auftrag Dr. Petsas 10.08.2026). -->
+      <button class="kopfknopf versteckt" id="verlaufKnopf" type="button">Verlauf<span class="kzahl" id="verlaufZahl"></span></button>
+      <!-- Rueckweg fuer iPad und Handy: Dort laeuft die Geraete-App im Vollbild
+           ohne Browser-Leiste — ohne diesen Knopf kaeme man nicht zurueck.
+           Eingebettet im Praxis-Programm waere er sinnlos und bleibt aus. -->
+      <a class="zurueck versteckt" id="zurueck" href="/m/ipad-app.html">‹ Zurück</a>
+    </div>
   </header>
 
-  <div class="fortschritt">
+  <div class="fortschritt" id="fortschritt">
     <div class="fs an" id="fs1"></div><div class="fs" id="fs2"></div><div class="fs" id="fs3"></div>
   </div>
 
@@ -309,15 +387,16 @@
 
   <div id="ergebnis"></div>
 
-  <!-- Was ist aus meinen bisherigen Meldungen geworden? Ohne diese Antwort
-       meldet beim zweiten Mal niemand mehr etwas. -->
-  <div class="abschnitt versteckt" id="sVerlauf">
-    <div class="frage">Ihre bisherigen Meldungen</div>
+  <!-- Der Verlauf: Was ist aus meinen Meldungen geworden? Ohne diese Antwort
+       meldet beim zweiten Mal niemand mehr etwas. Er zeigt den WEG jeder
+       Meldung als Bild — Zwischenstaende inbegriffen, auch die unfertigen. -->
+  <div class="abschnitt versteckt" id="sHistorie">
+    <div class="frage">Was aus Ihren Meldungen wurde</div>
     <div class="frageSub" id="verlaufSub"></div>
-    <div class="karte" id="verlauf"></div>
+    <div id="verlauf"></div>
   </div>
 
-  <div class="fuss">
+  <div class="fuss" id="fuss">
     Einstellbares ändern wir in Ihrer Praxis. Technische Fälle gehen an die
     Entwicklung und kommen erst nach bestandenem Test zurück — als Fehlerklasse,
     von der alle Praxen profitieren.
@@ -654,50 +733,147 @@
   // ---- Verlauf der eigenen Meldungen -------------------------------------
   // Ohne Rueckmeldung meldet beim zweiten Mal niemand mehr etwas. Der Stand
   // kommt aus dem zentralen Eingang zurueck an die Praxis geschrieben.
-  var STAND_WORT = { neu: "eingegangen", in_arbeit: "in Arbeit", erledigt: "erledigt" };
   var ART_WORT = {
     verhoert: "Falsch verstanden", falsche_daten: "Falsche Auskunft", erfunden: "Etwas erfunden",
     nichts_passiert: "Nichts passiert", falsche_aktion: "Falsche Aktion", umstaendlich: "Umständlich",
   };
 
+  var SYM_ZU_ART = {
+    verhoert: "ohr", falsche_daten: "warnung", erfunden: "warnung",
+    nichts_passiert: "leer", falsche_aktion: "kreuz", umstaendlich: "uhr",
+  };
+
+  /**
+   * Die vier Halte einer Meldung — und wie weit sie gekommen ist.
+   *
+   * EHRLICHKEITSREGEL: Ein Halt gilt erst als erreicht, wenn es dafuer einen
+   * Beleg gibt. "In Arbeit" wird deshalb als laufend gezeigt, nicht als
+   * erledigt, und der Beweis nur dann, wenn wirklich nachgehoert wurde.
+   */
+  function strecke(f) {
+    var stand = String(f.status || "neu");
+    var n = f.nachweis || null;
+    var halte = [
+      { name: "Gemeldet", zustand: "an" },
+      { name: "Eingeordnet", zustand: f.fehlerklasse || f.kategorie ? "an" : "offen" },
+      {
+        name: stand === "erledigt" ? "Behoben" : (stand === "in_arbeit" ? "In Arbeit" : "Eingegangen"),
+        zustand: stand === "erledigt" ? "an" : (stand === "in_arbeit" ? "laeuft" : "offen"),
+      },
+      {
+        name: "Nachgewiesen",
+        zustand: n ? (n.art === "geloest" ? "an" : "laeuft") : "offen",
+      },
+    ];
+    var pfad = el("div", "pfad");
+    halte.forEach(function (h, i) {
+      var k = el("div", "halt " + (h.zustand === "offen" ? "" : h.zustand));
+      // Die Linie gehoert zum VORIGEN Halt: Sie darf nur eingefaerbt sein,
+      // wenn man von dort auch wirklich losgekommen ist. Sonst fuehrte eine
+      // helle Strecke aus einem leeren Punkt heraus.
+      if (i > 0 && halte[i - 1].zustand === "offen") k.className += " lose";
+      k.appendChild(el("div", "hkreis", h.zustand === "an" ? "✓" : String(i + 1)));
+      k.appendChild(el("div", "hname", h.name));
+      pfad.appendChild(k);
+    });
+    return pfad;
+  }
+
+  /** Vorher gegen nachher — das eigentliche Bild der Behebung. */
+  function gegenueber(n) {
+    var b = n && n.beispiel;
+    if (!b || (!b.damals && !b.heute)) return null;
+    var g = el("div", "gegen");
+    var links = el("div", "gseite vorher");
+    links.appendChild(el("div", "gtitel", "Damals verstanden"));
+    links.appendChild(el("div", "gtext", "„" + (b.damals || "—") + "“"));
+    var pfeil = el("div", "gpfeil", "→");
+    var rechts = el("div", "gseite nachher");
+    rechts.appendChild(el("div", "gtitel", "Heute verstanden"));
+    rechts.appendChild(el("div", "gtext", "„" + (b.heute || "—") + "“"));
+    g.appendChild(links); g.appendChild(pfeil); g.appendChild(rechts);
+    return g;
+  }
+
   function ladeVerlauf() {
-    fetch(API + "/improve/cases?limit=8", { credentials: "include", headers: kopf(false) })
+    fetch(API + "/improve/cases?limit=20", { credentials: "include", headers: kopf(false) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var faelle = (d && d.faelle) || [];
-        if (!faelle.length) return;
+        V.geladen = true;
         var ziel = $("verlauf");
         ziel.innerHTML = "";
+        $("verlaufZahl").textContent = faelle.length ? String(faelle.length) : "";
+        $("verlaufKnopf").classList.remove("versteckt");
+
+        if (!faelle.length) {
+          $("verlaufSub").textContent = "";
+          ziel.appendChild(el("div", "mleer",
+            "Noch keine Meldung. Sobald Sie eine abschicken, sehen Sie hier ihren Weg — von der Meldung bis zum Nachweis."));
+          return;
+        }
+
         faelle.forEach(function (f) {
           var m = el("div", "meldung");
           var kopfz = el("div", "mkopf");
+          var sym = el("div", "msym");
+          sym.appendChild(svg(SYMBOLE[SYM_ZU_ART[f.kategorie]] || SYMBOLE.warnung));
+          kopfz.appendChild(sym);
           kopfz.appendChild(el("div", "mtitel", ART_WORT[f.kategorie] || "Meldung"));
-          var stand = String(f.status || "neu");
-          kopfz.appendChild(el("span", "mstand " + stand, STAND_WORT[stand] || stand));
           var wann = f.createdAt ? new Date(f.createdAt).toLocaleDateString("de-DE",
             { day: "2-digit", month: "2-digit", year: "2-digit" }) : "";
           kopfz.appendChild(el("div", "mdatum", wann));
           m.appendChild(kopfz);
+          m.appendChild(strecke(f));
           if (f.text) m.appendChild(el("div", "mtext", "„" + f.text + "“"));
+          if (f.fehlerklasse) m.appendChild(el("div", "mklasse", "Fehlerklasse: " + f.fehlerklasse));
           if (f.antwort) m.appendChild(el("div", "mantwort", "Pickadoc: " + f.antwort));
+          var bild = gegenueber(f.nachweis);
+          if (bild) m.appendChild(bild);
+          if (f.nachweis && f.nachweis.text) {
+            var art = f.nachweis.art === "geloest" ? "gut" : (f.nachweis.art === "veraendert" ? "warn" : "offen");
+            m.appendChild(el("div", "vurteil " + art, f.nachweis.text));
+          }
           ziel.appendChild(m);
         });
         $("verlaufSub").textContent = faelle.length === 1
-          ? "Eine Meldung — Sie sehen hier, was daraus geworden ist."
-          : faelle.length + " Meldungen — Sie sehen hier, was daraus geworden ist.";
-        $("sVerlauf").classList.remove("versteckt");
+          ? "Eine Meldung — hier ist ihr Weg."
+          : faelle.length + " Meldungen — hier ist ihr Weg.";
       })
       .catch(function () { /* Kein Verlauf ist kein Fehler, der jemanden stoert. */ });
   }
+
+  // Melden und Nachschauen sind zwei Anliegen. Sie teilen sich eine Seite,
+  // aber nie denselben Bildschirm — sonst sucht man beim Melden zwischen
+  // alten Faellen nach dem Knopf.
+  var V = { offen: false, geladen: false };
+  var MELDETEILE = ["fortschritt", "s1", "s2", "s3", "ergebnis", "fuss"];
+
+  function zeigeHistorie(an) {
+    V.offen = an;
+    MELDETEILE.forEach(function (id) {
+      var e = $(id) || document.querySelector("." + id);
+      if (e) e.style.display = an ? "none" : "";
+    });
+    $("sHistorie").classList[an ? "remove" : "add"]("versteckt");
+    $("verlaufKnopf").firstChild.nodeValue = an ? "Melden" : "Verlauf";
+    if (an && !V.geladen) ladeVerlauf();
+    window.scrollTo(0, 0);
+  }
+
+  $("verlaufKnopf").addEventListener("click", function () { zeigeHistorie(!V.offen); });
 
   // ---- Wiederholungslauf --------------------------------------------------
   // Jede Tonaufnahme des Anrufs geht erneut durch dieselbe Erkennung, die
   // Clara benutzt. Die Zuege trudeln einzeln ein, deshalb ein Datenstrom.
   function wiederholung(ziel, knopf) {
     ziel.innerHTML = "";
+    // Der Fall reist mit, damit das Ergebnis an ihm haengenbleibt: Nur so
+    // steht der Beweis spaeter auch im Verlauf und nicht bloss hier.
     var quelle = new EventSource(mitToken(
       "/improve/wiederholung?anruf=" + encodeURIComponent(S.anruf)
-      + "&name=" + encodeURIComponent(S.gemeint || "")));
+      + "&name=" + encodeURIComponent(S.gemeint || "")
+      + "&fall=" + encodeURIComponent(S.fall || "")));
 
     quelle.onmessage = function (ev) {
       var d;
@@ -719,6 +895,7 @@
         }
       } else if (d.stufe === "fertig") {
         quelle.close();
+        V.geladen = false;
         if (knopf) { knopf.disabled = false; knopf.textContent = "Nochmal nachprüfen"; }
       }
     };
@@ -855,6 +1032,8 @@
         // wie die Person wirklich heisst.
         S.anruf = d.anruf || "";
         S.gemeint = name;
+        S.fall = d.id || "";
+        V.geladen = false;
         zeigeLauf(d.lauf || []);
       }).catch(function (e) {
         $("fehler").textContent = "Konnte nicht gemeldet werden: " + e.message;

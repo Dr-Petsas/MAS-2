@@ -828,6 +828,9 @@ export async function wiederholungslauf({ anruf = "", gemeinterName = "" } = {},
     gesamt: ergebnisse.length,
     anders,
     namensTreffer,
+    // Eine einzelne Stelle als Beleg fuer den Verlauf: lieber die, die sich
+    // geaendert hat — sonst die erste. Eine Zahl allein zeigt nichts.
+    beispiel: geprueft.find((e) => !e.gleich) || geprueft[0] || null,
     urteil: urteilWiederholung({
       geprueft: geprueft.length, anders, gemeinterName, namensTreffer, damalsSchonDa,
       nieVorgekommen: !!gemeinterName && !namensTreffer && !damalsSchonDa,
@@ -899,6 +902,35 @@ async function gespraechLaden(id) {
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Das Ergebnis eines Wiederholungslaufs AM FALL festhalten.
+ *
+ * Ohne das waere der Nachweis fluechtig: Er stuende einmal auf dem Bildschirm
+ * und waere beim naechsten Aufruf weg. Erst wenn er am Fall klebt, kann der
+ * Verlauf spaeter zeigen, WIE sich etwas geaendert hat — und genau darum geht
+ * es dem Inhaber (Wunsch 10.08.2026).
+ */
+export async function merkeNachweis(clientId, fallId, ergebnis) {
+  const id = String(fallId || "").trim();
+  if (!id) return { ok: false };
+  const nachweis = {
+    art: String(ergebnis?.urteil?.art || ""),
+    text: String(ergebnis?.urteil?.text || "").slice(0, 400),
+    geprueft: Number(ergebnis?.geprueft) || 0,
+    anders: Number(ergebnis?.anders) || 0,
+    // Die einzelne Stelle, an der man den Unterschied HOERT — das ist der
+    // Kern des Bildes im Verlauf, nicht die Zahl darueber.
+    beispiel: ergebnis?.beispiel || null,
+    zeit: Date.now(),
+  };
+  try {
+    await masCollection(clientId, COL_FAELLE).doc(id).update({ nachweis });
+    return { ok: true };
+  } catch {
+    return { ok: false };
   }
 }
 

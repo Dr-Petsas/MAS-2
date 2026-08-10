@@ -13,7 +13,7 @@ import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
-import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, wiederholungslauf, sprachmeldung, sprachnotizPfad, KATEGORIEN } from "../improve.js";
+import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, wiederholungslauf, merkeNachweis, sprachmeldung, sprachnotizPfad, KATEGORIEN } from "../improve.js";
 import { zentraleListe, zentraleAnzahl, setzeStand } from "../improveZentrale.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
@@ -439,7 +439,14 @@ router.get("/improve/wiederholung", async (req, res) => {
     "X-Accel-Buffering": "no",
   });
   res.flushHeaders?.();
+  // Wird ein Fall mitgegeben, klebt das Ergebnis danach an ihm — nur so kann
+  // der Verlauf spaeter zeigen, was sich zwischen damals und heute geaendert
+  // hat, statt nur zu behaupten, es sei etwas geschehen.
+  const fall = String(req.query?.fall || "").trim();
+  const mandant = resolveClientId(req);
+  let letztes = null;
   const sende = (stufe, daten) => {
+    if (stufe === "ergebnis") letztes = daten;
     res.write(`data: ${JSON.stringify({ stufe, ...daten })}\n\n`);
   };
   try {
@@ -447,6 +454,9 @@ router.get("/improve/wiederholung", async (req, res) => {
       { anruf: req.query?.anruf, gemeinterName: req.query?.name },
       sende,
     );
+    if (fall && mandant && letztes && !letztes.fehler) {
+      await merkeNachweis(mandant, fall, letztes);
+    }
   } catch (e) {
     sende("ergebnis", { fehler: String(e?.message || e) });
   }
