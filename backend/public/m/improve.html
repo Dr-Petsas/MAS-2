@@ -36,9 +36,17 @@
     background-attachment: fixed;
     color: var(--hell); line-height: 1.4; overflow: hidden;
   }
+  /* SICHERER BEREICH (Chef 10.08.2026: "Kopfzeile zu hoch, Zurueck nicht
+     klickbar"). Auf iPhone und iPad laeuft die App randlos — oben liegen
+     Uhrzeit, Batterie und die Insel. Solange die Seite noch rollte, konnte man
+     die Kopfzeile darunter hervorziehen; seit sie fest steht, lag der
+     Zurueck-Knopf genau unter der Statusleiste und nahm keine Beruehrung mehr
+     an. Der Abstand steht in einer Variablen, damit ein Test ihn nachstellen
+     kann — env() allein laesst sich nicht pruefen. */
+  :root { --oben: env(safe-area-inset-top, 0px); --unten: env(safe-area-inset-bottom, 0px); }
   .wrap {
     max-width: 760px; margin: 0 auto; height: 100%;
-    padding: 0 15px calc(10px + env(safe-area-inset-bottom));
+    padding: var(--oben) 15px calc(10px + var(--unten));
     display: flex; flex-direction: column;
   }
   /* Die Buehne traegt den jeweils aktiven Schritt und nimmt den Rest der
@@ -52,7 +60,7 @@
      rollen kann statt gequetscht zu werden. */
   #s1:not(.versteckt) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 
-  header { padding: 13px 0 2px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  header { padding: 10px 0 2px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .logo {
     width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
     background: linear-gradient(140deg, #4f8cff, #7b5cff);
@@ -322,9 +330,10 @@
   .mleer { color: var(--dunkelgrau); font-size: 14px; text-align: center; padding: 26px 12px; }
 
   .kopfaktionen { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  /* Mindestens 40 Pixel hoch: Darunter trifft ein Daumen im Alltag daneben. */
   .kopfknopf {
     background: transparent; color: var(--grau); font-size: 14px; font-weight: 600;
-    border: 1px solid var(--rand); border-radius: 10px; padding: 7px 12px;
+    border: 1px solid var(--rand); border-radius: 10px; padding: 0 13px; min-height: 40px;
     display: flex; align-items: center; gap: 6px; touch-action: manipulation;
   }
   .kopfknopf:active { background: var(--karte); }
@@ -358,7 +367,8 @@
   .zurueck {
     flex-shrink: 0; text-decoration: none;
     color: var(--grau); font-size: 14px; font-weight: 600;
-    border: 1px solid var(--rand); border-radius: 10px; padding: 7px 12px;
+    border: 1px solid var(--rand); border-radius: 10px; padding: 0 13px; min-height: 40px;
+    display: flex; align-items: center; touch-action: manipulation;
   }
   .zurueck:active { background: var(--karte); }
 </style>
