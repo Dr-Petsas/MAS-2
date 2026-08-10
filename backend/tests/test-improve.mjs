@@ -83,9 +83,15 @@ pruefe("Meldung ist erledigt", lauf[0].zustand === "fertig");
 pruefe("Gespraech ist angehaengt", lauf[1].zustand === "fertig" && /Anruf vom/.test(lauf[1].text), lauf[1].text);
 pruefe("Kette haengt am Ablaufschritt", (lauf[2].kette || []).length === 2);
 pruefe("Funde haengen am Fehlerschritt", (lauf[3].funde || []).length > 0);
-// Das Wichtigste: Der Nachweis ist NICHT gebaut und darf nicht so aussehen.
+// Der Nachweis gilt erst als erbracht, wenn der Kunde ihn ausgeloest hat —
+// vorher darf nichts nach "erledigt" aussehen.
 pruefe("Nachweis wird NICHT als erledigt behauptet", lauf[5].zustand !== "fertig", lauf[5].zustand);
-pruefe("Nachweis nennt den Grund", /Wiederholungslauf/.test(lauf[5].text), lauf[5].text);
+// Seit 10.08.2026 ist der Nachweis wirklich ausfuehrbar: Der Schritt traegt
+// die Marke, an der die Seite ihren Knopf aufhaengt. Fehlt sie, bliebe es
+// wieder bei einer blossen Ankuendigung.
+pruefe("Nachweis ist ausloesbar", lauf[5].nachweis === true, JSON.stringify(lauf[5].nachweis));
+pruefe("Nachweis nennt die Zahl der Aufnahmen", /2 Stellen/.test(lauf[5].text), lauf[5].text);
+pruefe("Nachweis verspricht damals gegen heute", /damals neben heute/.test(lauf[5].text), lauf[5].text);
 
 console.log("\n5) Lauf ohne Gespraech — ehrlich statt beschoenigt");
 const leer = baueLauf({ text: "Irgendwas klappt nicht", gespraech: null, schritte: [], funde: [],

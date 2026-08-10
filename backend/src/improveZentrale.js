@@ -25,6 +25,7 @@
  * eine clientId); der Praefix `mas_` bleibt eingehalten.
  */
 import { db } from "./firebase.js";
+import { masCollection } from "./tenant.js";
 import { listAccounts } from "./mail/accounts.js";
 import { sendMail } from "./mail/mailbox.js";
 import { log } from "./log.js";
@@ -227,7 +228,15 @@ export async function zentraleAnzahl() {
   };
 }
 
-/** Gelesen-Haken bzw. Bearbeitungsstand setzen. */
+/**
+ * Gelesen-Haken bzw. Bearbeitungsstand setzen.
+ *
+ * Der Stand wird ZURUECK an die Praxis geschrieben. Ohne das bliebe die
+ * Meldung fuer den Melder auf ewig "neu" — er haette keinen Anhaltspunkt, ob
+ * sich ueberhaupt jemand darum kuemmert, und wuerde beim naechsten Mal gar
+ * nicht mehr melden. Best effort: Klemmt der Rueckweg, bleibt der Stand hier
+ * trotzdem gesetzt.
+ */
 export async function setzeStand(id, { gelesen, status, notiz } = {}) {
   const patch = {};
   if (gelesen != null) patch.gelesen = !!gelesen;
@@ -235,8 +244,26 @@ export async function setzeStand(id, { gelesen, status, notiz } = {}) {
   if (notiz != null) patch.notiz = String(notiz).slice(0, 600);
   if (!Object.keys(patch).length) return { ok: false, fehler: "nichts zu ändern" };
   patch.updatedAt = Date.now();
-  await db.collection(COL).doc(String(id)).update(patch);
-  return { ok: true };
+
+  const ref = db.collection(COL).doc(String(id));
+  const vorher = await ref.get();
+  await ref.update(patch);
+
+  let zurueck = false;
+  const praxis = String(vorher.data()?.praxis || "").trim();
+  const fall = String(vorher.data()?.fall || "").trim();
+  if (praxis && fall && (patch.status || patch.notiz != null)) {
+    try {
+      const rueck = { updatedAt: patch.updatedAt };
+      if (patch.status) rueck.status = patch.status;
+      if (patch.notiz != null) rueck.antwort = patch.notiz;
+      await masCollection(praxis, "mas_improve_faelle").doc(fall).update(rueck);
+      zurueck = true;
+    } catch (e) {
+      log.warn?.("improve.stand_rueckweg_fehlgeschlagen", { fehler: String(e?.message || e) });
+    }
+  }
+  return { ok: true, zurueck };
 }
 
 export const ZENTRALE_COL = COL;

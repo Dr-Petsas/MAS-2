@@ -33,6 +33,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { masCollection } from "./tenant.js";
 import { zentralEintragen } from "./improveZentrale.js";
+import { entryCodes, buildIndex, catalogMatch } from "./clara/patientCatalog.js";
 import { log } from "./log.js";
 
 const COL_FAELLE = "mas_improve_faelle";
@@ -402,14 +403,17 @@ export function baueLauf({ text, gespraech, schritte, funde, einordnung, kategor
       : "Das ist ein technischer Fall für die Pickadoc-Entwicklung.") + klasse,
   });
 
-  // EHRLICH: Der Wiederholungslauf ist noch nicht gebaut. Ohne ihn gibt es
-  // keinen Vorher/Nachher-Beleg — das darf hier nicht als erledigt erscheinen.
+  // Seit 10.08.2026 ist das kein Versprechen mehr, sondern ein Knopf: Die
+  // Aufnahmen dieses Anrufs gehen erneut durch die heutige Erkennung, und
+  // damals steht neben heute. Bis der Kunde ihn drueckt, bleibt der Schritt
+  // ehrlich "offen" — behauptet wird nichts.
   lauf.push(mitTon ? {
     titel: "Nachweis der Lösung",
     zustand: "offen",
-    text: "Die Tonaufnahme ist vorhanden. Sobald der Wiederholungslauf steht,"
-      + " schicke ich genau diesen Anruf erneut durch die verbesserte Fassung"
-      + " und zeige Ihnen vorher und nachher.",
+    nachweis: true,
+    text: `Die Tonaufnahme ist vorhanden (${mitTon} Stellen). Ich kann genau diesen`
+      + " Anruf jetzt erneut durch die heutige Erkennung schicken und Ihnen"
+      + " damals neben heute stellen.",
   } : {
     titel: "Nachweis der Lösung",
     zustand: "fehlt",
@@ -476,6 +480,10 @@ export async function meldeFall(clientId, { text, meldung_von = "", kategorie = 
 
   return {
     ok: true, id: ref.id, ...einordnung,
+    // Die Anrufkennung geht mit zurueck, damit die Seite den Nachweis
+    // anbieten kann: Ohne sie wuesste sie nicht, welche Aufnahme zu
+    // wiederholen ist.
+    anruf: gespraech?.id || "",
     lauf: baueLauf({ text: sauber, gespraech, schritte, funde, einordnung, kategorie: kat, schwere: stufe }),
   };
 }
@@ -588,6 +596,199 @@ export async function probiereNamen(clientId, name, onStage) {
     })),
     fehler: res?.ok === false ? String(res?.error || "") : "",
   });
+}
+
+// ---------------------------------------------------------------------------
+// WIEDERHOLUNGSLAUF — aus dem Versprechen wird ein Nachweis
+// ---------------------------------------------------------------------------
+
+/**
+ * Zwei Hoerergebnisse vergleichen (PUR).
+ *
+ * Satzzeichen und Gross-/Kleinschreibung zaehlen NICHT: Der Erkennungsdienst
+ * setzt mal einen Punkt, mal ein Ausrufezeichen ("Ja, gib die Liste frei." /
+ * "…frei!"). Wuerde man das als Aenderung melden, waere der Nachweis voller
+ * Fehlalarme und damit wertlos.
+ */
+export function gleichGehoert(damals, heute) {
+  const norm = (s) => String(s || "")
+    .toLowerCase()
+    .replace(/[.,!?;:„“"'`´–—-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return norm(damals) === norm(heute);
+}
+
+/**
+ * Steckt der gemeinte Name in dem, was heute gehoert wurde? (PUR)
+ *
+ * Bewusst OHNE die Plattform-Suche: Hier wird nur geprueft, ob der Klang
+ * passt, und das kann der Namenskatalog lokal — kostenlos und ohne den
+ * Kostendeckel der Live-Probe zu verbrauchen. Ab 10 Punkten gilt derselbe
+ * Massstab wie in Claras Suche.
+ */
+export function nameGetroffen(gemeint, gehoert) {
+  const ziel = String(gemeint || "").trim();
+  const text = String(gehoert || "").trim();
+  if (ziel.length < 3 || text.length < 3) return null;
+  const teile = ziel.split(/\s+/);
+  const vorname = teile.length > 1 ? teile.slice(0, -1).join(" ") : "";
+  const nachname = teile[teile.length - 1];
+  const eintrag = { i: "ziel", f: vorname, l: nachname, c: entryCodes(vorname, nachname) };
+  const treffer = catalogMatch(text, [eintrag], buildIndex([eintrag]), { limit: 1 })[0];
+  const punkte = treffer?.score || 0;
+  return { punkte, getroffen: punkte >= 10 };
+}
+
+/**
+ * Den aufgenommenen Anruf ERNEUT durch die heutige Erkennung schicken.
+ *
+ * Bis heute stand auf der Seite nur ein Versprechen ("sobald der
+ * Wiederholungslauf steht"). Genau das war die einzige Stelle, an der das
+ * Modul etwas ankuendigte, statt es zu zeigen — und ein Nachweis, der nie
+ * kommt, ist schlimmer als keiner.
+ *
+ * Was hier passiert: Jede Tonaufnahme des Anrufs geht an denselben
+ * Erkennungsdienst, den Clara benutzt, und das Ergebnis wird gegen das
+ * gestellt, was damals ankam. Damit ist belegbar, ob der Fehler noch da ist
+ * oder verschwunden — auch "unveraendert" ist ein Ergebnis und wird als
+ * solches gesagt.
+ *
+ * Kosten: keine. Der Erkennungsdienst laeuft auf dieser Maschine, und die
+ * Patientensuche wird bewusst NICHT angefasst (die kostet pro Abfrage).
+ *
+ * @param {string} anrufId       Kennung des Anrufs (leer = letztes Gespraech)
+ * @param {string} gemeinterName optional: wie die Person wirklich heisst
+ * @param {(stufe:string,daten:object)=>void} onStage
+ */
+export async function wiederholungslauf({ anruf = "", gemeinterName = "" } = {}, onStage = () => {}) {
+  const melde = (stufe, daten) => {
+    try { onStage(stufe, daten); } catch { /* Anzeige darf den Lauf nie stoeren */ }
+  };
+
+  const gespraech = anruf ? await gespraechLaden(anruf) : await letztesGespraech();
+  if (!gespraech) {
+    melde("ergebnis", { fehler: "Der Anruf ist nicht mehr auffindbar." });
+    return;
+  }
+
+  const mitTon = gespraech.zuege.filter((z) => z.rolle === "user" && z.audio);
+  if (!mitTon.length) {
+    melde("ergebnis", { fehler: "Zu diesem Anruf gibt es keine Tonaufnahme — ohne sie lässt sich nichts nachspielen." });
+    return;
+  }
+
+  melde("start", { anruf: gespraech.id, begonnen: gespraech.begonnen, zuege: mitTon.length });
+
+  const ordner = path.join(runDir(), "call_transcripts", gespraech.id);
+  const ergebnisse = [];
+  let namensTreffer = null;
+  let damalsSchonDa = false;
+
+  for (const zug of mitTon) {
+    let heute = "";
+    let fehler = "";
+    try {
+      const wav = await readFile(path.join(ordner, zug.audio));
+      const h = await hoerprobe(wav);
+      if (h.ok) heute = h.gehoert; else fehler = h.fehler || "nicht erkannt";
+    } catch {
+      fehler = "Tonaufnahme nicht lesbar";
+    }
+
+    const gleich = !fehler && gleichGehoert(zug.text, heute);
+    if (gemeinterName && heute) {
+      const t = nameGetroffen(gemeinterName, heute);
+      if (t?.getroffen && !namensTreffer) namensTreffer = { seq: zug.seq, punkte: t.punkte, heute };
+    }
+    // Kam der Name DAMALS schon richtig an? Ohne diese Gegenprobe wuerde ein
+    // Anruf, in dem die Person ueberhaupt nicht vorkam, faelschlich als
+    // "Fehler besteht weiter" gemeldet.
+    if (gemeinterName && nameGetroffen(gemeinterName, zug.text)?.getroffen) damalsSchonDa = true;
+    const eintrag = { seq: zug.seq, damals: zug.text, heute, gleich, fehler };
+    ergebnisse.push(eintrag);
+    melde("zug", eintrag);
+  }
+
+  const geprueft = ergebnisse.filter((e) => !e.fehler);
+  const anders = geprueft.filter((e) => !e.gleich).length;
+  melde("ergebnis", {
+    geprueft: geprueft.length,
+    gesamt: ergebnisse.length,
+    anders,
+    namensTreffer,
+    urteil: urteilWiederholung({
+      geprueft: geprueft.length, anders, gemeinterName, namensTreffer, damalsSchonDa,
+      nieVorgekommen: !!gemeinterName && !namensTreffer && !damalsSchonDa,
+    }),
+  });
+}
+
+/**
+ * Das Urteil des Wiederholungslaufs in einem Satz (PUR).
+ *
+ * EHRLICHKEITSREGEL: "Nichts hat sich geaendert" ist ein vollwertiges
+ * Ergebnis und wird auch so benannt — nicht schoengeredet.
+ */
+export function urteilWiederholung({
+  geprueft = 0, anders = 0, gemeinterName = "", namensTreffer = null,
+  damalsSchonDa = false, nieVorgekommen = false,
+} = {}) {
+  if (!geprueft) {
+    return { art: "nichts", text: "Keine der Aufnahmen ließ sich erneut anhören." };
+  }
+  if (gemeinterName && namensTreffer) {
+    return damalsSchonDa
+      ? { art: "unveraendert", text: `Der Name kam schon damals richtig an — an dieser Stelle lag der Fehler also nicht.` }
+      : { art: "geloest", text: `Der Name wird heute richtig gehört: „${namensTreffer.heute}“.` };
+  }
+  // Kam der Name in KEINER Aufnahme vor, weder damals noch heute, dann gehoert
+  // er zu einem anderen Anruf. Das als "Fehler besteht weiter" auszugeben
+  // waere schlicht falsch.
+  if (nieVorgekommen) {
+    return {
+      art: "nichts",
+      text: `„${gemeinterName}“ kommt in diesem Anruf gar nicht vor — vermutlich gehört der Fall zu einem anderen Gespräch.`,
+    };
+  }
+  if (gemeinterName && !namensTreffer) {
+    return {
+      art: "offen",
+      text: `„${gemeinterName}“ kommt auch heute nicht richtig an — der Fehler ist noch da.`,
+    };
+  }
+  if (!anders) {
+    return {
+      art: "unveraendert",
+      text: `Clara hört diesen Anruf heute Wort für Wort genauso — der Fehler ist damit nachweislich noch da.`,
+    };
+  }
+  return {
+    art: "veraendert",
+    text: `${anders} von ${geprueft} Stellen kommen heute anders an als damals.`,
+  };
+}
+
+/** Ein bestimmtes Gespraech laden (fuer den Wiederholungslauf eines alten Falls). */
+async function gespraechLaden(id) {
+  const sauber = String(id || "").replace(/[^A-Za-z0-9_.-]/g, "");
+  if (!sauber) return null;
+  try {
+    const daten = JSON.parse(await readFile(path.join(runDir(), "call_transcripts", `${sauber}.json`), "utf8"));
+    const turns = Array.isArray(daten?.turns) ? daten.turns : [];
+    return {
+      id: String(daten?.id || sauber),
+      begonnen: String(daten?.started_at || ""),
+      zuege: turns.map((t) => ({
+        seq: Number(t?.seq) || 0,
+        rolle: String(t?.role || ""),
+        text: String(t?.text || ""),
+        audio: String(t?.audio || ""),
+      })),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Gemeldete Faelle, neueste zuerst. */

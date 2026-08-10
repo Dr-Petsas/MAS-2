@@ -13,7 +13,7 @@ import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
-import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, KATEGORIEN } from "../improve.js";
+import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, wiederholungslauf, KATEGORIEN } from "../improve.js";
 import { zentraleListe, zentraleAnzahl, setzeStand } from "../improveZentrale.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
@@ -382,6 +382,34 @@ router.get("/improve/nametest", async (req, res) => {
     await probiereNamen(resolveClientId(req), req.query?.name, sende);
   } catch (e) {
     sende("ergebnis", { urteil: { art: "nichts", text: "Probe fehlgeschlagen: " + String(e?.message || e) } });
+  }
+  res.write("data: {\"stufe\":\"fertig\"}\n\n");
+  res.end();
+});
+
+
+// WIEDERHOLUNGSLAUF: Der aufgenommene Anruf geht erneut durch die heutige
+// Erkennung — damals gegen heute, Zug fuer Zug. Damit wird aus dem letzten
+// Schritt der Anzeige ("Nachweis der Lösung") ein Beleg statt eines
+// Versprechens. Laeuft als Datenstrom, weil jede Aufnahme einzeln kommt.
+router.get("/improve/wiederholung", async (req, res) => {
+  res.set({
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders?.();
+  const sende = (stufe, daten) => {
+    res.write(`data: ${JSON.stringify({ stufe, ...daten })}\n\n`);
+  };
+  try {
+    await wiederholungslauf(
+      { anruf: req.query?.anruf, gemeinterName: req.query?.name },
+      sende,
+    );
+  } catch (e) {
+    sende("ergebnis", { fehler: String(e?.message || e) });
   }
   res.write("data: {\"stufe\":\"fertig\"}\n\n");
   res.end();

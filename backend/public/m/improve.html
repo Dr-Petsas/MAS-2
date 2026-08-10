@@ -183,6 +183,45 @@
   .fehler { font-size: 13px; color: var(--rot); margin-top: 10px; display: none; }
   .fuss { color: var(--dunkelgrau); font-size: 12px; margin-top: 22px; }
   .versteckt { display: none; }
+  /* Nachweis: damals gegen heute, Zug fuer Zug. Was sich geaendert hat, muss
+     ins Auge springen — sonst liest es niemand zu Ende. */
+  /* Verlauf der eigenen Meldungen mit Bearbeitungsstand. */
+  .meldung { padding: 11px 0; border-bottom: 1px solid var(--rand); }
+  .meldung:last-child { border-bottom: 0; }
+  .mkopf { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mtitel { font-size: 14.5px; font-weight: 600; }
+  .mdatum { font-size: 12px; color: var(--dunkelgrau); margin-left: auto; }
+  .mstand {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px;
+    border: 1px solid var(--rand); border-radius: 999px; padding: 2px 8px;
+  }
+  .mstand.neu { color: var(--gelb); border-color: var(--gelb); }
+  .mstand.in_arbeit { color: var(--blau); border-color: var(--blau); }
+  .mstand.erledigt { color: var(--gruen); border-color: var(--gruen); }
+  .mtext { font-size: 14px; color: var(--grau); margin-top: 5px; }
+  .mantwort { font-size: 14px; margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--gruen); }
+
+  .nachweis { margin-top: 10px; }
+  .vergleich {
+    border-left: 3px solid var(--rand); padding: 7px 0 7px 11px; margin-top: 9px;
+  }
+  .vergleich.anders { border-left-color: var(--gelb); }
+  .vergleich.kaputt { border-left-color: var(--rot); }
+  .vlabel {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--dunkelgrau);
+  }
+  .vergleich.anders .vlabel { color: var(--gelb); }
+  .vergleich.kaputt .vlabel { color: var(--rot); }
+  .vdamals { font-size: 14px; color: var(--grau); margin-top: 3px; }
+  .vheute { font-size: 14px; margin-top: 2px; }
+  .vurteil {
+    margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 14.5px;
+    background: #1d2a45; border: 1px solid var(--rand);
+  }
+  .vurteil.gut { border-color: var(--gruen); color: var(--gruen); }
+  .vurteil.warn { border-color: var(--gelb); color: var(--gelb); }
+  .vurteil.offen { border-color: var(--gelb); }
+
   .zurueck {
     margin-left: auto; flex-shrink: 0; text-decoration: none;
     color: var(--grau); font-size: 14px; font-weight: 600;
@@ -269,6 +308,14 @@
   </div>
 
   <div id="ergebnis"></div>
+
+  <!-- Was ist aus meinen bisherigen Meldungen geworden? Ohne diese Antwort
+       meldet beim zweiten Mal niemand mehr etwas. -->
+  <div class="abschnitt versteckt" id="sVerlauf">
+    <div class="frage">Ihre bisherigen Meldungen</div>
+    <div class="frageSub" id="verlaufSub"></div>
+    <div class="karte" id="verlauf"></div>
+  </div>
 
   <div class="fuss">
     Einstellbares ändern wir in Ihrer Praxis. Technische Fälle gehen an die
@@ -581,6 +628,20 @@
         }
         d.querySelector(".inhalt").appendChild(kz);
       });
+      // Der Nachweis ist der einzige Schritt, den der Kunde selbst ausloest:
+      // Der Wiederholungslauf braucht Rechenzeit auf derselben Maschine, auf
+      // der Clara spricht — er laeuft deshalb nur auf Zuruf, nicht nebenbei.
+      if (s.nachweis && S.anruf) {
+        var knopf = el("button", "neben", "Jetzt nachprüfen");
+        var ziel = el("div", "nachweis");
+        knopf.addEventListener("click", function () {
+          knopf.disabled = true;
+          knopf.textContent = "Höre den Anruf erneut …";
+          wiederholung(ziel, knopf);
+        });
+        d.querySelector(".inhalt").appendChild(knopf);
+        d.querySelector(".inhalt").appendChild(ziel);
+      }
       karte.appendChild(d);
     });
     h.appendChild(karte);
@@ -588,6 +649,84 @@
     neu.addEventListener("click", function () { location.reload(); });
     h.appendChild(neu);
     erg.appendChild(h);
+  }
+
+  // ---- Verlauf der eigenen Meldungen -------------------------------------
+  // Ohne Rueckmeldung meldet beim zweiten Mal niemand mehr etwas. Der Stand
+  // kommt aus dem zentralen Eingang zurueck an die Praxis geschrieben.
+  var STAND_WORT = { neu: "eingegangen", in_arbeit: "in Arbeit", erledigt: "erledigt" };
+  var ART_WORT = {
+    verhoert: "Falsch verstanden", falsche_daten: "Falsche Auskunft", erfunden: "Etwas erfunden",
+    nichts_passiert: "Nichts passiert", falsche_aktion: "Falsche Aktion", umstaendlich: "Umständlich",
+  };
+
+  function ladeVerlauf() {
+    fetch(API + "/improve/cases?limit=8", { credentials: "include", headers: kopf(false) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var faelle = (d && d.faelle) || [];
+        if (!faelle.length) return;
+        var ziel = $("verlauf");
+        ziel.innerHTML = "";
+        faelle.forEach(function (f) {
+          var m = el("div", "meldung");
+          var kopfz = el("div", "mkopf");
+          kopfz.appendChild(el("div", "mtitel", ART_WORT[f.kategorie] || "Meldung"));
+          var stand = String(f.status || "neu");
+          kopfz.appendChild(el("span", "mstand " + stand, STAND_WORT[stand] || stand));
+          var wann = f.createdAt ? new Date(f.createdAt).toLocaleDateString("de-DE",
+            { day: "2-digit", month: "2-digit", year: "2-digit" }) : "";
+          kopfz.appendChild(el("div", "mdatum", wann));
+          m.appendChild(kopfz);
+          if (f.text) m.appendChild(el("div", "mtext", "„" + f.text + "“"));
+          if (f.antwort) m.appendChild(el("div", "mantwort", "Pickadoc: " + f.antwort));
+          ziel.appendChild(m);
+        });
+        $("verlaufSub").textContent = faelle.length === 1
+          ? "Eine Meldung — Sie sehen hier, was daraus geworden ist."
+          : faelle.length + " Meldungen — Sie sehen hier, was daraus geworden ist.";
+        $("sVerlauf").classList.remove("versteckt");
+      })
+      .catch(function () { /* Kein Verlauf ist kein Fehler, der jemanden stoert. */ });
+  }
+
+  // ---- Wiederholungslauf --------------------------------------------------
+  // Jede Tonaufnahme des Anrufs geht erneut durch dieselbe Erkennung, die
+  // Clara benutzt. Die Zuege trudeln einzeln ein, deshalb ein Datenstrom.
+  function wiederholung(ziel, knopf) {
+    ziel.innerHTML = "";
+    var quelle = new EventSource(mitToken(
+      "/improve/wiederholung?anruf=" + encodeURIComponent(S.anruf)
+      + "&name=" + encodeURIComponent(S.gemeint || "")));
+
+    quelle.onmessage = function (ev) {
+      var d;
+      try { d = JSON.parse(ev.data); } catch (e) { return; }
+
+      if (d.stufe === "zug") {
+        var z = el("div", "vergleich" + (d.fehler ? " kaputt" : (d.gleich ? "" : " anders")));
+        z.appendChild(el("div", "vlabel", d.fehler ? "nicht prüfbar" : (d.gleich ? "unverändert" : "heute anders")));
+        z.appendChild(el("div", "vdamals", "damals: " + d.damals));
+        z.appendChild(el("div", "vheute", d.fehler ? d.fehler : "heute: " + d.heute));
+        ziel.appendChild(z);
+      } else if (d.stufe === "ergebnis") {
+        if (d.fehler) {
+          ziel.appendChild(el("div", "vurteil offen", d.fehler));
+        } else {
+          var art = d.urteil && d.urteil.art === "geloest" ? "gut"
+            : (d.urteil && d.urteil.art === "veraendert" ? "warn" : "offen");
+          ziel.appendChild(el("div", "vurteil " + art, (d.urteil && d.urteil.text) || ""));
+        }
+      } else if (d.stufe === "fertig") {
+        quelle.close();
+        if (knopf) { knopf.disabled = false; knopf.textContent = "Nochmal nachprüfen"; }
+      }
+    };
+    quelle.onerror = function () {
+      quelle.close();
+      if (!ziel.children.length) ziel.appendChild(el("div", "vurteil offen", "Der Nachweis ließ sich nicht starten."));
+      if (knopf) { knopf.disabled = false; knopf.textContent = "Erneut versuchen"; }
+    };
   }
 
   // ---- Aufnahme ----------------------------------------------------------
@@ -712,6 +851,10 @@
         }),
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (!d.ok) throw new Error(d.reason || d.error || "Melden fehlgeschlagen");
+        // Fuer den Nachweis merken: WELCHER Anruf wiederholt werden soll und
+        // wie die Person wirklich heisst.
+        S.anruf = d.anruf || "";
+        S.gemeint = name;
         zeigeLauf(d.lauf || []);
       }).catch(function (e) {
         $("fehler").textContent = "Konnte nicht gemeldet werden: " + e.message;
@@ -742,6 +885,7 @@
 
   ladeKategorien();
   ladeAnhang();
+  ladeVerlauf();
 })();
 </script>
 </body>
