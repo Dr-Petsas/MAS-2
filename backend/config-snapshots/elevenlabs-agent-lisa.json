@@ -1,6 +1,6 @@
 {
   "label": "lisa",
-  "hash": "60d62f121aa6afc4",
+  "hash": "82642e808ec8b39d",
   "config": {
     "agent_id": "agent_9601khqxjp0nfrp9nv276txh8xd1",
     "name": "LISA",
@@ -327,7 +327,8 @@
               "tool_call_sound_behavior": "auto",
               "tool_error_handling_mode": "auto",
               "params": {
-                "system_tool_type": "language_detection"
+                "system_tool_type": "language_detection",
+                "only_at_conversation_start": false
               }
             },
             "transfer_to_agent": null,
@@ -397,13 +398,16 @@
             "procedure_delete": null,
             "transfer_to_genesys": null,
             "transfer_to_genesys_chat": null,
-            "run_subagent": null
+            "transfer_to_genesys_bot": null,
+            "run_subagent": null,
+            "request_help": null
           },
           "enable_parallel_tool_calls": false,
           "mcp_server_ids": [],
           "native_mcp_server_ids": [],
           "knowledge_base": [],
           "custom_llm": null,
+          "bedrock_llm": null,
           "speech_engine": null,
           "ignore_default_personality": false,
           "rag": {
@@ -878,7 +882,8 @@
               "tool_call_sound_behavior": "auto",
               "tool_error_handling_mode": "auto",
               "params": {
-                "system_tool_type": "language_detection"
+                "system_tool_type": "language_detection",
+                "only_at_conversation_start": false
               }
             },
             {

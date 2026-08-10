@@ -1,6 +1,6 @@
 {
   "label": "bianca",
-  "hash": "f7e5030b5829aedb",
+  "hash": "a329247b34ac3891",
   "config": {
     "agent_id": "pSUVNVsczM4risVkBNAt",
     "name": "Med Dent Zahnklinik",
@@ -137,7 +137,8 @@
               "voice_id": null,
               "stability": null,
               "speed": null,
-              "similarity_boost": null
+              "similarity_boost": null,
+              "pronunciation_dictionary_locators": null
             },
             "conversation": null,
             "agent": {
@@ -267,7 +268,8 @@
               "tool_call_sound_behavior": "auto",
               "tool_error_handling_mode": "auto",
               "params": {
-                "system_tool_type": "language_detection"
+                "system_tool_type": "language_detection",
+                "only_at_conversation_start": false
               }
             },
             "transfer_to_agent": null,
@@ -349,7 +351,9 @@
             "procedure_delete": null,
             "transfer_to_genesys": null,
             "transfer_to_genesys_chat": null,
-            "run_subagent": null
+            "transfer_to_genesys_bot": null,
+            "run_subagent": null,
+            "request_help": null
           },
           "enable_parallel_tool_calls": false,
           "mcp_server_ids": [],
@@ -363,6 +367,7 @@
             }
           ],
           "custom_llm": null,
+          "bedrock_llm": null,
           "speech_engine": null,
           "ignore_default_personality": false,
           "rag": {
@@ -396,7 +401,8 @@
               "tool_call_sound_behavior": "auto",
               "tool_error_handling_mode": "auto",
               "params": {
-                "system_tool_type": "language_detection"
+                "system_tool_type": "language_detection",
+                "only_at_conversation_start": false
               }
             },
             {
