@@ -1,6 +1,10 @@
-// Clara-Umschalter (/clara-switch/*): schaltet zwischen der Live-Clara
-// (F:\Clara-Voice, Worker-Port 8091) und der Testinstanz Clara V6
-// (F:\Clara-Voice-v6, Worker-Port 8092) um.
+// Clara-Umschalter (/clara-switch/*): schaltet zwischen den Clara-Staenden um:
+// Live (F:\Clara-Voice, Worker-Port 8091), Entwicklung (F:\Clara-Voice-dev,
+// Port 8093) und der Testinstanz Clara V6 (F:\Clara-Voice-v6, Port 8092).
+//
+// 10.08.2026: "dev" dazugenommen. Seit diesem Tag antwortet die
+// Entwicklungs-Clara; ohne den Modus hier haette die Handy-Seite sie als "aus"
+// angezeigt und beim naechsten Tippen die Live-Kopie zurueckgeholt.
 //
 // Warum ueberhaupt umschalten statt parallel betreiben: beide Instanzen
 // registrieren sich bei DERSELBEN LiveKit-Cloud fuer den automatischen
@@ -23,7 +27,8 @@ const router = express.Router();
 const SWITCH_SCRIPT = process.env.CLARA_SWITCH_SCRIPT || "F:\\Clara-Voice\\tools\\clara-switch.ps1";
 const STATE_FILE = process.env.CLARA_SWITCH_STATE || "F:\\Clara-Voice\\.run\\clara-switch.json";
 const LOG_DIR = process.env.CLARA_SWITCH_LOGS || "F:\\Clara-Voice\\.run\\switch";
-const PORTS = { live: 8091, v6: 8092 };
+const PORTS = { live: 8091, v6: 8092, dev: 8093 };
+const MODI = ["live", "dev", "v6"];
 // Kaltstart mit Modell-Prewarm dauert bis ~2 min; danach gilt ein haengender
 // Umschaltvorgang als abgestorben und die Seite wird wieder bedienbar.
 const SWITCH_STALE_MS = 4 * 60 * 1000;
@@ -55,21 +60,24 @@ function readState() {
 }
 
 async function currentStatus() {
-  const [liveUp, v6Up] = await Promise.all([probePort(PORTS.live), probePort(PORTS.v6)]);
+  const offen = await Promise.all(MODI.map((m) => probePort(PORTS[m])));
+  const laufende = MODI.filter((_, i) => offen[i]);
   const state = readState();
   const age = state?.ts ? Date.now() - Date.parse(state.ts) : Number.POSITIVE_INFINITY;
   const inFlight = !!state && ["stopping", "starting"].includes(state.phase) && age < SWITCH_STALE_MS;
 
+  // Mehr als ein offener Port heisst: zwei Staende gleichzeitig am LiveKit-
+  // Dispatch. Das ist der Zustand, der am 17.07.2026 jede zweite Sitzung taub
+  // gemacht hat - er muss als Konflikt sichtbar werden, nicht als "laeuft".
   let running = "off";
-  if (liveUp && v6Up) running = "conflict";
-  else if (liveUp) running = "live";
-  else if (v6Up) running = "v6";
+  if (laufende.length > 1) running = "conflict";
+  else if (laufende.length === 1) running = laufende[0];
   else if (inFlight) running = "switching";
 
   return {
     ok: true,
     running,
-    busy: inFlight && !liveUp && !v6Up,
+    busy: inFlight && laufende.length === 0,
     phase: state?.phase || "idle",
     target: state?.target || null,
     message: state?.message || "",
@@ -88,7 +96,7 @@ router.get("/clara-switch/status", async (req, res) => {
 
 router.post("/clara-switch/set", async (req, res) => {
   const mode = String(req.body?.mode || "").toLowerCase();
-  if (!["live", "v6", "off"].includes(mode)) {
+  if (![...MODI, "off"].includes(mode)) {
     return res.status(400).json({ ok: false, error: "mode_invalid" });
   }
   if (process.platform !== "win32") {

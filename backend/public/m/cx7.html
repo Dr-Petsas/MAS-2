@@ -11,7 +11,7 @@
 <style>
   :root{
     --bg:#0b1020; --card:#151c33; --line:#26304f; --txt:#eaf0ff; --mut:#93a0c4;
-    --live:#4d9bff; --v6:#34d399; --warn:#f59e0b; --bad:#ef4444;
+    --live:#4d9bff; --v6:#34d399; --dev:#c084fc; --warn:#f59e0b; --bad:#ef4444;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   body{
@@ -49,7 +49,7 @@
   .card .badge{font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
     padding:4px 9px; border-radius:999px; border:1px solid currentColor}
 
-  .card.live{--accent:var(--live)} .card.v6{--accent:var(--v6)}
+  .card.live{--accent:var(--live)} .card.v6{--accent:var(--v6)} .card.dev{--accent:var(--dev)}
   .card .badge{color:var(--accent)}
   .card.active{border-color:var(--accent); background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 14%,var(--card)),var(--card))}
   .card.active .name::before{content:'● '; color:var(--accent)}
@@ -87,26 +87,31 @@
 </div>
 
 <div class="cards">
-  <button class="card live" id="btnLive" data-mode="live">
-    <div class="t"><span class="name">Clara LIVE</span><span class="badge">Produktiv</span></div>
-    <div class="desc">Aktueller Stand aus <code>F:\Clara-Voice</code> · Worker-Port 8091</div>
+  <button class="card dev" id="btnDev" data-mode="dev" data-name="Clara DEV">
+    <div class="t"><span class="name">Clara DEV</span><span class="badge">Entwicklung</span></div>
+    <div class="desc">Hier wird gebaut: <code>F:\Clara-Voice-dev</code> · Worker-Port 8093 · seit 10.08.2026 der normale Betriebsstand</div>
   </button>
 
-  <button class="card v6" id="btnV6" data-mode="v6">
+  <button class="card live" id="btnLive" data-mode="live" data-name="Clara LIVE">
+    <div class="t"><span class="name">Clara LIVE</span><span class="badge">Rückweg</span></div>
+    <div class="desc">Unveränderter Stand aus <code>F:\Clara-Voice</code> · Worker-Port 8091 · nur nehmen, wenn die Entwicklungs-Clara klemmt</div>
+  </button>
+
+  <button class="card v6" id="btnV6" data-mode="v6" data-name="Clara V6">
     <div class="t"><span class="name">Clara V6</span><span class="badge">Test</span></div>
     <div class="desc">Stand <code>clara-v6.0</code> aus <code>F:\Clara-Voice-v6</code> · meldet sich mit „hier ist Clara Version sechs“</div>
   </button>
 </div>
 
 <a class="open" id="openClara" href="#">Clara jetzt öffnen und sprechen</a>
-<button class="ghost" id="btnOff">Beide beenden (keine Clara läuft)</button>
+<button class="ghost" id="btnOff">Alle beenden (keine Clara läuft)</button>
 
 <div class="err hide" id="err"></div>
 
 <p class="note">
-  Beide Instanzen hängen an derselben LiveKit-Cloud — parallel dürfen sie nie laufen,
+  Alle Stände hängen an derselben LiveKit-Cloud — parallel dürfen sie nie laufen,
   sonst landet jede zweite Sitzung beim falschen Worker. Deshalb wird die laufende
-  Clara erst beendet und das Beenden geprüft, bevor die andere startet.
+  Clara erst beendet und das Beenden geprüft, bevor der andere startet.
 </p>
 
 <script>
@@ -120,12 +125,15 @@
   var nowSub = document.getElementById('nowSub');
   var btnLive = document.getElementById('btnLive');
   var btnV6 = document.getElementById('btnV6');
+  var btnDev = document.getElementById('btnDev');
   var btnOff = document.getElementById('btnOff');
   var errBox = document.getElementById('err');
+  var WAHL = [btnDev, btnLive, btnV6];
 
   var LABEL = {
     live: { title: 'Clara LIVE läuft', color: '#4d9bff' },
     v6: { title: 'Clara V6 läuft', color: '#34d399' },
+    dev: { title: 'Clara DEV läuft', color: '#c084fc' },
     off: { title: 'Keine Clara läuft', color: '#93a0c4' },
     switching: { title: 'Schalte um…', color: '#f59e0b' },
     conflict: { title: 'ACHTUNG: zwei Worker laufen', color: '#ef4444' }
@@ -145,9 +153,9 @@
   function resetConfirm() {
     clearTimeout(confirmTimer);
     pending = null;
-    [btnLive, btnV6].forEach(function (b) {
+    WAHL.forEach(function (b) {
       b.classList.remove('confirm');
-      b.querySelector('.name').textContent = b === btnLive ? 'Clara LIVE' : 'Clara V6';
+      b.querySelector('.name').textContent = b.dataset.name;
     });
   }
 
@@ -157,7 +165,7 @@
     nowTitle.textContent = info.title;
     lamp.style.background = info.color;
     lamp.style.color = info.color;
-    lamp.classList.toggle('on', st.running === 'live' || st.running === 'v6');
+    lamp.classList.toggle('on', st.running === 'live' || st.running === 'v6' || st.running === 'dev');
 
     if (busy) {
       var secs = switchStarted ? Math.round((Date.now() - switchStarted) / 1000) : 0;
@@ -169,10 +177,11 @@
       nowSub.textContent = st.message || 'bereit';
     }
 
-    btnLive.classList.toggle('active', st.running === 'live');
-    btnV6.classList.toggle('active', st.running === 'v6');
-    btnLive.disabled = busy || st.running === 'live';
-    btnV6.disabled = busy || st.running === 'v6';
+    WAHL.forEach(function (b) {
+      var laeuft = st.running === b.dataset.mode;
+      b.classList.toggle('active', laeuft);
+      b.disabled = busy || laeuft;
+    });
     btnOff.disabled = busy || st.running === 'off';
     if (busy) resetConfirm();
   }
@@ -195,7 +204,8 @@
     nowTitle.textContent = 'Schalte um…';
     nowSub.textContent = 'beende laufende Clara';
     lamp.style.background = '#f59e0b';
-    btnLive.disabled = btnV6.disabled = btnOff.disabled = true;
+    WAHL.forEach(function (b) { b.disabled = true; });
+    btnOff.disabled = true;
     try {
       var r = await fetch('/clara-switch/set', {
         method: 'POST',
@@ -224,16 +234,17 @@
     confirmTimer = setTimeout(resetConfirm, 5000);
   }
 
+  btnDev.addEventListener('click', function () { arm(btnDev, 'dev', 'Wirklich auf DEV? Nochmal tippen'); });
   btnLive.addEventListener('click', function () { arm(btnLive, 'live', 'Wirklich auf LIVE? Nochmal tippen'); });
   btnV6.addEventListener('click', function () { arm(btnV6, 'v6', 'Wirklich auf V6? Nochmal tippen'); });
   btnOff.addEventListener('click', function () {
     if (busy) return;
-    if (btnOff.dataset.armed === '1') { btnOff.dataset.armed = ''; btnOff.textContent = 'Beide beenden (keine Clara läuft)'; doSwitch('off'); return; }
+    if (btnOff.dataset.armed === '1') { btnOff.dataset.armed = ''; btnOff.textContent = 'Alle beenden (keine Clara läuft)'; doSwitch('off'); return; }
     btnOff.dataset.armed = '1';
     btnOff.textContent = 'Wirklich beenden? Nochmal tippen';
     setTimeout(function () {
       btnOff.dataset.armed = '';
-      btnOff.textContent = 'Beide beenden (keine Clara läuft)';
+      btnOff.textContent = 'Alle beenden (keine Clara läuft)';
     }, 5000);
   });
 
