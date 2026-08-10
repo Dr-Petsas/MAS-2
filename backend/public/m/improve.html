@@ -43,7 +43,14 @@
   }
   /* Die Buehne traegt den jeweils aktiven Schritt und nimmt den Rest der
      Hoehe ein. Nur sie darf rollen — nie die ganze Seite. */
-  .buehne { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .buehne {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: flex; flex-direction: column;
+  }
+  /* Nur die Kachelauswahl waechst in den freien Platz — die spaeteren
+     Schritte behalten ihre natuerliche Hoehe, damit ein langes Formular
+     rollen kann statt gequetscht zu werden. */
+  #s1:not(.versteckt) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 
   header { padding: 13px 0 2px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .logo {
@@ -76,29 +83,34 @@
   /* Kategorie-Kacheln: zwei Spalten, Symbol neben dem Wort statt darueber.
      Das Beispiel entfaellt hier — es steht spaeter als Vorschlag im Textfeld
      und kostet in der Auswahl nur Hoehe. */
-  /* Auf dem Handy eine Liste (Symbol links, Wort und Erklaerung rechts) —
-     nebeneinander waeren die Kacheln so schmal, dass die Erklaerung auf vier
-     Zeilen umbricht und die Auswahl doppelt so hoch wird. Ab Tablet-Breite
-     zwei Spalten. */
-  .kacheln { display: grid; grid-template-columns: 1fr; gap: 8px; }
-  @media (min-width: 640px) { .kacheln { grid-template-columns: 1fr 1fr; } }
-  .kachel {
-    background: var(--karte); border: 1px solid var(--rand); border-radius: 14px;
-    padding: 10px 12px; cursor: pointer; transition: transform .16s, border-color .16s, background .16s;
-    display: grid; grid-template-columns: 32px 1fr; column-gap: 11px; align-items: center;
-    text-align: left; touch-action: manipulation;
+  /* Zwei Spalten, Symbol oben — so wirken die Kacheln wie Karten und nicht
+     wie eine Einstellungsliste (Chef 10.08.2026: "imposanter"). Die Hoehe
+     kommt allein aus dem Raster: drei Reihen teilen sich genau den freien
+     Platz, damit nichts gerollt werden muss. Das Beispiel entfaellt hier und
+     steht spaeter als Vorschlag im Textfeld — in einer halbbreiten Kachel
+     braeuchte es vier Zeilen. */
+  .kacheln {
+    display: grid; grid-template-columns: 1fr 1fr;
+    grid-auto-rows: 1fr; gap: 9px;
+    flex: 1 1 auto; min-height: 0;
   }
-  .kachel .sym { grid-row: 1 / span 2; }
-  .kachel .kt, .kachel .kh { grid-column: 2; }
+  .kachel {
+    background: linear-gradient(160deg, #172542, #131e33);
+    border: 1px solid var(--rand); border-radius: 17px;
+    padding: 13px 12px; cursor: pointer; transition: transform .16s, border-color .16s, background .16s;
+    display: flex; flex-direction: column; justify-content: center; gap: 9px;
+    text-align: left; touch-action: manipulation; min-height: 108px;
+  }
   .kachel:active { transform: scale(.975); }
   .kachel.an { border-color: #4f8cff; background: #1a2946; box-shadow: 0 0 0 1px #4f8cff inset; }
   .kachel .sym {
-    width: 32px; height: 32px; border-radius: 10px; background: #1e2c48; flex-shrink: 0;
+    width: 40px; height: 40px; border-radius: 12px; background: #1e2c48; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
   }
   .kachel.an .sym { background: #24406f; }
-  .kachel .kt { font-size: 13.5px; font-weight: 600; line-height: 1.25; }
-  .kachel .kh { font-size: 11.5px; color: var(--grau); line-height: 1.25; margin-top: 1px; }
+  .kachel .kt { font-size: 14.5px; font-weight: 650; line-height: 1.2; }
+  .kachel .kh { font-size: 11.5px; color: var(--grau); line-height: 1.3; margin-top: -3px; }
   .kachel .kb { display: none; }
 
   /* Schweregrad: gleiche Listenform wie die Kategorien — nebeneinander waren
@@ -448,10 +460,11 @@
     <div id="verlauf"></div>
   </div>
 
+  <!-- Kurz gehalten: Der Satz erklaert das Prinzip, darf aber den Kacheln
+       keinen Platz wegnehmen. -->
   <div class="fuss" id="fuss">
-    Einstellbares ändern wir in Ihrer Praxis. Technische Fälle gehen an die
-    Entwicklung und kommen erst nach bestandenem Test zurück — als Fehlerklasse,
-    von der alle Praxen profitieren.
+    Einstellbares ändern wir in Ihrer Praxis, Technisches geht an die Entwicklung —
+    als Fehlerklasse, von der alle Praxen profitieren.
   </div>
   </div>
 </div>
