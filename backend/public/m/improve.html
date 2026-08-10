@@ -24,61 +24,110 @@
     --blau: #3b6df5; --gruen: #46d18a; --gelb: #ffc46b; --rot: #ff8d8d;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  /* EIN BILDSCHIRM, KEIN BLAETTERN (Chef 10.08.2026: "sieht nicht nach App
+     aus"). Die Seite ist so hoch wie das Geraet und nicht hoeher; gerollt wird
+     nur INNERHALB der Buehne, und auch das nur, wenn ein Schritt wirklich
+     einmal laenger wird. Deshalb liegt die Hoehe fest auf dem Fenster statt
+     wie bisher auf dem Inhalt. */
+  html, body { height: 100%; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: radial-gradient(120% 80% at 50% -10%, var(--bg1) 0%, var(--bg2) 70%);
     background-attachment: fixed;
-    color: var(--hell); min-height: 100vh; line-height: 1.45; padding-bottom: 50px;
+    color: var(--hell); line-height: 1.4; overflow: hidden;
   }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+  .wrap {
+    max-width: 760px; margin: 0 auto; height: 100%;
+    padding: 0 15px calc(10px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column;
+  }
+  /* Die Buehne traegt den jeweils aktiven Schritt und nimmt den Rest der
+     Hoehe ein. Nur sie darf rollen — nie die ganze Seite. */
+  .buehne { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
-  header { padding: 22px 0 4px; display: flex; align-items: center; gap: 12px; }
+  header { padding: 13px 0 2px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .logo {
-    width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+    width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
     background: linear-gradient(140deg, #4f8cff, #7b5cff);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 6px 18px rgba(79, 140, 255, .3);
   }
-  h1 { font-size: 18.5px; font-weight: 650; letter-spacing: .2px; }
-  .sub { color: var(--grau); font-size: 12.5px; }
+  h1 { font-size: 17px; font-weight: 650; letter-spacing: .2px; }
+  .sub { color: var(--grau); font-size: 11.5px; }
+  /* Auf schmalen Handys bricht der Untertitel neben den Knoepfen auf drei
+     Zeilen um und macht die Kopfzeile hoch. Die Frage darunter sagt ohnehin,
+     worum es geht. */
+  @media (max-width: 430px) { .sub { display: none; } }
 
-  /* Fortschritt */
-  .fortschritt { display: flex; gap: 6px; margin: 18px 0 4px; }
+  /* Fortschritt + Rueckweg zwischen den Schritten */
+  .fortschritt { display: flex; align-items: center; gap: 6px; margin: 11px 0 2px; flex-shrink: 0; }
   .fs { flex: 1; height: 3px; border-radius: 2px; background: #22304d; transition: background .35s; }
   .fs.an { background: linear-gradient(90deg, #4f8cff, #7b5cff); }
-
-  .abschnitt { margin-top: 20px; animation: rein .4s ease both; }
-  @keyframes rein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  .frage { font-size: 16px; font-weight: 600; margin-bottom: 3px; }
-  .frageSub { color: var(--grau); font-size: 12.5px; margin-bottom: 11px; }
-
-  /* Kategorie-Kacheln */
-  .kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
-  .kachel {
-    background: var(--karte); border: 1px solid var(--rand); border-radius: 15px;
-    padding: 14px 13px; cursor: pointer; transition: transform .16s, border-color .16s, background .16s;
-    display: flex; flex-direction: column; gap: 8px; text-align: left;
+  .zurueckSchritt {
+    border: 0; background: transparent; color: var(--grau); font-size: 13px; font-weight: 600;
+    padding: 2px 8px 2px 0; flex-shrink: 0; touch-action: manipulation;
   }
+
+  .abschnitt { margin-top: 13px; animation: rein .3s ease both; }
+  @keyframes rein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .frage { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+  .frageSub { color: var(--grau); font-size: 12.5px; margin-bottom: 10px; }
+
+  /* Kategorie-Kacheln: zwei Spalten, Symbol neben dem Wort statt darueber.
+     Das Beispiel entfaellt hier — es steht spaeter als Vorschlag im Textfeld
+     und kostet in der Auswahl nur Hoehe. */
+  /* Auf dem Handy eine Liste (Symbol links, Wort und Erklaerung rechts) —
+     nebeneinander waeren die Kacheln so schmal, dass die Erklaerung auf vier
+     Zeilen umbricht und die Auswahl doppelt so hoch wird. Ab Tablet-Breite
+     zwei Spalten. */
+  .kacheln { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  @media (min-width: 640px) { .kacheln { grid-template-columns: 1fr 1fr; } }
+  .kachel {
+    background: var(--karte); border: 1px solid var(--rand); border-radius: 14px;
+    padding: 10px 12px; cursor: pointer; transition: transform .16s, border-color .16s, background .16s;
+    display: grid; grid-template-columns: 32px 1fr; column-gap: 11px; align-items: center;
+    text-align: left; touch-action: manipulation;
+  }
+  .kachel .sym { grid-row: 1 / span 2; }
+  .kachel .kt, .kachel .kh { grid-column: 2; }
   .kachel:active { transform: scale(.975); }
   .kachel.an { border-color: #4f8cff; background: #1a2946; box-shadow: 0 0 0 1px #4f8cff inset; }
   .kachel .sym {
-    width: 38px; height: 38px; border-radius: 11px; background: #1e2c48;
+    width: 32px; height: 32px; border-radius: 10px; background: #1e2c48; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
   }
   .kachel.an .sym { background: #24406f; }
-  .kachel .kt { font-size: 14.5px; font-weight: 600; }
-  .kachel .kh { font-size: 12.5px; color: var(--grau); }
-  .kachel .kb { font-size: 12px; color: var(--dunkelgrau); font-style: italic; }
+  .kachel .kt { font-size: 13.5px; font-weight: 600; line-height: 1.25; }
+  .kachel .kh { font-size: 11.5px; color: var(--grau); line-height: 1.25; margin-top: 1px; }
+  .kachel .kb { display: none; }
 
-  /* Schweregrad */
-  .stufen3 { display: flex; gap: 9px; }
+  /* Schweregrad: gleiche Listenform wie die Kategorien — nebeneinander waren
+     es drei schmale Kaestchen in einem sonst leeren Bildschirm. Der Punkt
+     links zeigt die Dringlichkeit, bevor man liest. */
+  .stufen3 { display: grid; gap: 8px; }
   .stufe3 {
-    flex: 1; background: var(--karte); border: 1px solid var(--rand); border-radius: 13px;
-    padding: 12px 10px; text-align: center; cursor: pointer; transition: border-color .16s, background .16s;
+    background: var(--karte); border: 1px solid var(--rand); border-radius: 13px;
+    padding: 13px 14px; text-align: left; cursor: pointer;
+    display: grid; grid-template-columns: 10px 1fr; column-gap: 13px; align-items: center;
+    transition: border-color .16s, background .16s; touch-action: manipulation;
   }
-  .stufe3 .st { font-size: 14px; font-weight: 600; }
-  .stufe3 .sh { font-size: 11.5px; color: var(--grau); margin-top: 2px; }
+  .stufe3:before {
+    content: ""; width: 10px; height: 10px; border-radius: 50%;
+    grid-row: 1 / span 2; background: var(--dunkelgrau);
+  }
+  .stufe3[data-schwere="blocker"]:before { background: var(--rot); }
+  .stufe3[data-schwere="stoerend"]:before { background: var(--gelb); }
+  .stufe3 .st { font-size: 14.5px; font-weight: 600; }
+  .stufe3 .sh { font-size: 11.5px; color: var(--grau); margin-top: 1px; }
   .stufe3.an { border-color: #4f8cff; background: #1a2946; }
+
+  /* Merkzettel: was man im Schritt davor gewaehlt hat. */
+  .gewaehlt {
+    display: inline-flex; align-items: center; gap: 7px; margin-bottom: 11px;
+    background: #16233c; border: 1px solid var(--rand); border-radius: 999px;
+    padding: 5px 12px 5px 9px; font-size: 12.5px; color: var(--grau);
+  }
+  .gewaehlt b { color: var(--hell); font-weight: 600; }
 
   /* Eingaben */
   .karte { background: var(--karte); border: 1px solid var(--rand); border-radius: 15px; padding: 14px; }
@@ -328,9 +377,11 @@
   </header>
 
   <div class="fortschritt" id="fortschritt">
+    <button class="zurueckSchritt versteckt" id="zurueckSchritt" type="button">‹</button>
     <div class="fs an" id="fs1"></div><div class="fs" id="fs2"></div><div class="fs" id="fs3"></div>
   </div>
 
+  <div class="buehne" id="buehne">
   <!-- Schritt 1 -->
   <div class="abschnitt" id="s1">
     <div class="frage">Was ist passiert?</div>
@@ -340,6 +391,7 @@
 
   <!-- Schritt 2 -->
   <div class="abschnitt versteckt" id="s2">
+    <div class="gewaehlt versteckt" id="gewaehlt"></div>
     <div class="frage">Wie sehr stört es Sie?</div>
     <div class="frageSub">Das entscheidet, wie schnell wir rangehen.</div>
     <div class="stufen3">
@@ -400,6 +452,7 @@
     Einstellbares ändern wir in Ihrer Praxis. Technische Fälle gehen an die
     Entwicklung und kommen erst nach bestandenem Test zurück — als Fehlerklasse,
     von der alle Praxen profitieren.
+  </div>
   </div>
 </div>
 
@@ -478,10 +531,25 @@
     uhr: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z", "M12 7v5l3 2"],
   };
 
-  function fortschritt(n) {
+  // EIN Schritt zur Zeit (Chef 10.08.2026). Vorher standen alle drei
+  // untereinander — das ergab eine lange Seite zum Blaettern statt einer App.
+  function zeigeSchritt(n) {
+    S.schritt = n;
+    ["s1", "s2", "s3"].forEach(function (id, i) {
+      $(id).classList[(i + 1) === n ? "remove" : "add"]("versteckt");
+    });
     $("fs2").className = "fs" + (n >= 2 ? " an" : "");
     $("fs3").className = "fs" + (n >= 3 ? " an" : "");
+    $("zurueckSchritt").classList[n > 1 ? "remove" : "add"]("versteckt");
+    // Der erklaerende Fuss gehoert zur ersten Entscheidung; danach kostet er
+    // nur Hoehe und draengt den Absende-Knopf aus dem Bild.
+    $("fuss").classList[n === 1 ? "remove" : "add"]("versteckt");
+    $("buehne").scrollTop = 0;
   }
+
+  $("zurueckSchritt").addEventListener("click", function () {
+    zeigeSchritt(Math.max(1, (S.schritt || 1) - 1));
+  });
 
   // ---- Schritt 1: Kategorien --------------------------------------------
   function ladeKategorien() {
@@ -512,9 +580,6 @@
     S.kategorie = k;
     Array.prototype.forEach.call($("kacheln").children, function (c) { c.className = "kachel"; });
     kachel.className = "kachel an";
-    $("s2").className = "abschnitt";
-    $("s3").className = "abschnitt";
-    fortschritt(3);
 
     // Bei Hoerfehlern ist der gemeinte Name das Wertvollste am Fall: Er sagt,
     // was RICHTIG gewesen waere — und wird sofort live durch die Suche geprueft.
@@ -524,7 +589,19 @@
       ? "Mit dem richtigen Namen prüfe ich sofort, woran es lag."
       : "Kein Aufsatz nötig — ein Beispiel reicht.";
     $("text").placeholder = k.beispiel ? k.beispiel.replace(/[„“]/g, "") : "";
-    $("s3").scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+    // Im naechsten Schritt sieht man sonst nicht mehr, worueber man gerade
+    // urteilt.
+    var chip = $("gewaehlt");
+    chip.textContent = "";
+    chip.appendChild(svg(SYMBOLE[k.symbol] || SYMBOLE.warnung));
+    var b = el("b", null, k.titel);
+    chip.appendChild(b);
+    chip.classList.remove("versteckt");
+
+    // Die Wahl IST die Antwort — ein zusaetzliches "Weiter" waere ein Klick
+    // ohne Inhalt.
+    zeigeSchritt(2);
   }
 
   Array.prototype.forEach.call(document.querySelectorAll(".stufe3"), function (s) {
@@ -532,6 +609,7 @@
       Array.prototype.forEach.call(document.querySelectorAll(".stufe3"), function (x) { x.className = "stufe3"; });
       s.className = "stufe3 an";
       S.schwere = s.getAttribute("data-schwere");
+      zeigeSchritt(3);
     });
   });
 
@@ -678,6 +756,14 @@
   }
 
   function zeigeLauf(lauf) {
+    // Der Meldeteil hat seinen Zweck erfuellt — er darf jetzt nicht mehr
+    // ueber dem Ergebnis stehen und es nach unten aus dem Bild schieben.
+    // Bewusst per Klasse, nicht per Stil: Der Verlauf blendet dieselben Teile
+    // mit Stil aus und wieder ein — er duerfte den Meldeteil sonst hinter dem
+    // Ergebnis wieder hervorholen.
+    ["fortschritt", "s1", "s2", "s3", "fuss"].forEach(function (id) {
+      if ($(id)) $(id).classList.add("versteckt");
+    });
     var erg = $("ergebnis");
     var h = el("div", "abschnitt");
     h.appendChild(el("div", "frage", "So wird Ihr Fall bearbeitet"));
