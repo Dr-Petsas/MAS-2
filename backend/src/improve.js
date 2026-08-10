@@ -189,6 +189,21 @@ export function ordneEin(text) {
 }
 
 /**
+ * Den Zeitstempel aus einem Aufnahmenamen ziehen (PUR).
+ *
+ * Die Namen sehen so aus: clara_<praxis>_<zufall>_20260810T131949.json — das
+ * Zufallskuerzel steht VOR der Zeit. Wer solche Namen einfach alphabetisch
+ * sortiert, sortiert nach dem Zufall, nicht nach dem Datum. Genau das ist am
+ * 10.08.2026 passiert: Einer Meldung wurde ein zwei Wochen altes Gespraech
+ * angehaengt, weil dessen Kuerzel zufaellig groesser war. Leerer Rueckgabewert
+ * heisst "keine Zeit erkennbar" — solche Dateien landen hinten.
+ */
+export function zeitAusAufnahmename(name) {
+  const m = /(\d{8}T\d{6})/.exec(String(name || ""));
+  return m ? m[1] : "";
+}
+
+/**
  * Das ZULETZT gefuehrte Gespraech holen.
  *
  * Ueberspringt Anrufe ohne einen einzigen Nutzerbeitrag: Ein Anruf, in dem nur
@@ -200,7 +215,16 @@ export async function letztesGespraech({ maxPruefen = 40 } = {}) {
   try {
     const alle = await readdir(dir, { withFileTypes: true });
     dateien = alle.filter((d) => d.isFile() && d.name.endsWith(".json"))
-      .map((d) => d.name).sort().reverse();
+      .map((d) => d.name)
+      .sort((a, b) => {
+        const za = zeitAusAufnahmename(a);
+        const zb = zeitAusAufnahmename(b);
+        // Neueste zuerst; Dateien ohne erkennbare Zeit ans Ende.
+        if (za && zb) return zb.localeCompare(za);
+        if (za) return -1;
+        if (zb) return 1;
+        return b.localeCompare(a);
+      });
   } catch {
     return null;
   }

@@ -42,13 +42,19 @@ const SCHWERE_TEXT = {
   stoerend: "Stört im Alltag",
   kosmetik: "Schönheitsfehler",
 };
+// ACHTUNG: Die Schluessel muessen exakt den Kennungen aus KATEGORIEN in
+// improve.js entsprechen. Stand 10.08.2026 hiess es hier "falsche_auskunft",
+// die Kategorie heisst aber "falsche_daten" — jede solche Meldung kam zentral
+// und im Mail-Betreff als "Sonstiges" an und sah dadurch wertlos aus.
+// test-improve-zentrale.mjs vergleicht beide Listen, damit das nicht
+// unbemerkt wieder auseinanderlaeuft.
 const KATEGORIE_TEXT = {
   verhoert: "Falsch verstanden",
-  falsche_auskunft: "Falsche Auskunft",
+  falsche_daten: "Falsche Auskunft",
   erfunden: "Etwas erfunden",
   nichts_passiert: "Nichts passiert",
   falsche_aktion: "Falsche Aktion",
-  umstaendlich: "Umständlich",
+  umstaendlich: "Umständlich oder langsam",
 };
 
 /** Reihenfolge fuer die Anzeige: Was den Betrieb blockiert, steht oben. */
@@ -293,3 +299,5 @@ export async function setzeStand(id, { gelesen, status, notiz } = {}) {
 
 export const ZENTRALE_COL = COL;
 export const ZENTRALE_ALARM_AN = ALARM_AN;
+/** Nur fuer den Abgleich im Test — siehe Warnung an KATEGORIE_TEXT. */
+export const ZENTRALE_KATEGORIE_TEXT = KATEGORIE_TEXT;

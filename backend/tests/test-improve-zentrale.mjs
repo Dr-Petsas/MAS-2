@@ -12,7 +12,8 @@
  *
  * Aufruf:  node tests/test-improve-zentrale.mjs
  */
-import { baueMeldung, alarmMail, istCodeFall } from "../src/improveZentrale.js";
+import { baueMeldung, alarmMail, istCodeFall, ZENTRALE_KATEGORIE_TEXT } from "../src/improveZentrale.js";
+import { KATEGORIEN } from "../src/improve.js";
 
 let ok = 0;
 let fail = 0;
@@ -21,7 +22,21 @@ function pruefe(name, bedingung, info = "") {
   else { fail++; console.log(`  FEHL ${name} ${info}`); }
 }
 
-console.log("1) Was gehoert auf die Entwicklungs-Liste?");
+// Am 10.08.2026 hiess eine Kategorie hier anders als in improve.js. Folge:
+// Jede solche Meldung erschien zentral und im Mail-Betreff als "Sonstiges" —
+// der Empfaenger sah nicht mehr, worum es ging. Dieser Abgleich faengt jedes
+// weitere Auseinanderlaufen sofort ab.
+console.log("0) Jede Problemart hat zentral einen Klartext");
+KATEGORIEN.forEach((k) => {
+  pruefe(`Kategorie "${k.id}" ist zentral benannt`,
+    ZENTRALE_KATEGORIE_TEXT[k.id] === k.titel,
+    `-> zentral: ${ZENTRALE_KATEGORIE_TEXT[k.id] || "FEHLT"} / erwartet: ${k.titel}`);
+});
+pruefe("keine zentrale Bezeichnung ohne Kategorie",
+  Object.keys(ZENTRALE_KATEGORIE_TEXT).every((id) => KATEGORIEN.some((k) => k.id === id)),
+  `-> ueberzaehlig: ${Object.keys(ZENTRALE_KATEGORIE_TEXT).filter((id) => !KATEGORIEN.some((k) => k.id === id)).join(", ")}`);
+
+console.log("\n1) Was gehoert auf die Entwicklungs-Liste?");
 pruefe("technische Faelle muessen per Code geloest werden",
   istCodeFall({ ebene: "technisch" }) === true);
 pruefe("Einstellungen der Praxis gehoeren NICHT auf die Liste",

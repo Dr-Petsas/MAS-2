@@ -13,7 +13,7 @@
  */
 import {
   ketteBauen, auffaelligkeiten, baueLauf, ordneEin, urteile, probeErlaubt,
-  KATEGORIEN, findeKategorie,
+  KATEGORIEN, findeKategorie, zeitAusAufnahmename,
 } from "../src/improve.js";
 
 let ok = 0;
@@ -22,6 +22,34 @@ function pruefe(name, bedingung, info = "") {
   if (bedingung) { ok++; console.log(`  ok   ${name}`); }
   else { fail++; console.log(`  FEHL ${name} ${info}`); }
 }
+
+// Vorfall 10.08.2026: Der Meldung wurde ein Gespraech vom 28.07. angehaengt,
+// obwohl der Anruf von vor zwei Minuten vorlag. Grund: Die Dateinamen tragen
+// ein Zufallskuerzel VOR der Zeit, und alphabetisch sortiert gewinnt der
+// Zufall. Dadurch belegte die Meldung das falsche Gespraech - der ganze
+// Loesungsweg lief damit ins Leere.
+console.log("0) Das JUENGSTE Gespraech gewinnt, nicht das mit dem groessten Kuerzel");
+const namen = [
+  "clara_MEe4ZQHEzOPzLcexyhdT_fedb5d_20260728T212354.json",
+  "clara_MEe4ZQHEzOPzLcexyhdT_5aaa24_20260810T131949.json",
+  "clara_MEe4ZQHEzOPzLcexyhdT_911da5_20260808T212810.json",
+];
+const sortiert = [...namen].sort((a, b) => {
+  const za = zeitAusAufnahmename(a);
+  const zb = zeitAusAufnahmename(b);
+  if (za && zb) return zb.localeCompare(za);
+  if (za) return -1;
+  if (zb) return 1;
+  return b.localeCompare(a);
+});
+pruefe("Zeit wird aus dem Namen gelesen",
+  zeitAusAufnahmename(namen[0]) === "20260728T212354");
+pruefe("Name ohne Zeitstempel gibt leer zurueck",
+  zeitAusAufnahmename("irgendwas.json") === "");
+pruefe("der Anruf vom 10.08. steht vorn, nicht der vom 28.07.",
+  sortiert[0] === namen[1], `-> ${sortiert[0]}`);
+pruefe("danach folgt der 08.08., zuletzt der 28.07.",
+  sortiert[1] === namen[2] && sortiert[2] === namen[0]);
 
 // Ein Gespraech, wie es der Sprach-Dienst aufzeichnet.
 const gespraech = {
