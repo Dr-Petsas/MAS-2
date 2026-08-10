@@ -78,6 +78,9 @@ main{padding:12px 14px 40px;max-width:1100px;margin:0 auto}
 .marke.blocker{border-color:var(--bad);color:var(--bad);font-weight:700}
 .marke.einstellung{border-color:var(--ok);color:var(--ok)}
 .marke.mailweg{border-color:var(--warn);color:var(--warn)}
+.marke.sprache{border-color:var(--info);color:var(--info)}
+.tonzeile{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.tonzeile audio{height:32px;max-width:100%}
 .satz{margin:10px 0 0;line-height:1.5}
 .satz.leer-text{color:var(--ink-dim);font-style:italic}
 .fuss{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;
@@ -117,6 +120,13 @@ function kopf(json) {
   return h;
 }
 
+/* Ein <audio>-Element kann keinen Anmelde-Kopf mitschicken — deshalb reist die
+   Anmeldung fuer Tonaufnahmen in der Adresse mit (dafuer ist ?t= gedacht). */
+function mitToken(pfad) {
+  if (!TOKEN) return pfad;
+  return pfad + (pfad.includes("?") ? "&" : "?") + "t=" + encodeURIComponent(TOKEN);
+}
+
 async function hole(pfad) {
   const r = await fetch(pfad, { headers: kopf(false) });
   if (r.status === 403) throw new Error("Diese Übersicht ist dem Superuser vorbehalten.");
@@ -143,6 +153,24 @@ function zeichneZahlen(z) {
     <div class="zahl"><b>${z.gesamt || 0}</b><span>Meldungen insgesamt</span></div>`;
 }
 
+/**
+ * Die Tonaufnahme einer gesprochenen Meldung zum Anhoeren.
+ *
+ * Der Ton geht bewusst UNGEFILTERT heraus (Chef 10.08.2026) — im Zweifel muss
+ * hoerbar sein, was wirklich gesagt wurde, Patientennamen eingeschlossen. Die
+ * Datei liegt beim Anruf und wird von dort gestreamt, nicht kopiert.
+ */
+function ton(m) {
+  const s = m && m.sprachnotiz;
+  if (!s || !s.datei || !s.anruf) return "";
+  const url = mitToken(`/improve/zentrale/ton?anruf=${encodeURIComponent(s.anruf)}`
+    + `&datei=${encodeURIComponent(s.datei)}`);
+  return `<div class="tonzeile">
+    <span class="klein-grau">Originalton der Meldung</span>
+    <audio controls preload="none" src="${url}"></audio>
+  </div>`;
+}
+
 function zeichneListe() {
   const ziel = document.getElementById("liste");
   if (!S.meldungen.length) {
@@ -158,6 +186,12 @@ function zeichneListe() {
       `<span class="marke">${sicher(m.kategorie_text)}</span>`,
       `<span class="marke">Fehlerklasse: ${sicher(m.fehlerklasse)}</span>`,
       m.gemeinter_name ? `<span class="marke">Gemeint: ${sicher(m.gemeinter_name)}</span>` : "",
+      m.quelle === "sprache" ? '<span class="marke sprache">Per Sprache gemeldet</span>' : "",
+      // Geraten ist nicht gewaehlt: Bei einer gesprochenen Meldung gibt es
+      // keine Kacheln, die Art wurde aus dem Gesagten geschlossen. Ohne diesen
+      // Hinweis saehe eine Schaetzung aus wie die Entscheidung des Kunden.
+      m.quelle === "sprache" && m.kategorie
+        ? '<span class="marke">Art geschätzt</span>' : "",
       m.mail_status === "fehlgeschlagen"
         ? `<span class="marke mailweg">E-Mail kam nicht raus: ${sicher(m.mail_fehler)}</span>` : "",
     ].filter(Boolean).join("");
@@ -175,6 +209,7 @@ function zeichneListe() {
       </div>
       <div class="marken">${marken}</div>
       ${text}
+      ${ton(m)}
       <div class="fuss">
         <span class="klein-grau">Stand: ${sicher(m.status)}${m.anruf ? " · Anruf " + sicher(m.anruf) : ""}</span>
         <span class="spacer"></span>

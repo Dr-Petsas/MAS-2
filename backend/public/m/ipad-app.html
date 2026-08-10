@@ -156,7 +156,14 @@
       background: linear-gradient(135deg, #1a9b8e, var(--lena)); box-shadow: 0 0 22px rgba(15,118,110,.45);
     }
     .clock { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .82rem; color: var(--mute); min-width: 42px; text-align: right; }
-    .gear { color: var(--ink-soft); text-decoration: none; font-size: 18px; padding: 6px; opacity: .65; flex: none; }
+    /* touch-action: Ohne diese Zeile wartet das Geraet nach jedem Tippen rund
+       eine drittel Sekunde ab, ob ein Doppeltipp zum Zoomen folgt — genau die
+       Verzoegerung, die Dr. Petsas am 10.08.2026 gemeldet hat. */
+    .gear { color: var(--ink-soft); text-decoration: none; font-size: 18px; padding: 6px; opacity: .65; flex: none;
+            touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+    /* Verbessern steht als WORT da: An einem Werkzeugsymbol denkt man an
+       Einstellungen, nicht ans Besserwerden (Dr. Petsas 10.08.2026). */
+    .gear.improve { font-size: 12px; font-weight: 800; letter-spacing: .08em; opacity: .85; color: var(--turq); }
     /* Durchgaengige Navigation (nur Doku): EIN Zurueck/Weiter, immer sichtbar. */
     .chrome-nav { display: flex; align-items: center; gap: 6px; flex: none; }
     .chrome-nav[hidden] { display: none; }
@@ -1425,12 +1432,14 @@
       <button type="button" data-capmode="ipad_room" role="radio" aria-checked="false" title="iPad-Raummikro — Arzt + Patient (1 Stream)">iPad-Raum</button>
     </div>
     <div class="clock" id="clock">--:--</div>
+    <!-- Reihenfolge auf Wunsch von Dr. Petsas (10.08.2026): Tour zuerst,
+         Verbessern ganz aussen rechts. -->
     <a class="gear" href="/m/clara-tour.html" aria-label="Clara-Tour" title="Clara-Tour – was ich alles kann">&#127911;</a>
+    <a class="gear" href="/m/ipad.html?manage=1" aria-label="Einstellungen">&#9881;</a>
     <!-- Problem melden, direkt am Behandlungsplatz. Genau dort faellt auf, dass
          Clara etwas falsch verstanden hat — und genau dort war bisher kein Weg,
          es loszuwerden. Ziel wird unten gesetzt (Praxis + Person vom Geraet). -->
-    <a class="gear" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">&#128295;</a>
-    <a class="gear" href="/m/ipad.html?manage=1" aria-label="Einstellungen">&#9881;</a>
+    <a class="gear improve" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">IMPROVE</a>
   </header>
 
   <div class="app-body">

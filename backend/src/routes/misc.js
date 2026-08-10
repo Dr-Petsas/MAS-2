@@ -13,7 +13,7 @@ import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
-import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, wiederholungslauf, KATEGORIEN } from "../improve.js";
+import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, wiederholungslauf, sprachmeldung, sprachnotizPfad, KATEGORIEN } from "../improve.js";
 import { zentraleListe, zentraleAnzahl, setzeStand } from "../improveZentrale.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
@@ -387,6 +387,45 @@ router.get("/improve/nametest", async (req, res) => {
   res.end();
 });
 
+
+// SPRACHMELDUNG: "Clara, Fehler melden" ueber das Headset. Der Sprach-Worker
+// laeuft auf derselben Maschine und meldet ueber localhost; es gibt dort keinen
+// angemeldeten Benutzer, deshalb traegt die Meldung die Praxis im Rumpf.
+// Absichtlich derselbe Weg wie von der Improve-Seite: ein ganz normaler Fall
+// samt zentralem Eintrag, E-Mail und Nachweis.
+router.post("/improve/sprachmeldung", async (req, res) => {
+  try {
+    const clientId = String(req.body?.clientId || "").trim();
+    if (!clientId) return res.status(400).json({ ok: false, error: "clientId fehlt" });
+    const erg = await sprachmeldung(clientId, {
+      anruf: req.body?.anruf,
+      audio: req.body?.audio,
+      text: req.body?.text,
+    });
+    return res.json(erg);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Die Tonaufnahme einer Sprachmeldung abspielen (nur Superuser). Der Ton geht
+// UNGEFILTERT heraus — ausdruecklich so gewuenscht (Chef 10.08.2026), damit im
+// Zweifel hoerbar ist, was wirklich gesagt wurde, Patientennamen eingeschlossen.
+router.get("/improve/zentrale/ton", async (req, res) => {
+  if (!nurSuperuser(req, res)) return;
+  const pfad = sprachnotizPfad(req.query?.anruf, req.query?.datei);
+  if (!pfad) return res.status(400).json({ ok: false, error: "unbekannte Aufnahme" });
+  // dotfiles: Die Aufnahmen liegen unter ".run" — einem Ordner mit fuehrendem
+  // Punkt. Ohne diese Erlaubnis haelt Express ihn fuer versteckt und antwortet
+  // stur mit 404, obwohl die Datei da ist. Der Ausbruchsschutz sitzt eine
+  // Zeile hoeher in sprachnotizPfad, nicht in dieser Regel.
+  return res.sendFile(pfad, {
+    dotfiles: "allow",
+    headers: { "Content-Type": "audio/wav" },
+  }, (err) => {
+    if (err && !res.headersSent) res.status(404).json({ ok: false, error: "Aufnahme nicht gefunden" });
+  });
+});
 
 // WIEDERHOLUNGSLAUF: Der aufgenommene Anruf geht erneut durch die heutige
 // Erkennung — damals gegen heute, Zug fuer Zug. Damit wird aus dem letzten

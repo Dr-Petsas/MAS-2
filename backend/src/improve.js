@@ -428,7 +428,10 @@ export function baueLauf({ text, gespraech, schritte, funde, einordnung, kategor
  * Eine Klartext-Meldung der Praxis aufnehmen — mit dem letzten Gespraech als
  * Beleg und dem vollstaendigen Lauf als Antwort.
  */
-export async function meldeFall(clientId, { text, meldung_von = "", kategorie = "", schwere = "", name = "" } = {}) {
+export async function meldeFall(clientId, {
+  text, meldung_von = "", kategorie = "", schwere = "", name = "",
+  quelle = "", kategorie_geschaetzt = false, sprachnotiz = null,
+} = {}) {
   const sauber = String(text || "").trim().slice(0, 2000);
   const kat = findeKategorie(kategorie);
   // Ohne Kategorie UND ohne Text gibt es nichts zu melden. Mit Kategorie darf
@@ -459,6 +462,13 @@ export async function meldeFall(clientId, { text, meldung_von = "", kategorie = 
     // wiederholen — genau darum geht es aber.
     anruf: gespraech?.id || "",
     anruf_begonnen: gespraech?.begonnen || "",
+    // Per Sprache gemeldet (Chef 10.08.2026): Woher die Meldung kam, die
+    // Tondatei der Schilderung und die Warnung, dass die Art nur GESCHAETZT
+    // ist. Ohne diese Kennzeichnung sähe eine geratene Einordnung im Eingang
+    // aus wie eine bewusste Wahl des Kunden.
+    quelle: String(quelle || "seite"),
+    kategorie_geschaetzt: !!kategorie_geschaetzt,
+    sprachnotiz: sprachnotiz || null,
     kette: schritte,
     funde,
     createdAt: Date.now(),
@@ -473,7 +483,8 @@ export async function meldeFall(clientId, { text, meldung_von = "", kategorie = 
     await zentralEintragen({
       clientId, fallId: ref.id, einordnung, schwere: stufe, text: sauber,
       meldung_von, gemeinter_name: String(name || "").trim(), anruf: gespraech?.id || "",
-    });
+      quelle: String(quelle || "seite"), sprachnotiz: sprachnotiz || null,
+    }, { ton: await tonLesen(sprachnotiz) });
   } catch (e) {
     log.warn?.("improve.zentral_eintrag_fehlgeschlagen", { fehler: String(e?.message || e) });
   }
@@ -595,6 +606,106 @@ export async function probiereNamen(clientId, name, onStage) {
       geboren: String(p?.birthDate || p?.birthday || "").slice(0, 10),
     })),
     fehler: res?.ok === false ? String(res?.error || "") : "",
+  });
+}
+
+/**
+ * Eine per SPRACHE gemeldete Schilderung in eine Kategorie einordnen (PUR).
+ *
+ * Auf der Improve-Seite waehlt der Kunde aus sechs Bildern -- gesprochen gibt
+ * es keine Bilder. Statt ihn abzufragen ("sagen Sie eins bis sechs") wird aus
+ * der Schilderung geschlossen und die Wahl als GESCHAETZT gekennzeichnet;
+ * korrigieren laesst sie sich im Superuser-Eingang. Eine Rueckfragekaskade am
+ * Headset waere genau der Grund, aus dem man nichts mehr meldet.
+ *
+ * Die Reihenfolge ist Absicht: Zuerst die eindeutigen Taten (falsch gehandelt,
+ * nichts getan), erst danach die weicheren Klassen. "Sie hat den falschen
+ * Termin abgesagt" ist eine falsche Aktion, keine falsche Auskunft.
+ */
+export function kategorieAusSprache(text) {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return null;
+  const hat = (...w) => w.some((x) => t.includes(x));
+
+  // Eine falsche TAT zuerst: "den Termin der falschen Frau Meier abgesagt"
+  // ist keine falsche Auskunft, sondern ein Eingriff in echte Daten — das ist
+  // die schwerste Klasse und darf nicht in der weicheren landen.
+  const tatVerb = /(abgesagt|storniert|verschoben|gebucht|gelöscht|geloescht|angelegt|eingetragen|umgebucht|verschickt an)/;
+  if (hat("falschen patient", "falsche patient", "falschen termin", "doppelt",
+    "verwechsel", "falsche person", "beim falschen")
+    || (/falsch/.test(t) && tatVerb.test(t))) return findeKategorie("falsche_aktion");
+  if (hat("nichts passiert", "nicht verschickt", "nicht abgeschickt", "nicht gemacht",
+    "nichts gemacht", "nicht ausgeführt", "keine sms", "nicht losgeschickt",
+    "ist nichts")) return findeKategorie("nichts_passiert");
+  if (hat("verstanden", "verstanden.", "verhört", "verhoert", "falsch gehört",
+    "falsch gehoert", "namen", "name falsch", "heißt", "heisst")) return findeKategorie("verhoert");
+  if (hat("erfunden", "behauptet", "stimmt gar nicht", "gelogen", "gibt es nicht",
+    "frei erfunden")) return findeKategorie("erfunden");
+  if (hat("umständlich", "umstaendlich", "langsam", "zu lange", "dreimal",
+    "immer wieder", "zu viele rückfragen", "zu viele rueckfragen")) return findeKategorie("umstaendlich");
+  if (hat("falsche", "falsch", "stimmte nicht", "stimmt nicht", "uhrzeit",
+    "datum", "dienstag", "mittwoch")) return findeKategorie("falsche_daten");
+  return null;
+}
+
+/**
+ * Wo liegt die Tonaufnahme einer Sprachmeldung?
+ *
+ * Bewusst hier und nicht in der Route: Der Ablageort der Aufnahmen ist eine
+ * Eigenschaft dieses Moduls (siehe letztesGespraech, wiederholungslauf). Nur
+ * saubere Namen sind erlaubt — ein Dateiname aus einer Adresszeile darf nie
+ * aus dem Ordner herausfuehren.
+ */
+export function sprachnotizPfad(anruf, datei) {
+  const sauber = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "");
+  const a = sauber(anruf);
+  const d = sauber(datei);
+  // Punktfolgen fliegen raus, obwohl das Saeubern die Schraegstriche schon
+  // entfernt hat: Ein Name wie "..\.." darf gar nicht erst als Ordner
+  // durchgehen — zwei Schranken statt einer, die stillschweigend haelt.
+  if (!a || a.includes("..") || !/^seg_\d{3}_(user|assistant)\.wav$/.test(d)) return "";
+  return path.join(runDir(), "call_transcripts", a, d);
+}
+
+/**
+ * Die Tonaufnahme einer Sprachmeldung fuer den Mailversand einlesen.
+ *
+ * Sie wird MITGESCHICKT statt verlinkt (Chef 10.08.2026): Ein Link taugt nur,
+ * solange die Praxismaschine erreichbar ist — im Postfach liegt das Original
+ * dauerhaft. Fehlt die Datei, geht die Mail trotzdem raus; eine Meldung ohne
+ * Ton ist immer noch besser als keine.
+ */
+async function tonLesen(sprachnotiz) {
+  const pfad = sprachnotizPfad(sprachnotiz?.anruf, sprachnotiz?.datei);
+  if (!pfad) return null;
+  try {
+    const bytes = await readFile(pfad);
+    return { name: `meldung_${String(sprachnotiz.anruf).slice(-15)}.wav`, bytes };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Eine gesprochene Fehlermeldung annehmen (Chef 10.08.2026).
+ *
+ * Der Weg ist bewusst derselbe wie von der Improve-Seite: Es entsteht ein
+ * ganz normaler Fall, samt zentralem Eintrag, E-Mail und Nachweis. Nur die
+ * Herkunft und die Tonaufnahme der Schilderung kommen hinzu.
+ */
+export async function sprachmeldung(clientId, { anruf = "", audio = "", text = "" } = {}) {
+  const schilderung = String(text || "").trim().slice(0, 1500);
+  const kat = kategorieAusSprache(schilderung);
+  return meldeFall(clientId, {
+    text: schilderung,
+    kategorie: kat?.id || "",
+    // Ohne erkennbare Art NICHT raten: "stoerend" ist die ehrliche Mitte,
+    // und im Superuser-Eingang laesst sich beides korrigieren.
+    schwere: "stoerend",
+    meldung_von: "per Sprache über Clara",
+    quelle: "sprache",
+    kategorie_geschaetzt: !!kat,
+    sprachnotiz: audio ? { anruf: String(anruf || ""), datei: String(audio) } : null,
   });
 }
 

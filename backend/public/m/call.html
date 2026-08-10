@@ -69,18 +69,23 @@
     .brand img { height: 22px; width: auto; display: block; opacity: .95; }
     .brand .word { font-size: 19px; font-weight: 700; letter-spacing: .3px; color: var(--ink); }
     .brand .word b { color: var(--turq); font-weight: 700; }
-    /* Die Knoepfe rechts sitzen in EINER Ecke — deshalb wird die Ecke einmal
-       gesetzt und die Knoepfe darin nebeneinander gelegt. Waeren beide
-       einzeln an die Ecke geheftet, laegen sie uebereinander (Meldung
-       Dr. Petsas 10.08.2026). Das Logo bleibt dabei mittig. */
-    .brand-actions { position: absolute; right: -6px; top: -2px; display: flex; align-items: center; gap: 0; }
-    .brand-actions .gear { padding: 8px 5px; }
-    .gear { color: var(--ink-soft); text-decoration: none;
-            font-size: 17px; padding: 8px; opacity: .65; }
-    .tourlink { position: absolute; left: -6px; top: -2px; color: var(--ink-soft); text-decoration: none;
-            font-size: 17px; padding: 8px; opacity: .65; }
-    /* Rechts als klarer Text-Knopf statt Icon (auf Wunsch von Dr. Petsas). */
-    .gear.tourbtn { font-size: 12px; font-weight: 800; letter-spacing: .08em; opacity: .85; color: var(--turq); }
+    /* Die beiden Kopfknoepfe sitzen an den AUSSENKANTEN: Tour ganz links,
+       Improve ganz rechts (Dr. Petsas 10.08.2026). Nebeneinander in einer Ecke
+       waren sie eine Traube, in der man danebentippt; an den Raendern trifft
+       jeder Daumen sein Ziel, und das Logo bleibt mittig.
+
+       touch-action: Ohne diese Zeile wartet das Handy nach jedem Tippen rund
+       eine drittel Sekunde ab, ob ein Doppeltipp zum Zoomen folgt — genau die
+       Verzoegerung, die Dr. Petsas gemeldet hat. Der Rest der App setzt das
+       laengst; nur die Kopfknoepfe waren vergessen worden. */
+    .kopfknopf {
+      position: absolute; top: -2px; color: var(--turq); text-decoration: none;
+      font-size: 12px; font-weight: 800; letter-spacing: .08em; opacity: .85;
+      padding: 8px 6px; touch-action: manipulation; -webkit-user-select: none; user-select: none;
+    }
+    .kopfknopf:active { opacity: 1; }
+    .kopfknopf.links { left: -6px; }
+    .kopfknopf.rechts { right: -6px; }
 
     /* ── Audio / Chat Umschalter (dezent oben, wie cp-mode im Hero) ─────── */
     .mode-bar {
@@ -400,15 +405,15 @@
   <header class="brand">
     <img src="/m/logo-mark.png" alt="" />
     <span class="word" id="brandWord">pickadoc</span>
-    <!-- Rechts: klarer Tour-Knopf (früher das nutzlose Einstellungs-Zahnrad).
-         Die selten nötige Geräte-Kopplung bleibt per langem Tippen aufs Logo erreichbar. -->
-    <div class="brand-actions">
-      <a class="gear tourbtn" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">TOUR</a>
-      <!-- Problem melden, direkt nach dem misslungenen Gespraech: Genau hier
-           faellt es auf, und bisher gab es keinen Weg, es loszuwerden. Ziel wird
-           unten gesetzt (Praxis + Person vom gekoppelten Geraet). -->
-      <a class="gear" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">&#128295;</a>
-    </div>
+    <!-- Links die Tour, rechts das Verbessern. Die selten nötige Geräte-
+         Kopplung bleibt per langem Tippen aufs Logo erreichbar. -->
+    <a class="kopfknopf links" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">TOUR</a>
+    <!-- Problem melden, direkt nach dem misslungenen Gespraech: Genau hier
+         faellt es auf, und bisher gab es keinen Weg, es loszuwerden. Als Wort
+         statt als Schraubenschluessel — an einem Werkzeugsymbol denkt man an
+         Einstellungen, nicht ans Besserwerden (Dr. Petsas 10.08.2026). Ziel
+         wird unten gesetzt (Praxis + Person vom gekoppelten Geraet). -->
+    <a class="kopfknopf rechts" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">IMPROVE</a>
   </header>
 
   <div class="mode-bar" data-clara-mode-bar>

@@ -74,6 +74,7 @@ export function istCodeFall(m) {
 export function baueMeldung({
   clientId = "", praxis = "", fallId = "", einordnung = {}, schwere = "",
   text = "", meldung_von = "", gemeinter_name = "", anruf = "", jetzt = Date.now(),
+  quelle = "seite", sprachnotiz = null,
 } = {}) {
   const kategorie = String(einordnung.kategorie || "");
   return {
@@ -94,6 +95,18 @@ export function baueMeldung({
     // Der Satz der Praxis, gekuerzt. Kein Anrufinhalt (s. Kopf der Datei).
     text: String(text || "").trim().slice(0, 600),
     gemeinter_name: String(gemeinter_name || "").trim().slice(0, 120),
+    // Per Sprache gemeldet (Chef 10.08.2026): Verweis auf die Tonaufnahme der
+    // Schilderung. Nur der Verweis, nicht der Ton selbst — die Datei bleibt
+    // dort liegen, wo die uebrigen Aufnahmen des Anrufs liegen, und wird im
+    // Eingang von dort abgespielt. Ausdruecklich UNGEFILTERT gewollt, auch mit
+    // Patientennamen darin.
+    quelle: String(quelle || "seite"),
+    sprachnotiz: sprachnotiz && sprachnotiz.datei
+      ? {
+        anruf: String(sprachnotiz.anruf || anruf || "").trim(),
+        datei: String(sprachnotiz.datei || "").trim(),
+      }
+      : null,
     code_noetig: istCodeFall(einordnung),
     gelesen: false,
     status: "neu",
@@ -156,13 +169,25 @@ async function praxisName(clientId) {
  * Mandanten. Schlaegt es fehl, wird das am Eintrag vermerkt und NICHT
  * geworfen — eine Meldung darf nie daran scheitern, dass die Mail klemmt.
  */
-export async function sendeAlarm(m, { basis = "" } = {}) {
+export async function sendeAlarm(m, { basis = "", ton = null } = {}) {
   try {
     const konten = await listAccounts(ALARM_ABSENDER_CLIENT);
     const konto = konten.find((a) => a.enabled !== false && a.smtp?.host) || konten[0];
     if (!konto?.id) return { ok: false, fehler: "kein Absender-Postfach eingerichtet" };
     const { betreff, text } = alarmMail(m, { basis });
-    const out = await sendMail(ALARM_ABSENDER_CLIENT, konto.id, { to: [ALARM_AN], subject: betreff, text });
+    // Die Tonaufnahme reist MIT (Chef 10.08.2026, "Mitschicken"): Ein Link
+    // haette nur getaugt, solange die Praxismaschine erreichbar ist. So liegt
+    // das Original im Postfach — ungefiltert, auch mit Patientennamen darin.
+    const anhaenge = ton?.bytes?.length
+      ? [{
+        filename: ton.name || "meldung.wav",
+        contentType: "audio/wav",
+        content: Buffer.from(ton.bytes).toString("base64"),
+      }]
+      : undefined;
+    const out = await sendMail(ALARM_ABSENDER_CLIENT, konto.id, {
+      to: [ALARM_AN], subject: betreff, text, attachments: anhaenge,
+    });
     return out?.ok ? { ok: true } : { ok: false, fehler: String(out?.reason || "Versand abgelehnt") };
   } catch (e) {
     return { ok: false, fehler: String(e?.message || e) };
@@ -175,7 +200,7 @@ export async function sendeAlarm(m, { basis = "" } = {}) {
  * Absichtlich fehlertolerant: Weder ein fehlender Praxisname noch eine
  * klemmende E-Mail duerfen die Meldung verhindern.
  */
-export async function zentralEintragen(daten, { basis = "", warten = false } = {}) {
+export async function zentralEintragen(daten, { basis = "", warten = false, ton = null } = {}) {
   const name = daten?.praxis_name || (await praxisName(daten?.clientId));
   const m = baueMeldung({ ...daten, praxis: name });
   const ref = db.collection(COL).doc();
@@ -186,7 +211,7 @@ export async function zentralEintragen(daten, { basis = "", warten = false } = {
   // nicht sekundenlang blockieren; sein Ausgang wird nachgetragen und ist in
   // der Sammelstelle sichtbar.
   const versand = (async () => {
-    const alarm = await sendeAlarm(m, { basis });
+    const alarm = await sendeAlarm(m, { basis, ton });
     await ref.update({
       mail_status: alarm.ok ? "raus" : "fehlgeschlagen",
       mail_fehler: alarm.ok ? "" : String(alarm.fehler || "").slice(0, 300),
