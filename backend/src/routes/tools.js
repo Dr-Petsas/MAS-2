@@ -42,6 +42,7 @@ import { spokenCallLog } from "../clara/callLog.js";
 import { summarizeForSpeech } from "../clara/summarize.js";
 import { dayInboundComms, buildSpokenComms, cardInboundComms } from "../clara/commsDigest.js";
 import { spokenRatings } from "../clara/ratings.js";
+import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
@@ -2601,10 +2602,41 @@ router.post("/tools/remember-note", async (req, res) => {
       caseId = link?.caseId || null;
     } catch { /* Vorgang best-effort — die Notiz selbst ist schon gespeichert */ }
 
+    // 11.08.2026 (Chef): Die Notiz gehoert zusaetzlich dorthin, wo beim
+    // naechsten Mal ohnehin jeder hinschaut — ins Notizfeld des Termins.
+    // Woertlich: "Wenn du das ins Notizfeld schreibst, hat das immer
+    // Wiedervorlage-Effekt beim naechsten Mal." Vorhandene Eintraege der Praxis
+    // bleiben stehen, die Notiz kommt in eine neue Zeile. Schlaegt das fehl,
+    // ist die Notiz trotzdem sicher — sie liegt schon im Praxisgedaechtnis.
+    let imTermin = null;
+    try {
+      imTermin = await notizInNaechstenTermin(clientId, {
+        patientId: sel.id || "",
+        firstName: sel.firstName || "",
+        lastName: sel.lastName || "",
+        notiz: note,
+      });
+    } catch (e) {
+      log.warn("remember_note.termin_notiz_failed", { clientId, err: String(e?.message || e) });
+    }
+
+    let wo = "Ich bringe sie beim nächsten Termin von allein wieder hoch.";
+    if (imTermin?.geschrieben) {
+      const label = terminLabel(imTermin.termin?.startMs);
+      wo = label
+        ? `Sie steht ab sofort auch im Termin am ${label}.`
+        : "Sie steht ab sofort auch im nächsten Termin.";
+    } else if (imTermin?.grund === "schon_da") {
+      wo = "Im nächsten Termin stand sie bereits.";
+    } else if (imTermin?.grund === "kein_termin") {
+      wo = "Ein nächster Termin steht noch nicht — sobald einer gebucht ist, kommt die Notiz von allein hoch.";
+    }
+
     return res.json({
       ok: true,
-      message: `Notiz zu ${who} gespeichert: ${note}. Ich bringe sie beim nächsten Termin von allein wieder hoch.`,
+      message: `Notiz zu ${who} gespeichert: ${note}. ${wo}`,
       caseId,
+      imTermin: imTermin?.geschrieben ? { id: imTermin.termin?.id || "", startMs: imTermin.termin?.startMs || 0 } : null,
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
