@@ -39,6 +39,7 @@ import treatmentRouter from "./routes/treatment.js";
 import claraSwitchRouter from "./routes/claraSwitch.js";
 import zusageRouter from "./routes/zusage.js";
 import claraRouter from "./routes/clara.js";
+import { sttBenchProxy } from "./routes/sttBench.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
 
@@ -170,6 +171,10 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// STT-Bench (Mikrofon-Vergleich) hinter demselben Tunnel wie MAS.
+// VOR static + Auth: die Seite ist oeffentlich (kein Login, nur HTTPS fuers Mic).
+app.use("/stt-bench", sttBenchProxy);
 
 app.use(express.static(path.join(__dirname, "..", "public")));
 

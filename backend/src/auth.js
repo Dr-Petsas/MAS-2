@@ -80,6 +80,9 @@ function isPublic(req) {
   // — nur Worker beenden/starten auf diesem Rechner. Der Seitenpfad ist bewusst
   // unauffaellig gewaehlt, weil hier ohne Login umgeschaltet werden kann.
   if (p.startsWith("/clara-switch/")) return true;
+  // STT-Bench (Mikrofon-Vergleich) hinter mas.pickadoc-tunnel.com/stt-bench.
+  // Kein Login: die Seite selbst ist der Teststand, Proxy vor Auth in server.js.
+  if (p === "/stt-bench" || p.startsWith("/stt-bench/")) return true;
   // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
   if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
   // Online-Zusage aus Recall-SMS (Patient klickt den SMS-Link, nicht
