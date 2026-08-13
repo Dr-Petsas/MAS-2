@@ -22,7 +22,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // (Tool zeigte WOCHEN auf eine nie gemountete Route, Antwort blieb hoeflich
 // leer) waere damit am ersten Tag aufgefallen.
 const CLARA_PROFILE_PATH = (process.env.CLARA_PROFILE_PATH
-  || "F:/Clara-Voice/profiles/clara_meddent/profile.json").trim();
+  || "F:/Clara-Voice-dev/profiles/clara_meddent/profile.json").trim();
 // Alle Cloud Functions, die das MAS wirklich aufruft (cfProxy, agentBooking,
 // sophieBilling). OPTIONS-Anfrage = keine Ausfuehrung, nur Erreichbarkeit.
 const CF_NAMES = [
@@ -34,10 +34,11 @@ const CF_NAMES = [
 const WORKER_LOG_DIRS = [
   { dir: "F:/MAS-2/logs", re: /^clara_.*\.err\.log$/ },
   { dir: "F:/Clara-Voice", re: /^_worker.*\.err\.log$/ },
-  // Vom Umschalter gestartete Worker (Live wie V6) protokollieren hierhin.
+  { dir: "F:/Clara-Voice-dev", re: /^_worker.*\.err\.log$/ },
+  // Vom Umschalter gestartete Worker (DEV/Live/V6) protokollieren hierhin.
   // Seit W-STABIL-5 pro Start zeitgestempelt (live-JJJJMMTT-HHMMSS.err.log);
   // die alten festen Namen bleiben als Altbestand mit abgedeckt.
-  { dir: "F:/Clara-Voice/.run/switch", re: /^(live|v6)(-\d{8}-\d{4,6})?\.err\.log$/ },
+  { dir: "F:/Clara-Voice/.run/switch", re: /^(live|v6|dev)(-\d{8}-\d{4,6})?\.err\.log$/ },
 ];
 
 async function readLlmConfig() {
@@ -401,7 +402,7 @@ function gitDescribe(dir) {
 }
 export async function checkVersionsstand() {
   const [mas, clara] = await Promise.all([
-    gitDescribe("F:/MAS-2"), gitDescribe("F:/Clara-Voice"),
+    gitDescribe("F:/MAS-2"), gitDescribe("F:/Clara-Voice-dev"),
   ]);
   let snap = "Konfig-Snapshot fehlt";
   try {
@@ -412,15 +413,16 @@ export async function checkVersionsstand() {
 }
 
 async function checkWorker() {
-  // Es kann die Live-Clara (Port 8091) ODER die V6-Testinstanz (Port 8092)
-  // laufen - nie beide (siehe tools\clara-switch.ps1). Der Check darf die
-  // Testinstanz nicht als "Worker tot" melden.
-  const [liveUp, v6Up] = await Promise.all([checkTcp(8091), checkTcp(8092)]);
-  const portUp = liveUp || v6Up;
-  const which = liveUp && v6Up ? "ACHTUNG: Live (8091) UND V6 (8092)"
-    : liveUp ? "Live-Clara (8091)"
-      : v6Up ? "V6-Testinstanz (8092)"
-        : "kein Worker-Port";
+  // Betriebsstand seit 14.08.2026: DEV (8093). Live (8091) und V6 (8092)
+  // sind Rueckweg/Test - nie mehr als einer (siehe clara-switch.ps1).
+  const [liveUp, v6Up, devUp] = await Promise.all([checkTcp(8091), checkTcp(8092), checkTcp(8093)]);
+  const n = [liveUp, v6Up, devUp].filter(Boolean).length;
+  const portUp = n >= 1;
+  const which = n > 1 ? "ACHTUNG: mehrere Clara-Staende gleichzeitig"
+    : devUp ? "Clara DEV (8093)"
+      : liveUp ? "Clara LIVE-Rueckweg (8091)"
+        : v6Up ? "V6-Testinstanz (8092)"
+          : "kein Worker-Port";
   const log = await newestWorkerLog();
   let registered = false;
   let logInfo = "kein Worker-Log gefunden";
@@ -431,9 +433,9 @@ async function checkWorker() {
       logInfo = `${log.name}: ${registered ? "registered worker OK" : "NICHT registriert"}`;
     } catch { logInfo = `${log.name}: nicht lesbar`; }
   }
-  const ok = portUp && registered && !(liveUp && v6Up);
+  const ok = portUp && registered && n === 1;
   return { ok, detail: `${which} ${portUp ? "lauscht" : "tot"} | ${logInfo}`,
-    fix: "Umschalter /m/cx7.html nutzen oder start-clara.ps1 neu starten; Worker-Log auf Traceback pruefen" };
+    fix: "Umschalter /m/cx7.html nutzen oder clara-switch.ps1 -Mode dev; Worker-Log auf Traceback pruefen" };
 }
 
 export async function runClaraHealth() {

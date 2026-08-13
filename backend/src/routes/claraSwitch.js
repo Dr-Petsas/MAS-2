@@ -1,10 +1,10 @@
 // Clara-Umschalter (/clara-switch/*): schaltet zwischen den Clara-Staenden um:
-// Live (F:\Clara-Voice, Worker-Port 8091), Entwicklung (F:\Clara-Voice-dev,
-// Port 8093) und der Testinstanz Clara V6 (F:\Clara-Voice-v6, Port 8092).
+// Betriebsstand DEV (F:\Clara-Voice-dev, Port 8093), Rueckweg Live
+// (F:\Clara-Voice, Port 8091) und Testinstanz V6 (F:\Clara-Voice-v6, Port 8092).
 //
-// 10.08.2026: "dev" dazugenommen. Seit diesem Tag antwortet die
-// Entwicklungs-Clara; ohne den Modus hier haette die Handy-Seite sie als "aus"
-// angezeigt und beim naechsten Tippen die Live-Kopie zurueckgeholt.
+// 10.08.2026: "dev" dazugenommen.
+// 14.08.2026: DEV ist der dauerhafte Betriebsstand (Auftrag Dr. Petsas).
+// Auto-Start und Waechter duerfen NICHT mehr auf Live zurueckziehen.
 //
 // Warum ueberhaupt umschalten statt parallel betreiben: beide Instanzen
 // registrieren sich bei DERSELBEN LiveKit-Cloud fuer den automatischen

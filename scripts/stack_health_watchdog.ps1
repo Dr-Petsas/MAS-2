@@ -172,8 +172,8 @@ if (($result.lena -ne 'ok') -and -not $NoRestart) {
     }
 }
 
-# --- Clara Worker ---
-$claraPort = Test-PortListening 8091
+# --- Clara Worker (Betriebsstand DEV = 8093; Live 8091 nur Rueckweg) ---
+$claraPort = (Test-PortListening 8093) -or (Test-PortListening 8091) -or (Test-PortListening 8092)
 $claraLock = Test-PortListening 8099
 $claraProc = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like '*pickadoc_session_worker*' }
@@ -181,45 +181,33 @@ $claraCount = @($claraProc).Count
 
 if ($claraPort -and $claraLock -and $claraCount -eq 1) {
     $result.clara = 'ok'
-    WLog "Clara: ok (PID $($claraProc.ProcessId), Ports 8091/8099)"
+    WLog "Clara: ok (PID $($claraProc.ProcessId), Port $(if (Test-PortListening 8093) {'8093 DEV'} elseif (Test-PortListening 8091) {'8091 LIVE'} else {'8092 V6'}))"
 } elseif ($claraCount -gt 1) {
     $result.clara = 'zombie'
     WLog "Clara: $($claraCount) Worker - Zombies" 'ERROR'
 } else {
     $result.clara = 'down'
-    WLog "Clara: DOWN (port8091=$claraPort lock=$claraLock procs=$claraCount)" 'ERROR'
+    WLog "Clara: DOWN (port=$claraPort lock=$claraLock procs=$claraCount)" 'ERROR'
 }
 
 if (($result.clara -ne 'ok') -and -not $NoRestart) {
-    WLog "Clara: Cleanup + Neustart..."
+    WLog "Clara: Cleanup + Neustart DEV (ohne Gate)..."
     Stop-ProcsMatching 'python.exe' { $_.CommandLine -like '*pickadoc_session_worker*' }
     Start-Sleep -Seconds 2
-    # Schnelles Gate (nicht Full) - bei Rot trotzdem starten (Verfuegbarkeit)
-    $gateOut = & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice\tools\release_gate.ps1' 2>&1
-    $gateCode = $LASTEXITCODE
-    if ($gateCode -ne 0) {
-        WLog "Clara: Release-Gate nicht gruen (exit=$gateCode) - starte trotzdem" 'WARN'
-    } else {
-        WLog "Clara: Release-Gate gruen"
-    }
-    Start-Process -FilePath 'powershell' `
-        -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'F:\Clara-Voice\start-clara.ps1' `
-        -WorkingDirectory 'F:\Clara-Voice' -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $LogDir "clara_wd_$Stamp.log") `
-        -RedirectStandardError  (Join-Path $LogDir "clara_wd_$Stamp.err.log")
-    $result.actions += 'restart-clara'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice\tools\clara-switch.ps1' -Mode dev
+    $result.actions += 'restart-clara-dev'
     for ($i = 0; $i -lt 45; $i++) {
         Start-Sleep -Seconds 2
-        if ((Test-PortListening 8091) -and (Test-PortListening 8099)) { break }
+        if ((Test-PortListening 8093) -and (Test-PortListening 8099)) { break }
     }
     $claraProc2 = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like '*pickadoc_session_worker*' }
-    if ((Test-PortListening 8091) -and @($claraProc2).Count -ge 1) {
+    if ((Test-PortListening 8093) -and @($claraProc2).Count -ge 1) {
         $result.clara = 'recovered'
-        WLog "Clara: recovered (PID $($claraProc2.ProcessId))"
+        WLog "Clara: recovered DEV (PID $($claraProc2.ProcessId))"
     } else {
         $result.clara = 'down'
-        WLog "Clara: Restart fehlgeschlagen" 'ERROR'
+        WLog "Clara: Restart DEV fehlgeschlagen" 'ERROR'
     }
 }
 

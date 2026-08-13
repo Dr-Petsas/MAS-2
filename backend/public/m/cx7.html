@@ -76,7 +76,7 @@
 <body>
 
 <h1>Clara umschalten</h1>
-<p class="sub">Es läuft immer nur <b>eine</b> Clara. Umschalten dauert bis zu zwei Minuten.</p>
+<p class="sub">Betriebsstand ist <b>Clara DEV</b>. Es läuft immer nur <b>eine</b> Clara. Umschalten dauert bis zu zwei Minuten.</p>
 
 <div class="now">
   <div class="lamp" id="lamp"></div>
@@ -88,13 +88,13 @@
 
 <div class="cards">
   <button class="card dev" id="btnDev" data-mode="dev" data-name="Clara DEV">
-    <div class="t"><span class="name">Clara DEV</span><span class="badge">Entwicklung</span></div>
-    <div class="desc">Hier wird gebaut: <code>F:\Clara-Voice-dev</code> · Worker-Port 8093 · seit 10.08.2026 der normale Betriebsstand</div>
+    <div class="t"><span class="name">Clara DEV</span><span class="badge">Betrieb</span></div>
+    <div class="desc">Dauerhafter Stand seit 14.08.2026: <code>F:\Clara-Voice-dev</code> · Worker-Port 8093 · das hängt an der Telefon-App</div>
   </button>
 
   <button class="card live" id="btnLive" data-mode="live" data-name="Clara LIVE">
     <div class="t"><span class="name">Clara LIVE</span><span class="badge">Rückweg</span></div>
-    <div class="desc">Unveränderter Stand aus <code>F:\Clara-Voice</code> · Worker-Port 8091 · nur nehmen, wenn die Entwicklungs-Clara klemmt</div>
+    <div class="desc">Alter Stand aus <code>F:\Clara-Voice</code> · Worker-Port 8091 · nur nehmen, wenn DEV klemmt</div>
   </button>
 
   <button class="card v6" id="btnV6" data-mode="v6" data-name="Clara V6">
@@ -131,9 +131,9 @@
   var WAHL = [btnDev, btnLive, btnV6];
 
   var LABEL = {
-    live: { title: 'Clara LIVE läuft', color: '#4d9bff' },
+    live: { title: 'Clara LIVE läuft (Rückweg)', color: '#4d9bff' },
     v6: { title: 'Clara V6 läuft', color: '#34d399' },
-    dev: { title: 'Clara DEV läuft', color: '#c084fc' },
+    dev: { title: 'Clara DEV läuft (Betrieb)', color: '#c084fc' },
     off: { title: 'Keine Clara läuft', color: '#93a0c4' },
     switching: { title: 'Schalte um…', color: '#f59e0b' },
     conflict: { title: 'ACHTUNG: zwei Worker laufen', color: '#ef4444' }

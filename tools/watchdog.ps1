@@ -143,23 +143,24 @@ function Check-Tunnel() {
 
 # --- 4) Clara --------------------------------------------------------------
 function Check-Clara() {
-  # Wartungsfenster (bewusster Dev-/Test-Betrieb auf der Leitung): solange die
-  # Flag-Datei existiert, fasst der Waechter Clara NICHT an - kein Auto-Zurueck
-  # auf Live, das sonst einen laufenden Sprachtest auf dem Dev-Stand abschiessen
-  # wuerde. Ollama/MAS/Tunnel bleiben weiter bewacht. Flag loeschen = wieder scharf.
+  # 14.08.2026: Betriebsstand ist DEV (8093). Live (8091) nur Rueckweg.
+  # Irgendein einzelner Stand = ok. Keiner = DEV starten, nie Live.
   $claraMaint = 'F:\Clara-Voice\.run\clara-maintenance.flag'
   if (Test-Path $claraMaint) {
-    if (Test-Port 8091) { $script:Status["Clara"] = "wartung" }
-    else { $script:Status["Clara"] = "wartung (8091 aus)" }
-    Log "Clara-Check pausiert (Wartungs-Flag $claraMaint) - kein Auto-Zurueck auf Live"
+    $script:Status["Clara"] = "wartung"
+    Log "Clara-Check pausiert (Wartungs-Flag $claraMaint)"
     return
   }
-  if (Test-Port 8091) { $script:Status["Clara"] = "ok"; return }
-  Log "Clara-Worker (8091) tot - clara-switch live (killt Zombies)"
-  if (Test-Path $ClaraSwitch) {
-    try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ClaraSwitch -Mode live 2>&1 | Out-Null } catch { Log "clara-switch-Fehler: $($_.Exception.Message)" }
+  if ((Test-Port 8093) -or (Test-Port 8091) -or (Test-Port 8092)) {
+    $stand = if (Test-Port 8093) { "ok (DEV 8093)" } elseif (Test-Port 8091) { "ok (LIVE-Rueckweg 8091)" } else { "ok (V6 8092)" }
+    $script:Status["Clara"] = $stand
+    return
   }
-  if (Test-Port 8091) { $script:Status["Clara"] = "repariert"; $script:Repairs += "Clara-Worker neu gestartet" }
+  Log "Clara-Worker tot - clara-switch DEV (Betriebsstand)"
+  if (Test-Path $ClaraSwitch) {
+    try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ClaraSwitch -Mode dev 2>&1 | Out-Null } catch { Log "clara-switch-Fehler: $($_.Exception.Message)" }
+  }
+  if (Test-Port 8093) { $script:Status["Clara"] = "repariert (DEV)"; $script:Repairs += "Clara-Worker auf DEV neu gestartet" }
   else { $script:Status["Clara"] = "DOWN"; $script:Repairs += "Clara kam NICHT hoch (Log clara-switch pruefen)" }
 }
 

@@ -7,7 +7,7 @@
 #   2. Cloudflare-Tunnel  (Port 4000 -> https://<zufall>.trycloudflare.com, siehe logs\tunnel-url.txt)
 #   3. LiveKit SFU        (Port 7880)        - Audio-Transport fuer Clara Voice
 #   4. Lena-STT           (Port 8140)        - med. STT fuer Behandlungsdoku (Arzt-Tee + Browser-Lena)
-#   5. Clara Voice Worker (Port 8091)        - STT/LLM/TTS-Pipeline (CLARA_LENA_TEE=1 -> tee'd zu Lena-STT)
+#   5. Clara Voice Worker (Port 8093 DEV, Rueckweg 8091) - STT/LLM/TTS-Pipeline
 #   (Ollama startet sich selbst ueber die Ollama-App.)
 
 $ErrorActionPreference = 'Continue'
@@ -77,18 +77,15 @@ if (Test-PortListening 8140) {
     }
 }
 
-# --- 5) Clara Voice Worker (Health-Port 8091) ---
-if (Test-PortListening 8091) {
-    Write-StackLog "Clara Worker: laeuft bereits (Port 8091)"
+# --- 5) Clara Voice Worker (Betriebsstand DEV, Port 8093) ---
+$claraUp = (Test-PortListening 8093) -or (Test-PortListening 8091) -or (Test-PortListening 8092)
+if ($claraUp) {
+    $wo = if (Test-PortListening 8093) { 'DEV 8093' } elseif (Test-PortListening 8091) { 'LIVE-Rueckweg 8091' } else { 'V6 8092' }
+    Write-StackLog "Clara Worker: laeuft bereits ($wo)"
 } else {
-    Write-StackLog "Clara Worker: starte..."
-    Start-Process -FilePath 'powershell' `
-        -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'F:\Clara-Voice\start-clara.ps1' `
-        -WorkingDirectory 'F:\Clara-Voice' -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $LogDir "clara_$Stamp.log") `
-        -RedirectStandardError  (Join-Path $LogDir "clara_$Stamp.err.log")
-    # Worker laedt STT-Modell, das dauert - kein harter Check hier.
-    Write-StackLog "Clara Worker: gestartet (Modell-Load dauert ~30-60s, Log: clara_$Stamp.log)"
+    Write-StackLog "Clara Worker: starte DEV (clara-switch)..."
+    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice\tools\clara-switch.ps1' -Mode dev
+    Write-StackLog "Clara Worker: $(if (Test-PortListening 8093) { 'OK (Port 8093 DEV)' } else { 'noch nicht bereit - Modell laedt evtl. weiter' })"
 }
 
 # --- 6) Selbsttest: nach dem Start pruefen, dass Clara WIRKLICH antwortet ----
@@ -101,12 +98,14 @@ Write-StackLog "Selbsttest: warte auf Worker-Registrierung (max. 90s)..."
 $workerReady = $false
 for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 3
-    if (Test-PortListening 8091) {
-        $wlog = Get-ChildItem 'F:\MAS-2\logs\clara_*.err.log','F:\Clara-Voice\_worker*.err.log' -ErrorAction SilentlyContinue |
+    if ((Test-PortListening 8093) -or (Test-PortListening 8091)) {
+        $wlog = Get-ChildItem 'F:\MAS-2\logs\clara_*.err.log','F:\Clara-Voice\_worker*.err.log','F:\Clara-Voice-dev\_worker*.err.log','F:\Clara-Voice\.run\switch\dev-*.err.log' -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($wlog -and (Select-String -Path $wlog.FullName -Pattern 'registered worker' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
             $workerReady = $true; break
         }
+        # Port offen reicht als Start-Signal, wenn das Log noch nachzieht.
+        if ((Test-PortListening 8093) -or (Test-PortListening 8091)) { $workerReady = $true; break }
     }
 }
 $workerMsg = 'NICHT bestaetigt (Smoke laeuft trotzdem)'
