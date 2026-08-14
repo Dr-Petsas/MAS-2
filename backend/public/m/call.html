@@ -283,6 +283,9 @@
     .card-key li.is-warn  i { background: rgba(245,197,24,.16); color: var(--amber); }
     .card-key li.is-info  i { background: rgba(46,230,200,.14); color: var(--turq); }
     .card-key li.is-ok    i { background: rgba(52,211,153,.16); color: var(--green); }
+    .card-key a.card-link { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+      color: inherit; text-decoration: underline; text-underline-offset: 3px;
+      text-decoration-color: rgba(46,230,200,.5); -webkit-tap-highlight-color: rgba(46,230,200,.2); }
     /* Muelltonne je Kandidat (Anrufliste): fester Button am Zeilenende —
        bewusst KEINE Wischgeste (kollidierte mit dem Karten-Flip, Chef 28.07.). */
     .card-key li .card-trash { margin-left: auto; flex: none; width: 32px; height: 32px;
@@ -518,7 +521,7 @@
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
-    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-2";
+    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
 
     const qs = new URLSearchParams(location.search);
     const STORE_KEY = "clara.device.v1";

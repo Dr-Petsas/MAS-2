@@ -68,7 +68,12 @@ export function renderOverviewCard(card, { when = "", onRemoveKandidat = null } 
     const tonne = (mitTonnen && it?.pid)
       ? `<button type="button" class="card-trash" data-pid="${escapeHtml(it.pid)}" data-idx="${idx}" aria-label="Von der Liste nehmen">${TRASH_ICON}</button>`
       : "";
-    return `<li class="is-${level}"><i>${CARD_ICONS[iconKey]}</i><span>${escapeHtml(it?.text || "")}</span>${tonne}</li>`;
+    const href = safeCardHref(it?.href);
+    const label = escapeHtml(it?.text || "");
+    const inner = href
+      ? `<a class="card-link" href="${escapeHtml(href)}"><i>${CARD_ICONS[iconKey]}</i><span>${label}</span></a>`
+      : `<i>${CARD_ICONS[iconKey]}</i><span>${label}</span>`;
+    return `<li class="is-${level}">${inner}${tonne}</li>`;
   }).join("");
 
   el.innerHTML = `
@@ -383,4 +388,12 @@ function escapeHtml(s) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** Nur Anruf und Mail — kein javascript: und keine http-Umwege. */
+function safeCardHref(h) {
+  const s = String(h || "").trim();
+  if (/^tel:[+\d]+$/.test(s)) return s;
+  if (/^mailto:[^\s<>"]+$/i.test(s)) return s;
+  return "";
 }

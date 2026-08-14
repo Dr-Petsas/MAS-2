@@ -13,7 +13,7 @@
 //
 // Schema:
 //   { kind, tag, title, time, subtitle, heading,
-//     items: [{ level: "alert"|"warn"|"info"|"ok", icon, text }],
+//     items: [{ level: "alert"|"warn"|"info"|"ok", icon, text, href? }],
 //     detail?, footer }
 // Icons (Handy rendert Inline-SVG, Fallback nach level):
 //   alert droplet heart scissors mail phone pen note ray euro calendar
@@ -63,8 +63,23 @@ function isoKurz(iso) {
   return m ? `${m[3]}.${m[2]}.` : String(iso || "");
 }
 
-function item(level, icon, text) {
-  return { level, icon, text: clip(text, 110) };
+/** Nur tel:/mailto: — die Flip-Karte macht daraus einen Tipp-Link. */
+function telHref(n) {
+  const digits = String(n || "").replace(/[^\d+]/g, "");
+  if (digits.replace(/\D/g, "").length < 6) return "";
+  return `tel:${digits}`;
+}
+
+function mailHref(e) {
+  const raw = String(e || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return "";
+  return `mailto:${raw}`;
+}
+
+function item(level, icon, text, href) {
+  const row = { level, icon, text: clip(text, 110) };
+  if (href) row.href = href;
+  return row;
 }
 
 /**
@@ -324,14 +339,14 @@ export function karteZeitraum({ label = "Zeitraum", from = "", to = "", days = [
  * Kontaktkarte auf dem Flip (27.07.2026): contact_card sagt "Ich habe dir die
  * Kontaktkarte aufs Handy geschickt" und verschickt dafür eine Push-Nachricht.
  * Auf der Flip-Rückseite stand trotzdem nichts — deshalb dieselben Daten auch
- * als Karte. Die Nummer bleibt als ZIFFERN stehen (Ablesen/Abtippen), der
- * gesprochene Text nennt sie weiterhin in Gruppen.
+ * als Karte. Die Nummer bleibt als ZIFFERN stehen (Ablesen), bekommt aber
+ * einen tel:/mailto-Tipp (Chef 14.08.2026). Gesprochen weiter in Gruppen.
  */
 export function karteKontakt({ name = "", mobile = "", phone = "", email = "", pushed = false } = {}) {
   const items = [];
-  if (mobile) items.push(item("info", "phone", `Mobil: ${mobile}`));
-  if (phone) items.push(item("info", "phone", `Festnetz: ${phone}`));
-  if (email) items.push(item("info", "mail", email));
+  if (mobile) items.push(item("info", "phone", `Mobil: ${mobile}`, telHref(mobile)));
+  if (phone) items.push(item("info", "phone", `Festnetz: ${phone}`, telHref(phone)));
+  if (email) items.push(item("info", "mail", email, mailHref(email)));
   if (!items.length) items.push(item("warn", "question", "Keine Kontaktdaten hinterlegt"));
 
   const dLines = [`Kontakt ${name}:`];

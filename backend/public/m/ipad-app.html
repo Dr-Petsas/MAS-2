@@ -364,6 +364,9 @@
     .card-key li.is-warn  i { background: rgba(245,197,24,.16); color: var(--amber); }
     .card-key li.is-info  i { background: rgba(46,230,200,.14); color: var(--turq); }
     .card-key li.is-ok    i { background: rgba(52,211,153,.16); color: var(--green); }
+    .card-key a.card-link { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+      color: inherit; text-decoration: underline; text-underline-offset: 3px;
+      text-decoration-color: rgba(46,230,200,.5); -webkit-tap-highlight-color: rgba(46,230,200,.2); }
     .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; padding: 0 2px; }
     .card-foot .fnote { font-size: 10.5px; font-weight: 800; color: var(--ink-soft); }
     .card-foot .fwhen { font-size: 10px; color: rgba(255,255,255,.35); }
@@ -1869,7 +1872,7 @@
 
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
-    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-2";
+    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
 
     const qs = new URLSearchParams(location.search);
     const STORE_KEY = "pickadoc.ipad.v1";
