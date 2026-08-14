@@ -10,6 +10,9 @@ import {
   narrowByExactName,
   narrowByNearName,
   isOrdinalChoice,
+  isContinuityPhrase,
+  isPureRelativeRef,
+  stripRelativeRef,
   patientLabel,
 } from "../src/clara/patientDisambig.js";
 
@@ -111,4 +114,20 @@ test("isOrdinalChoice: Den ersten Eintrag bitte", () => {
 
 test("ordinalPick: Den ersten Eintrag bitte trifft den ersten Kandidaten", () => {
   assert.equal(ordinalPick("den ersten eintrag bitte", [haila, heldmann]), haila);
+});
+
+test("stripRelativeRef: echter Name bleibt, Rueckbezug faellt weg", () => {
+  assert.equal(stripRelativeRef("Haila El-Otmani"), "Haila El-Otmani");
+  assert.equal(stripRelativeRef("Den ersten Eintrag bitte"), "");
+  assert.equal(stripRelativeRef("dieser Jens von eben"), "Jens");
+  assert.equal(stripRelativeRef("der Patient von vorhin"), "");
+});
+
+test("isPureRelativeRef: Auswahl und Anschluss, kein neuer Name", () => {
+  assert.equal(isPureRelativeRef("Den ersten Eintrag bitte"), true);
+  assert.equal(isPureRelativeRef("der von eben"), true);
+  assert.equal(isPureRelativeRef("dieser Jens von eben"), false);
+  assert.equal(isPureRelativeRef("Haila El-Otmani"), false);
+  assert.equal(isContinuityPhrase("dieser Jens von eben"), true);
+  assert.equal(isContinuityPhrase("letzten Montag"), false);
 });

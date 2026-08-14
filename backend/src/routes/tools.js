@@ -48,7 +48,7 @@ import { spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
-import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isOrdinalChoice, collapseSamePerson } from "../clara/patientDisambig.js";
+import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isContinuityPhrase, isPureRelativeRef, stripRelativeRef, collapseSamePerson } from "../clara/patientDisambig.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
@@ -4326,32 +4326,20 @@ router.post("/tools/find-contact", async (req, res) => {
       }
     }
 
-    // Ordinal-Antworten ("der erste") IMMER gegen die zuletzt vorgelesene
-    // Kandidatenliste aufloesen — nie gegen eine frische Suche (siehe
-    // search-patient: sonst trifft "der erste" den falschen Namensvetter).
-    {
-      const ordinalSource = `${hintLower} ${rawName.toLowerCase()}`.trim();
-      if (ordinalSource) {
-        const remembered = await getPatientCandidates(clientId);
-        // Nur wenn tatsaechlich eine Auswahl offen ist (>1 gemerkte Kandidaten).
-        const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
-        if (byOrd) {
-          await setPatientCandidates(clientId, [byOrd], byOrd);
-          // 15.06.2026 (Chef-Wunsch): Nach der Auswahl ("der dritte") die
-          // KONTAKTKARTE aufs Handy pushen und zur Bestaetigung zurueckfragen
-          // ("richtige Person?"). Erst nach "ja" + Auftrag wird gesendet/angerufen
-          // (send_sms/compose_email/delegate_call), bei "nein" weiter gesucht.
-          const pushed = await pushContactCard(clientId, byOrd);
-          return res.json({
-            ok: true,
-            message: `${contactPushConfirm(byOrd, pushed)}`,
-            pushed: pushed?.sent > 0,
-            directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Auf 'nein' weiter suchen.",
-          });
-        }
-      }
+    // Relative Bezuege ("der erste", "von eben") gegen die gemerkte Liste —
+    // nie als frische Namenssuche.
+    const relFind = await pickRelativePatient(clientId, rawName, hint);
+    if (relFind.hit) {
+      await setPatientCandidates(clientId, [relFind.hit], relFind.hit);
+      const pushed = await pushContactCard(clientId, relFind.hit);
+      return res.json({
+        ok: true,
+        message: `${contactPushConfirm(relFind.hit, pushed)}`,
+        pushed: pushed?.sent > 0,
+        directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Auf 'nein' weiter suchen.",
+      });
     }
-    if (rawName && isOrdinalChoice(rawName)) {
+    if (relFind.pure) {
       return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
     }
 
@@ -4386,8 +4374,9 @@ router.post("/tools/find-contact", async (req, res) => {
 
     // Kandidaten: neue Suche bei Namen, sonst die der letzten Suche (Nachfrage).
     let candidates = [];
-    if (rawName) {
-      const name = cleanSpokenPersonName(rawName) || rawName;
+    const nameToFind = relFind.leftover || rawName;
+    if (nameToFind) {
+      const name = cleanSpokenPersonName(nameToFind) || nameToFind;
       const found = await searchPatientSpoken(clientId, name);
       if (!found.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` });
       candidates = found.patients || [];
@@ -4907,21 +4896,49 @@ function patientLabel(p) {
   return y ? `${name} (Jahrgang ${y})` : name;
 }
 
-// Cross-Call-Gedaechtnis: ausdrueckliche Anschluss-Nachfrage an das ZULETZT
-// beendete Gespraech ("der Patient von vorhin", "machen wir mit eben weiter",
-// "der Vorgang von gerade"). Bewusst eng gehaltene Phrasen, damit kein echter
-// Name faelschlich als Kontinuitaet gilt; "letzte/r" ist absichtlich NICHT
-// dabei (kollidiert mit Datumsangaben wie "letzten Montag").
-const CONTINUITY_RE = /\b(vorhin|vorher|eben|grad eben|gerade eben|von gerade|zuletzt|von vorhin|von eben)\b/i;
 // Frischefenster: nur ein kuerzlich beendetes Gespraech darf reaktiviert werden.
 const CONTINUITY_MAX_AGE_MS = 45 * 60 * 1000;
 function isContinuityReference(text) {
-  return CONTINUITY_RE.test(String(text || ""));
+  return isContinuityPhrase(text);
 }
 function freshLastContext(lc) {
   if (!lc || !lc.endedAt) return null;
   if (Date.now() - Number(lc.endedAt) > CONTINUITY_MAX_AGE_MS) return null;
   return lc;
+}
+
+/**
+ * Relative Patienten-Bezuege ("der erste", "dieser von eben", "dieser Jens
+ * von eben") gegen die gemerkte Liste / den gefuehrten Patienten. Reiner
+ * Rueckbezug wird NIE als Namenssuche geschickt (Haila 14.08.2026).
+ */
+async function pickRelativePatient(clientId, rawName, hint) {
+  const spoken = `${hint || ""} ${rawName || ""}`.trim();
+  if (!spoken) return { hit: null, leftover: "", pure: false, how: "none" };
+  const remembered = await getPatientCandidates(clientId);
+  const byOrd = remembered.length > 1 ? ordinalPick(spoken.toLowerCase(), remembered) : null;
+  if (byOrd) return { hit: byOrd, leftover: "", pure: true, how: "ordinal" };
+
+  const leftover = stripRelativeRef(spoken);
+  if (isPureRelativeRef(spoken)) {
+    if (remembered.length === 1) return { hit: remembered[0], leftover: "", pure: true, how: "only" };
+    const sel = await getSelectedPatient(clientId);
+    if (sel && (sel.id || sel.lastName || sel.firstName)) {
+      return { hit: sel, leftover: "", pure: true, how: "selected" };
+    }
+    if (isContinuityPhrase(spoken) && remembered.length <= 1) {
+      const lc = freshLastContext(await getLastContext(clientId));
+      if (lc?.patient && (lc.patient.firstName || lc.patient.lastName)) {
+        return { hit: lc.patient, leftover: "", pure: true, how: "last" };
+      }
+    }
+    return { hit: null, leftover: "", pure: true, how: "unresolved" };
+  }
+  if (leftover && leftover.toLowerCase() !== spoken.toLowerCase() && remembered.length) {
+    const near = narrowByNearName(leftover, remembered);
+    if (near.length === 1) return { hit: near[0], leftover, pure: false, how: "remembered-name" };
+  }
+  return { hit: null, leftover: leftover || spoken, pure: false, how: "none" };
 }
 
 
@@ -4935,70 +4952,37 @@ router.post("/tools/search-patient", async (req, res) => {
     const hint = String(req.body?.hint || "").trim();
     const hintLower = hint.toLowerCase();
 
-    // Ordinal-Antworten ("der erste") beziehen sich IMMER auf die zuletzt
-    // VORGELESENE Kandidatenliste — nie auf eine frische Namenssuche. Sonst
-    // greift "der erste" auf einer neu sortierten Liste daneben (Testlauf
-    // 2026-06-11: name="Meier" + hint="der erste" traf Rainer statt Stefan).
-    const ordinalSource = `${hintLower} ${rawName.toLowerCase()}`.trim();
-    if (ordinalSource) {
-      const remembered = await getPatientCandidates(clientId);
-      // Nur wenn tatsaechlich eine Auswahl offen ist (>1 gemerkte Kandidaten).
-      const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
-      if (byOrd) {
-        await setPatientCandidates(clientId, [byOrd], byOrd);
-        await emitCommand(clientId, {
-          type: "patient_selected",
-          patient: { firstName: byOrd.firstName, lastName: byOrd.lastName, birthDate: byOrd.birthDate },
-          hasPhone: !!byOrd.hasPhone,
-        });
-        const warn = byOrd.hasPhone ? "" : " Achtung: keine Telefonnummer hinterlegt.";
-        // Anweisung ans Modell (Stefan-Meier-Loop 12.06.): Nach der Auswahl
-        // NICHT erneut suchen, sondern den urspruenglichen Auftrag ausfuehren
-        // (book_for_patient, delegate_call, ...). Der Patient ist gemerkt.
-        return res.json({
-          ok: true,
-          message: `${patientLabel(byOrd)} ist eindeutig gemerkt.${warn} Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden.`,
-        });
-      }
+    // Relative Bezuege ("der erste", "von eben", "dieser Jens von eben")
+    // gegen die gemerkte Liste — nie als frische Namenssuche.
+    const relSearch = await pickRelativePatient(clientId, rawName, hint);
+    if (relSearch.hit) {
+      const byOrd = relSearch.hit;
+      await setPatientCandidates(clientId, [byOrd], byOrd);
+      await emitCommand(clientId, {
+        type: "patient_selected",
+        patient: { firstName: byOrd.firstName, lastName: byOrd.lastName, birthDate: byOrd.birthDate },
+        hasPhone: !!byOrd.hasPhone,
+      });
+      const warn = byOrd.hasPhone ? "" : " Achtung: keine Telefonnummer hinterlegt.";
+      const anschluss = relSearch.how === "last"
+        ? `Ich knuepfe an ${patientLabel(byOrd)} aus dem vorigen Gespraech an.`
+        : `${patientLabel(byOrd)} ist eindeutig gemerkt.${warn}`;
+      return res.json({
+        ok: true,
+        message: `${anschluss} Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden.`,
+      });
     }
-    if (rawName && isOrdinalChoice(rawName)) {
+    if (relSearch.pure) {
       return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
-    }
-
-    // Cross-Call-Gedaechtnis: "den Patienten von vorhin" — bezieht sich auf das
-    // ZULETZT beendete Gespraech, nicht auf eine offene Kandidatenliste. Greift
-    // nur, wenn KEIN echter Name vorliegt (cleanSpokenPersonName leer), KEINE
-    // Auswahl mehr offen ist und der lastContext frisch ist. Wird der Patient
-    // reaktiviert, nennt die Antwort ausdruecklich den Namen, damit ein Hoerer
-    // einen Fehlgriff sofort korrigieren kann (Halluzinations-Schutz).
-    const continuitySrc = `${rawName} ${hint}`.trim();
-    const hasRealName = !!(rawName && (cleanSpokenPersonName(rawName) || "").trim());
-    if (!hasRealName && isContinuityReference(continuitySrc)) {
-      const remembered = await getPatientCandidates(clientId);
-      if (remembered.length <= 1) {
-        const lc = freshLastContext(await getLastContext(clientId));
-        const p = lc?.patient;
-        if (p && (p.firstName || p.lastName)) {
-          await setPatientCandidates(clientId, [p], p);
-          await emitCommand(clientId, {
-            type: "patient_selected",
-            patient: { firstName: p.firstName, lastName: p.lastName, birthDate: p.birthDate },
-            hasPhone: !!p.hasPhone,
-          });
-          return res.json({
-            ok: true,
-            message: `Ich knuepfe an ${patientLabel(p)} aus dem vorigen Gespraech an. Fuehre den Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT erneut suchen.`,
-          });
-        }
-      }
     }
 
     // Gleiche Identifikations-Route wie find_contact: bei einer Nachfrage
     // ("der, der gestern da war") OHNE neuen Namen gegen die gemerkten
     // Kandidaten der letzten Suche disambiguieren — auch vor Terminbuchung.
     let patients = [];
-    if (rawName) {
-      const name = cleanSpokenPersonName(rawName) || rawName;
+    const nameToSearch = relSearch.leftover || rawName;
+    if (nameToSearch) {
+      const name = cleanSpokenPersonName(nameToSearch) || nameToSearch;
       const result = await searchPatientSpoken(clientId, name);
       if (!result.ok) {
         return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${result.error}` });
@@ -5150,22 +5134,15 @@ router.post("/tools/contact-card", async (req, res) => {
     const rawName = (req.body?.name || "").trim();
     const hint = String(req.body?.hint || "").trim();
 
-    // Ordinal zuerst — "Den ersten Eintrag" darf nie als frische Namenssuche
-    // laufen (14.08.2026: Haila/Heldmann -> Philipp-Moritz Bitter).
+    // Relative Bezuege zuerst — "der erste", "dieser von eben", "dieser Jens
+    // von eben" gelten die gemerkte Liste, nie eine frische Namenssuche.
     let patients = [];
     let pickedByOrdinal = false;
-    {
-      const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
-      if (ordinalSource) {
-        const remembered = await getPatientCandidates(clientId);
-        const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
-        if (byOrd) {
-          patients = [byOrd];
-          pickedByOrdinal = true;
-        }
-      }
-    }
-    if (!pickedByOrdinal && rawName && isOrdinalChoice(rawName)) {
+    const rel = await pickRelativePatient(clientId, rawName, hint);
+    if (rel.hit) {
+      patients = [rel.hit];
+      pickedByOrdinal = true;
+    } else if (rel.pure) {
       return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
     }
 
@@ -5194,8 +5171,8 @@ router.post("/tools/contact-card", async (req, res) => {
 
     // Patient identifizieren — gleiche Route wie search_patient (inkl.
     // Nachfrage gegen die gemerkten Kandidaten und STT-Varianten-Suche).
-    if (!pickedByOrdinal && rawName) {
-      const name = cleanSpokenPersonName(rawName) || rawName;
+    if (!pickedByOrdinal && (rel.leftover || rawName)) {
+      const name = cleanSpokenPersonName(rel.leftover || rawName) || rel.leftover || rawName;
       const result = await searchPatientSpoken(clientId, name);
       if (!result.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${result.error}` });
       patients = result.patients || [];

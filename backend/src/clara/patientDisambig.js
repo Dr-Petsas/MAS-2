@@ -183,12 +183,43 @@ export function narrowByNearName(query, candidates = []) {
 export function isOrdinalChoice(text) {
   const h = s(text).toLowerCase();
   if (!h || !ordinalPick(h, [{}, {}, {}, {}, {}])) return false;
-  const stripped = h
-    .replace(/\b(der|die|das|den|dem|bitte|eintrag\w*|vorschlag\w*|treffer\w*|nimm|nehmen|wir)\b/g, " ")
-    .replace(/\b(erste[rn]?|zweite[rn]?|dritte[rn]?|vierte[rn]?|fünfte[rn]?|fuenfte[rn]?|letzte[rn]?)\b/g, " ")
+  return stripRelativeRef(h).length < 3;
+}
+
+/**
+ * Anschluss an das gerade Gesprochene ("von eben", "vorhin").
+ * "letzte/r" fehlt bewusst — das ist Datum ("letzten Montag").
+ */
+export const CONTINUITY_RE = /\b(vorhin|vorher|eben|grad eben|gerade eben|von gerade|zuletzt|von vorhin|von eben)\b/i;
+
+export function isContinuityPhrase(text) {
+  return CONTINUITY_RE.test(s(text));
+}
+
+/**
+ * Relative Woerter und Zeigewoerter entfernen. Was uebrig bleibt, ist der
+ * echte Name — oder nichts ("Den ersten Eintrag bitte" / "der von eben").
+ * "dieser Jens von eben" -> "Jens".
+ */
+export function stripRelativeRef(text) {
+  return s(text)
+    .replace(CONTINUITY_RE, " ")
+    .replace(/\b(der|die|das|den|dem|dieser|diese|dieses|diesen|diesem|jener|jene|jenen|derselbe|dieselbe|denselben|bitte|eintrag\w*|vorschlag\w*|treffer\w*|nimm|nehmen|wir|patient\w*|kontakt\w*|karte\w*)\b/gi, " ")
+    .replace(/\b(erste[rn]?|zweite[rn]?|dritte[rn]?|vierte[rn]?|fünfte[rn]?|fuenfte[rn]?|letzte[rn]?)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return stripped.length < 3;
+}
+
+/** Reiner Rueckbezug, kein neuer Name — gegen die gemerkte Liste aufloesen. */
+export function isPureRelativeRef(text) {
+  const h = s(text);
+  if (!h) return false;
+  if (stripRelativeRef(h).length >= 3) return false;
+  return !!(
+    ordinalPick(h, [{}, {}, {}, {}, {}])
+    || isContinuityPhrase(h)
+    || /^(?:der|die|das|den|dem|dieser|diese|diesen|diesem)\b/i.test(h)
+  );
 }
 
 // ============================================================================
