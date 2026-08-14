@@ -127,7 +127,7 @@ const NAME_PARTICLES = new Set([
  * Bewusst auf drei Varianten gedeckelt — jede Variante ist eine Datenbank-
  * Abfrage, und die Suche laeuft bei tausenden Mandanten sehr oft.
  */
-export function nameQueryVariants(spoken, { max = 3 } = {}) {
+export function nameQueryVariants(spoken, { max = 4 } = {}) {
   const clean = norm(spoken).replace(/[^\p{L}\p{N}\s'-]/gu, " ").replace(/\s+/g, " ").trim();
   if (!clean) return [];
   const out = [];
@@ -141,8 +141,9 @@ export function nameQueryVariants(spoken, { max = 3 } = {}) {
   const tokens = clean.split(" ").filter(Boolean);
   const core = tokens.filter((t) => t.length >= 3 && !NAME_PARTICLES.has(t.toLowerCase()));
   if (tokens.length > 1 && core.length) {
-    // Nachname zuerst: der letzte Kern-Bestandteil ist im Deutschen wie im
-    // Arabischen der unterscheidende Teil ("Hajjami", "Tzannis").
+    // Zusammengesetzter Nachname zuerst (STT-Trennung "Muhammad Janova"
+    // fuer "Muhamedjanowa"), dann der letzte Kern wie bisher.
+    if (core.length > 1 && core.join("").length >= 8) push(core.join(""));
     push(core[core.length - 1]);
     if (core.length > 1) push(core[0]);
   }

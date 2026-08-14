@@ -23,7 +23,7 @@ const v1 = nameQueryVariants("Ouafa El Hajjami");
 check("ganzer Name bleibt erste Variante", v1[0] === "Ouafa El Hajjami", JSON.stringify(v1));
 check("Nachnamen-Kern wird eigene Variante", v1.includes("Hajjami"), JSON.stringify(v1));
 check("Vorname wird eigene Variante", v1.includes("Ouafa"), JSON.stringify(v1));
-check("hoechstens drei Abfragen", v1.length <= 3, JSON.stringify(v1));
+check("hoechstens vier Abfragen", v1.length <= 4, JSON.stringify(v1));
 check("Teilchen 'El' ist KEINE eigene Abfrage", !v1.includes("El"), JSON.stringify(v1));
 
 console.log("2) Weitere Namensteilchen");
@@ -42,7 +42,15 @@ for (const [gesprochen, kern] of [
 console.log("3) Einfache Faelle bleiben eine einzige Abfrage");
 check("nur Nachname", JSON.stringify(nameQueryVariants("Thermos")) === JSON.stringify(["Thermos"]));
 check("Vor- und Nachname liefert Zuschnitte",
-  nameQueryVariants("Levi Tzannis").length === 3, JSON.stringify(nameQueryVariants("Levi Tzannis")));
+  nameQueryVariants("Levi Tzannis").length >= 3, JSON.stringify(nameQueryVariants("Levi Tzannis")));
+
+console.log("3b) STT-zerlegter zusammengesetzter Nachname (14.08.2026)");
+const vJanova = nameQueryVariants("Muhammad Janova");
+check("ganzer Satz bleibt erste Variante", vJanova[0] === "Muhammad Janova", JSON.stringify(vJanova));
+check("zusammengeschrieben als eigene Variante",
+  vJanova.some((x) => x.replace(/\s+/g, "").toLowerCase() === "muhammadjanova"),
+  JSON.stringify(vJanova));
+check("Vorname bleibt erreichbar", vJanova.includes("Muhammad"), JSON.stringify(vJanova));
 
 console.log("4) Leere und unbrauchbare Eingaben");
 check("leer", nameQueryVariants("").length === 0);

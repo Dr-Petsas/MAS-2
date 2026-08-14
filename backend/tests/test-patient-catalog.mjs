@@ -11,6 +11,7 @@
 
 import {
   nameTokens, isMeaningful, entryCodes, buildIndex, catalogMatch, PARTICLES,
+  spokenLooksLikeNewPerson,
 } from "../src/clara/patientCatalog.js";
 
 let ok = 0;
@@ -35,6 +36,9 @@ const praxis = [
   { i: "p10", f: "Greta-Sophie", l: "Nippert" },
   { i: "p11", f: "Michael", l: "Eckardt" },
   { i: "p12", f: "Anke", l: "Horstmann" },
+  { i: "p13", f: "Lydia", l: "Muhamedjanowa" },
+  { i: "p14", f: "Naomi", l: "Amofa-Datuo" },
+  { i: "p15", f: "Hanifi", l: "Karadavut" },
 ].map((e) => ({ ...e, c: entryCodes(e.f, e.l) }));
 const index = buildIndex(praxis);
 const treffer = (spoken, opts) => catalogMatch(spoken, praxis, index, opts).map((x) => x.i);
@@ -96,14 +100,38 @@ const vettern = catalogMatch("El Amrani", praxis, index);
 check("gleich starke Namensvettern bleiben beide", vettern.length === 2,
   JSON.stringify(vettern.map((x) => `${x.i}:${x.score}`)));
 
-console.log("7) Unbekanntes und Unbrauchbares");
+console.log("7) Zusammengesetzter Nachname, den STT zerlegt (14.08.2026)");
+check("Muhamedjanowa ganz findet Lydia",
+  treffer("Muhamedjanowa")[0] === "p13",
+  JSON.stringify(treffer("Muhamedjanowa")));
+check("Muhammad Janova findet Lydia, nicht Amofa",
+  JSON.stringify(treffer("Muhammad Janova")) === '["p13"]',
+  JSON.stringify(treffer("Muhammad Janova")));
+check("Muhamed Janowa findet Lydia",
+  treffer("Muhamed Janowa")[0] === "p13",
+  JSON.stringify(treffer("Muhamed Janowa")));
+check("Hinweis 'Muhamedjanowa' ist ein neuer Name, keine Auswahl",
+  spokenLooksLikeNewPerson("Muhamedjanowa", [
+    { firstName: "Naomi", lastName: "Amofa-Datuo" },
+    { firstName: "Hanifi", lastName: "Karadavut" },
+  ]) === true);
+check("'der erste' ist keine neue Person",
+  spokenLooksLikeNewPerson("der erste", [
+    { firstName: "Naomi", lastName: "Amofa-Datuo" },
+  ]) === false);
+check("'Naomi' bleibt Auswahl in der Liste",
+  spokenLooksLikeNewPerson("Naomi", [
+    { firstName: "Naomi", lastName: "Amofa-Datuo" },
+  ]) === false);
+
+console.log("8) Unbekanntes und Unbrauchbares");
 check("fremder Name liefert nichts", treffer("Schmidt").length === 0, JSON.stringify(treffer("Schmidt")));
 check("leer", treffer("").length === 0);
 check("nur Satzzeichen", treffer("?!.").length === 0);
 check("ein Buchstabe", treffer("A").length === 0);
 check("Obergrenze wird eingehalten", treffer("El Amrani", { limit: 1 }).length === 1);
 
-console.log("8) Bausteine");
+console.log("9) Bausteine");
 check("Zerlegung mit Bindestrich", JSON.stringify(nameTokens("El-Hajjami")) === '["el","hajjami"]',
   JSON.stringify(nameTokens("El-Hajjami")));
 check("Umlaute werden umgeschrieben", nameTokens("Müller Groß")[0] === "mueller",

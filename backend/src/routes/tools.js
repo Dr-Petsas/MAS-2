@@ -44,6 +44,7 @@ import { dayInboundComms, buildSpokenComms, cardInboundComms } from "../clara/co
 import { spokenRatings } from "../clara/ratings.js";
 import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
+import { spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
@@ -4942,6 +4943,20 @@ router.post("/tools/search-patient", async (req, res) => {
       }
     }
 
+    if (hint && spokenLooksLikeNewPerson(hint, patients)) {
+      const result = await searchPatientSpoken(clientId, hint);
+      if (result.ok) {
+        patients = result.patients || [];
+        if (!patients.length) {
+          await setPatientCandidates(clientId, [], null);
+          return res.json({
+            ok: true,
+            message: `Kein Patient mit dem Namen ${hint} gefunden.`,
+          });
+        }
+      }
+    }
+
     if (hint && patients.length > 1) {
       const r = await narrowPatientCandidatesByHint(clientId, patients, hintLower);
       if (r.status === "one") patients = r.narrowed;
@@ -5076,6 +5091,19 @@ router.post("/tools/contact-card", async (req, res) => {
         if (sel?.id) patients = [sel];
       }
       if (!patients.length) return res.json({ ok: false, message: "Bitte einen Namen nennen." });
+    }
+
+    // Neuer Name nach falscher Trefferliste: nicht in Amofa/Karadavut
+    // weitersuchen, sondern frisch (Chef 14.08.2026, Muhamedjanowa).
+    if (hint && spokenLooksLikeNewPerson(hint, patients)) {
+      const result = await searchPatientSpoken(clientId, hint);
+      if (result.ok) {
+        patients = result.patients || [];
+        if (!patients.length) {
+          await setPatientCandidates(clientId, [], null);
+          return res.json({ ok: true, message: `Kein Patient mit dem Namen ${hint} gefunden.` });
+        }
+      }
     }
 
     if (hint && patients.length > 1) {

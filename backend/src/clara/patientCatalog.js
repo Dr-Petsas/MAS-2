@@ -159,6 +159,20 @@ export function catalogMatch(spoken, entries, index, opts = {}) {
     const c = koelnerPhonetikToken(t);
     if (c) spokenCodes.set(c, t);
   }
+  // STT trennt zusammengesetzte Nachnamen ("Muhamedjanowa" -> "Muhammad
+  // Janova"). Der zusammengeschriebene Klang muss denselben Eintrag finden,
+  // sonst gewinnen Klang-Zufaelle auf dem abgespaltenen Stueck ("Janova"
+  // ~ "Amofa" / "Hanifi") — Vorfall 14.08.2026.
+  let joined = "";
+  if (meaningful.length >= 2) {
+    joined = meaningful.join("");
+    if (joined.length >= 8) {
+      const jc = koelnerPhonetikToken(joined);
+      if (jc) spokenCodes.set(jc, joined);
+    } else {
+      joined = "";
+    }
+  }
   const candIdx = new Set();
   for (const c of spokenCodes.keys()) {
     for (const i of index.get(c) || []) candIdx.add(i);
@@ -193,6 +207,21 @@ export function catalogMatch(spoken, entries, index, opts = {}) {
       if (isMeaningful(nt)) strong = true;
     }
 
+    if (joined) {
+      const jCode = koelnerPhonetikToken(joined);
+      for (const nt of lastTokens) {
+        if (nt.length < 8) continue;
+        let extra = 0;
+        if (nt === joined) extra = 7;
+        else if (jCode && jCode === koelnerPhonetikToken(nt)) extra = 7;
+        if (!extra) continue;
+        score += extra;
+        for (const st of meaningful) usedSpoken.add(st);
+        strong = true;
+        break;
+      }
+    }
+
     if (!strong) continue; // nur ueber ein Teilchen getroffen -> verwerfen
     // Vollstaendigkeit belohnen: wurden ALLE gesprochenen Woerter untergebracht?
     if (usedSpoken.size >= meaningful.length) score += 4;
@@ -209,6 +238,32 @@ export function catalogMatch(spoken, entries, index, opts = {}) {
   const best = scored.length ? scored[0].score : 0;
   const floor = Math.max(5, best / 2);
   return scored.filter((x) => x.score >= floor).slice(0, limit);
+}
+
+/**
+ * Ist der Hinweis ein NEUER Name statt eine Auswahl aus den Kandidaten
+ * ("der erste", "Naomi")? Dann muss neu gesucht werden — sonst bleibt
+ * Clara in der falschen Trefferliste haengen (Chef 14.08.2026:
+ * Muhamedjanowa nach Amofa/Karadavut).
+ */
+export function spokenLooksLikeNewPerson(hint, candidates = []) {
+  const raw = String(hint || "").trim();
+  if (!raw) return false;
+  const tokens = nameTokens(raw).filter(isMeaningful);
+  if (!tokens.length) return false;
+  const blob = tokens.join("");
+  if (blob.length < 6) return false;
+  const low = raw.toLowerCase();
+  if (/^\s*(?:der|die|das)?\s*(?:erste[rn]?|zweite[rn]?|dritte[rn]?|letzte[rn]?)\s*$/i.test(low)) {
+    return false;
+  }
+  for (const p of candidates || []) {
+    const have = new Set(nameTokens(`${p.firstName || p.f || ""} ${p.lastName || p.l || ""}`));
+    for (const t of tokens) {
+      if (have.has(t)) return false;
+    }
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
