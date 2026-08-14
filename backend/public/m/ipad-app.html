@@ -1874,7 +1874,7 @@
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
-    import { mountLisaLive } from "/m/lisa-live.js?v=5";
+    import { mountLisaLive } from "/m/lisa-live.js?v=6";
     import { bindCrewChips } from "/m/crew.js?v=1";
 
     const qs = new URLSearchParams(location.search);
@@ -1975,12 +1975,40 @@
     // ── Flip (nur Hochkant sinnvoll) ──
     let flipped = false;
     let unseenCards = 0;
+    let claraHeldForLisa = false;
+    function claraHoldForLisa(on) {
+      const want = !!on;
+      if (want === claraHeldForLisa) return;
+      if (document.body?.dataset?.appMode === "doku") return;
+      const payload = { type: "set_app_mode", mode: want ? "hold" : "clara" };
+      const pub = window.__claraIpad?.publishCmd;
+      if (typeof pub === "function") {
+        claraHeldForLisa = want;
+        try { pub(payload); } catch { claraHeldForLisa = !want; }
+        return;
+      }
+      if (!room?.localParticipant) return;
+      claraHeldForLisa = want;
+      const data = new TextEncoder().encode(JSON.stringify(payload));
+      room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true }).catch(() => {
+        claraHeldForLisa = !want;
+      });
+    }
+    function syncClaraHoldToLisaFlip() {
+      const lisaOn = !!document.getElementById("lisaLiveHost")?.classList.contains("is-on");
+      if (!lisaOn) {
+        claraHoldForLisa(false);
+        return;
+      }
+      claraHoldForLisa(isLandscape() || flipped);
+    }
     function setFlipped(on) {
       flipped = !!on;
       els.flip?.classList.toggle("is-flipped", flipped);
       els.lblVoice?.classList.toggle("on", !flipped);
       els.lblCards?.classList.toggle("on", flipped);
       if (flipped) { unseenCards = 0; updateBadge(); }
+      syncClaraHoldToLisaFlip();
     }
     function updateBadge() { if (els.cardBadge) els.cardBadge.textContent = unseenCards > 0 ? String(unseenCards) : ""; }
     els.lblVoice?.addEventListener("click", () => setFlipped(false));
@@ -2042,6 +2070,7 @@
       getAuth: () => (device?.deviceId && device?.deviceKey)
         ? { clientId, deviceId: device.deviceId, deviceKey: device.deviceKey }
         : null,
+      onClaraHold: claraHoldForLisa,
     });
     function placeLisaHost() {
       const host = document.getElementById("lisaLiveHost");

@@ -89,7 +89,7 @@ function injectCss() {
   document.head.appendChild(st);
 }
 
-export function mountLisaLive(host, { getAuth } = {}) {
+export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
   injectCss();
   if (!host) return { start() {}, stop() {} };
 
@@ -110,7 +110,7 @@ export function mountLisaLive(host, { getAuth } = {}) {
           placeholder="0176 …">
       </div>
       <button type="button" class="ll-btn take" data-ll-take>Gespräch übernehmen</button>
-      <div class="ll-hint" data-ll-hint>Lisa bleibt in der Leitung, wird aber stumm. Das Transkript läuft weiter.</div>
+      <div class="ll-hint" data-ll-hint>Clara hört nicht zu. Lisa bleibt in der Leitung, wird aber stumm. Das Transkript läuft weiter.</div>
       <div class="ll-sms-fix" data-ll-sms-fix>
         <label for="ll-sms-phone">Nummer nachtragen</label>
         <input id="ll-sms-phone" data-ll-sms-phone type="tel" inputmode="tel" autocomplete="tel"
@@ -142,10 +142,17 @@ export function mountLisaLive(host, { getAuth } = {}) {
   let lastSig = "";
   const tagEl = host.querySelector(".ll-tag");
 
+  function setHold(on) {
+    if (typeof onClaraHold !== "function") return;
+    try { onClaraHold(!!on); } catch { /* Worker nicht verbunden */ }
+  }
+
   function hide() {
+    const wasOn = host.classList.contains("is-on");
     host.classList.remove("is-on");
     if (timer) { clearInterval(timer); timer = 0; }
     if (stepTimer) { clearTimeout(stepTimer); stepTimer = 0; }
+    if (wasOn) setHold(false);
   }
 
   function paint(snap, card) {
@@ -170,8 +177,8 @@ export function mountLisaLive(host, { getAuth } = {}) {
     if (els.chef) els.chef.closest(".ll-chef").hidden = phase === "done" || phase === "ended" || phase === "takeover";
     if (els.hint) {
       els.hint.textContent = phase === "takeover"
-        ? "Lisa hört zu, spricht aber nicht. Sie können das Gespräch führen."
-        : "Lisa bleibt in der Leitung, wird aber stumm. Das Transkript läuft weiter.";
+        ? "Clara hört nicht zu. Lisa ist stumm — Sie können das Gespräch führen."
+        : "Clara hört nicht zu. Lisa bleibt in der Leitung, wird aber stumm. Das Transkript läuft weiter.";
     }
 
     const rows = Array.isArray(snap.transcript) ? snap.transcript : [];
@@ -405,6 +412,7 @@ export function mountLisaLive(host, { getAuth } = {}) {
       if (els.hint) els.hint.hidden = false;
       if (els.smsFix) els.smsFix.classList.remove("is-on");
       host.classList.add("is-on");
+      setHold(true);
       paint({
         phase: card.status === "scheduled" ? "scheduled" : "dialing",
         phone: card.phone,

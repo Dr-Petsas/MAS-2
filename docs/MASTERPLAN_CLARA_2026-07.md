@@ -2488,6 +2488,12 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Clara ist stumm auf der Lisa-Flip-Seite.** Solange die
+  Live-Ansicht offen ist (und beim Übernehmen), geht kein Mic-Final an
+  Claras LLM — sonst versteht sie Raum-/Telefonfetzen und führt Quatsch
+  aus. Neuer `app_mode=hold` (kein Lena-Tee, keine Soft-Return-
+  Begruessung). Zurück oder Umblättern hebt den Halt. Tests:
+  test_app_mode.py.
 - 14.08.2026: **Lisa-Live: Übernahme braucht die Chef-Nummer, From kommt
   aus ElevenLabs.** Haila-Anruf: drei Übernahme-Klicks in 90 ms ohne
   Nummer (need_phone), Praxis-From fehlte im Env. Live-Poll lief, EL

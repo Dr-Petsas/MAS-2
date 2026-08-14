@@ -523,7 +523,7 @@
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
     import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
-    import { mountLisaLive } from "/m/lisa-live.js?v=5";
+    import { mountLisaLive } from "/m/lisa-live.js?v=6";
     import { bindCrewChips } from "/m/crew.js?v=1";
 
     const qs = new URLSearchParams(location.search);
@@ -660,6 +660,25 @@
       btnModeCards?.setAttribute("aria-pressed", cardsOn ? "true" : "false");
     }
 
+    let claraHeldForLisa = false;
+    function claraHoldForLisa(on) {
+      const want = !!on;
+      if (want === claraHeldForLisa) return;
+      if (!room?.localParticipant) return;
+      claraHeldForLisa = want;
+      const data = new TextEncoder().encode(JSON.stringify({
+        type: "set_app_mode",
+        mode: want ? "hold" : "clara",
+      }));
+      room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true }).catch(() => {
+        claraHeldForLisa = !want;
+      });
+    }
+    function syncClaraHoldToLisaFlip() {
+      const lisaOn = !!document.getElementById("lisaLiveHost")?.classList.contains("is-on");
+      claraHoldForLisa(lisaOn && flipped);
+    }
+
     function setFlipped(on) {
       flipped = !!on;
       els.flip?.classList.toggle("is-flipped", flipped);
@@ -668,6 +687,7 @@
         updateBadge();
       }
       refreshModeButtons();
+      syncClaraHoldToLisaFlip();
     }
     function updateBadge() {
       if (els.cardBadge) els.cardBadge.textContent = unseenCards > 0 ? String(unseenCards) : "";
@@ -751,6 +771,7 @@
       getAuth: () => (device?.deviceId && device?.deviceKey)
         ? { clientId, deviceId: device.deviceId, deviceKey: device.deviceKey }
         : null,
+      onClaraHold: claraHoldForLisa,
     });
 
     function addCardToDeck(card) {
