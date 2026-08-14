@@ -10,7 +10,7 @@ import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices,
 import { removeCandidateFromList, gapCandidateCardData } from "../clara/gapFill.js";
 import { karteRecallKandidaten, karteLisaSms } from "../clara/karten.js";
 import { getLisaTaskDetail, lisaSendSms, normalizePhoneE164 } from "../lisa/outbound.js";
-import { takeoverLisaCall, resolveChefPhone } from "../lisa/takeover.js";
+import { takeoverLisaCall, resolveChefPhone, TAKEOVER_REASON_DE } from "../lisa/takeover.js";
 import { log } from "../log.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 
@@ -284,8 +284,7 @@ router.post("/clara/devices/lisa-live", async (req, res) => {
     if (t.status === "scheduled") phase = "scheduled";
     else if (takeSt === "ringing") phase = "joining";
     else if (takeSt === "joined") phase = "takeover";
-    else if (t.status === "calling" && lines.length) phase = "talking";
-    else if (t.status === "calling") phase = "dialing";
+    else if (t.status === "calling") phase = (lines.length || t.conversationId) ? "talking" : "dialing";
     else if (t.status === "done" || t.outcome === "reached" || t.outcome === "taken_over") phase = "done";
     else phase = "ended";
     res.json({
@@ -328,7 +327,10 @@ router.post("/clara/devices/lisa-takeover", async (req, res) => {
     const out = await takeoverLisaCall(clientId, taskId, { chefPhone });
     if (!out.ok) {
       const status = out.reason === "not_found" ? 404 : 400;
-      return res.status(status).json(out);
+      return res.status(status).json({
+        ...out,
+        message: TAKEOVER_REASON_DE[out.reason] || "Übernahme gerade nicht möglich.",
+      });
     }
     res.json({
       ok: true,

@@ -2488,6 +2488,12 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Lisa-Live: Übernahme braucht die Chef-Nummer, From kommt
+  aus ElevenLabs.** Haila-Anruf: drei Übernahme-Klicks in 90 ms ohne
+  Nummer (need_phone), Praxis-From fehlte im Env. Live-Poll lief, EL
+  liefert den Text oft erst nach dem Auflegen (deshalb leere Ansicht,
+  gute Zusammenfassung). Jetzt: voiceFrom/callSid aus EL-Metadaten,
+  deutscher Fehlertext, Nummer-Feld Pflicht vor dem Klick.
 - 14.08.2026: **Relative Patienten-Bezuege gelten alle drei Tueren.**
   Chef-Vertrag 28.07. („nach drei Saetzen noch etwas erzielen“): „der
   erste“, „von eben“, „dieser Jens von eben“ sind Rueckbezug, keine

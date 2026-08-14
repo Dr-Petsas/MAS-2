@@ -1,5 +1,6 @@
 // Gespräch übernehmen: reine Prüfungen ohne Twilio/Netz.
 import { phoneFromRecord, displayNameOf } from "../src/lisa/outbound.js";
+import { extractPhoneCallMeta } from "../src/lisa/outbound.js";
 import {
   phonesMatch,
   phoneDigits,
@@ -10,6 +11,7 @@ import {
   resolveChefPhone,
   twilioSignatureExpected,
   twilioSignatureOk,
+  TAKEOVER_REASON_DE,
 } from "../src/lisa/takeover.js";
 
 let fehler = 0;
@@ -81,6 +83,13 @@ check("Handy schlaegt Festnetz", phoneFromRecord({ mobilePhoneNumber: "015111111
 check("Adressbuch-phones-Array", phoneFromRecord({ phones: ["+491701234567"] }) === "+491701234567");
 check("leerer Datensatz ohne Nummer", phoneFromRecord({ firstName: "Max" }) === "");
 check("Name aus Vor- und Nachname", displayNameOf({ firstName: "Max", lastName: "Meier" }) === "Max Meier");
+
+const meta = extractPhoneCallMeta({
+  metadata: { phone_call: { call_sid: "CAabc", agent_number: "+4921186943030" } },
+});
+check("Call-SID aus EL-Metadaten", meta.callSid === "CAabc");
+check("Lisa-From aus EL-Metadaten", meta.voiceFrom === "+4921186943030");
+check("need_phone hat einen deutschen Satz", TAKEOVER_REASON_DE.need_phone.includes("Nummer"));
 
 console.log(fehler ? `\n${fehler} Prüfung(en) fehlgeschlagen.` : "\nAlle Prüfungen bestanden.");
 process.exitCode = fehler ? 1 : 0;

@@ -181,7 +181,7 @@ export function mountLisaLive(host, { getAuth } = {}) {
     if (!rows.length) {
       const empty = phase === "takeover" ? "Sie sind in der Leitung."
         : phase === "joining" ? "Ihr Telefon klingelt — gleich sind Sie drin."
-        : phase === "talking" ? "Lisa ist in der Leitung."
+        : phase === "talking" ? "Lisa ist in der Leitung — der Text kommt Zug für Zug."
         : "Noch kein Wort — Lisa wählt.";
       els.lines.innerHTML = `<div class="ll-empty">${empty}</div>`;
       return;
@@ -226,6 +226,11 @@ export function mountLisaLive(host, { getAuth } = {}) {
     const auth = typeof getAuth === "function" ? getAuth() : null;
     if (!auth?.clientId || !taskId) return;
     const chefPhone = String(els.chef?.value || "").trim();
+    if (!chefPhone) {
+      els.phase.textContent = "Bitte Ihre Nummer eintragen — wir rufen Sie an.";
+      els.chef?.focus();
+      return;
+    }
     els.take.disabled = true;
     els.take.textContent = "Verbinde …";
     try {
@@ -250,12 +255,10 @@ export function mountLisaLive(host, { getAuth } = {}) {
       } else {
         els.take.disabled = false;
         els.take.textContent = "Gespräch übernehmen";
-        if (j?.reason === "need_phone") {
-          els.phase.textContent = "Bitte Ihre Nummer eintragen — wir rufen Sie an.";
-          els.chef?.focus();
-        } else {
-          els.phase.textContent = "Übernahme gerade nicht möglich. Noch einmal versuchen.";
-        }
+        els.phase.textContent = j?.message || (j?.reason === "need_phone"
+          ? "Bitte Ihre Nummer eintragen — wir rufen Sie an."
+          : "Übernahme gerade nicht möglich. Noch einmal versuchen.");
+        if (j?.reason === "need_phone") els.chef?.focus();
       }
     } catch {
       els.take.disabled = false;

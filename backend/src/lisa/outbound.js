@@ -167,6 +167,33 @@ export function callConfigured() {
   return !!(env("ELEVENLABS_API_KEY") && env("LISA_AGENT_ID") && env("LISA_PHONE_NUMBER_ID"));
 }
 
+/** Twilio-Call-SID + Lisa-From aus der ElevenLabs-Conversation (auch nachtraeglich). */
+export function extractPhoneCallMeta(conv) {
+  const pc = conv?.metadata?.phone_call || conv?.phone_call || {};
+  const callSid = String(
+    pc.call_sid || pc.callSid || conv?.call_sid || conv?.callSid || "",
+  ).trim();
+  const voiceFrom = normalizePhoneE164(pc.agent_number || pc.agentNumber || "");
+  return { callSid: callSid || "", voiceFrom: voiceFrom || "" };
+}
+
+async function lisaVoiceFrom() {
+  const envFrom = normalizePhoneE164(env("TWILIO_VOICE_FROM") || env("LISA_VOICE_FROM"));
+  if (envFrom) return envFrom;
+  const id = env("LISA_PHONE_NUMBER_ID");
+  const key = env("ELEVENLABS_API_KEY");
+  if (!id || !key) return "";
+  try {
+    const r = await fetch(`https://api.elevenlabs.io/v1/convai/phone-numbers/${encodeURIComponent(id)}`, {
+      headers: { "xi-api-key": key },
+    });
+    const data = await r.json().catch(() => ({}));
+    return normalizePhoneE164(data.phone_number || data.number || data.phoneNumber || "") || "";
+  } catch {
+    return "";
+  }
+}
+
 // ----------------------------------------------------------------------------
 // SMS
 // ----------------------------------------------------------------------------
@@ -309,10 +336,12 @@ async function elevenOutboundCall({ to, dynamicVariables }) {
   if (!r.ok) {
     return { ok: false, error: data?.detail?.message || data?.detail || `elevenlabs_http_${r.status}` };
   }
+  const phone = data?.phone_call || data?.phoneCall || data?.metadata?.phone_call || {};
   return {
     ok: true,
     conversationId: data?.conversation_id || data?.conversationId || null,
-    callSid: data?.callSid || data?.call_sid || data?.twilio_call_sid || null,
+    callSid: data?.callSid || data?.call_sid || data?.twilio_call_sid
+      || phone.call_sid || phone.callSid || null,
   };
 }
 
@@ -498,6 +527,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     log.warn("lisa.call.failed", { clientId, error: String(call.error) });
     return { ok: false, message: "Der Anruf konnte nicht gestartet werden. Bitte später erneut versuchen." };
   }
+  const voiceFrom = await lisaVoiceFrom();
 
   await taskRef.set({
     id: taskRef.id,
@@ -508,6 +538,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     prompt,
     conversationId: call.conversationId,
     callSid: call.callSid || null,
+    voiceFrom: voiceFrom || null,
     assignedBy: by || "Team",
     outcome: null,
     resultSummary: null,
@@ -887,12 +918,18 @@ export async function getLisaTaskDetail(clientId, taskId) {
       transcript = normalizeTranscriptItems(conv?.transcript);
       durationSecs = Number(conv?.metadata?.call_duration_secs || 0) || durationSecs;
       hasAudio = conv?.has_audio !== false;
-      // Nur BEENDETE Gespräche cachen — laufende wachsen noch.
-      if (["done", "failed"].includes(convStatus) && transcript.length) {
-        await doc.ref
-          .update({ transcriptItems: transcript, durationSecs: durationSecs || null, hasAudio })
-          .catch(() => {});
+      const meta = extractPhoneCallMeta(conv);
+      const patch = {};
+      if (meta.callSid && !task.callSid) patch.callSid = meta.callSid;
+      if (meta.voiceFrom && !task.voiceFrom) patch.voiceFrom = meta.voiceFrom;
+      // Laufende Gespraeche cachen, sobald Zeilen da sind — sonst bleibt
+      // die Live-Ansicht leer, bis der Finalizer nach dem Auflegen schreibt.
+      if (transcript.length) {
+        patch.transcriptItems = transcript;
+        if (durationSecs) patch.durationSecs = durationSecs;
+        if (["done", "failed"].includes(convStatus)) patch.hasAudio = hasAudio;
       }
+      if (Object.keys(patch).length) await doc.ref.update(patch).catch(() => {});
     } catch (e) {
       log.warn("lisa.task_detail.provider_failed", { clientId, taskId, error: String(e?.message || e) });
     }

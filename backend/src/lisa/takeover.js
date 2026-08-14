@@ -254,7 +254,9 @@ async function elevenVoiceFrom() {
   }
 }
 
-async function resolveVoiceFrom(legs = []) {
+async function resolveVoiceFrom(legs = [], task = {}) {
+  const fromTask = normalizePhoneE164(task.voiceFrom);
+  if (fromTask) return fromTask;
   const envFrom = normalizePhoneE164(env("TWILIO_VOICE_FROM") || env("LISA_VOICE_FROM"));
   if (envFrom) return envFrom;
   for (const leg of legs) {
@@ -294,8 +296,22 @@ function conferenceStatusUrl(clientId, taskId) {
  * werden erst umgelegt, wenn der Chef rangeht (sonst sitzt der Patient
  * in einer leeren Konferenz).
  */
+export const TAKEOVER_REASON_DE = {
+  twilio_not_configured: "Übernahme ist hier nicht eingerichtet.",
+  not_found: "Diesen Anruf finde ich nicht mehr.",
+  not_a_call: "Das ist kein Telefonat.",
+  need_phone: "Bitte Ihre Nummer eintragen — wir rufen Sie an.",
+  no_call_sid: "Die Leitung ist noch nicht greifbar. Gleich noch einmal.",
+  no_voice_from: "Die Praxisnummer zum Zurückrufen fehlt.",
+  chef_is_from: "Das ist Lisas Nummer. Bitte Ihre eigene eintragen.",
+  chef_dial_failed: "Ihr Telefon war nicht erreichbar.",
+};
+
 export async function takeoverLisaCall(clientId, taskId, { chefPhone } = {}) {
-  if (!twilioConfigured()) return { ok: false, reason: "twilio_not_configured" };
+  if (!twilioConfigured()) {
+    log.warn("lisa.takeover.denied", { clientId, taskId, reason: "twilio_not_configured" });
+    return { ok: false, reason: "twilio_not_configured" };
+  }
   const doc = await tasksCol(clientId).doc(String(taskId)).get();
   if (!doc.exists) return { ok: false, reason: "not_found" };
   const task = doc.data() || {};
@@ -313,18 +329,28 @@ export async function takeoverLisaCall(clientId, taskId, { chefPhone } = {}) {
   }
 
   const toChef = resolveChefPhone({ requested: chefPhone, stored: take.chefPhone });
-  if (!toChef) return { ok: false, reason: "need_phone" };
+  if (!toChef) {
+    log.warn("lisa.takeover.denied", { clientId, taskId, reason: "need_phone" });
+    return { ok: false, reason: "need_phone" };
+  }
 
   const callSid = String(task.callSid || "").trim() || await findLiveCallSid(task.phone);
-  if (!callSid) return { ok: false, reason: "no_call_sid" };
+  if (!callSid) {
+    log.warn("lisa.takeover.denied", { clientId, taskId, reason: "no_call_sid" });
+    return { ok: false, reason: "no_call_sid" };
+  }
   if (!task.callSid && callSid) {
     await doc.ref.update({ callSid }).catch(() => {});
   }
 
   const legs = await collectCallLegs(callSid);
-  const from = await resolveVoiceFrom(legs);
-  if (!from) return { ok: false, reason: "no_voice_from" };
+  const from = await resolveVoiceFrom(legs, task);
+  if (!from) {
+    log.warn("lisa.takeover.denied", { clientId, taskId, reason: "no_voice_from" });
+    return { ok: false, reason: "no_voice_from" };
+  }
   if (phonesMatch(from, toChef)) {
+    log.warn("lisa.takeover.denied", { clientId, taskId, reason: "chef_is_from" });
     return { ok: false, reason: "chef_is_from" };
   }
 
