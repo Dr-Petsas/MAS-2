@@ -2492,6 +2492,13 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Lisa-Karte zeigte die Chef-Nummer.** Zweiter Haila-
+  Versuch: find_contact uneindeutig (Hayla/Haila + Heldmann), das
+  Modell setzte `phone=01776004600` (Beispiel/Chef). Der Server nahm
+  sie, weil niemand eindeutig gewählt war. Jetzt: Nummer nur aus dem
+  Patientendokument (gleiche Quelle wie die Kontaktkarte). Uneindeutig
+  oder Name ohne Datensatz = keine Nummer, keine Karte. Hayla trifft
+  Haila per Distanz-1. Tests: test-delegate-confirm, test-patient-disambig.
 - 14.08.2026: **Super-GAU Anruf-Nummer.** „Ruf Haila El-Otmani an“:
   richtige Kontaktkarte, danach wählte Lisa `01763069747` (LLM-Nummer,
   nicht der Datensatz). Dieselbe Runde: find_contact + delegate_call,

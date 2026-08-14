@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   chooseDialPhone,
+  decideDelegationDial,
   canConfirmLisaCall,
   nameTokensOverlap,
   normalizePhoneE164,
@@ -74,6 +75,31 @@ test("El-Otmani trifft Haila El Otmani, nicht einen Fremdkontakt", () => {
   assert.equal(nameTokensOverlap("El-Otmani", "Haila El Otmani"), true);
   assert.equal(nameTokensOverlap("Haila El-Otmani", "Haila El Otmani"), true);
   assert.equal(nameTokensOverlap("Haila", "Feinkost Exotica"), false);
+});
+
+test("uneindeutige Suche + Chef-Nummer vom Modell wird verworfen", () => {
+  const pick = decideDelegationDial({
+    recordPhone: "",
+    claimedPhone: "01776004600",
+    hasName: false,
+    candidateCount: 2,
+    selected: false,
+  });
+  assert.equal(pick.phone, "");
+  assert.equal(pick.source, "ambiguous");
+  assert.equal(pick.rejectedClaim, true);
+});
+
+test("Name genannt: Modell-Nummer zaehlt nicht, auch ohne Datensatz-Treffer", () => {
+  const pick = decideDelegationDial({
+    recordPhone: "",
+    claimedPhone: "01776004600",
+    hasName: true,
+    candidateCount: 0,
+    selected: false,
+  });
+  assert.equal(pick.phone, "");
+  assert.equal(pick.source, "rejected_llm");
 });
 
 test("Lisa-Karte im Confirm-Status hat keine Task-Id und sagt noch kein Anruf", () => {

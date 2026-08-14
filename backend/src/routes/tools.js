@@ -53,7 +53,7 @@ import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
-import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, chooseDialPhone, canConfirmLisaCall, nameTokensOverlap } from "../lisa/outbound.js";
+import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, decideDelegationDial, canConfirmLisaCall, nameTokensOverlap } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -4567,25 +4567,55 @@ router.post("/tools/push-contact", async (req, res) => {
 
 // Fallback auf den zuvor per find_contact/search_patient bestimmten Kontakt,
 // damit SMS und Anruf OHNE gesprochene Telefonnummer funktionieren.
+function nameFromDelegationText(body) {
+  const direct = String(body?.recipientName || body?.contactName || "").trim();
+  if (direct) return cleanSpokenPersonName(direct) || direct;
+  const instr = String(body?.instruction || body?.message || body?.text || "");
+  const m = instr.match(/\b(?:frau|herrn?|fr(?:ä|ae)ulein)\s+([A-ZÄÖÜa-zäöüß][\wÄÖÜäöüß'-]+(?:\s+[A-ZÄÖÜa-zäöüß][\wÄÖÜäöüß'-]+){0,3})/i);
+  if (m) return cleanSpokenPersonName(m[1]) || m[1];
+  return "";
+}
+
+// Dieselbe Quelle wie contact_card: das Patientendokument, nicht das LLM.
+async function loadPatientPhonesFromDoc(clientId, patient) {
+  const fallback = {
+    mobile: String(patient?.mobilePhoneNumber || patient?.mobile || "").trim(),
+    phone: String(patient?.phoneNumber || patient?.phone || "").trim(),
+    email: String(patient?.email || "").trim(),
+  };
+  if (!patient?.id || patient.external) return fallback;
+  const booking = await loadBooking(clientId).catch(() => null);
+  if (!booking?.locationId) return fallback;
+  const pdoc = await admin.firestore()
+    .collection("clients").doc(clientId)
+    .collection("locations").doc(booking.locationId)
+    .collection("patients").doc(String(patient.id)).get()
+    .then((s2) => (s2.exists ? s2.data() : null))
+    .catch(() => null);
+  if (!pdoc) return fallback;
+  return {
+    mobile: String(pdoc.mobilePhoneNumber || "").trim(),
+    phone: String(pdoc.phoneNumber || "").trim(),
+    email: String(pdoc.email || "").trim(),
+  };
+}
+
 async function resolveDelegationTarget(clientId, body) {
   const claimedPhone = phoneFromRecord({
     phone: body?.phone, phoneNumber: body?.phoneNumber, mobile: body?.mobile,
-  }) || (() => {
-    const blob = [body?.phone, body?.phoneNumber, body?.message, body?.text, body?.instruction].filter(Boolean).join(" ");
-    return extractPhoneFromText(blob) || (spokenDigitsOf(blob)?.length >= 6 ? spokenDigitsOf(blob) : "") || "";
-  })();
-  let name = String(body?.recipientName || body?.contactName || "").trim();
+  }) || "";
+  let name = nameFromDelegationText(body);
   let sel = await getSelectedPatient(clientId);
+  let cands = await getPatientCandidates(clientId);
 
-  // Genannter Name schlaegt einen veralteten gemerkten Kontakt (sonst wuerde
-  // Lisa den Vorherigen anrufen, obwohl der Chef "Haila" gesagt hat).
   if (name && (!sel || !nameTokensOverlap(name, displayNameOf(sel)))) {
-    const q = cleanSpokenPersonName(name) || name;
+    const q = name;
     const found = await searchPatientSpoken(clientId, q);
     let patients = found?.ok ? (found.patients || []) : [];
     if (patients.length > 1) patients = tightenNameHits(q, patients);
     if (patients.length === 1) {
       sel = patients[0];
+      cands = patients;
       await setPatientCandidates(clientId, patients, sel);
     } else if (patients.length > 1) {
       await setPatientCandidates(clientId, patients, null);
@@ -4603,6 +4633,7 @@ async function resolveDelegationTarget(clientId, body) {
           hasPhone: true,
           external: true,
         };
+        cands = [];
         await setPatientCandidates(clientId, [], sel);
       } else {
         sel = null;
@@ -4610,15 +4641,34 @@ async function resolveDelegationTarget(clientId, body) {
     }
   }
 
-  if (!sel) {
-    const cands = await getPatientCandidates(clientId);
-    if (cands.length === 1) sel = cands[0];
+  if (!sel && cands.length === 1) sel = cands[0];
+  if (!sel && cands.length > 1) {
+    return { phone: "", name, ambiguous: true, candidates: cands };
+  }
+
+  let recordPhone = "";
+  if (sel) {
+    const docPhones = await loadPatientPhonesFromDoc(clientId, sel);
+    sel = {
+      ...sel,
+      mobilePhoneNumber: docPhones.mobile || sel.mobilePhoneNumber,
+      phoneNumber: docPhones.phone || sel.phoneNumber,
+      email: docPhones.email || sel.email,
+    };
+    recordPhone = phoneFromRecord(sel);
   }
   if (!name) name = displayNameOf(sel);
 
-  const recordPhone = phoneFromRecord(sel);
-  const allowClaimed = !sel && !name;
-  const pick = chooseDialPhone({ recordPhone, claimedPhone, allowClaimed });
+  const pick = decideDelegationDial({
+    recordPhone,
+    claimedPhone,
+    hasName: !!name,
+    candidateCount: cands.length,
+    selected: !!sel,
+  });
+  if (pick.source === "ambiguous") {
+    return { phone: "", name, ambiguous: true, candidates: cands };
+  }
   return {
     phone: pick.phone,
     name: name || displayNameOf(sel),

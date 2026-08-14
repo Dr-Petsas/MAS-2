@@ -168,15 +168,43 @@ export function narrowByExactName(nameOrHintLower, candidates = []) {
  * "Haila El-Otmani" trifft "Haila El Otmani" und wirft Theresa Heldmann raus.
  * Bindestrich und Partikel (El/Van/De) zählen nicht als Unterschied.
  */
+function tokenClose(a, b) {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4) return false;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  let j = 0;
+  let diff = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i += 1; j += 1; continue; }
+    diff += 1;
+    if (diff > 1) return false;
+    if (a.length > b.length) i += 1;
+    else if (b.length > a.length) j += 1;
+    else { i += 1; j += 1; }
+  }
+  return diff + (a.length - i) + (b.length - j) <= 1;
+}
+
 export function narrowByNearName(query, candidates = []) {
   const q = nameTokens(query).filter((t) => !NAME_PARTICLES.has(t));
   if (!q.length) return [];
   if (q.length === 1 && q[0].length < 5) return [];
-  const hits = (candidates || []).filter((p) => {
+  const exact = (candidates || []).filter((p) => {
     const have = new Set(nameTokens(fullName(p)));
     return q.every((t) => have.has(t));
   });
-  return hits.length && hits.length < candidates.length ? hits : [];
+  if (exact.length && exact.length < candidates.length) return exact;
+  // STT-Tipp: Hayla/Haila — Nachname exakt, Vorname Distanz 1.
+  const fuzzy = (candidates || []).filter((p) => {
+    const have = nameTokens(fullName(p)).filter((t) => !NAME_PARTICLES.has(t));
+    if (!have.length) return false;
+    const last = have[have.length - 1];
+    const qLast = q[q.length - 1];
+    if (last !== qLast && !tokenClose(last, qLast)) return false;
+    return q.slice(0, -1).every((t) => have.slice(0, -1).some((u) => tokenClose(t, u)));
+  });
+  return fuzzy.length && fuzzy.length < candidates.length ? fuzzy : [];
 }
 
 /** "Den ersten Eintrag bitte" ist eine Auswahl, kein Patientenname. */

@@ -123,6 +123,29 @@ export function chooseDialPhone({ recordPhone = "", claimedPhone = "", allowClai
   return { phone: "", source: claim ? "rejected_llm" : "none", rejectedClaim: !!claim };
 }
 
+/**
+ * Wann darf eine vom Modell gelieferte Nummer überhaupt gelten?
+ * Nie, wenn ein Name im Spiel ist oder die Suche noch mehrere Treffer hat.
+ * Live 14.08.2026: uneindeutig Haila/Heldmann + phone=01776004600 (Chef).
+ */
+export function decideDelegationDial({
+  recordPhone = "",
+  claimedPhone = "",
+  hasName = false,
+  candidateCount = 0,
+  selected = false,
+} = {}) {
+  if (!selected && candidateCount > 1) {
+    return {
+      phone: "",
+      source: "ambiguous",
+      rejectedClaim: !!normalizePhoneE164(claimedPhone),
+    };
+  }
+  const allowClaimed = !selected && !hasName && candidateCount === 0;
+  return chooseDialPhone({ recordPhone, claimedPhone, allowClaimed });
+}
+
 /** Bestätigung gilt nur, wenn derselbe Auftrag schon einmal vorgelesen wurde. */
 export function canConfirmLisaCall(pending, now = Date.now()) {
   if (!pending || typeof pending !== "object") return false;

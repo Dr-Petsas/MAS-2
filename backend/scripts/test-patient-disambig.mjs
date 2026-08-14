@@ -100,6 +100,11 @@ test("narrowByNearName: Haila El-Otmani wirft Heldmann raus", () => {
   assert.deepEqual(hits, [haila]);
 });
 
+test("narrowByNearName: Hayla (STT) trifft Haila, nicht Heldmann", () => {
+  const hits = narrowByNearName("Hayla El-Otmani", [haila, heldmann, bitter]);
+  assert.deepEqual(hits, [haila]);
+});
+
 test("narrowByNearName: nur Partikel allein grenzt nicht ein", () => {
   assert.deepEqual(narrowByNearName("El", [haila, heldmann]), []);
 });
