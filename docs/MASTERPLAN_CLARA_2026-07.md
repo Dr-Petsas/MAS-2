@@ -2492,6 +2492,24 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026 (23:03, "stopp das google bleeding"): **Google-Budget-Alarm
+  analysiert und Dauerlaeufer gedrosselt.** Messung per Monitoring-API
+  (neue Werkzeuge `scripts/_diag-firestore-*.mjs`): Der Alarm kam zu ~95%
+  vom Kartei-Suchlauf-Vorfall 31.07.-03.08. (410 Mio Reads ≈ 225 EUR,
+  seit 04.08. gefixt — siehe patientCatalog.js). Das LAUFENDE Grundrauschen
+  (~2 Mio Reads/Tag ≈ 1,10 EUR/Tag, Nachtsockel 42k/h) bestand aus:
+  (1) Kalender-Wache las alle 2 min ALLE Termine der naechsten 30 Tage
+  (~1.400 Docs) = ~1,0 Mio/Tag -> jetzt 10-min-Takt
+  (`MAS_CAL_WATCH_INTERVAL_MS`), Fenster bewusst NICHT verkleinert
+  (diff wuerde wegfallende Tage als "Termin entfernt" melden).
+  (2) Mail-Backfill las alle 2 min 200 Mail-Docs = ~0,2 Mio/Tag -> jetzt
+  Stundentakt (`MAS_MAIL_BACKFILL_INTERVAL_MS`); der eigentliche Mail-Sync
+  bleibt bei 2 min. (3) Recall-Sweep las jede Minute 100 Faelle = 144k/Tag
+  -> jetzt 5-min-Takt (`MAS_RECALL_SWEEP_INTERVAL_MS`). Alles reine
+  Latenz-Aenderungen (Beobachtungen kommen max. 10 min spaeter ins
+  Gedaechtnis), keine Funktions-/Vertragsaenderung. Erwartung: ~0,6-0,7 Mio
+  Reads/Tag (~9-12 EUR/Monat). OFFEN (Warteliste): taeglicher 03:45-Spike
+  ~190k Reads (Kandidat: reflectOnce/Living-Prompt) — lohnt eigene Messung.
 - 14.08.2026 (Live 20:11, "Lisa ruft nicht an"): **Der Anruf-Flow lief
   diesmal komplett durch — gestoppt hat ihn die Anrufzeiten-Regel L4
   (9-19 Uhr, Chef 29.07.), und die ERKLAERUNG dazu wurde verschluckt.**

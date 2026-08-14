@@ -38,6 +38,7 @@ import lisaToolsRouter from "./routes/lisaTools.js";
 import lisaTwilioRouter from "./routes/lisaTwilio.js";
 import treatmentRouter from "./routes/treatment.js";
 import claraSwitchRouter from "./routes/claraSwitch.js";
+import pvsRouter from "./routes/pvs.js";
 import zusageRouter from "./routes/zusage.js";
 import claraRouter from "./routes/clara.js";
 import { sttBenchProxy } from "./routes/sttBench.js";
@@ -207,6 +208,7 @@ app.use(lisaToolsRouter);
 app.use(lisaTwilioRouter);
 app.use(treatmentRouter);
 app.use(claraSwitchRouter);
+app.use(pvsRouter);
 // Online-Zusage aus Recall-SMS (oeffentlich, token-gesichert) — vor dem
 // Clara-Catch-all mounten.
 app.use(zusageRouter);
@@ -415,12 +417,16 @@ server.listen(PORT, () => {
   if (lisaCallConfigured() && DEFAULT_CLIENT_ID) {
 
     // Recall-Sweep: ordnet beendete Lisa-Calls den Anruflisten zu, bucht
-    // Zusagen direkt fest und schickt SMS-Fallbacks. Billig im Leerlauf.
+    // Zusagen direkt fest und schickt SMS-Fallbacks. NICHT billig im Leerlauf
+    // (Messung 14.08.2026): listCases laedt jede Runde die 100 zuletzt
+    // geaenderten Faelle = 144k Reads/Tag bei 60 s. Ein Lisa-Anruf dauert
+    // selbst Minuten — 5-Minuten-Takt verzoegert nur die Ergebnis-Zuordnung,
+    // nie das Ergebnis. Notaus/Feintuning: MAS_RECALL_SWEEP_INTERVAL_MS.
     setInterval(() => {
       sweepRecallOutcomes(DEFAULT_CLIENT_ID).catch((e) =>
         log.warn("recall.sweep_error", { error: String(e?.message || e) })
       );
-    }, 60_000);
+    }, Math.max(60_000, Number(process.env.MAS_RECALL_SWEEP_INTERVAL_MS || 300_000)));
 
     // Abwesenheits-Rückkanal: erkennt Neubuchungen abgesagter Patienten und
     // schreibt die Verschiebe-Notiz in den neuen Termin (Kalender-Quittung).

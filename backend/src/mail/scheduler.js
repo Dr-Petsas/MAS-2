@@ -13,6 +13,25 @@ import { watchCalendarOnce, tenantsWithCalendar } from "../clara/calendarWatch.j
 // never overlap.
 
 const DEFAULT_INTERVAL_MS = 120000;
+
+// Kosten-Bremsen (14.08.2026, "Google-Bleeding"): Der 2-Minuten-Tick hier war
+// mit ~1,2 Mio Firestore-Reads/Tag der groesste Einzelposten der Google-Rechnung
+// (gemessen per Monitoring-API, Nachtsockel 42k Reads/h):
+//   * watchCalendarOnce liest pro Lauf ALLE Termine der naechsten 30 Tage
+//     (~1.400 Dokumente) -> alle 2 min = ~1,0 Mio Reads/Tag.
+//   * backfillInboundMailBrain liest pro Lauf 200 Mail-Dokumente -> ~0,2 Mio/Tag.
+// Beide sind Diff-/Selbstheilungs-Laeufe: seltener laufen aendert NUR die
+// Latenz der Beobachtung (max. 10 min bzw. 1 h), nie das Ergebnis. Der
+// eigentliche Mail-SYNC (neue Mails vom IMAP) bleibt im 2-Minuten-Takt.
+// Das 30-Tage-Fenster selbst NICHT verkleinern: diffCalendarSnapshots wuerde
+// die wegfallenden Tage als "Termin entfernt" ins Gedaechtnis schreiben.
+const CAL_WATCH_INTERVAL_MS = Math.max(DEFAULT_INTERVAL_MS,
+  Number(process.env.MAS_CAL_WATCH_INTERVAL_MS || 600000)); // Standard 10 min
+const MAIL_BACKFILL_INTERVAL_MS = Math.max(DEFAULT_INTERVAL_MS,
+  Number(process.env.MAS_MAIL_BACKFILL_INTERVAL_MS || 3600000)); // Standard 1 h
+let lastCalWatchMs = 0;
+let lastBackfillMs = 0;
+
 const db = admin.firestore();
 let timer = null;
 let running = false;
@@ -34,6 +53,8 @@ export async function runOnce({ limit = 20 } = {}) {
       byTenant.get(clientId).push(doc.id);
     }
     tenants = byTenant.size;
+    const backfillDue = Date.now() - lastBackfillMs >= MAIL_BACKFILL_INTERVAL_MS;
+    if (backfillDue) lastBackfillMs = Date.now();
     for (const [clientId, ids] of byTenant) {
       for (const accountId of ids) {
         const r = await syncAccount(clientId, accountId, { limit }).catch(() => ({ ok: false }));
@@ -41,19 +62,26 @@ export async function runOnce({ limit = 20 } = {}) {
       }
       // Self-healing brain link: catch relevant inbound mails the sync-time
       // recording missed (pre-pipeline mails, late LLM re-classification).
-      // Idempotent via stable event ids, so every tick is safe.
-      const bf = await backfillInboundMailBrain(clientId, { sinceDays: 14 }).catch(() => null);
-      if (bf?.recorded) console.log(`[brain-backfill] ${clientId}: ${bf.recorded} E-Mail(s) nachträglich ins Gehirn übernommen.`);
+      // Idempotent via stable event ids — aber teuer (200 Doc-Reads je Lauf),
+      // darum nur noch im Stundentakt statt in jedem Tick.
+      if (backfillDue) {
+        const bf = await backfillInboundMailBrain(clientId, { sinceDays: 14 }).catch(() => null);
+        if (bf?.recorded) console.log(`[brain-backfill] ${clientId}: ${bf.recorded} E-Mail(s) nachträglich ins Gehirn übernommen.`);
+      }
     }
     // Clara's calendar watch: every appointment change + document traffic
     // light in the watch window becomes a brain observation on the patient's
     // timeline — no matter who made the change. Runs for EVERY tenant with a
     // calendar config, independent of whether a mail account exists.
-    const calTenants = await tenantsWithCalendar().catch(() => []);
-    for (const clientId of calTenants) {
-      const cw = await watchCalendarOnce(clientId).catch(() => null);
-      if (cw?.recorded) console.log(`[calendar-watch] ${clientId}: ${cw.recorded} Kalender-Beobachtung(en) ins Gehirn geschrieben.`);
-      else if (cw?.baseline) console.log(`[calendar-watch] ${clientId}: Baseline mit ${cw.tracked} Terminen angelegt.`);
+    // Kosten-Bremse: nur noch alle CAL_WATCH_INTERVAL_MS (Standard 10 min).
+    if (Date.now() - lastCalWatchMs >= CAL_WATCH_INTERVAL_MS) {
+      lastCalWatchMs = Date.now();
+      const calTenants = await tenantsWithCalendar().catch(() => []);
+      for (const clientId of calTenants) {
+        const cw = await watchCalendarOnce(clientId).catch(() => null);
+        if (cw?.recorded) console.log(`[calendar-watch] ${clientId}: ${cw.recorded} Kalender-Beobachtung(en) ins Gehirn geschrieben.`);
+        else if (cw?.baseline) console.log(`[calendar-watch] ${clientId}: Baseline mit ${cw.tracked} Terminen angelegt.`);
+      }
     }
     return { ok: true, tenants, accounts: synced };
   } finally {
