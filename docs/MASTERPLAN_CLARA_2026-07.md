@@ -2492,6 +2492,25 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Anruf-Bestaetigung entmuellt (Live 18:56, "es wird kein
+  Anruf gestartet").** Drei Bremsen: (1) Die Namenssuche probierte bis zu
+  12 Schreibvarianten NACHEINANDER gegen Firestore — 12 s Stille vor der
+  Rueckfrage; jetzt laufen alle Varianten parallel (Wertung bleibt
+  deterministisch die erste Variante mit Treffern). (2) Der Zusage-Pfad des
+  delegate-guards (Worker) baute auf "Ja" einen NEUEN delegate_call OHNE
+  confirm — der Server legte brav die naechste Vorschau an, der
+  Sprech-Deduper verschluckte die wiederholte Frage, gewaehlt wurde NIE.
+  Jetzt: Stand die Frage "Soll Lisa jetzt anrufen?" im letzten Clara-Satz
+  und der Chef bejaht (Kurz-Ja oder fuehrendes Ja/genau/richtig, KEIN
+  nein/nicht/stopp/warte), wird delegate_call(confirm=true) synthetisiert
+  bzw. confirm in den Modell-Aufruf injiziert; der Server waehlt die
+  vorgemerkte Datensatz-Nummer. 14 Verhaltens-Faelle geprueft. (3) Filler
+  "ich schaue nach" ist bei Anruf/SMS Unsinn — delegate_call/send_sms sagen
+  jetzt "Einen Moment — ich bereite den Anruf/die Nachricht vor." Zudem
+  zeigt Karte/Rueckfrage den ECHTEN Datensatz-Namen (Haila El Otmani),
+  nicht die STT-Schreibweise (Hayla el-Otmani). Nur der dev-Worker traegt
+  den Waechter-Fix; die Live-Kopie (Rueckweg) ist ungetestet und blieb
+  unangetastet.
 - 14.08.2026: **Relikt gefunden: Chef-Nummer stand als BEISPIEL im Profil.**
   Chef fragte, ob die falsche Nummer ein Relikt alter Testanrufe ist — ja:
   `01776004600` stand woertlich im System-Prompt („z.B. 01776004600“) und im

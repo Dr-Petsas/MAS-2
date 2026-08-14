@@ -260,9 +260,21 @@ async function searchPatientSpoken(clientId, name) {
       if (candidate !== name.toLowerCase()) variants.push(candidate);
     }
   }
-  for (const v of [...new Set(variants)].slice(0, 12)) {
-    const r = await searchPatient(clientId, v).catch(() => null);
-    if (r?.ok && (r.patients || []).length) return collapseResultPatients({ ...r, variantUsed: v });
+  // 14.08.2026 (Live 18:56): Die Varianten liefen NACHEINANDER — bei 12
+  // Schreibweisen stand Clara 12 Sekunden stumm da, bevor die Rueckfrage kam.
+  // Jetzt laufen alle Varianten-Suchen gleichzeitig; gewertet wird weiterhin
+  // deterministisch die ERSTE Variante (in Reihenfolge) mit Treffern.
+  const variantList = [...new Set(variants)].slice(0, 12);
+  if (variantList.length) {
+    const results = await Promise.all(
+      variantList.map((v) => searchPatient(clientId, v).catch(() => null)),
+    );
+    for (let i = 0; i < variantList.length; i++) {
+      const r = results[i];
+      if (r?.ok && (r.patients || []).length) {
+        return collapseResultPatients({ ...r, variantUsed: variantList[i] });
+      }
+    }
   }
 
   // Phonetische Rettung ueber die Praesenzliste (Chef 31.07.2026): findet die
@@ -4657,7 +4669,10 @@ async function resolveDelegationTarget(clientId, body) {
     };
     recordPhone = phoneFromRecord(sel);
   }
-  if (!name) name = displayNameOf(sel);
+  // Auf Karte und in der Rueckfrage steht der ECHTE Datensatz-Name, nicht die
+  // STT-Schreibweise ("Hayla el-Otmani" -> "Haila El Otmani").
+  const selName = displayNameOf(sel);
+  if (selName) name = selName;
 
   const pick = decideDelegationDial({
     recordPhone,
