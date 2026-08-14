@@ -2488,6 +2488,20 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Lisa-Live-Flip + Anruf-Intent geschaerft.** "Hat Lisa X
+  angerufen?" / "ob Lisa angerufen hat" geht auf `lisa_call_result`, nicht
+  mehr aufs Eingangsprotokoll (`call_log`). "Du hast mich angerufen" und
+  "wir haben schon mal angerufen" sind aus dem calls-guard ausgenommen.
+  Sobald Clara einen Anruf delegiert, flippt Handy/iPad auf die Lisa-Live-
+  Ansicht (wählt / spricht / Transkript per Poll 2.5 s).   Taste
+  "Gespräch übernehmen" holt den Chef per Twilio-Konferenz in die
+  laufende Leitung (Lisa stumm, Transkript läuft weiter über EL plus
+  Twilio-Realtime). Ohne Chef-Nummer fragt die App einmal
+  (`LISA_TAKEOVER_PHONE` oder gespeicherte Gerätenummer). Freizeichen-
+  Status bleibt Folge — die Telefonie liefert weiter nur
+  `calling`/`done`. Dieselbe Flip-Ansicht gilt fuer SMS: Lisa sucht den
+  Patienten, nimmt die Nummer, formuliert den Text, versendet — Schritt
+  fuer Schritt auf dem geflippten Screen.
 - 28.07.2026 (frueh, Nachtschicht): **Masterplan-Schlussstand — alle autonom
   baubaren Pakete FERTIG.** In dieser Nacht abgeschlossen: W-STABIL-5/-6/-7/
   -8/-9a (Protokolle, Morgenlauf, Konfig ins Tag, Fristen-/Rechnungs-

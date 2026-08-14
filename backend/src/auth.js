@@ -56,6 +56,8 @@ function isPublic(req) {
   // deviceKey-gesichert (28.07.2026): Muelltonne auf der Telefon-Karte —
   // das gekoppelte Handy nimmt Kandidaten von der Anrufliste.
   if (p === "/clara/devices/recall-remove") return true;
+  // deviceKey-gesichert: Lisa-Live-Ansicht + Übernehmen auf Handy/iPad.
+  if (p === "/clara/devices/lisa-live" || p === "/clara/devices/lisa-takeover") return true;
   // Voice-Worker holt beim Verbinden den Anlass eines proaktiven Clara-Anrufs
   // ab (kurzer, PII-freier Sprechtext; einmalig konsumiert, 2h TTL).
   if (p === "/clara/pending-context") return true;
@@ -66,6 +68,8 @@ function isPublic(req) {
   // Patientengespraech). Jede Route prueft selbst den Secret-Header
   // X-Lisa-Tool-Secret (timing-safe, routes/lisaTools.js).
   if (p.startsWith("/lisa/tools/")) return true;
+  // Twilio-Signatur (Lisa-Gesprächsübernahme: Chef-Status, Konferenz, Transkript).
+  if (p.startsWith("/lisa/twilio/")) return true;
   // QM-Handy-Portal: die zustaendige Helferin oeffnet den Push-Link ohne Login.
   // Jede Route prueft selbst den signierten Ein-Job-Token (routes/qm.js ->
   // portalGuard, timing-safe). Gibt nur GENAU EINEN Job frei.

@@ -6,9 +6,11 @@ import { randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import { assertAppEnabled } from "../entitlements.js";
 import { listOperators, normalizeRole } from "../clara/operators.js";
-import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, updateDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured } from "../clara/devices.js";
+import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, updateDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured, setDeviceTakeoverPhone } from "../clara/devices.js";
 import { removeCandidateFromList, gapCandidateCardData } from "../clara/gapFill.js";
 import { karteRecallKandidaten } from "../clara/karten.js";
+import { getLisaTaskDetail } from "../lisa/outbound.js";
+import { takeoverLisaCall, resolveChefPhone } from "../lisa/takeover.js";
 import { log } from "../log.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 
@@ -257,6 +259,86 @@ router.post("/clara/devices/recall-remove", async (req, res) => {
       } catch { /* Karte ist Zugabe — Entfernen hat schon geklappt */ }
     }
     res.status(r.ok ? 200 : 404).json({ ...r, card });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Public (deviceKey-gated): Live-Stand eines Lisa-Anrufs fuer die Flip-Ansicht.
+router.post("/clara/devices/lisa-live", async (req, res) => {
+  try {
+    const clientId = (req.body?.clientId || "").trim();
+    const taskId = (req.body?.taskId || "").trim();
+    if (!clientId || !taskId) {
+      return res.status(400).json({ ok: false, error: "client_task_required" });
+    }
+    const who = await identifyByDevice(clientId, req.body?.deviceId, req.body?.deviceKey);
+    if (!who) return res.status(401).json({ ok: false, error: "device_auth_failed" });
+    const out = await getLisaTaskDetail(clientId, taskId);
+    if (!out.ok) return res.status(out.reason === "not_found" ? 404 : 400).json(out);
+    const t = out.task || {};
+    const lines = Array.isArray(out.transcript) ? out.transcript : [];
+    const takeSt = String(t.takeover?.status || "");
+    let phase = "dialing";
+    if (t.status === "scheduled") phase = "scheduled";
+    else if (takeSt === "ringing") phase = "joining";
+    else if (takeSt === "joined") phase = "takeover";
+    else if (t.status === "calling" && lines.length) phase = "talking";
+    else if (t.status === "calling") phase = "dialing";
+    else if (t.status === "done" || t.outcome === "reached" || t.outcome === "taken_over") phase = "done";
+    else phase = "ended";
+    res.json({
+      ok: true,
+      taskId,
+      status: t.status || "",
+      phase,
+      takeover: takeSt,
+      phone: t.phone || "",
+      contactName: t.contactName || "",
+      instruction: t.prompt || "",
+      outcome: t.outcome || "",
+      summary: t.dialogSummary || t.resultSummary || "",
+      transcript: lines,
+      chefPhone: t.takeover?.chefPhone || who.takeoverPhone || "",
+    });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Public (deviceKey-gated): Chef in die laufende Leitung holen, Lisa stumm.
+router.post("/clara/devices/lisa-takeover", async (req, res) => {
+  try {
+    const clientId = (req.body?.clientId || "").trim();
+    const taskId = (req.body?.taskId || "").trim();
+    if (!clientId || !taskId) {
+      return res.status(400).json({ ok: false, error: "client_task_required" });
+    }
+    const who = await identifyByDevice(clientId, req.body?.deviceId, req.body?.deviceKey);
+    if (!who) return res.status(401).json({ ok: false, error: "device_auth_failed" });
+    const chefPhone = resolveChefPhone({
+      requested: req.body?.chefPhone,
+      stored: who.takeoverPhone,
+    });
+    if (chefPhone && req.body?.deviceId) {
+      await setDeviceTakeoverPhone(clientId, req.body.deviceId, chefPhone);
+    }
+    const out = await takeoverLisaCall(clientId, taskId, { chefPhone });
+    if (!out.ok) {
+      const status = out.reason === "not_found" ? 404 : 400;
+      return res.status(status).json(out);
+    }
+    res.json({
+      ok: true,
+      ringing: !!out.ringing,
+      joined: !!out.joined,
+      alreadyEnded: !!out.alreadyEnded,
+      phone: out.phone || "",
+      contactName: out.contactName || "",
+      chefPhone: chefPhone || "",
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

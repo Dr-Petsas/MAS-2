@@ -458,6 +458,7 @@
 
         <!-- Rückseite: Übersichtskarten (Heads-up, Doku-Memos, Tagesplan) -->
         <div class="flip-face flip-face--cards" data-clara-face-cards>
+          <div id="lisaLiveHost"></div>
           <div class="cards-face-head">
             <b>Clara</b>
             <small>VOLLINFORMIERT IN 10 SEKUNDEN</small>
@@ -522,6 +523,7 @@
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
     import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
+    import { mountLisaLive } from "/m/lisa-live.js?v=3";
 
     const qs = new URLSearchParams(location.search);
     const STORE_KEY = "clara.device.v1";
@@ -680,7 +682,7 @@
     // Klick auf freie Fläche flippt (Orb, Buttons, Links und die Karten
     // selbst bleiben bedienbar — die Karte anzutippen blättert NICHT um).
     els.flip?.addEventListener("click", (e) => {
-      if (e.target.closest("button, a, textarea, .card")) return;
+      if (e.target.closest("button, a, textarea, .card, .lisa-live")) return;
       setFlipped(!flipped);
     });
 
@@ -744,6 +746,12 @@
       }
     }
 
+    const lisaLive = mountLisaLive(document.getElementById("lisaLiveHost"), {
+      getAuth: () => (device?.deviceId && device?.deviceKey)
+        ? { clientId, deviceId: device.deviceId, deviceKey: device.deviceKey }
+        : null,
+    });
+
     function addCardToDeck(card) {
       const when = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
       // Gleiche Karte (Art + Titel) ersetzen statt stapeln — beim Diktieren
@@ -766,6 +774,7 @@
       // schadet aber nicht; im Audio-Modus wird sofort umgeblaettert.
       // (Kehrt die Badge-nur-Sonderregel fuer recall_kandidaten vom 28.07. um.)
       setFlipped(true);
+      if (card?.kind === "lisa_live" || card?.kind === "lisa_sms") lisaLive.start(card);
     }
 
     renderDeck();

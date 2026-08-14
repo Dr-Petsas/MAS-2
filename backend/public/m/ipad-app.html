@@ -1484,6 +1484,7 @@
             </div>
 
             <div class="flip-face flip-face--cards" data-clara-face-cards>
+              <div id="lisaLiveHost"></div>
               <div class="cards-face-head">
                 <b>Clara</b>
                 <small>VOLLINFORMIERT IN 10 SEKUNDEN</small>
@@ -1873,6 +1874,7 @@
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
+    import { mountLisaLive } from "/m/lisa-live.js?v=3";
 
     const qs = new URLSearchParams(location.search);
     const STORE_KEY = "pickadoc.ipad.v1";
@@ -1984,7 +1986,7 @@
     els.lblCards?.addEventListener("click", () => setFlipped(true));
     els.flip?.addEventListener("click", (e) => {
       if (isLandscape()) return; // im Split kein Umblättern
-      if (e.target.closest("button, a, textarea, .card")) return;
+      if (e.target.closest("button, a, textarea, .card, .lisa-live")) return;
       setFlipped(!flipped);
     });
     let touchX = 0, touchY = 0, touchAt = 0;
@@ -2035,6 +2037,20 @@
       }
       renderRightDeck();
     }
+    const lisaLive = mountLisaLive(document.getElementById("lisaLiveHost"), {
+      getAuth: () => (device?.deviceId && device?.deviceKey)
+        ? { clientId, deviceId: device.deviceId, deviceKey: device.deviceKey }
+        : null,
+    });
+    function placeLisaHost() {
+      const host = document.getElementById("lisaLiveHost");
+      const right = document.querySelector(".clara-right");
+      const cards = document.querySelector("[data-clara-face-cards]");
+      if (!host) return;
+      if (isLandscape() && right) right.insertBefore(host, right.firstChild);
+      else if (cards) cards.insertBefore(host, cards.firstChild);
+    }
+
     function addCardToDeck(card) {
       const when = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
       deck = deck.filter((e) => !(e.card?.kind === card.kind && e.card?.title === card.title));
@@ -2047,11 +2063,15 @@
       // Hochkant: zur Karten-Seite umblättern. Quer: Karten sitzen schon rechts.
       if (chatUi.getMode() === "audio" && !isLandscape()) setFlipped(true);
       else if (!isLandscape()) { unseenCards += 1; updateBadge(); }
+      if (card?.kind === "lisa_live" || card?.kind === "lisa_sms") {
+        placeLisaHost();
+        lisaLive.start(card);
+      }
     }
     renderDeck();
     window.__claraRenderRightDeck = renderRightDeck;
-    window.addEventListener("orientationchange", () => setTimeout(renderRightDeck, 80));
-    window.matchMedia("(orientation: landscape)").addEventListener?.("change", () => renderRightDeck());
+    window.addEventListener("orientationchange", () => setTimeout(() => { placeLisaHost(); renderRightDeck(); }, 80));
+    window.matchMedia("(orientation: landscape)").addEventListener?.("change", () => { placeLisaHost(); renderRightDeck(); });
 
     const agentEls = Array.from(els.agents?.querySelectorAll("span") || []);
     let agentPtr = 0, agentCurrent = -1;

@@ -35,6 +35,7 @@ import testtrainRouter from "./routes/testtrain.js";
 import testlabRouter from "./routes/testlab.js";
 import devicesRouter from "./routes/devices.js";
 import lisaToolsRouter from "./routes/lisaTools.js";
+import lisaTwilioRouter from "./routes/lisaTwilio.js";
 import treatmentRouter from "./routes/treatment.js";
 import claraSwitchRouter from "./routes/claraSwitch.js";
 import zusageRouter from "./routes/zusage.js";
@@ -203,6 +204,7 @@ app.use(testtrainRouter);
 app.use(testlabRouter);
 app.use(devicesRouter);
 app.use(lisaToolsRouter);
+app.use(lisaTwilioRouter);
 app.use(treatmentRouter);
 app.use(claraSwitchRouter);
 // Online-Zusage aus Recall-SMS (oeffentlich, token-gesichert) — vor dem

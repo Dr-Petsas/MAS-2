@@ -260,7 +260,14 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
   await upsertSharedContact(clientId, { name, phone: to, source: "lisa_sms" });
 
   const spokenTo = name ? `${name}` : `die Nummer ${to.replace("+49", "0")}`;
-  return { ok: true, taskId: taskRef.id, message: `Erledigt — die SMS an ${spokenTo} ist raus.` };
+  return {
+    ok: true,
+    taskId: taskRef.id,
+    phone: to,
+    contactName: name,
+    body,
+    message: `Erledigt — die SMS an ${spokenTo} ist raus.`,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -282,7 +289,11 @@ async function elevenOutboundCall({ to, dynamicVariables }) {
   if (!r.ok) {
     return { ok: false, error: data?.detail?.message || data?.detail || `elevenlabs_http_${r.status}` };
   }
-  return { ok: true, conversationId: data?.conversation_id || null, callSid: data?.callSid || null };
+  return {
+    ok: true,
+    conversationId: data?.conversation_id || data?.conversationId || null,
+    callSid: data?.callSid || data?.call_sid || data?.twilio_call_sid || null,
+  };
 }
 
 async function elevenGetConversation(conversationId) {
@@ -420,7 +431,12 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     .where("kind", "==", "call").where("status", "==", "calling").limit(25).get();
   const active = activeSnap.docs.map((d) => d.data()).find((t) => t.phone === to);
   if (active) {
-    return { ok: false, message: "Lisa telefoniert bereits mit dieser Nummer. Ich starte keinen zweiten Anruf." };
+    return {
+      ok: false,
+      alreadyRunning: true,
+      taskId: active.id,
+      message: "Lisa telefoniert bereits mit dieser Nummer. Ich starte keinen zweiten Anruf.",
+    };
   }
 
   if (await isDuplicateDelegation(clientId, "call", to, prompt)) {
@@ -628,6 +644,11 @@ export async function finalizeLisaCalls(clientId) {
       const task = doc.data();
       if (!task.conversationId) continue;
       try {
+        // Chef hat übernommen: EL-Conversation stirbt oft beim Umlegen in
+        // die Konferenz — Task bleibt calling, bis die Konferenz endet.
+        const takeSt = String(task.takeover?.status || "");
+        if (takeSt === "ringing" || takeSt === "joined") continue;
+
         const conv = await elevenGetConversation(task.conversationId);
         const status = String(conv?.status || "").toLowerCase();
         if (!["done", "failed"].includes(status)) continue; // still running
@@ -804,12 +825,21 @@ export async function listLisaTasks(clientId, limit = 25) {
 // gecacht, damit wiederholtes Öffnen ElevenLabs nicht erneut trifft.
 // ----------------------------------------------------------------------------
 
+function transcriptRole(role) {
+  const r = String(role || "").toLowerCase();
+  if (["agent", "assistant", "lisa"].includes(r)) return "agent";
+  if (["chef", "doctor", "operator"].includes(r)) return "chef";
+  return "user";
+}
+
 function normalizeTranscriptItems(raw) {
   return (Array.isArray(raw) ? raw : [])
     .map((m) => ({
-      role: ["agent", "assistant"].includes(String(m.role || "").toLowerCase()) ? "agent" : "user",
+      role: transcriptRole(m.role),
       message: String(m.message || m.text || "").trim(),
-      timeInCallSecs: Number.isFinite(Number(m.time_in_call_secs)) ? Number(m.time_in_call_secs) : -1,
+      timeInCallSecs: Number.isFinite(Number(m.time_in_call_secs ?? m.timeInCallSecs))
+        ? Number(m.time_in_call_secs ?? m.timeInCallSecs)
+        : -1,
     }))
     .filter((m) => m.message);
 }
@@ -855,12 +885,18 @@ export async function getLisaTaskDetail(clientId, taskId) {
         const m = /^([A-Za-z_]+):\s*(.+)$/.exec(line.trim());
         if (!m) return null;
         return {
-          role: ["agent", "assistant"].includes(m[1].toLowerCase()) ? "agent" : "user",
+          role: transcriptRole(m[1]),
           message: m[2].trim(),
           timeInCallSecs: -1,
         };
       })
       .filter(Boolean);
+  }
+
+  const extra = normalizeTranscriptItems(task.takeoverTranscript);
+  if (extra.length) {
+    const seen = new Set((transcript || []).map((r) => `${r.role}|${r.message}`));
+    transcript = [...(transcript || []), ...extra.filter((r) => !seen.has(`${r.role}|${r.message}`))];
   }
 
   return {
@@ -890,4 +926,50 @@ export async function getLisaTaskAudio(clientId, taskId) {
   if (!r.ok) return { ok: false, reason: `elevenlabs_http_${r.status}` };
   const buffer = Buffer.from(await r.arrayBuffer());
   return { ok: true, buffer, contentType: r.headers.get("content-type") || "audio/mpeg" };
+}
+
+/**
+ * Notaus: Lisa auflegen (Twilio Call complete). Die Live-Taste „Gespräch
+ * übernehmen“ geht über takeover.js — diese Funktion bleibt für den Fall,
+ * dass keine Konferenz zustande kommt.
+ */
+export async function hangupLisaCall(clientId, taskId) {
+  const doc = await tasksCol(clientId).doc(String(taskId)).get();
+  if (!doc.exists) return { ok: false, reason: "not_found" };
+  const task = doc.data() || {};
+  if (task.status !== "calling") {
+    return { ok: true, alreadyEnded: true, phone: task.phone || "", contactName: task.contactName || "" };
+  }
+
+  const sid = env("TWILIO_ACCOUNT_SID");
+  const token = env("TWILIO_AUTH_TOKEN");
+  const callSid = String(task.callSid || "").trim();
+  if (sid && token && callSid) {
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Calls/${encodeURIComponent(callSid)}.json`;
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ Status: "completed" }),
+    });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      log.warn("lisa.call.hangup_failed", { clientId, taskId, error: data?.message || r.status });
+    }
+  } else {
+    log.warn("lisa.call.hangup_no_sid", { clientId, taskId, hasCallSid: !!callSid });
+  }
+
+  await doc.ref.update({
+    status: "failed",
+    outcome: "taken_over",
+    resultSummary: "Der Chef hat das Gespräch übernommen — Lisa hat aufgelegt.",
+    endedAt: FieldValue.serverTimestamp(),
+  }).catch((e) => {
+    log.warn("lisa.call.hangup_write_failed", { clientId, taskId, error: String(e?.message || e) });
+  });
+
+  return { ok: true, phone: task.phone || "", contactName: task.contactName || "" };
 }

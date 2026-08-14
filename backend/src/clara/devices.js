@@ -398,7 +398,21 @@ export async function identifyByDevice(clientId, deviceId, deviceKey) {
   const d = snap.data();
   if (!safeEq(hashSecret(clientId, s(deviceKey)), d.secretHash || "")) return null;
   snap.ref.update({ lastSeenAtMs: Date.now() }).catch(() => {});
-  return { id: d.operatorId, name: d.operatorName, role: d.role, doctorName: d.doctorName || null, deviceId: d.id };
+  return {
+    id: d.operatorId,
+    name: d.operatorName,
+    role: d.role,
+    doctorName: d.doctorName || null,
+    deviceId: d.id,
+    takeoverPhone: d.takeoverPhone || null,
+  };
+}
+
+/** Speichert die Chef-Nummer für „Gespräch übernehmen“ am Gerät. */
+export async function setDeviceTakeoverPhone(clientId, deviceId, phoneE164) {
+  const n = s(phoneE164);
+  if (!s(deviceId) || !n) return;
+  await devicesCol(clientId).doc(s(deviceId)).update({ takeoverPhone: n }).catch(() => {});
 }
 
 /**
