@@ -54,7 +54,8 @@ const STIL_LOSUNGEN = [
     // "Stelle Zusammenhaenge her ('weil','deshalb')" stand hier — GESTRICHEN
     // 04.07.2026: Der Test zeigte eine ERFUNDENE Kausalitaet ("kommt zur PZR,
     // weil sie Marcumar nimmt"). Verbindungen herstellen darf nur die Quelle.
-    "Nutze weiche Uebergaenge ('dabei', 'ausserdem', 'denk auch an'), OHNE neue Zusammenhaenge zu behaupten.",
+    "Nutze weiche Uebergaenge ('dabei', 'ausserdem', 'und', 'und zwar'), OHNE neue Zusammenhaenge zu behaupten.",
+    "Verbinde die Saetze mit Konjunktionen und Nebensaetzen — wie eine muendliche Uebergabe, keine Liste.",
     "Sprich es wie eine kurze persoenliche Uebergabe am Empfang, nicht wie einen Bericht.",
     "Fang mit einer anderen Satzstellung an als das Original — Inhalt gleich, Bau anders.",
     "Wechsle das erste Verb: statt 'haben Sie' mal 'stehen', 'liegen', 'kommen zusammen'.",
@@ -309,7 +310,7 @@ export async function freiFormulieren(text, { kontext = "interne Team-Ansage", t
         "4. Termin-Notizen und Zitate (alles nach 'Geplant:', 'Notiz', 'Vorgang') WOERTLICH uebernehmen — dort nichts umformulieren.",
         "5. Medizinische Hinweise und Warnungen (Allergien, Medikamente, Vorerkrankungen) muessen deutlich hoerbar bleiben.",
         "6. KEINE Geldbetraege, keine Emojis, keine Aufzaehlungszeichen, kein Markdown, keine Anfuehrungszeichen um die Antwort.",
-        "7. Gesprochene Sprache, fluessige Saetze, aehnliche Laenge wie das Original.",
+        "7. Gesprochene Sprache, fluessige Saetze mit Konjunktionen und Nebensaetzen (und, dabei, ausserdem, und zwar). Aehnliche Laenge wie das Original. KEINE Aufzaehlung 'erstens, zweitens'.",
         "8. KEINE Kausalitaeten erfinden: 'weil'/'deshalb'/'daher' NUR, wenn der Zusammenhang woertlich in der Quelle steht. Ein Termin passiert nicht 'wegen' eines Anamnese-Hinweises.",
         "9. KEINE Zeit-Einordnung dazuerfinden ('heute', 'morgen', 'gleich') — nur uebernehmen, was die Quelle sagt.",
         "10. Handelnde NIE vertauschen: Wenn LISA angerufen/erreicht hat, bleibt es 'Lisa hat ...' — NIEMALS 'ich habe angerufen/erreicht'. Du berichtest nur.",

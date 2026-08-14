@@ -826,26 +826,10 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   // (ggf. gefilterten) Liste ableiten, damit "davon noch nicht verschickt"
   // stimmt (ausserhalb midday identisch zu briefing.docsRed/docsYellow).
   const att = (briefing.attention || []).filter((a) => !midday || (a.startMs || 0) >= nowMs);
-  const attRed = att.filter((a) => a.docsStatus === "red").length;
-  const attYellow = att.filter((a) => a.docsStatus === "yellow").length;
-  if (att.length && overview) {
-    // Zoom-out: NICHT jeden Termin einzeln vorlesen (das nervt und liess den
-    // Loop-Guard faelschlich anschlagen — "ich drehe mich im Kreis"). Stattdessen
-    // zaehlen + Detail auf Zuruf.
-    const prep = attRed + attYellow;
-    const notes = att.length - prep > 0 ? att.length - prep : 0;
-    const bits = [];
-    if (prep) bits.push(`bei ${prep} ${prep === 1 ? "Termin fehlen noch Unterlagen" : "Terminen fehlen noch Unterlagen"}${attRed ? ` (${attRed} davon noch nicht verschickt)` : ""}`);
-    if (notes) bits.push(`${notes} ${notes === 1 ? "Termin hat eine Notiz" : "Termine haben Notizen"}`);
-    if (bits.length) {
-      parts.push(vary("brief.prep", [
-        `Vorzubereiten: ${bits.join(", ")}. Sag Bescheid, dann gehe ich die Termine einzeln durch.`,
-        `Noch offen: ${bits.join(", ")}. Wenn Sie wollen, gehe ich die einzeln durch.`,
-        `Bitte vormerken: ${bits.join(", ")}. Auf Zuruf ziehe ich die Termine raus.`,
-      ]));
-    }
-    if (att.some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());
-  } else if (att.length) {
+  // Zoom-out (Chef 14.08.2026): im Lagebild keine generische
+  // "Vorzubereiten"-Zaehlung — dayOverview spricht die echten
+  // Auffaelligkeiten. Einzelne Hinweise nur in der Detail-Ansage.
+  if (att.length && !overview) {
     const lines = att.slice(0, SPOKEN_ATTENTION_MAX).map((a) => {
       const bits = [];
       if (a.docsStatus === "yellow") bits.push("die Unterlagen sind noch nicht unterschrieben");

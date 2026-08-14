@@ -1,5 +1,6 @@
 import {
   getDayAppointments,
+  getPatientAppointments,
   computeDayBriefing,
   buildSpokenDayBriefing,
   todayBerlin,
@@ -8,6 +9,9 @@ import { queryRecent } from "../brain/eventStore.js";
 import { buildBriefing } from "../brain/briefing.js";
 import { buildRedList, spokenRedList } from "../brain/redList.js";
 import { karteTag } from "./karten.js";
+import { vary } from "./speech.js";
+import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
+import { sammleAuffaelligkeiten, sprecheAuffaelligkeiten } from "./dayNotables.js";
 
 // ============================================================================
 // Tages-Lagebild ("Was läuft heute?" / "Tagesprotokoll").
@@ -75,26 +79,59 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
   let calls = 0;
   const highlights = [];
 
-  // 2.+3. nur für HEUTE: was ist über Telefon/E-Mail reingekommen + was fällt auf.
+  // 2. Auffaelligkeiten der HEUTIGEN Patienten — nicht die Chronologie.
+  // Unterlagen, Notizen, Mails, Mehrfach-Anrufe, versaeumter letzter Termin.
+  const echte = (dayData.appointments || []).filter((a) => !a.isAbsence && a.patientId);
+  let casesByPatient = new Map();
+  try {
+    casesByPatient = await listActiveCasesByPatientIds(clientId, echte.map((a) => a.patientId));
+  } catch { /* Vorgaenge optional */ }
+
+  let todays = [];
   if (isToday) {
     const since = Date.now() - 26 * 60 * 60 * 1000;
     const events = await queryRecent(clientId, since, 1000).catch(() => []);
-    const todays = (events || []).filter((e) => e.ts && berlinDay(e.ts) === today);
-
+    todays = (events || []).filter((e) => e.ts && berlinDay(e.ts) === today);
     calls = todays.filter((e) => /call/.test(e.channel || "") && (e.direction || "in") === "in").length;
     mails = todays.filter((e) => /(mail|email)/.test(e.channel || "") && (e.direction || "in") === "in").length;
+    if (mails || calls) hadComms = true;
+  }
 
-    const commsBits = [];
-    if (mails) commsBits.push(mails === 1 ? "eine E-Mail" : `${mails} E-Mails`);
-    if (calls) commsBits.push(calls === 1 ? "ein Anruf" : `${calls} Anrufe`);
-    if (commsBits.length) {
-      const verb = commsBits.length === 1 && (mails === 1 || calls === 1) ? "ist" : "sind";
-      parts.push(`Heute ${verb} ${commsBits.join(" und ")} eingegangen.`);
-      hadComms = true;
-    }
+  const lastByPatient = new Map();
+  try {
+    const probe = echte.slice(0, 6);
+    await Promise.all(probe.map(async (a) => {
+      const hist = await getPatientAppointments(clientId, {
+        patientId: a.patientId, lastName: a.patientLastName,
+      }).catch(() => null);
+      if (hist?.ok && hist.last) lastByPatient.set(String(a.patientId), hist.last);
+    }));
+  } catch { /* Historie optional */ }
 
-    // Top-Auffälligkeiten: rote Liste (Anwalt/Kammer/Mahnung/Fristen) ZUERST,
-    // dann die jüngste Beschwerde. Maximal drei Punkte — den Rest auf Nachfrage.
+  const attention = (briefing.attention || []).map((a) => ({
+    ...a,
+    time: a.startMs ? spokenClock(a.startMs) : "",
+  }));
+  const notables = sammleAuffaelligkeiten({
+    appointments: echte.map((a) => ({ ...a, time: a.startMs ? spokenClock(a.startMs) : "" })),
+    briefing: { ...briefing, attention },
+    casesByPatient,
+    events: todays,
+    lastByPatient,
+  });
+  const notableText = sprecheAuffaelligkeiten(notables);
+  if (notableText) {
+    parts.push(notableText);
+    hadHighlights = true;
+  } else if (isToday && (mails || calls)) {
+    const bits = [];
+    if (mails) bits.push(mails === 1 ? "eine E-Mail" : `${mails} E-Mails`);
+    if (calls) bits.push(calls === 1 ? "ein Anruf" : `${calls} Anrufe`);
+    parts.push(`Heute ${bits.length === 1 && (mails === 1 || calls === 1) ? "ist" : "sind"} ${bits.join(" und ")} eingegangen.`);
+  }
+
+  // 3. Praxis-weit (nicht an einen Tagespatienten gebunden): rote Liste.
+  if (isToday) {
     try {
       const redList = await buildRedList(clientId).catch(() => ({ critical: [], deadlines: [] }));
       const red = spokenRedList(redList, { max: 2, bare: true });
@@ -104,18 +141,21 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
       const c = buildBriefing(todays).groups.complaints[0];
       if (c) highlights.push(`${c.who} hat sich um ${spokenClock(c.ts)} gemeldet${c.summary ? ` — ${c.summary}` : ""}`);
     } catch { /* Beschwerde optional */ }
-
     if (highlights.length) {
-      parts.push(`Aufgefallen ist mir: ${highlights.slice(0, 3).join("; ")}.`);
+      parts.push(`Dazu kommt: ${highlights.slice(0, 2).join(", und ")}.`);
       hadHighlights = true;
     }
   }
 
-  // 4. Detail-Angebot — nennt nur die Dimensionen, die es heute auch gibt.
-  const drill = ["die Termine"];
-  if (hadComms) drill.push("E-Mails oder Anrufe");
-  if (hadHighlights) drill.push("die Auffälligkeiten");
-  parts.push(`Soll ich irgendwo ins Detail gehen — ${drill.join(", ")}?`);
+  // 4. Detail-Angebot — den Rest gibt es auf Zuruf, nicht in der Ansage.
+  const drill = ["einzelne Termine"];
+  if (hadComms) drill.push("Mails oder Anrufe");
+  if (hadHighlights) drill.push("eine der Auffälligkeiten");
+  parts.push(vary("brief.drill", [
+    `Soll ich irgendwo ins Detail gehen — ${drill.join(", ")}?`,
+    `Wenn Sie wollen, gehe ich ${drill.join(" oder ")} einzeln durch.`,
+    `Den Rest habe ich, sagen Sie einfach, wo ich tiefer einsteige.`,
+  ]));
 
   // Übersichts-Karte für die Handy-App: dieselben Fakten strukturiert
   // (Termine, Spanne, Lücken, Neupatienten, Ampeln, Kommunikation).

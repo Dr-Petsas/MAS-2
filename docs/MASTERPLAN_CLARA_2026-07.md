@@ -1273,6 +1273,9 @@ Testschuld, das ist die Architektur.
       (`overview: true` + Nachfrage); `list_day_appointments` und
       `patient_next_appointment` liefern jetzt strukturierte Termine fuer den
       Merkzettel (Nachfassen ohne zweiten Backend-Weg).
+      14.08.2026: Lagebild spricht zuerst das Auffaellige (Unterlagen,
+      Notiz, Mail, Mehrfach-Anruf, versaeumter letzter Termin) statt der
+      Chronologie; Details bleiben auf Zuruf / in den Karten.
 - [x] WP5 Vorschlag/Bestaetigung statt blinder Absage: Storno/Verschieben geht
       erst ueber `patient_next_appointment`, setzt offene Handlung, "ja"/"den"
       loest aus. Intent-Router schreibt nicht mehr search→cancel um.
