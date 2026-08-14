@@ -257,6 +257,12 @@ export function spokenLooksLikeNewPerson(hint, candidates = []) {
   if (/^\s*(?:der|die|das)?\s*(?:erste[rn]?|zweite[rn]?|dritte[rn]?|letzte[rn]?)\s*$/i.test(low)) {
     return false;
   }
+  // "Den ersten Eintrag bitte" ist eine Auswahl, kein neuer Name
+  // (14.08.2026: Haila El-Otmani -> Philipp-Moritz Bitter).
+  if (/\b(erste[rn]?|zweite[rn]?|dritte[rn]?|vierte[rn]?|letzte[rn]?)\b/.test(low)
+      && /\b(eintrag\w*|vorschlag\w*|treffer\w*)\b/.test(low)) {
+    return false;
+  }
   for (const p of candidates || []) {
     const have = new Set(nameTokens(`${p.firstName || p.f || ""} ${p.lastName || p.l || ""}`));
     for (const t of tokens) {

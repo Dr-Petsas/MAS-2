@@ -119,6 +119,11 @@ check("'der erste' ist keine neue Person",
   spokenLooksLikeNewPerson("der erste", [
     { firstName: "Naomi", lastName: "Amofa-Datuo" },
   ]) === false);
+check("'Den ersten Eintrag bitte' ist keine neue Person",
+  spokenLooksLikeNewPerson("Den ersten Eintrag bitte", [
+    { firstName: "Haila", lastName: "El Otmani" },
+    { firstName: "Theresa", lastName: "Heldmann" },
+  ]) === false);
 check("'Naomi' bleibt Auswahl in der Liste",
   spokenLooksLikeNewPerson("Naomi", [
     { firstName: "Naomi", lastName: "Amofa-Datuo" },

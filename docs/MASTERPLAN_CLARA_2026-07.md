@@ -2488,6 +2488,13 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Kontaktkarte: „den ersten“ gilt nur die vorgelesene Liste.**
+  Live: Haila El-Otmani korrekt gehoert, Suche lieferte Haila + Heldmann
+  (Bindestrich vs. Leerzeichen), „Den ersten Eintrag“ wurde als neue
+  Namenssuche behandelt und schickte Philipp-Moritz Bitter. Jetzt:
+  `contact_card` loest Ordinal zuerst auf; Ordinal-Satz wird nie als Name
+  gesucht; fast-exakter Name (Bindestrich/Partikel egal) gewinnt allein.
+  Tests: test-patient-disambig + test-patient-catalog.
 - 14.08.2026: **Kolleginnen-Chips leuchten am Trigger, nicht am Satz.**
   Handy/iPad mappen Tool (`call_log`→Bianca, `ask_nadine`→Nadine,
   `send_sms`→Lisa, Doku→Lena, …) und Kartenart. Kalender bleibt dunkel

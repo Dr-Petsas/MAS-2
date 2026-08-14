@@ -141,14 +141,54 @@ export function narrowByPhoneFragment(hintLower, candidates = []) {
  * Exakter Voll-Name-Match ("Stefan Meier" trifft Stefan Meier, aber nicht
  * Stefanie Meierhoefer). Grenzt nur ein, wenn das Ergebnis ECHT kleiner wird.
  */
+function foldName(raw) {
+  return ` ${s(raw).toLowerCase().replace(/[-']/g, " ").replace(/\s+/g, " ").trim()} `;
+}
+
+const NAME_PARTICLES = new Set([
+  "el", "al", "ben", "bin", "van", "von", "de", "di", "da", "du", "le", "la",
+]);
+
+function nameTokens(raw) {
+  return foldName(raw).trim().split(/\s+/).filter((t) => t.length >= 2);
+}
+
 export function narrowByExactName(nameOrHintLower, candidates = []) {
-  const h = ` ${s(nameOrHintLower).toLowerCase().replace(/\s+/g, " ")} `;
+  const h = foldName(nameOrHintLower);
   if (h.trim().length < 5) return [];
   const hits = candidates.filter((p) => {
-    const fn = fullName(p).toLowerCase();
+    const fn = foldName(fullName(p)).trim();
     return fn.length >= 5 && h.includes(` ${fn} `);
   });
   return hits.length && hits.length < candidates.length ? hits : [];
+}
+
+/**
+ * Fast-exakter Name: alle echten Namenswörter der Anfrage stecken im Treffer.
+ * "Haila El-Otmani" trifft "Haila El Otmani" und wirft Theresa Heldmann raus.
+ * Bindestrich und Partikel (El/Van/De) zählen nicht als Unterschied.
+ */
+export function narrowByNearName(query, candidates = []) {
+  const q = nameTokens(query).filter((t) => !NAME_PARTICLES.has(t));
+  if (!q.length) return [];
+  if (q.length === 1 && q[0].length < 5) return [];
+  const hits = (candidates || []).filter((p) => {
+    const have = new Set(nameTokens(fullName(p)));
+    return q.every((t) => have.has(t));
+  });
+  return hits.length && hits.length < candidates.length ? hits : [];
+}
+
+/** "Den ersten Eintrag bitte" ist eine Auswahl, kein Patientenname. */
+export function isOrdinalChoice(text) {
+  const h = s(text).toLowerCase();
+  if (!h || !ordinalPick(h, [{}, {}, {}, {}, {}])) return false;
+  const stripped = h
+    .replace(/\b(der|die|das|den|dem|bitte|eintrag\w*|vorschlag\w*|treffer\w*|nimm|nehmen|wir)\b/g, " ")
+    .replace(/\b(erste[rn]?|zweite[rn]?|dritte[rn]?|vierte[rn]?|fünfte[rn]?|fuenfte[rn]?|letzte[rn]?)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return stripped.length < 3;
 }
 
 // ============================================================================

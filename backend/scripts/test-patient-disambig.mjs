@@ -8,6 +8,8 @@ import {
   ordinalPick,
   narrowByPhoneFragment,
   narrowByExactName,
+  narrowByNearName,
+  isOrdinalChoice,
   patientLabel,
 } from "../src/clara/patientDisambig.js";
 
@@ -77,4 +79,36 @@ test("narrowByExactName: Stefan Meier trifft NICHT Stefanie Meierhoefer", () => 
 
 test("narrowByExactName: kein Fortschritt wenn alle gleich heissen", () => {
   assert.deepEqual(narrowByExactName("stefan meier", [meier1, meier2]), []);
+});
+
+// Live 14.08.2026: "Haila El-Otmani" + Bindestrich vs. "Haila El Otmani",
+// zweiter Treffer Theresa Heldmann, dann "Den ersten Eintrag" -> Bitter.
+const haila = { firstName: "Haila", lastName: "El Otmani" };
+const heldmann = { firstName: "Theresa", lastName: "Heldmann" };
+const bitter = { firstName: "Philipp-Moritz", lastName: "Bitter" };
+
+test("narrowByExactName: Bindestrich zaehlt nicht (El-Otmani == El Otmani)", () => {
+  const hits = narrowByExactName("haila el-otmani", [haila, heldmann]);
+  assert.deepEqual(hits, [haila]);
+});
+
+test("narrowByNearName: Haila El-Otmani wirft Heldmann raus", () => {
+  const hits = narrowByNearName("Haila El-Otmani", [haila, heldmann, bitter]);
+  assert.deepEqual(hits, [haila]);
+});
+
+test("narrowByNearName: nur Partikel allein grenzt nicht ein", () => {
+  assert.deepEqual(narrowByNearName("El", [haila, heldmann]), []);
+});
+
+test("isOrdinalChoice: Den ersten Eintrag bitte", () => {
+  assert.equal(isOrdinalChoice("Den ersten Eintrag bitte"), true);
+  assert.equal(isOrdinalChoice("der erste"), true);
+  assert.equal(isOrdinalChoice("nimm den zweiten Treffer"), true);
+  assert.equal(isOrdinalChoice("Haila El-Otmani"), false);
+  assert.equal(isOrdinalChoice("Naomi die erste"), false);
+});
+
+test("ordinalPick: Den ersten Eintrag bitte trifft den ersten Kandidaten", () => {
+  assert.equal(ordinalPick("den ersten eintrag bitte", [haila, heldmann]), haila);
 });

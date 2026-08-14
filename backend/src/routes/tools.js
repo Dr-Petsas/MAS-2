@@ -48,7 +48,7 @@ import { spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
-import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName, collapseSamePerson } from "../clara/patientDisambig.js";
+import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isOrdinalChoice, collapseSamePerson } from "../clara/patientDisambig.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
@@ -228,6 +228,15 @@ const SPOKEN_NAME_VARIANTS = [
 // Person) werden ZENTRAL zusammengefasst, bevor irgendein Aufrufer die Liste
 // sieht — sonst landet Clara bei "Xenofon oder Xenofon?" in einer Schleife
 // (Chef-Regel 31.07.2026). Wirklich verschiedene Personen bleiben getrennt.
+function tightenNameHits(query, patients) {
+  if (!query || !Array.isArray(patients) || patients.length < 2) return patients;
+  const exact = narrowByExactName(String(query).toLowerCase(), patients);
+  if (exact.length) return exact;
+  const near = narrowByNearName(query, patients);
+  if (near.length) return near;
+  return patients;
+}
+
 function collapseResultPatients(res) {
   if (res && Array.isArray(res.patients) && res.patients.length > 1) {
     return { ...res, patients: collapseSamePerson(res.patients) };
@@ -4342,6 +4351,9 @@ router.post("/tools/find-contact", async (req, res) => {
         }
       }
     }
+    if (rawName && isOrdinalChoice(rawName)) {
+      return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
+    }
 
     // Kollegen der Praxis stehen VOR der Patientenkartei (Chef 27.07.2026:
     // "Wieso findet Clara die Kontaktdaten von Dr. Petsas nicht?"). In der
@@ -4379,12 +4391,7 @@ router.post("/tools/find-contact", async (req, res) => {
       const found = await searchPatientSpoken(clientId, name);
       if (!found.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` });
       candidates = found.patients || [];
-      // Exakter Voll-Name schlaegt Teil-Treffer ("Stefan Meier" soll nicht an
-      // "Stefanie Meierhoefer" haengen bleiben).
-      if (candidates.length > 1) {
-        const exact = narrowByExactName(name.toLowerCase(), candidates);
-        if (exact.length) candidates = exact;
-      }
+      if (candidates.length > 1) candidates = tightenNameHits(name, candidates);
       if (!candidates.length) {
         // Kein Patient -> vielleicht ein Kollege ohne Titel im Satz
         // ("Ruf Patrikis an"), erst danach der externe Kontakt.
@@ -4954,6 +4961,9 @@ router.post("/tools/search-patient", async (req, res) => {
         });
       }
     }
+    if (rawName && isOrdinalChoice(rawName)) {
+      return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
+    }
 
     // Cross-Call-Gedaechtnis: "den Patienten von vorhin" — bezieht sich auf das
     // ZULETZT beendete Gespraech, nicht auf eine offene Kandidatenliste. Greift
@@ -5023,12 +5033,9 @@ router.post("/tools/search-patient", async (req, res) => {
           message: `Kein Patient mit dem Namen ${name} gefunden. Auch im Adressbuch nichts Passendes.`,
         });
       }
-      // Exakter Voll-Name schlaegt Teil-Treffer ("Stefan Meier" soll nicht an
-      // "Stefanie Meierhoefer" haengen bleiben) — Stefan-Meier-Loop 2026-06-11.
-      if (patients.length > 1) {
-        const exact = narrowByExactName(name.toLowerCase(), patients);
-        if (exact.length) patients = exact;
-      }
+      // Exakter / fast-exakter Name schlaegt Teil-Treffer (Haila El-Otmani
+      // darf nicht Theresa Heldmann als zweiten Treffer behalten).
+      if (patients.length > 1) patients = tightenNameHits(name, patients);
     } else {
       patients = await getPatientCandidates(clientId);
       if (!patients.length) {
@@ -5040,6 +5047,7 @@ router.post("/tools/search-patient", async (req, res) => {
       const result = await searchPatientSpoken(clientId, hint);
       if (result.ok) {
         patients = result.patients || [];
+        if (patients.length > 1) patients = tightenNameHits(hint, patients);
         if (!patients.length) {
           await setPatientCandidates(clientId, [], null);
           return res.json({
@@ -5142,9 +5150,28 @@ router.post("/tools/contact-card", async (req, res) => {
     const rawName = (req.body?.name || "").trim();
     const hint = String(req.body?.hint || "").trim();
 
+    // Ordinal zuerst — "Den ersten Eintrag" darf nie als frische Namenssuche
+    // laufen (14.08.2026: Haila/Heldmann -> Philipp-Moritz Bitter).
+    let patients = [];
+    let pickedByOrdinal = false;
+    {
+      const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
+      if (ordinalSource) {
+        const remembered = await getPatientCandidates(clientId);
+        const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
+        if (byOrd) {
+          patients = [byOrd];
+          pickedByOrdinal = true;
+        }
+      }
+    }
+    if (!pickedByOrdinal && rawName && isOrdinalChoice(rawName)) {
+      return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
+    }
+
     // Kollegen zuerst (Chef 27.07.2026) — siehe find-contact: gleichnamige
     // Alt-Datensaetze in der Kartei duerfen Dr. Petsas nicht verdecken.
-    if (rawName && hasColleagueTitle(rawName)) {
+    if (!pickedByOrdinal && rawName && hasColleagueTitle(rawName)) {
       const kollege = await findDirectoryContact(clientId, rawName).catch(() => null);
       if (kollege && (kollege.mobile || kollege.phone || kollege.email)) {
         const nummer = kollege.mobile || kollege.phone;
@@ -5167,17 +5194,17 @@ router.post("/tools/contact-card", async (req, res) => {
 
     // Patient identifizieren — gleiche Route wie search_patient (inkl.
     // Nachfrage gegen die gemerkten Kandidaten und STT-Varianten-Suche).
-    let patients = [];
-    if (rawName) {
+    if (!pickedByOrdinal && rawName) {
       const name = cleanSpokenPersonName(rawName) || rawName;
       const result = await searchPatientSpoken(clientId, name);
       if (!result.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${result.error}` });
       patients = result.patients || [];
+      if (patients.length > 1) patients = tightenNameHits(name, patients);
       if (!patients.length) {
         await setPatientCandidates(clientId, [], null);
         return res.json({ ok: true, message: `Kein Patient mit dem Namen ${name} gefunden.` });
       }
-    } else {
+    } else if (!pickedByOrdinal) {
       patients = await getPatientCandidates(clientId);
       if (!patients.length) {
         const sel = await getSelectedPatient(clientId);
@@ -5188,10 +5215,11 @@ router.post("/tools/contact-card", async (req, res) => {
 
     // Neuer Name nach falscher Trefferliste: nicht in Amofa/Karadavut
     // weitersuchen, sondern frisch (Chef 14.08.2026, Muhamedjanowa).
-    if (hint && spokenLooksLikeNewPerson(hint, patients)) {
+    if (!pickedByOrdinal && hint && spokenLooksLikeNewPerson(hint, patients)) {
       const result = await searchPatientSpoken(clientId, hint);
       if (result.ok) {
         patients = result.patients || [];
+        if (patients.length > 1) patients = tightenNameHits(hint, patients);
         if (!patients.length) {
           await setPatientCandidates(clientId, [], null);
           return res.json({ ok: true, message: `Kein Patient mit dem Namen ${hint} gefunden.` });
