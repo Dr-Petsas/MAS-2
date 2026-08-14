@@ -2492,6 +2492,14 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Super-GAU Anruf-Nummer.** „Ruf Haila El-Otmani an“:
+  richtige Kontaktkarte, danach wählte Lisa `01763069747` (LLM-Nummer,
+  nicht der Datensatz). Dieselbe Runde: find_contact + delegate_call,
+  keine Bestätigung. Jetzt: bei „Ruf X an“ keine Kontaktkarte, Flip
+  auf Lisa-Karte, Clara fragt „Ist das X?“, Lisa wählt erst nach Ja
+  und NUR die Nummer aus dem Datensatz. confirm=true im selben Zug
+  zählt nicht. Clara bleibt auf der Vorschau hörbar, nach dem Wählen
+  stumm (hold). Tests: test-delegate-confirm.
 - 14.08.2026: **Begruessung bleibt variabel** (Chef: so lassen, spaeter
   zurueckbauen). Eintrag auf der Warteliste.
 - 14.08.2026: **Lisa-Übernahme: ein Tipp, sofort sprechen.** Keine

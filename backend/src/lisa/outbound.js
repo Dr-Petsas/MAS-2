@@ -107,6 +107,45 @@ export function normalizePhoneE164(raw, defaultCc = "+49") {
   return v;
 }
 
+/**
+ * Super-GAU 14.08.2026 (Haila El-Otmani): Das LLM darf KEINE Nummer erfinden.
+ * Steht ein Datensatz mit Nummer fest, wird NUR diese gewählt — eine andere
+ * vom Modell gelieferte Nummer wird verworfen. Eine freie Nummer gilt nur,
+ * wenn der Chef sie selbst gesagt hat und kein Datensatz existiert.
+ */
+export function chooseDialPhone({ recordPhone = "", claimedPhone = "", allowClaimed = false } = {}) {
+  const rec = normalizePhoneE164(recordPhone) || "";
+  const claim = normalizePhoneE164(claimedPhone) || "";
+  if (rec) {
+    return { phone: rec, source: "record", rejectedClaim: !!(claim && claim !== rec) };
+  }
+  if (allowClaimed && claim) return { phone: claim, source: "spoken", rejectedClaim: false };
+  return { phone: "", source: claim ? "rejected_llm" : "none", rejectedClaim: !!claim };
+}
+
+/** Bestätigung gilt nur, wenn derselbe Auftrag schon einmal vorgelesen wurde. */
+export function canConfirmLisaCall(pending, now = Date.now()) {
+  if (!pending || typeof pending !== "object") return false;
+  if (!normalizePhoneE164(pending.phone)) return false;
+  if (!String(pending.instruction || "").trim()) return false;
+  const at = Number(pending.at) || 0;
+  if (!at || now - at > 10 * 60 * 1000) return false;
+  return true;
+}
+
+export function nameTokensOverlap(spoken, recordName) {
+  const norm = (s) => String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9äöüß]+/g, " ")
+    .trim();
+  const a = norm(spoken).split(/\s+/).filter((t) => t.length >= 3);
+  const b = norm(recordName).split(/\s+/).filter((t) => t.length >= 3);
+  if (!a.length || !b.length) return false;
+  return a.some((t) => b.some((u) => u === t || u.includes(t) || t.includes(u)));
+}
+
 /** Erste wählbare Nummer aus einem Patienten-/Kontakt-Datensatz. */
 export function phoneFromRecord(rec) {
   if (!rec || typeof rec !== "object") return "";

@@ -1,6 +1,7 @@
 /** Lisa-Live-Flip: laufender Anruf auf Handy/iPad (wählen, sprechen, Transkript, Übernehmen). */
 
 const PHASE = {
+  confirm: "Bitte bestätigen — noch kein Anruf.",
   scheduled: "Eingeplant — Lisa ruft später an.",
   dialing: "Lisa wählt …",
   talking: "Lisa spricht.",
@@ -413,25 +414,34 @@ export function mountLisaLive(host, { getAuth, onClaraHold, onReleaseMic } = {})
         return;
       }
       taskId = String(card?.taskId || "");
-      if (!taskId) return;
+      const preview = card?.status === "confirm" || (!taskId && card?.status === "confirm");
+      if (!taskId && !preview) return;
       lastSig = "";
-      if (tagEl) tagEl.textContent = "Lisa live";
-      els.take.hidden = card?.status === "scheduled";
+      if (tagEl) tagEl.textContent = preview ? "Lisa · Bestätigen" : "Lisa live";
+      els.take.hidden = preview || card?.status === "scheduled";
       els.take.disabled = false;
       els.take.textContent = "Gespräch übernehmen";
-      if (els.hint) els.hint.hidden = false;
+      if (els.hint) {
+        els.hint.hidden = false;
+        els.hint.textContent = preview
+          ? "Clara fragt, ob das die richtige Person ist. Noch wird niemand angerufen."
+          : "Ein Tipp — Sie sprechen hier weiter. Lisa wird stumm. Clara hört nicht zu.";
+      }
       if (els.smsFix) els.smsFix.classList.remove("is-on");
       host.classList.add("is-on");
-      setHold(true);
+      setHold(!preview);
       paint({
-        phase: card.status === "scheduled" ? "scheduled" : "dialing",
+        phase: preview ? "confirm" : (card.status === "scheduled" ? "scheduled" : "dialing"),
         phone: card.phone,
         contactName: card.contactName,
         instruction: card.instruction,
         transcript: [],
       }, card);
+      if (preview) {
+        els.lines.innerHTML = `<div class="ll-empty">Bitte bestätigen — Lisa wählt erst nach Ihrem Ja.</div>`;
+      }
       if (timer) clearInterval(timer);
-      if (card?.status !== "scheduled") {
+      if (!preview && card?.status !== "scheduled") {
         poll(card);
         timer = setInterval(() => poll(card), 2500);
       }

@@ -381,6 +381,75 @@ const LISA_AUSGANG = {
  * Wortlaut — damit Clara auf Nachfragen dazu fundiert antworten kann, ohne zu
  * raten (der Anzeige-Kontext gilt dem Fakten-Waechter als gedeckt).
  */
+/**
+ * Live-Karte, sobald Clara einen Anruf an Lisa gibt. Das Handy flippt darauf
+ * und pollt den Task — kein Ergebnis-Bericht, sondern der laufende Anruf.
+ */
+export function karteLisaLive({
+  taskId = "", contactName = "", phone = "", status = "calling", instruction = "",
+} = {}) {
+  const wer = clip(contactName || phone, 40) || "Kontakt";
+  const phase = status === "confirm"
+    ? "Bitte bestätigen — noch kein Anruf."
+    : status === "scheduled"
+      ? "Lisa ruft später an (außerhalb der Anrufzeiten)."
+      : `Lisa wählt ${phone || "die Nummer"} …`;
+  return {
+    kind: "lisa_live",
+    taskId: String(taskId || ""),
+    phone: String(phone || ""),
+    contactName: String(contactName || ""),
+    status: String(status || "calling"),
+    instruction: String(instruction || ""),
+    tag: status === "confirm" ? "Lisa · Bestätigen" : "Lisa live",
+    title: wer,
+    time: "",
+    subtitle: phase,
+    heading: "Auftrag",
+    items: [
+      item("info", "phone", phase),
+      ...(instruction ? [item("info", "note", clip(instruction, 110))] : []),
+    ].slice(0, 6),
+    detail: detailText([
+      status === "confirm" ? `Bitte bestätigen: ${wer}.` : `Lisa ruft ${wer} an.`,
+      phone ? `Nummer: ${phone}` : "",
+      instruction ? `Auftrag: ${instruction}` : "",
+    ].filter(Boolean)),
+  };
+}
+
+/** Flip-Karte fuer eine von Lisa versendete SMS — der Vorgang, nicht nur „raus“. */
+export function karteLisaSms({
+  taskId = "", contactName = "", phone = "", body = "", status = "done",
+} = {}) {
+  const wer = clip(contactName || phone, 40) || "Kontakt";
+  const ok = status !== "failed" && status !== "no_phone";
+  return {
+    kind: "lisa_sms",
+    taskId: String(taskId || ""),
+    phone: String(phone || ""),
+    contactName: String(contactName || ""),
+    body: String(body || ""),
+    status: String(status || "done"),
+    tag: "Lisa · SMS",
+    title: wer,
+    time: "",
+    subtitle: ok ? "Lisa schreibt eine SMS." : "Lisa kommt nicht durch.",
+    heading: "Vorgang",
+    items: [
+      item("info", "person", `Sucht ${wer}`),
+      item(phone ? "ok" : "warn", "phone", phone ? `Nummer ${clip(phone, 24)}` : "Keine Nummer"),
+      ...(body ? [item("info", "note", clip(body, 110))] : []),
+      item(ok ? "ok" : "alert", "mail", ok ? "SMS versendet" : "Nicht versendet"),
+    ].slice(0, 6),
+    detail: detailText([
+      `Lisa schreibt eine SMS an ${wer}.`,
+      phone ? `Nummer: ${phone}` : "Keine Nummer hinterlegt.",
+      body ? `Text: ${body}` : "",
+    ].filter(Boolean)),
+  };
+}
+
 export function karteLisaErgebnis({
   contactName = "", phone = "", outcome = "", summary = "", auftrag = "",
   transcript = "", endedMs = 0, durationSecs = 0,

@@ -182,6 +182,32 @@ export async function clearPendingRecording(clientId) {
   return { ok: true };
 }
 
+// pendingLisaCall: Anruf vorgemerkt, noch NICHT gewählt. Super-GAU 14.08.2026:
+// Lisa wählt erst nach ausdrücklichem "Ja" und NUR die Nummer aus dem Datensatz.
+export async function setPendingLisaCall(clientId, pending) {
+  await voiceStateRef(clientId).set(
+    { updatedAt: FieldValue.serverTimestamp(), pendingLisaCall: pending || null },
+    { merge: true }
+  );
+  await mirrorToSession(clientId, { pendingLisaCall: pending || null });
+  return { ok: true };
+}
+
+export async function getPendingLisaCall(clientId) {
+  const snap = await voiceStateRef(clientId).get();
+  if (!snap.exists) return null;
+  return snap.data()?.pendingLisaCall || null;
+}
+
+export async function clearPendingLisaCall(clientId) {
+  await voiceStateRef(clientId).set(
+    { updatedAt: FieldValue.serverTimestamp(), pendingLisaCall: null },
+    { merge: true }
+  );
+  await mirrorToSession(clientId, { pendingLisaCall: null });
+  return { ok: true };
+}
+
 export async function setActiveRecording(clientId, active) {
   await voiceStateRef(clientId).set(
     { updatedAt: FieldValue.serverTimestamp(), activeRecording: active || null },
@@ -263,6 +289,7 @@ export async function endSession(clientId, sessionId) {
       selectedPatient: null,
       patientCandidates: [],
       operator: null,
+      pendingLisaCall: null,
       lastContext,
     },
     { merge: true }

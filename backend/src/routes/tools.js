@@ -45,7 +45,7 @@ import { spokenRatings } from "../clara/ratings.js";
 import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
-import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording } from "../clara/sessions.js";
+import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
 import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isContinuityPhrase, isPureRelativeRef, stripRelativeRef, collapseSamePerson } from "../clara/patientDisambig.js";
@@ -53,7 +53,7 @@ import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
-import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf } from "../lisa/outbound.js";
+import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, chooseDialPhone, canConfirmLisaCall, nameTokensOverlap } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -3736,10 +3736,14 @@ router.post("/tools/dictate", async (req, res) => {
       const polished = await polishForChannel(isCall ? "call" : "sms", dictation, { recipientName: target.name });
       const text = polished.text || dictation;
       if (isCall) {
+        await setPendingLisaCall(clientId, {
+          phone: target.phone, name: target.name, instruction: text, at: Date.now(),
+        });
         return res.json({
-          ok: true, prepared: true, channel: "call", callText: text,
-          message: `Lisa würde ${who} anrufen und sinngemäß sagen: „${text}“. Soll Lisa jetzt so anrufen?`,
-          directive: "Lies den Text WOERTLICH vor und frage, ob Lisa so anrufen soll. NUR auf ausdrueckliches 'Ja' rufst du dictate ERNEUT auf mit confirm=true, channel='call' und text=<dem soeben vorgelesenen Text>. Auf 'nein' NICHT anrufen.",
+          ...lisaCallConfirmPayload({ name: target.name, phone: target.phone, instruction: text }),
+          channel: "call",
+          callText: text,
+          directive: "Lies die Rueckfrage woertlich vor. NUR auf ausdrueckliches 'Ja' rufst du dictate ERNEUT auf mit confirm=true, channel='call' und text=<dem soeben vorgelesenen Text>. Auf 'nein' NICHT anrufen. Erfinde KEINE Telefonnummer.",
         });
       }
       return res.json({
@@ -3755,15 +3759,31 @@ router.post("/tools/dictate", async (req, res) => {
       return res.json({ ok: true, dryRun: true, message: `Testlauf: ${isCall ? `Lisa hätte ${who} angerufen` : `Die SMS an ${who} wäre verschickt worden`}.` });
     }
     if (isCall) {
-      const out = await lisaStartCall(clientId, { phone: target.phone, instruction: dictation, contactName: target.name, callLanguage: req.body?.callLanguage, by });
+      const pendingCall = await getPendingLisaCall(clientId).catch(() => null);
+      if (!canConfirmLisaCall(pendingCall)) {
+        await setPendingLisaCall(clientId, {
+          phone: target.phone, name: target.name, instruction: dictation, at: Date.now(),
+        });
+        return res.json(lisaCallConfirmPayload({
+          name: target.name, phone: target.phone, instruction: dictation,
+        }));
+      }
+      const out = await lisaStartCall(clientId, {
+        phone: pendingCall.phone,
+        instruction: pendingCall.instruction || dictation,
+        contactName: pendingCall.name || target.name,
+        callLanguage: req.body?.callLanguage,
+        by,
+      });
+      await clearPendingLisaCall(clientId).catch(() => {});
       if (out?.taskId) {
         try {
           out.card = karteLisaLive({
             taskId: out.taskId,
-            contactName: target.name,
-            phone: target.phone,
+            contactName: pendingCall.name || target.name,
+            phone: pendingCall.phone,
             status: out.scheduled ? "scheduled" : "calling",
-            instruction: dictation,
+            instruction: pendingCall.instruction || dictation,
           });
         } catch { /* Karte ist Komfort */ }
       }
@@ -4084,6 +4104,13 @@ function contactPushConfirm(p, pushed) {
   return `${head} Ist das die richtige Person? Wenn ja, sag mir was ich tun soll — SMS, E-Mail oder Anruf, und den Inhalt. Wenn nein, suchen wir weiter.`;
 }
 
+// find_contact schickt KEINE Kontaktkarte mehr (Super-GAU 14.08.2026:
+// "Ruf X an" flippt auf die Lisa-Karte, nicht auf contact.html).
+function contactFoundAsk(p) {
+  const name = `${p.firstName || ""} ${p.lastName || ""}`.trim() || String(p.name || "").trim();
+  return `Ich habe ${name} gefunden. Ist das die richtige Person? Wenn ja, sag mir was ich tun soll. Wenn nein, suchen wir weiter.`;
+}
+
 function contactSummary(p) {
   const name = `${p.firstName || ""} ${p.lastName || ""}`.trim();
   const phone = String(p.mobilePhoneNumber || "").trim();
@@ -4331,12 +4358,11 @@ router.post("/tools/find-contact", async (req, res) => {
     const relFind = await pickRelativePatient(clientId, rawName, hint);
     if (relFind.hit) {
       await setPatientCandidates(clientId, [relFind.hit], relFind.hit);
-      const pushed = await pushContactCard(clientId, relFind.hit);
       return res.json({
         ok: true,
-        message: `${contactPushConfirm(relFind.hit, pushed)}`,
-        pushed: pushed?.sent > 0,
-        directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Auf 'nein' weiter suchen.",
+        message: contactFoundAsk(relFind.hit),
+        pushed: false,
+        directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Auf 'nein' weiter suchen. Bei Anruf NUR delegate_call, keine Kontaktkarte.",
       });
     }
     if (relFind.pure) {
@@ -4358,15 +4384,10 @@ router.post("/tools/find-contact", async (req, res) => {
           mobilePhoneNumber: nummer, email: kollege.email,
           hasPhone: !!nummer, external: true,
         });
-        const pushed = await pushContactCard(
-          clientId,
-          { name: kollege.name, phone: nummer, email: kollege.email },
-          { note: kollege.role || "Praxis-Team" },
-        );
         return res.json({
           ok: true,
-          pushed: pushed?.sent > 0,
-          message: `${kollege.name} aus dem Praxis-Team: ${spokenDirectoryEntry(kollege)}. ${contactPushConfirm({ name: kollege.name, mobilePhoneNumber: nummer, email: kollege.email }, pushed)}`,
+          pushed: false,
+          message: `${kollege.name} aus dem Praxis-Team: ${spokenDirectoryEntry(kollege)}. ${contactFoundAsk({ name: kollege.name, mobilePhoneNumber: nummer, email: kollege.email })}`,
           directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt).",
         });
       }
@@ -4392,15 +4413,10 @@ router.post("/tools/find-contact", async (req, res) => {
             mobilePhoneNumber: nummer, email: kollege.email,
             hasPhone: !!nummer, external: true,
           });
-          const pushed = await pushContactCard(
-            clientId,
-            { name: kollege.name, phone: nummer, email: kollege.email },
-            { note: kollege.role || "Praxis-Team" },
-          );
           return res.json({
             ok: true,
-            pushed: pushed?.sent > 0,
-            message: `${kollege.name} aus dem Praxis-Team: ${spokenDirectoryEntry(kollege)}. ${contactPushConfirm({ name: kollege.name, mobilePhoneNumber: nummer, email: kollege.email }, pushed)}`,
+            pushed: false,
+            message: `${kollege.name} aus dem Praxis-Team: ${spokenDirectoryEntry(kollege)}. ${contactFoundAsk({ name: kollege.name, mobilePhoneNumber: nummer, email: kollege.email })}`,
             directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt).",
           });
         }
@@ -4420,11 +4436,10 @@ router.post("/tools/find-contact", async (req, res) => {
           const who = ext.displayName;
           const trail = ext.provenance.slice(0, 2).join("; ");
           if (ext.phone || ext.email) {
-            const pushed = await pushContactCard(clientId, { name: who, phone: ext.phone, email: ext.email }, { note: trail ? trail.slice(0, 80) : "", role: "Externer Kontakt" });
             return res.json({
               ok: true,
-              message: `${who} ist kein Patient, aber ich kenne den Kontakt${trail ? `: ${trail}` : ""}. ${contactPushConfirm({ name: who, mobilePhoneNumber: ext.phone, email: ext.email }, pushed)}`,
-              pushed: pushed?.sent > 0,
+              message: `${who} ist kein Patient, aber ich kenne den Kontakt${trail ? `: ${trail}` : ""}. ${contactFoundAsk({ name: who, mobilePhoneNumber: ext.phone, email: ext.email })}`,
+              pushed: false,
               directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt). Auf 'nein' weiter suchen.",
             });
           }
@@ -4460,11 +4475,10 @@ router.post("/tools/find-contact", async (req, res) => {
               mobilePhoneNumber: ext.phone, email: ext.email, hasPhone: !!ext.phone, external: true,
             });
             const trail = ext.provenance.slice(0, 2).join("; ");
-            const pushed = await pushContactCard(clientId, { name: ext.displayName, phone: ext.phone, email: ext.email }, { note: trail ? trail.slice(0, 80) : "", role: "Externer Kontakt" });
             return res.json({
               ok: true,
-              message: `Das passt auf keinen Patienten, aber auf einen bekannten Kontakt: ${ext.displayName}${trail ? ` — ${trail}` : ""}. ${contactPushConfirm({ name: ext.displayName, mobilePhoneNumber: ext.phone, email: ext.email }, pushed)}`,
-              pushed: pushed?.sent > 0,
+              message: `Das passt auf keinen Patienten, aber auf einen bekannten Kontakt: ${ext.displayName}${trail ? ` — ${trail}` : ""}. ${contactFoundAsk({ name: ext.displayName, mobilePhoneNumber: ext.phone, email: ext.email })}`,
+              pushed: false,
               directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call. Auf 'nein' weiter suchen.",
             });
           }
@@ -4498,18 +4512,15 @@ router.post("/tools/find-contact", async (req, res) => {
       patient: { firstName: sel.firstName, lastName: sel.lastName, birthDate: sel.birthDate },
       hasPhone: !!sel.hasPhone,
     }).catch(() => {});
-    // 15.06.2026 (Chef-Wunsch): Steht GENAU EIN Kontakt fest, die Kontaktkarte
-    // aufs Handy pushen und zur Bestaetigung zurueckfragen ("richtige Person?").
-    // Erst nach "ja" + Auftrag wird gesendet/angerufen; bei "nein" weiter gesucht.
-    // Ohne erreichbare Kontaktdaten bleibt es bei der ehrlichen Sprach-Auskunft.
+    // 14.08.2026: Keine Kontaktkarte mehr aus find_contact. Bei "Ruf X an"
+    // flippt delegate_call auf die Lisa-Karte; die Nummer kommt aus dem Datensatz.
     const reachable = !!(String(sel.mobilePhoneNumber || "").trim() || String(sel.email || "").trim());
     if (reachable) {
-      const pushed = await pushContactCard(clientId, sel);
       return res.json({
         ok: true,
-        message: `${contactPushConfirm(sel, pushed)}`,
-        pushed: pushed?.sent > 0,
-        directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Auf 'nein' weiter suchen.",
+        message: contactFoundAsk(sel),
+        pushed: false,
+        directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Bei Anruf NUR delegate_call ohne phone. Auf 'nein' weiter suchen.",
       });
     }
     return res.json({ ok: true, message: contactSummary(sel) });
@@ -4557,36 +4568,82 @@ router.post("/tools/push-contact", async (req, res) => {
 // Fallback auf den zuvor per find_contact/search_patient bestimmten Kontakt,
 // damit SMS und Anruf OHNE gesprochene Telefonnummer funktionieren.
 async function resolveDelegationTarget(clientId, body) {
-  let phone = phoneFromRecord({
+  const claimedPhone = phoneFromRecord({
     phone: body?.phone, phoneNumber: body?.phoneNumber, mobile: body?.mobile,
-  });
+  }) || (() => {
+    const blob = [body?.phone, body?.phoneNumber, body?.message, body?.text, body?.instruction].filter(Boolean).join(" ");
+    return extractPhoneFromText(blob) || (spokenDigitsOf(blob)?.length >= 6 ? spokenDigitsOf(blob) : "") || "";
+  })();
   let name = String(body?.recipientName || body?.contactName || "").trim();
-  if (!phone) {
-    const blob = [body?.phone, body?.phoneNumber, body?.message, body?.text, body?.instruction, name].filter(Boolean).join(" ");
-    phone = extractPhoneFromText(blob) || "";
-    if (!phone) {
-      const spoken = spokenDigitsOf(blob);
-      if (spoken && spoken.length >= 6) phone = spoken;
+  let sel = await getSelectedPatient(clientId);
+
+  // Genannter Name schlaegt einen veralteten gemerkten Kontakt (sonst wuerde
+  // Lisa den Vorherigen anrufen, obwohl der Chef "Haila" gesagt hat).
+  if (name && (!sel || !nameTokensOverlap(name, displayNameOf(sel)))) {
+    const q = cleanSpokenPersonName(name) || name;
+    const found = await searchPatientSpoken(clientId, q);
+    let patients = found?.ok ? (found.patients || []) : [];
+    if (patients.length > 1) patients = tightenNameHits(q, patients);
+    if (patients.length === 1) {
+      sel = patients[0];
+      await setPatientCandidates(clientId, patients, sel);
+    } else if (patients.length > 1) {
+      await setPatientCandidates(clientId, patients, null);
+      return { phone: "", name, ambiguous: true, candidates: patients };
+    } else {
+      const book = await listContacts(clientId, { q, limit: 5 }).catch(() => ({ items: [] }));
+      const hit = (book.items || []).find((x) => phoneFromRecord(x));
+      if (hit) {
+        sel = {
+          id: hit.id || null,
+          firstName: "",
+          lastName: displayNameOf(hit),
+          mobilePhoneNumber: phoneFromRecord(hit),
+          email: hit.email || "",
+          hasPhone: true,
+          external: true,
+        };
+        await setPatientCandidates(clientId, [], sel);
+      } else {
+        sel = null;
+      }
     }
   }
-  const sel = await getSelectedPatient(clientId);
-  if (!name) name = displayNameOf(sel);
-  if (phone) return { phone, name };
-  const selPhone = phoneFromRecord(sel);
-  if (selPhone) return { phone: selPhone, name: name || displayNameOf(sel) };
 
-  const cands = await getPatientCandidates(clientId);
-  if (cands.length === 1) {
-    const cPhone = phoneFromRecord(cands[0]);
-    if (cPhone) return { phone: cPhone, name: name || displayNameOf(cands[0]) };
-    if (!name) name = displayNameOf(cands[0]);
+  if (!sel) {
+    const cands = await getPatientCandidates(clientId);
+    if (cands.length === 1) sel = cands[0];
   }
-  if (name) {
-    const book = await listContacts(clientId, { q: name, limit: 5 }).catch(() => ({ items: [] }));
-    const hit = (book.items || []).find((x) => phoneFromRecord(x));
-    if (hit) return { phone: phoneFromRecord(hit), name: name || displayNameOf(hit) };
-  }
-  return { phone: "", name };
+  if (!name) name = displayNameOf(sel);
+
+  const recordPhone = phoneFromRecord(sel);
+  const allowClaimed = !sel && !name;
+  const pick = chooseDialPhone({ recordPhone, claimedPhone, allowClaimed });
+  return {
+    phone: pick.phone,
+    name: name || displayNameOf(sel),
+    source: pick.source,
+    rejectedClaim: pick.rejectedClaim,
+    record: sel || null,
+  };
+}
+
+function lisaCallConfirmPayload({ name, phone, instruction }) {
+  const wer = name || "diese Person";
+  return {
+    ok: true,
+    needsConfirm: true,
+    prepared: true,
+    message: `Ist das ${wer}? Soll Lisa jetzt anrufen?`,
+    directive: "Lies die Rueckfrage woertlich vor. NUR auf ausdrueckliches 'Ja' rufst du delegate_call ERNEUT auf mit confirm=true, derselben instruction und OHNE phone. Auf 'nein' NICHT anrufen. Erfinde KEINE Telefonnummer.",
+    card: karteLisaLive({
+      taskId: "",
+      contactName: name,
+      phone,
+      status: "confirm",
+      instruction,
+    }),
+  };
 }
 
 
@@ -4646,9 +4703,57 @@ router.post("/tools/delegate-call", async (req, res) => {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
     const op = await getOperator(clientId);
+    const confirm = req.body?.confirm === true || req.body?.confirm === "true";
+    const instrText = String(req.body?.instruction || req.body?.message || req.body?.text || "").trim();
+    const pending = await getPendingLisaCall(clientId).catch(() => null);
+
+    // Super-GAU 14.08.2026: confirm=true im SELBEN Zug wie die Suche zaehlt
+    // nicht — Lisa waehlt erst, wenn der Chef die Person auf der Lisa-Karte
+    // gesehen und "Ja" gesagt hat.
+    if (confirm && canConfirmLisaCall(pending)) {
+      const dialPhone = pending.phone;
+      const dialName = pending.name || "";
+      const dialInstr = String(pending.instruction || instrText).trim();
+      if (req.body?.dryRun) {
+        return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${dialName || dialPhone} angerufen.` });
+      }
+      const out = await lisaStartCall(clientId, {
+        phone: dialPhone,
+        instruction: dialInstr,
+        contactName: dialName,
+        callLanguage: req.body?.callLanguage,
+        by: op?.name || "Team",
+      });
+      await clearPendingLisaCall(clientId).catch(() => {});
+      if (out?.taskId) {
+        try {
+          out.card = karteLisaLive({
+            taskId: out.taskId,
+            contactName: dialName,
+            phone: dialPhone,
+            status: out.scheduled ? "scheduled" : "calling",
+            instruction: dialInstr,
+          });
+        } catch { /* Karte ist Komfort — der Anruf laeuft trotzdem */ }
+      }
+      return res.json(out);
+    }
+
     const target = await resolveDelegationTarget(clientId, req.body);
+    if (target.ambiguous) {
+      return res.json({
+        ok: true,
+        needsConfirm: false,
+        message: `Das trifft auf mehrere zu. ${disambiguationQuestion(target.candidates)}`,
+      });
+    }
     if (!target.phone) {
-      return res.json({ ok: false, message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen." });
+      return res.json({
+        ok: false,
+        message: target.source === "rejected_llm"
+          ? "Die Nummer darf ich nicht aus dem Gedächtnis wählen. Nennen Sie den Patientennamen, dann nehme ich die Nummer aus dem Datensatz."
+          : "Ich habe keine Telefonnummer im Datensatz. Sage zuerst den Namen — ich suche den Kontakt.",
+      });
     }
     // L3b (Chef 29.07.2026, Live 23:17): Aus "du sollst morgen frueh Termine
     // machen" wurde ein naechtlicher Anruf mit leerer Botschaft ("Bitte
@@ -4656,7 +4761,6 @@ router.post("/tools/delegate-call", async (req, res) => {
     // Ein delegierter Anruf braucht eine INHALTLICHE Botschaft: Ein blosses
     // "Komm in die Praxis" ohne jeden Grund wird nicht gewaehlt — Clara
     // fragt stattdessen nach der Botschaft.
-    const instrText = String(req.body?.instruction || req.body?.message || req.body?.text || "").trim();
     const nurEinbestellung = /\b(?:komm\w*|vorbei\s?kommen|erschein\w*|in\s+die\s+praxis|zu\s+uns)\b/i.test(instrText)
       && !/\b(?:weil|wegen|grund|da\s|termin\w*|kontroll\w*|schmerz\w*|befund\w*|labor\w*|abhol\w*|besprech\w*|ergebnis\w*|unterlagen|rezept\w*|krank\w*|dringend\w*|nachricht|ausricht\w*|mitteil\w*|zahn\w*|behandl\w*|implant\w*|prothes\w*|krone\w*|fuellung\w*|füllung\w*|reinigung\w*|blutung\w*|op\b|operation\w*)\b/i.test(instrText);
     if (instrText.replace(/\s+/g, " ").length < 15 || nurEinbestellung) {
@@ -4666,29 +4770,23 @@ router.post("/tools/delegate-call", async (req, res) => {
         message: "Was genau soll Lisa ausrichten — und aus welchem Grund? Ohne inhaltliche Botschaft rufe ich niemanden an. Sagen Sie zum Beispiel: Lisa soll Herrn Meier sagen, dass sein Zahnersatz da ist und er zur Eingliederung kommen kann.",
       });
     }
-    // Testsuite-Schutz: validiert Kontakt + Nummer, ruft aber NIEMANDEN an.
-    if (req.body?.dryRun) {
-      return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${target.name || target.phone} angerufen.` });
-    }
-    const out = await lisaStartCall(clientId, {
+
+    await setPendingLisaCall(clientId, {
       phone: target.phone,
+      name: target.name,
       instruction: instrText,
-      contactName: target.name,
-      callLanguage: req.body?.callLanguage,
-      by: op?.name || "Team",
+      patientId: target.record?.id || null,
+      at: Date.now(),
     });
-    if (out?.taskId) {
-      try {
-        out.card = karteLisaLive({
-          taskId: out.taskId,
-          contactName: target.name,
-          phone: target.phone,
-          status: out.scheduled ? "scheduled" : "calling",
-          instruction: instrText,
-        });
-      } catch { /* Karte ist Komfort — der Anruf laeuft trotzdem */ }
+    if (req.body?.dryRun) {
+      return res.json({
+        ...lisaCallConfirmPayload({ name: target.name, phone: target.phone, instruction: instrText }),
+        dryRun: true,
+      });
     }
-    res.json(out);
+    return res.json(lisaCallConfirmPayload({
+      name: target.name, phone: target.phone, instruction: instrText,
+    }));
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
