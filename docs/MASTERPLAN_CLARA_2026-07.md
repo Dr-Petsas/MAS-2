@@ -2492,6 +2492,32 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026 (Live 19:22, "warum klappt das schon wieder nicht"): **Die
+  Namens-Schranke wuergte den Anruf-Auftrag — es lief NIE ein Tool.** Vier
+  Loecher in einem Gespraech: (1) Die Namens-Schranke (uncertain_name)
+  stoppte "Frau Hayla El-Otmani anrufen" mit "hayla (unbekannt)", weil die
+  30-min-gecachte Namensliste die Otmani-Eintraege noch nicht trug und
+  Mehrwort-Eintraege ("Haila El") vom Token-Abgleich verworfen werden; da
+  STT den Namen jede Wiederholung anders schreibt ("Haehler-Elotmani"),
+  griff die Einmal-je-Wort-Regel nie. Jetzt: Anruf-Auftraege an Lisa
+  umgehen die Schranke — delegate_call loest den Namen ueber die MAS-Suche
+  auf und fragt VOR dem Waehlen sowieso um Bestaetigung (Karte). (2) MAS
+  sttPatientNames liefert Mehrwort-Namen zusaetzlich als Einzel-Tokens
+  ("Haila El" -> "Haila"; auch Bindestrich-Teile), und der Worker-Abgleich
+  normalisiert y->i (Hayla==Haila, Meyer==Meier). (3) Das Modell stellte
+  die Anruf-Rueckfrage in EIGENEN Worten ("Soll Lisa Frau X anrufen und ihr
+  mitteilen ...?") — die enge confirm-Erkennung ("Soll Lisa jetzt
+  anrufen?") sah das Ja darauf nicht; das Modell behauptete Vollzug, der
+  Claim-Guard blockte, gewaehlt wurde nie. Erkennung breit: "Soll Lisa ...
+  anruf..." in jeder Formulierung; confirm ohne vorgemerkten Auftrag faellt
+  serverseitig sicher auf die Vorschau zurueck. (4) Blosse NAMENS-Antwort
+  nach einer Namens-Rueckfrage ("Hayla El-Otmani.") verpuffte — jetzt
+  synthetisiert der delegate-guard daraus delegate_call(contactName), wenn
+  in den letzten Zuegen ein Anruf-Auftrag steckt; ebenso zaehlt "dass Lisa
+  Frau X ANRUFT und den Termin verschiebt" (3. Person, ohne "sag ihr"-Teil)
+  als direkter Auftrag mit dem ganzen Satz als instruction. Tests:
+  test_name_gate (38), test_name_certainty, test_delegate_call (2b),
+  test-stt-memory-names; Gate gruen.
 - 14.08.2026: **Anruf-Bestaetigung entmuellt (Live 18:56, "es wird kein
   Anruf gestartet").** Drei Bremsen: (1) Die Namenssuche probierte bis zu
   12 Schreibvarianten NACHEINANDER gegen Firestore — 12 s Stille vor der

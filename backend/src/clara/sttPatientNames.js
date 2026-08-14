@@ -76,6 +76,17 @@ function addName(set, raw) {
   const n = cleanName(raw);
   if (!isUsableName(n)) return;
   set.add(n);
+  // 14.08.2026 (Live 19:22, "hayla unbekannt"): Mehrwort-Eintraege wie
+  // "Haila El" oder "El Otmani" sind fuer den Worker-Postcorrect UNSICHTBAR
+  // (der Token-Abgleich verwirft Keywords mit Leerzeichen). Deshalb jeden
+  // Teil zusaetzlich einzeln aufnehmen — auch Bindestrich-Teile
+  // ("El-Otmani" -> "Otmani"), damit jede gesprochene Form anschlaegt.
+  const tokens = n.split(/[\s-]+/);
+  if (tokens.length > 1) {
+    for (const t of tokens) {
+      if (isUsableName(t)) set.add(t);
+    }
+  }
 }
 
 function firstNameFromAppt(a) {
