@@ -56,6 +56,14 @@ const STIL_LOSUNGEN = [
     // weil sie Marcumar nimmt"). Verbindungen herstellen darf nur die Quelle.
     "Nutze weiche Uebergaenge ('dabei', 'ausserdem', 'denk auch an'), OHNE neue Zusammenhaenge zu behaupten.",
     "Sprich es wie eine kurze persoenliche Uebergabe am Empfang, nicht wie einen Bericht.",
+    "Fang mit einer anderen Satzstellung an als das Original — Inhalt gleich, Bau anders.",
+    "Wechsle das erste Verb: statt 'haben Sie' mal 'stehen', 'liegen', 'kommen zusammen'.",
+    "Mach aus zwei kurzen Saetzen einen fliessenden, oder aus einem langen zwei knappe.",
+    "Setze die Uhrzeit einmal an eine andere Stelle im Satz, ohne sie zu aendern.",
+    "Klinge wie nach dem dritten Kaffee: wach, knapp, ohne Floskeln.",
+    "Klinge wie am Abend: ruhig, klar, ohne Eile.",
+    "Lass den ersten Satz mit dem Tag beginnen, den zweiten mit dem, was auffaellt.",
+    "Sag es so, als wuerdest du es einem Kollegen zurufen, der gerade die Tuer aufmacht.",
 ];
 
 function ziehStil() {
@@ -284,10 +292,10 @@ function freiSprechCfg() {
  * @param {{kontext?:string, timeoutMs?:number}} opts
  * @returns {Promise<{ok:boolean, text:string, warum?:string}>}
  */
-export async function freiFormulieren(text, { kontext = "interne Team-Ansage", timeoutMs = 6500, pflicht = [] } = {}) {
+export async function freiFormulieren(text, { kontext = "interne Team-Ansage", timeoutMs = 11000, pflicht = [] } = {}) {
     const quelle = String(text || "").trim();
     const conf = freiSprechCfg();
-    if (!conf.enabled || quelle.length < 60) return { ok: false, text: quelle, warum: "aus" };
+    if (!conf.enabled || quelle.length < 40) return { ok: false, text: quelle, warum: "aus" };
 
     const bauePrompt = (stil, streng) => [
         "Du bist Clara, die Sprach-Assistentin einer deutschen Arztpraxis, und formulierst eine interne Ansage fuers Team NEU — natuerlich, menschlich, gesprochen.",

@@ -116,12 +116,22 @@ const DAY_LOAD_HIGH = [
   "Das wird sportlich.",
   "Gut gebucht, würde ich sagen.",
   "Da kommt einiges zusammen.",
+  "Der Tag ist dicht gepackt.",
+  "Wenig Leerlauf heute.",
+  "Da müssen Sie zügig bleiben.",
+  "Ein richtiges Arbeitspensum.",
+  "Durchatmen — der Kalender ist voll.",
+  "Kein gemütlicher Tag, der hier.",
 ];
 const DAY_LOAD_VERY_HIGH = [
   "Ein richtig voller Tag — tief durchatmen.",
   "Das ist sportlich, selbst für Sie.",
   "Volles Haus. Ich halte Ihnen den Rücken frei.",
   "Ein Marathon-Tag. Kaffee steht hoffentlich bereit.",
+  "Das ist die Obergrenze — ich bleibe am Ball.",
+  "Heute wird es eng. Sagen Sie, wo ich entlasten soll.",
+  "Kaum eine Lücke. Ich passe auf, dass nichts untergeht.",
+  "Ein Tag zum Durchhalten — ich habe den Überblick.",
 ];
 const DAY_LOAD_LOW = [
   "Ein ruhiger Tag.",
@@ -129,6 +139,11 @@ const DAY_LOAD_LOW = [
   "Da bleibt Luft zwischendurch.",
   "Ein entspannter Tag.",
   "Da bleibt Zeit für den Papierkram.",
+  "Heute atmet der Kalender.",
+  "Kein Gedränge, das ist angenehm.",
+  "Da können Sie in Ruhe arbeiten.",
+  "Ein Tag mit Luft nach links und rechts.",
+  "Übersichtlich — da geht auch mal etwas dazwischen.",
 ];
 
 /**
@@ -153,6 +168,13 @@ const WARM_CLOSE = [
   "Ich habe alles im Blick, fragen Sie ruhig nach.",
   "Sagen Sie Bescheid, wenn ich irgendwo tiefer reinschauen soll.",
   "Bei Fragen zu einem Namen: einfach ansprechen.",
+  "Soll ich jemanden einzeln aufziehen, sagen Sie den Namen.",
+  "Mehr zu einem Slot? Einfach draufzeigen — ich meine: einfach sagen.",
+  "Ich bleibe in der Nähe, falls Sie nachhaken wollen.",
+  "Wenn etwas davon merkwürdig klingt, hake ich nach.",
+  "Wollen Sie den Tag anders aufgeschnitten, sagen Sie wie.",
+  "Einen Patienten genauer? Einfach den Namen.",
+  "Ich kann das auch nach Stuhl oder nach Lücke sortieren — einfach sagen.",
 ];
 
 /**

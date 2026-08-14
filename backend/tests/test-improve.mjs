@@ -14,6 +14,7 @@
 import {
   ketteBauen, auffaelligkeiten, baueLauf, ordneEin, urteile, probeErlaubt,
   KATEGORIEN, findeKategorie, zeitAusAufnahmename,
+  baueGespraechBeleg, baueGespraechNachrichten,
 } from "../src/improve.js";
 
 let ok = 0;
@@ -220,6 +221,27 @@ pruefe("erster Schritt ist nie leer",
 console.log("\n11) Grenzfaelle");
 pruefe("kaputte Eingabe stuerzt nicht ab", ketteBauen(null, null).length === 0);
 pruefe("leere Kette erzeugt keine Funde", auffaelligkeiten(null).length === 0);
+
+console.log("\n12) Gespraech ueber den Fehler");
+const beleg = baueGespraechBeleg({
+  kategorie: "verhoert", schwere: "stoerend",
+  text: "Muhamedjanowa kam nicht an",
+  gemeinter_name: "Muhamedjanowa",
+  kette: [{ gehoert: "Muhammad Janova", geantwortet: "Naomi oder Hanifi?", werkzeuge: ["contact_card"] }],
+  funde: [{ text: "Name zerlegt", beleg: "Muhammad Janova" }],
+});
+pruefe("Beleg traegt die Meldung", /Muhamedjanowa kam nicht an/.test(beleg));
+pruefe("Beleg traegt den gehoerten Zug", /Muhammad Janova/.test(beleg));
+pruefe("Beleg erfindet kein Behoben", !/behoben|gefixt|erledigt/i.test(beleg));
+const nachrichten = baueGespraechNachrichten(beleg, [], "");
+pruefe("Eroeffnung ohne Nutzertext", nachrichten.some((m) => /Eroeffne/.test(m.content)));
+pruefe("System fordert Siezen und Ehrlichkeit",
+  nachrichten[0].content.includes("SIEZT") && nachrichten[0].content.includes("NIE"));
+const mitFrage = baueGespraechNachrichten(beleg, [
+  { rolle: "assistant", text: "Was genau kam falsch an?" },
+], "Sie hat den Namen wiederholt und trotzdem nichts gefunden.");
+pruefe("Nutzerfrage steht am Ende",
+  mitFrage[mitFrage.length - 1].content.includes("trotzdem nichts gefunden"));
 
 console.log("");
 if (fail) {

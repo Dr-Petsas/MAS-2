@@ -58,7 +58,7 @@ async function run() {
   // vorn, keine Stichwort-Labels. Seit Lockerheit 1 (10.07.2026) rotiert der
   // Rahmen-Satz — die ZAHL muss aber in jeder Variante wörtlich drinstehen.
   check(/insgesamt 3 Termine/.test(spoken) && /Dr\. Test/.test(spoken), "Sprechtext nennt Terminzahl + Behandler");
-  check(/Frei ist (dort|dazwischen) noch/.test(spoken), "Sprechtext nennt freie Lücke");
+  check(/Frei ist (dort|dazwischen) noch|Luft bleibt|Zwischendurch frei|Offen ist noch|Lücke bleibt|Dazwischen bleibt frei/.test(spoken), "Sprechtext nennt freie Lücke");
   check(/Neupatient/.test(spoken), "Sprechtext nennt Hinweise (Neupatient)");
   console.log("  spoken: " + spoken);
 

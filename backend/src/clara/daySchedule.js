@@ -511,6 +511,18 @@ function spokenGaps(gaps) {
   return `${g.slice(0, -1).join(", ")} und ${g[g.length - 1]}`;
 }
 
+function freiSatz(luecken) {
+  return vary("brief.frei", [
+    `Frei ist dazwischen noch ${luecken}.`,
+    `Frei ist dort noch ${luecken}.`,
+    `Luft bleibt ${luecken}.`,
+    `Zwischendurch frei: ${luecken}.`,
+    `Offen ist noch ${luecken}.`,
+    `Eine Lücke bleibt ${luecken}.`,
+    `Dazwischen bleibt frei ${luecken}.`,
+  ]);
+}
+
 // Titel einer Sperrzeit sprechbar machen: erste Zeile, ohne fuehrende
 // Uhrzeit-Angabe, gekappt. Aus "15:00 bis 17:00 Uhr\nModule 1: Fundamentals
 // of Oral Implantology" wird "Module 1: Fundamentals of Oral Implantology".
@@ -594,12 +606,21 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     // Lockerheit 1 (10.07.2026): auch die Leer-Meldung rotiert. Fakten-frei —
     // alle Varianten sagen dasselbe: kein Termin an diesem Tag.
     const leer = isPast
-      ? `${rel} waren keine Termine gebucht.`
+      ? vary("brief.leer.vergangen", [
+        `${rel} waren keine Termine gebucht.`,
+        `${rel} stand nichts im Kalender.`,
+        `${rel} blieb der Kalender leer.`,
+        `${rel} gab es keine Termine.`,
+      ])
       : vary("brief.leer", [
         `${rel} sind keine Termine gebucht.`,
         `${rel} ist der Kalender leer.`,
         `${rel} steht nichts im Kalender.`,
         `${rel} sind keine Termine gebucht — freie Bahn.`,
+        `${rel} ist nichts eingetragen.`,
+        `Im Kalender steht ${rel} nichts.`,
+        `${rel} bleibt der Kalender frei.`,
+        `${rel} hat niemand einen Termin.`,
       ]);
     return cap(`${leer}${blocks}${closedDayReason(day)}`).trim();
   }
@@ -614,7 +635,15 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       "Kurzer Blick in den Kalender.",
       "Ich habe den Tag vor mir.",
       "Der Kalender sagt Folgendes.",
-    ], 0.25);
+      "Also, der Tag:",
+      "Kurz zum Stand.",
+      "Ich schau einmal rüber.",
+      "Was der Kalender hergibt:",
+      "Einen Moment — ich habe den Tag auf.",
+      "So sieht der Tag aus.",
+      "Kalender auf, ganz kurz:",
+      "Hier der Überblick.",
+    ], 0.4);
     if (intro) parts.push(intro);
   }
   const cals = briefing.byCalendar || [];
@@ -640,11 +669,14 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       cap(`${rel} haben Sie noch ${noun} vor sich${bis ? `, ${bis}` : ""} — ${durch}.`),
       cap(`${rel} ${K === 1 ? "steht" : "stehen"} noch ${nounN} an${bis ? `, ${bis}` : ""} — ${durch}.`),
       `Ab jetzt ${K === 1 ? "kommt noch" : "kommen noch"} ${noun}${bis ? `, ${bis}` : ""}. ${cap(durch)}.`,
+      `Was noch offen ist${rel ? ` ${rel}` : ""}: ${nounN}${bis ? `, ${bis}` : ""}. ${cap(durch)}.`,
+      cap(`${rel} ${K === 1 ? "bleibt noch" : "bleiben noch"} ${noun}${bis ? `, ${bis}` : ""}. ${cap(durch)}.`),
+      `Vom Rest des Tages: noch ${noun}${bis ? `, ${bis}` : ""}. ${cap(durch)}.`,
     ]));
     const remGaps = (briefing.byCalendar || [])
       .flatMap((c) => futureGaps(c.gaps))
       .sort((a, b) => a.startMs - b.startMs);
-    if (remGaps.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(remGaps)}.`);
+    if (remGaps.length) parts.push(freiSatz(spokenGaps(remGaps)));
   } else if (cals.length === 1) {
     // Ein Kalender: Eröffnung und Detail in EINEM Satz statt zwei fast
     // identischen Zeilen hintereinander.
@@ -670,14 +702,18 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
             cap(`${rel} haben Sie ${span}.`),
             `Sie haben ${rel} ${span}.`,
             cap(`${rel} erwarten Sie ${span}.`),
+            `Auf Ihrem Kalender ${rel}: ${span}.`,
+            cap(`${rel} im Kalender: ${span}.`),
           ])
         : vary("brief.fremd", [
             cap(`${rel} hat ${who} ${span}.`),
             `${who} hat ${rel} ${span}.`,
+            `Bei ${who} ${rel}: ${span}.`,
+            cap(`${rel} bei ${who}: ${span}.`),
           ]));
     }
     const g1 = dayOver ? [] : futureGaps(c.gaps);
-    if (g1.length) parts.push(`Frei ist dazwischen noch ${spokenGaps(g1)}.`);
+    if (g1.length) parts.push(freiSatz(spokenGaps(g1)));
   } else if (overview) {
     // Zoom-out (Lagebild): bei vielen Kalendern NICHT jede Spalte einzeln
     // vorlesen, sondern Gesamtzahl + Tagesspanne — "34 Termine, von 8 bis 17
@@ -696,6 +732,9 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
           `Im Kalender stehen ${rel} insgesamt ${briefing.total} Termine.`,
           cap(`${rel} sind insgesamt ${briefing.total} Termine eingetragen.`),
           `Der Kalender zeigt ${rel} insgesamt ${briefing.total} Termine.`,
+          cap(`${rel} zählt der Kalender insgesamt ${briefing.total} Termine.`),
+          `Zusammen ${rel}: insgesamt ${briefing.total} Termine im Kalender.`,
+          cap(`${rel} kommen insgesamt ${briefing.total} Termine zusammen.`),
         ]));
     for (const c of cals) {
       const own = isOwnCalendar(c.calendarName, operatorDoctorName);
@@ -704,7 +743,7 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
         ? `${who} einen Termin von ${spokenTime(c.firstMs)} bis ${spokenTime(c.lastMs)}.`
         : `${who} ${c.count} Termine zwischen ${spokenTime(c.firstMs)} und ${spokenTime(c.lastMs)}.`;
       const gc = dayOver ? [] : futureGaps(c.gaps);
-      if (gc.length) line += ` Frei ist dort noch ${spokenGaps(gc)}.`;
+      if (gc.length) line += ` ${freiSatz(spokenGaps(gc))}`;
       parts.push(line);
     }
   }
@@ -745,12 +784,25 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
   if (!midday && briefing.videoCalls) hl.push(briefing.videoCalls === 1 ? "ein Video-Termin" : `${briefing.videoCalls} Video-Termine`);
   if (hl.length) {
     const singular = hl.length === 1 && hl[0].startsWith("ein ");
-    parts.push(`Darunter ${singular ? "ist" : "sind"} ${hl.join(" und ")}.`);
+    parts.push(vary("brief.darunter", [
+      `Darunter ${singular ? "ist" : "sind"} ${hl.join(" und ")}.`,
+      `Dabei ${singular ? "ist" : "sind"} ${hl.join(" und ")}.`,
+      `Mit dabei: ${hl.join(" und ")}.`,
+      `Auffällig: ${hl.join(" und ")}.`,
+    ]));
   }
   if (unconf) {
     parts.push(unconf === 1
-      ? "Ein Termin ist noch unbestätigt."
-      : `${unconf} Termine sind noch unbestätigt.`);
+      ? vary("brief.unconf.1", [
+        "Ein Termin ist noch unbestätigt.",
+        "Ein Termin wartet noch auf die Bestätigung.",
+        "Noch unbestätigt: ein Termin.",
+      ])
+      : vary("brief.unconf.n", [
+        `${unconf} Termine sind noch unbestätigt.`,
+        `Noch ohne Bestätigung: ${unconf} Termine.`,
+        `${unconf} Termine warten noch auf die Zusage.`,
+      ]));
   }
   if (briefing.absences.length) {
     // Eigene Sperre benennen (Urlaub/Fortbildung), fremde nur zaehlen.
@@ -785,7 +837,13 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     const bits = [];
     if (prep) bits.push(`bei ${prep} ${prep === 1 ? "Termin fehlen noch Unterlagen" : "Terminen fehlen noch Unterlagen"}${attRed ? ` (${attRed} davon noch nicht verschickt)` : ""}`);
     if (notes) bits.push(`${notes} ${notes === 1 ? "Termin hat eine Notiz" : "Termine haben Notizen"}`);
-    if (bits.length) parts.push(`Vorzubereiten: ${bits.join(", ")}. Sag Bescheid, dann gehe ich die Termine einzeln durch.`);
+    if (bits.length) {
+      parts.push(vary("brief.prep", [
+        `Vorzubereiten: ${bits.join(", ")}. Sag Bescheid, dann gehe ich die Termine einzeln durch.`,
+        `Noch offen: ${bits.join(", ")}. Wenn Sie wollen, gehe ich die einzeln durch.`,
+        `Bitte vormerken: ${bits.join(", ")}. Auf Zuruf ziehe ich die Termine raus.`,
+      ]));
+    }
     if (att.some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());
   } else if (att.length) {
     const lines = att.slice(0, SPOKEN_ATTENTION_MAX).map((a) => {
@@ -797,7 +855,11 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
     });
     const rest = att.length - SPOKEN_ATTENTION_MAX;
     const more = rest > 0 ? ` ${rest === 1 ? "Ein weiterer Hinweis steht" : `${rest} weitere Hinweise stehen`} im Kalender.` : "";
-    parts.push(`Bitte beachten: ${lines.join(" ")}${more}`);
+    parts.push(vary("brief.beachten", [
+      `Bitte beachten: ${lines.join(" ")}${more}`,
+      `Kurz merken: ${lines.join(" ")}${more}`,
+      `Das sollten Sie auf dem Schirm haben: ${lines.join(" ")}${more}`,
+    ]));
     // Rote Ampel = Unterlagen NIE verschickt — das darf nicht passieren.
     // Clara darf sich darüber hörbar aufregen (EIN Spruch pro Vorlesung).
     if (att.some((a) => a.docsStatus === "red")) parts.push(redDocsQuip());

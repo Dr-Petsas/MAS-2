@@ -13,7 +13,7 @@ import { backfillAddressBook } from "../brain/addressBook.js";
 import { llmHealth } from "../mail/llm.js";
 import { AUTH_ENFORCED, SERVICE_TOKEN } from "../auth.js";
 import { remoteTokenOk, addRemoteMessage, remoteState, setRemoteBoard, pendingRemoteMessages, ackRemoteMessages, saveRemoteFile } from "../remoteChat.js";
-import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, wiederholungslauf, merkeNachweis, sprachmeldung, sprachnotizPfad, KATEGORIEN } from "../improve.js";
+import { meldeFall, listeFaelle, letztesGespraech, probiereNamen, hoerprobe, wiederholungslauf, merkeNachweis, sprachmeldung, sprachnotizPfad, improveDialog, KATEGORIEN } from "../improve.js";
 import { zentraleListe, zentraleAnzahl, setzeStand } from "../improveZentrale.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
@@ -487,6 +487,21 @@ router.post("/improve/case", async (req, res) => {
 router.get("/improve/cases", async (req, res) => {
   try {
     res.json({ ok: true, faelle: await listeFaelle(resolveClientId(req), { limit: Number(req.query?.limit) || 50 }) });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Nach der Meldung: ueber den Fehler reden (Chef 14.08.2026).
+router.post("/improve/gespraech", async (req, res) => {
+  try {
+    const out = await improveDialog(resolveClientId(req), {
+      fallId: req.body?.fallId || req.body?.fall,
+      text: req.body?.text,
+    });
+    if (!out.ok && out.reason === "fall_not_found") return res.status(404).json(out);
+    if (!out.ok && out.reason === "fall_required") return res.status(400).json(out);
+    res.json(out);
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
   }

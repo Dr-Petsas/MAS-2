@@ -112,6 +112,11 @@ const LETZTES_MAL_LEADS = [
     "Zur Vorgeschichte",
     "Der letzte Besuch",
     "Vorher war",
+    "Letzter Kontakt",
+    "Aus dem letzten Termin",
+    "Was zuletzt lag",
+    "In der Historie",
+    "Beim letzten Mal im Stuhl",
 ];
 
 function lastContactText(c) {
@@ -258,7 +263,9 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
     for (let i = 0; i < anstehend.length; i++) {
         const a = anstehend[i];
         const who = a.patientName || a.patientLastName || "der nächste Patient";
-        const fuehrung = single ? "Termin" : (i === 0 ? "Als Nächstes" : "Danach");
+        const fuehrung = single ? "Termin" : (i === 0
+          ? vary("headsup.erst", ["Als Nächstes", "Zuerst", "Als Erstes", "Gleich", "Als Nächster"])
+          : vary("headsup.dann", ["Danach", "Dann", "Im Anschluss", "Darauf", "Als Nächster"]));
         const zeit = hhmm(a.startMs);
 
         // Im Einzel-Heads-up den Behandler nennen, damit in einer Mehrbehandler-
@@ -356,8 +363,19 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
             "Zur Vorbereitung",
             "Kleiner Überblick",
             "Das Wichtigste vorweg",
+            "Ein Blick voraus",
+            "Kurz für den Stuhl",
+            "Was Sie wissen sollten",
+            "Vor dem nächsten Patienten",
+            "Eine Minute Vorbereitung",
         ])
-        : (anstehend.length === 1 ? "Der nächste Patient" : `Die nächsten ${anstehend.length} Patienten`);
+        : (anstehend.length === 1
+          ? vary("headsup.mehr.1", ["Der nächste Patient", "Als Nächstes kommt", "Gleich im Stuhl"])
+          : vary("headsup.mehr.n", [
+            `Die nächsten ${anstehend.length} Patienten`,
+            `Kurz die nächsten ${anstehend.length}`,
+            `Was als Nächstes kommt — ${anstehend.length} Patienten`,
+          ]));
     return { ok: true, message: `${kopf}: ${teile.join(" ")}`, count: anstehend.length, cards };
 }
 

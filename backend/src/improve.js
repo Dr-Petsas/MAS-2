@@ -35,6 +35,7 @@ import { masCollection } from "./tenant.js";
 import { zentralEintragen } from "./improveZentrale.js";
 import { entryCodes, buildIndex, catalogMatch } from "./clara/patientCatalog.js";
 import { log } from "./log.js";
+import { chat, strongLlm } from "./mail/llm.js";
 
 const COL_FAELLE = "mas_improve_faelle";
 
@@ -963,4 +964,123 @@ export async function listeFaelle(clientId, { limit = 50 } = {}) {
   const snap = await masCollection(clientId, COL_FAELLE)
     .orderBy("createdAt", "desc").limit(Math.min(200, Math.max(1, limit))).get();
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+// ---------------------------------------------------------------------------
+// GESPRAECH UEBER DEN FEHLER (Chef 14.08.2026)
+// ---------------------------------------------------------------------------
+// Die Meldeseite fuehrte bisher nur durch Kacheln und einen starren Lauf.
+// Der Chef will UEBER den Fehler reden koennen — nachfragen, ergaenzen,
+// einordnen. Das Modell bekommt den Fall als Beleg, darf aber nichts als
+// behoben behaupten (Ehrlichkeitsregel).
+
+const DIALOG_SYSTEM = [
+  "Du bist Clara und sprichst mit dem Praxisinhaber ueber einen gemeldeten Fehler.",
+  "Du SIEZT. Du bist klug, konkret und nachfragend — kein Formular, kein Skript.",
+  "HARTE REGELN:",
+  "1. Behaupte NIE, etwas sei behoben, gefixt oder live. Du sammelst Verstaendnis.",
+  "2. Rate keine Patientendaten, keine Termine, keine Zahlen, die nicht im Beleg stehen.",
+  "3. Stuetzt du dich auf den Beleg, sag das kurz ('Im angehaengten Gespraech hoere ich …').",
+  "4. Stelle Rueckfragen, wenn etwas unklar ist: Was genau stoerte? Wann? Welcher Name?",
+  "5. Biete hoechstens EINE konkrete naechste Pruefung an, die die Seite schon kann (Hoerprobe, Namenssuche) — keine neuen Versprechen.",
+  "6. Kein Markdown, keine Aufzaehlungszeichen, keine Emojis. Hoestens acht Saetze.",
+  "7. Wenn der Beleg duenn ist, sag das ehrlich und frag nach dem fehlenden Stueck.",
+].join("\n");
+
+/**
+ * Baut den Beleg-Text fuer das Fehlergespraech (PUR, testbar).
+ * Nichts erfinden — nur das, was der Fall wirklich traegt.
+ */
+export function baueGespraechBeleg(fall = {}) {
+  const zeilen = [];
+  if (fall.kategorie) zeilen.push(`Kategorie: ${fall.kategorie}`);
+  if (fall.schwere) zeilen.push(`Schwere: ${fall.schwere}`);
+  if (fall.text) zeilen.push(`Meldung: ${String(fall.text).slice(0, 800)}`);
+  if (fall.gemeinter_name) zeilen.push(`Gemeinter Name: ${fall.gemeinter_name}`);
+  if (fall.fehlerklasse) zeilen.push(`Fehlerklasse: ${fall.fehlerklasse}`);
+  const kette = Array.isArray(fall.kette) ? fall.kette : [];
+  for (const z of kette.slice(0, 8)) {
+    const tools = (z.werkzeuge || []).join(", ");
+    zeilen.push(
+      `Zug: gehoert „${String(z.gehoert || "").slice(0, 180)}“`
+      + (z.geantwortet ? ` → Clara „${String(z.geantwortet).slice(0, 180)}“` : "")
+      + (tools ? ` [${tools}]` : ""),
+    );
+  }
+  for (const f of (fall.funde || []).slice(0, 6)) {
+    zeilen.push(`Auffaellig: ${f.text || ""}${f.beleg ? ` (Beleg: ${f.beleg})` : ""}`);
+  }
+  return zeilen.join("\n") || "Kein Beleg.";
+}
+
+/**
+ * Nachrichtenliste fuer das Modell (PUR).
+ * @param {string} beleg
+ * @param {{rolle:string,text:string}[]} historie
+ * @param {string} frage  leer = Gespraech eroeffnen
+ */
+export function baueGespraechNachrichten(beleg, historie = [], frage = "") {
+  const msgs = [
+    { role: "system", content: DIALOG_SYSTEM },
+    { role: "user", content: `Beleg zu diesem Fall:\n${beleg}` },
+  ];
+  for (const z of (historie || []).slice(-12)) {
+    const rolle = z.rolle === "assistant" ? "assistant" : "user";
+    const text = String(z.text || "").trim();
+    if (text) msgs.push({ role: rolle, content: text });
+  }
+  const naechste = String(frage || "").trim();
+  if (naechste) msgs.push({ role: "user", content: naechste });
+  else if (!(historie || []).length) {
+    msgs.push({
+      role: "user",
+      content: "Eroeffne das Gespraech: fasse in zwei Saetzen, was der Beleg zeigt, und stelle EINE kluge Rueckfrage.",
+    });
+  }
+  return msgs;
+}
+
+/**
+ * Eine Runde im Fehlergespraech. Speichert beide Seiten am Fall.
+ */
+export async function improveDialog(clientId, { fallId, text = "" } = {}) {
+  const id = String(fallId || "").trim();
+  const frage = String(text || "").trim().slice(0, 1500);
+  if (!id) return { ok: false, reason: "fall_required" };
+  const ref = masCollection(clientId, COL_FAELLE).doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "fall_not_found" };
+  const fall = { id, ...snap.data() };
+  const historie = Array.isArray(fall.dialog) ? fall.dialog : [];
+  if (historie.length >= 24) {
+    return { ok: false, reason: "dialog_voll", dialog: historie };
+  }
+  const msgs = baueGespraechNachrichten(baueGespraechBeleg(fall), historie, frage);
+  const llm = strongLlm();
+  const res = await chat(msgs, {
+    temperature: 0.7,
+    maxTokens: 420,
+    timeoutMs: 20000,
+    baseUrl: llm.base,
+    model: llm.model,
+  });
+  const antwort = String(res?.text || "").trim();
+  if (!res?.ok || !antwort) {
+    return {
+      ok: false,
+      reason: res?.reason || "llm_leer",
+      dialog: historie,
+      text: "Dazu kann ich gerade nicht frei sprechen — der Beleg bleibt oben stehen. Schreiben Sie trotzdem weiter, ich lese mit.",
+    };
+  }
+  const jetzt = Date.now();
+  const neu = [...historie];
+  if (frage) neu.push({ rolle: "user", text: frage, at: jetzt });
+  neu.push({ rolle: "assistant", text: antwort.slice(0, 2000), at: jetzt + 1 });
+  try {
+    await ref.update({ dialog: neu.slice(-24) });
+  } catch (e) {
+    log.warn?.("improve.dialog_schreiben", { fehler: String(e?.message || e) });
+  }
+  return { ok: true, text: antwort, dialog: neu };
 }
