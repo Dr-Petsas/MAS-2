@@ -1,4 +1,5 @@
 // Gespräch übernehmen: reine Prüfungen ohne Twilio/Netz.
+import { phoneFromRecord, displayNameOf } from "../src/lisa/outbound.js";
 import {
   phonesMatch,
   phoneDigits,
@@ -74,6 +75,12 @@ const params = { CallStatus: "in-progress", CallSid: "CAxxx" };
 const sig = twilioSignatureExpected(token, url, params);
 check("Twilio-Signatur stimmt", twilioSignatureOk(token, url, params, sig));
 check("falsche Signatur fällt durch", !twilioSignatureOk(token, url, params, "xxxx"));
+
+check("Nummer aus Festnetz-Feld", phoneFromRecord({ phoneNumber: "0177 6004600" }) === "+491776004600");
+check("Handy schlaegt Festnetz", phoneFromRecord({ mobilePhoneNumber: "015111111111", phone: "02211234567" }) === "+4915111111111");
+check("Adressbuch-phones-Array", phoneFromRecord({ phones: ["+491701234567"] }) === "+491701234567");
+check("leerer Datensatz ohne Nummer", phoneFromRecord({ firstName: "Max" }) === "");
+check("Name aus Vor- und Nachname", displayNameOf({ firstName: "Max", lastName: "Meier" }) === "Max Meier");
 
 console.log(fehler ? `\n${fehler} Prüfung(en) fehlgeschlagen.` : "\nAlle Prüfungen bestanden.");
 process.exitCode = fehler ? 1 : 0;

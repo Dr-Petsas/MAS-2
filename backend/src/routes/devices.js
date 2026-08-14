@@ -8,8 +8,8 @@ import { assertAppEnabled } from "../entitlements.js";
 import { listOperators, normalizeRole } from "../clara/operators.js";
 import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, updateDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured, setDeviceTakeoverPhone } from "../clara/devices.js";
 import { removeCandidateFromList, gapCandidateCardData } from "../clara/gapFill.js";
-import { karteRecallKandidaten } from "../clara/karten.js";
-import { getLisaTaskDetail } from "../lisa/outbound.js";
+import { karteRecallKandidaten, karteLisaSms } from "../clara/karten.js";
+import { getLisaTaskDetail, lisaSendSms, normalizePhoneE164 } from "../lisa/outbound.js";
 import { takeoverLisaCall, resolveChefPhone } from "../lisa/takeover.js";
 import { log } from "../log.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
@@ -339,6 +339,38 @@ router.post("/clara/devices/lisa-takeover", async (req, res) => {
       contactName: out.contactName || "",
       chefPhone: chefPhone || "",
     });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Public (deviceKey-gated): Nummer nachgetragen, SMS jetzt senden.
+router.post("/clara/devices/lisa-sms-send", async (req, res) => {
+  try {
+    const clientId = (req.body?.clientId || "").trim();
+    if (!clientId) return res.status(400).json({ ok: false, error: "client_required" });
+    const who = await identifyByDevice(clientId, req.body?.deviceId, req.body?.deviceKey);
+    if (!who) return res.status(401).json({ ok: false, error: "device_auth_failed" });
+    const phone = normalizePhoneE164(req.body?.phone);
+    const message = String(req.body?.message || req.body?.body || "").trim();
+    const contactName = String(req.body?.contactName || "").trim();
+    if (!phone) return res.status(400).json({ ok: false, reason: "need_phone" });
+    if (!message) return res.status(400).json({ ok: false, reason: "need_message" });
+    const out = await lisaSendSms(clientId, {
+      phone,
+      message,
+      recipientName: contactName,
+      by: who.name || "Team",
+    });
+    const card = karteLisaSms({
+      taskId: out.taskId || "",
+      contactName: out.contactName || contactName,
+      phone: out.phone || phone,
+      body: out.body || message,
+      status: out.ok ? "done" : "failed",
+    });
+    res.status(out.ok ? 200 : 400).json({ ...out, card });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

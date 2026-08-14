@@ -22,7 +22,7 @@ import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechn
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken } from "../clara/dokuWaechter.js";
 import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
 import { freiFormulieren } from "../clara/freiSprech.js";
-import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteWiedervorlage, karteRecallKandidaten, karteDokumente } from "../clara/karten.js";
+import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteLisaLive, karteLisaSms, karteWiedervorlage, karteRecallKandidaten, karteDokumente } from "../clara/karten.js";
 import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEuro, ABHAK_ANLEITUNG } from "../brain/wiedervorlage.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
@@ -53,7 +53,7 @@ import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
-import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary } from "../lisa/outbound.js";
+import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -3709,7 +3709,17 @@ router.post("/tools/dictate", async (req, res) => {
     const isCall = ch === "call";
     const target = await resolveDelegationTarget(clientId, req.body);
     if (!target.phone) {
-      return res.json({ ok: false, message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen." });
+      let missCard = null;
+      try {
+        missCard = karteLisaSms({
+          contactName: target.name, phone: "", body: dictation, status: "no_phone",
+        });
+      } catch { /* Karte ist Komfort */ }
+      return res.json({
+        ok: false,
+        message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen.",
+        card: missCard,
+      });
     }
     const who = target.name || target.phone;
 
@@ -3737,9 +3747,29 @@ router.post("/tools/dictate", async (req, res) => {
     }
     if (isCall) {
       const out = await lisaStartCall(clientId, { phone: target.phone, instruction: dictation, contactName: target.name, callLanguage: req.body?.callLanguage, by });
+      if (out?.taskId) {
+        try {
+          out.card = karteLisaLive({
+            taskId: out.taskId,
+            contactName: target.name,
+            phone: target.phone,
+            status: out.scheduled ? "scheduled" : "calling",
+            instruction: dictation,
+          });
+        } catch { /* Karte ist Komfort */ }
+      }
       return res.json(out);
     }
     const out = await lisaSendSms(clientId, { phone: target.phone, message: dictation, recipientName: target.name, by });
+    try {
+      out.card = karteLisaSms({
+        taskId: out.taskId || "",
+        contactName: out.contactName || target.name,
+        phone: out.phone || target.phone,
+        body: out.body || dictation,
+        status: out.ok ? "done" : "failed",
+      });
+    } catch { /* Karte ist Komfort */ }
     return res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -4531,13 +4561,34 @@ router.post("/tools/push-contact", async (req, res) => {
 // Fallback auf den zuvor per find_contact/search_patient bestimmten Kontakt,
 // damit SMS und Anruf OHNE gesprochene Telefonnummer funktionieren.
 async function resolveDelegationTarget(clientId, body) {
-  let phone = String(body?.phone || body?.phoneNumber || "").trim();
+  let phone = phoneFromRecord({
+    phone: body?.phone, phoneNumber: body?.phoneNumber, mobile: body?.mobile,
+  });
   let name = String(body?.recipientName || body?.contactName || "").trim();
-  if (phone) return { phone, name };
+  if (!phone) {
+    const blob = [body?.phone, body?.phoneNumber, body?.message, body?.text, body?.instruction, name].filter(Boolean).join(" ");
+    phone = extractPhoneFromText(blob) || "";
+    if (!phone) {
+      const spoken = spokenDigitsOf(blob);
+      if (spoken && spoken.length >= 6) phone = spoken;
+    }
+  }
   const sel = await getSelectedPatient(clientId);
-  const selPhone = String(sel?.mobilePhoneNumber || "").trim();
-  if (selPhone) {
-    return { phone: selPhone, name: name || `${sel.firstName || ""} ${sel.lastName || ""}`.trim() };
+  if (!name) name = displayNameOf(sel);
+  if (phone) return { phone, name };
+  const selPhone = phoneFromRecord(sel);
+  if (selPhone) return { phone: selPhone, name: name || displayNameOf(sel) };
+
+  const cands = await getPatientCandidates(clientId);
+  if (cands.length === 1) {
+    const cPhone = phoneFromRecord(cands[0]);
+    if (cPhone) return { phone: cPhone, name: name || displayNameOf(cands[0]) };
+    if (!name) name = displayNameOf(cands[0]);
+  }
+  if (name) {
+    const book = await listContacts(clientId, { q: name, limit: 5 }).catch(() => ({ items: [] }));
+    const hit = (book.items || []).find((x) => phoneFromRecord(x));
+    if (hit) return { phone: phoneFromRecord(hit), name: name || displayNameOf(hit) };
   }
   return { phone: "", name };
 }
@@ -4551,8 +4602,19 @@ router.post("/tools/send-sms", async (req, res) => {
     }
     const op = await getOperator(clientId);
     const target = await resolveDelegationTarget(clientId, req.body);
+    const smsText = String(req.body?.message || req.body?.text || "").trim();
     if (!target.phone) {
-      return res.json({ ok: false, message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen." });
+      let missCard = null;
+      try {
+        missCard = karteLisaSms({
+          contactName: target.name, phone: "", body: smsText, status: "no_phone",
+        });
+      } catch { /* Karte ist Komfort */ }
+      return res.json({
+        ok: false,
+        message: "Ich habe keine Telefonnummer. Sage zuerst: Suche den Kontakt von — und den Namen.",
+        card: missCard,
+      });
     }
     // Testsuite-Schutz: validiert den kompletten Pfad (Kontakt, Nummer),
     // verschickt aber NICHTS über Twilio.
@@ -4561,10 +4623,19 @@ router.post("/tools/send-sms", async (req, res) => {
     }
     const out = await lisaSendSms(clientId, {
       phone: target.phone,
-      message: req.body?.message || req.body?.text,
+      message: smsText,
       recipientName: target.name,
       by: op?.name || "Team",
     });
+    try {
+      out.card = karteLisaSms({
+        taskId: out.taskId || "",
+        contactName: out.contactName || target.name,
+        phone: out.phone || target.phone,
+        body: out.body || smsText,
+        status: out.ok ? "done" : "failed",
+      });
+    } catch { /* Karte ist Komfort */ }
     res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -4610,6 +4681,17 @@ router.post("/tools/delegate-call", async (req, res) => {
       callLanguage: req.body?.callLanguage,
       by: op?.name || "Team",
     });
+    if (out?.taskId) {
+      try {
+        out.card = karteLisaLive({
+          taskId: out.taskId,
+          contactName: target.name,
+          phone: target.phone,
+          status: out.scheduled ? "scheduled" : "calling",
+          instruction: instrText,
+        });
+      } catch { /* Karte ist Komfort — der Anruf laeuft trotzdem */ }
+    }
     res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -4655,9 +4737,20 @@ router.post("/tools/lisa-call-result", async (req, res) => {
     const t = r.task || {};
     const wer = t.contactName || t.phone || "dem Kontakt";
     if (r.state === "running") {
+      let liveCard = null;
+      try {
+        liveCard = karteLisaLive({
+          taskId: t.id || "",
+          contactName: t.contactName || "",
+          phone: t.phone || "",
+          status: "calling",
+          instruction: t.prompt || "",
+        });
+      } catch { /* Karte ist Komfort */ }
       return res.json({
         ok: true, found: true, running: true, taskId: t.id || "",
-        message: `Lisa telefoniert gerade noch mit ${wer}. Sobald sie auflegt, melde ich Ihnen das Ergebnis.`,
+        message: `Lisa telefoniert gerade noch mit ${wer}. Sie sehen den Verlauf auf dem Bildschirm.`,
+        card: liveCard,
       });
     }
 

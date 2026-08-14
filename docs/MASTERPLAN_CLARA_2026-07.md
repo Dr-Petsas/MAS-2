@@ -2497,11 +2497,14 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   "Gespräch übernehmen" holt den Chef per Twilio-Konferenz in die
   laufende Leitung (Lisa stumm, Transkript läuft weiter über EL plus
   Twilio-Realtime). Ohne Chef-Nummer fragt die App einmal
-  (`LISA_TAKEOVER_PHONE` oder gespeicherte Gerätenummer). Freizeichen-
+  (`LISA_TAKEOVER_PHONE` oder gespeicherte Gerätenummer).   Freizeichen-
   Status bleibt Folge — die Telefonie liefert weiter nur
   `calling`/`done`. Dieselbe Flip-Ansicht gilt fuer SMS: Lisa sucht den
   Patienten, nimmt die Nummer, formuliert den Text, versendet — Schritt
-  fuer Schritt auf dem geflippten Screen.
+  fuer Schritt auf dem geflippten Screen. Fehlt die Nummer trotz
+  bestimmtem Kontakt, bleibt Schritt 2 sichtbar und die Nummer ist
+  nachtragbar; die Aufloesung nimmt Festnetz, gemerkten Kontakt,
+  Adressbuch und eine gesprochene Nummer mit.
 - 28.07.2026 (frueh, Nachtschicht): **Masterplan-Schlussstand — alle autonom
   baubaren Pakete FERTIG.** In dieser Nacht abgeschlossen: W-STABIL-5/-6/-7/
   -8/-9a (Protokolle, Morgenlauf, Konfig ins Tag, Fristen-/Rechnungs-

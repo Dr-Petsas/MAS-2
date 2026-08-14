@@ -65,6 +65,13 @@ function injectCss() {
       color:#e6edf6; border-radius:10px; padding:10px 12px; font:inherit; font-size:16px;
       font-weight:700; letter-spacing:.02em; }
     .lisa-live .ll-hint { font-size:12px; color:#8fa3bd; line-height:1.35; }
+    .lisa-live .ll-sms-fix { display:none; flex-direction:column; gap:8px; }
+    .lisa-live .ll-sms-fix.is-on { display:flex; }
+    .lisa-live .ll-sms-fix label { font-size:11px; font-weight:800; letter-spacing:.06em;
+      text-transform:uppercase; color:#8fa3bd; }
+    .lisa-live .ll-sms-fix input { border:1px solid rgba(255,255,255,.14); background:rgba(0,0,0,.28);
+      color:#e6edf6; border-radius:10px; padding:10px 12px; font:inherit; font-size:16px; font-weight:700; }
+    .lisa-live .ll-btn.send { background:linear-gradient(135deg,#2ee6c8,#1aa38d); color:#06241e; }
     .lisa-live .ll-line.chef { border-color:rgba(255,179,71,.35); }
     .lisa-live .ll-line.chef .w { color:#ffb347; }
     .lisa-live .ll-sms { margin-top:8px; padding:10px 12px; border-radius:10px;
@@ -104,6 +111,12 @@ export function mountLisaLive(host, { getAuth } = {}) {
       </div>
       <button type="button" class="ll-btn take" data-ll-take>Gespräch übernehmen</button>
       <div class="ll-hint" data-ll-hint>Lisa bleibt in der Leitung, wird aber stumm. Das Transkript läuft weiter.</div>
+      <div class="ll-sms-fix" data-ll-sms-fix>
+        <label for="ll-sms-phone">Nummer nachtragen</label>
+        <input id="ll-sms-phone" data-ll-sms-phone type="tel" inputmode="tel" autocomplete="tel"
+          placeholder="0176 …">
+        <button type="button" class="ll-btn send" data-ll-sms-send>SMS jetzt senden</button>
+      </div>
     </div>
   `;
   host.classList.add("lisa-live");
@@ -117,6 +130,9 @@ export function mountLisaLive(host, { getAuth } = {}) {
     take: host.querySelector("[data-ll-take]"),
     chef: host.querySelector("[data-ll-chef]"),
     hint: host.querySelector("[data-ll-hint]"),
+    smsFix: host.querySelector("[data-ll-sms-fix]"),
+    smsPhone: host.querySelector("[data-ll-sms-phone]"),
+    smsSend: host.querySelector("[data-ll-sms-send]"),
     close: host.querySelector("[data-ll-close]"),
   };
 
@@ -247,6 +263,43 @@ export function mountLisaLive(host, { getAuth } = {}) {
     }
   });
 
+  let smsDraft = { name: "", text: "" };
+
+  function addSmsLine({ label, text, fail, body }) {
+    const div = document.createElement("div");
+    div.className = `ll-line is-in ${fail ? "user" : "agent"}`;
+    div.innerHTML = `<span class="w">${escapeHtml(label)}</span>${escapeHtml(text)}${body ? `<div class="ll-sms">${escapeHtml(body)}</div>` : ""}`;
+    els.lines.appendChild(div);
+    els.lines.scrollTop = els.lines.scrollHeight;
+  }
+
+  function finishSmsSteps(phone, text, ok) {
+    const shown = displayPhone(phone);
+    addSmsLine({ label: "Nummer", text: `Nimmt die Nummer ${shown}.` });
+    stepTimer = setTimeout(() => {
+      addSmsLine({
+        label: text ? "Text" : "Stopp",
+        text: text ? "Formuliert den SMS-Text." : "Kein Text.",
+        fail: !text,
+        body: text,
+      });
+      stepTimer = setTimeout(() => {
+        addSmsLine({
+          label: ok ? "Versendet" : "Stopp",
+          text: ok ? "Versendet die SMS." : "Die SMS ist nicht rausgegangen.",
+          fail: !ok,
+        });
+        if (ok) {
+          els.phase.textContent = "Die SMS ist raus.";
+          els.phase.classList.add("is-end");
+        } else {
+          els.phase.textContent = "Lisa kommt nicht durch.";
+          els.phase.classList.add("is-end");
+        }
+      }, 420);
+    }, 420);
+  }
+
   function startSms(card) {
     if (timer) { clearInterval(timer); timer = 0; }
     if (stepTimer) { clearTimeout(stepTimer); stepTimer = 0; }
@@ -255,45 +308,82 @@ export function mountLisaLive(host, { getAuth } = {}) {
     const phone = displayPhone(card.phone);
     const text = String(card.body || card.instruction || "").trim();
     const ok = card.status !== "failed" && card.status !== "no_phone";
+    smsDraft = { name: card.contactName || "", text };
     if (tagEl) tagEl.textContent = "Lisa · SMS";
     els.who.textContent = name === "den Patienten" ? "SMS" : name;
-    els.phase.textContent = ok ? "Lisa schreibt eine SMS." : "Lisa kommt nicht durch.";
-    els.phase.classList.toggle("is-end", !ok);
+    els.phase.textContent = ok ? "Lisa schreibt eine SMS." : (phone ? "Lisa kommt nicht durch." : "Nummer fehlt — bitte eintragen.");
+    els.phase.classList.toggle("is-end", !ok && !!phone);
     els.phase.classList.remove("is-talk");
     els.phone.textContent = phone;
     els.auftrag.textContent = "";
     els.take.hidden = true;
     if (els.chef) els.chef.closest(".ll-chef").hidden = true;
     if (els.hint) els.hint.hidden = true;
+    if (els.smsFix) els.smsFix.classList.remove("is-on");
     els.lines.innerHTML = "";
     host.classList.add("is-on");
 
-    const steps = [
-      { label: "Sucht", text: `Sucht ${name} im Stamm.` },
-      { label: phone ? "Nummer" : "Stopp", text: phone ? `Nimmt die Nummer ${phone}.` : "Keine Nummer hinterlegt.", fail: !phone },
-      { label: text ? "Text" : "Stopp", text: text ? "Formuliert den SMS-Text." : "Kein Text.", fail: !text, body: text },
-      { label: ok ? "Versendet" : "Stopp", text: ok ? "Versendet die SMS." : "Die SMS ist nicht rausgegangen.", fail: !ok },
-    ];
-    let i = 0;
-    const next = () => {
-      if (i >= steps.length) {
-        if (ok) {
-          els.phase.textContent = "Die SMS ist raus.";
-          els.phase.classList.add("is-end");
+    addSmsLine({ label: "Sucht", text: `Sucht ${name} im Stamm.` });
+    if (!phone) {
+      stepTimer = setTimeout(() => {
+        addSmsLine({
+          label: "Nummer fehlt",
+          text: "Keine Nummer hinterlegt — bitte eintragen, dann geht es weiter.",
+          fail: true,
+        });
+        if (els.smsFix) {
+          els.smsFix.classList.add("is-on");
+          els.smsPhone?.focus();
         }
-        return;
-      }
-      const s = steps[i];
-      const div = document.createElement("div");
-      div.className = `ll-line is-in ${s.fail ? "user" : "agent"}`;
-      div.innerHTML = `<span class="w">${escapeHtml(s.label)}</span>${escapeHtml(s.text)}${s.body ? `<div class="ll-sms">${escapeHtml(s.body)}</div>` : ""}`;
-      els.lines.appendChild(div);
-      els.lines.scrollTop = els.lines.scrollHeight;
-      i += 1;
-      stepTimer = setTimeout(next, 420);
-    };
-    next();
+      }, 420);
+      return;
+    }
+    stepTimer = setTimeout(() => finishSmsSteps(phone, text, ok), 420);
   }
+
+  els.smsPhone?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); els.smsSend?.click(); }
+  });
+  els.smsSend?.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const auth = typeof getAuth === "function" ? getAuth() : null;
+    const phone = String(els.smsPhone?.value || "").trim();
+    if (!auth?.clientId || !phone) {
+      els.smsPhone?.focus();
+      return;
+    }
+    els.smsSend.disabled = true;
+    els.smsSend.textContent = "Sendet …";
+    try {
+      const resp = await fetch("/clara/devices/lisa-sms-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...auth,
+          phone,
+          message: smsDraft.text,
+          contactName: smsDraft.name,
+        }),
+      });
+      const j = await resp.json().catch(() => null);
+      if (j?.ok) {
+        if (els.smsFix) els.smsFix.classList.remove("is-on");
+        els.phone.textContent = displayPhone(j.phone || phone);
+        els.phase.textContent = "Lisa schreibt eine SMS.";
+        els.phase.classList.remove("is-end");
+        finishSmsSteps(j.phone || phone, j.body || smsDraft.text, true);
+      } else {
+        els.smsSend.disabled = false;
+        els.smsSend.textContent = "SMS jetzt senden";
+        els.phase.textContent = j?.reason === "need_message"
+          ? "Es fehlt der SMS-Text."
+          : "Nummer nicht verstanden. Bitte noch einmal.";
+      }
+    } catch {
+      els.smsSend.disabled = false;
+      els.smsSend.textContent = "SMS jetzt senden";
+    }
+  });
 
   return {
     start(card) {
@@ -310,6 +400,7 @@ export function mountLisaLive(host, { getAuth } = {}) {
       els.take.textContent = "Gespräch übernehmen";
       if (els.chef) els.chef.closest(".ll-chef").hidden = card?.status === "scheduled";
       if (els.hint) els.hint.hidden = false;
+      if (els.smsFix) els.smsFix.classList.remove("is-on");
       host.classList.add("is-on");
       paint({
         phase: card.status === "scheduled" ? "scheduled" : "dialing",

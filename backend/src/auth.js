@@ -58,6 +58,7 @@ function isPublic(req) {
   if (p === "/clara/devices/recall-remove") return true;
   // deviceKey-gesichert: Lisa-Live-Ansicht + Übernehmen auf Handy/iPad.
   if (p === "/clara/devices/lisa-live" || p === "/clara/devices/lisa-takeover") return true;
+  if (p === "/clara/devices/lisa-sms-send") return true;
   // Voice-Worker holt beim Verbinden den Anlass eines proaktiven Clara-Anrufs
   // ab (kurzer, PII-freier Sprechtext; einmalig konsumiert, 2h TTL).
   if (p === "/clara/pending-context") return true;

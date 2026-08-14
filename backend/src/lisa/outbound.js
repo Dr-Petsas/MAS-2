@@ -107,6 +107,26 @@ export function normalizePhoneE164(raw, defaultCc = "+49") {
   return v;
 }
 
+/** Erste wählbare Nummer aus einem Patienten-/Kontakt-Datensatz. */
+export function phoneFromRecord(rec) {
+  if (!rec || typeof rec !== "object") return "";
+  const list = [
+    rec.mobilePhoneNumber, rec.mobile, rec.phone, rec.phoneNumber,
+    rec.tel, rec.handy,
+  ];
+  if (Array.isArray(rec.phones)) list.push(...rec.phones);
+  for (const v of list) {
+    const n = normalizePhoneE164(v);
+    if (n) return n;
+  }
+  return "";
+}
+
+export function displayNameOf(rec) {
+  if (!rec || typeof rec !== "object") return "";
+  return String(rec.name || rec.contactName || `${rec.firstName || ""} ${rec.lastName || ""}`.trim()).trim();
+}
+
 // ----------------------------------------------------------------------------
 // Idempotency guard (2026-06-10): the voice pipeline can dispatch the SAME
 // spoken order twice (duplicate turn / barge-in chaos) -- a real SMS went out
