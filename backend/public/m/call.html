@@ -524,6 +524,7 @@
     // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
     import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
     import { mountLisaLive } from "/m/lisa-live.js?v=4";
+    import { bindCrewChips } from "/m/crew.js?v=1";
 
     const qs = new URLSearchParams(location.search);
     const STORE_KEY = "clara.device.v1";
@@ -775,58 +776,22 @@
       // (Kehrt die Badge-nur-Sonderregel fuer recall_kandidaten vom 28.07. um.)
       setFlipped(true);
       if (card?.kind === "lisa_live" || card?.kind === "lisa_sms") lisaLive.start(card);
+      if (typeof noteCrew === "function") noteCrew({ card });
     }
 
     renderDeck();
 
-    // ── Agenten-Chips: leuchten beim Denken, grün bei Antwort (Hero-Motiv) ──
-    const agentEls = Array.from(els.agents?.querySelectorAll("span") || []);
-    const agentIndexByName = {};
-    agentEls.forEach((el, i) => { agentIndexByName[el.textContent.trim()] = i; });
-    let agentPtr = 0;
-    let agentCurrent = -1;
-    let activeAgent = null; // aus dem Thema erkannte Kollegin (oder null)
-
-    // Rollen EXAKT wie in tourNarrate.js ("DAS TEAM"): die Kollegin ergibt sich
-    // aus dem KANAL/Thema. Reihenfolge = Priorität; zuerst passende gewinnt.
-    // Kanal zuerst (Post -> Nadine, Anruf/SMS -> Lisa/Bianca), dann Fachthemen.
-    const AGENT_TOPICS = [
-      ["Nadine", /\b(brief|briefe|anschreiben|e-?mail|e-?mails|mail|mails|post|posteingang|postfach)\b/i],
-      ["Bianca", /\b(bianca|eingehend\w*|praxisanruf|angerufen|nimmt\s+\w*anruf|anruf\w*\s+annehmen|telefon\w*\s+annehmen)\b/i],
-      ["Lisa",   /\b(lisa|sms|kurznachricht|textnachricht|anruf\w*|anrufen|telefon\w*|telefonisch|rausrufen|raus\s?ruf\w*|rückruf\w*|zurückrufen)\b/i],
-      ["Sophie", /\b(sophie|abrechnung\w*|rechnung\w*|gebühr\w*|goz|bema|hkp|heil.?kostenplan|faktur\w*|zahlung\w*|mahnung\w*)\b/i],
-      ["Lena",   /\b(lena|doku|dokumentation\w*|dokumentier\w*|diktat|diktier\w*|befund\w*|behandlungsnotiz\w*)\b/i],
-      ["Julia",  /\b(julia|qm|qualitätsmanagement|hygiene\w*|prüfprotokoll\w*)\b/i],
-      ["Marie",  /\b(marie|dienstplan\w*|arbeitszeit\w*|schicht\w*|urlaub\w*|resturlaub|anwesen\w*|wer ist da|krank\w*|betriebsferien)\b/i],
-    ];
-    function agentForText(text) {
-      const q = String(text || "");
-      for (const [name, re] of AGENT_TOPICS) if (re.test(q)) return name;
-      return null;
-    }
-
-    function agentsThinking() {
-      if (!agentEls.length) return;
-      agentEls.forEach((el) => el.classList.remove("is-asking", "is-answered"));
-      let idx = -1;
-      if (activeAgent && agentIndexByName[activeAgent] != null) {
-        idx = agentIndexByName[activeAgent]; // richtige Kollegin zum Thema
-      } else {
-        idx = agentPtr % agentEls.length; agentPtr += 1; // Fallback: sanfte Rotation
+    // Kolleginnen-Chips: nur bei echtem Tool/Karten-Trigger, nie per Satz-Rate.
+    const crew = bindCrewChips(els.agents);
+    function noteCrew(src) {
+      const who = crew.note(src);
+      if (who && (voice === "thinking" || document.body.classList.contains("st-thinking"))) {
+        crew.asking();
       }
-      agentCurrent = idx;
-      agentEls[idx].classList.add("is-asking");
     }
-    function agentsAnswered() {
-      if (agentCurrent < 0 || !agentEls[agentCurrent]) return;
-      agentEls[agentCurrent].classList.remove("is-asking");
-      agentEls[agentCurrent].classList.add("is-answered");
-    }
-    function agentsClear() {
-      agentEls.forEach((el) => el.classList.remove("is-asking", "is-answered"));
-      agentCurrent = -1;
-      activeAgent = null;
-    }
+    function agentsThinking() { crew.asking(); }
+    function agentsAnswered() { crew.answered(); }
+    function agentsClear() { crew.clear(); }
 
     // ── Zustandsmaschine: ein Button, Farben erzählen den Rest ───────────────
     // phase: idle | ringing | connecting | live | ended
@@ -1113,13 +1078,9 @@
               } else if (phase === "live" && voice === "clara") {
                 voice = "listening"; render();
               }
+            } else if (obj.type === "crew") {
+              noteCrew(obj);
             } else if (obj.type === "final_transcript" && phase === "live" && !wakeStandby) {
-              // Nutzer-Satz ist fertig -> Clara holt Tools / denkt nach,
-              // bis das naechste audio_state=speaking kommt. Aus dem Satz die
-              // zustaendige Kollegin ableiten (Post->Nadine, Anruf/SMS->Lisa,
-              // eingehend->Bianca, ...); ohne Treffer bleibt das alte Thema.
-              const who = agentForText(obj.text);
-              if (who) activeAgent = who;
               voice = "thinking"; render();
             } else if (obj.type === "wake_state") {
               // Wake-Word (09.07.2026): "Clara stopp" -> gelbes Pausiert,

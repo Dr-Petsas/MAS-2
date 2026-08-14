@@ -1875,6 +1875,7 @@
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
     import { mountLisaLive } from "/m/lisa-live.js?v=4";
+    import { bindCrewChips } from "/m/crew.js?v=1";
 
     const qs = new URLSearchParams(location.search);
     const STORE_KEY = "pickadoc.ipad.v1";
@@ -2067,26 +2068,23 @@
         placeLisaHost();
         lisaLive.start(card);
       }
+      if (typeof noteCrew === "function") noteCrew({ card });
     }
     renderDeck();
     window.__claraRenderRightDeck = renderRightDeck;
     window.addEventListener("orientationchange", () => setTimeout(() => { placeLisaHost(); renderRightDeck(); }, 80));
     window.matchMedia("(orientation: landscape)").addEventListener?.("change", () => { placeLisaHost(); renderRightDeck(); });
 
-    const agentEls = Array.from(els.agents?.querySelectorAll("span") || []);
-    let agentPtr = 0, agentCurrent = -1;
-    function agentsThinking() {
-      if (!agentEls.length) return;
-      agentEls.forEach((el) => el.classList.remove("is-asking", "is-answered"));
-      agentCurrent = agentPtr % agentEls.length; agentPtr += 1;
-      agentEls[agentCurrent].classList.add("is-asking");
+    const crew = bindCrewChips(els.agents);
+    function noteCrew(src) {
+      const who = crew.note(src);
+      if (who && (voice === "thinking" || document.body.classList.contains("st-thinking"))) {
+        crew.asking();
+      }
     }
-    function agentsAnswered() {
-      if (agentCurrent < 0 || !agentEls[agentCurrent]) return;
-      agentEls[agentCurrent].classList.remove("is-asking");
-      agentEls[agentCurrent].classList.add("is-answered");
-    }
-    function agentsClear() { agentEls.forEach((el) => el.classList.remove("is-asking", "is-answered")); agentCurrent = -1; }
+    function agentsThinking() { crew.asking(); }
+    function agentsAnswered() { crew.answered(); }
+    function agentsClear() { crew.clear(); }
 
     const ALL_ST = ["st-idle","st-ringing","st-connecting","st-listening","st-user","st-thinking","st-clara","st-standby","st-ended"];
     const LABELS = {
@@ -2356,6 +2354,8 @@
               else if (phase === "live" && voice === "clara") { voice = "listening"; render(); }
               // Befund-Echo-Queue (Schema-Seite) braucht das Sprech-Ende.
               try { window.__lenaEchoAudioState?.(obj.state); } catch (_) {}
+            } else if (obj.type === "crew") {
+              noteCrew(obj);
             } else if (obj.type === "final_transcript" && phase === "live" && !wakeStandby) {
               voice = "thinking"; render();
             } else if (obj.type === "wake_state") {

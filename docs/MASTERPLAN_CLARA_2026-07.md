@@ -2488,6 +2488,11 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Kolleginnen-Chips leuchten am Trigger, nicht am Satz.**
+  Handy/iPad mappen Tool (`call_log`→Bianca, `ask_nadine`→Nadine,
+  `send_sms`→Lisa, Doku→Lena, …) und Kartenart. Kalender bleibt dunkel
+  (Clara ist die Leitung). Kein Regex, kein Karussell. Worker sendet
+  additiv `{type:"crew", tool}`. Eine Stimme bleibt Clara.
 - 14.08.2026: **Lisa-Live-Flip + Anruf-Intent geschaerft.** "Hat Lisa X
   angerufen?" / "ob Lisa angerufen hat" geht auf `lisa_call_result`, nicht
   mehr aufs Eingangsprotokoll (`call_log`). "Du hast mich angerufen" und
