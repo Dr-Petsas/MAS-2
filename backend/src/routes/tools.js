@@ -53,7 +53,7 @@ import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
-import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, decideDelegationDial, canConfirmLisaCall, nameTokensOverlap } from "../lisa/outbound.js";
+import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, decideDelegationDial, canConfirmLisaCall, nameTokensOverlap, imAnrufFenster, naechsterFensterStartMs } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -3796,6 +3796,7 @@ router.post("/tools/dictate", async (req, res) => {
             phone: pendingCall.phone,
             status: out.scheduled ? "scheduled" : "calling",
             instruction: pendingCall.instruction || dictation,
+            scheduledForText: out.scheduledForText || "",
           });
         } catch { /* Karte ist Komfort */ }
       }
@@ -4695,11 +4696,23 @@ async function resolveDelegationTarget(clientId, body) {
 
 function lisaCallConfirmPayload({ name, phone, instruction }) {
   const wer = name || "diese Person";
+  // 14.08.2026 (Live 20:11): Der Chef bestaetigte um 20:11 Uhr — erst NACH dem
+  // Ja kam heraus, dass ausserhalb der Anrufzeiten nur eingeplant wird, und
+  // genau diese Ansage schnitt der Lisa-Flip ab. Die Vorschau sagt das jetzt
+  // VOR der Bestaetigung. Wortlaut muss "soll Lisa ... anruf..." enthalten,
+  // damit der Worker-Waechter das folgende Ja als confirm=true erkennt.
+  let frage = `Ist das ${wer}? Soll Lisa jetzt anrufen?`;
+  if (!imAnrufFenster()) {
+    const wannTxt = new Intl.DateTimeFormat("de-DE", {
+      timeZone: "Europe/Berlin", weekday: "long", hour: "2-digit", minute: "2-digit",
+    }).format(new Date(naechsterFensterStartMs()));
+    frage = `Ist das ${wer}? Es ist gerade außerhalb der Anrufzeiten — soll Lisa den Anruf für ${wannTxt} Uhr einplanen?`;
+  }
   return {
     ok: true,
     needsConfirm: true,
     prepared: true,
-    message: `Ist das ${wer}? Soll Lisa jetzt anrufen?`,
+    message: frage,
     directive: "Lies die Rueckfrage woertlich vor und WARTE. NUR auf ausdrueckliches 'Ja' rufst du delegate_call ERNEUT auf mit confirm=true, derselben instruction und OHNE phone. Auf 'Nein' oder eine Korrektur ('nicht die, sondern Frau Y') rufst du delegate_call ERNEUT mit dem korrigierten contactName auf - OHNE confirm; die Karte wird ersetzt. Nennt der Chef keinen neuen Namen, frage: Wen genau soll Lisa anrufen? Erfinde KEINE Telefonnummer.",
     card: karteLisaLive({
       taskId: "",
@@ -4802,6 +4815,7 @@ router.post("/tools/delegate-call", async (req, res) => {
             phone: dialPhone,
             status: out.scheduled ? "scheduled" : "calling",
             instruction: dialInstr,
+            scheduledForText: out.scheduledForText || "",
           });
         } catch { /* Karte ist Komfort — der Anruf laeuft trotzdem */ }
       }

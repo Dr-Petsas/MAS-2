@@ -387,12 +387,13 @@ const LISA_AUSGANG = {
  */
 export function karteLisaLive({
   taskId = "", contactName = "", phone = "", status = "calling", instruction = "",
+  scheduledForText = "",
 } = {}) {
   const wer = clip(contactName || phone, 40) || "Kontakt";
   const phase = status === "confirm"
     ? "Bitte bestätigen — noch kein Anruf."
     : status === "scheduled"
-      ? "Lisa ruft später an (außerhalb der Anrufzeiten)."
+      ? `Eingeplant — Lisa ruft ${scheduledForText || "später"} an (Anrufzeiten).`
       : `Lisa wählt ${phone || "die Nummer"} …`;
   return {
     kind: "lisa_live",
@@ -401,6 +402,7 @@ export function karteLisaLive({
     contactName: String(contactName || ""),
     status: String(status || "calling"),
     instruction: String(instruction || ""),
+    scheduledForText: String(scheduledForText || ""),
     tag: status === "confirm" ? "Lisa · Bestätigen" : "Lisa live",
     title: wer,
     time: "",

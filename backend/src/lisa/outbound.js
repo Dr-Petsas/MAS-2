@@ -510,7 +510,10 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
       timeZone: TZ_BERLIN, weekday: "long", hour: "2-digit", minute: "2-digit",
     }).format(new Date(wannMs));
     if (schonGeplant) {
-      return { ok: true, scheduled: true, taskId: schonGeplant.id, message: `Dieser Anruf ist bereits für ${wannTxt} Uhr eingeplant.` };
+      return {
+        ok: true, scheduled: true, taskId: schonGeplant.id, scheduledForText: `${wannTxt} Uhr`,
+        message: `Dieser Anruf ist bereits für ${wannTxt} Uhr eingeplant.`,
+      };
     }
     const ref = tasksCol(clientId).doc();
     await ref.set({
@@ -532,7 +535,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     });
     log.info("lisa.call.scheduled_window", { clientId, taskId: ref.id, wannMs, fenster: `${CALL_WINDOW_START}-${CALL_WINDOW_END}` });
     return {
-      ok: true, scheduled: true, taskId: ref.id,
+      ok: true, scheduled: true, taskId: ref.id, scheduledForText: `${wannTxt} Uhr`,
       message: `Es ist gerade außerhalb der Anrufzeiten (${CALL_WINDOW_START} bis ${CALL_WINDOW_END} Uhr) — ich habe den Anruf für ${wannTxt} Uhr eingeplant. Lisa ruft dann an.`,
     };
   }

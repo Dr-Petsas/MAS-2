@@ -2492,6 +2492,37 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026 (Live 20:11, "Lisa ruft nicht an"): **Der Anruf-Flow lief
+  diesmal komplett durch — gestoppt hat ihn die Anrufzeiten-Regel L4
+  (9-19 Uhr, Chef 29.07.), und die ERKLAERUNG dazu wurde verschluckt.**
+  Um 20:11:35 kam confirm=true sauber an; MAS plante den Anruf regelkonform
+  fuer Samstag 09:00 ein (Task Q2uoz6AJk6BEquDEUkFL — nach Chef-Entscheid
+  storniert, war ein Testlauf). Aber: (1) Der Lisa-Flip setzte bei Status
+  "scheduled" app_mode=hold und brach damit genau die Ansage "ausserhalb
+  der Anrufzeiten — eingeplant fuer Samstag 09:00" ab; der Chef hoerte
+  Stille. Jetzt: hold NUR noch, wenn Lisa wirklich waehlt/spricht; die
+  Karte zeigt "Eingeplant — Lisa ruft Samstag, 09:00 Uhr an" (outbound
+  liefert scheduledForText, karten.js/lisa-live.js zeigen ihn). (2) Die
+  Vorschau fragt ausserhalb des Fensters jetzt VOR der Bestaetigung
+  "... soll Lisa den Anruf fuer <Wochentag, HH:MM> Uhr einplanen?"
+  (Wortlaut bewusst confirm-erkennbar). (3) REGRESSION vom 19:22-Fix:
+  "Wieso ruft Lisa nicht an?" (Beschwerde!) wurde durch das neue "ruft"
+  in _LISA_NEW_ORDER_RE zum Anruf-Auftrag an "Frau Heila" — Clara las
+  vier wahllose Patienten vor. Jetzt: ist_lisa_meta_frage() (wieso/warum/
+  weshalb, klappt/funktioniert, "ruft ... nicht", "^wann") schliesst
+  Meta-/Status-Fragen aus ALLEN delegate-Synthese-Pfaden aus; "anrufst"
+  (2. Person) ergaenzt. (4) Der Modell-Umweg ueber patient_next_appointment
+  ("...dass du Frau X anrufst und den Termin absagst" -> erst Termin
+  nachschlagen) kostete 25 s und stellte die Namensfrage DOPPELT — 
+  patient_next_appointment steht jetzt in _DELEGATE_REDIRECT_WRONG und
+  wird bei aktivem Anruf-Auftrag auf delegate_call umgebogen
+  (find_contact bleibt bewusst erlaubt). STT-Geister: "Thank you." wurde
+  korrekt verworfen (Blocking-Drop griff), "Yeah." ist als Kurz-Ja
+  registriert — mit (4) entfaellt die Luecke, in der es Schaden anrichtete.
+  Tests: test_delegate_call (2c Meta-Fragen, Einplan-Rueckfrage,
+  Redirect-Menge); Gate gruen. Abend-Testrezept: Livetest-Fenster
+  (Testlabor-Redirect aufs eigene Handy) uebersteuert die Anrufzeiten —
+  Lisa waehlt dann sofort.
 - 14.08.2026 (Live 19:22, "warum klappt das schon wieder nicht"): **Die
   Namens-Schranke wuergte den Anruf-Auftrag — es lief NIE ein Tool.** Vier
   Loecher in einem Gespraech: (1) Die Namens-Schranke (uncertain_name)

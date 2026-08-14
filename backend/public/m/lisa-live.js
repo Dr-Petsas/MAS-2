@@ -179,7 +179,9 @@ export function mountLisaLive(host, { getAuth, onClaraHold, onReleaseMic } = {})
     const phone = snap.phone || card.phone || "";
     const phase = snap.phase || (card.status === "scheduled" ? "scheduled" : "dialing");
     els.who.textContent = name;
-    els.phase.textContent = PHASE[phase] || PHASE.dialing;
+    els.phase.textContent = (phase === "scheduled" && card.scheduledForText)
+      ? `Eingeplant — Lisa ruft ${card.scheduledForText} an.`
+      : (PHASE[phase] || PHASE.dialing);
     els.phase.classList.toggle("is-talk", phase === "talking" || phase === "takeover" || phase === "joining");
     els.phase.classList.toggle("is-end", phase === "done" || phase === "ended");
     els.phone.textContent = displayPhone(phone);
@@ -429,7 +431,10 @@ export function mountLisaLive(host, { getAuth, onClaraHold, onReleaseMic } = {})
       }
       if (els.smsFix) els.smsFix.classList.remove("is-on");
       host.classList.add("is-on");
-      setHold(!preview);
+      // 14.08.2026 (Live 20:11): Bei "scheduled" laeuft KEIN Anruf — der
+      // Hold wuergte genau die Ansage ab, die das Einplanen erklaert hat.
+      // Hold nur, wenn Lisa wirklich waehlt/spricht.
+      setHold(!preview && card?.status !== "scheduled");
       paint({
         phase: preview ? "confirm" : (card.status === "scheduled" ? "scheduled" : "dialing"),
         phone: card.phone,
