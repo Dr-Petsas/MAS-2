@@ -2492,6 +2492,19 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Relikt gefunden: Chef-Nummer stand als BEISPIEL im Profil.**
+  Chef fragte, ob die falsche Nummer ein Relikt alter Testanrufe ist — ja:
+  `01776004600` stand woertlich im System-Prompt („z.B. 01776004600“) und im
+  send_sms-Schema; das 4B-Modell schreibt Beispiele ab, wenn ihm die echte
+  Nummer fehlt. Beide Nennungen aus BEIDEN Profilen (dev + live) entfernt;
+  der Lisa-Absatz im System-Prompt beschreibt jetzt den Bestaetigungs-Ablauf
+  (kein phone, Nummer nur aus dem Datensatz, Korrektur-Runden). Das
+  Livetest-Fenster (test_redirect, alle Anrufe -> Chef-Handy) war seit
+  28.07. abgelaufen und NICHT die Ursache. Alter Anruf-Vormerker mit der
+  Chef-Nummer aus voice_state geloescht. Korrektur-Gespraeche auf der
+  Lisa-Karte: Confirm-Directive nennt den Weg (Nein/anderer Name ->
+  delegate_call mit neuem contactName ersetzt die Vorschau); confirm=true
+  mit ANDEREM Namen als die Vorschau zaehlt als neue Anfrage, nie als Ja.
 - 14.08.2026: **Lisa-Karte zeigte die Chef-Nummer.** Zweiter Haila-
   Versuch: find_contact uneindeutig (Hayla/Haila + Heldmann), das
   Modell setzte `phone=01776004600` (Beispiel/Chef). Der Server nahm

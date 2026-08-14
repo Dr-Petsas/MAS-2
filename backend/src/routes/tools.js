@@ -4685,7 +4685,7 @@ function lisaCallConfirmPayload({ name, phone, instruction }) {
     needsConfirm: true,
     prepared: true,
     message: `Ist das ${wer}? Soll Lisa jetzt anrufen?`,
-    directive: "Lies die Rueckfrage woertlich vor. NUR auf ausdrueckliches 'Ja' rufst du delegate_call ERNEUT auf mit confirm=true, derselben instruction und OHNE phone. Auf 'nein' NICHT anrufen. Erfinde KEINE Telefonnummer.",
+    directive: "Lies die Rueckfrage woertlich vor und WARTE. NUR auf ausdrueckliches 'Ja' rufst du delegate_call ERNEUT auf mit confirm=true, derselben instruction und OHNE phone. Auf 'Nein' oder eine Korrektur ('nicht die, sondern Frau Y') rufst du delegate_call ERNEUT mit dem korrigierten contactName auf - OHNE confirm; die Karte wird ersetzt. Nennt der Chef keinen neuen Namen, frage: Wen genau soll Lisa anrufen? Erfinde KEINE Telefonnummer.",
     card: karteLisaLive({
       taskId: "",
       contactName: name,
@@ -4759,8 +4759,12 @@ router.post("/tools/delegate-call", async (req, res) => {
 
     // Super-GAU 14.08.2026: confirm=true im SELBEN Zug wie die Suche zaehlt
     // nicht — Lisa waehlt erst, wenn der Chef die Person auf der Lisa-Karte
-    // gesehen und "Ja" gesagt hat.
-    if (confirm && canConfirmLisaCall(pending)) {
+    // gesehen und "Ja" gesagt hat. Traegt der Confirm-Aufruf einen ANDEREN
+    // Namen als die Vorschau (Korrektur-Runde), gilt er als NEUE Anfrage.
+    const confirmName = String(req.body?.contactName || req.body?.recipientName || "").trim();
+    const confirmMatchesPending = !confirmName || !pending?.name
+      || nameTokensOverlap(confirmName, pending.name);
+    if (confirm && canConfirmLisaCall(pending) && confirmMatchesPending) {
       const dialPhone = pending.phone;
       const dialName = pending.name || "";
       const dialInstr = String(pending.instruction || instrText).trim();
