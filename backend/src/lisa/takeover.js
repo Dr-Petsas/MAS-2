@@ -7,19 +7,17 @@ import { log } from "../log.js";
 import { normalizePhoneE164 } from "./outbound.js";
 
 // ============================================================================
-// Lisa — Gespräch übernehmen (Chef 14.08.2026)
+// Lisa — Gespräch übernehmen (Chef 14.08.2026, Ein-Klick 14.08. abends)
 //
-// Der Chef tippt auf dem Flip „Gespräch übernehmen“. Lisa legt NICHT auf.
+// Ein Tipp auf dem Flip. Keine Nummer, kein Rückruf. Der Chef spricht
+// auf demselben Gerät weiter (Twilio Voice JS). Lisa bleibt in der Leitung
+// und wird stumm.
 // Ablauf:
-//   1. Twilio ruft das Chef-Handy an (LISA_TAKEOVER_PHONE / Gerät / Anfrage).
-//   2. Sobald der Chef rangeht, wandern die laufenden Leitungen in eine
-//      Konferenz `lisa-{taskId}`. Lisas Bein ist stumm, Patient + Chef hören
-//      einander. Task bleibt `calling`, damit Poll + Transkript weiterlaufen.
-//   3. ElevenLabs-Transkript so lange es lebt; parallel Twilio-Realtime-
-//      Transkription (Webhook), damit nach dem Mute nichts abreißt.
-//   4. Chef legt auf → Konferenz endet → Task done / outcome taken_over.
-//
-// LISA_SMS_SENDER ist alphanumerisch und KEIN Voice-From.
+//   1. Gerät holt ein kurzes Voice-Token (deviceKey-gesichert).
+//   2. Browser verbindet per WebRTC. TwiML legt den Chef in die Konferenz
+//      `lisa-{taskId}` und zieht Patient + Lisa nach (Lisa stumm).
+//   3. Task bleibt `calling`, Poll + Transkript laufen weiter.
+//   4. Chef legt auf / Zurück → Konferenz endet → Task done / taken_over.
 // ============================================================================
 
 const FieldValue = admin.firestore.FieldValue;
@@ -291,11 +289,115 @@ function conferenceStatusUrl(clientId, taskId) {
   return `${webhookBase(clientId, taskId)}/conference/${encodeURIComponent(clientId)}/${encodeURIComponent(taskId)}`;
 }
 
-/**
- * Startet die Übernahme: Chef-Handy klingelt. Die laufenden Leitungen
- * werden erst umgelegt, wenn der Chef rangeht (sonst sitzt der Patient
- * in einer leeren Konferenz).
- */
+function b64urlJson(obj) {
+  return Buffer.from(JSON.stringify(obj)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64urlRaw(buf) {
+  return Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Twilio Voice Access Token (HS256, ohne das twilio-npm-Paket). */
+export function mintVoiceToken({
+  accountSid,
+  apiKey,
+  apiSecret,
+  identity,
+  applicationSid,
+  ttlSec = 300,
+} = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { typ: "JWT", alg: "HS256", cty: "twilio-fpa;v=1" };
+  const payload = {
+    jti: `${apiKey}-${now}`,
+    iss: apiKey,
+    sub: accountSid,
+    exp: now + Math.max(60, Number(ttlSec) || 300),
+    grants: {
+      identity: String(identity || "chef"),
+      voice: {
+        outgoing: { application_sid: String(applicationSid || "") },
+        incoming: { allow: false },
+      },
+    },
+  };
+  const head = b64urlJson(header);
+  const body = b64urlJson(payload);
+  const sig = crypto.createHmac("sha256", String(apiSecret || "")).update(`${head}.${body}`).digest();
+  return `${head}.${body}.${b64urlRaw(sig)}`;
+}
+
+export function decodeVoiceToken(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const json = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+let voiceInfraCache = null;
+
+async function findOrCreateTwimlApp() {
+  const voiceUrl = `${PUBLIC_BASE_URL}/lisa/twilio/browser-join`;
+  const fromEnv = env("TWILIO_TWIML_APP_SID");
+  let sid = fromEnv;
+  if (!sid) {
+    const listed = await twilioGet("/Applications.json", "FriendlyName=lisa-browser-takeover&PageSize=5");
+    const hit = Array.isArray(listed.data?.applications) ? listed.data.applications[0] : null;
+    sid = String(hit?.sid || "");
+  }
+  if (!sid) {
+    const created = await twilioPost("/Applications.json", {
+      FriendlyName: "lisa-browser-takeover",
+      VoiceUrl: voiceUrl,
+      VoiceMethod: "POST",
+    });
+    if (!created.ok) return { ok: false, reason: "voice_app_failed", error: created.error };
+    sid = String(created.data?.sid || "");
+  }
+  if (!sid) return { ok: false, reason: "voice_app_failed" };
+  await twilioPost(`/Applications/${encodeURIComponent(sid)}.json`, {
+    VoiceUrl: voiceUrl,
+    VoiceMethod: "POST",
+  }).catch(() => {});
+  return { ok: true, sid };
+}
+
+async function findOrCreateApiKey() {
+  const key = env("TWILIO_API_KEY");
+  const secret = env("TWILIO_API_SECRET");
+  if (key && secret) return { ok: true, key, secret };
+  const created = await twilioPost("/Keys.json", { FriendlyName: "lisa-browser-takeover" });
+  if (!created.ok || !created.data?.sid || !created.data?.secret) {
+    return { ok: false, reason: "voice_key_failed", error: created.error };
+  }
+  log.warn("lisa.takeover.api_key_created", {
+    sid: created.data.sid,
+    hint: "TWILIO_API_KEY / TWILIO_API_SECRET in .env setzen, sonst entsteht beim Neustart ein neuer Key.",
+  });
+  return { ok: true, key: String(created.data.sid), secret: String(created.data.secret) };
+}
+
+export async function ensureVoiceInfra() {
+  if (voiceInfraCache?.ok) return voiceInfraCache;
+  if (!twilioConfigured()) return { ok: false, reason: "twilio_not_configured" };
+  const key = await findOrCreateApiKey();
+  if (!key.ok) return key;
+  const app = await findOrCreateTwimlApp();
+  if (!app.ok) return app;
+  voiceInfraCache = {
+    ok: true,
+    accountSid: env("TWILIO_ACCOUNT_SID"),
+    apiKey: key.key,
+    apiSecret: key.secret,
+    applicationSid: app.sid,
+  };
+  return voiceInfraCache;
+}
+
 export const TAKEOVER_REASON_DE = {
   twilio_not_configured: "Übernahme ist hier nicht eingerichtet.",
   not_found: "Diesen Anruf finde ich nicht mehr.",
@@ -305,9 +407,16 @@ export const TAKEOVER_REASON_DE = {
   no_voice_from: "Die Praxisnummer zum Zurückrufen fehlt.",
   chef_is_from: "Das ist Lisas Nummer. Bitte Ihre eigene eintragen.",
   chef_dial_failed: "Ihr Telefon war nicht erreichbar.",
+  voice_app_failed: "Die Direktleitung ist nicht eingerichtet.",
+  voice_key_failed: "Die Direktleitung ist nicht eingerichtet.",
+  voice_token_failed: "Verbindungstoken fehlgeschlagen. Noch einmal tippen.",
 };
 
-export async function takeoverLisaCall(clientId, taskId, { chefPhone } = {}) {
+/**
+ * Ein Klick: Token für das Gerät. Die Leitungen werden umgelegt, sobald
+ * der Browser die TwiML-Konferenz betritt (onBrowserJoin).
+ */
+export async function takeoverLisaCall(clientId, taskId, { deviceId } = {}) {
   if (!twilioConfigured()) {
     log.warn("lisa.takeover.denied", { clientId, taskId, reason: "twilio_not_configured" });
     return { ok: false, reason: "twilio_not_configured" };
@@ -321,17 +430,8 @@ export async function takeoverLisaCall(clientId, taskId, { chefPhone } = {}) {
   }
 
   const take = task.takeover && typeof task.takeover === "object" ? task.takeover : {};
-  if (take.status === "joined") {
+  if (take.status === "joined" && take.via === "browser" && take.tokenFresh === false) {
     return { ok: true, joined: true, phone: task.phone || "", contactName: task.contactName || "" };
-  }
-  if (take.status === "ringing" && take.chefCallSid) {
-    return { ok: true, ringing: true, phone: task.phone || "", contactName: task.contactName || "" };
-  }
-
-  const toChef = resolveChefPhone({ requested: chefPhone, stored: take.chefPhone });
-  if (!toChef) {
-    log.warn("lisa.takeover.denied", { clientId, taskId, reason: "need_phone" });
-    return { ok: false, reason: "need_phone" };
   }
 
   const callSid = String(task.callSid || "").trim() || await findLiveCallSid(task.phone);
@@ -343,19 +443,60 @@ export async function takeoverLisaCall(clientId, taskId, { chefPhone } = {}) {
     await doc.ref.update({ callSid }).catch(() => {});
   }
 
-  const legs = await collectCallLegs(callSid);
-  const from = await resolveVoiceFrom(legs, task);
-  if (!from) {
-    log.warn("lisa.takeover.denied", { clientId, taskId, reason: "no_voice_from" });
-    return { ok: false, reason: "no_voice_from" };
+  const infra = await ensureVoiceInfra();
+  if (!infra.ok) {
+    log.warn("lisa.takeover.denied", { clientId, taskId, reason: infra.reason });
+    return { ok: false, reason: infra.reason };
   }
-  if (phonesMatch(from, toChef)) {
-    log.warn("lisa.takeover.denied", { clientId, taskId, reason: "chef_is_from" });
-    return { ok: false, reason: "chef_is_from" };
+
+  const identity = `lisa-${String(taskId).replace(/[^A-Za-z0-9]/g, "").slice(0, 20)}-${String(deviceId || "chef").replace(/[^A-Za-z0-9]/g, "").slice(0, 8)}`;
+  const token = mintVoiceToken({
+    accountSid: infra.accountSid,
+    apiKey: infra.apiKey,
+    apiSecret: infra.apiSecret,
+    identity,
+    applicationSid: infra.applicationSid,
+  });
+  if (!token || token.split(".").length !== 3) {
+    return { ok: false, reason: "voice_token_failed" };
   }
 
   const name = conferenceName(taskId);
-  const twiml = conferenceTwiml({
+  await doc.ref.update({
+    takeover: {
+      status: take.status === "joined" ? "joined" : "ringing",
+      via: "browser",
+      conferenceName: name,
+      identity,
+      startedAtMs: take.startedAtMs || Date.now(),
+    },
+  });
+
+  log.info("lisa.takeover.browser_token", { clientId, taskId, identity });
+  return {
+    ok: true,
+    via: "browser",
+    token,
+    identity,
+    conferenceName: name,
+    ringing: take.status !== "joined",
+    joined: take.status === "joined",
+    phone: task.phone || "",
+    contactName: task.contactName || "",
+  };
+}
+
+/** TwiML für den Browser-Chef + Leitungen umlegen. */
+export function onBrowserJoin(clientId, taskId) {
+  const name = conferenceName(taskId);
+  joinLisaConference(clientId, taskId).catch((e) => {
+    log.warn("lisa.takeover.browser_redirect_failed", {
+      clientId,
+      taskId,
+      error: String(e?.message || e),
+    });
+  });
+  return conferenceTwiml({
     name,
     muted: false,
     endOnExit: true,
@@ -363,40 +504,6 @@ export async function takeoverLisaCall(clientId, taskId, { chefPhone } = {}) {
     transcribeUrl: transcribeUrl(clientId, taskId, "chef"),
     statusCallback: conferenceStatusUrl(clientId, taskId),
   });
-
-  const created = await twilioPost("/Calls.json", {
-    To: toChef,
-    From: from,
-    Twiml: twiml,
-    Timeout: "25",
-    StatusCallback: chefStatusUrl(clientId, taskId),
-    StatusCallbackEvent: "initiated ringing answered completed",
-    StatusCallbackMethod: "POST",
-  });
-  if (!created.ok) {
-    log.warn("lisa.takeover.chef_dial_failed", { clientId, taskId, error: created.error });
-    return { ok: false, reason: "chef_dial_failed", error: created.error };
-  }
-
-  const chefCallSid = String(created.data?.sid || "");
-  await doc.ref.update({
-    takeover: {
-      status: "ringing",
-      conferenceName: name,
-      chefPhone: toChef,
-      chefCallSid,
-      voiceFrom: from,
-      startedAtMs: Date.now(),
-    },
-  });
-
-  log.info("lisa.takeover.chef_ringing", { clientId, taskId, chefCallSid: chefCallSid.slice(-8) });
-  return {
-    ok: true,
-    ringing: true,
-    phone: task.phone || "",
-    contactName: task.contactName || "",
-  };
 }
 
 export async function joinLisaConference(clientId, taskId) {

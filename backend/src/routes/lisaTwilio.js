@@ -6,6 +6,7 @@ import {
   appendTakeoverTranscript,
   onChefCallStatus,
   onConferenceStatus,
+  onBrowserJoin,
 } from "../lisa/takeover.js";
 
 // Twilio-Webhooks für Lisa-Gesprächsübernahme. Public in auth.js — die
@@ -37,6 +38,26 @@ function signed(req, res) {
 function ids(req) {
   return { clientId: s(req.params.clientId), taskId: s(req.params.taskId) };
 }
+
+router.post("/lisa/twilio/browser-join", async (req, res) => {
+  if (!signed(req, res)) return;
+  const clientId = s(req.body?.clientId || req.body?.ClientId);
+  const taskId = s(req.body?.taskId || req.body?.TaskId);
+  if (!clientId || !taskId) {
+    log.warn("lisa.twilio.browser_join_missing_ids");
+    res.set("Content-Type", "text/xml");
+    return res.send("<Response></Response>");
+  }
+  try {
+    const twiml = onBrowserJoin(clientId, taskId);
+    res.set("Content-Type", "text/xml");
+    return res.send(twiml);
+  } catch (e) {
+    log.warn("lisa.twilio.browser_join_error", { error: String(e?.message || e) });
+    res.set("Content-Type", "text/xml");
+    return res.send("<Response></Response>");
+  }
+});
 
 router.post("/lisa/twilio/chef/:clientId/:taskId", async (req, res) => {
   if (!signed(req, res)) return;

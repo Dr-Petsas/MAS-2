@@ -2488,6 +2488,10 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 14.08.2026: **Lisa-Übernahme: ein Tipp, sofort sprechen.** Keine
+  Nummer, kein Rückruf. Der Chef spricht auf demselben Gerät (Twilio
+  Voice JS). Lisa wird stumm in die Konferenz gelegt. Tests:
+  test-lisa-takeover (Voice-Token).
 - 14.08.2026: **Clara ist stumm auf der Lisa-Flip-Seite.** Solange die
   Live-Ansicht offen ist (und beim Übernehmen), geht kein Mic-Final an
   Claras LLM — sonst versteht sie Raum-/Telefonfetzen und führt Quatsch

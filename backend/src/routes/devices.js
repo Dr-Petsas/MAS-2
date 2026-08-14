@@ -6,11 +6,11 @@ import { randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import { assertAppEnabled } from "../entitlements.js";
 import { listOperators, normalizeRole } from "../clara/operators.js";
-import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, updateDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured, setDeviceTakeoverPhone } from "../clara/devices.js";
+import { createPairingToken, redeemPairingToken, redeemPairingCode, listDevices, removeDevice, updateDevice, removeOwnDevice, identifyByDevice, refreshSubscription, callDevice, vapidPublicKey, pushConfigured } from "../clara/devices.js";
 import { removeCandidateFromList, gapCandidateCardData } from "../clara/gapFill.js";
 import { karteRecallKandidaten, karteLisaSms } from "../clara/karten.js";
 import { getLisaTaskDetail, lisaSendSms, normalizePhoneE164 } from "../lisa/outbound.js";
-import { takeoverLisaCall, resolveChefPhone, TAKEOVER_REASON_DE } from "../lisa/takeover.js";
+import { takeoverLisaCall, TAKEOVER_REASON_DE } from "../lisa/takeover.js";
 import { log } from "../log.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 
@@ -317,14 +317,7 @@ router.post("/clara/devices/lisa-takeover", async (req, res) => {
     }
     const who = await identifyByDevice(clientId, req.body?.deviceId, req.body?.deviceKey);
     if (!who) return res.status(401).json({ ok: false, error: "device_auth_failed" });
-    const chefPhone = resolveChefPhone({
-      requested: req.body?.chefPhone,
-      stored: who.takeoverPhone,
-    });
-    if (chefPhone && req.body?.deviceId) {
-      await setDeviceTakeoverPhone(clientId, req.body.deviceId, chefPhone);
-    }
-    const out = await takeoverLisaCall(clientId, taskId, { chefPhone });
+    const out = await takeoverLisaCall(clientId, taskId, { deviceId: req.body?.deviceId });
     if (!out.ok) {
       const status = out.reason === "not_found" ? 404 : 400;
       return res.status(status).json({
@@ -334,12 +327,14 @@ router.post("/clara/devices/lisa-takeover", async (req, res) => {
     }
     res.json({
       ok: true,
+      via: out.via || "browser",
+      token: out.token || "",
+      identity: out.identity || "",
       ringing: !!out.ringing,
       joined: !!out.joined,
       alreadyEnded: !!out.alreadyEnded,
       phone: out.phone || "",
       contactName: out.contactName || "",
-      chefPhone: chefPhone || "",
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

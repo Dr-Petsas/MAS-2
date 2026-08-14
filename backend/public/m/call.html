@@ -523,7 +523,7 @@
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
     import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
-    import { mountLisaLive } from "/m/lisa-live.js?v=6";
+    import { mountLisaLive } from "/m/lisa-live.js?v=7";
     import { bindCrewChips } from "/m/crew.js?v=1";
 
     const qs = new URLSearchParams(location.search);
@@ -673,6 +673,10 @@
       room.localParticipant.publishData(data, { topic: "pickadoc.cmd", reliable: true }).catch(() => {
         claraHeldForLisa = !want;
       });
+      try { room.localParticipant.setMicrophoneEnabled(!want); } catch { /* Track fehlt */ }
+    }
+    function releaseClaraMic() {
+      try { room?.localParticipant?.setMicrophoneEnabled(false); } catch { /* Track fehlt */ }
     }
     function syncClaraHoldToLisaFlip() {
       const lisaOn = !!document.getElementById("lisaLiveHost")?.classList.contains("is-on");
@@ -772,6 +776,7 @@
         ? { clientId, deviceId: device.deviceId, deviceKey: device.deviceKey }
         : null,
       onClaraHold: claraHoldForLisa,
+      onReleaseMic: releaseClaraMic,
     });
 
     function addCardToDeck(card) {

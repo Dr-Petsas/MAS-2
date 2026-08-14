@@ -11,6 +11,8 @@ import {
   resolveChefPhone,
   twilioSignatureExpected,
   twilioSignatureOk,
+  mintVoiceToken,
+  decodeVoiceToken,
   TAKEOVER_REASON_DE,
 } from "../src/lisa/takeover.js";
 
@@ -90,6 +92,19 @@ const meta = extractPhoneCallMeta({
 check("Call-SID aus EL-Metadaten", meta.callSid === "CAabc");
 check("Lisa-From aus EL-Metadaten", meta.voiceFrom === "+4921186943030");
 check("need_phone hat einen deutschen Satz", TAKEOVER_REASON_DE.need_phone.includes("Nummer"));
+
+const voiceTok = mintVoiceToken({
+  accountSid: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  apiKey: "SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  apiSecret: "secret-for-tests",
+  identity: "lisa-task1-dev1",
+  applicationSid: "APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+});
+const voicePayload = decodeVoiceToken(voiceTok);
+check("Voice-Token hat drei Teile", voiceTok.split(".").length === 3);
+check("Voice-Token trägt die Identität", voicePayload?.grants?.identity === "lisa-task1-dev1");
+check("Voice-Token zeigt auf die TwiML-App", voicePayload?.grants?.voice?.outgoing?.application_sid?.startsWith("AP"));
+check("Direktleitung-Fehler ist deutsch", TAKEOVER_REASON_DE.voice_app_failed.includes("Direktleitung"));
 
 console.log(fehler ? `\n${fehler} Prüfung(en) fehlgeschlagen.` : "\nAlle Prüfungen bestanden.");
 process.exitCode = fehler ? 1 : 0;

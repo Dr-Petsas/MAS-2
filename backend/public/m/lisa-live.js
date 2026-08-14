@@ -4,12 +4,11 @@ const PHASE = {
   scheduled: "Eingeplant — Lisa ruft später an.",
   dialing: "Lisa wählt …",
   talking: "Lisa spricht.",
-  joining: "Ihr Telefon klingelt …",
+  joining: "Verbinde …",
   takeover: "Sie sind verbunden. Lisa ist stumm.",
   done: "Gespräch beendet.",
   ended: "Gespräch beendet.",
 };
-const CHEF_PHONE_KEY = "pickadoc.lisaChefPhone";
 
 function displayPhone(n) {
   const raw = String(n || "").trim();
@@ -58,12 +57,7 @@ function injectCss() {
     .lisa-live .ll-btn.take { background:linear-gradient(135deg,#ff4d6d,#c81e4a); color:#fff; }
     .lisa-live .ll-btn[hidden] { display:none !important; }
     .lisa-live .ll-btn:disabled { opacity:.45; cursor:default; }
-    .lisa-live .ll-chef { display:flex; flex-direction:column; gap:4px; }
-    .lisa-live .ll-chef label { font-size:11px; font-weight:800; letter-spacing:.06em;
-      text-transform:uppercase; color:#8fa3bd; }
-    .lisa-live .ll-chef input { border:1px solid rgba(255,255,255,.14); background:rgba(0,0,0,.28);
-      color:#e6edf6; border-radius:10px; padding:10px 12px; font:inherit; font-size:16px;
-      font-weight:700; letter-spacing:.02em; }
+    .lisa-live .ll-chef { display:none; }
     .lisa-live .ll-hint { font-size:12px; color:#8fa3bd; line-height:1.35; }
     .lisa-live .ll-sms-fix { display:none; flex-direction:column; gap:8px; }
     .lisa-live .ll-sms-fix.is-on { display:flex; }
@@ -89,7 +83,7 @@ function injectCss() {
   document.head.appendChild(st);
 }
 
-export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
+export function mountLisaLive(host, { getAuth, onClaraHold, onReleaseMic } = {}) {
   injectCss();
   if (!host) return { start() {}, stop() {} };
 
@@ -104,13 +98,8 @@ export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
     <div class="ll-auftrag" data-ll-auftrag></div>
     <div class="ll-lines" data-ll-lines><div class="ll-empty">Noch kein Wort — Lisa wählt.</div></div>
     <div class="ll-actions">
-      <div class="ll-chef">
-        <label for="ll-chef-phone">Ihre Nummer — wir rufen Sie an</label>
-        <input id="ll-chef-phone" data-ll-chef type="tel" inputmode="tel" autocomplete="tel"
-          placeholder="0176 …">
-      </div>
       <button type="button" class="ll-btn take" data-ll-take>Gespräch übernehmen</button>
-      <div class="ll-hint" data-ll-hint>Clara hört nicht zu. Lisa bleibt in der Leitung, wird aber stumm. Das Transkript läuft weiter.</div>
+      <div class="ll-hint" data-ll-hint>Ein Tipp — Sie sprechen hier weiter. Lisa wird stumm. Clara hört nicht zu.</div>
       <div class="ll-sms-fix" data-ll-sms-fix>
         <label for="ll-sms-phone">Nummer nachtragen</label>
         <input id="ll-sms-phone" data-ll-sms-phone type="tel" inputmode="tel" autocomplete="tel"
@@ -140,6 +129,8 @@ export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
   let stepTimer = 0;
   let taskId = "";
   let lastSig = "";
+  let voiceDevice = null;
+  let voiceCall = null;
   const tagEl = host.querySelector(".ll-tag");
 
   function setHold(on) {
@@ -147,11 +138,38 @@ export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
     try { onClaraHold(!!on); } catch { /* Worker nicht verbunden */ }
   }
 
+  function releaseMic() {
+    if (typeof onReleaseMic !== "function") return;
+    try { onReleaseMic(); } catch { /* LiveKit nicht verbunden */ }
+  }
+
+  async function loadTwilioDevice() {
+    if (window.Twilio?.Device) return window.Twilio.Device;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.12.4/dist/twilio.min.js";
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("voice_sdk"));
+      document.head.appendChild(s);
+    });
+    if (!window.Twilio?.Device) throw new Error("voice_sdk");
+    return window.Twilio.Device;
+  }
+
+  async function hangupVoice() {
+    try { voiceCall?.disconnect(); } catch { /* schon tot */ }
+    voiceCall = null;
+    try { voiceDevice?.destroy(); } catch { /* schon tot */ }
+    voiceDevice = null;
+  }
+
   function hide() {
     const wasOn = host.classList.contains("is-on");
     host.classList.remove("is-on");
     if (timer) { clearInterval(timer); timer = 0; }
     if (stepTimer) { clearTimeout(stepTimer); stepTimer = 0; }
+    hangupVoice();
     if (wasOn) setHold(false);
   }
 
@@ -166,19 +184,15 @@ export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
     els.phone.textContent = displayPhone(phone);
     const auftrag = snap.instruction || card.instruction || "";
     els.auftrag.textContent = auftrag ? `Auftrag: ${auftrag}` : "";
-    if (snap.chefPhone && els.chef && !els.chef.dataset.touched) {
-      els.chef.value = displayPhone(snap.chefPhone);
-    }
     const live = phase === "joining" || phase === "takeover";
     els.take.hidden = phase === "scheduled" || phase === "done" || phase === "ended" || phase === "takeover";
     els.take.disabled = live && phase === "joining";
-    if (phase === "joining") els.take.textContent = "Ihr Telefon klingelt …";
+    if (phase === "joining") els.take.textContent = "Verbinde …";
     else if (phase !== "takeover") els.take.textContent = "Gespräch übernehmen";
-    if (els.chef) els.chef.closest(".ll-chef").hidden = phase === "done" || phase === "ended" || phase === "takeover";
     if (els.hint) {
       els.hint.textContent = phase === "takeover"
-        ? "Clara hört nicht zu. Lisa ist stumm — Sie können das Gespräch führen."
-        : "Clara hört nicht zu. Lisa bleibt in der Leitung, wird aber stumm. Das Transkript läuft weiter.";
+        ? "Lisa ist stumm — Sie sprechen hier. Zurück legt auf."
+        : "Ein Tipp — Sie sprechen hier weiter. Lisa wird stumm. Clara hört nicht zu.";
     }
 
     const rows = Array.isArray(snap.transcript) ? snap.transcript : [];
@@ -187,7 +201,7 @@ export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
     lastSig = sig;
     if (!rows.length) {
       const empty = phase === "takeover" ? "Sie sind in der Leitung."
-        : phase === "joining" ? "Ihr Telefon klingelt — gleich sind Sie drin."
+        : phase === "joining" ? "Verbinde … gleich sind Sie drin."
         : phase === "talking" ? "Lisa ist in der Leitung — der Text kommt Zug für Zug."
         : "Noch kein Wort — Lisa wählt.";
       els.lines.innerHTML = `<div class="ll-empty">${empty}</div>`;
@@ -221,55 +235,52 @@ export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
   }
 
   els.close.addEventListener("click", (e) => { e.stopPropagation(); hide(); });
-  if (els.chef) {
-    try {
-      const saved = localStorage.getItem(CHEF_PHONE_KEY) || "";
-      if (saved) els.chef.value = displayPhone(saved);
-    } catch { /* private mode */ }
-    els.chef.addEventListener("input", () => { els.chef.dataset.touched = "1"; });
-  }
+  window.addEventListener("pagehide", () => { hangupVoice(); });
   els.take.addEventListener("click", async (e) => {
     e.stopPropagation();
     const auth = typeof getAuth === "function" ? getAuth() : null;
     if (!auth?.clientId || !taskId) return;
-    const chefPhone = String(els.chef?.value || "").trim();
-    if (!chefPhone) {
-      els.phase.textContent = "Bitte Ihre Nummer eintragen — wir rufen Sie an.";
-      els.chef?.focus();
-      return;
-    }
     els.take.disabled = true;
     els.take.textContent = "Verbinde …";
+    els.phase.textContent = "Verbinde …";
+    let failText = "Übernahme gerade nicht möglich. Noch einmal tippen.";
     try {
+      releaseMic();
+      if (navigator.mediaDevices?.getUserMedia) {
+        const preview = await navigator.mediaDevices.getUserMedia({ audio: true });
+        preview.getTracks().forEach((t) => t.stop());
+      }
       const resp = await fetch("/clara/devices/lisa-takeover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...auth, taskId, chefPhone }),
+        body: JSON.stringify({ ...auth, taskId }),
       });
       const j = await resp.json().catch(() => null);
-      if (j?.ok) {
-        if (chefPhone) {
-          try { localStorage.setItem(CHEF_PHONE_KEY, chefPhone); } catch { /* ignore */ }
-        }
-        els.phase.textContent = j.joined ? PHASE.takeover : PHASE.joining;
-        els.phase.classList.add("is-talk");
-        els.phase.classList.remove("is-end");
-        els.take.textContent = j.joined ? "Gespräch übernehmen" : "Ihr Telefon klingelt …";
-        els.take.hidden = !!j.joined;
-        els.take.disabled = !j.joined;
-        if (els.chef) els.chef.closest(".ll-chef").hidden = !!j.joined;
-        if (!timer) timer = setInterval(() => poll({}), 2500);
-      } else {
-        els.take.disabled = false;
-        els.take.textContent = "Gespräch übernehmen";
-        els.phase.textContent = j?.message || (j?.reason === "need_phone"
-          ? "Bitte Ihre Nummer eintragen — wir rufen Sie an."
-          : "Übernahme gerade nicht möglich. Noch einmal versuchen.");
-        if (j?.reason === "need_phone") els.chef?.focus();
+      if (!j?.ok || !j.token) {
+        failText = j?.message || failText;
+        throw new Error("takeover");
       }
-    } catch {
+      const Device = await loadTwilioDevice();
+      await hangupVoice();
+      voiceDevice = new Device(j.token, { codecPreferences: ["opus", "pcmu"] });
+      voiceCall = await voiceDevice.connect({
+        params: { clientId: auth.clientId, taskId },
+      });
+      els.phase.textContent = PHASE.takeover;
+      els.phase.classList.add("is-talk");
+      els.phase.classList.remove("is-end");
+      els.take.hidden = true;
+      if (els.hint) els.hint.textContent = "Lisa ist stumm — Sie sprechen hier. Zurück legt auf.";
+      if (!timer) timer = setInterval(() => poll({}), 2500);
+      voiceCall.on("disconnect", () => { voiceCall = null; });
+    } catch (err) {
+      await hangupVoice();
       els.take.disabled = false;
       els.take.textContent = "Gespräch übernehmen";
+      const raw = String(err?.message || "");
+      els.phase.textContent = raw === "NotAllowedError" || raw.includes("Permission")
+        ? "Mikrofon erlauben, dann noch einmal tippen."
+        : failText;
     }
   });
 
@@ -408,7 +419,6 @@ export function mountLisaLive(host, { getAuth, onClaraHold } = {}) {
       els.take.hidden = card?.status === "scheduled";
       els.take.disabled = false;
       els.take.textContent = "Gespräch übernehmen";
-      if (els.chef) els.chef.closest(".ll-chef").hidden = card?.status === "scheduled";
       if (els.hint) els.hint.hidden = false;
       if (els.smsFix) els.smsFix.classList.remove("is-on");
       host.classList.add("is-on");
