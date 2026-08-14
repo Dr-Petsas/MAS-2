@@ -2485,9 +2485,15 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   der ElevenLabs-Agenten-Prompt die Variablen nicht, oder `bookingContext` war
   leer (Patient nicht per ID aufloesbar -> Rueckfallmodus ohne Werkzeuge). An
   einem konkreten Anruf pruefbar: Task traegt `transcriptText` + `bookingContext`.
+- 14.08.2026: **Begruessung wieder instant (PCM-Cache).** Chef: so lassen,
+  spaeter zurueckbauen. Heute wartet die App auf die erste Stimme; die
+  Pools mit `{{current_hm}}` verfehlen den fertigen Satz, deshalb live
+  ElevenLabs statt Cache. Rueckbau: fester Satz / Cache ohne Uhrzeit.
 
 ## Aenderungslog
 
+- 14.08.2026: **Begruessung bleibt variabel** (Chef: so lassen, spaeter
+  zurueckbauen). Eintrag auf der Warteliste.
 - 14.08.2026: **Lisa-Übernahme: ein Tipp, sofort sprechen.** Keine
   Nummer, kein Rückruf. Der Chef spricht auf demselben Gerät (Twilio
   Voice JS). Lisa wird stumm in die Konferenz gelegt. Tests:
