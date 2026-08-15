@@ -28,10 +28,48 @@ html.theme-light .perio-svg > rect:first-of-type { fill: #ffffff !important; }
 html.theme-light .zoom-pane { background: #f7f9fc; border-color: #e3e8ef; box-shadow: none; }
 html.theme-light .zoom-head { color: #16202e; background: #eef2f7; border-bottom-color: #e3e8ef; }
 
-/* Befund-Tabs */
-html.theme-light .befund-tabs { background: #f3f5f9; border-color: #e3e8ef; }
-html.theme-light .befund-tabs button { color: #5b6675; }
-html.theme-light .befund-tabs button.on { background: #fff3e6; border-color: #e0a56a; color: #a85f18; box-shadow: none; }
+/* Befund-Tabs — dunkle Schrift auf hellem Grund (Chef 15.08.2026) */
+html.theme-light .befund-tabs { background: #eef2f7; border-color: #c5d0dc; }
+html.theme-light .befund-tabs button { color: #16202e !important; font-weight: 800; }
+html.theme-light .befund-tabs button.on { background: #fff3e6; border-color: #d98a3c; color: #7a3e0a !important; box-shadow: none; }
+
+/* Desktop-iframe: Odontogramm + Legende ohne Seiten-Scroll */
+html.theme-light, html.theme-light body { height: 100%; min-height: 100%; overflow: hidden; }
+html.theme-light header { padding: 8px 14px; }
+html.theme-light header h1 { font-size: 1.02rem; margin: 0; }
+html.theme-light .eyebrow { font-size: .55rem; }
+html.theme-light main.perio-half.lw-host { min-height: 0; height: calc(100vh - 48px - 64px); }
+html.theme-light .half-schema {
+  overflow: hidden; display: flex; flex-direction: column; height: 100%;
+  background: #ffffff;
+}
+html.theme-light .schema-row { flex: 0 1 40%; min-height: 0; display: flex; }
+html.theme-light .stage-wrap {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  background: #ffffff;
+}
+html.theme-light #stage { height: 100%; display: flex; align-items: center; justify-content: center; }
+html.theme-light .perio-svg { max-height: 100%; max-width: 100%; width: auto; height: auto; }
+html.theme-light .left-befund { flex: 1 1 auto; min-height: 0; overflow: hidden; margin-top: 6px; }
+html.theme-light .befund-box-head p { display: none; }
+html.theme-light .legend-items {
+  max-height: none; overflow: hidden;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 6px;
+}
+html.theme-light .legend-item { padding: 6px 8px; border-radius: 10px; }
+html.theme-light .li-icon { flex-basis: 30px; width: 30px; height: 30px; }
+html.theme-light .li-icon svg { width: 26px; height: 26px; }
+html.theme-light .li-label { font-size: .72rem; }
+
+/* Schema-Skin (FDI) hell */
+html.theme-light #schemaStage .zs01-lab { color: #5b6675; }
+html.theme-light #schemaStage .zs01-cell {
+  background: #ffffff; border-color: #c5d0dc; color: #16202e;
+}
+html.theme-light #schemaStage .zs01-cell .m { color: #a85f18; }
+html.theme-light #schemaStage .zs01-cell.has { background: #fff7ee; border-color: #d98a3c; }
+html.theme-light #schemaStage .zs01-cell.is-sel { outline-color: #0f766e; }
 
 /* Befund-Legende */
 html.theme-light .legend-head h3 { color: #16202e; }

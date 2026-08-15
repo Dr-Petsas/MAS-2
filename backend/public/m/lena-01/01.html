@@ -7,9 +7,9 @@
   <meta name="theme-color" content="#0b0e13" />
   <!-- Desktop bekommt ?theme=light (weiss). iPad ohne Parameter bleibt dunkel. -->
   <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816b" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816c" />
   <!-- Weisse Variante (nur wirksam bei html.theme-light — iPad unberuehrt). -->
-  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816b" />
+  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816c" />
   <style>
     /* ═══════════════════════════════════════════════════════════════════
        PC-WIZARD (Chef 22.07. 01:58): rechter Bereich = kompakter Wizard,
@@ -32,8 +32,25 @@
     }
     main.perio-half.lw-host > .half-box { flex: 1 1 auto; min-height: 0; }
     body:not(.skin-schema) #lenaWizard { display: none !important; }
-    body.skin-schema .half-schema { display: none; }
-    body.skin-schema #lena01Bar { display: none; }
+    /* Schema-Skin = FDI-Schema in derselben Spalte, GLEICHE Fachtabs/Legende.
+       Wizard bleibt aus (der ist der fastAe1-Dokufluss, nicht 01). */
+    body.skin-schema #lenaWizard { display: none !important; }
+    body.skin-schema .stage-wrap { display: none; }
+    body.skin-schema #schemaStage { display: block; }
+    #schemaStage { display: none; padding: 8px 4px 4px; }
+    #schemaStage .zs01-arch { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; }
+    #schemaStage .zs01-lab { font-size: 11px; font-weight: 800; color: #91a0ab; margin: 6px 0 4px; letter-spacing: .06em; }
+    #schemaStage .zs01-cell {
+      min-height: 52px; border-radius: 8px; border: 1px solid #3a4653;
+      background: #1c2430; color: #e7edef; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; padding: 4px 2px; font: 700 12px/1.15 system-ui, sans-serif;
+    }
+    #schemaStage .zs01-cell .n { font-size: 13px; }
+    #schemaStage .zs01-cell .m { font-size: 10px; font-weight: 600; color: #dda66e; text-align: center; max-width: 100%; overflow: hidden; }
+    #schemaStage .zs01-cell.is-sel { outline: 2px solid #6fe0d4; }
+    #schemaStage .zs01-cell.is-miss { opacity: .45; }
+    #schemaStage .zs01-cell.has { border-color: #dda66e; background: #2b2118; }
     /* Skin-Umschalter (Kopf) */
     .skin-switch {
       display: inline-flex; border: 1px solid rgba(255, 255, 255, .2);
@@ -417,6 +434,7 @@
         <div class="stage-wrap">
           <div id="stage"></div>
         </div>
+        <div id="schemaStage" aria-label="Zahnschema"></div>
         <aside class="zoom-pane">
           <div class="zoom-head" id="zoomLabel">Zahn 46</div>
           <div id="zoomStage"></div>
@@ -678,7 +696,7 @@
   <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
   <script src="/m/lena-01/perio-legend.js?v=20260721b"></script>
   <script src="/m/lena-01/perio-chart.js?v=20260721b"></script>
-  <script src="/m/lena-01/perio.js?v=20260816b"></script>
+  <script src="/m/lena-01/perio.js?v=20260816c"></script>
   <script src="/m/lena-01/perio-voice.js?v=20260721b"></script>
   <script src="/m/lena-01/lena-01-flow.js?v=20260815c"></script>
   <script>
@@ -1342,11 +1360,7 @@
           x.classList.toggle("on", on);
           x.setAttribute("aria-selected", on ? "true" : "false");
         });
-        // Schema-Skin landet direkt auf der FDI-Schema-Stufe des Wizards.
-        if (schema) {
-          var chip = document.querySelector('#lwSteps .step-chip[data-step="3"]');
-          if (chip) chip.click();
-        }
+        if (window.Lena01 && typeof Lena01.paintSchema === "function") Lena01.paintSchema();
       });
     })();
   </script>

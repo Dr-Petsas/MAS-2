@@ -2569,6 +2569,7 @@
     updateZoom();
     updateLegendCounts();
     syncPanel();
+    paintSchemaStage();
   }
 
   // Bounds des sichtbaren Zahns (Silhouette + Extra-Wurzeln), inkl.
@@ -3120,6 +3121,91 @@
     });
   }
 
+  // 34/35 waren in der Quelle verschmolzen (SIL-Ueberlapp ~914–922).
+  // Spalte + Silhouette klaffen, plus ein schmaler Schlitz in der Basiszeichnung.
+  function separatePremolars3435() {
+    if (!COLS || !SIL) return;
+    const mid = 915;
+    const gap = 7;
+    const c34 = COLS.cols.find((c) => c.fdi === 34);
+    const c35 = COLS.cols.find((c) => c.fdi === 35);
+    if (c34) { c34.x1 = mid - gap; c34.cx = (c34.x0 + c34.x1) / 2; }
+    if (c35) { c35.x0 = mid + gap; c35.cx = (c35.x0 + c35.x1) / 2; }
+    const clamp = (fdi, minX, maxX) => {
+      const raw = SIL[fdi] || SIL[String(fdi)];
+      if (!raw) return;
+      const next = String(raw).replace(/(-?\d+\.?\d*)\s+(-?\d+\.?\d*)/g, (_, x, y) => {
+        let nx = +x;
+        if (minX != null && nx < minX) nx = minX;
+        if (maxX != null && nx > maxX) nx = maxX;
+        return nx.toFixed(1) + " " + y;
+      });
+      SIL[fdi] = next;
+      SIL[String(fdi)] = next;
+    };
+    clamp(34, null, mid - gap);
+    clamp(35, mid + gap, null);
+  }
+  function paintPremolarGap() {
+    if (!svgEl) return;
+    let slit = svgEl.querySelector("#gap3435");
+    if (!slit) {
+      slit = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      slit.setAttribute("id", "gap3435");
+      const img = svgEl.querySelector("#teethImg");
+      if (img && img.parentNode) img.parentNode.insertBefore(slit, img.nextSibling);
+      else svgEl.appendChild(slit);
+    }
+    const light = document.documentElement.classList.contains("theme-light");
+    slit.setAttribute("x", "908");
+    slit.setAttribute("y", String(SPLIT || 384));
+    slit.setAttribute("width", "14");
+    slit.setAttribute("height", String((CH || 768) - (SPLIT || 384)));
+    slit.setAttribute("fill", light ? "#ffffff" : "#122432");
+  }
+
+  const SCHEMA_OK = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
+  const SCHEMA_UK = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+  function paintSchemaStage() {
+    const host = document.getElementById("schemaStage");
+    if (!host) return;
+    const lbl = findingLabelMap01();
+    const cell = (fdi) => {
+      const t = toothFindings01(fdi, lbl);
+      const miss = !!(state[fdi] && state[fdi].missing);
+      const marks = t ? t.parts.slice(0, 2).join(" · ") : "";
+      const cls = "zs01-cell"
+        + (selected === fdi ? " is-sel" : "")
+        + (miss ? " is-miss" : "")
+        + (t ? " has" : "");
+      return '<button type="button" class="' + cls + '" data-fdi="' + fdi + '">'
+        + '<span class="n">' + fdi + "</span>"
+        + (marks ? '<span class="m">' + marks.replace(/</g, "") + "</span>" : "")
+        + "</button>";
+    };
+    host.innerHTML =
+      '<div class="zs01-lab">OK</div><div class="zs01-arch">' + SCHEMA_OK.map(cell).join("") + "</div>"
+      + '<div class="zs01-lab">UK</div><div class="zs01-arch">' + SCHEMA_UK.map(cell).join("") + "</div>";
+    if (!host.dataset.bound) {
+      host.dataset.bound = "1";
+      host.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-fdi]");
+        if (!b) return;
+        const fdi = Number(b.dataset.fdi);
+        selected = fdi;
+        if (armedFinding) {
+          if (needsSurfacePick(armedFinding) && window.PerioChart && PerioChart.isSurfacePaint(armedFinding)) {
+            PerioChart.ensureChart(st(fdi));
+            PerioChart.toggleSurfaceMarker(st(fdi), "okklusal", armedFinding, "toggle");
+          } else {
+            applyFindingToTooth(fdi, armedFinding, "toggle");
+          }
+        }
+        render();
+      });
+    }
+  }
+
   function applyPageTitle() {
     const el = document.getElementById("pageTitle");
     if (!el) return;
@@ -3140,6 +3226,7 @@
     ]);
     BONE_EDGE = boneEdge;
     COLS = cols; EDGES = cols.edges; SIL = cols.sil; MM = cols.mm || 6;
+    separatePremolars3435();
     CW = cols.cw; CH = cols.ch; SPLIT = cols.split;
     await rasterizeTeethSource();
     readExtraRoots(teethTxt);
@@ -3157,6 +3244,7 @@
     svgEl.removeAttribute("height");
     svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
     svgEl.classList.add("perio-svg");
+    paintPremolarGap();
     // Desktop-hell: der Navy-Ton sitzt IM SVG (Rect + teeth-source), nicht
     // in der CSS-Buehne — hier auf Weiss tauschen. iPad ohne theme-light
     // bleibt #122432.
@@ -3357,6 +3445,7 @@
   window.Lena01 = {
     selectTooth,
     applyVoiceEvent,
+    paintSchema: paintSchemaStage,
     getSelected: () => selected,
     setTab: setTab01,
     snapshot: snapshot01,
