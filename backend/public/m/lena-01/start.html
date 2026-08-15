@@ -129,7 +129,7 @@
       function hrefFor(mode) {
         var p = new URLSearchParams(location.search);
         p.set("mode", mode);
-        p.set("v", "20260815d"); // Cache-Bust: fullscreen-Layout (keine 2 Spalten)
+        p.set("v", "20260816"); // Cache-Bust: 1-Spalten-Layout (iOS-Homescreen-Cache)
         return "/m/lena-01/01.html?" + p.toString();
       }
       document.getElementById("tileArzt").href = hrefFor("arzt");
