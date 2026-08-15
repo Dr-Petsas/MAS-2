@@ -161,9 +161,14 @@
        Verzoegerung, die Dr. Petsas am 10.08.2026 gemeldet hat. */
     .gear { color: var(--ink-soft); text-decoration: none; font-size: 18px; padding: 6px; opacity: .65; flex: none;
             touch-action: manipulation; -webkit-user-select: none; user-select: none; }
-    /* Verbessern steht als WORT da: An einem Werkzeugsymbol denkt man an
-       Einstellungen, nicht ans Besserwerden (Dr. Petsas 10.08.2026). */
-    .gear.improve { font-size: 12px; font-weight: 800; letter-spacing: .08em; opacity: .85; color: var(--turq); }
+    /* Wie Handy (/m/call.html): TOUR links, IMPROVE rechts — nur im Clara-Modus. */
+    .kopfknopf {
+      color: var(--turq); text-decoration: none; font-size: 12px; font-weight: 800;
+      letter-spacing: .08em; opacity: .85; padding: 8px 6px; flex: none;
+      touch-action: manipulation; -webkit-user-select: none; user-select: none;
+    }
+    .kopfknopf:active { opacity: 1; }
+    body[data-app-mode="doku"] .kopfknopf { display: none; }
     /* Durchgaengige Navigation (nur Doku): EIN Zurueck/Weiter, immer sichtbar. */
     .chrome-nav { display: flex; align-items: center; gap: 6px; flex: none; }
     .chrome-nav[hidden] { display: none; }
@@ -485,12 +490,34 @@
     .pane-doku { --pink: #d862c8; }
     .lena-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 2px 4px 4px; gap: 8px; overflow: hidden; }
     .steps { display: flex; gap: 5px; flex: none; overflow: hidden; }
+    /* Eine Pegel-Zeile unter dem Kopf: L links, R rechts (alle Lena-Seiten). */
+    .lena-pegel {
+      flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      align-items: center; height: 22px; min-height: 22px; max-height: 22px;
+      padding: 0 2px;
+    }
+    .lena-pegel-ch { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .lena-pegel-ch.is-r { flex-direction: row-reverse; }
+    .lena-pegel-ch b {
+      font-size: .62rem; font-weight: 800; letter-spacing: .04em; color: var(--mute);
+      width: 12px; flex: none;
+    }
+    .lena-pegel-ch.is-r b { text-align: right; }
+    .lena-pegel .meter-track {
+      flex: 1; min-width: 0; height: 7px; min-height: 7px; max-height: 7px;
+    }
+    .lena-pegel .meter-track.is-r .meter-fill { transform-origin: right center; }
     .step-chip {
       flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
       padding: 8px 6px; border-radius: 12px; background: var(--card); border: 1px solid var(--line);
       font-size: .7rem; font-weight: 700; color: var(--mute2); white-space: nowrap; cursor: pointer;
     }
     .step-chip .n { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: .65rem; background: rgba(255,255,255,.08); }
+    .fast-tag {
+      flex: none; align-self: center; font-size: .62rem; font-weight: 850; letter-spacing: .04em;
+      color: #bbf7d0; background: rgba(52,211,153,.16); border: 1px solid rgba(52,211,153,.35);
+      border-radius: 999px; padding: 5px 8px; white-space: nowrap;
+    }
     .step-chip.is-now { color: #b8fff0; background: rgba(15,118,110,.28); border-color: rgba(126,201,193,.35); }
     .step-chip.is-now .n { background: var(--lena); color: #fff; }
     .step-chip.is-done { color: var(--green); border-color: rgba(52,211,153,.25); }
@@ -577,7 +604,7 @@
     }
     .rec-top {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+      grid-template-columns: minmax(0, 1fr);
       align-items: stretch;
       gap: 10px;
       flex: none;
@@ -1268,8 +1295,7 @@
       display: flex; flex-direction: column;
     }
     .sum-head {
-      flex: none; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(160px, .9fr);
-      gap: 12px; align-items: end;
+      flex: none; display: flex; align-items: baseline; gap: 12px; flex-wrap: nowrap;
     }
     .sum-head h2 { margin: 0 0 2px; font-size: 1.1rem; font-weight: 900; letter-spacing: -.02em; }
     .sum-head .lead { margin: 0 0 6px; }
@@ -1302,6 +1328,10 @@
       background: rgba(0,0,0,.22); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
       min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 8px;
     }
+    .sum-block--doc {
+      background: transparent; border: none; padding: 0; gap: 8px;
+    }
+    .sum-block--doc .sum-block-h h3 { display: none; }
     .sum-block-h {
       flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
@@ -1315,12 +1345,41 @@
     #sumBoxes {
       flex: 1; min-height: 0; margin: 0;
       overflow-x: hidden; overflow-y: auto;
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-      align-content: start;
-      padding: 2px; -webkit-overflow-scrolling: touch;
+      display: block;
+      padding: 0; -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain; touch-action: pan-y;
     }
-    #sumBoxes .tpl-title h2 { color: #e8fff8 !important; }
+    #sumBoxes .tpl-sum {
+      background: #fffef9; color: #1a1a1a; border-radius: 14px;
+      padding: 16px 18px 18px; border: 1px solid rgba(255,255,255,.12);
+    }
+    #sumBoxes .tpl-sum-h {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+      margin: 0 0 10px; padding: 0 0 10px; border-bottom: 1px solid #e6dfd2;
+    }
+    #sumBoxes .tpl-sum-h h2 {
+      margin: 0; font-size: 15px; font-weight: 900; letter-spacing: .02em; color: #1a1a1a !important;
+    }
+    #sumBoxes .tpl-sum-sec { margin: 0 0 12px; }
+    #sumBoxes .tpl-sum-sec:last-child { margin-bottom: 0; }
+    #sumBoxes .tpl-sum-sec h3 {
+      margin: 0 0 4px; font-size: 11px; font-weight: 800; letter-spacing: .05em;
+      text-transform: uppercase; color: #6b6560;
+    }
+    #sumBoxes .tpl-sum-sec p {
+      margin: 0 0 4px; font-size: 15px; font-weight: 600; line-height: 1.45; color: #111;
+    }
+    #sumBoxes .tpl-sum-sec p.empty { color: #8a847a; font-weight: 500; font-style: italic; }
+    #sumBoxes .tpl-sum-sec strong { font-weight: 800; }
+    #sumBoxes .tpl-sum .tpl-val { font-size: 15px; font-weight: 600; line-height: 1.45; color: #111; }
+    #sumBoxes .tpl-sum .tpl-gaps {
+      font-size: 11px; font-weight: 800; color: #7a5500; background: #fff8e1;
+      border: 1px solid #e6d08a; padding: 3px 8px; border-radius: 999px;
+    }
+    #sumBoxes .tpl-docs { list-style: none; margin: 6px 0 0; padding: 0; }
+    #sumBoxes .tpl-docs li { font-size: 13.5px; font-weight: 600; color: #222; margin: 0 0 3px; }
+    #sumBoxes .tpl-docs a { color: #0b5cff; text-decoration: none; font-weight: 800; }
+    #sumBoxes .tpl-docs-cap { font-size: 11px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: #6b6560; margin: 8px 0 2px; }
     .sum-block ul { margin: 0; padding: 0 0 0 16px; color: var(--ink); font-size: .88rem; line-height: 1.55; }
     .sum-block li + li { margin-top: 4px; }
     .export-stack { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; overflow-y: auto; }
@@ -1334,6 +1393,14 @@
     .export-btn .ico {
       width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
       font-size: .85rem; background: rgba(216,98,200,.16); color: var(--magenta-hot); flex: none;
+    }
+    .export-btn .ico-kette {
+      position: relative; font-size: 0;
+    }
+    .export-btn .ico-kette svg { display: block; }
+    .export-btn .ico-kette .arr {
+      position: absolute; right: -2px; top: -3px; font-size: 11px; line-height: 1;
+      color: var(--magenta-hot); font-weight: 900;
     }
     .export-btn small { display: block; font-size: .66rem; color: var(--mute); font-weight: 600; margin-top: 1px; }
     .sophie-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; min-height: 0; }
@@ -1406,11 +1473,22 @@
     @media (max-width: 560px) {
       .doku-tpl, #sumBoxes, .nd-grid, .tpl-block-body { grid-template-columns: 1fr; }
     }
+    #lenaToast {
+      position: fixed; right: 16px; bottom: 16px; z-index: 80;
+      max-width: min(360px, calc(100vw - 32px));
+      padding: 12px 16px; border-radius: 12px;
+      background: #1f7a46; color: #fff; font-size: 14px; font-weight: 800;
+      box-shadow: 0 10px 28px rgba(0,0,0,.28);
+      opacity: 0; transform: translateY(10px); pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+    #lenaToast.is-on { opacity: 1; transform: translateY(0); }
   </style>
 </head>
 <body class="st-idle clara-mode-audio" data-clara-root data-app-mode="clara">
   <!-- â•â• KOPF: Marke · Clara|Dokumentation · Uhr â•â• -->
   <header class="chrome">
+    <a class="kopfknopf links" href="/m/clara-tour.html" aria-label="Tour" title="Clara-Tour – was ich alles kann">TOUR</a>
     <div class="brand" id="brand" data-mode="clara">
       <div class="brand-orb is-offline" id="brandOrb" title="Clara: grau=offline, gelb=verbindet, grün=live"></div>
       <div>
@@ -1430,19 +1508,12 @@
     </div>
     <!-- Fester 3-Modi-Mikrofon-Umschalter (nur Doku-Modus), EINE Wahrheit fuer alle Seiten. -->
     <div class="capture-bar" id="captureBar" hidden role="radiogroup" aria-label="Mikrofon-Modus">
-      <button type="button" data-capmode="headset" role="radio" aria-checked="false" title="Nur Headset — Arztspur (Nachdiktat)">Headset</button>
-      <button type="button" data-capmode="headset_room" role="radio" aria-checked="false" title="Headset + PC-Raummikro — Arzt + Patient (2 Spuren)">Headset + Raum</button>
-      <button type="button" data-capmode="ipad_room" role="radio" aria-checked="false" title="iPad-Raummikro — Arzt + Patient (1 Stream)">iPad-Raum</button>
+      <button type="button" data-capmode="headset" role="radio" aria-checked="false" title="Nur Headset — Arzt über Clara, PC nimmt nichts auf">Headset</button>
+      <button type="button" data-capmode="headset_room" role="radio" aria-checked="false" title="Headset + Raummikro — Arzt über Clara, Patient am PC">Headset + Raum</button>
+      <button type="button" data-capmode="room" role="radio" aria-checked="false" title="Nur Raummikro am PC — iPad empfängt, kein Arzt-Tee">Nur Raum</button>
     </div>
     <div class="clock" id="clock">--:--</div>
-    <!-- Reihenfolge auf Wunsch von Dr. Petsas (10.08.2026): Tour zuerst,
-         Verbessern ganz aussen rechts. -->
-    <a class="gear" href="/m/clara-tour.html" aria-label="Clara-Tour" title="Clara-Tour – was ich alles kann">&#127911;</a>
-    <a class="gear" href="/m/ipad.html?manage=1" aria-label="Einstellungen">&#9881;</a>
-    <!-- Problem melden, direkt am Behandlungsplatz. Genau dort faellt auf, dass
-         Clara etwas falsch verstanden hat — und genau dort war bisher kein Weg,
-         es loszuwerden. Ziel wird unten gesetzt (Praxis + Person vom Geraet). -->
-    <a class="gear improve" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">IMPROVE</a>
+    <a class="kopfknopf rechts" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">IMPROVE</a>
   </header>
 
   <div class="app-body">
@@ -1564,16 +1635,27 @@
     <section class="pane pane-doku" id="paneDoku">
       <div class="lena-wrap">
         <div class="steps" id="steps">
+          <span class="fast-tag">fastÄ1</span>
           <div class="step-chip is-now" data-step="1"><span class="n">1</span>Arzt</div>
           <div class="step-chip" data-step="2"><span class="n">2</span>Termin</div>
-          <div class="step-chip" data-step="3"><span class="n">3</span>Schema</div>
+          <div class="step-chip" data-step="3" hidden><span class="n">3</span>Schema</div>
           <div class="step-chip" data-step="4"><span class="n">4</span>Doku</div>
           <div class="step-chip" data-step="5"><span class="n">5</span>Nachdiktat</div>
           <div class="step-chip" data-step="6"><span class="n">6</span>Summary</div>
           <div class="step-chip" data-step="7"><span class="n">7</span>OK</div>
-          <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/perio.html?v=20260721b" title="01-Modus" style="text-decoration:none;margin-left:auto" hidden>
-            <span class="n">01</span>01-Modus
+          <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/start.html" title="01-Modus (Erstuntersuchung)" style="text-decoration:none;margin-left:auto" hidden>
+            <span class="n">0I</span>01-Modus
           </a>
+        </div>
+        <div class="lena-pegel" id="lenaPegel" aria-label="Pegel L/R">
+          <div class="lena-pegel-ch">
+            <b>L</b>
+            <div class="meter-track"><div class="meter-fill a" id="fillL"></div></div>
+          </div>
+          <div class="lena-pegel-ch is-r">
+            <b>R</b>
+            <div class="meter-track is-r"><div class="meter-fill p" id="fillR"></div></div>
+          </div>
         </div>
 
         <!-- 1 Arzt -->
@@ -1584,14 +1666,14 @@
             <div class="doc-grid" id="doctors"></div>
             <div class="actions">
               <span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span>
-              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/perio.html?v=20260721b" style="text-decoration:none" hidden>01-Modus</a>
+              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/start.html" style="text-decoration:none" hidden>01-Modus</a>
               <button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button>
             </div>
           </div>
           <aside class="side-note">
-            <div class="kicker">01 · Neupatient</div>
-            <h3>Knochenverlauf<br>am Odontogramm</h3>
-            <p>Zahn anklicken, Knochenabbau und Befunde setzen. Kons/ZE/Paro-Legende am Schema. Bedarf→Termine folgt.</p>
+            <div class="kicker">01-Modus</div>
+            <h3>Erstuntersuchung</h3>
+            <p>Nach der Patientenwahl öffnet <b>01-Modus</b> die Erstuntersuchung. Dort fragt Lena zuerst, wer führt: <b>KI-geführt</b> geht alle Fachbereiche der Reihe nach durch, <b>Arzt-geführt</b> lässt frei diktieren und zeigt nur die offenen Fächer. Der Alltag läuft weiter in fastÄ1 — Aufnahme, Nachdiktat, Speichern.</p>
           </aside>
         </div>
 
@@ -1621,7 +1703,7 @@
             <div class="appt-list" id="appts"></div>
             <div class="actions">
               <button type="button" class="btn btn-ghost" data-back="1">Zurück</button>
-              <button type="button" class="btn btn-primary" data-next="3">Schema starten</button>
+              <button type="button" class="btn btn-primary" data-next="4">Weiter · Doku</button>
             </div>
           </div>
         </div>
@@ -1640,30 +1722,16 @@
                 </div>
                 <div class="rec-live" id="recLive"><i></i><span>bereit</span></div>
               </div>
-              <div class="rec-card rec-card-mic">
-                <div class="meters" id="metersBox" aria-label="Pegel">
-                  <div class="mic-toggle" id="micToggle" data-mode="ipad" role="radiogroup" aria-label="Mikrofonquelle">
-                    <button type="button" data-mic="ipad" class="is-on" role="radio" aria-checked="true" aria-label="Mikrofon: iPad">iPad</button>
-                    <button type="button" data-mic="usb" role="radio" aria-checked="false" aria-label="Mikrofon: USB">USB</button>
-                    <button type="button" data-mic="bluetooth" role="radio" aria-checked="false" aria-label="Mikrofon: Bluetooth">Bluetooth</button>
-                  </div>
-                  <div class="meter-cards">
-                    <div class="meter-card meter-card-arzt">
-                      <div class="meter-label"><span class="dot dot-a"></span><span id="meterLabelArzt">Arzt</span></div>
-                      <div class="meter-track"><div class="meter-fill a" id="fillArzt"></div></div>
-                      <div class="meter-db" id="dbArzt">—</div>
-                    </div>
-                    <div class="meter-card meter-card-pat">
-                      <div class="meter-label"><span class="dot dot-p"></span><span id="meterLabelPat">Patient</span></div>
-                      <div class="meter-track"><div class="meter-fill p" id="fillPat"></div></div>
-                      <div class="meter-db" id="dbPat">—</div>
-                    </div>
-                  </div>
-                  <button type="button" class="mic-swap" id="btnStereoSwap" hidden>L/R tauschen</button>
-                  <p class="mic-active" id="micActiveLabel">Mikrofon · Pegel live</p>
-                  <p class="meter-note" id="meterMonoNote" hidden></p>
-                  <canvas class="line-canvas" id="lineCanvas" width="960" height="112" hidden aria-hidden="true"></canvas>
+              <div class="meters" id="metersBox" hidden>
+                <div class="mic-toggle" id="micToggle" data-mode="ipad" role="radiogroup" aria-label="Mikrofonquelle">
+                  <button type="button" data-mic="ipad" class="is-on" role="radio" aria-checked="true" aria-label="Mikrofon: iPad">iPad</button>
+                  <button type="button" data-mic="usb" role="radio" aria-checked="false" aria-label="Mikrofon: USB">USB</button>
+                  <button type="button" data-mic="bluetooth" role="radio" aria-checked="false" aria-label="Mikrofon: Bluetooth">Bluetooth</button>
                 </div>
+                <button type="button" class="mic-swap" id="btnStereoSwap" hidden>L/R tauschen</button>
+                <p class="mic-active" id="micActiveLabel" hidden>Mikrofon · Pegel live</p>
+                <p class="meter-note" id="meterMonoNote" hidden></p>
+                <canvas class="line-canvas" id="lineCanvas" width="960" height="112" hidden aria-hidden="true"></canvas>
               </div>
               <div class="head-mini" id="headMini">
                 <span class="head-mini-step">3/7 · Schema</span>
@@ -1722,9 +1790,7 @@
                     <div class="rec-meta"><span id="recTreat2"></span></div>
                   </div>
                 </div>
-                <div class="rec-live" id="recLive2"><i></i><span>Schema → Doku</span></div>
               </div>
-              <p class="mic-active" id="micActiveLabel2">Weiter diktieren füllt die Boxen. Schema bleibt unverändert.</p>
             </div>
             <div class="doku-wrap">
               <div class="doku-transcript-wrap">
@@ -1746,7 +1812,7 @@
               <span class="roommic-status" id="roomMicStatus2" role="status" aria-live="assertive"></span>
             </div>
             <div class="rec-bar">
-              <button type="button" class="btn btn-ghost" data-back="3">Schema</button>
+              <button type="button" class="btn btn-ghost" data-back="2">Termin</button>
               <div class="timer" id="timer2">00:00</div>
               <div class="spacer"></div>
               <button type="button" class="btn btn-ghost" id="btnPause2" aria-label="Aufnahme pausieren">Pause</button>
@@ -1799,43 +1865,32 @@
                 <p class="lead">Klinik aus dem Gespräch · Nachdiktat wortwörtlich</p>
                 <div class="sum-patient" id="sumPatient">—</div>
               </div>
-              <div class="sum-share" id="sumMeters" aria-label="Kanalanteil">
-                <p class="sum-share-label">Kanalanteil</p>
-                <div class="meter-row">
-                  <div class="meter-label"><span class="dot dot-a"></span><span>Arzt</span></div>
-                  <div class="meter-track"><div class="meter-fill a" id="sumFillArzt"></div></div>
-                  <div class="meter-db" id="sumDbArzt">—</div>
-                </div>
-                <div class="meter-row">
-                  <div class="meter-label"><span class="dot dot-p"></span><span>Patient</span></div>
-                  <div class="meter-track"><div class="meter-fill p" id="sumFillPat"></div></div>
-                  <div class="meter-db" id="sumDbPat">—</div>
-                </div>
-                <p class="sum-share-hint" id="sumMetersHint">aus Diarisierung</p>
-              </div>
             </header>
             <div class="sum-grid">
               <div class="sum-block sum-block--doc">
-                <div class="sum-block-h">
-                  <h3>Dokumentation</h3>
-                  <button type="button" class="btn btn-ghost" id="btnStructure">Neu strukturieren</button>
-                </div>
                 <div id="sumBoxes" aria-live="polite"></div>
                 <pre id="sumText" hidden>—</pre>
               </div>
               <div class="sum-block sum-block--export">
                 <h3>Weiter</h3>
                 <div class="export-stack">
-                  <button type="button" class="export-btn" id="btnExportPdf"><span class="ico">📄</span><span>PDF Akte<small>Druck / Ablage</small></span></button>
-                  <button type="button" class="export-btn" id="btnExportPms" disabled title="folgt Dens"><span class="ico">↗</span><span>An PMS<small>Charly</small></span></button>
-                  <button type="button" class="export-btn" id="btnExportNadine" disabled title="Folgt"><span class="ico">✉</span><span>An Nadine<small>Mail-Entwurf</small></span></button>
-                  <button type="button" class="export-btn" id="btnSaveDoc"><span class="ico">✓</span><span>Speichern<small>Doku für Clara</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportPdf"><span class="ico">📄</span><span>PDF erzeugen<small>Druck / Ablage</small></span></button>
+                  <button type="button" class="export-btn" id="btnExportPvs" title="Schreibweg aus den Einstellungen">
+                    <span class="ico ico-kette" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                      <span class="arr">↗</span>
+                    </span>
+                    <span><strong id="pvsBtnLabel">In PVS übertragen</strong><small id="pvsBtnHint">Schreibweg aus den Einstellungen</small></span>
+                  </button>
+                  <button type="button" class="export-btn" id="btnExportSophie" disabled title="Folgt">
+                    <span class="ico">💶</span>
+                    <span><strong>An Sophie</strong><small>Abrechnung planen</small></span>
+                  </button>
                 </div>
               </div>
             </div>
             <div class="actions">
               <button type="button" class="btn btn-ghost" data-back="5">Nachdiktat</button>
-              <button type="button" class="btn btn-mag" id="btnSaveDocNav">Speichern</button>
             </div>
           </div>
         </div>
@@ -2564,7 +2619,7 @@
   <script src="/m/lena-stt-capture.js?v=20260725bt1"></script>
   <script src="/m/lena-zahnstatus-katalog.js?v=20260722i"></script>
   <script src="/m/lena-voice-chart.js?v=20260722i"></script>
-  <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
+  <script src="/m/lena-doku-template-zahn.js?v=20260815d"></script>
   <script>
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     //  Kopf-Umschalter Clara ↔ Dokumentation + Lena-Wizard.
@@ -3310,7 +3365,7 @@
         // AP4 (Modus 3): iPad-Raum liefert EINEN gemischten Stream als "arzt".
         // Klingt das Segment klar nach Patient, als Patientenanliegen (raum)
         // umlabeln — nur in diesem Modus, nie im Schema-Diktat, im Zweifel Arzt.
-        if (src === "arzt" && captureMode === "ipad_room" && !isSchemaStep()
+        if (src === "arzt" && captureMode === "room" && !isSchemaStep()
             && mode3GuessPatient(text)) {
           src = "raum";
         }
@@ -3594,6 +3649,44 @@
       }
       let structureBusy = false;
       let billingBusy = false;
+      let pvsWrite = { id: "none", label: "", software: "", ready: false };
+      function pvsDisplayName(w) {
+        const map = { dampsoft: "Dampsoft", dens: "DENS", cgm_albis: "Albis", cgm_z1: "Z1" };
+        if (w && w.software && map[w.software]) return map[w.software];
+        const lab = String(w && w.label || "").split(/[—–]/)[0].trim();
+        return lab || "PVS";
+      }
+      function paintPvsButton() {
+        const ready = !!pvsWrite.ready && pvsWrite.id !== "none";
+        const name = pvsDisplayName(pvsWrite);
+        const label = ready ? ("In " + name + " übertragen") : "Speichern";
+        const hint = ready ? (pvsWrite.label || name) : "Kein Schreibweg — nur in Pickadoc";
+        const strong = $("pvsBtnLabel");
+        const small = $("pvsBtnHint");
+        const btn = $("btnExportPvs");
+        if (strong) strong.textContent = label;
+        if (small) small.textContent = hint;
+        if (btn) btn.title = ready ? hint : "Unter Einstellungen → Praxissoftware einen Schreibweg wählen";
+      }
+      async function loadPvsWritePath() {
+        const cid = (deviceCreds && deviceCreds.clientId) || "";
+        if (!cid) return;
+        try {
+          const resp = await fetch("/pvs/write-path?clientId=" + encodeURIComponent(cid), { cache: "no-store" });
+          const data = await resp.json().catch(() => ({}));
+          if (data && data.ok && data.active) {
+            pvsWrite = {
+              id: data.active.id || data.path || "none",
+              label: data.active.label || "",
+              software: data.active.software || "",
+              ready: !!data.active.ready && data.path !== "none",
+            };
+          }
+        } catch (e) {
+          console.warn("write-path", e);
+        }
+        paintPvsButton();
+      }
       const wiz = [null, $("wiz1"), $("wiz2"), $("wiz3"), $("wiz4"), $("wiz5"), $("wiz6"), $("wiz7")];
       const chips = [...document.querySelectorAll(".step-chip[data-step]")];
       // Durchgaengige Navigation (Chef 25.07.): EIN globaler Zurueck/Weiter in
@@ -3817,6 +3910,8 @@
           });
         } catch (_) {}
       }
+      let applySharedCaptureMode = function (_mode) {};
+      let applyRemoteRecorder = function (_rec) {};
       async function loadSavedSegments() {
         const ids = treatmentIds();
         if (!ids) {
@@ -3864,6 +3959,8 @@
           if (typeof data.structuredText === "string") serverSummary = data.structuredText;
           if (data.roomCapture) applyRoomCaptureState(data.roomCapture);
           if (data.specialty !== undefined) applySpecialty(data.specialty);
+          if (data.captureMode) applySharedCaptureMode(data.captureMode);
+          if (data.recorder) applyRemoteRecorder(data.recorder);
           return savedSegments;
         } catch (_) {
           if (String(selectedAppt?.appointmentId || "") !== wantAppt) return [];
@@ -4106,6 +4203,7 @@
           updateMerge();
         }
         if (n === 6) {
+          void loadPvsWritePath();
           loadSavedSegments().then(() => {
             fillSummary();
             void runStructure();
@@ -4192,7 +4290,7 @@
           const plain = structuredText || tplText || medicalDraftFromSegments() || "";
           if ($("sumText")) $("sumText").textContent = plain || "Noch keine medizinische Zusammenfassung.";
           if (box && Zahn && dokuState) {
-            Zahn.render(box, dokuState);
+            Zahn.renderSummaryOnly(box, dokuState);
           } else if (box) {
             box.innerHTML = '<div class="tpl-field is-gap"><div class="tpl-lab">Dokumentation</div>' +
               '<div class="tpl-val' + (plain ? "" : " empty") + '">' +
@@ -4221,9 +4319,7 @@
       }
       async function runStructure() {
         if (structureBusy) return;
-        const btn = $("btnStructure");
         structureBusy = true;
-        if (btn) { btn.disabled = true; btn.textContent = "Strukturiert …"; }
         try {
           await loadSavedSegments();
           const data = await masPost("/treatment/structure");
@@ -4234,7 +4330,6 @@
           if ($("sumText")) $("sumText").textContent = medicalDraftFromSegments() || "Strukturierung fehlgeschlagen.";
         } finally {
           structureBusy = false;
-          if (btn) { btn.disabled = false; btn.textContent = "Neu strukturieren"; }
         }
       }
       function renderBillingCodes(billing, billingHints) {
@@ -4351,62 +4446,115 @@
         ta.focus();
         updateMerge();
       });
-      $("btnStructure")?.addEventListener("click", () => void runStructure());
       $("btnExportPdf")?.addEventListener("click", exportPdf);
+      let toastTimer = 0;
+      function showLenaToast(msg) {
+        const el = $("lenaToast");
+        if (!el) return;
+        el.textContent = String(msg || "Gespeichert");
+        el.classList.add("is-on");
+        if (toastTimer) window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => el.classList.remove("is-on"), 3200);
+      }
       let saveBusy = false;
+      function splitPatientName(name) {
+        const t = String(name || "").replace(/^—$/, "").trim();
+        const parts = t.split(/\s+/).filter(Boolean);
+        if (!parts.length) return { firstName: "", lastName: "" };
+        if (parts.length === 1) return { firstName: "", lastName: parts[0] };
+        return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] };
+      }
+      function summaryTextForPvs() {
+        const Zahn = window.LenaDokuZahn;
+        if (Zahn && dokuState) {
+          try {
+            Zahn.applySegments(dokuState, (savedSegments || []).filter((s) =>
+              String(s.source || "").toLowerCase() !== "nachdiktat"));
+          } catch (_) {}
+          const tpl = String(Zahn.toStructuredText(dokuState) || "").trim();
+          if (tpl) return tpl;
+        }
+        return String(structuredText || medicalDraftFromSegments() || "").trim();
+      }
+      async function enqueuePvsOutbox(text) {
+        const names = splitPatientName(selectedAppt.name);
+        const ids = treatmentIds();
+        if (!ids) throw new Error("no_ids");
+        return masPost("/pvs/outbox", {
+          text,
+          pickadocId: selectedAppt.patientId || "",
+          patientId: selectedAppt.patientId || "",
+          patientName: selectedAppt.name || "",
+          firstName: names.firstName,
+          lastName: names.lastName,
+          appointmentId: ids.appointmentId,
+          locationId: ids.locationId,
+        });
+      }
       async function runSaveDoc() {
         if (saveBusy) return;
-        const btns = [$("btnSaveDoc"), $("btnSaveDocNav")].filter(Boolean);
+        const btn = $("btnExportPvs");
+        const strong = $("pvsBtnLabel");
         saveBusy = true;
-        btns.forEach((b) => { b.disabled = true; });
-        if ($("btnSaveDocNav")) $("btnSaveDocNav").textContent = "Speichert …";
+        if (btn) btn.disabled = true;
+        if (strong) strong.textContent = pvsWrite.ready ? "Überträgt …" : "Speichert …";
         try {
           await loadSavedSegments();
-          // Falls noch keine strukturierte Karte: einmal strukturieren (schreibt
-          // bereits Memory) — sonst nur finalize mit aktuellem Text.
-          let text = String(structuredText || "").trim();
+          await loadPvsWritePath();
+          try { await loadPatientDocs(true); } catch (_) {}
+          if (dokuState) {
+            window.LenaDokuZahn?.applySignrPrefill?.(dokuState, anamnesePrefillSource());
+          }
+          let text = summaryTextForPvs();
           if (!text) {
             try {
               const data = await masPost("/treatment/structure");
               structuredText = String(data.structuredText || "").trim();
-              text = structuredText;
+              text = structuredText || summaryTextForPvs();
               fillSummary();
             } catch (_) {
               text = medicalDraftFromSegments() || "";
             }
           }
-          const data = await masPost("/treatment/finalize", { structuredText: text });
+          if (!text) throw new Error("Keine Dokumentation zum Übertragen.");
+          const names = splitPatientName(selectedAppt.name);
+          const data = await masPost("/treatment/finalize", {
+            structuredText: text,
+            patientId: selectedAppt.patientId || "",
+            patientName: selectedAppt.name || "",
+            firstName: names.firstName,
+            lastName: names.lastName,
+          });
           if (data.structuredText) {
             structuredText = String(data.structuredText);
+            text = structuredText;
             fillSummary();
           }
-          if ($("saveDoneLead")) {
-            $("saveDoneLead").textContent =
-              "Gespeichert für " + (selectedAppt.name || "Patient") +
-              " — Clara kann die Doku jetzt vorlesen.";
+          let queued = !!(data.pvs && data.pvs.queued);
+          if (!queued && pvsWrite.ready) {
+            const out = await enqueuePvsOutbox(text);
+            queued = !!(out && (out.ok || out.doc));
           }
-          if ($("saveDoneHint")) {
-            $("saveDoneHint").style.display = "";
-            $("saveDoneHint").textContent =
-              (data.segmentsCount || 0) + " Segmente · Praxisgedächtnis aktualisiert";
+          if (pvsWrite.ready && !queued) {
+            throw new Error((data.pvs && (data.pvs.error || data.pvs.reason)) || "nicht in der Übertragungsliste");
           }
-          showStep(7);
+          showLenaToast("Gespeichert");
+          showStep(2);
         } catch (e) {
           console.warn("finalize", e);
           if ($("sumText")) {
             $("sumText").textContent =
               (structuredText || medicalDraftFromSegments() || "") +
-              "\n\n[Speichern fehlgeschlagen: " + String(e?.message || e) + "]";
+              "\n\n[Übertragen fehlgeschlagen: " + String(e?.message || e) + "]";
           }
-          alert("Speichern fehlgeschlagen: " + String(e?.message || e));
+          alert("Übertragen fehlgeschlagen: " + String(e?.message || e));
         } finally {
           saveBusy = false;
-          btns.forEach((b) => { b.disabled = false; });
-          if ($("btnSaveDocNav")) $("btnSaveDocNav").textContent = "Speichern";
+          if (btn) btn.disabled = false;
+          paintPvsButton();
         }
       }
-      $("btnSaveDoc")?.addEventListener("click", () => void runSaveDoc());
-      $("btnSaveDocNav")?.addEventListener("click", () => void runSaveDoc());
+      $("btnExportPvs")?.addEventListener("click", () => void runSaveDoc());
       $("btnSaveDoneClara")?.addEventListener("click", () => {
         const claraBtn = modeSwitch?.querySelector('button[data-mode="clara"]');
         if (claraBtn) claraBtn.click();
@@ -4577,12 +4725,14 @@
         }
         syncRecHeader();
         syncLena01Links();
+        if (captureModeWroteAt && Date.now() - captureModeWroteAt < 60000) {
+          void persistCaptureMode(captureMode);
+        }
       }
-      /* Fachrichtungs-Gating (Chef 25.07.2026): Zahnschema (Schritt 3) + 01-Modus
-         sind zahnmedizinisch. Bei einer NICHT-zahnmedizinischen Praxis (z. B.
-         Dermatologie/Blessing) werden sie ausgeblendet und die Doku startet
-         direkt. Fachrichtung kommt aus /treatment/current + heartbeat (specialty).
-         Default (leer) = Zahnmedizin -> bestehende Praxen unveraendert. */
+      /* Fachrichtungs-Gating (Chef 25.07.2026, fastÄ1 15.08.2026):
+         Standardweg ist Doku (fastÄ1), kein Schema-Zwang.
+         struktur0I (= bestehender /m/lena-01/) nur bei Zahnmedizin und
+         nur nach Patientenwahl. Clara-Pane / Soft-Switch unveraendert. */
       let lenaIsDental = true;
       function applySpecialty(sp) {
         const s = String(sp || "").trim().toLowerCase();
@@ -4596,26 +4746,22 @@
       }
       function applySpecialtyUi() {
         const dental = lenaIsDental;
-        // Schema-Schritt-Chip in der Kopfleiste.
         const chip3 = document.querySelector('.step-chip[data-step="3"]');
-        if (chip3) chip3.hidden = !dental;
-        // 01-Modus-Chips bei Nicht-Zahnmedizin hart aus (sonst regelt syncLena01Links).
+        if (chip3) chip3.hidden = true;
         if (!dental) {
           ["btnLena01", "btnLena01Panel"].forEach((id) => { const a = $(id); if (a) a.hidden = true; });
         }
-        // Navigation umbiegen: Termin -> direkt Doku; Doku-Zurueck -> Termin.
         const toNext = document.querySelector('#wiz2 [data-next]');
         if (toNext) {
-          toNext.dataset.next = dental ? "3" : "4";
-          toNext.textContent = dental ? "Schema starten" : "Weiter · Doku";
+          toNext.dataset.next = "4";
+          toNext.textContent = "Weiter · Doku";
         }
         const dokuBack = document.querySelector('#wiz4 [data-back]');
         if (dokuBack) {
-          dokuBack.dataset.back = dental ? "3" : "2";
-          dokuBack.textContent = dental ? "Schema" : "Termin";
+          dokuBack.dataset.back = "2";
+          dokuBack.textContent = "Termin";
         }
-        // Falls wir gerade faelschlich im Schema-Schritt stehen: raus in die Doku.
-        if (!dental && $("wiz3")?.classList.contains("is-show")) showStep(4);
+        if ($("wiz3")?.classList.contains("is-show")) showStep(4);
       }
       function syncLena01Links() {
         // 01-Modus erst anbieten, wenn ein Patient/Termin ausgewaehlt ist —
@@ -4626,16 +4772,21 @@
           : "";
         const loc = selectedAppt?.locationId || chairCurrent?.locationId || dayLocationId || "";
         const appt = selectedAppt?.appointmentId || chairCurrent?.appointmentId || "";
-        let href = "/m/lena-01/perio.html?v=20260721b";
-        if (name) href += "&patient=" + encodeURIComponent(name);
-        if (loc) href += "&locationId=" + encodeURIComponent(loc);
-        if (appt) href += "&appointmentId=" + encodeURIComponent(appt);
+        let ctx = "";
+        if (name) ctx += "&patient=" + encodeURIComponent(name);
+        if (loc) ctx += "&locationId=" + encodeURIComponent(loc);
+        if (appt) ctx += "&appointmentId=" + encodeURIComponent(appt);
         if (loc) sessionStorage.setItem("lena01.locationId", loc);
         if (appt) sessionStorage.setItem("lena01.appointmentId", appt);
+        // Einstieg (Chef 15.08.2026): EIN Knopf "01-Modus" -> eigene
+        // Auswahlseite mit zwei Kacheln (start.html), die Gabelung KI- vs
+        // Arzt-geführt kommt DORT. Kontext (patient/location/appointment)
+        // wandert mit; kein mode im Link.
+        const base = "/m/lena-01/start.html" + (ctx ? "?" + ctx.slice(1) : "");
         ["btnLena01", "btnLena01Panel"].forEach((id) => {
           const a = $(id);
           if (!a) return;
-          a.href = href;
+          a.href = base;
           a.hidden = !name;
         });
       }
@@ -4968,6 +5119,8 @@
           if (String(selectedAppt?.appointmentId || "") !== String(ids.appointmentId)) return;
           if (data.roomCapture) applyRoomCaptureState(data.roomCapture);
           if (data.specialty !== undefined) applySpecialty(data.specialty);
+          if (data.captureMode) applySharedCaptureMode(data.captureMode);
+          if (data.recorder) applyRemoteRecorder(data.recorder);
           const known = new Set(savedSegments.map((s) => s.id).filter(Boolean));
           const byId = new Map(savedSegments.filter((s) => s.id).map((s) => [s.id, s]));
           const knownText = new Set(
@@ -5060,8 +5213,9 @@
         pullTeeArztSegments().catch(() => {});
       }, 400);
 
-      /* Pegel + Aufnahme: alle Modi = Parakeet über Clara. */
-      const fillArzt = $("fillArzt"), fillPat = $("fillPat"), dbArzt = $("dbArzt"), dbPat = $("dbPat");
+      /* Pegel + Aufnahme: eine L/R-Zeile unter dem Kopf, alle Lena-Seiten. */
+      const fillL = $("fillL"), fillR = $("fillR");
+      const fillArzt = fillL, fillPat = fillR, dbArzt = null, dbPat = null;
       const canvas = $("lineCanvas");
       const ctx = canvas && typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
       const histA = new Array(120).fill(0), histP = new Array(120).fill(0);
@@ -5126,8 +5280,7 @@
         return (typeof lenaLoadStereoSwap === "function") ? !!lenaLoadStereoSwap() : false;
       }
       function onRecStep() {
-        // Schema-Seite: Live-Pegel-Preview (Box-Doku teilt dasselbe Mikro).
-        return isSchemaStep() && paneDoku.classList.contains("is-active");
+        return paneDoku.classList.contains("is-active");
       }
       async function stopMicPreview() {
         if (!micPreview) return;
@@ -5200,24 +5353,30 @@
         try { applyCaptureBar(); } catch (_) {}
       }
 
-      /* ── Fester 3-Modi-Umschalter (Chef 25.07.): EIN captureMode als Wahrheit,
-         orchestriert die bewaehrten micMode + Raummikro-Daemon. KEIN Capture-
-         Rewrite (Ein-Mikro-Limit: Doku laeuft ueber Claras LiveKit-Stream). ──
-         headset      -> BT-Mic, Raum-Daemon aus  (1 Spur Arzt/Nachdiktat)
-         headset_room -> BT-Mic, Raum-Daemon an   (2 Spuren Arzt + Patient)
-         ipad_room    -> iPad-Mic, Raum-Daemon aus (1 Stream, Heuristik AP4) */
-      const CAPTURE_MODES = ["headset", "headset_room", "ipad_room"];
+      /* ── Fester 3-Modi-Umschalter, identisch zum Desktop.
+         Standort-Wahrheit: settings/lenaRecorder.captureMode (Heartbeat).
+         headset      -> iPad/Clara nimmt Arzt auf, PC empfängt
+         headset_room -> iPad/Clara Arzt + PC Raummikro
+         room         -> nur PC-Raummikro, iPad empfängt */
+      const CAPTURE_MODES = ["headset", "headset_room", "room"];
+      function normalizeCaptureMode(v) {
+        if (v === "headset" || v === "headset_room" || v === "room") return v;
+        if (v === "ipad_room" || v === "ipad") return "room";
+        if (v === "usb") return "headset_room";
+        return "";
+      }
       function loadCaptureMode() {
-        try { return localStorage.getItem("pickadoc.ipad.captureMode") || ""; } catch (_) { return ""; }
+        try { return normalizeCaptureMode(localStorage.getItem("pickadoc.ipad.captureMode") || ""); } catch (_) { return ""; }
       }
       function saveCaptureMode(m) {
         try { localStorage.setItem("pickadoc.ipad.captureMode", m); } catch (_) {}
       }
-      function captureModeToMic(m) { return m === "ipad_room" ? "ipad" : "bluetooth"; }
-      let captureMode = loadCaptureMode();
-      if (!CAPTURE_MODES.includes(captureMode)) {
-        captureMode = micMode === "ipad" ? "ipad_room" : (lenaRoomMicOn ? "headset_room" : "headset");
-      }
+      function captureModeToMic(m) { return m === "room" ? "ipad" : "bluetooth"; }
+      function ipadCapturesArzt(m) { return m !== "room"; }
+      let captureMode = loadCaptureMode() || "headset_room";
+      let captureModeWroteAt = 0;
+      let followingRemote = false;
+      let recLocalAt = 0;
       function applyCaptureBar() {
         const bar = $("captureBar");
         if (!bar) return;
@@ -5226,27 +5385,38 @@
           const on = m === captureMode;
           b.classList.toggle("is-on", on);
           b.setAttribute("aria-checked", on ? "true" : "false");
-          // Waehrend der Aufnahme nur Modi mit GLEICHER Mic-Quelle erlauben
-          // (Raum-Daemon an/aus ist sicher; BT<->iPad-Wechsel nicht mitten drin).
-          const changesMic = captureModeToMic(m) !== captureModeToMic(captureMode);
-          b.disabled = recording && changesMic && !on;
-          // PC-Raummikro-Presence auf den "Headset + Raum"-Modus spiegeln
-          // (ersetzt die "kein Gerät"-Warnung der alten .roommic-bar).
-          if (m === "headset_room") {
+          b.disabled = recording && !on;
+          if (m === "headset_room" || m === "room") {
             const absent = roomMicDevicePresent === false;
             b.dataset.device = absent ? "none" : "ok";
-            b.title = absent
-              ? "Headset + PC-Raummikro — aktuell KEIN Raummikro am PC gefunden"
-              : "Headset + PC-Raummikro — Arzt + Patient (2 Spuren)";
+            if (m === "headset_room") {
+              b.title = absent
+                ? "Headset + Raummikro — aktuell KEIN Raummikro am PC gefunden"
+                : "Headset + Raummikro — Arzt über Clara, Patient am PC";
+            }
           }
         });
       }
-      function setCaptureMode(mode) {
-        if (!CAPTURE_MODES.includes(mode)) return;
-        const changesMic = captureModeToMic(mode) !== captureModeToMic(captureMode);
-        if (recording && changesMic) return;   // Mic-Quelle nicht mitten in der Aufnahme wechseln
-        captureMode = mode;
-        saveCaptureMode(mode);
+      async function persistCaptureMode(mode) {
+        const ids = treatmentIds();
+        if (!ids) return;
+        try {
+          await fetch("/treatment/heartbeat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              clientId: ids.clientId,
+              locationId: ids.locationId,
+              appointmentId: ids.appointmentId,
+              deviceLabel: "iPad",
+              presence: false,
+              captureMode: mode,
+            }),
+          });
+        } catch (_) {}
+      }
+      function applyLocalCaptureSideEffects(mode) {
         const wantMic = captureModeToMic(mode);
         if (micMode !== wantMic && !recording) {
           micMode = wantMic;
@@ -5254,9 +5424,27 @@
           applyMicToggleUi();
           void startMicPreview();
         }
-        const wantRoom = mode === "headset_room";
+        const wantRoom = mode === "headset_room" || mode === "room";
         if (lenaRoomMicOn !== wantRoom) toggleRoomMic(wantRoom);
         applyCaptureBar();
+      }
+      applySharedCaptureMode = function (mode) {
+        const next = normalizeCaptureMode(mode);
+        if (!next || next === captureMode) return;
+        if (Date.now() - captureModeWroteAt < 2500) return;
+        captureMode = next;
+        saveCaptureMode(next);
+        applyLocalCaptureSideEffects(next);
+      };
+      function setCaptureMode(mode) {
+        const next = normalizeCaptureMode(mode);
+        if (!next) return;
+        if (recording && next !== captureMode) return;
+        captureMode = next;
+        saveCaptureMode(next);
+        captureModeWroteAt = Date.now();
+        applyLocalCaptureSideEffects(next);
+        void persistCaptureMode(next);
       }
 
       $("micToggle")?.querySelectorAll("button").forEach((btn) => {
@@ -5319,16 +5507,11 @@
         if (sumDbPat) sumDbPat.textContent = lastSumShare.has ? (Math.round(p * 100) + "%") : "—";
       };
 
-      // Preview nur auf Aufnahme-Schritt; Zusammenfassung zeigt festen Kanalanteil.
       const _showStepMeters = showStep;
       showStep = function (n) {
         _showStepMeters(n);
-        if (n === 3) void startMicPreview();
+        if (paneDoku.classList.contains("is-active") && !recording) void startMicPreview();
         else void stopMicPreview();
-        if (n === 6 && typeof channelShareFromSegments === "function") {
-          lastSumShare = channelShareFromSegments();
-          window.__lenaPaintSumMeters(lastSumShare);
-        }
       };
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) void stopMicPreview();
@@ -5372,14 +5555,21 @@
         return div;
       }
       function levels() {
-        if (recording && paused) return { a: 0, p: 0 };
+        if (recording && paused) return { l: 0, r: 0 };
         const src = recording ? recCapture : micPreview;
-        if (!src) return { a: 0, p: 0 };
+        if (!src) return { l: 0, r: 0 };
+        if (typeof src.levelL === "function" || typeof src.levelR === "function") {
+          return {
+            l: Math.min(1, (src.levelL && src.levelL()) || 0),
+            r: Math.min(1, (src.levelR && src.levelR()) || 0),
+          };
+        }
         if (typeof src.levelsAp === "function") {
           const lv = src.levelsAp();
-          return { a: Math.min(1, lv.a || 0), p: Math.min(1, lv.p || 0) };
+          return { l: Math.min(1, lv.a || 0), r: Math.min(1, lv.p || 0) };
         }
-        return { a: 0, p: Math.min(1, src.level()) };
+        const v = Math.min(1, src.level ? src.level() : 0);
+        return { l: v, r: 0 };
       }
       function draw() {
         if (!ctx || !canvas) return;
@@ -5406,15 +5596,10 @@
           requestAnimationFrame(loop);
           return;
         }
-        const onRec = isSchemaStep();
-        if (onRec) {
-          const { a, p } = levels();
-          if (fillArzt) setMeterFill(fillArzt, a);
-          if (fillPat) setMeterFill(fillPat, p);
-          if (dbArzt) dbArzt.textContent = toDb(a);
-          if (dbPat) dbPat.textContent = toDb(p);
-          histA.push(a); histA.shift(); histP.push(p); histP.shift();
-        }
+        const { l, r } = levels();
+        if (fillL) setMeterFill(fillL, l);
+        if (fillR) setMeterFill(fillR, r);
+        histA.push(l); histA.shift(); histP.push(r); histP.shift();
         requestAnimationFrame(loop);
       }
       requestAnimationFrame(loop);
@@ -5485,6 +5670,7 @@
 
       async function stopRecording() {
         recToggleGen += 1; // in-flight start ungültig
+        recLocalAt = Date.now();
         recording = false; paused = false;
         resetSouffle();
         docReleaseWakeLock();
@@ -5528,6 +5714,11 @@
           if (liveEl) liveEl.textContent = "kein Termin";
           return;
         }
+        if (!ipadCapturesArzt(captureMode)) {
+          await startRecordingReceiveOnly();
+          return;
+        }
+        recLocalAt = Date.now();
         const gen = ++recToggleGen;
         // Sofort Stop anzeigen — zweiter Tap = Abbruch, auch waehrend ensureLive.
         setRecButtonsLive(true);
@@ -5649,6 +5840,84 @@
         syncRecChrome();
       }
 
+      async function startRecordingReceiveOnly() {
+        if (recording) return;
+        recLocalAt = Date.now();
+        await stopMicPreview();
+        recording = true; paused = false; seconds = 0; t0 = performance.now();
+        recStartedAtMs = Date.now();
+        resetSouffle();
+        souffleRecStartedAt = Date.now();
+        docRequestWakeLock();
+        if ($("timer")) $("timer").textContent = "00:00";
+        setRecButtonsLive(true);
+        if ($("btnPause")) $("btnPause").disabled = false;
+        $("recLive")?.classList.add("is-on");
+        {
+          const liveEl = $("recLive")?.querySelector("span");
+          if (liveEl) liveEl.textContent = "live · Empfang";
+        }
+        clearInterval(timerId);
+        timerId = setInterval(() => {
+          if (!paused) {
+            seconds++;
+            const t = fmt(seconds);
+            if ($("timer")) $("timer").textContent = t;
+            if ($("timer2")) $("timer2").textContent = t;
+          }
+        }, 1000);
+        recCapture = {
+          activeMic: { mode: "room", label: "PC-Raummikro", shared: true },
+          levelsAp: () => ({ a: 0, p: 0 }),
+          stop: async () => {},
+          flush: () => {},
+          resume: () => {},
+        };
+        setMicActiveLabel("PC nimmt den Raum auf — iPad empfängt", false);
+        patchRecorder("recording", { command: "start", commandAtMs: Date.now(), startedAtMs: recStartedAtMs, accumMs: 0 });
+        applyMicToggleUi();
+        syncRecChrome();
+      }
+
+      applyRemoteRecorder = function (rec) {
+        if (!rec || followingRemote) return;
+        const st = rec.status;
+        if (st === "recording" && !recording) {
+          if (Date.now() - recLocalAt < 3000) return;
+          followingRemote = true;
+          void startRecording().finally(() => { followingRemote = false; });
+          return;
+        }
+        if ((st === "idle" || rec.command === "stop") && recording) {
+          if (Date.now() - recLocalAt < 3000) return;
+          followingRemote = true;
+          void stopRecording().finally(() => { followingRemote = false; });
+        }
+      };
+
+      setInterval(() => {
+        if (document.hidden) return;
+        const ids = treatmentIds();
+        if (!ids) return;
+        fetch("/treatment/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            clientId: ids.clientId,
+            locationId: ids.locationId,
+            appointmentId: ids.appointmentId,
+            deviceLabel: "iPad",
+            presence: false,
+          }),
+        }).then((resp) => resp.json().catch(() => ({}))).then((data) => {
+          if (!data || !data.ok) return;
+          if (data.captureMode) applySharedCaptureMode(data.captureMode);
+          if (data.recorder) applyRemoteRecorder(data.recorder);
+          if (data.roomCapture) applyRoomCaptureState(data.roomCapture);
+        }).catch(() => {});
+      }, 1500);
+
       async function toggleRecording() {
         // Laufend ODER Start noch nicht fertig (Button schon is-live) → Stop.
         if (recording || $("btnRec")?.classList.contains("is-live")) {
@@ -5720,7 +5989,7 @@
           renderFeats(selectedAppt);
           const dokuBtn = modeSwitch?.querySelector?.('button[data-mode="doku"]');
           if (dokuBtn && activeMode !== "doku") dokuBtn.click();
-          showStep(3);
+          showStep(4);
           if (!recording && !$("btnRec")?.classList.contains("is-live")) {
             await new Promise((r) => setTimeout(r, 80));
             void startRecording();
@@ -5798,5 +6067,6 @@
       apply();
     })();
   </script>
+  <div id="lenaToast" role="status" aria-live="polite"></div>
 </body>
 </html>

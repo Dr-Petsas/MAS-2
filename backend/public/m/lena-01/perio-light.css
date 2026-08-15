@@ -1,0 +1,77 @@
+/* Weisse Variante der 01-Routen (01.html) — NUR fuer die Desktop-Einbettung.
+ * Jede Regel ist unter html.theme-light gescoped. Das iPad laedt diese Datei
+ * zwar, setzt die Klasse aber nie (kein ?theme=light) -> keine Regel greift,
+ * die dunkle Darstellung bleibt byte-identisch. */
+
+html.theme-light { color-scheme: light; }
+html.theme-light body { background: #ffffff; color: #16202e; }
+
+/* Kopf */
+html.theme-light header { background: #ffffff; border-bottom: 1px solid #e3e8ef; }
+html.theme-light .eyebrow { color: #b26a1f; }
+html.theme-light header h1 { color: #16202e; }
+html.theme-light header p { color: #5b6675; }
+html.theme-light header a { border-color: #d3dae3; color: #16202e; }
+
+/* Karten / Flaechen */
+html.theme-light .half-box { background: #ffffff; border-color: #e3e8ef; box-shadow: 0 10px 26px rgba(15, 23, 42, .08); }
+html.theme-light .half-schema { background: #f7f9fc; }
+html.theme-light .befund-box-head h2 { color: #16202e; }
+html.theme-light .befund-box-head p { color: #5b6675; }
+
+/* Odontogramm-Buehne + Lupe */
+html.theme-light .stage-wrap { background: linear-gradient(135deg, #f3f5f9, #e9edf3); box-shadow: inset 0 0 0 1px #e3e8ef; }
+html.theme-light .zoom-pane { background: #f7f9fc; border-color: #e3e8ef; box-shadow: none; }
+html.theme-light .zoom-head { color: #16202e; background: #eef2f7; border-bottom-color: #e3e8ef; }
+
+/* Befund-Tabs */
+html.theme-light .befund-tabs { background: #f3f5f9; border-color: #e3e8ef; }
+html.theme-light .befund-tabs button { color: #5b6675; }
+html.theme-light .befund-tabs button.on { background: #fff3e6; border-color: #e0a56a; color: #a85f18; box-shadow: none; }
+
+/* Befund-Legende */
+html.theme-light .legend-head h3 { color: #16202e; }
+html.theme-light .legend-head p { color: #5b6675; }
+html.theme-light .legend-item { background: #ffffff; border-color: #dce3ec; color: #16202e; }
+html.theme-light .legend-item:hover { border-color: #e0a56a; }
+html.theme-light .legend-item.armed {
+  border-color: #d98a3c;
+  box-shadow: 0 0 0 1px #d98a3c, 0 8px 22px rgba(217, 138, 60, .14);
+  background: #fff7ee;
+}
+html.theme-light .li-icon {
+  background: radial-gradient(120% 120% at 30% 20%, #f2ede6, #e2e8f0);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .06);
+}
+html.theme-light .legend-item.armed .li-icon { box-shadow: inset 0 0 0 1px rgba(217, 138, 60, .55); }
+html.theme-light .li-label { color: #16202e; }
+html.theme-light .li-teeth { color: #7a8695; }
+html.theme-light .li-teeth.has { color: #b26a1f; }
+
+/* PAR-Sondierungs-Eingaben */
+html.theme-light #parPocketBox input[type="number"] { border-color: #d3dae3; background: #ffffff; color: #16202e; }
+
+/* Fuehrungs-Leiste unten (lena-01-flow.js) */
+html.theme-light #lena01Bar {
+  background: #ffffff; color: #16202e;
+  border-top-color: #e3e8ef; box-shadow: 0 -6px 20px rgba(15, 23, 42, .10);
+}
+html.theme-light .l01-step-hint { color: #5b6675; }
+html.theme-light .l01-nav { border-color: #d3dae3; background: #f3f5f9; color: #16202e; }
+html.theme-light .l01-gaps-lead { color: #5b6675; }
+html.theme-light .l01-clear { color: #0f766e; }
+
+/* Skin-Umschalter (Grafik/Schema) */
+html.theme-light .skin-switch { border-color: #d3dae3; }
+html.theme-light .skin-switch button { color: #5b6675; }
+html.theme-light .skin-switch button.on { background: #e07a30; color: #ffffff; }
+
+/* PC-Wizard (Schema-Skin) — Chrome auf hell drehen ueber die eigenen Vars.
+   Das Schema/Boxen-Rendering darin ist bereits hell (aus ipad-app.html). */
+html.theme-light #lenaWizard {
+  --card: rgba(15, 23, 42, .03); --card-strong: rgba(15, 23, 42, .05);
+  --line: rgba(15, 23, 42, .10); --mute: #5b6675; --mute2: #8a94a2;
+  background: #ffffff;
+}
+html.theme-light #lenaWizard .lw-head h2 { color: #a85f18; }
+html.theme-light #lenaWizard .lw-head span { color: #7a8695; }

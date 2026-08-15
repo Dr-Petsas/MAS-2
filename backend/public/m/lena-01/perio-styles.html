@@ -55,7 +55,7 @@
       <p>Auf Basis der plastisch gebackenen Zähne (hellere Wurzeln, 3D-Glanz).
          Karte anklicken → Schema wird im Editor angewendet.</p>
     </div>
-    <a href="/m/lena-01/perio.html">← zum Editor</a>
+    <a href="/m/lena-01/01.html">← zum Editor</a>
   </header>
 
   <div class="grid" id="grid"></div>
@@ -86,7 +86,7 @@
           '<button class="apply">Anwenden</button></div>';
       const go = () => {
         localStorage.setItem("perioScheme", JSON.stringify({ id: s.id, filter: s.filter, wash: s.wash }));
-        location.href = "/m/lena-01/perio.html?scheme=" + s.id;
+        location.href = "/m/lena-01/01.html?scheme=" + s.id;
       };
       card.addEventListener("click", go);
       grid.appendChild(card);

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lena · 01 starten</title>
+  <!-- Desktop bekommt ?theme=light (weiss). iPad ohne Parameter bleibt dunkel. -->
+  <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
+  <style>
+    :root {
+      --bg: #17130f; --card: #201a14; --line: rgba(255, 255, 255, .12);
+      --ink: #f6efe3; --mute: rgba(246, 239, 227, .66);
+      --ki: #7c3aed; --ki-soft: rgba(124, 58, 237, .16);
+      --arzt: #0f766e; --arzt-soft: rgba(15, 118, 110, .16);
+    }
+    /* Weisse Variante (nur Desktop, via ?theme=light) */
+    html.theme-light {
+      --bg: #f4f6f9; --card: #ffffff; --line: rgba(15, 23, 42, .12);
+      --ink: #16202e; --mute: rgba(22, 32, 46, .62);
+      --ki-soft: rgba(124, 58, 237, .10); --arzt-soft: rgba(15, 118, 110, .10);
+    }
+    html.theme-light body {
+      background: radial-gradient(1200px 700px at 50% -10%, #eef2f7 0%, var(--bg) 60%);
+    }
+    html.theme-light .tile { box-shadow: 0 10px 26px rgba(15, 23, 42, .10); }
+    html.theme-light .tile.arzt .ic, html.theme-light .tile.arzt .badge, html.theme-light .tile.arzt .go { color: #0f766e; }
+    html.theme-light .tile.ki .ic, html.theme-light .tile.ki .badge, html.theme-light .tile.ki .go { color: #6d28d9; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: radial-gradient(1200px 700px at 50% -10%, #241d15 0%, var(--bg) 60%);
+      color: var(--ink); font: 400 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      display: flex; flex-direction: column; min-height: 100dvh;
+      padding: clamp(16px, 3vw, 40px);
+    }
+    header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .kicker {
+      font-size: 13px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+      color: var(--mute);
+    }
+    h1 { margin: 4px 0 2px; font-size: clamp(24px, 4vw, 34px); font-weight: 800; }
+    .patient { color: var(--mute); font-weight: 600; }
+    .lead { margin: 6px 0 0; color: var(--mute); font-size: clamp(15px, 2.4vw, 18px); }
+    main {
+      flex: 1 1 auto; display: grid; gap: clamp(16px, 2.5vw, 26px);
+      grid-template-columns: 1fr 1fr; align-content: center; margin: clamp(18px, 3vh, 34px) 0;
+    }
+    @media (max-width: 780px) { main { grid-template-columns: 1fr; } }
+    .tile {
+      display: flex; flex-direction: column; gap: 14px; text-align: left; cursor: pointer;
+      text-decoration: none; color: inherit; padding: clamp(20px, 3vw, 34px);
+      background: var(--card); border: 1px solid var(--line); border-radius: 22px;
+      box-shadow: 0 18px 44px rgba(0, 0, 0, .34); transition: transform .12s, border-color .12s, box-shadow .12s;
+      min-height: clamp(220px, 34vh, 320px);
+    }
+    .tile:hover, .tile:focus-visible { transform: translateY(-3px); outline: none; }
+    .tile .ic {
+      width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center;
+      font-size: 28px; flex: none;
+    }
+    .tile .badge {
+      align-self: flex-start; padding: 4px 12px; border-radius: 999px;
+      font-size: 12.5px; font-weight: 800; letter-spacing: .3px;
+    }
+    .tile h2 { margin: 0; font-size: clamp(22px, 3.2vw, 28px); font-weight: 800; }
+    .tile p { margin: 0; color: var(--mute); font-size: clamp(14.5px, 2.2vw, 17px); }
+    .tile .go { margin-top: auto; font-weight: 800; opacity: .85; }
+
+    .tile.arzt:hover, .tile.arzt:focus-visible { border-color: var(--arzt); box-shadow: 0 20px 50px rgba(15, 118, 110, .35); }
+    .tile.arzt .ic { background: var(--arzt-soft); color: #6ee7d7; }
+    .tile.arzt .badge { background: var(--arzt-soft); color: #6ee7d7; }
+    .tile.arzt .go { color: #6ee7d7; }
+
+    .tile.ki:hover, .tile.ki:focus-visible { border-color: var(--ki); box-shadow: 0 20px 50px rgba(124, 58, 237, .35); }
+    .tile.ki .ic { background: var(--ki-soft); color: #c4b1ff; }
+    .tile.ki .badge { background: var(--ki-soft); color: #c4b1ff; }
+    .tile.ki .go { color: #c4b1ff; }
+
+    footer { display: flex; }
+    .back {
+      color: var(--mute); text-decoration: none; font-weight: 600; font-size: 15px;
+      padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line);
+    }
+    .back:hover { color: var(--ink); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="kicker">01 · Erstuntersuchung</div>
+      <h1>01 starten <span class="patient" id="patient"></span></h1>
+      <p class="lead">Wer führt die Aufnahme?</p>
+    </div>
+  </header>
+
+  <main>
+    <a class="tile arzt" id="tileArzt" href="#">
+      <span class="ic" aria-hidden="true">🩺</span>
+      <span class="badge">schnell</span>
+      <h2>Arzt-geführt</h2>
+      <p>Nur das Wichtigste. <b>Sie entscheiden, was aufgenommen wird</b> — frei diktieren, Lena schreibt ins Schema und zeigt nur die noch offenen Fächer.</p>
+      <span class="go">Auswählen →</span>
+    </a>
+
+    <a class="tile ki" id="tileKi" href="#">
+      <span class="ic" aria-hidden="true">🤖</span>
+      <span class="badge">Maximalbefund</span>
+      <h2>KI-geführt</h2>
+      <p>Kompletter Maximalbefund. Lena führt Sie <b>durch alle Fachgruppen</b> — von Kons bis KB, Schritt für Schritt.</p>
+      <span class="go">Auswählen →</span>
+    </a>
+  </main>
+
+  <footer>
+    <a class="back" href="/m/ipad-app.html">← Zurück zum Arbeitsplatz</a>
+  </footer>
+
+  <script>
+    (function () {
+      "use strict";
+      var qs = new URLSearchParams(location.search);
+      var name = (qs.get("patient") || qs.get("name") || "").trim();
+      if (name) {
+        document.getElementById("patient").textContent = "· " + name;
+        document.title = "Lena · 01 starten · " + name;
+      }
+      // Kontext (patient/locationId/appointmentId/c) unveraendert weiterreichen,
+      // nur mode setzen. So landet die Wahl mit vollem Kontext im Odontogramm.
+      function hrefFor(mode) {
+        var p = new URLSearchParams(location.search);
+        p.set("mode", mode);
+        p.set("v", "20260815d"); // Cache-Bust: fullscreen-Layout (keine 2 Spalten)
+        return "/m/lena-01/01.html?" + p.toString();
+      }
+      document.getElementById("tileArzt").href = hrefFor("arzt");
+      document.getElementById("tileKi").href = hrefFor("ki");
+    })();
+  </script>
+</body>
+</html>

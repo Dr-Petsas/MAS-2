@@ -3230,9 +3230,122 @@
     return true;
   }
 
+  // ── 01-Modus-Bruecke (Chef 15.08.2026) ──────────────────────────────────
+  // Der 01-Flow (lena-01-flow.js) braucht den Befund als lesbaren Text (PVS)
+  // und grobe Fach-Zaehler (Fuehrung/Luecken). Die Modell-Logik bleibt HIER —
+  // der Flow greift nie direkt in state.
+  const SURF_LABEL_01 = {
+    okklusal: "okklusal", mesial: "mesial", distal: "distal",
+    vestibulaer: "vestibul\u00e4r", lingual_palatinal: "lingual/palatinal",
+  };
+  function findingLabelMap01() {
+    const m = {};
+    if (window.PerioLegend && PerioLegend.LEGENDS) {
+      Object.keys(PerioLegend.LEGENDS).forEach((tab) => {
+        (PerioLegend.LEGENDS[tab] || []).forEach((it) => { m[it.id] = it.label; });
+      });
+    }
+    return m;
+  }
+  function toothFindings01(fdi, lbl) {
+    const s = state[fdi];
+    if (!s) return null;
+    const ids = [];
+    const parts = [];
+    const m = markOf(s);
+    const replaced = !!(m.implantat || m.brueckenglied || m.prothesenzahn || m.lueckenschluss);
+    if (s.missing && !replaced) { ids.push("zahn_fehlt"); parts.push("fehlt"); }
+    Object.keys(m).forEach((key) => {
+      const v = m[key];
+      if (!v || key === "zahn_fehlt") return;
+      let label = lbl[key] || key;
+      if (key === "lockerung") label = "Lockerung " + v;
+      else if (key === "sensibilitaet") label = "Sensibilit\u00e4t " + (v === "+" || v === true ? "positiv" : "negativ");
+      ids.push(key);
+      parts.push(label);
+    });
+    if (s.surfaces) {
+      Object.keys(SURF_LABEL_01).forEach((sk) => {
+        (s.surfaces[sk] || []).forEach((markerId) => {
+          ids.push(markerId);
+          parts.push((lbl[markerId] || markerId) + " " + SURF_LABEL_01[sk]);
+        });
+      });
+    }
+    (s.rootMarkers || []).forEach((markerId) => {
+      ids.push(markerId);
+      parts.push(lbl[markerId] || markerId);
+    });
+    const pm = s.pocket ? +s.pocket.m || 0 : 0;
+    const pd = s.pocket ? +s.pocket.d || 0 : 0;
+    if (pm > 3 || pd > 3) { ids.push("paro"); parts.push("Tasche " + pm + "/" + pd + " mm"); }
+    if (!parts.length) return null;
+    // Dubletten aus Labeltext raus (z. B. mehrere Flaechen gleicher Befund bleiben)
+    const seen = new Set();
+    const uniq = parts.filter((p) => (seen.has(p) ? false : (seen.add(p), true)));
+    return { fdi: Number(fdi), ids, parts: uniq };
+  }
+  function snapshot01() {
+    const lbl = findingLabelMap01();
+    const teeth = [];
+    (COLS ? COLS.cols : []).forEach((c) => {
+      const t = toothFindings01(c.fdi, lbl);
+      if (t) teeth.push(t);
+    });
+    teeth.sort((a, b) => a.fdi - b.fdi);
+    return { teeth, count: teeth.length };
+  }
+  function fachCounts01() {
+    const counts = {};
+    const tabOf = (window.PerioLegend && PerioLegend.FINDING_TAB) || {};
+    snapshot01().teeth.forEach((t) => {
+      const tabs = new Set();
+      t.ids.forEach((id) => {
+        if (id === "paro") { tabs.add("Par"); return; }
+        const tab = tabOf[id];
+        if (tab) tabs.add(tab);
+      });
+      tabs.forEach((tab) => { counts[tab] = (counts[tab] || 0) + 1; });
+    });
+    return counts;
+  }
+  function toPvsText01(name) {
+    const snap = snapshot01();
+    const lines = ["01-BEFUND (Erstuntersuchung)"];
+    if (name) lines.push("Patient: " + String(name).trim());
+    lines.push("");
+    if (!snap.count) {
+      lines.push("Kein pathologischer Zahnbefund erfasst (klinisch unauff\u00e4llig).");
+    } else {
+      lines.push("Zahnbefund:");
+      snap.teeth.forEach((t) => lines.push("  " + t.fdi + ": " + t.parts.join(", ")));
+    }
+    return lines.join("\n");
+  }
+  function setTab01(tabId) {
+    if (!window.PerioLegend || !PerioLegend.TABS.some((t) => t.id === tabId)) return false;
+    activeTab = tabId;
+    armedFinding = null;
+    document.body.classList.remove("finding-armed", "surface-armed");
+    const nav = document.getElementById("befundTabs");
+    if (nav) nav.querySelectorAll("button").forEach((el) =>
+      el.classList.toggle("on", el.dataset.tab === activeTab));
+    // Vor Boot-Ende (COLS/svgEl noch nicht da): nur activeTab merken —
+    // boot() rendert danach mit dieser Auswahl. Sonst wuerde render()/
+    // updateLegendCounts() ueber leere COLS stolpern.
+    if (!COLS || !svgEl) return true;
+    buildLegend();
+    render();
+    return true;
+  }
+
   window.Lena01 = {
     selectTooth,
     applyVoiceEvent,
     getSelected: () => selected,
+    setTab: setTab01,
+    snapshot: snapshot01,
+    fachCounts: fachCounts01,
+    toPvsText: toPvsText01,
   };
 })();
