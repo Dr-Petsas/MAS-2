@@ -33,41 +33,38 @@ html.theme-light .befund-tabs { background: #eef2f7; border-color: #c5d0dc; }
 html.theme-light .befund-tabs button { color: #16202e !important; font-weight: 800; }
 html.theme-light .befund-tabs button.on { background: #fff3e6; border-color: #d98a3c; color: #7a3e0a !important; box-shadow: none; }
 
-/* Desktop-iframe: Odontogramm + Legende ohne Seiten-Scroll */
-html.theme-light, html.theme-light body { height: 100%; min-height: 100%; overflow: hidden; }
+/* Desktop: Grafik bleibt gros, Scroll wieder an, Lupe rechts. */
+html.theme-light, html.theme-light body { overflow: auto; }
 html.theme-light header { padding: 8px 14px; }
 html.theme-light header h1 { font-size: 1.02rem; margin: 0; }
 html.theme-light .eyebrow { font-size: .55rem; }
-html.theme-light main.perio-half.lw-host { min-height: 0; height: calc(100vh - 48px - 64px); }
+html.theme-light main.perio-half.lw-host { min-height: calc(100vh - 88px); }
 html.theme-light .half-schema {
-  overflow: hidden; display: flex; flex-direction: column; height: 100%;
+  overflow-y: auto; display: flex; flex-direction: column;
   background: #ffffff;
 }
-/* Grafik dominiert (ca. 3/4), Legende nur als schmale Leiste darunter. */
 html.theme-light .schema-row {
-  flex: 1 1 auto; min-height: 0; display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 22%);
+  gap: 10px; flex: 1 1 auto; min-height: 52vh;
 }
-html.theme-light .stage-wrap {
-  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
-  background: #ffffff;
-}
-html.theme-light #stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-html.theme-light .perio-svg { width: 100%; height: 100%; max-height: 100%; max-width: 100%; }
-html.theme-light .left-befund { flex: 0 0 auto; max-height: 26%; overflow: hidden; margin-top: 4px; }
-html.theme-light .befund-box-head { display: none; }
-html.theme-light .befund-tabs { padding: 4px; gap: 4px; }
-html.theme-light .befund-tabs button { padding: 5px 10px; font-size: .68rem; }
-html.theme-light .legend-head { display: none; }
+html.theme-light .stage-wrap { background: #ffffff; min-height: 52vh; }
+html.theme-light #stage { width: 100%; }
+html.theme-light .perio-svg { width: 100%; height: auto; }
+html.theme-light .zoom-pane { display: flex !important; background: #ffffff; border-color: #d3dae3; }
+html.theme-light .zoom-head { color: #16202e !important; background: #eef2f7; }
+html.theme-light .left-befund { flex: none; overflow: visible; margin-top: 8px; }
+html.theme-light .befund-box-head { display: block; }
+html.theme-light .befund-box-head h2,
+html.theme-light .legend-head h3 { color: #16202e !important; }
+html.theme-light .befund-tabs { padding: 5px; gap: 5px; }
+html.theme-light .befund-tabs button { padding: 6px 11px; font-size: .72rem; color: #16202e !important; }
+html.theme-light .legend-head { display: flex; }
 html.theme-light .legend-items {
-  max-height: none; overflow: hidden;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-  gap: 4px;
+  max-height: 280px; overflow-y: auto;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px;
 }
-html.theme-light .legend-item { padding: 4px 6px; border-radius: 8px; gap: 6px; }
-html.theme-light .li-icon { flex-basis: 24px; width: 24px; height: 24px; border-radius: 6px; }
-html.theme-light .li-icon svg { width: 20px; height: 20px; }
-html.theme-light .li-label { font-size: .66rem; }
-html.theme-light .li-teeth { font-size: .55rem; }
 
 /* Schema-Skin (FDI) hell */
 html.theme-light #schemaStage .zs01-lab { color: #5b6675; }

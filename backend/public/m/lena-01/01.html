@@ -7,9 +7,9 @@
   <meta name="theme-color" content="#0b0e13" />
   <!-- Desktop bekommt ?theme=light (weiss). iPad ohne Parameter bleibt dunkel. -->
   <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816c" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816e" />
   <!-- Weisse Variante (nur wirksam bei html.theme-light — iPad unberuehrt). -->
-  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816d" />
+  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816e" />
   <style>
     /* ═══════════════════════════════════════════════════════════════════
        PC-WIZARD (Chef 22.07. 01:58): rechter Bereich = kompakter Wizard,
@@ -36,6 +36,7 @@
        Wizard bleibt aus (der ist der fastAe1-Dokufluss, nicht 01). */
     body.skin-schema #lenaWizard { display: none !important; }
     body.skin-schema .stage-wrap { display: none; }
+    body.skin-schema .zoom-pane { display: none; }
     body.skin-schema #schemaStage { display: block; }
     #schemaStage { display: none; padding: 8px 4px 4px; }
     #schemaStage .zs01-arch { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; }
@@ -61,12 +62,14 @@
       padding: 7px 16px; font: 700 13px/1 system-ui, -apple-system, sans-serif; color: #b9c2cc;
     }
     .skin-switch button.on { background: #e07a30; color: #fff; }
-    /* Grafik-Skin fullscreen: Odontogramm ueber die volle Breite, KEINE
-       Lupe-Spalte daneben (Chef 15.08.2026 — keine zwei Spalten). */
     .half-schema { overflow-y: auto; }
-    .half-schema .schema-row { display: block; flex: none; }
-    .half-schema .zoom-pane { display: none; }
-    .half-schema .stage-wrap { width: 100%; }
+    .half-schema .schema-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(132px, 22%);
+      gap: 10px; flex: 1; min-height: 0;
+    }
+    .half-schema .zoom-pane { display: flex; }
+    .half-schema .stage-wrap { width: 100%; min-width: 0; }
     /* Befund-Tabs + Legende ziehen unter das linke Schema (der rechte
        Platz gehoert jetzt dem Wizard) — Ids/Verhalten unveraendert. */
     .half-schema .left-befund {
@@ -690,13 +693,25 @@
       box-shadow: 0 12px 30px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .25s, transform .25s;
     }
     #l01Toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    /* Desktop-hell: Fuehrungsleiste (Zahnstatus/Kons/ZE/…) dunkel lesbar.
+       Steht HIER, weil die dunklen .l01-*-Farben sonst die Light-CSS schlagen. */
+    html.theme-light #lena01Bar { background: #ffffff; color: #16202e; border-top-color: #d3dae3; }
+    html.theme-light #lena01Bar .l01-step-title,
+    html.theme-light #lena01Bar .l01-body { color: #16202e !important; }
+    html.theme-light #lena01Bar .l01-step-hint,
+    html.theme-light #lena01Bar .l01-gaps-lead { color: #3d4a5c !important; }
+    html.theme-light #lena01Bar .l01-nav {
+      color: #16202e !important; border-color: #c5d0dc; background: #eef2f7;
+    }
+    html.theme-light #lena01Bar .l01-gap { color: #7a3e0a; background: #fff3e6; border-color: #d98a3c; }
+    html.theme-light #lena01Bar .l01-clear { color: #0f766e; }
   </style>
   <script src="/m/lena-zahnstatus-katalog.js?v=20260722i"></script>
   <script src="/m/lena-voice-chart.js?v=20260722i"></script>
   <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
   <script src="/m/lena-01/perio-legend.js?v=20260721b"></script>
   <script src="/m/lena-01/perio-chart.js?v=20260721b"></script>
-  <script src="/m/lena-01/perio.js?v=20260816c"></script>
+  <script src="/m/lena-01/perio.js?v=20260816e"></script>
   <script src="/m/lena-01/perio-voice.js?v=20260721b"></script>
   <script src="/m/lena-01/lena-01-flow.js?v=20260815c"></script>
   <script>
