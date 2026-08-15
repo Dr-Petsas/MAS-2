@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Lena · Bedarf / Worksheet</title>
+  <title>Lena · Antragsstellung</title>
   <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
   <style>
     :root {
@@ -49,17 +49,23 @@
     html:not(.theme-light) .card .fach { color: #6ee7d7; }
     .card h2 { margin: 4px 0 0; font-size: 18px; }
     .card p { margin: 0; color: var(--mute); font-size: 14px; }
+    .card .from { margin: 4px 0 0; font-size: 13px; color: var(--mute); }
     .card button {
       margin-top: 8px; align-self: flex-start; border: 0; border-radius: 10px;
       padding: 8px 14px; font-weight: 800; cursor: pointer; background: var(--go); color: #fff;
     }
     .card.is-on { border-color: var(--arzt); }
     .card.is-on button { background: var(--arzt); }
+    .card.is-beilage { opacity: .96; }
     .plan h3 { margin: 0 0 10px; font-size: 15px; }
     .plan ol { margin: 0; padding-left: 18px; }
     .plan li { margin: 6px 0; }
     .plan .empty { color: var(--mute); font-size: 14px; }
-    .foot { display: flex; justify-content: flex-end; margin-top: 18px; }
+    .empty-main {
+      background: var(--card); border: 1px dashed var(--line); border-radius: 18px;
+      padding: 22px 18px; color: var(--mute);
+    }
+    .foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
     .go-doku {
       border: 0; border-radius: 12px; padding: 12px 18px; font-weight: 800;
       cursor: pointer; background: var(--go); color: #fff; font-size: 15px;
@@ -68,22 +74,22 @@
 </head>
 <body>
   <header>
-    <div class="kicker">Worksheet</div>
-    <h1>Bedarf · Plan <span id="patient"></span></h1>
-    <p class="lead">Übernehmen legt Positionen in die Liste. Danach nur die Anträge, die dieser Plan wirklich braucht.</p>
+    <div class="kicker">Antragsstellung</div>
+    <h1>Anträge zum Plan <span id="patient"></span></h1>
+    <p class="lead">Nur was der Plan braucht — PAR kommt mit API und SBI, OSAS als eigener UKPS-Antrag.</p>
   </header>
 
   <div class="grid">
-    <section id="vorschlaege"></section>
+    <section id="liste"></section>
     <aside class="plan">
       <h3>Plan / Worksheet</h3>
-      <div class="empty" id="planEmpty">Noch nichts übernommen.</div>
+      <div class="empty" id="planEmpty">Kein Plan übernommen.</div>
       <ol id="planList" hidden></ol>
     </aside>
   </div>
 
   <div class="foot">
-    <button type="button" class="go-doku" id="goNext">Weiter · Anträge</button>
+    <button type="button" class="go-doku" id="goDoku">Weiter zur Dokumentation</button>
   </div>
 
   <script src="/m/lena-01/lena-01-plan.js?v=20260816h"></script>
@@ -92,67 +98,63 @@
       "use strict";
       var qs = new URLSearchParams(location.search);
       var name = (qs.get("patient") || qs.get("name") || "").trim();
+      var stored = (window.Lena01Plan && Lena01Plan.load()) || {};
+      if (!name) name = String(stored.patient || "").trim();
       if (name) document.getElementById("patient").textContent = "· " + name;
 
-      // Stub-Karten — echte Ableitung aus zahnstatus01 kommt spaeter.
-      var items = [
-        { id: "br25", fach: "ZE", title: "3-gliedrige Brücke 25–27", hint: "HKP", antraege: ["hkp"] },
-        { id: "fu16", fach: "Kons", title: "Füllung 16 MOD", hint: "MKV wenn über BEMA", antraege: ["mkv"] },
-        { id: "pzr", fach: "Pro", title: "PZR / Professionelle Reinigung", hint: "kein Antrag", antraege: [] },
-        { id: "par1", fach: "Par", title: "PAR-Therapie (AIT / CPT)", hint: "PAR-Antrag · API · SBI", antraege: ["par"] },
-        { id: "imp26", fach: "IMP", title: "Implantat 26", hint: "KVA · ggf. HKP", antraege: ["kva", "hkp"] },
-        { id: "osas", fach: "OSAS", title: "Protrusionsschiene (OSAS)", hint: "UKPS-Antrag", antraege: ["osas"] },
-        { id: "kb1", fach: "KB", title: "Aufbissschiene / Funktion", hint: "Funktionsanalyse", antraege: ["funktion"] },
-      ];
-      var taken = {};
+      var items = Array.isArray(stored.items) ? stored.items : [];
+      var rows = window.Lena01Plan ? Lena01Plan.antraegeFor(items) : [];
+      var marked = {};
+
+      document.getElementById("planEmpty").hidden = items.length > 0;
+      var ol = document.getElementById("planList");
+      ol.hidden = items.length === 0;
+      ol.innerHTML = items.map(function (it) {
+        return "<li>" + it.title + " <small>(" + it.fach + ")</small></li>";
+      }).join("");
 
       function paint() {
-        var host = document.getElementById("vorschlaege");
-        host.innerHTML = items.map(function (it) {
-          var on = taken[it.id];
-          return '<article class="card' + (on ? " is-on" : "") + '" data-id="' + it.id + '">' +
-            '<span class="fach">' + it.fach + "</span>" +
+        var host = document.getElementById("liste");
+        if (!rows.length) {
+          host.innerHTML = '<div class="empty-main">Zum aktuellen Plan keine Anträge — PZR und reine Sitzungen brauchen keines.</div>';
+          return;
+        }
+        host.innerHTML = rows.map(function (it) {
+          var on = marked[it.id];
+          var beilage = it.beilageVon ? " is-beilage" : "";
+          var from = (it.from && it.from.length)
+            ? '<div class="from">aus dem Plan: ' + it.from.join(" · ") + "</div>"
+            : "";
+          return '<article class="card' + (on ? " is-on" : "") + beilage + '" data-id="' + it.id + '">' +
+            '<span class="fach">' + it.badge + "</span>" +
             "<h2>" + it.title + "</h2>" +
             "<p>" + it.hint + "</p>" +
-            "<button type=\"button\">" + (on ? "Im Plan" : "Übernehmen") + "</button>" +
+            from +
+            "<button type=\"button\">" + (on ? "Vorgemerkt" : "Vorbereiten") + "</button>" +
             "</article>";
         }).join("");
-        var keys = Object.keys(taken).filter(function (k) { return taken[k]; });
-        document.getElementById("planEmpty").hidden = keys.length > 0;
-        var ol = document.getElementById("planList");
-        ol.hidden = keys.length === 0;
-        ol.innerHTML = keys.map(function (id) {
-          var it = items.filter(function (x) { return x.id === id; })[0];
-          return "<li>" + it.title + " <small>(" + it.fach + ")</small></li>";
-        }).join("");
       }
-      document.getElementById("vorschlaege").addEventListener("click", function (e) {
+      document.getElementById("liste").addEventListener("click", function (e) {
         var card = e.target.closest(".card");
         if (!card) return;
-        taken[card.dataset.id] = !taken[card.dataset.id];
+        marked[card.dataset.id] = !marked[card.dataset.id];
         paint();
-        persist();
       });
       paint();
-      persist();
 
-      function persist() {
-        var chosen = items.filter(function (it) { return taken[it.id]; });
-        if (window.Lena01Plan) {
-          Lena01Plan.save({
-            appointmentId: qs.get("appointmentId") || "",
-            patient: name,
-            items: chosen,
-          });
+      function goDoku() {
+        var appt = qs.get("appointmentId") || stored.appointmentId || "";
+        if (appt) try { sessionStorage.setItem("lena01.funnelDone", appt); } catch (_) {}
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "lena-go-doku" }, "*");
+          return;
         }
-      }
-      function goNext() {
-        persist();
         var p = new URLSearchParams(location.search);
-        p.set("v", "20260816h");
-        location.href = "/m/lena-01/antraege.html?" + p.toString();
+        p.set("doku", "1");
+        p.delete("mode"); p.delete("theme"); p.delete("v");
+        location.href = "/m/ipad-app.html?" + p.toString();
       }
-      document.getElementById("goNext").addEventListener("click", goNext);
+      document.getElementById("goDoku").addEventListener("click", goDoku);
     })();
   </script>
 </body>
