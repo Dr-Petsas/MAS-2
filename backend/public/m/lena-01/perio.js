@@ -119,7 +119,7 @@
   // gekippten UK-Molar-Barrieren bereits; kein zusaetzliches Polygon noetig.
   // Farbe = Hintergrund der Basisebene teeth-source.svg (#122432), NICHT der
   // SVG-Rect-Ton #241a15 — sonst steht ein sichtbar braunes Band in der Luecke.
-  const MISS_BG = "#122432";
+  let MISS_BG = "#122432";
   // Nur Anti-Alias-Saum (~1 px je Seite). Stroke 10 blutet sichtbar in Nachbarn.
 
   // Hit-Targets / Lupe: Spaltenbreite (+ SIL/Extra, ohne Distal-Flare).
@@ -3157,6 +3157,21 @@
     svgEl.removeAttribute("height");
     svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
     svgEl.classList.add("perio-svg");
+    // Desktop-hell: der Navy-Ton sitzt IM SVG (Rect + teeth-source), nicht
+    // in der CSS-Buehne — hier auf Weiss tauschen. iPad ohne theme-light
+    // bleibt #122432.
+    if (document.documentElement.classList.contains("theme-light")) {
+      MISS_BG = "#ffffff";
+      const bg = svgEl.querySelector("rect");
+      if (bg) bg.setAttribute("fill", "#ffffff");
+      const im = svgEl.querySelector("#teethImg");
+      if (im && teethTxt) {
+        const light = String(teethTxt).replace(/#122432/gi, "#ffffff");
+        const url = URL.createObjectURL(new Blob([light], { type: "image/svg+xml" }));
+        im.setAttribute("href", url);
+        im.setAttributeNS("http://www.w3.org/1999/xlink", "href", url);
+      }
+    }
 
     if (!window.PerioChart) {
       console.error("perio-chart.js fehlt – Flaechen/Implantat/Bruecke nicht verfuegbar");

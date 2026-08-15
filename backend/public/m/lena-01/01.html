@@ -7,9 +7,9 @@
   <meta name="theme-color" content="#0b0e13" />
   <!-- Desktop bekommt ?theme=light (weiss). iPad ohne Parameter bleibt dunkel. -->
   <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260721b" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816b" />
   <!-- Weisse Variante (nur wirksam bei html.theme-light — iPad unberuehrt). -->
-  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816" />
+  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816b" />
   <style>
     /* ═══════════════════════════════════════════════════════════════════
        PC-WIZARD (Chef 22.07. 01:58): rechter Bereich = kompakter Wizard,
@@ -31,7 +31,7 @@
       min-height: calc(100vh - 88px);
     }
     main.perio-half.lw-host > .half-box { flex: 1 1 auto; min-height: 0; }
-    body:not(.skin-schema) #lenaWizard { display: none; }
+    body:not(.skin-schema) #lenaWizard { display: none !important; }
     body.skin-schema .half-schema { display: none; }
     body.skin-schema #lena01Bar { display: none; }
     /* Skin-Umschalter (Kopf) */
@@ -678,7 +678,7 @@
   <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
   <script src="/m/lena-01/perio-legend.js?v=20260721b"></script>
   <script src="/m/lena-01/perio-chart.js?v=20260721b"></script>
-  <script src="/m/lena-01/perio.js?v=20260815b"></script>
+  <script src="/m/lena-01/perio.js?v=20260816b"></script>
   <script src="/m/lena-01/perio-voice.js?v=20260721b"></script>
   <script src="/m/lena-01/lena-01-flow.js?v=20260815c"></script>
   <script>

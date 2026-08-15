@@ -19,8 +19,12 @@ html.theme-light .half-schema { background: #f7f9fc; }
 html.theme-light .befund-box-head h2 { color: #16202e; }
 html.theme-light .befund-box-head p { color: #5b6675; }
 
-/* Odontogramm-Buehne + Lupe — Hintergrund komplett weiss (Chef 15.08.2026) */
-html.theme-light .stage-wrap { background: #ffffff; box-shadow: inset 0 0 0 1px #e3e8ef; }
+/* Odontogramm-Buehne + der dunkle SVG-Rect (#122432) */
+html.theme-light .stage-wrap,
+html.theme-light #stage,
+html.theme-light .perio-svg { background: #ffffff; }
+html.theme-light .stage-wrap { box-shadow: inset 0 0 0 1px #e3e8ef; }
+html.theme-light .perio-svg > rect:first-of-type { fill: #ffffff !important; }
 html.theme-light .zoom-pane { background: #f7f9fc; border-color: #e3e8ef; box-shadow: none; }
 html.theme-light .zoom-head { color: #16202e; background: #eef2f7; border-bottom-color: #e3e8ef; }
 

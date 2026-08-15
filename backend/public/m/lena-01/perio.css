@@ -20,10 +20,11 @@ main {
   gap: 14px;
 }
 
-/* Halfscreen: Schema links · Befund-Boxen rechts */
+/* Eine Spalte: Odontogramm volle Breite. Wizard/Lupe nie daneben
+   (Chef 15.08.2026 — iPad und Desktop). */
 main.perio-half {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   align-items: stretch;
   min-height: calc(100vh - 88px);
@@ -44,14 +45,13 @@ main.perio-half {
 }
 .befund-box-head p { margin: 4px 0 0; font-size: .7rem; color: #7f8b95; }
 
-/* Schema + Zoom nebeneinander; Zoom nur bis Unterkante des Odontogramms */
+/* Schema allein, volle Breite — Lupe ist Skin, nicht zweite Spalte. */
 .schema-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 28%);
-  gap: 12px;
-  align-items: stretch;
-  flex: 1; min-height: 0;
+  display: block;
+  flex: none;
+  min-height: 0;
 }
+.zoom-pane { display: none !important; }
 
 .stage-wrap {
   border-radius: 16px;
@@ -321,11 +321,9 @@ body.surface-armed .surface-hit { cursor: crosshair; }
 }
 
 @media (max-width: 1040px) {
-  main.perio-half { grid-template-columns: 1fr; min-height: 0; }
-  .schema-row { grid-template-columns: minmax(0, 1fr) 160px; }
+  main.perio-half { min-height: 0; }
   .legend-items { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
   .legend-items { grid-template-columns: 1fr; }
-  .schema-row { grid-template-columns: 1fr; }
 }
