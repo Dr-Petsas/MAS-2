@@ -1635,7 +1635,7 @@
     <section class="pane pane-doku" id="paneDoku">
       <div class="lena-wrap">
         <div class="steps" id="steps">
-          <span class="fast-tag">fastÄ1</span>
+          <span class="fast-tag">Doku</span>
           <div class="step-chip is-now" data-step="1"><span class="n">1</span>Arzt</div>
           <div class="step-chip" data-step="2"><span class="n">2</span>Termin</div>
           <div class="step-chip" data-step="3" hidden><span class="n">3</span>Schema</div>
@@ -1643,8 +1643,8 @@
           <div class="step-chip" data-step="5"><span class="n">5</span>Nachdiktat</div>
           <div class="step-chip" data-step="6"><span class="n">6</span>Summary</div>
           <div class="step-chip" data-step="7"><span class="n">7</span>OK</div>
-          <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/start.html" title="01-Modus (Erstuntersuchung)" style="text-decoration:none;margin-left:auto" hidden>
-            <span class="n">0I</span>01-Modus
+          <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/start.html" title="01 / Bedarf erneut öffnen" style="text-decoration:none;margin-left:auto" hidden>
+            <span class="n">01</span>01
           </a>
         </div>
         <div class="lena-pegel" id="lenaPegel" aria-label="Pegel L/R">
@@ -1666,14 +1666,14 @@
             <div class="doc-grid" id="doctors"></div>
             <div class="actions">
               <span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span>
-              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/start.html" style="text-decoration:none" hidden>01-Modus</a>
+              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/start.html" style="text-decoration:none" hidden>01</a>
               <button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button>
             </div>
           </div>
           <aside class="side-note">
-            <div class="kicker">01-Modus</div>
-            <h3>Erstuntersuchung</h3>
-            <p>Nach der Patientenwahl öffnet <b>01-Modus</b> die Erstuntersuchung. Dort fragt Lena zuerst, wer führt: <b>KI-geführt</b> geht alle Fachbereiche der Reihe nach durch, <b>Arzt-geführt</b> lässt frei diktieren und zeigt nur die offenen Fächer. Der Alltag läuft weiter in fastÄ1 — Aufnahme, Nachdiktat, Speichern.</p>
+            <div class="kicker">Sitzung</div>
+            <h3>01 zuerst</h3>
+            <p>Nach der Terminwahl: zuerst <b>01 aufnehmen</b> oder <b>überspringen</b> zur Dokumentation. Lena kann offene Fächer nachtragen, danach Bedarf planen — die Liste wird das Worksheet.</p>
           </aside>
         </div>
 
@@ -4125,9 +4125,50 @@
         ta.value = nd.map((s) => segShow(s)).join(" ");
       }
 
+      const lena01Resume = (() => {
+        const q = new URLSearchParams(location.search);
+        const doku = q.get("doku") === "1";
+        const appointmentId = String(q.get("appointmentId") || sessionStorage.getItem("lena01.appointmentId") || "").trim();
+        if (doku && appointmentId) sessionStorage.setItem("lena01.funnelDone", appointmentId);
+        if (doku) {
+          q.delete("doku");
+          const rest = q.toString();
+          try { history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash); } catch (_) {}
+        }
+        return { doku, appointmentId };
+      })();
+      function lena01FunnelKey() {
+        return String(selectedAppt?.appointmentId || chairCurrent?.appointmentId || "");
+      }
+      function lena01FunnelDone() {
+        const k = lena01FunnelKey();
+        return !k || sessionStorage.getItem("lena01.funnelDone") === k;
+      }
+      function lena01MarkFunnelDone() {
+        const k = lena01FunnelKey() || lena01Resume.appointmentId;
+        if (k) sessionStorage.setItem("lena01.funnelDone", k);
+      }
+      function lena01StartHref() {
+        const name = selectedAppt?.name || "";
+        const loc = selectedAppt?.locationId || chairCurrent?.locationId || dayLocationId || "";
+        const appt = selectedAppt?.appointmentId || chairCurrent?.appointmentId || "";
+        const p = new URLSearchParams();
+        if (name && name !== "—") p.set("patient", name);
+        if (loc) p.set("locationId", loc);
+        if (appt) p.set("appointmentId", appt);
+        p.set("v", "20260816g");
+        return "/m/lena-01/start.html?" + p.toString();
+      }
+
       function showStep(n) {
         // Nicht-Zahnmedizin: Schema-Schritt (3) existiert nicht -> direkt Doku (4).
         if (n === 3 && !lenaIsDental) n = 4;
+        // Trichter (Chef 16.08.2026): nach Terminwahl immer 01-Arzt oder
+        // Skip zur Doku — nicht mehr direkt in die Aufnahme.
+        if (n === 4 && lenaIsDental && !lena01FunnelDone()) {
+          location.href = lena01StartHref();
+          return;
+        }
         const prevWizStep = currentWizStep;
         const stepChanged = currentWizStep !== n;
         currentWizStep = n;
@@ -4729,10 +4770,8 @@
           void persistCaptureMode(captureMode);
         }
       }
-      /* Fachrichtungs-Gating (Chef 25.07.2026, fastÄ1 15.08.2026):
-         Standardweg ist Doku (fastÄ1), kein Schema-Zwang.
-         struktur0I (= bestehender /m/lena-01/) nur bei Zahnmedizin und
-         nur nach Patientenwahl. Clara-Pane / Soft-Switch unveraendert. */
+      /* Fachrichtungs-Gating: 01-Trichter nur bei Zahnmedizin.
+         Clara-Pane / Soft-Switch unveraendert. */
       let lenaIsDental = true;
       function applySpecialty(sp) {
         const s = String(sp || "").trim().toLowerCase();
@@ -4754,7 +4793,7 @@
         const toNext = document.querySelector('#wiz2 [data-next]');
         if (toNext) {
           toNext.dataset.next = "4";
-          toNext.textContent = "Weiter · Doku";
+          toNext.textContent = "Weiter · 01";
         }
         const dokuBack = document.querySelector('#wiz4 [data-back]');
         if (dokuBack) {
@@ -4778,11 +4817,9 @@
         if (appt) ctx += "&appointmentId=" + encodeURIComponent(appt);
         if (loc) sessionStorage.setItem("lena01.locationId", loc);
         if (appt) sessionStorage.setItem("lena01.appointmentId", appt);
-        // Einstieg (Chef 15.08.2026): EIN Knopf "01-Modus" -> eigene
-        // Auswahlseite mit zwei Kacheln (start.html), die Gabelung KI- vs
-        // Arzt-geführt kommt DORT. Kontext (patient/location/appointment)
-        // wandert mit; kein mode im Link.
-        const base = "/m/lena-01/start.html" + (ctx ? "?" + ctx.slice(1) : "");
+        // Re-Entry in den Trichter (01 / Bedarf). Der Pflicht-Einstieg
+        // laeuft nach Terminwahl ueber showStep(4) -> start.html.
+        const base = "/m/lena-01/start.html?" + (ctx ? ctx.slice(1) + "&" : "") + "v=20260816g";
         ["btnLena01", "btnLena01Panel"].forEach((id) => {
           const a = $(id);
           if (!a) return;
@@ -4895,6 +4932,9 @@
         let selIdx = 0;
         if (selectedAppt?.appointmentId) {
           const i = items.findIndex((a) => a.appointmentId === selectedAppt.appointmentId);
+          if (i >= 0) selIdx = i;
+        } else if (lena01Resume.appointmentId) {
+          const i = items.findIndex((a) => a.appointmentId === lena01Resume.appointmentId);
           if (i >= 0) selIdx = i;
         } else if (chairCurrent?.appointmentId) {
           const i = items.findIndex((a) => a.appointmentId === chairCurrent.appointmentId);
@@ -5059,6 +5099,11 @@
       renderPicker();
       updateTerminLead();
       loadDay(iso(TODAY)).then((data) => {
+        if (lena01Resume.doku) {
+          lena01MarkFunnelDone();
+          showStep(4);
+          return;
+        }
         // Wenn Stuhl-Termin klar: Wizard direkt auf Termin-Schritt (Schritt 2).
         if (data?.found && data.appointmentId) showStep(2);
       });

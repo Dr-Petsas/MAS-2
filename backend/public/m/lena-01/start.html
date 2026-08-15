@@ -3,28 +3,26 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Lena · 01 starten</title>
-  <!-- Desktop bekommt ?theme=light (weiss). iPad ohne Parameter bleibt dunkel. -->
+  <title>Lena · Sitzung</title>
   <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
   <style>
     :root {
       --bg: #17130f; --card: #201a14; --line: rgba(255, 255, 255, .12);
       --ink: #f6efe3; --mute: rgba(246, 239, 227, .66);
-      --ki: #7c3aed; --ki-soft: rgba(124, 58, 237, .16);
+      --skip: #7c3aed; --skip-soft: rgba(124, 58, 237, .16);
       --arzt: #0f766e; --arzt-soft: rgba(15, 118, 110, .16);
     }
-    /* Weisse Variante (nur Desktop, via ?theme=light) */
     html.theme-light {
       --bg: #f4f6f9; --card: #ffffff; --line: rgba(15, 23, 42, .12);
       --ink: #16202e; --mute: rgba(22, 32, 46, .62);
-      --ki-soft: rgba(124, 58, 237, .10); --arzt-soft: rgba(15, 118, 110, .10);
+      --skip-soft: rgba(124, 58, 237, .10); --arzt-soft: rgba(15, 118, 110, .10);
     }
     html.theme-light body {
       background: radial-gradient(1200px 700px at 50% -10%, #eef2f7 0%, var(--bg) 60%);
     }
     html.theme-light .tile { box-shadow: 0 10px 26px rgba(15, 23, 42, .10); }
     html.theme-light .tile.arzt .ic, html.theme-light .tile.arzt .badge, html.theme-light .tile.arzt .go { color: #0f766e; }
-    html.theme-light .tile.ki .ic, html.theme-light .tile.ki .badge, html.theme-light .tile.ki .go { color: #6d28d9; }
+    html.theme-light .tile.skip .ic, html.theme-light .tile.skip .badge, html.theme-light .tile.skip .go { color: #6d28d9; }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; }
     body {
@@ -33,7 +31,6 @@
       display: flex; flex-direction: column; min-height: 100dvh;
       padding: clamp(16px, 3vw, 40px);
     }
-    header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
     .kicker {
       font-size: 13px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
       color: var(--mute);
@@ -71,49 +68,38 @@
     .tile.arzt .badge { background: var(--arzt-soft); color: #6ee7d7; }
     .tile.arzt .go { color: #6ee7d7; }
 
-    .tile.ki:hover, .tile.ki:focus-visible { border-color: var(--ki); box-shadow: 0 20px 50px rgba(124, 58, 237, .35); }
-    .tile.ki .ic { background: var(--ki-soft); color: #c4b1ff; }
-    .tile.ki .badge { background: var(--ki-soft); color: #c4b1ff; }
-    .tile.ki .go { color: #c4b1ff; }
-
-    footer { display: flex; }
-    .back {
-      color: var(--mute); text-decoration: none; font-weight: 600; font-size: 15px;
-      padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line);
-    }
-    .back:hover { color: var(--ink); }
+    .tile.skip:hover, .tile.skip:focus-visible { border-color: var(--skip); box-shadow: 0 20px 50px rgba(124, 58, 237, .35); }
+    .tile.skip .ic { background: var(--skip-soft); color: #c4b1ff; }
+    .tile.skip .badge { background: var(--skip-soft); color: #c4b1ff; }
+    .tile.skip .go { color: #c4b1ff; }
   </style>
 </head>
 <body>
   <header>
     <div>
-      <div class="kicker">01 · Erstuntersuchung</div>
-      <h1>01 starten <span class="patient" id="patient"></span></h1>
-      <p class="lead">Wer führt die Aufnahme?</p>
+      <div class="kicker">Sitzung</div>
+      <h1>Wie starten? <span class="patient" id="patient"></span></h1>
+      <p class="lead">Zuerst die 01 — oder direkt zur Dokumentation.</p>
     </div>
   </header>
 
   <main>
     <a class="tile arzt" id="tileArzt" href="#">
-      <span class="ic" aria-hidden="true">🩺</span>
-      <span class="badge">schnell</span>
-      <h2>Arzt-geführt</h2>
-      <p>Nur das Wichtigste. <b>Sie entscheiden, was aufgenommen wird</b> — frei diktieren, Lena schreibt ins Schema und zeigt nur die noch offenen Fächer.</p>
-      <span class="go">Auswählen →</span>
+      <span class="ic" aria-hidden="true">01</span>
+      <span class="badge">immer zuerst</span>
+      <h2>01 aufnehmen</h2>
+      <p>Arzt-geführt. Sie tippen oder diktieren den Status — Odontogramm oder Schema. Lena kann danach offene Fächer nachtragen.</p>
+      <span class="go">01 starten →</span>
     </a>
 
-    <a class="tile ki" id="tileKi" href="#">
-      <span class="ic" aria-hidden="true">🤖</span>
-      <span class="badge">Maximalbefund</span>
-      <h2>KI-geführt</h2>
-      <p>Kompletter Maximalbefund. Lena führt Sie <b>durch alle Fachgruppen</b> — von Kons bis KB, Schritt für Schritt.</p>
-      <span class="go">Auswählen →</span>
+    <a class="tile skip" id="tileSkip" href="#">
+      <span class="ic" aria-hidden="true">✎</span>
+      <span class="badge">überspringen</span>
+      <h2>Dokumentation</h2>
+      <p>Keine 01. Direkt zur Aufnahme — wie der bisherige Alltagsweg.</p>
+      <span class="go">Zur Doku →</span>
     </a>
   </main>
-
-  <footer>
-    <a class="back" href="/m/ipad-app.html">← Zurück zum Arbeitsplatz</a>
-  </footer>
 
   <script>
     (function () {
@@ -122,18 +108,34 @@
       var name = (qs.get("patient") || qs.get("name") || "").trim();
       if (name) {
         document.getElementById("patient").textContent = "· " + name;
-        document.title = "Lena · 01 starten · " + name;
+        document.title = "Lena · Sitzung · " + name;
       }
-      // Kontext (patient/locationId/appointmentId/c) unveraendert weiterreichen,
-      // nur mode setzen. So landet die Wahl mit vollem Kontext im Odontogramm.
-      function hrefFor(mode) {
-        var p = new URLSearchParams(location.search);
-        p.set("mode", mode);
-        p.set("v", "20260816e");
+      function keep() { return new URLSearchParams(location.search); }
+      function href01() {
+        var p = keep();
+        p.set("mode", "arzt");
+        p.set("v", "20260816g");
         return "/m/lena-01/01.html?" + p.toString();
       }
-      document.getElementById("tileArzt").href = hrefFor("arzt");
-      document.getElementById("tileKi").href = hrefFor("ki");
+      function goDoku() {
+        var appt = keep().get("appointmentId");
+        if (appt) try { sessionStorage.setItem("lena01.funnelDone", appt); } catch (_) {}
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "lena-go-doku" }, "*");
+          return;
+        }
+        var p = keep();
+        p.set("doku", "1");
+        p.delete("mode");
+        p.delete("theme");
+        p.delete("v");
+        location.href = "/m/ipad-app.html?" + p.toString();
+      }
+      document.getElementById("tileArzt").href = href01();
+      document.getElementById("tileSkip").addEventListener("click", function (e) {
+        e.preventDefault();
+        goDoku();
+      });
     })();
   </script>
 </body>

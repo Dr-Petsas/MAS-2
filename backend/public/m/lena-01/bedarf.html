@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lena · Bedarf / Worksheet</title>
+  <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
+  <style>
+    :root {
+      --bg: #17130f; --card: #201a14; --line: rgba(255, 255, 255, .12);
+      --ink: #f6efe3; --mute: rgba(246, 239, 227, .66);
+      --arzt: #0f766e; --arzt-soft: rgba(15, 118, 110, .16);
+      --go: #e07a30;
+    }
+    html.theme-light {
+      --bg: #f4f6f9; --card: #ffffff; --line: rgba(15, 23, 42, .12);
+      --ink: #16202e; --mute: rgba(22, 32, 46, .62);
+      --arzt-soft: rgba(15, 118, 110, .10);
+    }
+    html.theme-light body {
+      background: radial-gradient(1200px 700px at 50% -10%, #eef2f7 0%, var(--bg) 60%);
+    }
+    html.theme-light .card, html.theme-light .plan {
+      box-shadow: 0 10px 26px rgba(15, 23, 42, .08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: radial-gradient(1200px 700px at 50% -10%, #241d15 0%, var(--bg) 60%);
+      color: var(--ink); font: 400 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      padding: clamp(16px, 3vw, 32px);
+    }
+    .kicker { font-size: 13px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--mute); }
+    h1 { margin: 4px 0 2px; font-size: clamp(22px, 3.4vw, 30px); font-weight: 800; }
+    .lead { margin: 6px 0 0; color: var(--mute); }
+    .grid {
+      display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(240px, .8fr);
+      gap: 16px; margin-top: 22px; align-items: start;
+    }
+    @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
+    .card, .plan {
+      background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px;
+    }
+    .card { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .card .fach {
+      align-self: flex-start; padding: 3px 10px; border-radius: 999px;
+      background: var(--arzt-soft); color: #0f766e; font-size: 12px; font-weight: 800;
+    }
+    html:not(.theme-light) .card .fach { color: #6ee7d7; }
+    .card h2 { margin: 4px 0 0; font-size: 18px; }
+    .card p { margin: 0; color: var(--mute); font-size: 14px; }
+    .card button {
+      margin-top: 8px; align-self: flex-start; border: 0; border-radius: 10px;
+      padding: 8px 14px; font-weight: 800; cursor: pointer; background: var(--go); color: #fff;
+    }
+    .card.is-on { border-color: var(--arzt); }
+    .card.is-on button { background: var(--arzt); }
+    .plan h3 { margin: 0 0 10px; font-size: 15px; }
+    .plan ol { margin: 0; padding-left: 18px; }
+    .plan li { margin: 6px 0; }
+    .plan .empty { color: var(--mute); font-size: 14px; }
+    .foot { display: flex; justify-content: flex-end; margin-top: 18px; }
+    .go-doku {
+      border: 0; border-radius: 12px; padding: 12px 18px; font-weight: 800;
+      cursor: pointer; background: var(--go); color: #fff; font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="kicker">Worksheet</div>
+    <h1>Bedarf · Plan <span id="patient"></span></h1>
+    <p class="lead">Vorschläge aus der 01 (Logik folgt). Übernehmen legt sie in die Liste — das ist das Worksheet.</p>
+  </header>
+
+  <div class="grid">
+    <section id="vorschlaege"></section>
+    <aside class="plan">
+      <h3>Plan / Worksheet</h3>
+      <div class="empty" id="planEmpty">Noch nichts übernommen.</div>
+      <ol id="planList" hidden></ol>
+    </aside>
+  </div>
+
+  <div class="foot">
+    <button type="button" class="go-doku" id="goDoku">Weiter zur Dokumentation</button>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+      var qs = new URLSearchParams(location.search);
+      var name = (qs.get("patient") || qs.get("name") || "").trim();
+      if (name) document.getElementById("patient").textContent = "· " + name;
+
+      // Stub-Karten — echte Ableitung aus zahnstatus01 kommt spaeter.
+      var items = [
+        { id: "br25", fach: "ZE", title: "3-gliedrige Brücke 25–27", hint: "HKP · Aufklärung Brücke" },
+        { id: "fu16", fach: "Kons", title: "Füllung 16 MOD", hint: "Sitzung Kons" },
+        { id: "pzr", fach: "Pro", title: "PZR / Professionelle Reinigung", hint: "Prophylaxe-Termin" },
+      ];
+      var taken = {};
+
+      function paint() {
+        var host = document.getElementById("vorschlaege");
+        host.innerHTML = items.map(function (it) {
+          var on = taken[it.id];
+          return '<article class="card' + (on ? " is-on" : "") + '" data-id="' + it.id + '">' +
+            '<span class="fach">' + it.fach + "</span>" +
+            "<h2>" + it.title + "</h2>" +
+            "<p>" + it.hint + "</p>" +
+            "<button type=\"button\">" + (on ? "Im Plan" : "Übernehmen") + "</button>" +
+            "</article>";
+        }).join("");
+        var keys = Object.keys(taken).filter(function (k) { return taken[k]; });
+        document.getElementById("planEmpty").hidden = keys.length > 0;
+        var ol = document.getElementById("planList");
+        ol.hidden = keys.length === 0;
+        ol.innerHTML = keys.map(function (id) {
+          var it = items.filter(function (x) { return x.id === id; })[0];
+          return "<li>" + it.title + " <small>(" + it.fach + ")</small></li>";
+        }).join("");
+      }
+      document.getElementById("vorschlaege").addEventListener("click", function (e) {
+        var card = e.target.closest(".card");
+        if (!card) return;
+        taken[card.dataset.id] = !taken[card.dataset.id];
+        paint();
+      });
+      paint();
+
+      function goDoku() {
+        var appt = qs.get("appointmentId");
+        if (appt) try { sessionStorage.setItem("lena01.funnelDone", appt); } catch (_) {}
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "lena-go-doku" }, "*");
+          return;
+        }
+        var p = new URLSearchParams(location.search);
+        p.set("doku", "1");
+        p.delete("mode"); p.delete("theme"); p.delete("v");
+        location.href = "/m/ipad-app.html?" + p.toString();
+      }
+      document.getElementById("goDoku").addEventListener("click", goDoku);
+    })();
+  </script>
+</body>
+</html>

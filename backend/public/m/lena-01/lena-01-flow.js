@@ -1,27 +1,19 @@
 /**
- * Lena 01 · Fuehrungs-Flow (Chef 15.08.2026 — Paket 1 der 01-Definition).
+ * Lena 01 · Trichter (Chef 16.08.2026).
  *
- * Zwei Fuehrungen auf DEMSELBEN Odontogramm (perio.js), umgeschaltet per
- * ?mode= aus der iPad-App:
- *   mode=ki    KI-gefuehrt  — Lena geht alle Fachbereiche der Reihe nach durch
- *                            (Schritt fuer Schritt, oeffnet den passenden Tab).
- *   mode=arzt  Arzt-gefuehrt — der Arzt diktiert frei, Lena zeigt nur die
- *                            noch nicht besprochenen Fachbereiche (Luecken).
- * Beide speichern denselben 01-Stand. Am Ende entscheidet der Arzt:
- *   Bedarf berechnen?  Ja  -> Absicht merken (Kaskade folgt, Paket 2)
- *                      Nein -> 01-Befund direkt in die Uebertragungsliste (PVS).
+ * Immer zuerst Arzt-01 (start.html). Fertig fragt:
+ *   1) KI vervollstaendigen?  Ja = offene Faecher nachtragen (visuell, Dialog folgt)
+ *   2) Bedarf planen?         Ja = bedarf.html (Liste/Worksheet-Stub)
+ *                             Nein = Dokumentation (iPad-Doku / Desktop-Spalte)
  *
- * KEIN Eingriff in perio.js/perio-voice.js/Clara — nur die exportierte
- * Bruecke window.Lena01 (setTab/snapshot/fachCounts/toPvsText) wird genutzt.
+ * KEIN Eingriff in perio.js/perio-voice.js/Clara — nur window.Lena01.
  */
 (function () {
   "use strict";
 
   const qs = new URLSearchParams(location.search);
-  // Gabelung KI- vs Arzt-gefuehrt erfolgt IN der 01-Seite, nach dem Klick auf
-  // "01-Modus" am iPad (Chef 15.08.2026). Ein ?mode= im Link ist nur ein
-  // optionaler Deep-Link/Rueckweg; ohne mode fragt die Seite selbst.
-  let MODE = qs.get("mode") === "ki" ? "ki" : (qs.get("mode") === "arzt" ? "arzt" : null);
+  let MODE = qs.get("mode") === "ki" ? "ki" : "arzt";
+  let phase = "arzt"; // arzt | ki | done
 
   // ── Fachbereichs-Fuehrung: geordnet, jeder Schritt oeffnet einen Befund-Tab.
   const STEPS = [
@@ -69,16 +61,6 @@
     return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
   }
 
-  // ── Gabelung: Wer fuehrt die 01? ──────────────────────────────────────────
-  // Eigene Seite mit zwei Kacheln (start.html) — kein Modal (Chef 15.08.2026).
-  // Ohne mode landet 01.html dort; die Wahl kommt als ?mode= zurueck.
-  function toModePage() {
-    const p = new URLSearchParams(location.search);
-    p.delete("mode");
-    const q = p.toString();
-    location.replace("/m/lena-01/start.html" + (q ? "?" + q : ""));
-  }
-
   function buildBar() {
     bar = document.createElement("div");
     bar.id = "lena01Bar";
@@ -86,12 +68,12 @@
     bar.innerHTML =
       '<span class="l01-mode" id="l01Mode"></span>' +
       '<div class="l01-body" id="l01Body"></div>' +
-      '<button type="button" class="l01-done" id="l01Done">Fertig \u00b7 Bedarf?</button>';
+      '<button type="button" class="l01-done" id="l01Done">Fertig</button>';
     document.body.appendChild(bar);
     elMode = document.getElementById("l01Mode");
     elBody = document.getElementById("l01Body");
-    elMode.textContent = MODE === "ki" ? "KI-gef\u00fchrt" : "Arzt-gef\u00fchrt";
-    document.getElementById("l01Done").addEventListener("click", openDecision);
+    elMode.textContent = "01 \u00b7 Arzt";
+    document.getElementById("l01Done").addEventListener("click", onFertig);
 
     elToast = document.createElement("div");
     elToast.id = "l01Toast";
@@ -151,50 +133,88 @@
     if (MODE === "ki") renderKi(); else renderArzt();
   }
 
-  // ── Ende-Frage: Bedarf berechnen? ─────────────────────────────────────────
-  function openDecision() {
+  function onFertig() {
+    if (phase === "arzt") openAsk("ki");
+    else openAsk("bedarf");
+  }
+
+  function openAsk(kind) {
     if (document.getElementById("l01Modal")) return;
     const ov = document.createElement("div");
     ov.id = "l01Modal";
+    const ki = kind === "ki";
     ov.innerHTML =
       '<div class="l01-card" role="dialog" aria-modal="true">' +
-      '<h2>01 abgeschlossen</h2>' +
-      "<p>Behandlungsbedarf jetzt berechnen \u2014 oder den Befund nur in die Praxissoftware \u00fcbernehmen?</p>" +
+      (ki
+        ? "<h2>KI vervollst\u00e4ndigen?</h2><p>Lena tr\u00e4gt offene Themenbl\u00f6cke nach \u2014 nur das, was in der 01 noch fehlt.</p>"
+        : "<h2>Bedarf planen?</h2><p>Aus der 01 eine Liste bauen \u2014 das wird das Worksheet (Termine, Pl\u00e4ne, Unterlagen).</p>") +
       '<div class="l01-choices">' +
-      '<button type="button" class="l01-choice yes" id="l01Yes"><b>Ja \u2014 Bedarf berechnen</b><span>Termine, Worksheet &amp; Pl\u00e4ne (folgt)</span></button>' +
-      '<button type="button" class="l01-choice no" id="l01No"><b>Nein \u2014 nur ins PVS</b><span>01-Befund in die \u00dcbertragungsliste (Holen)</span></button>' +
+      '<button type="button" class="l01-choice yes" id="l01Yes"><b>Ja</b><span>' +
+      (ki ? "Offene F\u00e4cher nachtragen" : "Liste / Worksheet \u00f6ffnen") +
+      "</span></button>" +
+      '<button type="button" class="l01-choice no" id="l01No"><b>Nein</b><span>' +
+      (ki ? "01 so lassen, weiter" : "Weiter zur Dokumentation") +
+      "</span></button>" +
       "</div>" +
       '<button type="button" class="l01-cancel" id="l01Cancel">Abbrechen</button>' +
       "</div>";
     document.body.appendChild(ov);
     ov.addEventListener("click", (e) => { if (e.target === ov) ov.remove(); });
     document.getElementById("l01Cancel").addEventListener("click", () => ov.remove());
-    document.getElementById("l01Yes").addEventListener("click", () => decide("bedarf", ov));
-    document.getElementById("l01No").addEventListener("click", () => decide("pvs", ov));
+    document.getElementById("l01Yes").addEventListener("click", () => {
+      ov.remove();
+      if (ki) startKiNachtrag();
+      else finish("bedarf");
+    });
+    document.getElementById("l01No").addEventListener("click", () => {
+      ov.remove();
+      if (ki) openAsk("bedarf");
+      else finish("doku");
+    });
   }
 
-  async function decide(decision, ov) {
-    const btnYes = document.getElementById("l01Yes");
-    const btnNo = document.getElementById("l01No");
-    if (btnYes) btnYes.disabled = true;
-    if (btnNo) btnNo.disabled = true;
-    const r = await save(decision);
-    if (ov) ov.remove();
-    if (!r || !r.ok) {
-      toast(r && r.error === "no_content"
-        ? "Kein Befund erfasst \u2014 bitte erst dokumentieren."
-        : "Speichern fehlgeschlagen \u2014 bitte erneut versuchen.");
+  function startKiNachtrag() {
+    phase = "ki";
+    MODE = "ki";
+    if (bar) bar.className = "mode-ki";
+    if (elMode) elMode.textContent = "01 \u00b7 Lena-Nachtrag";
+    const done = document.getElementById("l01Done");
+    if (done) done.textContent = "Fertig \u00b7 Bedarf?";
+    const counts = ready() ? Lena01.fachCounts() : {};
+    const firstGap = STEPS.findIndex((s) => !counts[s.tab]);
+    gotoStep(firstGap >= 0 ? firstGap : 0);
+    toast("Lena: offene Bl\u00f6cke. Dialog folgt \u2014 heute die F\u00e4cher der Reihe nach.");
+  }
+
+  function goToDoku() {
+    const appt = ctx().appointmentId || qs.get("appointmentId") || "";
+    if (appt) try { sessionStorage.setItem("lena01.funnelDone", appt); } catch (_) {}
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "lena-go-doku" }, "*");
       return;
     }
-    if (decision === "bedarf") {
-      toast("Vorgemerkt: Bedarf berechnen. Die Kaskade folgt (Paket 2).");
-    } else {
-      const queued = r.pvs && r.pvs.queued;
-      toast(queued
-        ? "01-Befund in die \u00dcbertragungsliste gelegt \u2014 in DS-WIN mit \u201eHolen\u201c abrufen."
-        : "01-Befund gespeichert. Kein Schreibweg aktiv \u2014 nur in Pickadoc abgelegt.");
-      setTimeout(() => { location.href = "/m/ipad-app.html"; }, 2600);
+    const p = new URLSearchParams(location.search);
+    p.set("doku", "1");
+    p.delete("mode");
+    p.delete("theme");
+    p.delete("v");
+    location.href = "/m/ipad-app.html?" + p.toString();
+  }
+
+  function goToBedarf() {
+    const p = new URLSearchParams(location.search);
+    p.delete("mode");
+    location.href = "/m/lena-01/bedarf.html?" + p.toString();
+  }
+
+  async function finish(decision) {
+    const r = await save(decision);
+    if (r && r.ok === false && r.error === "no_content") {
+      toast("Kein Befund erfasst \u2014 bitte erst dokumentieren.");
+      return;
     }
+    if (decision === "bedarf") goToBedarf();
+    else goToDoku();
   }
 
   // ── Persistenz ─────────────────────────────────────────────────────────────
@@ -254,6 +274,7 @@
     if (started) return;
     started = true;
     MODE = mode === "ki" ? "ki" : "arzt";
+    phase = MODE === "ki" ? "ki" : "arzt";
     buildBar();
     if (MODE === "ki") gotoStep(0); else renderBody();
     // Fach-Zaehler/Luecken laufen mit dem Voice-Poll mit (leichter Takt).
@@ -264,8 +285,7 @@
 
   // ── Boot ─────────────────────────────────────────────────────────────────
   function boot() {
-    if (MODE) start(MODE);      // mode gesetzt (aus start.html/Deep-Link) -> los
-    else toModePage();          // ohne mode: zur Kachel-Auswahl (eigene Seite)
+    start(MODE || "arzt");
   }
   if (document.readyState === "loading") {
     window.addEventListener("DOMContentLoaded", boot);
