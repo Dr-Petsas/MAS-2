@@ -60,6 +60,7 @@
         if (!text) continue;
         if (known.has(s.id)) continue;
         known.add(s.id);
+        if (window.Lena01Ask && Lena01Ask.isActive() && Lena01Ask.hear(text)) continue;
         const events = window.LenaVoiceChart.parseUtterance(text);
         events.forEach((ev) => {
           if (ev.fdi) {

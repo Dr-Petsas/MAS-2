@@ -2643,7 +2643,7 @@
     const clone = svgEl.cloneNode(true);
     clone.removeAttribute("class");
     clone.removeAttribute("id");
-    clone.querySelectorAll(".hit, .flab, .flab-find, .selout").forEach((n) => n.remove());
+    clone.querySelectorAll(".hit, .flab, .flab-find, .flab-pocket, .selout").forEach((n) => n.remove());
     clone.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
 
     const tw = Math.max(8, sb.x1 - sb.x0);
@@ -2727,11 +2727,18 @@
         if (SHORT[id] && !parts.includes(SHORT[id])) parts.push(SHORT[id]);
       });
     }
-    if (s.pocket && ((s.pocket.m || 0) > 0 || (s.pocket.d || 0) > 0)) {
-      const pm = s.pocket.m || 0, pd = s.pocket.d || 0;
-      if (pm > 3 || pd > 3 || activeTab === "Par") parts.push(pm + "/" + pd);
-    }
+    // Taschen NICHT in den Befund-Code unter die Zahnzahl — das stoert
+    // (Default 1/1 + Par-Tab = jede Krone voller Zahlen). Pathologische
+    // Taschen kommen als eigene kleine Marke in buildHits.
     return parts.slice(0, 6).join("·");
+  }
+
+  function pocketLabel(s) {
+    if (!s || !s.pocket) return "";
+    const pm = +s.pocket.m || 0;
+    const pd = +s.pocket.d || 0;
+    if (pm <= 3 && pd <= 3) return "";
+    return pm + "/" + pd;
   }
 
   function buildHits() {
@@ -2796,6 +2803,16 @@
         ft.setAttribute("class", "flab-find");
         ft.textContent = codes;
         front.appendChild(ft);
+      }
+      const pk = pocketLabel(st(c.fdi));
+      if (pk) {
+        const pt = document.createElementNS(SVGNS, "text");
+        pt.setAttribute("x", x);
+        pt.setAttribute("y", c.upper ? (codes ? 42 : 32) : (codes ? CH - 30 : CH - 20));
+        pt.setAttribute("text-anchor", "middle");
+        pt.setAttribute("class", "flab-pocket");
+        pt.textContent = pk;
+        front.appendChild(pt);
       }
     });
     // Flaechen-Hits in einem ZWEITEN Durchlauf, damit sie ueber ALLEN
@@ -3380,6 +3397,32 @@
     }
     return lines.join("\n");
   }
+  function teethRaw01() {
+    const out = {};
+    Object.keys(state).forEach((fdi) => {
+      const s = state[fdi];
+      if (!s) return;
+      out[fdi] = {
+        missing: !!s.missing,
+        mark: Object.assign({}, markOf(s)),
+        surfaces: s.surfaces ? JSON.parse(JSON.stringify(s.surfaces)) : {},
+        rootMarkers: (s.rootMarkers || []).slice(),
+        pocket: s.pocket ? { m: +s.pocket.m || 0, d: +s.pocket.d || 0 } : { m: 1, d: 1 },
+      };
+    });
+    return out;
+  }
+  function findingsById01(id) {
+    return snapshot01().teeth.filter((t) => (t.ids || []).indexOf(id) >= 0);
+  }
+  function armFinding01(id) {
+    armedFinding = id || null;
+    document.body.classList.toggle("finding-armed", !!armedFinding);
+    const surf = !!(armedFinding && window.PerioChart && PerioChart.isSurfacePaint(armedFinding));
+    document.body.classList.toggle("surface-armed", surf);
+    if (COLS && svgEl) render();
+    return !!armedFinding;
+  }
   function setTab01(tabId) {
     if (!window.PerioLegend || !PerioLegend.TABS.some((t) => t.id === tabId)) return false;
     activeTab = tabId;
@@ -3403,7 +3446,10 @@
     paintSchema: paintSchemaStage,
     getSelected: () => selected,
     setTab: setTab01,
+    armFinding: armFinding01,
     snapshot: snapshot01,
+    teethRaw: teethRaw01,
+    findingsById: findingsById01,
     fachCounts: fachCounts01,
     toPvsText: toPvsText01,
   };

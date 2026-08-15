@@ -7,9 +7,9 @@
   <meta name="theme-color" content="#0b0e13" />
   <!-- Desktop bekommt ?theme=light (weiss). iPad ohne Parameter bleibt dunkel. -->
   <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816e" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816k" />
   <!-- Weisse Variante (nur wirksam bei html.theme-light — iPad unberuehrt). -->
-  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816e" />
+  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816k" />
   <style>
     /* ═══════════════════════════════════════════════════════════════════
        PC-WIZARD (Chef 22.07. 01:58): rechter Bereich = kompakter Wizard,
@@ -705,15 +705,25 @@
     }
     html.theme-light #lena01Bar .l01-gap { color: #7a3e0a; background: #fff3e6; border-color: #d98a3c; }
     html.theme-light #lena01Bar .l01-clear { color: #0f766e; }
+    .l01-ask { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .l01-ask-have { font-size: 12.5px; color: #7ee2a8; }
+    html.theme-light .l01-ask-have { color: #0f766e; }
+    .l01-ask-btns { display: flex; gap: 8px; margin-top: 4px; }
+    .l01-ask-btn {
+      border: 0; border-radius: 10px; padding: 8px 14px; font-weight: 800; cursor: pointer;
+      background: #0f766e; color: #fff; font-size: 13px;
+    }
   </style>
   <script src="/m/lena-zahnstatus-katalog.js?v=20260722i"></script>
   <script src="/m/lena-voice-chart.js?v=20260722i"></script>
   <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
   <script src="/m/lena-01/perio-legend.js?v=20260721b"></script>
   <script src="/m/lena-01/perio-chart.js?v=20260721b"></script>
-  <script src="/m/lena-01/perio.js?v=20260816e"></script>
-  <script src="/m/lena-01/perio-voice.js?v=20260721b"></script>
-  <script src="/m/lena-01/lena-01-flow.js?v=20260816g"></script>
+  <script src="/m/lena-01/perio.js?v=20260816k"></script>
+  <script src="/m/lena-01/perio-voice.js?v=20260816k"></script>
+  <script src="/m/lena-01/lena-01-ask.js?v=20260816k"></script>
+  <script src="/m/lena-01/lena-01-bedarf.js?v=20260816k"></script>
+  <script src="/m/lena-01/lena-01-flow.js?v=20260816k"></script>
   <script>
     /* ═══ PC-WIZARD (read-only Spiegel des iPad-Lena-Wizards) ═══════════════
        Datenpfad identisch zur iPad-App (ipad-app.html):

@@ -86,7 +86,16 @@
   }
 
   // ── KI-gefuehrt: Schritt-fuer-Schritt ─────────────────────────────────────
+  function persistLocal() {
+    if (!ready()) return;
+    try {
+      sessionStorage.setItem("lena01.snap", JSON.stringify(Lena01.snapshot()));
+      if (Lena01.teethRaw) sessionStorage.setItem("lena01.teeth", JSON.stringify(Lena01.teethRaw()));
+    } catch (_) {}
+  }
+
   function renderKi() {
+    if (window.Lena01Ask && Lena01Ask.isActive() && Lena01Ask.paint(elBody)) return;
     const s = STEPS[stepIndex];
     const counts = ready() ? Lena01.fachCounts() : {};
     const done = counts[s.tab] || 0;
@@ -108,6 +117,14 @@
   function gotoStep(i) {
     stepIndex = Math.max(0, Math.min(STEPS.length - 1, i));
     if (ready()) Lena01.setTab(STEPS[stepIndex].tab);
+    if (phase === "ki" && STEPS[stepIndex].tab === "Kons" && window.Lena01Ask && !Lena01Ask.isActive()) {
+      Lena01Ask.onPaint = function () { renderKi(); };
+      Lena01Ask.start(function () {
+        toast("Kons durch. Weiter im n\u00e4chsten Fach oder Fertig.");
+        renderKi();
+      });
+      return;
+    }
     renderKi();
   }
 
@@ -180,10 +197,9 @@
     if (elMode) elMode.textContent = "01 \u00b7 Lena-Nachtrag";
     const done = document.getElementById("l01Done");
     if (done) done.textContent = "Fertig \u00b7 Bedarf?";
-    const counts = ready() ? Lena01.fachCounts() : {};
-    const firstGap = STEPS.findIndex((s) => !counts[s.tab]);
-    gotoStep(firstGap >= 0 ? firstGap : 0);
-    toast("Lena: offene Bl\u00f6cke. Dialog folgt \u2014 heute die F\u00e4cher der Reihe nach.");
+    const konsIdx = STEPS.findIndex((s) => s.tab === "Kons");
+    gotoStep(konsIdx >= 0 ? konsIdx : 0);
+    toast("Lena fragt Kons \u2014 nur was noch fehlt, Legende der Reihe nach.");
   }
 
   function goToDoku() {
@@ -202,8 +218,10 @@
   }
 
   function goToBedarf() {
+    persistLocal();
     const p = new URLSearchParams(location.search);
     p.delete("mode");
+    p.set("v", "20260816k");
     location.href = "/m/lena-01/bedarf.html?" + p.toString();
   }
 

@@ -311,6 +311,13 @@ body.surface-armed .surface-hit { cursor: crosshair; }
   font-family: inherit;
   letter-spacing: 0.02em;
 }
+.flab-pocket {
+  fill: #c47a4a;
+  font-size: 8px;
+  font-weight: 700;
+  font-family: inherit;
+  opacity: .82;
+}
 .selout { fill: rgba(88,199,189,.14); stroke: #6fe0d4; stroke-width: 3; stroke-linejoin: round; pointer-events: none; filter: drop-shadow(0 0 6px rgba(111,224,212,.55)); }
 /* fehlender Zahn ausgewaehlt: nur zarte gestrichelte Positionsmarke */
 .selout.selout-miss { fill: none; stroke: rgba(111,224,212,.55); stroke-width: 1.6; stroke-dasharray: 7 6; filter: none; }
