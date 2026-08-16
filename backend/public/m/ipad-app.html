@@ -543,7 +543,6 @@
     [hidden] { display: none !important; }
     .wiz { display: none; flex: 1; min-height: 0; gap: 10px; overflow: hidden; }
     .wiz.is-show { display: grid; }
-    .wiz-arzt { grid-template-columns: 1.2fr .8fr; }
     .wiz-termin { grid-template-columns: minmax(200px, 240px) 1fr; }
     .wiz-rec, .wiz-dict, .wiz-sum, .wiz-sophie { grid-template-columns: 1fr; }
     .panel { background: var(--card-strong); border: 1px solid var(--line); border-radius: 16px; padding: 12px; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -558,11 +557,16 @@
     .doc-card:nth-child(4) .doc-av { background: linear-gradient(145deg, #8a9a6e, #5f7048); }
     .doc-name { font-weight: 800; font-size: .95rem; }
     .doc-role { font-size: .74rem; color: var(--mute); font-weight: 600; margin-top: 2px; }
-    .side-note { border-radius: 18px; padding: 18px; background: radial-gradient(80% 60% at 100% 0%, rgba(216,98,200,.22), transparent 50%), linear-gradient(160deg, #1a1230, #0d0a16); border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: end; gap: 8px; }
-    .side-note .kicker { font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); }
-    .side-note h3 { margin: 0; font-size: 1.35rem; font-weight: 900; line-height: 1.15; }
-    .side-note p { margin: 0; color: var(--mute); font-size: .85rem; line-height: 1.4; }
-    .day-rail { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    .day-rail { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    /* Behandlerwahl sitzt seit 16.08.2026 in der Tages-Spalte neben Kalender
+       und Terminliste. Die Spalte ist schmal -> einspaltig und flach. */
+    .doc-rail { display: flex; flex-direction: column; gap: 6px; }
+    .doc-rail-lab { font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--mute2); padding: 0 2px; }
+    .day-rail .doc-grid { grid-template-columns: 1fr; gap: 6px; flex: none; }
+    .day-rail .doc-card { display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; }
+    .day-rail .doc-av { width: 28px; height: 28px; border-radius: 9px; margin: 0; font-size: .72rem; }
+    .day-rail .doc-name { font-size: .8rem; }
+    .day-rail .doc-role { display: none; }
     .picker { background: rgba(0,0,0,.28); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
     .picker-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
     .picker-head button { width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 1rem; cursor: pointer; display: grid; place-items: center; line-height: 1; }
@@ -581,7 +585,10 @@
     .picker-quick { display: flex; gap: 6px; margin-top: 10px; }
     .picker-quick button { flex: 1; border: 1px solid var(--line); background: var(--card); color: var(--mute); font: inherit; font-size: .72rem; font-weight: 700; padding: 7px 4px; border-radius: 9px; cursor: pointer; }
     .picker-quick button:hover { color: var(--ink); border-color: rgba(216,98,200,.4); }
-    .appt-list { display: flex; flex-direction: column; gap: 5px; overflow: hidden; min-height: 0; }
+    /* Volle Tage haben mehr Termine als das Panel hoch ist — die Liste MUSS
+       scrollen. Mit overflow:hidden war alles unterhalb der Panelkante
+       unerreichbar (Chef 16.08.2026). */
+    .appt-list { display: flex; flex-direction: column; gap: 5px; flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; min-height: 0; }
     .appt { display: grid; grid-template-columns: 58px 1fr auto; gap: 10px; align-items: center; padding: 12px; border-radius: 14px; border: 1px solid transparent; background: rgba(0,0,0,.22); color: inherit; font: inherit; cursor: pointer; text-align: left; }
     .appt.is-sel { border-color: rgba(216,98,200,.4); background: rgba(216,98,200,.12); }
     .appt-time { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--mute); }
@@ -1467,7 +1474,7 @@
       .timer { font-size: .88rem; min-width: 50px; }
     }
     @media (max-width: 860px) {
-      .wiz-arzt, .wiz-termin, .sum-grid, .sophie-grid, .sum-head { grid-template-columns: 1fr; }
+      .wiz-termin, .sum-grid, .sophie-grid, .sum-head { grid-template-columns: 1fr; }
     }
     /* Halfscreen-Boxen bleiben 2-spaltig auf iPad; nur sehr schmal 1 Spalte */
     @media (max-width: 560px) {
@@ -1636,13 +1643,12 @@
       <div class="lena-wrap">
         <div class="steps" id="steps">
           <span class="fast-tag">Doku</span>
-          <div class="step-chip is-now" data-step="1"><span class="n">1</span>Arzt</div>
-          <div class="step-chip" data-step="2"><span class="n">2</span>Termin</div>
-          <div class="step-chip" data-step="3" hidden><span class="n">3</span>Schema</div>
-          <div class="step-chip" data-step="4"><span class="n">4</span>Doku</div>
-          <div class="step-chip" data-step="5"><span class="n">5</span>Nachdiktat</div>
-          <div class="step-chip" data-step="6"><span class="n">6</span>Summary</div>
-          <div class="step-chip" data-step="7"><span class="n">7</span>OK</div>
+          <div class="step-chip is-now" data-step="2"><span class="n">1</span>Termin</div>
+          <div class="step-chip" data-step="3" hidden><span class="n">2</span>Schema</div>
+          <div class="step-chip" data-step="4"><span class="n">3</span>Doku</div>
+          <div class="step-chip" data-step="5"><span class="n">4</span>Nachdiktat</div>
+          <div class="step-chip" data-step="6"><span class="n">5</span>Summary</div>
+          <div class="step-chip" data-step="7"><span class="n">6</span>OK</div>
           <a class="step-chip chip-01" id="btnLena01" href="/m/lena-01/start.html" title="01 / Bedarf erneut öffnen" style="text-decoration:none;margin-left:auto" hidden>
             <span class="n">01</span>01
           </a>
@@ -1658,27 +1664,12 @@
           </div>
         </div>
 
-        <!-- 1 Arzt -->
-        <div class="wiz wiz-arzt is-show" id="wiz1">
-          <div class="panel">
-            <h2>Wer behandelt?</h2>
-            <p class="lead" id="arztLead">Behandler vom gekoppelten Arbeitsplatz.</p>
-            <div class="doc-grid" id="doctors"></div>
-            <div class="actions">
-              <span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span>
-              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/start.html" style="text-decoration:none" hidden>01</a>
-              <button type="button" class="btn btn-primary" data-next="2">Weiter · Termine</button>
-            </div>
-          </div>
-          <aside class="side-note">
-            <div class="kicker">Sitzung</div>
-            <h3>01 zuerst</h3>
-            <p>Nach der Terminwahl: zuerst <b>01 aufnehmen</b> oder <b>überspringen</b> zur Dokumentation. Lena kann offene Fächer nachtragen, danach Bedarf planen — die Liste wird das Worksheet.</p>
-          </aside>
-        </div>
-
-        <!-- 2 Termin -->
-        <div class="wiz wiz-termin" id="wiz2">
+        <!-- 2 Behandler + Datum + Patient auf EINER Seite (Chef 16.08.2026).
+             Frueher war "Wer behandelt?" ein eigener Schritt 1 davor — drei
+             Klicks fuer eine Auswahl, die zusammengehoert. Die internen
+             Schrittnummern (data-step / showStep) bleiben unveraendert, nur
+             die angezeigte Ziffer der Chips zaehlt ab hier bei 1. -->
+        <div class="wiz wiz-termin is-show" id="wiz2">
           <div class="day-rail">
             <div class="picker" id="picker">
               <div class="picker-head">
@@ -1696,13 +1687,18 @@
                 <button type="button" data-jump="-7">−7 Tage</button>
               </div>
             </div>
+            <div class="doc-rail">
+              <div class="doc-rail-lab" id="arztLead">Behandler</div>
+              <div class="doc-grid" id="doctors"></div>
+              <a class="btn btn-01" id="btnLena01Panel" href="/m/lena-01/start.html" style="text-decoration:none" hidden>01</a>
+            </div>
           </div>
           <div class="panel">
             <h2>Termin wählen</h2>
             <p class="lead" id="terminLead">Termine für Dr. Petsas · <span id="terminDate">Heute</span></p>
             <div class="appt-list" id="appts"></div>
             <div class="actions">
-              <button type="button" class="btn btn-ghost" data-back="1">Zurück</button>
+              <span id="arztStatus" style="font-size:.75rem;color:var(--mute);font-weight:600;"></span>
               <button type="button" class="btn btn-primary" data-next="4">Weiter · Doku</button>
             </div>
           </div>
@@ -1814,6 +1810,7 @@
             <div class="rec-bar">
               <button type="button" class="btn btn-ghost" data-back="2">Termin</button>
               <div class="timer" id="timer2">00:00</div>
+              <div class="rec-live" id="recLive2"><i></i><span>Schema → Doku</span></div>
               <div class="spacer"></div>
               <button type="button" class="btn btn-ghost" id="btnPause2" aria-label="Aufnahme pausieren">Pause</button>
               <button type="button" class="btn btn-rec" id="btnRec2" aria-pressed="false" aria-label="Aufnahme starten">● Aufnehmen</button>
@@ -3687,13 +3684,16 @@
         }
         paintPvsButton();
       }
-      const wiz = [null, $("wiz1"), $("wiz2"), $("wiz3"), $("wiz4"), $("wiz5"), $("wiz6"), $("wiz7")];
+      // Index 1 ist frei: der Arzt-Schritt ist in Schritt 2 aufgegangen
+      // (Chef 16.08.2026). Die uebrigen Nummern bleiben, damit showStep(4) & Co.
+      // im ganzen Modul weiter dasselbe meinen.
+      const wiz = [null, null, $("wiz2"), $("wiz3"), $("wiz4"), $("wiz5"), $("wiz6"), $("wiz7")];
       const chips = [...document.querySelectorAll(".step-chip[data-step]")];
       // Durchgaengige Navigation (Chef 25.07.): EIN globaler Zurueck/Weiter in
       // der Kopfleiste statt uneinheitlicher pro-Schritt-Footer. Schritt 3
       // (Schema) existiert nur bei Zahnmedizin -> dental-bewusste Reihenfolge.
-      let currentWizStep = 1;
-      function wizStepOrder() { return lenaIsDental ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 4, 5, 6, 7]; }
+      let currentWizStep = 2;
+      function wizStepOrder() { return lenaIsDental ? [2, 3, 4, 5, 6, 7] : [2, 4, 5, 6, 7]; }
       function goWizBack() {
         const o = wizStepOrder(); const i = o.indexOf(currentWizStep);
         if (i > 0) showStep(o[i - 1]);
@@ -3708,7 +3708,7 @@
         if (back) back.disabled = i <= 0;
         if (next) next.disabled = i < 0 || i >= o.length - 1;
         if (lbl) {
-          const names = { 1: "Arzt", 2: "Termin", 3: "Schema", 4: "Doku", 5: "Nachdiktat", 6: "Summary", 7: "OK" };
+          const names = { 2: "Termin", 3: "Schema", 4: "Doku", 5: "Nachdiktat", 6: "Summary", 7: "OK" };
           const pos = i >= 0 ? i + 1 : 1;
           lbl.textContent = (names[currentWizStep] || "") + " · " + pos + "/" + o.length;
         }
@@ -4129,13 +4129,18 @@
         const q = new URLSearchParams(location.search);
         const doku = q.get("doku") === "1";
         const appointmentId = String(q.get("appointmentId") || sessionStorage.getItem("lena01.appointmentId") || "").trim();
+        // Der Trichter laedt die App komplett neu — ohne das mitgereichte Datum
+        // stuende sie danach wieder auf HEUTE und die Terminauswahl von einem
+        // anderen Tag waere weg (Chef 16.08.2026: "kein Termin gewählt").
+        const date = String(q.get("date") || "").trim();
         if (doku && appointmentId) sessionStorage.setItem("lena01.funnelDone", appointmentId);
         if (doku) {
           q.delete("doku");
+          q.delete("date");
           const rest = q.toString();
           try { history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash); } catch (_) {}
         }
-        return { doku, appointmentId };
+        return { doku, appointmentId, date };
       })();
       function lena01FunnelKey() {
         return String(selectedAppt?.appointmentId || chairCurrent?.appointmentId || "");
@@ -4156,6 +4161,9 @@
         if (name && name !== "—") p.set("patient", name);
         if (loc) p.set("locationId", loc);
         if (appt) p.set("appointmentId", appt);
+        // Gewaehlten Tag mitgeben: start.html reicht alle Parameter durch, und
+        // beim Ruecksprung wird die App komplett neu geladen.
+        p.set("date", iso(selectedDate));
         p.set("v", "20260816g");
         return "/m/lena-01/start.html?" + p.toString();
       }
@@ -4255,13 +4263,30 @@
         }
       }
 
+      /** Aufnahme-Status in BEIDE Leisten schreiben (Schritt 3 und Schritt 4).
+          Abbruchgruende wie "kein Termin" landeten frueher nur auf Schritt 3 —
+          auf der Doku-Seite gab es gar keine Anzeige, der Aufnahme-Knopf sah
+          dadurch tot aus (Chef 16.08.2026). `warn` haelt den Text stehen. */
+      function setRecLive(text, warn) {
+        [$("recLive"), $("recLive2")].forEach((el) => {
+          if (!el) return;
+          if (warn) el.dataset.warn = "1";
+          else delete el.dataset.warn;
+          const sp = el.querySelector("span");
+          if (sp) sp.textContent = text;
+        });
+      }
+
       function syncRecChrome() {
         const t = $("timer")?.textContent || "00:00";
         if ($("timer2")) $("timer2").textContent = t;
-        const live = $("recLive")?.querySelector("span")?.textContent || "bereit";
-        const live2 = $("recLive2")?.querySelector("span");
-        if (live2 && recording) live2.textContent = paused ? "pause" : "live · Boxen";
-        else if (live2 && !recording) live2.textContent = "Schema → Doku";
+        const live2El = $("recLive2");
+        const live2 = live2El?.querySelector("span");
+        // Eine stehende Warnung ("kein Termin", "Mikro fehlt") NICHT ueberschreiben —
+        // sonst ist der Abbruchgrund weg, bevor er gelesen wurde.
+        if (live2 && !live2El.dataset.warn) {
+          live2.textContent = recording ? (paused ? "pause" : "live · Boxen") : "Schema → Doku";
+        }
         const b1 = $("btnRec"); const b2 = $("btnRec2");
         if (b1 && b2) {
           b2.textContent = b1.textContent;
@@ -4892,20 +4917,22 @@
         grid.innerHTML = "";
         const list = (cals && cals.length) ? cals : (doctorName ? [{ id: "", name: doctorName }] : []);
         if (!list.length) {
-          grid.innerHTML = '<div style="padding:18px;color:var(--mute);font-weight:600;">Kein Behandler am Gerät hinterlegt.</div>';
-          if ($("arztLead")) $("arztLead").textContent = "Arbeitsplatz ohne Kalender-Zuordnung.";
+          grid.innerHTML = '<div style="padding:10px;color:var(--mute);font-weight:600;font-size:.78rem;">Kein Behandler am Gerät hinterlegt.</div>';
+          if ($("arztLead")) $("arztLead").textContent = "Kein Kalender";
           return;
         }
         if ($("arztLead")) {
-          $("arztLead").textContent = list.length === 1
-            ? "Behandler dieses Arbeitsplatzes."
-            : "Behandler wählen — Termine werden gefiltert.";
+          $("arztLead").textContent = list.length === 1 ? "Behandler" : "Behandler wählen";
         }
+        // Auswahl halten: loadDay zeichnet die Liste im Sekundentakt neu — vorher
+        // sprang die Behandlerwahl dabei jedes Mal auf den ersten Eintrag zurueck.
+        let aktiv = list.findIndex((c) => (c.name || "") === selectedDoc);
+        if (aktiv < 0) aktiv = 0;
         list.forEach((c, i) => {
           const name = c.name || "Behandler";
           const btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "doc-card" + (i === 0 ? " is-sel" : "");
+          btn.className = "doc-card" + (i === aktiv ? " is-sel" : "");
           btn.dataset.doc = name;
           btn.dataset.cal = c.id || "";
           btn.innerHTML =
@@ -4914,8 +4941,8 @@
             '<div class="doc-role">Kalender</div>';
           grid.appendChild(btn);
         });
-        selectedDoc = list[0].name || doctorName || "";
-        selectedCalId = list[0].id || "";
+        selectedDoc = list[aktiv].name || doctorName || "";
+        selectedCalId = list[aktiv].id || "";
       }
       function renderAppts() {
         const list = $("appts");
@@ -5098,10 +5125,35 @@
       });
       renderPicker();
       updateTerminLead();
-      loadDay(iso(TODAY)).then((data) => {
+      // Rueckkehr aus dem 01-Trichter ("Dokumentation" auf start.html):
+      // Die Kachel laedt die App komplett neu. Zwei Dinge muessen deshalb hier
+      // wiederhergestellt werden, BEVOR die Tagesliste geholt wird:
+      //   1. der gewaehlte Tag — sonst stand die App wieder auf HEUTE, und an
+      //      einem leeren Tag war die Terminauswahl weg ("kein Termin gewählt"),
+      //   2. der Doku-Modus — wurde er erst im .then() von loadDay gesetzt,
+      //      stand die Clara-Startseite bis dahin sichtbar im Bild.
+      let bootDate = iso(TODAY);
+      if (lena01Resume.doku && lena01Resume.date) {
+        const d = new Date(lena01Resume.date + "T00:00:00");
+        if (!isNaN(d.getTime())) {
+          selectedDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+          pickerMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+          bootDate = iso(selectedDate);
+          renderPicker();
+          updateTerminLead();
+        }
+      }
+      if (lena01Resume.doku) {
+        lena01MarkFunnelDone();
+        const dokuBtn = modeSwitch?.querySelector?.('button[data-mode="doku"]');
+        if (dokuBtn && activeMode !== "doku") dokuBtn.click();
+        showStep(4);
+      }
+      loadDay(bootDate).then((data) => {
         if (lena01Resume.doku) {
-          lena01MarkFunnelDone();
-          showStep(4);
+          // Leerer Tag: lieber zur Terminwahl als vor einen Aufnahme-Knopf,
+          // der ohne Patient nur "kein Termin gewählt" sagen kann.
+          if (!treatmentIds()) showStep(2);
           return;
         }
         // Wenn Stuhl-Termin klar: Wizard direkt auf Termin-Schritt (Schritt 2).
@@ -5122,6 +5174,11 @@
         if (document.hidden) return;
         if (!paneDoku.classList.contains("is-active")) return;
         if (recording || ndLive || structureBusy) return;
+        // Ohne gewaehlten Termin liefert loadSavedSegments() eine leere Liste —
+        // refreshLivePage([]) hat die Doku-Boxen dann im 6-Sekunden-Takt
+        // leergeraeumt und gleich wieder aufgebaut (Chef 16.08.2026:
+        // "alle 10 Sekunden verschwinden die Doku-Boxen").
+        if (!treatmentIds()) return;
         const onSchema = isSchemaStep();
         const onBoxes = isDokuBoxesStep();
         const onSum = $("wiz6")?.classList.contains("is-show");
@@ -5755,8 +5812,8 @@
       async function startRecording() {
         if (recording) return;
         if (!treatmentIds()) {
-          const liveEl = $("recLive")?.querySelector("span");
-          if (liveEl) liveEl.textContent = "kein Termin";
+          setRecLive("kein Termin gewählt", true);
+          setMicActiveLabel("Kein Termin gewählt — erst Patient auf „Termin“ auswählen", true);
           return;
         }
         if (!ipadCapturesArzt(captureMode)) {
@@ -5769,10 +5826,7 @@
         setRecButtonsLive(true);
         if ($("btnPause")) $("btnPause").disabled = false;
         $("recLive")?.classList.add("is-on");
-        {
-          const liveEl = $("recLive")?.querySelector("span");
-          if (liveEl) liveEl.textContent = "startet …";
-        }
+        setRecLive("startet …");
 
         await stopMicPreview();
         if (gen !== recToggleGen) return;
@@ -5783,17 +5837,13 @@
         // (audio_state=speaking) oder Timeout; Fehlerpfade heben sofort auf.
         try { window.__claraIpad?.hushForRecStart?.(4000); } catch (_) {}
 
-        {
-          const liveEl = $("recLive")?.querySelector("span");
-          if (liveEl) liveEl.textContent = "Clara …";
-        }
+        setRecLive("Clara …");
         const live = await window.__claraIpad?.ensureLive?.();
         if (gen !== recToggleGen) return;
         if (!live) {
           try { window.__claraIpad?.unhush?.(); } catch (_) {}
           setMicActiveLabel("Clara fehlt — zuerst verbinden", true);
-          const liveEl = $("recLive")?.querySelector("span");
-          if (liveEl) liveEl.textContent = "Clara fehlt";
+          setRecLive("Clara fehlt", true);
           setRecButtonsLive(false);
           if ($("btnPause")) $("btnPause").disabled = true;
           $("recLive")?.classList.remove("is-on");
@@ -5805,8 +5855,7 @@
         if (!micPick.ok) {
           try { window.__claraIpad?.unhush?.(); } catch (_) {}
           setMicActiveLabel(String(micPick.warning || "Mikro fehlt"), true);
-          const liveEl = $("recLive")?.querySelector("span");
-          if (liveEl) liveEl.textContent = "Mikro fehlt";
+          setRecLive(String(micPick.warning || "Mikro fehlt"), true);
           setRecButtonsLive(false);
           if ($("btnPause")) $("btnPause").disabled = true;
           $("recLive")?.classList.remove("is-on");
@@ -5877,10 +5926,7 @@
             : "KEIN Tee — Clara-Worker: CLARA_LENA_TEE=1 und neu starten?",
           !teeOk || !!micPick.warning,
         );
-        if ($("recLive")) {
-          const liveEl = $("recLive").querySelector("span");
-          if (liveEl) liveEl.textContent = teeOk ? "live · Conformer" : "Tee fehlt";
-        }
+        setRecLive(teeOk ? "live · Conformer" : "Tee fehlt — kein Text", !teeOk);
         applyMicToggleUi();
         syncRecChrome();
       }
@@ -5898,10 +5944,9 @@
         setRecButtonsLive(true);
         if ($("btnPause")) $("btnPause").disabled = false;
         $("recLive")?.classList.add("is-on");
-        {
-          const liveEl = $("recLive")?.querySelector("span");
-          if (liveEl) liveEl.textContent = "live · Empfang";
-        }
+        // Empfangs-Pfad: der PC nimmt auf, dieses iPad meldet KEINEN Lena-Tee an.
+        // Das ehrlich benennen — sonst laeuft nur ein Timer und es kommt nie Text.
+        setRecLive("Empfang · PC nimmt auf", true);
         clearInterval(timerId);
         timerId = setInterval(() => {
           if (!paused) {

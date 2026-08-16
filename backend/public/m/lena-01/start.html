@@ -120,10 +120,9 @@
       function goDoku() {
         var appt = keep().get("appointmentId");
         if (appt) try { sessionStorage.setItem("lena01.funnelDone", appt); } catch (_) {}
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({ type: "lena-go-doku" }, "*");
-          return;
-        }
+        // Kein postMessage-Zweig mehr: start.html wird nirgends in einen
+        // iframe gehaengt, und in ipad-app.html hoerte niemand auf
+        // "lena-go-doku" — der Klick waere dort wirkungslos verpufft.
         var p = keep();
         p.set("doku", "1");
         p.delete("mode");
