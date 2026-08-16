@@ -176,6 +176,33 @@ function normTime(s) {
     return `${h}:${min}`;
 }
 
+/** Gilt der "ab jetzt"-Blick? Nur am heutigen Tag ist "was kommt noch" sinnvoll. */
+export function nurAbJetzt(theDate) {
+    return !theDate || theDate === todayBerlin();
+}
+
+/**
+ * Satz fuer "an diesem Tag keine Patienten" — er MUSS den Tag nennen, ueber den
+ * er spricht.
+ *
+ * Vorfall 14.08.2026: Der Chef fragte "Was sind denn die ersten Patienten am
+ * Dienstag?", das Werkzeug lief korrekt mit date=Dienstag, und der leere Fall
+ * antwortete trotzdem fest verdrahtet "Für heute stehen keine weiteren
+ * Patienten mehr an." Am 11.08. dasselbe bei "Wann habe ich meinen ersten
+ * Patienten wieder nach dem Urlaub?" — 18 Sekunden nachdem Clara selbst gesagt
+ * hatte, dass der Urlaub bis zum 17.08. laeuft. Ein Satz, der vom falschen Tag
+ * redet, klingt wie eine Falschauskunft.
+ */
+export function leerSatzFuerTag(theDate) {
+    if (nurAbJetzt(theDate)) return "Für heute stehen keine weiteren Patienten mehr an.";
+    const label = relativeDayLabel(theDate);
+    const gross = label.charAt(0).toUpperCase() + label.slice(1);
+    const vergangen = theDate < todayBerlin();
+    return vergangen
+        ? `${gross} waren keine Patienten eingetragen.`
+        : `${gross} stehen keine Patienten an.`;
+}
+
 export async function buildNextPatientsBriefing(clientId, { date, calendarId, count = 2, nowMs = Date.now(), patientName, time } = {}) {
     const theDate = date || todayBerlin();
     const day = await getDayAppointments(clientId, { date: theDate, calendarId });
@@ -238,12 +265,15 @@ export async function buildNextPatientsBriefing(clientId, { date, calendarId, co
         return await renderPatients(clientId, treffer.slice(0, 1), { single: true });
     }
 
+    // 16.08.2026: Der "ab jetzt"-Filter gilt NUR fuer heute. Vorher lief er ueber
+    // jeden Tag: bei einer Frage nach einem vergangenen Tag fiel damit ALLES weg
+    // und Clara meldete "keine weiteren Patienten", obwohl der Tag voll war.
     const anstehend = echte
-        .filter((a) => a.startMs >= nowMs)
+        .filter((a) => (nurAbJetzt(theDate) ? a.startMs >= nowMs : true))
         .slice(0, Math.max(1, count));
 
     if (!anstehend.length) {
-        return { ok: true, message: "Für heute stehen keine weiteren Patienten mehr an.", count: 0 };
+        return { ok: true, message: leerSatzFuerTag(theDate), count: 0 };
     }
     return await renderPatients(clientId, anstehend, { single: false });
 }
