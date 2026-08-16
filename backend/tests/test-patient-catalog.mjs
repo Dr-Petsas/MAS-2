@@ -39,6 +39,11 @@ const praxis = [
   { i: "p13", f: "Lydia", l: "Muhamedjanowa" },
   { i: "p14", f: "Naomi", l: "Amofa-Datuo" },
   { i: "p15", f: "Hanifi", l: "Karadavut" },
+  // Aus echten Anrufen, in denen Clara den Namen NICHT fand (16.08.2026).
+  { i: "p16", f: "Peter", l: "Maier" },
+  { i: "p17", f: "Haila", l: "El-Otmani" },
+  { i: "p18", f: "Marcel", l: "Krüger" },
+  { i: "p19", f: "Nicole", l: "Thrandorf" },
 ].map((e) => ({ ...e, c: entryCodes(e.f, e.l) }));
 const index = buildIndex(praxis);
 const treffer = (spoken, opts) => catalogMatch(spoken, praxis, index, opts).map((x) => x.i);
@@ -136,7 +141,37 @@ check("nur Satzzeichen", treffer("?!.").length === 0);
 check("ein Buchstabe", treffer("A").length === 0);
 check("Obergrenze wird eingehalten", treffer("El Amrani", { limit: 1 }).length === 1);
 
-console.log("9) Bausteine");
+console.log("9) Echte Fehlfaelle aus den Anrufen (16.08.2026 ausgewertet)");
+// Jede Zeile ist live schiefgegangen. Sie stehen hier, damit ein spaeterer
+// Umbau der Bewertung sofort auffaellt.
+for (const [gesprochen, soll, wann] of [
+  ["Peter Meyer", "p16", "31.07. Termin loeschen"],
+  ["Hayla Ottmann", "p17", "04.08. Kontaktkarte, Vor- UND Nachname verhoert"],
+  ["Heyla Otmani", "p17", "04.08. zweiter Anlauf"],
+  ["Otmani", "p17", "04.08. nur der Nachname"],
+  ["Marcel Krueger", "p18", "15.06. E-Mail, ue statt ü"],
+]) {
+  check(`${gesprochen} -> ${soll} (${wann})`, treffer(gesprochen).includes(soll),
+    JSON.stringify(treffer(gesprochen)));
+}
+
+console.log("10) Grenze der Phonetik: 'Transauer' bleibt ungeloest — mit Absicht");
+// Gemessen am 16.08.2026 fuer eine abgestufte Aehnlichkeit (Editierdistanz auf
+// dem Klang-Code), die diesen Fall loesen sollte:
+//     "Transauer" -> Thermos     0.80   FALSCH
+//     "Transauer" -> Thrandorf   0.67   richtig
+//     "Schmidt"   -> Tzannis     0.75   FALSCH
+// Der falsche Treffer liegt HOEHER als der richtige. Es gibt keine Schwelle,
+// die Thrandorf zulaesst und Tzannis sperrt — ein solcher Fallback wuerde
+// Lisa den falschen Patienten anrufen lassen. Diese beiden Pruefungen sind
+// der Stolperdraht dagegen: wer sie gruen halten will, muss den Weg ueber
+// Rueckfrage/Buchstabieren nehmen, nicht ueber schaerferes Raten.
+check("Transauer findet NICHTS statt der falschen Person",
+  treffer("Transauer").length === 0, JSON.stringify(treffer("Transauer")));
+check("fremder Name Schmidt bleibt ohne Treffer",
+  treffer("Schmidt").length === 0, JSON.stringify(treffer("Schmidt")));
+
+console.log("11) Bausteine");
 check("Zerlegung mit Bindestrich", JSON.stringify(nameTokens("El-Hajjami")) === '["el","hajjami"]',
   JSON.stringify(nameTokens("El-Hajjami")));
 check("Umlaute werden umgeschrieben", nameTokens("Müller Groß")[0] === "mueller",
