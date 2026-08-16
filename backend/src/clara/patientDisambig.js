@@ -100,6 +100,42 @@ export function disambiguationQuestion(patients = [], { max = 5 } = {}) {
 }
 
 /**
+ * Gesprochene Antwort, wenn zu einem Namen NICHTS gefunden wurde.
+ *
+ * Bis zum 16.08.2026 endeten diese Faelle in einer Sackgasse: "Kein Patient mit
+ * dem Namen Transauer gefunden." — Punkt. Der Chef wiederholte daraufhin den
+ * Namen, das Spracherkennen verhoerte sich identisch, Clara sagte wieder
+ * dasselbe. Im Anruf vom 04.08.2026 gingen so sechs Zuege ohne einen einzigen
+ * Fortschritt vorbei (Haila El-Otmani).
+ *
+ * Deshalb nennt die Antwort jetzt ZWEI Wege, die beide am Verhoerer
+ * vorbeifuehren: buchstabieren (der Worker setzt Buchstaben und Tafelwoerter
+ * wieder zu einem Namen zusammen, ``stt_postcorrect.buchstabiertes_zusammenziehen``)
+ * oder Vorname plus Jahrgang (andere Woerter, anderer Klang, neue Chance).
+ * Beides in EINEM Satz, damit bei einem zweiten Fehlschlag nichts wiederholt
+ * werden muss — eine Zaehlung der Versuche braucht es dafuer nicht.
+ *
+ * Bewusst KEIN Namensvorschlag "Meinten Sie ...?": eine abgestufte
+ * Klang-Aehnlichkeit waere hier gefaehrlich, weil der falsche Treffer hoeher
+ * liegen kann als der richtige (gemessen 16.08.2026: "Transauer" liegt naeher
+ * an "Thermos" als an der richtigen "Thrandorf"). Geraten wird nicht — siehe
+ * die Stolperdraht-Pruefungen in ``backend/tests/test-patient-catalog.mjs``.
+ *
+ * @param {string} name   der gesuchte Name, so wie verstanden
+ * @param {{quelle?: string}} [opts] ``quelle`` benennt, wo gesucht wurde
+ */
+export function nichtGefundenFrage(name, { quelle = "" } = {}) {
+  const wen = String(name || "").trim();
+  const wo = String(quelle || "").trim();
+  const kopf = wen
+    ? `Unter ${wen} finde ich ${wo ? `${wo} ` : ""}niemanden.`
+    : `Ich finde ${wo ? `${wo} ` : ""}niemanden mit diesem Namen.`;
+  // Keine zitierbare Beispielantwort (siehe disambiguationQuestion): das
+  // 4B-Modell uebernimmt Musterantworten woertlich, statt die Frage zu stellen.
+  return `${kopf} Buchstabieren Sie mir bitte den Nachnamen, oder nennen Sie mir Vornamen und Jahrgang.`;
+}
+
+/**
  * Ein Ordinal MIT Uhrzeit waehlt einen TERMINVORSCHLAG, keinen Patienten
  * ("Der erste, morgen um 12.05 Uhr" / "den zweiten um 11 Uhr 15").
  *

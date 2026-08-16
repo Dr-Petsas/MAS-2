@@ -48,7 +48,7 @@ import { spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
-import { disambiguationQuestion, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isContinuityPhrase, isPureRelativeRef, stripRelativeRef, collapseSamePerson } from "../clara/patientDisambig.js";
+import { disambiguationQuestion, nichtGefundenFrage, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isContinuityPhrase, isPureRelativeRef, stripRelativeRef, collapseSamePerson } from "../clara/patientDisambig.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
@@ -922,7 +922,7 @@ router.post("/tools/patient-timeline", async (req, res) => {
       }
       if (!candidates.length) {
         await setPatientCandidates(clientId, [], null);
-        return res.json({ ok: false, message: `Zu ${name} finde ich keinen Patienten im Praxisgedächtnis.` });
+        return res.json({ ok: false, message: nichtGefundenFrage(name, { quelle: "im Praxisgedächtnis" }) });
       }
     } else {
       candidates = await getPatientCandidates(clientId);
@@ -1052,7 +1052,7 @@ router.post("/tools/patient-appointments", async (req, res) => {
       }
       if (!candidates.length) {
         await setPatientCandidates(clientId, [], null);
-        return res.json({ ok: false, message: `Zu ${name} finde ich keinen Patienten im Praxisgedächtnis.` });
+        return res.json({ ok: false, message: nichtGefundenFrage(name, { quelle: "im Praxisgedächtnis" }) });
       }
     } else {
       candidates = await getPatientCandidates(clientId);
@@ -1135,7 +1135,7 @@ async function resolveSpokenPatientForRead(clientId, { rawName, hint, askWho }) 
     }
     if (!candidates.length) {
       await setPatientCandidates(clientId, [], null);
-      return { done: true, payload: { ok: false, message: `Zu ${name} finde ich keinen Patienten im Praxisgedächtnis.` } };
+      return { done: true, payload: { ok: false, message: nichtGefundenFrage(name, { quelle: "im Praxisgedächtnis" }) } };
     }
   } else {
     candidates = await getPatientCandidates(clientId);
@@ -4459,7 +4459,7 @@ router.post("/tools/find-contact", async (req, res) => {
           return res.json({ ok: true, message: `${who} ist kein Patient, aber ich kenne den Kontakt${trail ? `: ${trail}` : ""}. Ich habe leider weder Telefonnummer noch E-Mail gefunden.` });
         }
         await setPatientCandidates(clientId, [], null);
-        return res.json({ ok: false, message: `Ich finde weder einen Patienten noch einen bekannten Kontakt namens ${name} — auch nicht in E-Mails oder Anrufen.` });
+        return res.json({ ok: false, message: nichtGefundenFrage(name, { quelle: "in der Kartei, im Adressbuch, in E-Mails und Anrufen" }) });
       }
     } else {
       candidates = await getPatientCandidates(clientId);
@@ -5195,7 +5195,7 @@ router.post("/tools/search-patient", async (req, res) => {
           ok: true,
           searchedIn: ["patients", "contacts"],
           contacts: [],
-          message: `Kein Patient mit dem Namen ${name} gefunden. Auch im Adressbuch nichts Passendes.`,
+          message: nichtGefundenFrage(name, { quelle: "in der Kartei und im Adressbuch" }),
         });
       }
       // Exakter / fast-exakter Name schlaegt Teil-Treffer (Haila El-Otmani
@@ -5217,7 +5217,7 @@ router.post("/tools/search-patient", async (req, res) => {
           await setPatientCandidates(clientId, [], null);
           return res.json({
             ok: true,
-            message: `Kein Patient mit dem Namen ${hint} gefunden.`,
+            message: nichtGefundenFrage(hint),
           });
         }
       }
@@ -5360,7 +5360,7 @@ router.post("/tools/contact-card", async (req, res) => {
       if (patients.length > 1) patients = tightenNameHits(name, patients);
       if (!patients.length) {
         await setPatientCandidates(clientId, [], null);
-        return res.json({ ok: true, message: `Kein Patient mit dem Namen ${name} gefunden.` });
+        return res.json({ ok: true, message: nichtGefundenFrage(name) });
       }
     } else if (!pickedByOrdinal) {
       patients = await getPatientCandidates(clientId);
@@ -5380,7 +5380,7 @@ router.post("/tools/contact-card", async (req, res) => {
         if (patients.length > 1) patients = tightenNameHits(hint, patients);
         if (!patients.length) {
           await setPatientCandidates(clientId, [], null);
-          return res.json({ ok: true, message: `Kein Patient mit dem Namen ${hint} gefunden.` });
+          return res.json({ ok: true, message: nichtGefundenFrage(hint) });
         }
       }
     }
