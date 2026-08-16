@@ -86,6 +86,14 @@
   }
 
   // ── KI-gefuehrt: Schritt-fuer-Schritt ─────────────────────────────────────
+  window.Lena01Flow = {
+    persistLocal: function () { persistLocal(); },
+    saveNow: function (decision) {
+      persistLocal();
+      return save(decision || "draft");
+    },
+  };
+
   function persistLocal() {
     if (!ready()) return;
     try {
@@ -151,6 +159,7 @@
   }
 
   function onFertig() {
+    persistLocal();
     if (phase === "arzt") openAsk("ki");
     else openAsk("bedarf");
   }
@@ -219,10 +228,8 @@
 
   function goToBedarf() {
     persistLocal();
-    const p = new URLSearchParams(location.search);
-    p.delete("mode");
-    p.set("v", "20260816k");
-    location.href = "/m/lena-01/bedarf.html?" + p.toString();
+    save("bedarf").catch(function () {});
+    if (window.Lena01PlanUi) Lena01PlanUi.show("bedarf");
   }
 
   async function finish(decision) {

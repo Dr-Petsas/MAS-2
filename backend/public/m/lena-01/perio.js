@@ -2777,8 +2777,12 @@
       hit.setAttribute("class", "hit");
       const applyClick = (mode) => {
         selected = c.fdi;
-        // Flaechen-Befunde nur ueber Flaechen-Hits, nicht ganze Zahnspalte
         if (armedFinding && !surfArmed) applyFindingToTooth(c.fdi, armedFinding, mode);
+        else if (armedFinding && surfArmed) {
+          // Daneben geklickt: Okklusal als Default, Flaechen-Hits bleiben praezise.
+          applySurfaceFinding(c.fdi, "okklusal", mode);
+          return;
+        }
         render();
       };
       hit.addEventListener("click", () => applyClick("toggle"));
@@ -3095,7 +3099,8 @@
           render();
           return;
         }
-        // Nochmal auf dasselbe Icon: nur abschalten (kein zweites Toggle am Zahn)
+        // Icon nur armieren / abwaehlen — der Zahn-Klick setzt oder nimmt weg.
+        // Sofort-Setzen auf den gerade selektierten Zahn war der unruhige Klick.
         if (armedFinding === it.id) {
           armedFinding = null;
           document.body.classList.remove("finding-armed", "surface-armed");
@@ -3104,11 +3109,6 @@
           return;
         }
         armedFinding = it.id;
-        // Flaechen-Befunde nur armieren (Flaeche waehlen); sonst sofort setzen
-        // (Versiegelung setzt direkt okklusal, ohne Flaechenwahl)
-        if (!needsSurfacePick(it.id)) {
-          applyFindingToTooth(selected, it.id, "set");
-        }
         host.querySelectorAll(".legend-item").forEach((el) =>
           el.classList.toggle("armed", el.dataset.finding === armedFinding));
         document.body.classList.toggle("finding-armed", !!armedFinding);
@@ -3237,6 +3237,10 @@
       console.error("perio-chart.js fehlt – Flaechen/Implantat/Bruecke nicht verfuegbar");
     }
     COLS.cols.forEach((c) => { state[c.fdi] = emptyTooth(); });
+    try {
+      const raw = JSON.parse(sessionStorage.getItem("lena01.teeth") || "null");
+      if (raw && typeof raw === "object") loadTeeth01(raw, true);
+    } catch (_) {}
     buildTabs();
     buildLegend();
     // Start gesund (kein Demo-Preset — Steuerpanel entfernt)
@@ -3397,6 +3401,23 @@
     }
     return lines.join("\n");
   }
+  function loadTeeth01(raw, silent) {
+    if (!raw || typeof raw !== "object") return false;
+    Object.keys(raw).forEach((key) => {
+      const fdi = Number(key);
+      if (!fdi) return;
+      if (!state[fdi]) state[fdi] = emptyTooth();
+      const src = raw[key] || {};
+      const s = state[fdi];
+      s.missing = !!src.missing;
+      s.mark = Object.assign({}, src.mark || {});
+      s.surfaces = src.surfaces ? JSON.parse(JSON.stringify(src.surfaces)) : (window.PerioChart ? PerioChart.emptySurfaces() : {});
+      s.rootMarkers = Array.isArray(src.rootMarkers) ? src.rootMarkers.slice() : [];
+      s.pocket = src.pocket ? { m: +src.pocket.m || 1, d: +src.pocket.d || 1 } : { m: 1, d: 1 };
+    });
+    if (!silent && COLS && svgEl) render();
+    return true;
+  }
   function teethRaw01() {
     const out = {};
     Object.keys(state).forEach((fdi) => {
@@ -3449,6 +3470,7 @@
     armFinding: armFinding01,
     snapshot: snapshot01,
     teethRaw: teethRaw01,
+    loadTeeth: loadTeeth01,
     findingsById: findingsById01,
     fachCounts: fachCounts01,
     toPvsText: toPvsText01,

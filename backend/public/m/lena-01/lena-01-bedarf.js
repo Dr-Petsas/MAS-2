@@ -21,6 +21,7 @@
   var OK = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
   var UK = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
   var POST = { 14: 1, 15: 1, 16: 1, 17: 1, 24: 1, 25: 1, 26: 1, 27: 1, 34: 1, 35: 1, 36: 1, 37: 1, 44: 1, 45: 1, 46: 1, 47: 1 };
+  var FRONT = { 11: 1, 12: 1, 13: 1, 21: 1, 22: 1, 23: 1, 31: 1, 32: 1, 33: 1, 41: 1, 42: 1, 43: 1 };
 
   function tooth(teeth, fdi) {
     return (teeth && teeth[fdi]) || (teeth && teeth[String(fdi)]) || null;
@@ -185,10 +186,24 @@
       }
 
       if (iwf || (cap && wf)) {
+        var endoGrp = "endo-" + fdi;
+        var why = iwf ? "insuffiziente WF" : "CAP bei vorhandener WF";
         items.push({
-          id: "rev-" + fdi, fach: "Kons",
+          id: "rev-" + fdi, fach: "Kons", group: endoGrp,
           title: "Revision Wurzelfüllung " + fdi,
-          hint: iwf ? "insuffiziente WF" : "CAP bei vorhandener WF",
+          hint: why + " · Variante 1",
+          antraege: [],
+        });
+        items.push({
+          id: "rev-wsr-" + fdi, fach: "Chir", group: endoGrp,
+          title: "Revision + WSR " + fdi,
+          hint: why + " · Variante 2",
+          antraege: [],
+        });
+        items.push({
+          id: "ext-endo-" + fdi, fach: "Chir", group: endoGrp,
+          title: "Extraktion " + fdi,
+          hint: why + " · Variante 3",
           antraege: [],
         });
       } else if (cap && !wf) {
@@ -203,10 +218,16 @@
       var wantCrown = zeBad || dest || nSurf >= 3 || (wf && POST[fdi] && !crownNow);
       if (wantCrown && !crownNow) {
         items.push({
-          id: "kr-" + fdi, fach: "ZE",
+          id: "kr-" + fdi, fach: "ZE", group: "rest-" + fdi,
           title: (zeBad ? "Krone erneuern " : "Krone ") + fdi,
-          hint: zeBad ? "ZE insuffizient" : (nSurf >= 3 ? "große Restauration (≥3 Flächen)" : "nach WF im Seitenzahn"),
+          hint: zeBad ? "ZE insuffizient" : (nSurf >= 3 ? "große Restauration (≥3 Flächen) · 1. Vorschlag" : "WF Seitenzahn · 1. Vorschlag"),
           antraege: ["hkp"],
+        });
+        items.push({
+          id: "fu-alt-" + fdi, fach: "Kons", group: "rest-" + fdi,
+          title: "Füllung " + fdi,
+          hint: "2. Vorschlag statt Krone",
+          antraege: ["mkv"],
         });
       } else if (ins.length) {
         items.push({
@@ -215,7 +236,14 @@
           hint: "insuffiziente Füllung",
           antraege: ["mkv"],
         });
-      } else if ((kar.length || keil || frac) && !wantCrown) {
+      } else if (wf && FRONT[fdi] && !iwf && !cap) {
+        items.push({
+          id: "fu-wf-" + fdi, fach: "Kons",
+          title: "Füllung " + fdi + " (nach WF)",
+          hint: "Wurzelfüllung Frontzahn → Restauration, keine Krone",
+          antraege: [],
+        });
+      } else if (kar.length || keil || frac) {
         var where = kar.length ? kar.join("/") : (keil ? "zervikal" : "Schmelz");
         items.push({
           id: "fu-" + fdi, fach: "Kons",

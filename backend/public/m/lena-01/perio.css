@@ -1,10 +1,11 @@
 :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; background: #0b0e13; color: #eef2f4; }
+html, body { height: 100%; }
+body { margin: 0; min-height: 100%; background: #0b0e13; color: #eef2f4; display: flex; flex-direction: column; overflow: hidden; }
 
 header {
-  display: flex; align-items: center; justify-content: space-between; gap: 20px;
-  padding: 14px 24px; border-bottom: 1px solid #29313a; background: #10151c;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 14px; border-bottom: 1px solid #29313a; background: #10151c; flex: none;
 }
 .eyebrow { color: #dda66e; font-size: .63rem; font-weight: 900; letter-spacing: .14em; }
 header h1 { margin: 3px 0 2px; font-size: 1.22rem; }
@@ -13,11 +14,14 @@ header a { border: 1px solid #3a4653; border-radius: 999px; padding: 8px 13px; c
 
 main {
   max-width: 1680px;
-  margin: 18px auto 60px;
-  padding: 0 18px;
+  margin: 0 auto;
+  padding: 8px 12px 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
 }
 
 /* Eine Spalte: Odontogramm volle Breite. Wizard/Lupe nie daneben
@@ -27,7 +31,8 @@ main.perio-half {
   flex-direction: column;
   gap: 14px;
   align-items: stretch;
-  min-height: calc(100vh - 88px);
+  min-height: 0;
+  flex: 1 1 auto;
 }
 .half-box {
   min-width: 0; min-height: 0;
@@ -48,7 +53,7 @@ main.perio-half {
 /* Odontogramm + Lupe des aktiven Zahns (rechts, schmal). */
 .schema-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(132px, 22%);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 32%);
   gap: 12px;
   align-items: stretch;
   flex: 1;

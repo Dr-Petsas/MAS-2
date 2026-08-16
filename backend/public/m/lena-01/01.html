@@ -7,9 +7,9 @@
   <meta name="theme-color" content="#0b0e13" />
   <!-- Desktop bekommt ?theme=light (weiss). iPad ohne Parameter bleibt dunkel. -->
   <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816k" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816m" />
   <!-- Weisse Variante (nur wirksam bei html.theme-light — iPad unberuehrt). -->
-  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816k" />
+  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816m" />
   <style>
     /* ═══════════════════════════════════════════════════════════════════
        PC-WIZARD (Chef 22.07. 01:58): rechter Bereich = kompakter Wizard,
@@ -28,7 +28,7 @@
        Umschalter im Kopf. Grafik ist Default. */
     main.perio-half.lw-host {
       display: flex; flex-direction: column;
-      min-height: calc(100vh - 88px);
+      min-height: 0; flex: 1 1 auto;
     }
     main.perio-half.lw-host > .half-box { flex: 1 1 auto; min-height: 0; }
     body:not(.skin-schema) #lenaWizard { display: none !important; }
@@ -419,44 +419,44 @@
 <body>
   <header>
     <div>
-      <span class="eyebrow">LENA · 01-MODUS</span>
+      <span class="eyebrow">LENA · 01</span>
       <h1 id="pageTitle">01-Befund</h1>
     </div>
-    <div style="display:flex;gap:12px;align-items:center;">
+    <nav class="l01-wiz" id="l01WizNav" aria-label="Sitzung">
+      <button type="button" data-view="01" class="on">01</button>
+      <button type="button" data-view="bedarf">Bedarf</button>
+      <button type="button" data-view="antraege">Anträge</button>
+    </nav>
+    <div style="display:flex;gap:10px;align-items:center;">
       <div class="skin-switch" id="skinSwitch" role="tablist" aria-label="Ansicht">
         <button type="button" data-skin="grafik" class="on" aria-selected="true">Grafik</button>
         <button type="button" data-skin="schema" aria-selected="false">Schema</button>
       </div>
-      <a href="/m/ipad-app.html">← zurück</a>
     </div>
   </header>
 
   <main class="perio-half lw-host">
     <section class="half-box half-schema">
+      <div class="left-befund">
+        <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten"></nav>
+        <div class="legend" id="legendPro">
+          <div class="legend-head">
+            <h3>Befund</h3>
+            <p>Icon wählen, Zahn tippen. Nochmal derselbe Zahn = weg.</p>
+          </div>
+          <div class="legend-items" id="legendItems"></div>
+        </div>
+      </div>
       <div class="schema-row">
         <div class="stage-wrap">
           <div id="stage"></div>
         </div>
         <div id="schemaStage" aria-label="Zahnschema"></div>
-        <aside class="zoom-pane">
-          <div class="zoom-head" id="zoomLabel">Zahn 46</div>
+        <aside class="zoom-pane" hidden>
+          <div class="zoom-head" id="zoomLabel">Zahn</div>
           <div id="zoomStage"></div>
         </aside>
-      </div>
-      <!-- Befund-Sparten + Legende: unter dem Schema (rechts sitzt der Wizard) -->
-      <div class="left-befund">
-        <div class="befund-box-head">
-          <h2>Befund</h2>
-          <p>Sparte wählen, dann Zähne tippen. Nochmal tippen entfernt.</p>
-        </div>
-        <nav class="befund-tabs" id="befundTabs" aria-label="Befund-Sparten"></nav>
-        <div class="legend" id="legendPro">
-          <div class="legend-head">
-            <h3>Prophylaxe</h3>
-            <p>Befund tippen, dann Zahn wählen.</p>
-          </div>
-          <div class="legend-items" id="legendItems"></div>
-        </div>
+        <aside class="plan-pane" id="planPane" aria-label="Bedarfsplanung"></aside>
       </div>
       <!-- Stubs fuer perio.js syncPanel (Panel wurde im Halfscreen-Umbau entfernt) -->
       <span id="selLabel" hidden></span>
@@ -713,17 +713,77 @@
       border: 0; border-radius: 10px; padding: 8px 14px; font-weight: 800; cursor: pointer;
       background: #0f766e; color: #fff; font-size: 13px;
     }
+    .l01-wiz { display: flex; gap: 6px; }
+    .l01-wiz button {
+      border: 1px solid rgba(255,255,255,.18); background: transparent; color: #c9d2da;
+      border-radius: 999px; padding: 7px 14px; font: 800 13px/1 system-ui, sans-serif; cursor: pointer;
+    }
+    .l01-wiz button.on { background: #e07a30; color: #fff; border-color: #e07a30; }
+    html.theme-light .l01-wiz button { border-color: #c5d0dc; color: #16202e; }
+    html.theme-light .l01-wiz button.on { background: #e07a30; color: #fff; }
+    .plan-pane {
+      min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px;
+      border: 1px solid #2c3540; border-radius: 16px; padding: 10px 12px;
+      background: #121820;
+    }
+    html.theme-light .plan-pane { background: #fff; border-color: #d3dae3; box-shadow: 0 8px 20px rgba(15,23,42,.06); }
+    .plan-kicker { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #8a94a2; }
+    .plan-lead, .plan-empty { margin: 0; font-size: 13px; color: #8a94a2; }
+    .plan-card {
+      border: 1px solid #2c3540; border-radius: 12px; padding: 8px 10px; cursor: pointer;
+    }
+    html.theme-light .plan-card { border-color: #dce3ec; }
+    .plan-card.is-on { border-color: #0f766e; }
+    .plan-card .fach { font-size: 11px; font-weight: 800; color: #0f766e; }
+    .plan-card h3 { margin: 2px 0 0; font-size: 14px; }
+    .plan-card p { margin: 2px 0 0; font-size: 12px; color: #8a94a2; }
+    .plan-card button {
+      margin-top: 6px; border: 0; border-radius: 8px; padding: 5px 10px;
+      background: #e07a30; color: #fff; font-weight: 800; cursor: pointer;
+    }
+    .plan-card.is-on button { background: #0f766e; }
+    .plan-add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .plan-add input, .plan-add select {
+      flex: 1 1 120px; border-radius: 8px; border: 1px solid #2c3540;
+      background: #0f141c; color: inherit; padding: 7px 8px;
+    }
+    html.theme-light .plan-add input, html.theme-light .plan-add select {
+      background: #fff; border-color: #c5d0dc; color: #16202e;
+    }
+    .plan-add button, .plan-foot button {
+      border: 0; border-radius: 8px; padding: 7px 10px; background: #0f766e; color: #fff;
+      font-weight: 800; cursor: pointer;
+    }
+    .plan-foot { font-size: 12px; color: #8a94a2; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
+    .half-schema .schema-row {
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 32%);
+    }
+    body.plan-wide .half-schema .schema-row {
+      grid-template-columns: minmax(0, 42%) minmax(300px, 1fr);
+    }
+    .half-schema .left-befund { margin-top: 0; margin-bottom: 8px; }
+    .half-schema .left-befund .legend-items {
+      grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+      max-height: none; overflow: visible; gap: 6px;
+    }
+    @media (max-width: 860px) {
+      .half-schema .schema-row, body.plan-wide .half-schema .schema-row { grid-template-columns: 1fr; }
+      .plan-pane { max-height: 38vh; }
+      body.plan-wide .plan-pane { max-height: none; }
+    }
   </style>
   <script src="/m/lena-zahnstatus-katalog.js?v=20260722i"></script>
   <script src="/m/lena-voice-chart.js?v=20260722i"></script>
   <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
   <script src="/m/lena-01/perio-legend.js?v=20260721b"></script>
   <script src="/m/lena-01/perio-chart.js?v=20260721b"></script>
-  <script src="/m/lena-01/perio.js?v=20260816k"></script>
+  <script src="/m/lena-01/perio.js?v=20260816m"></script>
   <script src="/m/lena-01/perio-voice.js?v=20260816k"></script>
   <script src="/m/lena-01/lena-01-ask.js?v=20260816k"></script>
-  <script src="/m/lena-01/lena-01-bedarf.js?v=20260816k"></script>
-  <script src="/m/lena-01/lena-01-flow.js?v=20260816k"></script>
+  <script src="/m/lena-01/lena-01-bedarf.js?v=20260816m"></script>
+  <script src="/m/lena-01/lena-01-plan.js?v=20260816k"></script>
+  <script src="/m/lena-01/lena-01-flow.js?v=20260816m"></script>
+  <script src="/m/lena-01/lena-01-plan-ui.js?v=20260816m"></script>
   <script>
     /* ═══ PC-WIZARD (read-only Spiegel des iPad-Lena-Wizards) ═══════════════
        Datenpfad identisch zur iPad-App (ipad-app.html):

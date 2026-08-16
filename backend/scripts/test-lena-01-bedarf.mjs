@@ -48,10 +48,20 @@ console.log("KONS");
   const ids = B.propose(t).map((x) => x.id);
   ok("Karies 16 → Füllung", ids.includes("fu-16"));
   ok("insuffizient 26 → erneuern", ids.includes("fu-ern-26"));
-  ok("insuff. WF 36 → Revision", ids.includes("rev-36"));
+  ok("insuff. WF 36 → Revision + WSR + EX", ids.includes("rev-36") && ids.includes("rev-wsr-36") && ids.includes("ext-endo-36"));
   ok("CAP 21 ohne WF → WK", ids.includes("wk-21"));
-  ok("CAP 46 mit WF → Revision, nicht neue WK", ids.includes("rev-46") && !ids.includes("wk-46"));
-  ok("3 Flächen 14 → Krone statt nur Füllung", ids.includes("kr-14") && !ids.includes("fu-14"));
+  ok("CAP 46 mit WF → Revision-Varianten, nicht neue WK", ids.includes("rev-46") && !ids.includes("wk-46"));
+  ok("3 Flächen 14 → Krone und Füllung als 2. Vorschlag", ids.includes("kr-14") && ids.includes("fu-alt-14"));
+}
+{
+  const t = pack({ 11: { rootMarkers: ["wurzelfuellung"] } });
+  const ids = B.propose(t).map((x) => x.id);
+  ok("WF Front 11 → Füllung, keine Krone", ids.includes("fu-wf-11") && !ids.includes("kr-11"));
+}
+{
+  const t = pack({ 36: { rootMarkers: ["wurzelfuellung"] } });
+  const ids = B.propose(t).map((x) => x.id);
+  ok("WF Seitenzahn 36 → Krone plus Füllung", ids.includes("kr-36") && ids.includes("fu-alt-36"));
 }
 
 console.log("ZE Lücken");

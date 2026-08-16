@@ -34,37 +34,40 @@ html.theme-light .befund-tabs button { color: #16202e !important; font-weight: 8
 html.theme-light .befund-tabs button.on { background: #fff3e6; border-color: #d98a3c; color: #7a3e0a !important; box-shadow: none; }
 
 /* Desktop: Grafik bleibt gros, Scroll wieder an, Lupe rechts. */
-html.theme-light, html.theme-light body { overflow: auto; }
-html.theme-light header { padding: 8px 14px; }
+html.theme-light, html.theme-light body { overflow: hidden; height: 100%; }
+html.theme-light header { padding: 6px 12px; }
 html.theme-light header h1 { font-size: 1.02rem; margin: 0; }
 html.theme-light .eyebrow { font-size: .55rem; }
-html.theme-light main.perio-half.lw-host { min-height: calc(100vh - 88px); }
+html.theme-light main.perio-half.lw-host { min-height: 0; flex: 1 1 auto; }
 html.theme-light .half-schema {
-  overflow-y: auto; display: flex; flex-direction: column;
+  overflow: hidden; display: flex; flex-direction: column;
   background: #ffffff;
 }
 html.theme-light .schema-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 22%);
-  gap: 10px; flex: 1 1 auto; min-height: 52vh;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 32%);
+  gap: 10px; flex: 1 1 auto; min-height: 0;
 }
-html.theme-light .stage-wrap { background: #ffffff; min-height: 52vh; }
+html.theme-light body.plan-wide .schema-row {
+  grid-template-columns: minmax(0, 42%) minmax(300px, 1fr);
+}
+html.theme-light .stage-wrap { background: #ffffff; min-height: 0; }
 html.theme-light #stage { width: 100%; }
 html.theme-light .perio-svg { width: 100%; height: auto; }
-html.theme-light .zoom-pane { display: flex !important; background: #ffffff; border-color: #d3dae3; }
-html.theme-light .zoom-head { color: #16202e !important; background: #eef2f7; }
-html.theme-light .left-befund { flex: none; overflow: visible; margin-top: 8px; }
-html.theme-light .befund-box-head { display: block; }
+html.theme-light .zoom-pane { display: none !important; }
+html.theme-light .left-befund { flex: none; overflow: visible; margin-top: 0; margin-bottom: 6px; }
+html.theme-light .befund-box-head { display: none; }
 html.theme-light .befund-box-head h2,
 html.theme-light .legend-head h3 { color: #16202e !important; }
-html.theme-light .befund-tabs { padding: 5px; gap: 5px; }
-html.theme-light .befund-tabs button { padding: 6px 11px; font-size: .72rem; color: #16202e !important; }
+html.theme-light .befund-tabs { padding: 4px; gap: 4px; }
+html.theme-light .befund-tabs button { padding: 5px 9px; font-size: .7rem; color: #16202e !important; }
 html.theme-light .legend-head { display: flex; }
 html.theme-light .legend-items {
-  max-height: 280px; overflow-y: auto;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 6px;
+  max-height: none; overflow: visible;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 5px;
 }
+html.theme-light .legend-item { padding: 6px 8px; }
 
 /* Schema-Skin (FDI) hell */
 html.theme-light #schemaStage .zs01-lab { color: #5b6675; }
