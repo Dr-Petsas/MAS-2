@@ -99,10 +99,28 @@ export function disambiguationQuestion(patients = [], { max = 5 } = {}) {
   return `Es gibt ${pool.length === 2 ? "zwei" : "mehrere"} Treffer — ${numbered.join("; ")}.${more} ${ask}`;
 }
 
+/**
+ * Ein Ordinal MIT Uhrzeit waehlt einen TERMINVORSCHLAG, keinen Patienten
+ * ("Der erste, morgen um 12.05 Uhr" / "den zweiten um 11 Uhr 15").
+ *
+ * Vorfall 16.08.2026: Clara bot zwei freie Termine an, der Chef nahm den
+ * ersten — und MAS las daraus das erste Element einer laengst veralteten
+ * Patienten-Kandidatenliste und meldete einen wildfremden Namen zurueck.
+ * Nur die UHRZEIT ist hier das Ausschluss-Signal: "der erste, der gestern da
+ * war" oder "der zweite mit dem Termin am Montag" bleiben echte Patienten-
+ * Auswahlen und muessen weiter funktionieren.
+ */
+const SLOT_TIME_RE = /\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s*uhr\b/i;
+
+export function looksLikeSlotChoice(text) {
+  return SLOT_TIME_RE.test(s(text));
+}
+
 /** "der erste" / "die zweite" / "nummer drei" / "der letzte" -> Kandidat. */
 export function ordinalPick(hintLower, candidates = []) {
   const h = s(hintLower).toLowerCase();
   if (!h || !candidates.length) return null;
+  if (looksLikeSlotChoice(h)) return null;
   if (/\b(letzte|letzter|letzten)\b/.test(h)) return candidates[candidates.length - 1];
   const map = [
     [/\b(erste|ersten|erster|eins|nummer 1|nummer eins)\b/, 0],

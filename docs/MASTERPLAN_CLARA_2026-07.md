@@ -2492,6 +2492,49 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 16.08.2026 (Live 15:01-15:04, "warum halluziniert sie und findet den
+  Patientennamen nicht"): **Clara erfand vier Zuege lang Patienten, die es
+  nicht gibt — und ueberhoerte, dass der Chef den Namen zweimal
+  buchstabierte.** Der Chef wollte einen Termin fuer Kiriakos Tzannis
+  (Jahrgang 1978, stand die ganze Zeit in der Kartei, um 11:36 noch problemlos
+  gefunden). Drei UNABHAENGIGE Defekte kamen zusammen:
+  (1) **Termin-Rueckfrage als Patienten-Rueckfrage gelesen.** Claras Angebot
+  endete auf "Welcher Termin passt Ihnen am besten?"; `_CANDIDATE_QUESTION_RE`
+  sah darin nur das Wort "welcher" und stufte die Antwort "Der erste, morgen
+  um 12.05 Uhr" als Kandidaten-Auswahl ein -> der Auswahl-Waechter
+  synthetisierte `search_patient(hint='Der erste, morgen um 12.05 Uhr.')`.
+  Jetzt: `_is_candidate_question()` schliesst Termin-/Uhrzeit-Rueckfragen aus
+  (`openai_compat_llm.py`).
+  (2) **MAS zog daraus einen wildfremden Patienten.** `ordinalPick` deutete
+  "der erste" auf `patientCandidates` aus dem `voice_state` — eine Liste ohne
+  jedes Verfallsdatum — und meldete "Calvin Uhrich (Jahrgang 2002) gefunden".
+  Jetzt: ein Ordinal MIT Uhrzeit ist eine TERMIN-Auswahl und liefert nie einen
+  Patienten (`patientDisambig.js`), und Kandidatenlisten haben ein
+  Frischefenster von 15 min (`sessions.js`, `patientCandidatesAt`).
+  (3) **Kein Waechter deckte erfundene Patienten ab.** Der Fakten-Waechter
+  haelt Pass-1-Text nur bei erkannten KALENDER-Faktenfragen; eine blosse
+  Namensnennung ("Kiriakos Tzannis.") faellt fuer ihn nicht darunter, also
+  liefen "Georgios Tzannis, Jahrgang 1960" und "Maria Tzannis, Jahrgang 1963"
+  ungebremst in die TTS. NEU: **Patientenstamm-Waechter**
+  (`intent_router.py` + `openai_compat_llm.py`). Er entscheidet NICHT vorab am
+  Nutzersatz (das haette jeden Zug gebremst), sondern haelt den Text erst ab
+  dem Satz zurueck, in dem das Modell selbst etwas ueber den Patientenstamm
+  behauptet — der harmlose Vorlauf ("Ich schaue nach") ist da laengst
+  gesprochen, die Zeit bis zum ersten Ton bleibt unveraendert. Gesprochen wird
+  nur, wenn im selben Zug wirklich ein Tool lief UND jeder genannte Name im
+  Tool-Ergebnis oder im Gesagten steht; sonst wird der Text verworfen und die
+  Suche nachgeholt (`search_patient` mit dem Namen aus dem Nutzersatz).
+  Notaus: `CLARA_STAMM_GUARD=0`.
+  (4) **Buchstabiertes Zuhoeren** (`stt_postcorrect.py`): Der Chef buchstabierte
+  ZWEIMAL — "T-Z-A-N-N-I-S" und "Theodor Zeppelin, Anton Nordpol, Nordpol,
+  Ida, Siegfried". Die Spracherkennung verstand beide Male alles korrekt;
+  niemand setzte es je zu einem Namen zusammen. Jetzt werden Buchstabenketten
+  und das deutsche Buchstabieralphabet (DIN 5009 + Varianten) VOR der
+  Fuzzy-Korrektur zum Namen zusammengezogen und schnappen anschliessend
+  regulaer auf den Karteinamen. Ab 3 zusammenhaengenden Tafelwoertern, damit
+  "Frau Berta" und "Herr Otto" unangetastet bleiben.
+  Abgesichert durch `testsuite/test_stamm_guard.py` (im Release-Gate) und
+  neue Faelle in `backend/scripts/test-patient-disambig.mjs`.
 - 14.08.2026 (23:03, "stopp das google bleeding"): **Google-Budget-Alarm
   analysiert und Dauerlaeufer gedrosselt.** Messung per Monitoring-API
   (neue Werkzeuge `scripts/_diag-firestore-*.mjs`): Der Alarm kam zu ~95%

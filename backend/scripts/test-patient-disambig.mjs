@@ -14,6 +14,7 @@ import {
   isPureRelativeRef,
   stripRelativeRef,
   patientLabel,
+  looksLikeSlotChoice,
 } from "../src/clara/patientDisambig.js";
 
 const meier1 = { firstName: "Stefan", lastName: "Meier", birthDate: "1980-04-12", mobilePhoneNumber: "01776004600" };
@@ -126,6 +127,31 @@ test("stripRelativeRef: echter Name bleibt, Rueckbezug faellt weg", () => {
   assert.equal(stripRelativeRef("Den ersten Eintrag bitte"), "");
   assert.equal(stripRelativeRef("dieser Jens von eben"), "Jens");
   assert.equal(stripRelativeRef("der Patient von vorhin"), "");
+});
+
+// Vorfall 16.08.2026: Clara bot zwei freie Termine an ("um 12 Uhr 5 oder um
+// 11 Uhr 15"), der Chef nahm den ersten — MAS zog daraus den ersten Patienten
+// einer veralteten Kandidatenliste und meldete einen wildfremden Namen als
+// gefunden ("Calvin Uhrich"). Ein Ordinal MIT Uhrzeit ist eine TERMIN-Auswahl.
+test("ordinalPick: Ordinal mit Uhrzeit waehlt einen Termin, keinen Patienten", () => {
+  const c = [meier1, meier2, meierhoefer];
+  assert.equal(ordinalPick("der erste, morgen um 12.05 uhr", c), null);
+  assert.equal(ordinalPick("den zweiten um 11 uhr 15", c), null);
+  assert.equal(ordinalPick("der erste, morgen um 12:05", c), null);
+});
+
+test("ordinalPick: Patienten-Auswahl mit Tagesbezug bleibt erhalten", () => {
+  const c = [meier1, meier2, meierhoefer];
+  // Ohne Uhrzeit ist "der erste, der gestern da war" weiterhin eine Person.
+  assert.equal(ordinalPick("der erste, der gestern da war", c), meier1);
+  assert.equal(ordinalPick("der zweite mit dem termin am montag", c), meier2);
+});
+
+test("looksLikeSlotChoice: nur Uhrzeiten zaehlen", () => {
+  assert.equal(looksLikeSlotChoice("der erste, morgen um 12.05 Uhr"), true);
+  assert.equal(looksLikeSlotChoice("um 9 Uhr"), true);
+  assert.equal(looksLikeSlotChoice("der erste"), false);
+  assert.equal(looksLikeSlotChoice("Haila El-Otmani"), false);
 });
 
 test("isPureRelativeRef: Auswahl und Anschluss, kein neuer Name", () => {

@@ -89,9 +89,17 @@ export async function emitCommand(clientId, command) {
 // selected patient; book_for_patient reads selectedPatient back. Robust + the
 // monitor can show who Clara picked.
 
+// Vorfall 16.08.2026: Die Kandidatenliste lag unbegrenzt im voice_state. Stunden
+// spaeter deutete ein "der erste" aus einem voellig anderen Zusammenhang auf den
+// ersten Eintrag dieser Leiche — Clara meldete einen wildfremden Patienten als
+// gefunden. Ein Rueckbezug ("der erste", "der von eben") ergibt nur Sinn, solange
+// die Frage frisch ist; danach muss neu gesucht werden.
+export const PATIENT_CANDIDATES_MAX_AGE_MS = 15 * 60 * 1000;
+
 export async function setPatientCandidates(clientId, candidates, selected) {
   const data = {
     patientCandidates: Array.isArray(candidates) ? candidates : [],
+    patientCandidatesAt: Date.now(),
     selectedPatient: selected || null,
   };
   await voiceStateRef(clientId).set({ updatedAt: FieldValue.serverTimestamp(), ...data }, { merge: true });
@@ -110,13 +118,19 @@ export async function getSelectedPatient(clientId) {
 export async function getPatientCandidates(clientId) {
   const snap = await voiceStateRef(clientId).get();
   if (!snap.exists) return [];
-  const list = snap.data()?.patientCandidates;
-  return Array.isArray(list) ? list : [];
+  const data = snap.data() || {};
+  const list = data.patientCandidates;
+  if (!Array.isArray(list) || !list.length) return [];
+  // Ohne Zeitstempel stammt die Liste aus der Zeit vor dem Frischefenster
+  // (16.08.2026) — einmalig als veraltet behandeln statt ewig weiterzuschleppen.
+  const setAt = Number(data.patientCandidatesAt || 0);
+  if (!setAt || Date.now() - setAt > PATIENT_CANDIDATES_MAX_AGE_MS) return [];
+  return list;
 }
 
 export async function clearSelectedPatient(clientId) {
   await voiceStateRef(clientId).set(
-    { updatedAt: FieldValue.serverTimestamp(), selectedPatient: null, patientCandidates: [] },
+    { updatedAt: FieldValue.serverTimestamp(), selectedPatient: null, patientCandidates: [], patientCandidatesAt: 0 },
     { merge: true }
   );
   await mirrorToSession(clientId, { selectedPatient: null, patientCandidates: [] });
