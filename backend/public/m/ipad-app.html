@@ -1093,6 +1093,18 @@
       min-height: 1.25em; color: #111;
     }
     .tpl-val.empty { color: #6b6560; font-weight: 600; font-style: italic; }
+    /* Doku-Boxen bleiben hoechstens zweizeilig (Chef 16.08.2026). Vorher wuchs
+       ein einziges langes Diktat ueber den halben Bildschirm und schob die
+       uebrigen Faecher aus dem Blick. Der Text geht nicht verloren — die Box
+       scrollt in sich, und nach jedem Neuzeichnen steht das zuletzt Diktierte
+       unten. Gilt nur fuer die Doku-Seite, nicht fuer Summary/Schema (dort
+       will man den ganzen Text am Stueck lesen). */
+    #dokuTpl .tpl-val {
+      max-height: 2.8em; overflow-y: auto;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    }
+    #dokuTpl .tpl-field { padding: 8px 12px; }
+    #dokuTpl .tpl-lab { margin-bottom: 3px; }
     .teeth { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
     .tooth {
       aspect-ratio: 1; border-radius: 4px; font-size: .5rem; font-weight: 800;
@@ -2870,6 +2882,10 @@
         Zahn.applyAnliegenSegments?.(dokuState, raum);
         Zahn.ensureGaps?.(dokuState);
         Zahn.renderBoxesOnly(box, dokuState);
+        // Die Boxen sind auf zwei Zeilen gedeckelt: nach dem Neuzeichnen das
+        // Ende zeigen, sonst sieht man beim Diktieren den Satzanfang statt des
+        // gerade gesprochenen Worts.
+        box.querySelectorAll(".tpl-val").forEach((el) => { el.scrollTop = el.scrollHeight; });
         renderDokuTranscript(list);
         if (recording && !paused) {
           const liveSpan = $("recLive2")?.querySelector("span");
