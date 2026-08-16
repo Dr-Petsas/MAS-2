@@ -177,19 +177,55 @@ function orderedNames(priorityLast, priorityFirst, restLast, restFirst) {
  */
 export async function listPatientNamesForStt(clientId, opts = {}) {
   const cid = String(clientId || "").trim();
-  const empty = {
-    names: [], count: 0, locationId: "", cached: false,
-    lastCount: 0, firstCount: 0, memoryCount: 0, from: "", to: "", source: "calendar",
-  };
-  if (!cid) return empty;
+  if (!cid) return leereListe();
 
   if (!opts.force) {
     const hit = cache.get(cid);
     if (hit && Date.now() - hit.at < STT_NAMES_CACHE_MS) {
       return { ...hit, cached: true };
     }
+    // Cache ABGELAUFEN, aber vorhanden: bis 16.08.2026 wartete jeder Anrufer
+    // hier auf den kompletten Neuaufbau (Termine ueber 28 Tage + Gedaechtnis,
+    // gemessen 660-860 ms) -- und ``searchPatient`` wartet blockierend darauf.
+    // Schlimmer: ``searchPatientSpoken`` feuert bis zu 12 Namensvarianten
+    // GLEICHZEITIG; war der Cache gerade abgelaufen, liefen 12 Neuaufbauten
+    // parallel los, jeder mit einer eigenen Firestore-Bereichsabfrage. Das war
+    // nicht nur langsam, sondern auch teuer.
+    // Jetzt: alten Stand SOFORT liefern, im Hintergrund erneuern.
+    const laufend = imBau.get(cid);
+    if (hit) {
+      if (!laufend) starteBau(cid, opts).catch(() => {});
+      return { ...hit, cached: true, veraltet: true };
+    }
+    // Kein Stand vorhanden -> warten, aber nur EINMAL fuer alle Anrufer.
+    if (laufend) return laufend;
+    return starteBau(cid, opts);
   }
 
+  return baueNamensliste(cid, opts);
+}
+
+// Ein Neuaufbau je Mandant, egal wie viele gleichzeitig fragen. Bewusst pro
+// clientId geschluesselt -- zwischen Mandanten wird NICHTS geteilt.
+const imBau = new Map();
+
+function starteBau(cid, opts) {
+  const job = baueNamensliste(cid, opts).finally(() => imBau.delete(cid));
+  imBau.set(cid, job);
+  return job;
+}
+
+// Bewusst eine Fabrik, kein geteiltes Objekt: eine flache Kopie ({...X}) teilt
+// das names-Array weiter, und ein Aufrufer, der darin etwas ablegt, veraendert
+// damit die Antwort aller kuenftigen Aufrufe (beim Bauen selbst bemerkt).
+const leereListe = () => ({
+  names: [], count: 0, locationId: "", cached: false,
+  lastCount: 0, firstCount: 0, memoryCount: 0, from: "", to: "", source: "calendar",
+});
+
+/** Der eigentliche Aufbau (Termine + Praxisgedaechtnis + Adressbuch). */
+async function baueNamensliste(cid, opts = {}) {
+  const empty = leereListe();
   const win = sttCalendarWindow();
   const data = await getRangeAppointments(cid, { from: win.from, to: win.to });
   if (!data?.ok) {

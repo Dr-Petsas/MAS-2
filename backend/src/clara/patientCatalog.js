@@ -369,13 +369,29 @@ export async function ensureCatalog(clientId, opts = {}) {
   const fresh = held && Date.now() - held.at < TTL_MS;
   if (!opts.force && fresh) return held;
 
-  if (!opts.force && !held) {
+  // Womit kann JETZT gearbeitet werden? Erst der Speicher, dann die Platte.
+  let sofort = held || null;
+  if (!opts.force && !sofort) {
     const disk = await readFromDisk(cid, lid);
-    if (disk && Date.now() - disk.at < TTL_MS) return activate(cid, lid, disk);
+    if (disk) {
+      sofort = activate(cid, lid, disk);
+      if (Date.now() - disk.at < TTL_MS) return sofort;
+      // ABGELAUFEN, aber vorhanden: bis 16.08.2026 wurde der Stand hier
+      // verworfen und der Anrufer wartete auf den Voll-Neuaufbau der ~13.300
+      // Akten -- gemessen 6,2 bis 8,3 Sekunden. Faellt eine Namensfrage in die
+      // ersten Sekunden nach einem Backend-Neustart, haengt Clara genau so
+      // lange. Die Regel unten (veralteten Stand sofort nutzen, im Hintergrund
+      // erneuern) galt bisher NUR fuer den Speicher, nicht fuer die Platte.
+      // Bewusster Preis: fuer wenige Sekunden sucht Clara in einem bis zu
+      // mehrere Tage alten Namensstand. Ganz frisch angelegte Patienten fehlen
+      // darin kurz -- die Plattform-Suche (masSearchPatients) findet sie
+      // weiterhin, der Katalog ist laut agentBooking nur die Ergaenzung fuer
+      // Doppelnamen. Haengen ist das groessere Uebel.
+    }
   }
 
   const running = inflight.get(key);
-  if (running) return held && !opts.force ? held : running;
+  if (running) return sofort && !opts.force ? sofort : running;
 
   const job = (async () => {
     try {
@@ -386,7 +402,7 @@ export async function ensureCatalog(clientId, opts = {}) {
     } catch (e) {
       // Fehlschlag darf NICHT zu Dauerlesen fuehren: alten Stand weiter nutzen,
       // notfalls den (abgelaufenen) Katalog von der Platte.
-      if (held) return held;
+      if (sofort) return sofort;
       const disk = await readFromDisk(cid, lid);
       return disk ? activate(cid, lid, disk) : null;
     } finally {
@@ -396,10 +412,10 @@ export async function ensureCatalog(clientId, opts = {}) {
   inflight.set(key, job);
   // Latenz-Regel (Dr. Petsas: Clara darf nie haengen): Ist ein — wenn auch
   // veralteter — Katalog da, wird SOFORT damit gearbeitet und im Hintergrund
-  // erneuert. Nur beim allerersten Mal wird gewartet.
-  if (held && !opts.force) {
+  // erneuert. Nur wenn es NICHTS gibt, wird gewartet.
+  if (sofort && !opts.force) {
     job.catch(() => {});
-    return held;
+    return sofort;
   }
   return job;
 }
