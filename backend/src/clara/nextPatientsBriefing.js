@@ -4,6 +4,7 @@ import { vary, clinicalHints } from "./speech.js";
 import { listActiveCasesByPatientIds } from "../brain/caseStore.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { resolvePatientSubject } from "../brain/identity.js";
+import { setPatientCandidates } from "./sessions.js";
 import { kartePatient } from "./karten.js";
 // Entkoppelt (23.07.2026): Clara zieht das gewichtete Besuchs-Briefing ueber die
 // neutrale Bruecke, NICHT mehr direkt aus Lena. Ist Lena nicht geladen, kommt ein
@@ -255,7 +256,9 @@ export async function buildNextPatientsBriefing(clientId, { date, calendarId, co
             // geben koennen (Wunsch 27.06.) — Historie, Anamnese, offene Vorgaenge,
             // naechster geplanter Termin. Nur bei reiner Uhrzeit-Anfrage ohne Namen
             // bleibt es bei der klaren Fehlmeldung (Uhrzeit ohne Termin -> nichts).
-            if (nameQ) return await renderChartPatient(clientId, String(patientName).trim());
+            // Die Termine DIESES Tages mitgeben: klingt der Name mehrdeutig, ist
+            // der Tagesbezug der beste Entscheider (siehe renderChartPatient).
+            if (nameQ) return await renderChartPatient(clientId, String(patientName).trim(), echte);
             return { ok: true, message: `Ich finde an dem Tag keinen Termin um ${timeQ} Uhr. Bitte die Uhrzeit prüfen.`, count: 0 };
         }
         if (treffer.length > 1) {
@@ -280,11 +283,35 @@ export async function buildNextPatientsBriefing(clientId, { date, calendarId, co
 
 async function renderPatients(clientId, anstehend, { single } = {}) {
 
-    // Offene Vorgaenge der anstehenden Patienten in wenigen Reads (best-effort).
-    const casesByPatient = await listActiveCasesByPatientIds(
+    // -----------------------------------------------------------------------
+    // ABFRAGEN GLEICHZEITIG STARTEN (Tempo 17.08.2026)
+    // -----------------------------------------------------------------------
+    // Vorher lief alles hintereinander: Vorgaenge, dann je Patient Historie,
+    // gewichtetes Besuchs-Briefing und Anamnese — bei zwei Patienten sieben
+    // Abfragen in Reihe, obwohl nur EINE Abhaengigkeit besteht (das gewichtete
+    // Briefing braucht den letzten Termin). Der gesprochene Text wird unten
+    // unveraendert in derselben Reihenfolge gebaut; nur das Warten faellt weg.
+    // Jeder Zweig faengt seinen Fehler selbst — eine fehlende Anamnese darf die
+    // Historie nicht mitreissen.
+    const casesPromise = listActiveCasesByPatientIds(
         clientId,
         anstehend.map((a) => a.patientId),
     ).catch(() => new Map());
+    const vorab = anstehend.map((a) => ({
+        verlauf: (async () => {
+            const hist = await getPatientAppointments(clientId, {
+                patientId: a.patientId, lastName: a.patientLastName,
+            });
+            if (!hist?.ok || !hist.last) return { hist, weighted: null };
+            const weighted = await loadWeightedVisitBriefing(clientId, {
+                lastAppt: hist.last,
+                thisAppt: a.id ? a : null,
+            }).catch(() => null);
+            return { hist, weighted };
+        })().catch(() => ({ hist: null, weighted: null })),
+        anamnese: getPatientAnamnese(clientId, { patientId: a.patientId }).catch(() => null),
+    }));
+    const casesByPatient = await casesPromise;
 
     const teile = [];
     // Uebersichts-Karten fuer die Handy-App (Hero-Design): dieselben Fakten
@@ -312,13 +339,9 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
         let letzterBesuch = null;
         // Vorgeschichte — LETZTER Termin, gewichtet aus Lena-Template (8d).
         try {
-            const hist = await getPatientAppointments(clientId, { patientId: a.patientId, lastName: a.patientLastName });
+            const { hist, weighted } = await vorab[i].verlauf;
             if (hist?.ok && hist.last) {
                 const lastMotive = hist.last.visitMotive || "ein Termin";
-                const weighted = await loadWeightedVisitBriefing(clientId, {
-                    lastAppt: hist.last,
-                    thisAppt: a.id ? a : null,
-                }).catch(() => null);
                 if (weighted?.spoken) {
                     s += `. ${vary("headsup.letztesmal", LETZTES_MAL_LEADS)}: ${weighted.spoken}`;
                     letzterBesuch = {
@@ -343,7 +366,7 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
         let anaFindings = [];
         let anaHints = [];
         try {
-            const ana = await getPatientAnamnese(clientId, { patientId: a.patientId });
+            const ana = await vorab[i].anamnese;
             const anaTxt = kompakteAnamnese(ana);
             if (anaTxt) s += `. ${anaTxt}`;
             if (ana?.ok && ana.findings?.length) {
@@ -414,19 +437,50 @@ async function renderPatients(clientId, anstehend, { single } = {}) {
 // Identitaet ueber dieselbe sichere Route wie find_contact (resolvePatientSubject:
 // kein Raten — eindeutig, mehrdeutig oder nicht gefunden). Inhalt: letzter +
 // naechster Termin, Anamnese-Warnung, offene Vorgaenge. Reine Lesefunktion.
-async function renderChartPatient(clientId, patientName) {
+async function renderChartPatient(clientId, patientName, tagesTermine = []) {
     const subj = await resolvePatientSubject(clientId, patientName).catch(() => null);
 
     if (!subj || subj.matchStatus === "unmatched" || (!subj.patientId && subj.matchStatus !== "ambiguous")) {
         return { ok: true, message: `Ich finde keinen Patienten „${patientName}" in der Kartei. Bitte den Namen prüfen.`, count: 0 };
     }
     if (subj.matchStatus === "ambiguous") {
-        const namen = (subj.candidates || [])
+        const kandidaten = (subj.candidates || []).filter(Boolean);
+        // -------------------------------------------------------------------
+        // TAGESBEZUG SCHLAEGT RUECKFRAGE (Vorfall 17.08.2026, 09:17)
+        // -------------------------------------------------------------------
+        // Der Chef fragte "was steht bei der Frau Ketzezi heute an". Der Name kam
+        // verhoert an, die Kartei bot vier aehnlich klingende Patienten — Clara
+        // fragte zurueck, der Chef antwortete "die erste, die heute um zehn Uhr
+        // einen Termin hat", und der Umweg kostete zwanzig Sekunden.
+        //
+        // Dabei war die Antwort eindeutig: von den vier Kandidaten hatte genau
+        // EINER an dem gefragten Tag einen Termin. Eine Tagesfrage beantwortet
+        // sich also aus dem Tagesplan selbst. Das ist kein Raten — die Schnittmenge
+        // muss GENAU EINEN Treffer haben, sonst wird weiter gefragt.
+        if (Array.isArray(tagesTermine) && tagesTermine.length && kandidaten.length > 1) {
+            const amTag = tagesTermine.filter((a) => kandidaten.some(
+                (k) => k?.id && String(a.patientId) === String(k.id)));
+            if (amTag.length === 1) {
+                return await renderPatients(clientId, amTag.slice(0, 1), { single: true });
+            }
+        }
+        // -------------------------------------------------------------------
+        // KANDIDATEN MERKEN (derselbe Vorfall, zweiter Teil)
+        // -------------------------------------------------------------------
+        // Bleibt es bei der Rueckfrage, MUSS die Liste gemerkt werden. Vorher gab
+        // dieses Briefing sie nur als Text zurueck; die Antwort des Chefs ("die
+        // erste") landete deshalb in search_patient auf einer noch gueltigen, aber
+        // voelllig anderen Merkliste aus einem frueheren Zug — heraus kam
+        // Namens-Salat ("Unbekannt Kiu Tsiokis Kar Vikal ..."). Wer eine Frage
+        // stellt, muss die Auswahl auch hinterlegen, sonst zeigt die Antwort ins
+        // Leere. Das Frischefenster (15 min, sessions.js) gilt unveraendert.
+        await setPatientCandidates(clientId, kandidaten.slice(0, 8)).catch(() => {});
+        const namen = kandidaten
             .slice(0, 4)
             .map((p) => `${p.firstName || ""} ${p.lastName || ""}`.trim())
             .filter(Boolean)
             .join("; ");
-        return { ok: true, message: `Zu „${patientName}" gibt es mehrere Patienten${namen ? `: ${namen}` : ""}. Wen genau meinen Sie?`, count: (subj.candidates || []).length };
+        return { ok: true, message: `Zu „${patientName}" gibt es mehrere Patienten${namen ? `: ${namen}` : ""}. Wen genau meinen Sie?`, count: kandidaten.length };
     }
 
     const who = subj.name || patientName;

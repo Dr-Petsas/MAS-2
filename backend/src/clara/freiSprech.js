@@ -55,11 +55,14 @@ const STIL_LOSUNGEN = [
     // 04.07.2026: Der Test zeigte eine ERFUNDENE Kausalitaet ("kommt zur PZR,
     // weil sie Marcumar nimmt"). Verbindungen herstellen darf nur die Quelle.
     "Nutze weiche Uebergaenge ('dabei', 'ausserdem', 'und', 'und zwar'), OHNE neue Zusammenhaenge zu behaupten.",
-    "Verbinde die Saetze mit Konjunktionen und Nebensaetzen — wie eine muendliche Uebergabe, keine Liste.",
+    // "Verbinde die Saetze mit Konjunktionen und Nebensaetzen" stand hier —
+    // ENTSCHAERFT 17.08.2026: diese Losung erzeugte die 362-Zeichen-Monstersaetze
+    // (siehe Regel 7b). Verbinden ja, aber paarweise.
+    "Verbinde ZWEI Saetze mit einer Konjunktion, dann setz einen Punkt — muendliche Uebergabe, keine Liste, keine Endlosschleife.",
     "Sprich es wie eine kurze persoenliche Uebergabe am Empfang, nicht wie einen Bericht.",
     "Fang mit einer anderen Satzstellung an als das Original — Inhalt gleich, Bau anders.",
     "Wechsle das erste Verb: statt 'haben Sie' mal 'stehen', 'liegen', 'kommen zusammen'.",
-    "Mach aus zwei kurzen Saetzen einen fliessenden, oder aus einem langen zwei knappe.",
+    "Mach aus einem langen Satz zwei knappe.",
     "Setze die Uhrzeit einmal an eine andere Stelle im Satz, ohne sie zu aendern.",
     "Klinge wie nach dem dritten Kaffee: wach, knapp, ohne Floskeln.",
     "Klinge wie am Abend: ruhig, klar, ohne Eile.",
@@ -311,6 +314,12 @@ export async function freiFormulieren(text, { kontext = "interne Team-Ansage", t
         "5. Medizinische Hinweise und Warnungen (Allergien, Medikamente, Vorerkrankungen) muessen deutlich hoerbar bleiben.",
         "6. KEINE Geldbetraege, keine Emojis, keine Aufzaehlungszeichen, kein Markdown, keine Anfuehrungszeichen um die Antwort.",
         "7. Gesprochene Sprache, fluessige Saetze mit Konjunktionen und Nebensaetzen (und, dabei, ausserdem, und zwar). Aehnliche Laenge wie das Original. KEINE Aufzaehlung 'erstens, zweitens'.",
+        // 17.08.2026 (Tempo-Messung): Die Umformulierung zog gern alles zu EINEM
+        // Satz zusammen — 362 Zeichen ohne einen einzigen Punkt. Der Sprech-Pfad
+        // schneidet erst an Satzenden, also ging das als ein Block in die
+        // Sprachsynthese: rund vier Sekunden, bis der erste Ton kam. Kurze Saetze
+        // klingen nicht nur besser, sie fangen auch frueher an zu klingen.
+        "7b. HOECHSTENS 20 Woerter pro Satz. Lieber zwei Saetze als ein langer. Nach jedem Gedanken ein Punkt — niemals drei Aussagen in einem Satz stapeln.",
         "8. KEINE Kausalitaeten erfinden: 'weil'/'deshalb'/'daher' NUR, wenn der Zusammenhang woertlich in der Quelle steht. Ein Termin passiert nicht 'wegen' eines Anamnese-Hinweises.",
         "9. KEINE Zeit-Einordnung dazuerfinden ('heute', 'morgen', 'gleich') — nur uebernehmen, was die Quelle sagt.",
         "10. Handelnde NIE vertauschen: Wenn LISA angerufen/erreicht hat, bleibt es 'Lisa hat ...' — NIEMALS 'ich habe angerufen/erreicht'. Du berichtest nur.",
