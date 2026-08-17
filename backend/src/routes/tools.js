@@ -69,6 +69,7 @@ import { strongLlm } from "../mail/llm.js";
 import { buildMailBriefing } from "../mail/briefing.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
+import { addRemoteMessage } from "../remoteChat.js";
 import { PUBLIC_BASE_URL, actorName, buildSpokenPatientTimeline, clockHHMM, operatorMailAccountIds, resolveClientId, spokenClockBerlin } from "./_shared.js";
 
 const router = express.Router();
@@ -562,6 +563,71 @@ router.post("/tools/asap-queue", async (req, res) => {
     return res.json({ ok: true, message, counts: queue.counts, items: queue.items });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// ===========================================================================
+// SPRACH-NACHRICHT AN DEN ENTWICKLER (Chef 17.08.2026)
+// ===========================================================================
+// Der Chef sagte Clara am Telefon: "Das ist eine Nachricht an Opus 5 ... die
+// fernsteuerung.html im MAS korrigieren" — und Clara antwortete "Das ist kein
+// Anliegen fuer unsere Praxis. Ich leite die Nachricht nicht weiter." Zu Recht
+// aus ihrer Sicht: es gab diesen Weg schlicht NICHT. Der Fernsteuerungs-Chat
+// (mas_remote_chat) war nur per Tippen am Handy erreichbar.
+//
+// Ab jetzt landet eine gesprochene Nachricht im GLEICHEN Draht wie eine
+// getippte: derselbe Verlauf, derselbe Waechter, dieselbe Ablage. Der Chef
+// muss also weder tippen noch wissen, ueber welchen Kanal er gerade spricht.
+//
+// Wichtig fuer die Wahrheitspflicht: Clara darf nur dann "ist weitergeleitet"
+// sagen, wenn dieses Werkzeug ok:true zurueckgegeben hat. Der Endpunkt gibt
+// deshalb den fertigen Satz zum Sprechen mit — inklusive Absage, falls das
+// Speichern scheiterte.
+router.post("/tools/nachricht-an-entwickler", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const text = String(req.body?.text || req.body?.nachricht || "").trim();
+    if (!text) {
+      return res.json({
+        ok: false,
+        message: "Ich habe keinen Inhalt verstanden. Sagen Sie mir den Satz noch einmal, dann schicke ich ihn los.",
+      });
+    }
+    const op = await getOperator(clientId).catch(() => null);
+    const wer = op?.name ? String(op.name) : "Dr. Petsas";
+    const wann = new Date().toLocaleString("de-DE", {
+      timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+    // Herkunft mitschreiben: ich muss beim Lesen sofort erkennen, dass das
+    // gesprochen wurde (Sprach-Erkennung kann Woerter verdrehen) und nicht
+    // getippt — sonst suche ich nach Tippfehlern, die keine sind.
+    const gesagt = `[Sprachnachricht ueber Clara, ${wann}, von ${wer}]\n${text}`;
+    const out = await addRemoteMessage(clientId, { role: "user", text: gesagt });
+    if (!out?.ok) {
+      return res.json({
+        ok: false,
+        message: "Das Weiterleiten hat gerade nicht funktioniert. Bitte sagen Sie es mir gleich noch einmal oder tippen Sie es in die Fernsteuerung.",
+      });
+    }
+    log.info("clara.nachricht_an_entwickler", { clientId, id: out.id, zeichen: text.length });
+    const kurz = text.length > 90 ? `${text.slice(0, 90)}…` : text;
+    return res.json({
+      ok: true,
+      id: out.id,
+      message: `Ist notiert und weitergeleitet: „${kurz}“. Es liegt jetzt im Entwickler-Draht.`,
+    });
+  } catch (e) {
+    // Auch im Fehlerfall einen sprechbaren Satz liefern: Clara darf hier nicht
+    // improvisieren und schon gar nicht "erledigt" behaupten.
+    log.warn("clara.nachricht_an_entwickler_fehler", { warum: String(e?.message || e) });
+    return res.json({
+      ok: false,
+      message: "Ich konnte die Nachricht nicht ablegen. Bitte noch einmal sagen oder in der Fernsteuerung tippen.",
+    });
   }
 });
 

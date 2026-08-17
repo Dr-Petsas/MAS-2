@@ -51,6 +51,11 @@ $ModelFile = Join-Path $RunDir "remote_chat_watch.model"
 # Opus-Guthaben-Sperre: liegt diese Datei vor, ist Opus mangels Guthaben aus und
 # der Draht laeuft auf dem Ersatzmodell. Der Urlaubs-Waechter liest sie ebenfalls.
 $BillingFile = Join-Path $RunDir "opus_billing_block.txt"
+# Anmelde-Sperre: liegt diese Datei vor, fehlt dem kopflosen Agenten der
+# Zugangsschluessel. Der Selbsttest (tools\fernsteuerung_pruefen.ps1) liest sie.
+$AuthFile = Join-Path $RunDir "agent_auth_block.txt"
+$AuthHintMin = 30                        # so selten wird der Hinweis wiederholt
+$AuthRuheMin = 5                         # so lange gar nichts annehmen (kein Flackern)
 $OpusModel = $Model                      # Wunschmodell (aktuell Opus 5)
 # Sprechender Name fuers Handy: der Chef soll lesen, WELCHES Opus gerade laeuft.
 # Vorher stand in allen Hinweistexten fest "Opus 4.8" - nach dem Umschalten auf
@@ -98,7 +103,27 @@ function Test-OpusRestoreCmd([string]$t) {
 # Guthaben-Fehler sind hier bewusst NICHT enthalten (die haben ihren eigenen Weg).
 function Test-TransientError([string]$t) {
   if (-not $t) { return $false }
+  if (Test-AuthError $t) { return $false }
   return ($t -match "(?i)(unavailable|overloaded|temporar|try again|rate.?limit|too many requests|timeout|timed out|econnreset|econnrefused|socket hang|network error|network\b|502|503|504|bad gateway|gateway timeout|internal (server )?error|service (error|unavailable)|no response|connection (reset|closed|refused)|keine ausgabe vom agenten)")
+}
+
+# FEHLENDE ANMELDUNG (Vorfall 16.-17.08.2026, "Fernsteuerung ist platt")
+# ---------------------------------------------------------------------
+# Der Chef tippte "Moin"/"Halo" und bekam dreimal
+# "(keine Ausgabe vom Agenten) Error: Authentication required ...". Ursache: Der
+# cursor-agent ist INTERAKTIV angemeldet ("cursor-agent status" -> Login
+# successful), der KOPFLOSE Lauf (-p) verlangt aber einen API-Schluessel. Ohne
+# den startet gar kein Agent - egal welches Modell.
+#
+# Vorher lief dieser Fehler in die Transienten-Schleife: dreimal warten, dann
+# Ersatzmodell, dann den Rohtext als "Antwort" ans Handy und die Nachricht auf
+# "fertig". Also 40 s Warten, eine englische Fehlermeldung UND die Nachricht war
+# verloren. Jetzt: sofort erkennen, Nachricht LIEGEN LASSEN (bleibt "neu", wird
+# nach dem Einsetzen des Schluessels von selbst bearbeitet) und hoechstens
+# einmal je $AuthHintMin Minuten einen deutschen Klartext-Hinweis schicken.
+function Test-AuthError([string]$t) {
+  if (-not $t) { return $false }
+  return ($t -match "(?i)(authentication required|agent login|CURSOR_API_KEY|not (logged|signed) in|unauthorized|401)")
 }
 
 # Token aus backend\.env lesen.
@@ -109,6 +134,20 @@ if (Test-Path $envPath) {
   if ($line) { $Token = ($line -split "=", 2)[1].Trim() }
 }
 if (-not $Token) { Write-Host "ABBRUCH: REMOTE_CHAT_TOKEN fehlt in $envPath"; exit 1 }
+
+# Zugangsschluessel fuer den kopflosen Agenten (siehe Test-AuthError). Reihenfolge:
+# schon gesetzte Umgebung > backend\.env. So genuegt EIN Eintrag in der .env
+# (CURSOR_API_KEY=... oder CURSOR_AGENT_API_KEY=...) und der Draht laeuft wieder -
+# ohne Codeaenderung, ohne Neustart-Ritual.
+if (-not $env:CURSOR_API_KEY) {
+  foreach ($schluesselName in @("CURSOR_API_KEY", "CURSOR_AGENT_API_KEY")) {
+    $zeile = Get-Content $envPath | Where-Object { $_ -match "^$schluesselName=" } | Select-Object -First 1
+    if ($zeile) {
+      $wert = ($zeile -split "=", 2)[1].Trim().Trim('"')
+      if ($wert) { $env:CURSOR_API_KEY = $wert; break }
+    }
+  }
+}
 if (-not (Test-Path $CursorAgent)) { Write-Host "ABBRUCH: cursor-agent nicht gefunden ($CursorAgent)"; exit 1 }
 
 function Log([string]$msg) {
@@ -253,11 +292,32 @@ Beat
 try { Set-Content -Path $ModelFile -Value $script:ActiveModel -Encoding ASCII -NoNewline } catch {}
 Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$script:ActiveModel (Wunsch=$OpusModel) Intervall=${IntervalSeconds}s Timeout=${AgentTimeoutMin}min"
 Requeue-Orphans
-try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + " - bereit fuer Korrekturen.") } | Out-Null } catch {}
+# Beim Start ehrlich melden, WAS der Fall ist: "bereit fuer Korrekturen" ist eine
+# Luege, solange dem kopflosen Agenten der Zugangsschluessel fehlt (17.08.2026).
+if (Test-Path $AuthFile) {
+  try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + ", ABER: dem Agenten fehlt CURSOR_API_KEY in backend\.env. Nachrichten bleiben liegen und werden nach dem Eintragen automatisch bearbeitet.") } | Out-Null } catch {}
+} else {
+  try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + " - bereit fuer Korrekturen.") } | Out-Null } catch {}
+}
 
 while ($true) {
   Beat
   try {
+    # Anmelde-Sperre: solange sie frisch ist, gar nicht erst Nachrichten annehmen.
+    # Sonst wuerde der Draht im 25-Sekunden-Takt gegen dieselbe Wand laufen, das
+    # Board zwischen "In Arbeit" und "Anmeldung fehlt" flackern und das Log
+    # zulaufen. Die Nachrichten bleiben auf "neu" liegen und werden nach dem
+    # Einsetzen des Schluessels von selbst der Reihe nach bearbeitet.
+    if (Test-Path $AuthFile) {
+      $sperrAlterMin = 999
+      try { $sperrAlterMin = (New-TimeSpan -Start ([datetime]::Parse(((Get-Content $AuthFile -Raw) -split "  ")[0].Trim())) -End (Get-Date)).TotalMinutes } catch {}
+      if ($sperrAlterMin -lt $AuthRuheMin) {
+        Start-Sleep -Seconds 30
+        continue
+      }
+      Log ("Anmelde-Sperre ist " + [int]$sperrAlterMin + " min alt - ich probiere es erneut")
+      Remove-Item $AuthFile -ErrorAction SilentlyContinue
+    }
     $pending = Api-Get "/remote/pending"
     $msgs = @($pending.messages)
     if ($msgs.Count -gt 0) {
@@ -303,6 +363,35 @@ while ($true) {
         # Antwort". Jetzt: bis zu 2x mit kurzem Abstand erneut versuchen; haelt der
         # Ausfall an UND laeuft der Draht noch auf Opus, EINMAL aufs Ersatzmodell
         # ausweichen, damit ueberhaupt eine echte Antwort ankommt.
+        # --- Anmeldung fehlt? -> Nachricht LIEGEN LASSEN, Klartext schicken ---
+        # Nichts darf verloren gehen: die Nachricht geht zurueck auf "neu" und
+        # wird automatisch bearbeitet, sobald der Schluessel da ist.
+        if ((-not $res.ok) -and (Test-AuthError $res.text)) {
+          $script:PulseText = ""
+          try { Set-Content -Path $AuthFile -Value ((Get-Date).ToString("o") + "  " + [string]$res.text) -Encoding UTF8 } catch {}
+          try { Api-Post "/remote/ack" @{ ids = @($id); status = "neu" } | Out-Null } catch {}
+          $letzterHinweis = [datetime]::MinValue
+          $hinweisMarke = Join-Path $RunDir "agent_auth_hint.txt"
+          if (Test-Path $hinweisMarke) {
+            try { $letzterHinweis = [datetime]::Parse((Get-Content $hinweisMarke -Raw).Trim()) } catch {}
+          }
+          if ((New-TimeSpan -Start $letzterHinweis -End (Get-Date)).TotalMinutes -ge $AuthHintMin) {
+            $hinweis = @"
+Ich habe deine Nachricht, kann sie aber gerade nicht bearbeiten: dem Coding-Agenten fehlt sein Zugangsschluessel. Angemeldet ist er (interaktiv), fuer den Hintergrund-Betrieb braucht er zusaetzlich einen API-Key.
+
+So ist es in zwei Minuten behoben: auf cursor.com anmelden, unter Dashboard > Integrations > API Keys einen Key erzeugen und ihn in F:\MAS-2\backend\.env als CURSOR_API_KEY=... eintragen. Danach den Waechter neu starten (oder mir hier einfach nochmal schreiben).
+
+Deine Nachricht bleibt liegen und wird automatisch bearbeitet, sobald der Schluessel da ist - es geht nichts verloren.
+"@
+            try { Api-Post "/remote/message" @{ role = "agent"; text = $hinweis } | Out-Null } catch {}
+            try { Set-Content -Path $hinweisMarke -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
+          }
+          try { Api-Post "/remote/board" @{ text = ("ANMELDUNG FEHLT (seit " + (Get-Date).ToString("HH:mm") + "): Der Agent braucht CURSOR_API_KEY in backend\.env. Nachrichten bleiben liegen und werden danach automatisch bearbeitet.") } | Out-Null } catch {}
+          Log "ANMELDUNG FEHLT - Nachricht $id bleibt liegen (naechster Versuch in $AuthRuheMin min)"
+          break   # restliche Nachrichten dieser Runde nicht anfassen
+        }
+        if (Test-Path $AuthFile) { Remove-Item $AuthFile -ErrorAction SilentlyContinue }
+
         $tRetry = 0
         while ((-not $res.ok) -and (-not $res.billing) -and (Test-TransientError $res.text) -and ($tRetry -lt 2)) {
           $tRetry++
