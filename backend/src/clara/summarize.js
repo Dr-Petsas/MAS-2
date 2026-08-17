@@ -53,9 +53,27 @@ const KIND_LABEL = { email: "E-Mail", call: "eines Telefonats" };
  *   5090 fuer E-Mail-Zusammenfassungen); ohne Angabe das lokale Standardmodell.
  * @returns {Promise<{ok:boolean, text:string, reason?:string}>}
  */
+// Gedaechtnis fuer schon verdichtete Texte (17.08.2026): Eine eingegangene Mail
+// oder Anruf-Notiz aendert sich nicht mehr — ihre Verdichtung also auch nicht.
+// Ohne Gedaechtnis kostete jeder Abruf von "Was ist eingegangen?" erneut rund
+// 3 s LLM-Zeit, in der der Chef am Telefon wartete.
+const MERK_MAX = 400;
+const MERK_TTL_MS = 12 * 60 * 60 * 1000;
+/** @type {Map<string, {text: string, bis: number}>} */
+const gemerkt = new Map();
+
+function merkSchluessel(kind, src, maxSentences) {
+  return `${kind}\u0000${maxSentences}\u0000${src.length}\u0000${src.slice(0, 400)}`;
+}
+
 export async function summarizeForSpeech(kind, content, { subject = "", sender = "", maxSentences = 3, timeoutMs = 15000, baseUrl, model } = {}) {
   const src = String(content || "").replace(/\s+/g, " ").trim();
   if (src.length < 40) return { ok: false, text: "", reason: "too_short" };
+
+  const merkKey = merkSchluessel(kind, src, maxSentences);
+  const gefunden = gemerkt.get(merkKey);
+  if (gefunden && gefunden.bis > Date.now()) return { ok: true, text: gefunden.text, gemerkt: true };
+  if (gefunden) gemerkt.delete(merkKey);
 
   const label = KIND_LABEL[kind] || "eines Textes";
   const system = [
@@ -82,5 +100,11 @@ export async function summarizeForSpeech(kind, content, { subject = "", sender =
   if (text.length < 10) return { ok: false, text: "", reason: "empty" };
   if (text.length > 700) text = `${text.slice(0, 697)}...`;
   if (inventsNumbers(text, src)) return { ok: false, text: "", reason: "guard_numbers" };
+  gemerkt.set(merkKey, { text, bis: Date.now() + MERK_TTL_MS });
+  while (gemerkt.size > MERK_MAX) {
+    const aeltester = gemerkt.keys().next().value;
+    if (aeltester === undefined) break;
+    gemerkt.delete(aeltester);
+  }
   return { ok: true, text };
 }

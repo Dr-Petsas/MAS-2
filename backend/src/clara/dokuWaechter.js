@@ -155,14 +155,35 @@ export async function findePraxisLuecken(clientId, { tageZurueck = 7, maxLuecken
   if (!locationId) return { ok: false, luecken: [] };
   const nowMs = Date.now();
   const luecken = [];
-  for (let i = 0; i <= tageZurueck && luecken.length < maxLuecken; i++) {
-    const dateIso = tagIso(nowMs - i * 86400000);
-    const day = await getDayAppointments(clientId, { date: dateIso }).catch(() => null);
+
+  // Die acht Kalendertage NEBENEINANDER holen (17.08.2026): nacheinander war
+  // das der Hauptgrund, warum "Was brennt?" live rund 7 s stumm blieb. Die Tage
+  // haengen nicht voneinander ab.
+  const tage = await Promise.all(
+    Array.from({ length: tageZurueck + 1 }, (_, i) => {
+      const dateIso = tagIso(nowMs - i * 86400000);
+      return getDayAppointments(clientId, { date: dateIso })
+        .then((day) => ({ dateIso, day }))
+        .catch(() => ({ dateIso, day: null }));
+    }),
+  );
+
+  // Doku-Pruefung in Buendeln: begrenzt die Leseanzahl (der Abbruch bei
+  // maxLuecken bleibt erhalten) und laeuft trotzdem nicht Termin fuer Termin.
+  const BUENDEL = 10;
+  for (const { dateIso, day } of tage) {
+    if (luecken.length >= maxLuecken) break;
     if (!day?.ok) continue;
     const pflicht = (day.appointments || []).filter((a) => istDokupflichtig(a, nowMs));
-    for (const a of pflicht) {
-      if (luecken.length >= maxLuecken) break;
-      if (!(await hatDoku(clientId, locationId, a.id))) {
+    for (let i = 0; i < pflicht.length && luecken.length < maxLuecken; i += BUENDEL) {
+      const buendel = pflicht.slice(i, i + BUENDEL);
+      // Lesefehler gilt als "dokumentiert" - eine erfundene Luecke waere
+      // schlimmer als eine uebersehene.
+      const hat = await Promise.all(
+        buendel.map((a) => hatDoku(clientId, locationId, a.id).catch(() => true)),
+      );
+      buendel.forEach((a, k) => {
+        if (hat[k] || luecken.length >= maxLuecken) return;
         luecken.push({
           appointmentId: a.id,
           date: dateIso,
@@ -173,7 +194,7 @@ export async function findePraxisLuecken(clientId, { tageZurueck = 7, maxLuecken
           patientLastName: a.patientLastName || "",
           motive: a.visitMotive || "",
         });
-      }
+      });
     }
   }
   // Juengste zuerst (die frischeste Behandlung ist am leichtesten zu erinnern).

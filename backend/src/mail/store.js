@@ -43,7 +43,7 @@ function listShape(id, d) {
   };
 }
 
-export async function listMessages(clientId, { accountId, accountIds, folder = "INBOX", limit = 50 } = {}) {
+export async function listMessages(clientId, { accountId, accountIds, folder = "INBOX", limit = 50, since = 0 } = {}) {
   // Neueste zuerst DIREKT per Firestore-Sortierung (Composite-Index folder+date
   // bzw. accountId+folder+date). Vorfall 06.07.2026: 458 Werbemails an einem Tag
   // schoben den Posteingang ueber den 300er-Deckel der alten index-freien
@@ -52,9 +52,17 @@ export async function listMessages(clientId, { accountId, accountIds, folder = "
   try {
     let q = msgs(clientId).where("folder", "==", folder);
     if (accountId) q = q.where("accountId", "==", accountId);
+    // Zeitfenster direkt in der Abfrage (17.08.2026): Wer nur die letzten
+    // Stunden braucht (Briefings), holte bisher 450 komplette Mail-Dokumente
+    // und warf sie im Speicher weg — 2,2 s je Abfrage, live 7 s Stille am
+    // Telefon fuer "Was ist eingegangen?" und "Was brennt?".
+    if (since) q = q.where("date", ">=", since);
     // Bei Nutzer-Scoping werden fremde Konten erst im Speicher entfernt —
     // dafuer mehr holen, damit nach dem Filtern noch `limit` Zeilen bleiben.
-    const fetchN = !accountId && Array.isArray(accountIds) ? Math.min(500, limit * 3) : limit;
+    // Mit Zeitfenster ist die Menge ohnehin klein, dann reicht ein kleiner Puffer.
+    const fetchN = !accountId && Array.isArray(accountIds)
+        ? Math.min(since ? 150 : 500, limit * 3)
+        : limit;
     const snap = await q.orderBy("date", "desc").limit(fetchN).get();
     let rows = snap.docs.map((doc) => listShape(doc.id, doc.data()));
     if (!accountId && Array.isArray(accountIds)) {

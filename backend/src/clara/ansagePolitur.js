@@ -59,16 +59,18 @@ function schluessel(text, kontext, pflicht) {
     return crypto.createHash("sha1").update(roh).digest("hex");
 }
 
+/**
+ * Polierte Fassung holen — und dabei VERBRAUCHEN. Eine Politur wird also
+ * hoechstens EINMAL gesprochen (17.08.2026): Das Modell formuliert gelegentlich
+ * schief ("Achtung, das Team, es brennt."), und was im Cache liegen bleibt,
+ * wuerde der Chef sonst stundenlang wiederholt hoeren. So wechselt sich der
+ * geprueft-deterministische Text mit jeweils frischen Varianten ab.
+ */
 function ausCache(key) {
     const e = cache.get(key);
     if (!e) return "";
-    if (e.bis < Date.now()) {
-        cache.delete(key);
-        return "";
-    }
-    // Zuletzt genutzt nach hinten schieben (einfache LRU-Ordnung).
     cache.delete(key);
-    cache.set(key, e);
+    if (e.bis < Date.now()) return "";
     return e.text;
 }
 

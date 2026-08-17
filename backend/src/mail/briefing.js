@@ -30,11 +30,16 @@ function topSenderPhrase(messages) {
  */
 export async function buildMailBriefing(clientId, { sinceMinutes = 720, accountIds } = {}) {
   const cutoff = Date.now() - sinceMinutes * 60000;
-  const inbox = await listMessages(clientId, { folder: "INBOX", limit: 150, accountIds }).catch(() => []);
+  // Postfach und Schreibauftraege haengen nicht voneinander ab (17.08.2026):
+  // nacheinander gelesen kostete das Briefing live rund 6 s Stille am Telefon.
+  const [inbox, tasks] = await Promise.all([
+    // Nur das Briefing-Fenster lesen (statt 450 Dokumente holen und filtern).
+    listMessages(clientId, { folder: "INBOX", limit: 150, accountIds, since: cutoff }).catch(() => []),
+    listCases(clientId, { assignee: "Nadine", activeOnly: true, limit: 200 }).catch(() => []),
+  ]);
   const recent = inbox.filter((m) => (m.date || 0) >= cutoff);
   const unread = recent.filter((m) => !m.seen).length;
 
-  const tasks = await listCases(clientId, { assignee: "Nadine", activeOnly: true, limit: 200 }).catch(() => []);
   const draftsReady = tasks.filter((c) => c.draft && (c.draft.subject || c.draft.body)).length;
   const awaitingApproval = tasks.filter((c) => c.status === "waiting_approval").length;
 
