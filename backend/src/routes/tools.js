@@ -21,7 +21,7 @@ import { strukturiereKarteikarte } from "../clara/dokuNote.js";
 import { trenneMemo, appendAbrechnungsHinweis, getAbrechnungsMemo, pruefeAbrechnung, sophieMitSlotfill } from "../clara/dokuAbrechnung.js";
 import { findePatientenLuecken, sprichPatientenLuecken, findePraxisLuecken, sprichPraxisLuecken } from "../clara/dokuWaechter.js";
 import { pruefeUndKorrigiereBesuchsgrund, overwatchSweep, sprichSweep } from "../clara/motiveOverwatch.js";
-import { freiFormulieren } from "../clara/freiSprech.js";
+import { politurSchnell } from "../clara/ansagePolitur.js";
 import { karteDoku, karteLuecken, karteSophie, karteTerminliste, karteZeitraum, karteKontakt, karteLisaErgebnis, karteLisaLive, karteLisaSms, karteWiedervorlage, karteRecallKandidaten, karteDokumente } from "../clara/karten.js";
 import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEuro, ABHAK_ANLEITUNG } from "../brain/wiedervorlage.js";
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
@@ -354,7 +354,7 @@ router.post("/tools/briefing", async (req, res) => {
     const briefing = buildCaseBriefing(cases, { role: op?.role, operatorName: op?.name });
     let message = buildSpokenCaseBriefing(briefing, { operatorName: op?.name });
     // FreiSprech: Vorgangs-Briefing menschlicher formulieren (Fakten-Guard).
-    try { message = (await freiFormulieren(message, { kontext: "Briefing zu offenen Vorgaengen" })).text; } catch { /* deterministisch weiter */ }
+    try { message = (await politurSchnell(message, { kontext: "Briefing zu offenen Vorgaengen" })).text; } catch { /* deterministisch weiter */ }
     return res.json({ ok: true, message, operator: op ? { name: op.name, role: op.role } : null });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -534,7 +534,7 @@ router.post("/tools/morning-briefing", async (req, res) => {
     });
     // FreiSprech: menschlich-variantenreich statt Bandansage; der Fakten-Guard
     // sichert Namen/Zahlen/Uhrzeiten, sonst bleibt der deterministische Text.
-    try { message = (await freiFormulieren(message, { kontext: "Morgen-Briefing zum Tagesstart" })).text; } catch { /* deterministisch weiter */ }
+    try { message = (await politurSchnell(message, { kontext: "Morgen-Briefing zum Tagesstart" })).text; } catch { /* deterministisch weiter */ }
     // Den Tag auf dem Monitor aufschlagen (best-effort).
     try { await emitCommand(clientId, { type: "navigate", date: todayBerlin() }); } catch { /* keine Session */ }
     return res.json({ ok: true, message });
@@ -558,7 +558,7 @@ router.post("/tools/asap-queue", async (req, res) => {
     const queue = await buildAsapQueue(clientId, { mailAccountIds });
     let message = spokenAsapQueue(queue);
     // FreiSprech: Varianz mit Fakten-Guard, deterministischer Text als Netz.
-    try { message = (await freiFormulieren(message, { kontext: "Dringlichkeits-Auskunft (Was brennt?)" })).text; } catch { /* deterministisch weiter */ }
+    try { message = (await politurSchnell(message, { kontext: "Dringlichkeits-Auskunft (Was brennt?)" })).text; } catch { /* deterministisch weiter */ }
     return res.json({ ok: true, message, counts: queue.counts, items: queue.items });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -601,7 +601,7 @@ router.post("/tools/evening-briefing", async (req, res) => {
       mailAccountIds,
     });
     // FreiSprech: siehe Morgen-Briefing — Varianz mit Fakten-Guard.
-    try { message = (await freiFormulieren(message, { kontext: "Feierabend-Briefing (Tagesabschluss)" })).text; } catch { /* deterministisch weiter */ }
+    try { message = (await politurSchnell(message, { kontext: "Feierabend-Briefing (Tagesabschluss)" })).text; } catch { /* deterministisch weiter */ }
     return res.json({ ok: true, message });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -630,7 +630,7 @@ router.post("/tools/day-briefing", async (req, res) => {
       });
       if (!r.ok) return res.json({ ok: false, message: r.message });
       let rmsg = r.message;
-      try { rmsg = (await freiFormulieren(rmsg, { kontext: "Zeitraum-Lagebild fuer den Chef" })).text; } catch { /* deterministisch weiter */ }
+      try { rmsg = (await politurSchnell(rmsg, { kontext: "Zeitraum-Lagebild fuer den Chef" })).text; } catch { /* deterministisch weiter */ }
       // 27.07.2026: stand hier fest auf card:null — der Flip blieb bei jeder
       // Zeitraum-Frage leer. Jetzt die Tages-Aufschluesselung als Karte.
       let rcard = null;
@@ -653,7 +653,7 @@ router.post("/tools/day-briefing", async (req, res) => {
     let message = overview.message;
     // FreiSprech: menschlich-variantenreiche Umformulierung, Fakten-Guard
     // sichert Zahlen/Namen — bei Zweifel bleibt der deterministische Text.
-    try { message = (await freiFormulieren(message, { kontext: "Tages-Lagebild fuer den Chef" })).text; } catch { /* deterministisch weiter */ }
+    try { message = (await politurSchnell(message, { kontext: "Tages-Lagebild fuer den Chef" })).text; } catch { /* deterministisch weiter */ }
     // Offene Recall-Initiative? Clara bringt sich aktiv ein ("morgen ist wenig
     // los — soll ich die Anruflisten freigeben?"). NACH FreiSprech anhaengen,
     // damit der Freigabe-Wortlaut kanonisch bleibt.
@@ -1866,7 +1866,7 @@ router.post("/tools/next-patients-briefing", async (req, res) => {
     // FreiSprech: Patienten-Heads-up natuerlich umformulieren (Guard sichert
     // Namen, Uhrzeiten, Anamnese-Zahlen; sonst deterministischer Text).
     if (out?.ok && out.message) {
-      try { out.message = (await freiFormulieren(out.message, { kontext: "Heads-up zu den naechsten Patienten" })).text; } catch { /* deterministisch weiter */ }
+      try { out.message = (await politurSchnell(out.message, { kontext: "Heads-up zu den naechsten Patienten" })).text; } catch { /* deterministisch weiter */ }
     }
     return res.json(out);
   } catch (e) {
@@ -3270,7 +3270,7 @@ router.post("/tools/comms-digest", async (req, res) => {
     // Uhrzeiten (inkl. Handelnden-Wache); bei Zweifel bleibt der
     // deterministische Text. Die Karte behaelt den woertlichen Inhalt.
     try {
-      message = (await freiFormulieren(message, {
+      message = (await politurSchnell(message, {
         kontext: "Bericht ueber die heutigen Eingaenge (Anrufe, E-Mails, Briefe, Empfang)",
       })).text;
     } catch { /* deterministisch weiter */ }
@@ -3312,7 +3312,7 @@ router.post("/tools/wiedervorlage", async (req, res) => {
       const bericht = anleitung
         ? message.slice(0, message.length - ABHAK_ANLEITUNG.length).trimEnd()
         : message;
-      const frei = await freiFormulieren(bericht, {
+      const frei = await politurSchnell(bericht, {
         kontext: "Bericht ueber offene Fristen und Rechnungssachen auf der Wiedervorlage (ohne Geldbetraege)",
         pflicht: liste.items.slice(0, 4).map((i) => i.wer).filter((w) => w && w !== "Unbekannt"),
       });
@@ -4956,7 +4956,7 @@ router.post("/tools/lisa-call-result", async (req, res) => {
     // JEDEM Zweifel bleibt der deterministische Satz. Die Karte darunter
     // behaelt IMMER den woertlichen Inhalt (Pruefpunkt am Handy).
     try {
-      satz = (await freiFormulieren(satz, {
+      satz = (await politurSchnell(satz, {
         kontext: "Bericht ueber einen von Lisa erledigten Telefonanruf (Ausgang und Gespraechsverlauf)",
       })).text;
     } catch { /* deterministisch weiter */ }

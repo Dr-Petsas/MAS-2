@@ -140,9 +140,11 @@ export async function buildSpokenComms(events, { day }) {
     shown = [...important, ...rest].slice(0, MAX).sort((a, b) => Number(a.ts) - Number(b.ts));
   }
 
-  for (const e of shown) {
-    parts.push(await itemLine(e));
-  }
+  // Die Zeilen NEBENEINANDER bauen (17.08.2026): jede lange Mail/Notiz laeuft
+  // durch summarizeForSpeech (bis 9 s). Nacheinander summierte sich das live
+  // auf 24 s Wartezeit fuer EINE Antwort. Die Zeilen haengen nicht voneinander
+  // ab, die Reihenfolge bleibt durch Promise.all erhalten.
+  parts.push(...await Promise.all(shown.map((e) => itemLine(e))));
   if (events.length > shown.length) {
     parts.push(`Und ${events.length - shown.length} weitere — Details stehen im Monitor.`);
   }

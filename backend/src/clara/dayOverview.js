@@ -82,31 +82,35 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
   // 2. Auffaelligkeiten der HEUTIGEN Patienten — nicht die Chronologie.
   // Unterlagen, Notizen, Mails, Mehrfach-Anrufe, versaeumter letzter Termin.
   const echte = (dayData.appointments || []).filter((a) => !a.isAbsence && a.patientId);
-  let casesByPatient = new Map();
-  try {
-    casesByPatient = await listActiveCasesByPatientIds(clientId, echte.map((a) => a.patientId));
-  } catch { /* Vorgaenge optional */ }
 
-  let todays = [];
+  // Alles, was nur die Patienten-IDs von oben braucht, laeuft NEBENEINANDER
+  // (17.08.2026): Vorgaenge, Tages-Ereignisse, Patienten-Historien und rote
+  // Liste hingen bisher hintereinander an je einer Firestore-Runde. Live kostete
+  // das Tages-Lagebild dadurch mehrere Sekunden, bevor ueberhaupt jemand sprach.
+  const [casesByPatient, todays, lastByPatient, redList] = await Promise.all([
+    listActiveCasesByPatientIds(clientId, echte.map((a) => a.patientId))
+      .catch(() => new Map()),
+    isToday
+      ? queryRecent(clientId, Date.now() - 26 * 60 * 60 * 1000, 1000)
+        .then((ev) => (ev || []).filter((e) => e.ts && berlinDay(e.ts) === today))
+        .catch(() => [])
+      : Promise.resolve([]),
+    Promise.all(echte.slice(0, 6).map(async (a) => {
+      const hist = await getPatientAppointments(clientId, {
+        patientId: a.patientId, lastName: a.patientLastName,
+      }).catch(() => null);
+      return hist?.ok && hist.last ? [String(a.patientId), hist.last] : null;
+    })).then((paare) => new Map(paare.filter(Boolean))).catch(() => new Map()),
+    isToday
+      ? buildRedList(clientId).catch(() => ({ critical: [], deadlines: [] }))
+      : Promise.resolve({ critical: [], deadlines: [] }),
+  ]);
+
   if (isToday) {
-    const since = Date.now() - 26 * 60 * 60 * 1000;
-    const events = await queryRecent(clientId, since, 1000).catch(() => []);
-    todays = (events || []).filter((e) => e.ts && berlinDay(e.ts) === today);
     calls = todays.filter((e) => /call/.test(e.channel || "") && (e.direction || "in") === "in").length;
     mails = todays.filter((e) => /(mail|email)/.test(e.channel || "") && (e.direction || "in") === "in").length;
     if (mails || calls) hadComms = true;
   }
-
-  const lastByPatient = new Map();
-  try {
-    const probe = echte.slice(0, 6);
-    await Promise.all(probe.map(async (a) => {
-      const hist = await getPatientAppointments(clientId, {
-        patientId: a.patientId, lastName: a.patientLastName,
-      }).catch(() => null);
-      if (hist?.ok && hist.last) lastByPatient.set(String(a.patientId), hist.last);
-    }));
-  } catch { /* Historie optional */ }
 
   const attention = (briefing.attention || []).map((a) => ({
     ...a,
@@ -133,7 +137,6 @@ export async function buildSpokenDayOverview(clientId, { date, calendarId, opera
   // 3. Praxis-weit (nicht an einen Tagespatienten gebunden): rote Liste.
   if (isToday) {
     try {
-      const redList = await buildRedList(clientId).catch(() => ({ critical: [], deadlines: [] }));
       const red = spokenRedList(redList, { max: 2, bare: true });
       if (red) highlights.push(red);
     } catch { /* rote Liste optional */ }

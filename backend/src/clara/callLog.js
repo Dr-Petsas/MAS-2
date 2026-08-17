@@ -86,10 +86,14 @@ export async function spokenCallLog(clientId, { date } = {}) {
       `${rel} ${inbound.length === 1 ? "kam ein Anruf rein" : `kamen ${inbound.length} Anrufe rein`}.`,
       `${rel} ${inbound.length === 1 ? "hat es einmal geklingelt" : `hat es ${inbound.length} Mal geklingelt`}.`,
     ])));
-    for (const e of inbound.slice(0, 6)) {
+    // Verdichtung der Notizen NEBENEINANDER (17.08.2026): jede lange Notiz
+    // kostet bis 9 s, nacheinander wartet der Chef ein Vielfaches. Reihenfolge
+    // bleibt durch Promise.all erhalten.
+    const zeilen = await Promise.all(inbound.slice(0, 6).map(async (e) => {
       const s = await short(e);
-      parts.push(`Um ${spokenTime(e.ts)}: ${who(e)}${s ? ` — ${s}` : ""}`);
-    }
+      return `Um ${spokenTime(e.ts)}: ${who(e)}${s ? ` — ${s}` : ""}`;
+    }));
+    parts.push(...zeilen);
     if (inbound.length > 6) parts.push(`Und ${inbound.length - 6} weitere — Details stehen im Monitor.`);
   } else {
     parts.push(cap(`${rel} ist kein eingehender Anruf im Praxisgedächtnis verzeichnet.`));

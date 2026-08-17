@@ -18,7 +18,7 @@ import { appendEvent } from "../brain/eventStore.js";
 import { getOperator, emitCommand } from "./sessions.js";
 import { listOperators } from "./operators.js";
 import { todayBerlin } from "./daySchedule.js";
-import { freiFormulieren } from "./freiSprech.js";
+import { politurSchnell } from "./ansagePolitur.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -1018,7 +1018,7 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
     if (complaints) pflicht.push("Beschwerde", "Monitor");
     if (unclear) pflicht.push("Monitor");
     if (wartendSatz) pflicht.push("Freigabe"); // C6: Weg zur Freigabe muss ueberleben
-    const frei = await freiFormulieren(deterministisch, {
+    const frei = await politurSchnell(deterministisch, {
       kontext: "Zwischenstand einer laufenden Recall-Aktion (gebucht / SMS / Absagen / nicht erreicht / offen)",
       pflicht,
     });

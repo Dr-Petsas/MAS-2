@@ -12,7 +12,7 @@ import { proxyUpdateOrCancel } from "./cfProxy.js";
 import { buildAbsenceProof, publishProof } from "./proofCard.js";
 import { createCase, addUpdate, setStatus, listCases } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
-import { freiFormulieren } from "./freiSprech.js";
+import { politurSchnell } from "./ansagePolitur.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, DIRECTIONS, EVENT_TYPES } from "../brain/events.js";
 import { log } from "../log.js";
@@ -806,7 +806,7 @@ export async function absenceStatusSpoken(clientId) {
   // formuliert, Fakten-Guard sichert Zahlen, Pflichtwoerter sichern Tag/
   // Behandler/Fenster). Bei JEDEM Zweifel bleibt der deterministische Satz.
   try {
-    const frei = await freiFormulieren(deterministisch, {
+    const frei = await politurSchnell(deterministisch, {
       kontext: "Zwischenstand zu geplanten und laufenden Abwesenheiten (informiert / neu gebucht / offen / wartet auf Freigabe)",
       pflicht,
     });
