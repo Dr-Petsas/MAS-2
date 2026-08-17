@@ -144,15 +144,15 @@
 <main class="deck" id="deck">
 
   <section class="chapter on" style="--accent: var(--turq)" data-title="Willkommen"
-    data-narr="Guten Tag, ich bin Clara, Ihre interne Sprach-Assistentin. Scrollen Sie sich einfach durch die Kapitel — bei jedem erzähle ich, was ich Ihnen dort abnehme. Über mich erreichen Sie außerdem das ganze Team."
-    data-prompt="Begrüße den Praxis-Chef respektvoll mit Sie als seine beste Angestellte und erkläre in zwei Sätzen, dass er sich durch die Kapitel scrollt und du zu jedem erzählst, was du der Praxis abnimmst.">
+    data-narr="Ich bin Clara, Ihre interne Sprach-Assistentin. Scrollen Sie sich durch die Kapitel — ich fange mit dem an, was Ihnen im Alltag am meisten Zeit spart, und arbeite mich dann durch den Rest."
+    data-prompt="Stelle dich in zwei Saetzen als interne Sprach-Assistentin des Praxis-Chefs vor und sage, dass die Tour mit den drei staerksten Themen beginnt: das Briefing zum naechsten Patienten, das Fuellen von Terminluecken und die papierlose Post. Kein Gruss, keine Selbstauskunft ueber Zuverlaessigkeit.">
     <div class="inner">
       <div class="kicker"><span class="no">01</span> Willkommen</div>
-      <h2>Guten Tag, ich bin <span class="accent">Clara</span>.</h2>
-      <p class="lead">Ihre interne Sprach-Assistentin. Scrollen Sie sich durch die Kapitel — zu jedem erzähle ich, was ich Ihnen abnehme. Über mich erreichen Sie das ganze Team der Praxis.</p>
+      <h2>Ich bin <span class="accent">Clara</span>.</h2>
+      <p class="lead">Ihre interne Sprach-Assistentin. Wir fangen mit den drei Dingen an, die im Alltag am meisten bringen — danach kommt der Rest, Kapitel für Kapitel.</p>
       <div class="cards">
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Auf Zuruf</h3><p>Sag es mir in einem Satz — ich mach den Rest.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face"><h3>Auf Zuruf</h3><p>Sagen Sie es in einem Satz — ich mache den Rest.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Guten Morgen, Clara!</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
@@ -160,357 +160,526 @@
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Lass Nadine den Brief schreiben.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Ehrlich</h3><p>Ich behaupte nie etwas, das nicht passiert ist.</p><span class="hint">tippen zum Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Heißt konkret</div><div class="say">Erst wenn's erledigt ist, sag ich's.</div></div>
+          <div class="face"><h3>Ohne Bildschirm</h3><p>Freihändig am Headset, während Sie behandeln.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Clara, brief mich zum nächsten Patienten.</div></div>
         </div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Begrüße den Praxis-Chef respektvoll mit Sie als seine beste Angestellte und erkläre in zwei Sätzen, dass er sich durch die Kapitel scrollt und du zu jedem erzählst, was du der Praxis abnimmst.</textarea>
+        <textarea>Stelle dich in zwei Saetzen als interne Sprach-Assistentin des Praxis-Chefs vor und sage, dass die Tour mit den drei staerksten Themen beginnt: das Briefing zum naechsten Patienten, das Fuellen von Terminluecken und die papierlose Post. Kein Gruss, keine Selbstauskunft ueber Zuverlaessigkeit.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--amber)" data-title="Auf einen Blick"
-    data-narr="Kurz zur Übersicht, damit Sie sehen, was ich Ihnen abnehme: Meine wichtigste Aufgabe ist das Next-Patient-Briefing — in rund zehn Sekunden, bevor der nächste Patient aufgerufen wird, fasse ich alles Wichtige zu ihm zusammen: Anamnese, bisherige Behandlungen, eingegangene Telefonate, Briefe und E-Mails. Dazu mache ich Ihr Tages-Briefing morgens und abends, sage Ihnen, welche Patienten heute kommen, buche und sage Termine ab, lasse Nadine Ihre Briefe und E-Mails schreiben und Lisa SMS verschicken oder anrufen. Die Details zeige ich Ihnen gleich Kapitel für Kapitel."
-    data-prompt="Gib dem Praxis-Chef mit Sie einen knackigen Überblick über deine wichtigsten Funktionen. Betone zuerst das Next-Patient-Briefing als deine wichtigste Funktion: in rund zehn Sekunden vor dem Aufruf alles Wichtige zum Patienten aus Anamnese, bisherigen Behandlungen, Telefonaten, Briefen und E-Mails. Dann kurz: Tages-Briefing morgens und abends, Patienten des Tages, Termine buchen und absagen, Briefe und E-Mails über Nadine, SMS und Anrufe über Lisa. Kurz und souverän, als seine beste Angestellte.">
+  <section class="chapter" style="--accent: var(--amber)" data-title="Next-Patient-Briefing"
+    data-narr="Bevor der nächste Patient ins Zimmer kommt, fasse ich Ihnen in wenigen Sekunden zusammen, was Sie über ihn wissen müssen: was beim letzten Mal gemacht wurde, was in seinem Anamnesebogen auffällt, welche Unterlagen fehlen und was zwischenzeitlich telefonisch oder per Mail hereinkam. Sie können auch einen einzelnen Namen oder eine Uhrzeit nennen. Standardmäßig nehme ich die nächsten zwei Patienten."
+    data-prompt="Erklaere das Briefing zum naechsten Patienten als deine wichtigste Aufgabe: wenige Sekunden vor dem Aufruf das Wesentliche zum Patienten - letzte Behandlung, Auffaelligkeiten aus dem Anamnesebogen (Allergien, Medikamente, Vorerkrankungen), fehlende Unterlagen, dazwischen eingegangene Anrufe und Mails. Erwaehne, dass man auch einen Namen oder eine Uhrzeit nennen kann und dass es standardmaessig die naechsten zwei Patienten sind. Nenne ein Beispiel, wie man es sagt.">
     <div class="inner">
-      <div class="kicker"><span class="no">02</span> Auf einen Blick</div>
-      <h2>Das nehme ich Ihnen <span class="accent">ab</span>.</h2>
-      <p class="lead">Die wichtigsten Dinge auf einen Blick — die Details folgen Kapitel für Kapitel.</p>
+      <div class="kicker"><span class="no">02</span> Next-Patient-Briefing</div>
+      <h2>Nie mehr <span class="accent">unvorbereitet</span> ins Zimmer.</h2>
+      <p class="lead">Wenige Sekunden vor dem Aufruf: letzte Behandlung, Auffälligkeiten aus dem Anamnesebogen, fehlende Unterlagen, neue Anrufe und Mails zu diesem Patienten.</p>
       <div class="cards">
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Next-Patient-Briefing</h3><p>10 Sekunden vor dem Aufruf: alles Wichtige zum Patienten.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Der Nächste</h3><p>Standard: die nächsten zwei Patienten.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Brief mich zum nächsten Patienten.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Patienten des Tages</h3><p>Wer heute kommt — auf Zuruf.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wer kommt heute bei Doktor Berg?</div></div>
+          <div class="face"><h3>Ein Name</h3><p>Auch mitten am Tag, für einen einzelnen.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was mache ich bei Mustafa Gülhan heute?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Tages-Briefing</h3><p>Morgens der Auftakt, abends der Abschluss.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Heads-up für morgen — wie voll wird's?</div></div>
+          <div class="face"><h3>Eine Uhrzeit</h3><p>Wer kommt um zehn, und was steht an.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wer kommt um zehn Uhr und was machen wir da?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Briefe &amp; E-Mails</h3><p>Nadine schreibt — gesendet nach Ihrer Freigabe.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Lass Nadine den Brief an Herrn Meier schreiben.</div></div>
+          <div class="face"><h3>Aus dem Bogen</h3><p>Allergie, Medikament, Vorerkrankung.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Klingt dann so</div><div class="say">Markierung in der Kartei: Allergie Bienenstich.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>SMS &amp; Anrufe</h3><p>Lisa verschickt und ruft raus.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Schick Frau Schneider eine SMS: Ihr Rezept liegt bereit.</div></div>
-        </div></div>
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Termine steuern</h3><p>Buchen, verschieben, absagen — sicher.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Sag den Termin von Herrn Meier am Dienstag ab.</div></div>
+          <div class="face"><h3>Was fehlt</h3><p>Aufklärung noch nicht unterschrieben.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Klingt dann so</div><div class="say">Bei zwei Terminen fehlen noch Unterlagen.</div></div>
         </div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Gib dem Praxis-Chef mit Sie einen knackigen Überblick über deine wichtigsten Funktionen. Betone zuerst das Next-Patient-Briefing als deine wichtigste Funktion: in rund zehn Sekunden vor dem Aufruf alles Wichtige zum Patienten aus Anamnese, bisherigen Behandlungen, Telefonaten, Briefen und E-Mails. Dann kurz: Tages-Briefing morgens und abends, Patienten des Tages, Termine buchen und absagen, Briefe und E-Mails über Nadine, SMS und Anrufe über Lisa. Kurz und souverän, als seine beste Angestellte.</textarea>
+        <textarea>Erklaere das Briefing zum naechsten Patienten als deine wichtigste Aufgabe: wenige Sekunden vor dem Aufruf das Wesentliche zum Patienten - letzte Behandlung, Auffaelligkeiten aus dem Anamnesebogen (Allergien, Medikamente, Vorerkrankungen), fehlende Unterlagen, dazwischen eingegangene Anrufe und Mails. Erwaehne, dass man auch einen Namen oder eine Uhrzeit nennen kann und dass es standardmaessig die naechsten zwei Patienten sind. Nenne ein Beispiel, wie man es sagt.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--green)" data-title="So steuern Sie mich"
-    data-narr="Ein Tipp vorweg: Sprechen Sie in ganzen Sätzen mit mir, nicht in einzelnen Stichworten. Sagen Sie lieber 'Sag den Termin von Herrn Meier am Dienstag ab', statt nur 'Termin absagen'. Je mehr Zusammenhang Sie mir in einem Satz geben, desto sicherer treffe ich das Richtige."
-    data-prompt="Erkläre dem Praxis-Chef freundlich mit Sie, dass man dich am besten in ganzen Sätzen steuert und Stichworte vermeidet. Gib ein Beispiel für einen guten Satz.">
+  <section class="chapter" style="--accent: var(--green)" data-title="Terminlücken füllen"
+    data-narr="Eine Lücke im Kalender ist verlorener Umsatz. Ich zeige Ihnen die Lücken der nächsten Tage und dazu Patienten aus dem Recall-Topf, die passen. Angerufen wird niemand, bevor Sie freigeben — dann übernimmt Lisa, ruft an oder schickt eine SMS mit Zusage-Link, und die erste Zusage bucht den Platz. Wen Lisa gerade erreicht hat, sage ich Ihnen jederzeit."
+    data-prompt="Erklaere den Lueckenfueller als Umsatz-Thema: freie Luecken im Kalender plus passende Patienten aus dem Recall-Topf, Kandidaten werden dir vorgelesen und koennen einzeln gestrichen werden. Betone, dass NIEMAND angerufen wird, bevor der Chef freigibt, dass Lisa danach anruft oder eine SMS mit Zusage-Link schickt und die erste Zusage den Platz bucht. Erwaehne, dass er den Zwischenstand abfragen kann. Nenne ein Beispiel, wie man es sagt.">
     <div class="inner">
-      <div class="kicker"><span class="no">03</span> So steuern Sie mich</div>
-      <h2>Sprechen Sie mit mir in ganzen <span class="accent">Sätzen</span>.</h2>
-      <p class="lead">Ganze Sätze statt Stichworte. Je mehr Zusammenhang Sie mir in einem Satz geben, desto sicherer treffe ich das Richtige — Name, Tag und Absicht am besten zusammen.</p>
+      <div class="kicker"><span class="no">03</span> Terminlücken füllen</div>
+      <h2>Aus Lücken werden <span class="accent">Termine</span>.</h2>
+      <p class="lead">Lücken finden, passende Patienten vorschlagen, nach Ihrer Freigabe anrufen lassen — die erste Zusage bucht den Platz.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Lücken zeigen</h3><p>Wo im Kalender ist morgen Luft.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wo habe ich morgen Lücken?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Kandidaten hören</h3><p>Bis zu acht Namen pro Lücke, einzeln streichbar.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Lies mir die Kandidaten vor.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Ansage vorher prüfen</h3><p>Was Lisa am Telefon sagen wird — vor der Freigabe.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was sagt Lisa denn genau?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Freigeben</h3><p>Erst jetzt ruft Lisa an oder schickt die SMS.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Gib die Liste frei.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Zwischenstand</h3><p>Gebucht, abgesagt, nicht erreicht.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wie weit ist Lisa mit dem Recall?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Einer gezielt</h3><p>Ein bestimmter Patient für eine bestimmte Lücke.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Ruf Frau Weber für die Lücke am Donnerstag an.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erklaere den Lueckenfueller als Umsatz-Thema: freie Luecken im Kalender plus passende Patienten aus dem Recall-Topf, Kandidaten werden dir vorgelesen und koennen einzeln gestrichen werden. Betone, dass NIEMAND angerufen wird, bevor der Chef freigibt, dass Lisa danach anruft oder eine SMS mit Zusage-Link schickt und die erste Zusage den Platz bucht. Erwaehne, dass er den Zwischenstand abfragen kann. Nenne ein Beispiel, wie man es sagt.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--purple)" data-title="Keine Papierpost mehr"
+    data-narr="Ihre Hauspost geht zum Scan-Dienstleister und kommt als E-Mail bei Nadine an — kein Papier, keine Ablage, keine Postmappe. Nadine sortiert alles ein: Rechnung, Labor, Kammer, Beschwerde, Anwaltsschreiben. Was beantwortet werden muss, liegt schon als Entwurf da, mit dem passenden Zusammenhang aus Vorgang, Telefonaten und früheren Briefen. Ich lese Ihnen den Eingang vor, Sie sagen ja — dann geht es raus."
+    data-prompt="Erklaere die papierlose Post: die Hauspost wird von einem Scan-Dienstleister digitalisiert und landet als E-Mail bei Nadine. Nadine sortiert nach Art (Rechnung, Labor, Kammer, Beschwerde, Anwaltsschreiben), bereitet Antworten als ENTWURF vor und zieht dafuer den Zusammenhang aus Vorgang, Telefonaten und frueheren Briefen zusammen. Du liest den Eingang vor, kannst eine einzelne Nachricht zusammenfassen oder im Volltext vorlesen, und verschickt wird erst nach ausdruecklicher Freigabe. Nenne ein Beispiel, wie man es sagt.">
+    <div class="inner">
+      <div class="kicker"><span class="no">04</span> Keine Papierpost mehr</div>
+      <h2>Post kommt <span class="accent">vorbereitet</span>, nicht als Stapel.</h2>
+      <p class="lead">Scan-Dienstleister digitalisiert die Hauspost, Nadine sortiert und beantwortet vor. Sie hören zu und geben frei — Papier fällt weg.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Kein Papier</h3><p>Hauspost wird gescannt und kommt als E-Mail an.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Heißt konkret</div><div class="say">Keine Postmappe, keine Ablage.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Vorsortiert</h3><p>Rechnung, Labor, Kammer, Beschwerde, Anwalt.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was ist heute reingekommen?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Vorbeantwortet</h3><p>Antwort liegt als Entwurf bereit.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Frag mal Nadine, was im Posteingang liegt.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Mit Zusammenhang</h3><p>Vorgang, Telefonate und alte Briefe stecken im Entwurf.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Schreib der Frau Müller, dass ihr Termin rutscht.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Vorlesen</h3><p>Kurzfassung — oder Wort für Wort.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Lies mir die Mail vom Labor vor.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Erst Ihr Ja</h3><p>Gesendet wird nur nach Ihrer Freigabe.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Ja, schick das so raus.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erklaere die papierlose Post: die Hauspost wird von einem Scan-Dienstleister digitalisiert und landet als E-Mail bei Nadine. Nadine sortiert nach Art (Rechnung, Labor, Kammer, Beschwerde, Anwaltsschreiben), bereitet Antworten als ENTWURF vor und zieht dafuer den Zusammenhang aus Vorgang, Telefonaten und frueheren Briefen zusammen. Du liest den Eingang vor, kannst eine einzelne Nachricht zusammenfassen oder im Volltext vorlesen, und verschickt wird erst nach ausdruecklicher Freigabe. Nenne ein Beispiel, wie man es sagt.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--turq)" data-title="So sprechen Sie mit mir"
+    data-narr="Sprechen Sie in ganzen Sätzen mit mir, nicht in Stichworten. Sagen Sie lieber: Sag den Termin von Herrn Meier am Dienstag ab. Je mehr Zusammenhang in einem Satz steckt — Name, Tag und Absicht zusammen —, desto sicherer treffe ich das Richtige."
+    data-prompt="Erklaere freundlich, dass man dich am besten in ganzen Saetzen steuert und Stichworte vermeidet, weil Name, Tag und Absicht zusammen den Zusammenhang liefern. Gib ein Beispiel fuer einen guten Satz.">
+    <div class="inner">
+      <div class="kicker"><span class="no">05</span> So sprechen Sie mit mir</div>
+      <h2>Ganze Sätze statt <span class="accent">Stichworte</span>.</h2>
+      <p class="lead">Name, Tag und Absicht am besten zusammen in einem Satz — dann treffe ich sicher das Richtige.</p>
       <div class="steer">
         <div class="box no"><div class="lab">✗ lieber nicht</div><div class="line">„Termin. Meier. Absagen."</div><div class="line">„Nummer."</div><div class="line">„SMS."</div></div>
         <div class="box yes"><div class="lab">✓ so verstehe ich Sie sicher</div><div class="line">„Sag den Termin von Herrn Meier am Dienstag ab."</div><div class="line">„Wie ist die Handynummer von Herrn Bauer?"</div><div class="line">„Schick Frau Schneider eine SMS: Ihr Rezept liegt bereit."</div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre dem Praxis-Chef freundlich mit Sie, dass man dich am besten in ganzen Sätzen steuert und Stichworte vermeidet. Gib ein Beispiel für einen guten Satz.</textarea>
+        <textarea>Erklaere freundlich, dass man dich am besten in ganzen Saetzen steuert und Stichworte vermeidet, weil Name, Tag und Absicht zusammen den Zusammenhang liefern. Gib ein Beispiel fuer einen guten Satz.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--purple)" data-title="Ihr Team über mich"
-    data-narr="Über mich erreichen Sie das ganze Team: Nadine schreibt Briefe und E-Mails, Bianca nimmt die Anrufe an, Lisa ruft raus und verschickt SMS, Julia kümmert sich ums Qualitätsmanagement, Lena um die Dokumentation, Sophie um die Abrechnung und Marie um die Arbeitszeiterfassung."
-    data-prompt="Stelle das Team kurz vor (Nadine, Bianca, Lisa, Julia für QM, Lena für Doku, Sophie für Abrechnung, Marie für Arbeitszeit) und betone, dass man alle über dich erreicht.">
+  <section class="chapter" style="--accent: var(--amber)" data-title="Ihr Tag"
+    data-narr="Morgens sage ich Ihnen, was ansteht und was über Nacht hereinkam, abends nur noch das, was für morgen wirklich wichtig ist. Zwischendurch frage ich Sie ab: wie voll der Tag ist, wo Luft ist, wer heute kommt. Und wenn es brennt — Anwalt, Kammer, Mahnung, Frist —, steht das oben. Feiertage und Wochenenden erkenne ich; einen Feiertag behandle ich nie als Arbeitstag."
+    data-prompt="Erklaere den Tagesrhythmus: Morgen-Auftakt mit Kritischem zuerst, Tagesplan und Eingaengen ueber Nacht; Abend-Fokus nur mit dem Dringenden fuer morgen; dazwischen Tagesueberblick (wie voll, wo Luecken) und die Patientenliste. Erwaehne die Dringlichkeitsliste (Anwalt, Kammer, Mahnung, Fristen) und dass du Feiertage und Wochenenden erkennst und nie einen Arbeitstag vorgaukelst. Sprich NICHT ueber das Briefing zum naechsten Patienten - das hatten wir schon.">
     <div class="inner">
-      <div class="kicker"><span class="no">04</span> Ihr Team über mich</div>
-      <h2>Ein Zuruf — das <span class="accent">ganze Team</span>.</h2>
-      <p class="lead">Alle Kolleginnen erreichen Sie über mich. Sagen Sie einfach, wer was tun soll.</p>
-      <div class="team">
-        <div class="mate"><div class="av">N</div><div><h3>Nadine</h3><p>Briefe & E-Mails, Posteingang</p></div></div>
-        <div class="mate"><div class="av">B</div><div><h3>Bianca</h3><p>nimmt die Praxisanrufe an</p></div></div>
-        <div class="mate"><div class="av">L</div><div><h3>Lisa</h3><p>ruft raus & verschickt SMS</p></div></div>
-        <div class="mate"><div class="av">J</div><div><h3>Julia</h3><p>Qualitätsmanagement</p></div></div>
-        <div class="mate"><div class="av">L</div><div><h3>Lena</h3><p>Dokumentation</p></div></div>
-        <div class="mate"><div class="av">S</div><div><h3>Sophie</h3><p>Abrechnung</p></div></div>
-        <div class="mate"><div class="av">M</div><div><h3>Marie</h3><p>Arbeitszeiterfassung</p></div></div>
-      </div>
-      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Stelle das Team kurz vor (Nadine, Bianca, Lisa, Julia für QM, Lena für Doku, Sophie für Abrechnung, Marie für Arbeitszeit) und betone, dass man alle über dich erreicht.</textarea>
-      </details>
-    </div>
-  </section>
-
-  <section class="chapter" style="--accent: var(--turq)" data-title="Patienten & Termine"
-    data-narr="Bei Terminen finde ich erst den richtigen Patienten und buche dann sicher — mit Beleg aufs Handy. Ich kann buchen, absagen, verschieben, nachschlagen und freie Zeiten prüfen. Storniert oder gebucht wird erst, wenn der richtige Patient eindeutig feststeht."
-    data-prompt="Erkläre, dass du bei Terminen immer erst den richtigen Patienten sicher findest und dann buchst, absagst oder verschiebst — mit Beleg aufs Handy.">
-    <div class="inner">
-      <div class="kicker"><span class="no">05</span> Patienten & Termine</div>
-      <h2>Erst den <span class="accent">Richtigen</span>, dann sicher buchen.</h2>
-      <p class="lead">Patient finden, Termin buchen, absagen, verschieben oder nachschlagen — mit Beleg aufs gekoppelte Handy.</p>
+      <div class="kicker"><span class="no">06</span> Ihr Tag</div>
+      <h2>Der Tag, in <span class="accent">Ihrem</span> Takt.</h2>
+      <p class="lead">Morgens der Auftakt, abends der Fokus auf morgen — dazwischen Auskunft auf Zuruf. Was brennt, steht immer oben.</p>
       <div class="cards">
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Patient finden</h3><p>Über den gesprochenen Namen. Bei mehreren frage ich nach.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Trag Frau Weber für Montag früh ein.</div></div>
+          <div class="face"><h3>Morgen-Auftakt</h3><p>Kritisches zuerst, dann der Plan und was nachts kam.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Guten Morgen, Clara — was steht an?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Termin buchen</h3><p>Der Kalender springt live, Beleg kommt aufs Handy.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Buch ihr morgen um zehn eine Kontrolle.</div></div>
+          <div class="face"><h3>Abend-Fokus</h3><p>Nur noch das, was für morgen zählt.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Feierabend, Clara — mach den Tagesabschluss.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Termin absagen</h3><p>Ich finde ihn über Name und Datum selbst.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Sag den Termin von Herrn Meier am Dienstag ab.</div></div>
-        </div></div>
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Termin verschieben</h3><p>Ich schlage freie Slots vor und buche erst nach Ihrem Ja um.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Der Termin von Frau Wagner muss verschoben werden.</div></div>
-        </div></div>
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Freie Zeiten</h3><p>Was ist bei einem Arzt an einem Tag noch frei.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was ist am Mittwoch bei Doktor Sommer frei?</div></div>
-        </div></div>
-      </div>
-      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre, dass du bei Terminen immer erst den richtigen Patienten sicher findest und dann buchst, absagst oder verschiebst — mit Beleg aufs Handy.</textarea>
-      </details>
-    </div>
-  </section>
-
-  <section class="chapter" style="--accent: var(--green)" data-title="Kalender & Briefings"
-    data-narr="Ich gebe Ihnen den Tagesüberblick, lese die Patienten des Tages vor und mache Morgen- und Abend-Briefing. Und kurz bevor der nächste Patient aufgerufen wird, briefe ich Sie in wenigen Sekunden zu ihm — aus Anamnese, bisherigen Behandlungen, eingegangenen Telefonaten, Briefen und E-Mails. Wochenenden und Feiertage erkenne ich und gaukle keinen Arbeitstag vor."
-    data-prompt="Erkläre den Tagesüberblick, die Patientenliste, Morgen-/Abend-Briefing und vor allem das Next-Patient-Briefing: in rund zehn Sekunden vor dem Aufruf alles Wichtige zum Patienten aus Anamnese, bisherigen Behandlungen, Telefonaten, Briefen und E-Mails. Betone, dass du Wochenende und Feiertage erkennst.">
-    <div class="inner">
-      <div class="kicker"><span class="no">06</span> Kalender & Briefings</div>
-      <h2>Ihr Tag in einem <span class="accent">Rutsch</span>.</h2>
-      <p class="lead">Tagesüberblick, Patientenliste, Morgen- und Abend-Briefing — plus das Next-Patient-Briefing Sekunden vor dem Aufruf, mit Wochenend- und Feiertags-Erkennung.</p>
-      <div class="cards">
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Tagesüberblick</h3><p>Wie voll ist der Tag, wo sind Lücken.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Wie voll wird's</h3><p>Anzahl, Zeitraum, wo Luft ist.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Heads-up für morgen — wie voll wird's?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Patienten des Tages</h3><p>Wer kommt heute alles.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Wer kommt heute</h3><p>Namen, Uhrzeit, Behandlungsgrund.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wer kommt heute bei Doktor Berg?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Next-Patient-Briefing</h3><p>Sekunden vor dem Aufruf: alles Wichtige zum Patienten.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Brief mich zum nächsten Patienten.</div></div>
+          <div class="face"><h3>Was brennt</h3><p>Anwalt, Kammer, Mahnung, Fristen, Beschwerden.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Clara, was brennt?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Morgen & Abend</h3><p>Auftakt und Tagesabschluss auf Zuruf.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Feierabend, Clara — mach den Tagesabschluss.</div></div>
+          <div class="face"><h3>Feiertag erkannt</h3><p>NRW-Kalender, jedes Jahr neu gerechnet.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Klingt dann so</div><div class="say">Morgen ist Fronleichnam — die Praxis bleibt zu.</div></div>
         </div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre den Tagesüberblick, die Patientenliste, Morgen-/Abend-Briefing und vor allem das Next-Patient-Briefing: in rund zehn Sekunden vor dem Aufruf alles Wichtige zum Patienten aus Anamnese, bisherigen Behandlungen, Telefonaten, Briefen und E-Mails. Betone, dass du Wochenende und Feiertage erkennst.</textarea>
+        <textarea>Erklaere den Tagesrhythmus: Morgen-Auftakt mit Kritischem zuerst, Tagesplan und Eingaengen ueber Nacht; Abend-Fokus nur mit dem Dringenden fuer morgen; dazwischen Tagesueberblick (wie voll, wo Luecken) und die Patientenliste. Erwaehne die Dringlichkeitsliste (Anwalt, Kammer, Mahnung, Fristen) und dass du Feiertage und Wochenenden erkennst und nie einen Arbeitstag vorgaukelst. Sprich NICHT ueber das Briefing zum naechsten Patienten - das hatten wir schon.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--purple)" data-title="Praxis-Gedächtnis & Vorgänge"
-    data-narr="Ich teile mit dem Team ein gemeinsames Praxis-Gedächtnis. Fragen Sie mich 'Was war mit Herrn Meier?', und ich lese seine ganze Spur vor. Sagen Sie 'Merk dir …', und die Notiz kommt beim nächsten Termin von allein wieder hoch. Vorgänge kann ich öffnen, delegieren, ergänzen und schließen."
-    data-prompt="Erkläre das geteilte Praxis-Gedächtnis: Zeitstrahl auf Zuruf, Notizen die wiederkommen, Vorgänge delegieren und schließen.">
+  <section class="chapter" style="--accent: var(--green)" data-title="Patienten & Termine"
+    data-narr="Bei Terminen suche ich erst den richtigen Patienten und handle dann. Ich buche, sage ab, verschiebe, nenne den nächsten freien Termin und sage Ihnen, wann jemand zuletzt da war oder das nächste Mal kommt. Bei mehreren gleich klingenden Namen frage ich nach, statt zu raten — und abgesagt wird nur, wenn Sie es bestätigen."
+    data-prompt="Erklaere, dass du bei Terminen immer erst den richtigen Patienten sicher findest und dann handelst: buchen, absagen (nur nach Bestaetigung), verschieben mit Ausweich-Slots, naechster freier Termin, letzter und naechster Termin eines Patienten. Erwaehne, dass du bei mehreren aehnlich klingenden Namen nachfragst. Nenne ein Beispiel, wie man es sagt.">
     <div class="inner">
-      <div class="kicker"><span class="no">07</span> Praxis-Gedächtnis & Vorgänge</div>
-      <h2>Einmal gesagt, nie <span class="accent">vergessen</span>.</h2>
-      <p class="lead">Das geteilte Gedächtnis der Praxis: Patienten-Zeitstrahl, Notizen, die wiederkommen, und Vorgänge zum Delegieren.</p>
+      <div class="kicker"><span class="no">07</span> Patienten & Termine</div>
+      <h2>Erst den <span class="accent">Richtigen</span>, dann handeln.</h2>
+      <p class="lead">Patient finden, buchen, absagen, verschieben, freie Zeiten prüfen — mit Beleg aufs gekoppelte Handy.</p>
       <div class="cards">
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Patienten-Zeitstrahl</h3><p>Die komplette Spur, neueste zuerst.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Patient finden</h3><p>Über den gesprochenen Namen, auch bei ähnlichem Klang.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Such mir mal die Frau Ketsetzi.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Buchen</h3><p>Der Kalender füllt sich live mit, Beleg kommt aufs Handy.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Buch ihr morgen um zehn eine Kontrolle.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Absagen</h3><p>Ich finde den Termin über Name und Tag — und frage vorher.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Sag den Termin von Herrn Meier am Dienstag ab.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Verschieben</h3><p>Ich schlage freie Zeiten vor und buche erst nach Ihrem Ja um.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Der Termin von Frau Wagner muss verschoben werden.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Nächster freier</h3><p>Aus echten Slots, optional nach Arzt und Behandlung.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wann ist der nächste freie Termin für eine PZR?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Letzter Besuch</h3><p>Wann jemand da war und wann er wiederkommt.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wann war Herr Bauer zuletzt da?</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erklaere, dass du bei Terminen immer erst den richtigen Patienten sicher findest und dann handelst: buchen, absagen (nur nach Bestaetigung), verschieben mit Ausweich-Slots, naechster freier Termin, letzter und naechster Termin eines Patienten. Erwaehne, dass du bei mehreren aehnlich klingenden Namen nachfragst. Nenne ein Beispiel, wie man es sagt.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--purple)" data-title="Praxisgedächtnis"
+    data-narr="Alles, was in der Praxis passiert, sammle ich pro Patient: Anrufe, SMS, Mails, Briefe, Notizen und offene Vorgänge. Fragen Sie mich, was mit Herrn Meier war, und ich lese seine Spur vor. Sagen Sie: Merk dir, Herr Fischer braucht eine neue Schiene — und die Notiz kommt zu seinem nächsten Termin von allein wieder hoch. Bianca, Lisa und Nadine schreiben in dasselbe Gedächtnis, deshalb weiß ich auch, was am Telefon besprochen wurde, als Sie behandelt haben."
+    data-prompt="Erklaere das geteilte Praxisgedaechtnis: pro Patient laufen Anrufe, SMS, Mails, Briefe, Notizen und offene Vorgaenge zusammen; Bianca, Lisa und Nadine schreiben in dasselbe Gedaechtnis. Nenne den Zeitstrahl auf Zuruf, die Notiz die beim naechsten Termin von allein wiederkommt, Vorgaenge oeffnen, ergaenzen, delegieren und schliessen, sowie dass du bei einer unbekannten Nummer sagen kannst, wer da vermutlich anruft. Nenne ein Beispiel, wie man es sagt.">
+    <div class="inner">
+      <div class="kicker"><span class="no">08</span> Praxisgedächtnis</div>
+      <h2>Einmal gesagt, immer <span class="accent">da</span>.</h2>
+      <p class="lead">Ein Gedächtnis für das ganze Team: Anrufe, Mails, Briefe, Notizen und Vorgänge — pro Patient an einem Ort.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Die ganze Spur</h3><p>Was mit einem Patienten war, neueste Ereignisse zuerst.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was war eigentlich mit Herrn Meier?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Notiz, die wiederkommt</h3><p>Taucht beim nächsten Termin von allein auf.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Notiz, die wiederkommt</h3><p>Steht beim nächsten Termin von allein da.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Merk dir, Herr Fischer braucht eine neue Schiene.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Delegieren</h3><p>Vorgang an Nadine oder Lisa mit Auftrag.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Delegieren</h3><p>Vorgang mit Auftrag an Nadine, Lisa oder das Team.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Pack das auf Nadine, sie soll wegen der Rechnung schreiben.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Der Patient von vorhin</h3><p>Ich knüpfe auch im nächsten Gespräch an.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Der Patient von vorhin</h3><p>Ich knüpfe auch im nächsten Gespräch an.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Der Patient von vorhin — buch ihm morgen um zehn.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Unbekannte Nummer</h3><p>Wer da vermutlich anruft und warum.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wer ruft mich da an?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Team-Notiz</h3><p>Einmal gesagt, alle wissen es.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Sag dem Team, der Kompressor wird Freitag gewartet.</div></div>
         </div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre das geteilte Praxis-Gedächtnis: Zeitstrahl auf Zuruf, Notizen die wiederkommen, Vorgänge delegieren und schließen.</textarea>
+        <textarea>Erklaere das geteilte Praxisgedaechtnis: pro Patient laufen Anrufe, SMS, Mails, Briefe, Notizen und offene Vorgaenge zusammen; Bianca, Lisa und Nadine schreiben in dasselbe Gedaechtnis. Nenne den Zeitstrahl auf Zuruf, die Notiz die beim naechsten Termin von allein wiederkommt, Vorgaenge oeffnen, ergaenzen, delegieren und schliessen, sowie dass du bei einer unbekannten Nummer sagen kannst, wer da vermutlich anruft. Nenne ein Beispiel, wie man es sagt.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--amber)" data-title="Kommunikation"
-    data-narr="Ich verschicke SMS, beauftrage Anrufe über Lisa und lasse Nadine E-Mails entwerfen — gesendet wird eine E-Mail aber erst nach Ihrer Freigabe. Ich lese Kontaktdaten vor, schicke die Kontaktkarte aufs Handy und sage Ihnen, wer angerufen hat."
-    data-prompt="Erkläre SMS, Anruf-Beauftragung und E-Mail-Entwurf (mit Freigabe-Pflicht) sowie Kontaktdaten und Anrufliste.">
+  <section class="chapter" style="--accent: var(--pink)" data-title="Telefon: rein und raus"
+    data-narr="Bianca nimmt die Patientenanrufe an, auch wenn bei Ihnen niemand am Tresen steht, und schreibt jedes Gespräch ins Gedächtnis. Ich sage Ihnen danach, wer angerufen hat und worum es ging. In die andere Richtung schicke ich Lisa los: sie ruft an und richtet aus, was Sie gesagt haben, verschickt SMS im Wortlaut und meldet zurück, was dabei herauskam."
+    data-prompt="Erklaere die zwei Telefon-Richtungen: eingehend nimmt Bianca die Patientenanrufe an und schreibt sie ins Praxisgedaechtnis, du liest danach das Anrufprotokoll und den Tages-Eingang vor (Anrufe, Mails, Briefe). Ausgehend beauftragst du Lisa: anrufen und etwas ausrichten, SMS im Wortlaut verschicken, Ergebnis zurueckmelden. Erwaehne die Kontaktkarte aufs Handy. Sage NICHT, dass du laufende Gespraeche mithoerst - du liest das Protokoll danach. Nenne ein Beispiel, wie man es sagt.">
     <div class="inner">
-      <div class="kicker"><span class="no">08</span> Kommunikation</div>
-      <h2>Anrufen, schreiben, <span class="accent">nachschlagen</span>.</h2>
-      <p class="lead">SMS und Anrufe über Lisa, E-Mail-Entwürfe über Nadine — gesendet wird erst nach Ihrer Freigabe. Plus Kontaktdaten und Anrufliste.</p>
+      <div class="kicker"><span class="no">09</span> Telefon: rein und raus</div>
+      <h2>Ein Anruf geht nie <span class="accent">verloren</span>.</h2>
+      <p class="lead">Bianca nimmt an und schreibt mit, Lisa ruft raus und meldet zurück — Sie hören von mir nur das Ergebnis.</p>
       <div class="cards">
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>SMS verschicken</h3><p>Lisa schickt sie — Inhalt wörtlich übernommen.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Schick Frau Meier eine SMS: die Unterlagen sind fertig.</div></div>
+          <div class="face"><h3>Wer hat angerufen</h3><p>Aus dem frischen Protokoll des Tages.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Hat heute jemand angerufen?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Anruf beauftragen</h3><p>Lisa ruft an und richtet es aus.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Alles, was reinkam</h3><p>Anrufe, Mails, Briefe, Empfang — in einem Rutsch.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was ist heute alles reingekommen?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Anruf beauftragen</h3><p>Lisa ruft an und richtet es aus.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Lass Herrn Hoffmann anrufen, die Montage ist Montag.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>E-Mail (Freigabe)</h3><p>Nadine entwirft, gesendet erst nach Ihrem Ja.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Schreib der Frau Müller, dass ihr Termin rutscht.</div></div>
+          <div class="face"><h3>Rückmeldung</h3><p>Was beim Anruf herauskam.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was hat Lisa bei Herrn Hoffmann erreicht?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Kontaktdaten</h3><p>Nummer vorlesen + Karte aufs Handy.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>SMS im Wortlaut</h3><p>Genau der Text, den Sie sagen.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Schick Frau Schneider eine SMS: Ihr Rezept liegt bereit.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Kontaktkarte</h3><p>Nummer vorlesen und antippbar aufs Handy.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wie ist die Handynummer von Herrn Bauer?</div></div>
-        </div></div>
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Wer hat angerufen</h3><p>Immer aus dem frischen Protokoll.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Hat heute jemand angerufen?</div></div>
         </div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre SMS, Anruf-Beauftragung und E-Mail-Entwurf (mit Freigabe-Pflicht) sowie Kontaktdaten und Anrufliste.</textarea>
+        <textarea>Erklaere die zwei Telefon-Richtungen: eingehend nimmt Bianca die Patientenanrufe an und schreibt sie ins Praxisgedaechtnis, du liest danach das Anrufprotokoll und den Tages-Eingang vor (Anrufe, Mails, Briefe). Ausgehend beauftragst du Lisa: anrufen und etwas ausrichten, SMS im Wortlaut verschicken, Ergebnis zurueckmelden. Erwaehne die Kontaktkarte aufs Handy. Sage NICHT, dass du laufende Gespraeche mithoerst - du liest das Protokoll danach. Nenne ein Beispiel, wie man es sagt.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--pink)" data-title="Aufgaben, Recall & Abwesenheit"
-    data-narr="Ich notiere Aufgaben, starte den Recall für Terminlücken und plane Ihre Abwesenheit. Bei einer Abwesenheit zeige ich erst, welche Termine betroffen sind — abgesagt wird erst nach Ihrer Freigabe, und jeder Patient bekommt genau eine Absage mit Buchungslink."
-    data-prompt="Erkläre Aufgaben, Recall (mit Freigabe) und Abwesenheitsplanung. Betone, dass Massen-Absagen erst nach Freigabe rausgehen — je Patient eine Absage mit Buchungslink.">
+  <section class="chapter" style="--accent: var(--red)" data-title="Fristen & Eskalation"
+    data-narr="Anwaltsschreiben, Kammer, Mahnung, Pfändung: solche Sachen dürfen nicht in einem Stapel liegen bleiben. Ich ziehe Fristen und offene Rechnungen aus Mails, gescannter Post und Telefonaten zusammen und sage Ihnen, was überfällig ist, was heute fällig wird und was bald ansteht. Beträge stehen dabei auf der Karte am Handy, ich spreche sie nicht aus."
+    data-prompt="Erklaere den Fristen- und Eskalations-Blick: aus Mails, gescannter Post und Telefonaten ziehst du Fristen und offene Rechnungen zusammen - ueberfaellig, heute faellig, bald faellig - und meldest Kritisches wie Anwalt, Kammer, Mahnung oder Pfaendung zuerst. Erwaehne, dass Betraege nur auf der Karte am Handy stehen und nicht gesprochen werden, und dass eine Wiedervorlage abgehakt werden kann. Nenne ein Beispiel, wie man es sagt.">
     <div class="inner">
-      <div class="kicker"><span class="no">09</span> Aufgaben, Recall & Abwesenheit</div>
-      <h2>Lücken schließen, Abwesenheit <span class="accent">planen</span>.</h2>
-      <p class="lead">Aufgaben notieren, Recall starten und freigeben, Abwesenheiten planen — abgesagt wird erst nach Ihrer Freigabe, mit Beleg.</p>
+      <div class="kicker"><span class="no">10</span> Fristen & Eskalation</div>
+      <h2>Keine Frist mehr im <span class="accent">Stapel</span>.</h2>
+      <p class="lead">Fristen und offene Rechnungen aus Mail, Post und Telefon — überfällig, heute, bald. Beträge nur auf der Karte, nicht gesprochen.</p>
       <div class="cards">
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Aufgabe notieren</h3><p>Rückruf, Erinnerung, To-do.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Erinnere mich, das Röntgenbild nachzufordern.</div></div>
+          <div class="face"><h3>Was ist überfällig</h3><p>Fristen, die schon abgelaufen sind.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was ist bei den Fristen überfällig?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Recall starten</h3><p>Lücken + Kandidaten, nie ungefragt gebucht.</p><span class="hint">Beispiel ansehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Starte den Recall.</div></div>
+          <div class="face"><h3>Heute fällig</h3><p>Was heute raus muss.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was wird heute fällig?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Abwesenheit planen</h3><p>Erst der Plan — noch wird nichts abgesagt.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Eskalation zuerst</h3><p>Anwalt, Kammer, Mahnung, Pfändung.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Klingt dann so</div><div class="say">Ein Anwaltsschreiben, seit Freitag offen.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Abhaken</h3><p>Erledigt ist erledigt.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Die Rechnung vom Labor ist bezahlt, hak das ab.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Beträge diskret</h3><p>Zahlen stehen auf der Karte am Handy.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Warum</div><div class="say">Im Behandlungszimmer hört jemand mit.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erklaere den Fristen- und Eskalations-Blick: aus Mails, gescannter Post und Telefonaten ziehst du Fristen und offene Rechnungen zusammen - ueberfaellig, heute faellig, bald faellig - und meldest Kritisches wie Anwalt, Kammer, Mahnung oder Pfaendung zuerst. Erwaehne, dass Betraege nur auf der Karte am Handy stehen und nicht gesprochen werden, und dass eine Wiedervorlage abgehakt werden kann. Nenne ein Beispiel, wie man es sagt.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--turq)" data-title="Dokumentation & Abrechnung"
+    data-narr="Sie sprechen, Lena schreibt: Behandlungen diktieren Sie einfach, den Befund nehmen wir am iPad im Zahnschema auf, und einen Nachtrag zu einem vergangenen Termin können Sie jederzeit hinterherschieben. Sophie schlägt Ihnen dazu die passenden Ziffern vor. Wenn irgendwo Doku fehlt, sage ich es Ihnen — und wenn eine Rückfrage nervt, stellen wir die Regel dauerhaft ab."
+    data-prompt="Erklaere die Sprachdokumentation mit Lena und die Abrechnung mit Sophie: Behandlung diktieren, Befund am iPad im Zahnschema aufnehmen, Nachtrag zu einem vergangenen Termin, Diktat streichen statt loeschen, Doku vorlesen und in der Doku suchen, praxisweite Doku-Luecken der letzten Tage, Doku-Regeln dauerhaft anpassen. Sophie liefert Abrechnungs-VORSCHLAEGE und offene Abrechnungsfragen - sie rechnet nichts von allein ab. Nenne ein Beispiel, wie man es sagt.">
+    <div class="inner">
+      <div class="kicker"><span class="no">11</span> Dokumentation & Abrechnung</div>
+      <h2>Sprache rein, <span class="accent">Doku</span> raus.</h2>
+      <p class="lead">Behandlung diktieren, Befund am iPad, Nachtrag hinterher — Sophie schlägt die Ziffern vor.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Behandlung diktieren</h3><p>Frei sprechen, Lena strukturiert.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Nimm für Frau Meier ein Diktat auf.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Befund am iPad</h3><p>Zahnschema öffnet sich für den Patienten.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Starte den Befund für Herrn Meier.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Nachtrag</h3><p>Auch für einen vergangenen Termin.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Ich muss noch was zu gestern nachtragen.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Streichen statt löschen</h3><p>Falsches bleibt sichtbar durchgestrichen.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Streich den letzten Satz im Diktat.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Was fehlt noch</h3><p>Doku-Lücken der letzten Tage, praxisweit.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wo fehlt noch Dokumentation?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Ziffern-Vorschlag</h3><p>Sophie schlägt vor, Sie entscheiden.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Rechne den Termin von Frau Meier ab.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erklaere die Sprachdokumentation mit Lena und die Abrechnung mit Sophie: Behandlung diktieren, Befund am iPad im Zahnschema aufnehmen, Nachtrag zu einem vergangenen Termin, Diktat streichen statt loeschen, Doku vorlesen und in der Doku suchen, praxisweite Doku-Luecken der letzten Tage, Doku-Regeln dauerhaft anpassen. Sophie liefert Abrechnungs-VORSCHLAEGE und offene Abrechnungsfragen - sie rechnet nichts von allein ab. Nenne ein Beispiel, wie man es sagt.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--amber)" data-title="Qualitätsmanagement"
+    data-narr="Julia hält das Qualitätsmanagement zusammen: Prüfungen, Hygiene- und Steri-Pläne, Gerätebücher. Fragen Sie mich, was fällig ist — ich sage Ihnen, was überfällig ist, was diese Woche dran ist und wer es zuletzt gemacht hat. Die Aufgaben selbst landen als Push bei der zuständigen Mitarbeiterin, die sie am Handy abhakt."
+    data-prompt="Erklaere das Qualitaetsmanagement mit Julia: du gibst Auskunft aus dem QM-Kalender - was ueberfaellig ist, was diese Woche und diesen Monat faellig wird, wann die naechste Pruefung dran ist und wer zuletzt erledigt hat. Die Aufgaben gehen als Push an die zustaendige Mitarbeiterin, die sie am Handy abhakt; eingerichtet wird QM in der Oberflaeche, nicht per Sprache. Nenne ein Beispiel, wie man es sagt.">
+    <div class="inner">
+      <div class="kicker"><span class="no">12</span> Qualitätsmanagement</div>
+      <h2>QM, das sich selbst <span class="accent">meldet</span>.</h2>
+      <p class="lead">Julia kennt Prüfungen, Hygiene- und Steri-Pläne. Ich sage Ihnen, was fällig ist — abgehakt wird am Handy.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Was ist fällig</h3><p>Überfällig, diese Woche, diesen Monat.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Was ist im QM überfällig?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Nächste Prüfung</h3><p>Zum Beispiel die OPG-Konstanzprüfung.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wann ist die nächste Konstanzprüfung?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Wer war's zuletzt</h3><p>Wer die Aufgabe das letzte Mal gemacht hat.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wer hat den Steri zuletzt geprüft?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Push ans Handy</h3><p>Die Zuständige bekommt die Aufgabe aufs Telefon.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Heißt konkret</div><div class="say">Anzeigen, starten, erledigen — fertig.</div></div>
+        </div></div>
+      </div>
+      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
+        <textarea>Erklaere das Qualitaetsmanagement mit Julia: du gibst Auskunft aus dem QM-Kalender - was ueberfaellig ist, was diese Woche und diesen Monat faellig wird, wann die naechste Pruefung dran ist und wer zuletzt erledigt hat. Die Aufgaben gehen als Push an die zustaendige Mitarbeiterin, die sie am Handy abhakt; eingerichtet wird QM in der Oberflaeche, nicht per Sprache. Nenne ein Beispiel, wie man es sagt.</textarea>
+      </details>
+    </div>
+  </section>
+
+  <section class="chapter" style="--accent: var(--green)" data-title="Urlaub, Abwesenheit & Personal"
+    data-narr="Wenn Sie nicht da sind, zeige ich Ihnen zuerst, welche Termine betroffen wären — abgesagt wird nichts, bevor Sie freigeben. Danach sperre ich den Tag, storniere die Termine und jeder Patient bekommt genau eine Absage mit Buchungslink. Zum Team kann ich Ihnen sagen, wer da ist, wer krank oder im Urlaub ist und wie viel Resturlaub jemand hat. Betriebsferien trage ich ein und informiere alle per Push — nach Ihrer Bestätigung."
+    data-prompt="Erklaere zwei Dinge: Erstens die Abwesenheit des Behandlers - erst der Plan mit den betroffenen Terminen, dann nach Freigabe Tag sperren, Termine stornieren, je Patient eine Absage mit Buchungslink, danach Stand abfragbar (wer hat neu gebucht). Zweitens das Personal ueber Marie - du gibst Auskunft: wer ist da, wer ist krank oder im Urlaub, Resturlaub, Besetzung, Schichtzeiten; Betriebsferien tragst du nach Bestaetigung ein und informierst alle per Push. Sage klar, dass Stempeln und einzelne Urlaubsantraege in Maries Oberflaeche laufen. Nenne ein Beispiel, wie man es sagt.">
+    <div class="inner">
+      <div class="kicker"><span class="no">13</span> Urlaub, Abwesenheit & Personal</div>
+      <h2>Weg sein, ohne <span class="accent">Chaos</span>.</h2>
+      <p class="lead">Erst der Plan, dann Ihre Freigabe: Tag sperren, Termine absagen, jeder Patient bekommt einen Buchungslink. Plus Auskunft zum Team.</p>
+      <div class="cards">
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Abwesenheit planen</h3><p>Erst zeigen, was betroffen ist — noch passiert nichts.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Nächsten Freitag bin ich nicht da.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Stand der Absagen</h3><p>Wer hat schon neu gebucht.</p><span class="hint">Beispiel ansehen</span></div>
+          <div class="face"><h3>Freigeben</h3><p>Tag gesperrt, Termine abgesagt, Buchungslink raus.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Ja, sag die Termine ab.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Stand danach</h3><p>Wer hat neu gebucht, wer ist noch offen.</p><span class="hint">tippen zum Umdrehen</span></div>
           <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Haben die Patienten vom Freitag neu gebucht?</div></div>
         </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Wer ist da</h3><p>Anwesend, krank, im Urlaub.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wer ist morgen im Haus?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Resturlaub</h3><p>Wie viele Tage noch offen sind.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Wie viel Resturlaub hat Nadine noch?</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Betriebsferien</h3><p>Eintragen und alle per Push informieren.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Trag Betriebsferien ein, vom 24. Dezember bis zum 6. Januar.</div></div>
+        </div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre Aufgaben, Recall (mit Freigabe) und Abwesenheitsplanung. Betone, dass Massen-Absagen erst nach Freigabe rausgehen — je Patient eine Absage mit Buchungslink.</textarea>
+        <textarea>Erklaere zwei Dinge: Erstens die Abwesenheit des Behandlers - erst der Plan mit den betroffenen Terminen, dann nach Freigabe Tag sperren, Termine stornieren, je Patient eine Absage mit Buchungslink, danach Stand abfragbar (wer hat neu gebucht). Zweitens das Personal ueber Marie - du gibst Auskunft: wer ist da, wer ist krank oder im Urlaub, Resturlaub, Besetzung, Schichtzeiten; Betriebsferien tragst du nach Bestaetigung ein und informierst alle per Push. Sage klar, dass Stempeln und einzelne Urlaubsantraege in Maries Oberflaeche laufen. Nenne ein Beispiel, wie man es sagt.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--turq)" data-title="Sprach-Intelligenz"
-    data-narr="Bevor ich spreche, mache ich jeden Satz natürlich: aus einem Datum wird 'heute' oder 'nächste Woche Montag', aus neun Uhr zehn keine Ziffern, aus Prozent ein Wort. Telefonnummern bleiben unangetastet. Diese Schicht ist fest im Release-Gate abgesichert."
-    data-prompt="Erkläre, dass du jeden Satz vor dem Sprechen natürlich machst (Datum, Uhrzeit, Mengen, Abkürzungen) und Telefonnummern unangetastet lässt.">
+  <section class="chapter" style="--accent: var(--purple)" data-title="Aufgaben & Vorgänge"
+    data-narr="Was Ihnen zwischen zwei Patienten einfällt, muss nicht auf einen Zettel: Sagen Sie es mir, und es wird eine Aufgabe oder ein Vorgang. Ich notiere, wer sich darum kümmert, halte den Fortschritt fest und schließe den Vorgang, wenn er durch ist. Was offen ist, sage ich Ihnen im Morgen-Auftakt."
+    data-prompt="Erklaere Aufgaben und Vorgaenge: Aufgabe oder Erinnerung notieren, Vorgang zu einem Patienten finden, an Nadine, Lisa oder das Team delegieren, Fortschritt festhalten, Vorgang schliessen - und dass offene Vorgaenge im Morgen-Auftakt auftauchen. Nenne ein Beispiel, wie man es sagt.">
     <div class="inner">
-      <div class="kicker"><span class="no">10</span> Sprach-Intelligenz</div>
-      <h2>Ich klinge wie ein <span class="accent">Mensch</span>.</h2>
-      <p class="lead">Jeder Satz wird vor dem Sprechen natürlich gemacht — Datum, Uhrzeit, Mengen und Abkürzungen. Telefonnummern bleiben, wie sie sind.</p>
+      <div class="kicker"><span class="no">14</span> Aufgaben & Vorgänge</div>
+      <h2>Der Zettel, der nie <span class="accent">verschwindet</span>.</h2>
+      <p class="lead">Aufgabe sagen, Zuständige benennen, Fortschritt festhalten, Vorgang schließen — offene Punkte kommen morgens von allein.</p>
       <div class="cards">
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Relatives Datum</h3><p>14.06. → heute · +1 Woche → nächste Woche Montag</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Gesprochen</div><div class="say">Das ist nächste Woche Montag.</div></div>
+          <div class="face"><h3>Aufgabe notieren</h3><p>Rückruf, Erinnerung, To-do.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Erinnere mich, das Röntgenbild nachzufordern.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Uhrzeit & Menge</h3><p>09:10 → neun Uhr zehn · 12 → zwölf</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Gesprochen</div><div class="say">Sie haben zwölf Termine.</div></div>
+          <div class="face"><h3>Vorgang finden</h3><p>Was zu einem Patienten offen ist.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Gibt es einen offenen Vorgang zu Frau Weber?</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Nummer bleibt</h3><p>0211 41 66 02 84 — unangetastet.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Warum</div><div class="say">Nummern muss man Ziffer für Ziffer hören.</div></div>
+          <div class="face"><h3>Zuständige benennen</h3><p>Nadine, Lisa oder eine Mitarbeiterin.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Gib den Vorgang an Lisa, sie soll anrufen.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Schließen</h3><p>Durch ist durch.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Der Vorgang mit dem Labor ist erledigt.</div></div>
         </div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre, dass du jeden Satz vor dem Sprechen natürlich machst (Datum, Uhrzeit, Mengen, Abkürzungen) und Telefonnummern unangetastet lässt.</textarea>
+        <textarea>Erklaere Aufgaben und Vorgaenge: Aufgabe oder Erinnerung notieren, Vorgang zu einem Patienten finden, an Nadine, Lisa oder das Team delegieren, Fortschritt festhalten, Vorgang schliessen - und dass offene Vorgaenge im Morgen-Auftakt auftauchen. Nenne ein Beispiel, wie man es sagt.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--amber)" data-title="Feiertage & Wochenende"
-    data-narr="Einen Feiertag oder ein Wochenende behandle ich nie wie einen normalen Arbeitstag. Ich rechne die beweglichen Feiertage jedes Jahr neu und sage Ihnen zum Beispiel, wenn morgen Samstag ist."
-    data-prompt="Erkläre, dass du Feiertage (NRW, jahresgenau) und Wochenenden erkennst und nie einen Arbeitstag vorgaukelst.">
+  <section class="chapter" style="--accent: var(--pink)" data-title="Ihr Team über mich"
+    data-narr="Über mich erreichen Sie das ganze Team: Nadine für Post, Briefe und E-Mails, Bianca am Patiententelefon, Lisa für Anrufe nach draußen und SMS, Julia für das Qualitätsmanagement, Lena für die Dokumentation, Sophie für die Abrechnung und Marie für Arbeitszeit und Urlaub. Sie sagen einfach, wer was tun soll."
+    data-prompt="Stelle das Team knapp vor - Nadine (Post, Briefe, E-Mails), Bianca (Patiententelefon), Lisa (Anrufe nach draussen, SMS), Julia (Qualitaetsmanagement), Lena (Dokumentation), Sophie (Abrechnung), Marie (Arbeitszeit, Urlaub) - und betone, dass man alle ueber dich erreicht, indem man einfach sagt, wer was tun soll.">
     <div class="inner">
-      <div class="kicker"><span class="no">11</span> Feiertage & Wochenende</div>
-      <h2>Kein <span class="accent">Feiertag</span> als Arbeitstag.</h2>
-      <p class="lead">NRW-Kalender, jahresgenau berechnet. Bewegliche Feiertage werden pro Jahr neu bestimmt, Samstag und Sonntag klar benannt.</p>
-      <div class="cards">
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>11 Feiertage</h3><p>Von Neujahr bis zweiter Weihnachtstag.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Gesprochen</div><div class="say">Morgen ist Fronleichnam — die Praxis bleibt zu.</div></div>
-        </div></div>
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Wochenende erkannt</h3><p>Samstag und Sonntag werden genannt.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Gesprochen</div><div class="say">Morgen ist Samstag.</div></div>
-        </div></div>
+      <div class="kicker"><span class="no">15</span> Ihr Team über mich</div>
+      <h2>Ein Zuruf — das ganze <span class="accent">Team</span>.</h2>
+      <p class="lead">Sieben Spezialistinnen, eine Stimme. Sagen Sie einfach, wer was tun soll.</p>
+      <div class="team">
+        <div class="mate"><div class="av">N</div><div><h3>Nadine</h3><p>Post, Briefe & E-Mails</p></div></div>
+        <div class="mate"><div class="av">B</div><div><h3>Bianca</h3><p>nimmt die Patientenanrufe an</p></div></div>
+        <div class="mate"><div class="av">L</div><div><h3>Lisa</h3><p>ruft raus & verschickt SMS</p></div></div>
+        <div class="mate"><div class="av">J</div><div><h3>Julia</h3><p>Qualitätsmanagement</p></div></div>
+        <div class="mate"><div class="av">L</div><div><h3>Lena</h3><p>Dokumentation & Befund</p></div></div>
+        <div class="mate"><div class="av">S</div><div><h3>Sophie</h3><p>Abrechnungsvorschläge</p></div></div>
+        <div class="mate"><div class="av">M</div><div><h3>Marie</h3><p>Arbeitszeit & Urlaub</p></div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre, dass du Feiertage (NRW, jahresgenau) und Wochenenden erkennst und nie einen Arbeitstag vorgaukelst.</textarea>
+        <textarea>Stelle das Team knapp vor - Nadine (Post, Briefe, E-Mails), Bianca (Patiententelefon), Lisa (Anrufe nach draussen, SMS), Julia (Qualitaetsmanagement), Lena (Dokumentation), Sophie (Abrechnung), Marie (Arbeitszeit, Urlaub) - und betone, dass man alle ueber dich erreicht, indem man einfach sagt, wer was tun soll.</textarea>
       </details>
     </div>
   </section>
 
-  <section class="chapter" style="--accent: var(--purple)" data-title="Persönlichkeit & Sprachen"
-    data-narr="Ich arbeite Ihnen als zuverlässige Assistentin zu — mit dezent trockenem Humor an den richtigen Stellen, aber ohne mir etwas auszudenken. Ich verstehe Deutsch und Griechisch, ordne griechische Namen richtig zu und stelle immer nur eine Frage nach der anderen."
-    data-prompt="Beschreibe deine Persönlichkeit: zuverlässige, loyale Assistentin des Praxis-Chefs (sprich ihn mit Sie an), dezent trockener Humor aus festen Pools (nie erfunden), Deutsch und Griechisch, immer nur eine Frage auf einmal.">
+  <section class="chapter" style="--accent: var(--turq)" data-title="Wie ich spreche"
+    data-narr="Ich rede, wie man in der Praxis redet: aus einem Datum wird morgen oder nächste Woche Montag, aus einer Uhrzeit neun Uhr zehn, aus einer Abkürzung ein ganzes Wort. Telefonnummern lasse ich Ziffer für Ziffer, damit Sie sie mitschreiben können. Ich stelle immer nur eine Frage auf einmal, und ich verstehe Deutsch und Griechisch."
+    data-prompt="Erklaere, wie du sprichst: relatives Datum statt Zahlenkolonne (morgen, naechste Woche Montag), Uhrzeiten und Mengen als Woerter, Abkuerzungen ausgeschrieben, Telefonnummern bleiben Ziffer fuer Ziffer zum Mitschreiben. Erwaehne, dass du immer nur eine Frage auf einmal stellst und Deutsch und Griechisch verstehst, auch griechische Namen. Sprich NICHT ueber Zuverlaessigkeit, Wahrheit oder Halluzinationen.">
     <div class="inner">
-      <div class="kicker"><span class="no">12</span> Persönlichkeit & Sprachen</div>
-      <h2>Zuverlässig — mit <span class="accent">Haltung</span>.</h2>
-      <p class="lead">Humor aus festen Pools statt erfunden. Deutsch und Griechisch. Eine Frage nach der anderen, nie Stichpunkte.</p>
+      <div class="kicker"><span class="no">16</span> Wie ich spreche</div>
+      <h2>Ich klinge wie eine <span class="accent">Kollegin</span>.</h2>
+      <p class="lead">Relatives Datum, Uhrzeiten als Wörter, Abkürzungen ausgeschrieben — Telefonnummern Ziffer für Ziffer.</p>
       <div class="cards">
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Humor mit Haltung</h3><p>Trockene Sprüche an den richtigen Stellen.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Klingt dann so</div><div class="say">Schon wieder rot. Passt hier keiner auf?</div></div>
+          <div class="face"><h3>Relatives Datum</h3><p>Aus dem 18. August wird morgen.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Klingt dann so</div><div class="say">Das ist morgen, Dienstag.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Deutsch & Griechisch</h3><p>Papadopoulos, Georgiou, Nikolaidis — richtig zugeordnet.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Kalimera, ti rantevou exoume símera?</div></div>
+          <div class="face"><h3>Uhrzeit & Menge</h3><p>09:10 wird neun Uhr zehn.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Klingt dann so</div><div class="say">Sie haben zwölf Termine.</div></div>
         </div></div>
         <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Eine Frage nach der anderen</h3><p>Natürlicher Fluss statt Protokoll.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Spürbar in</div><div class="say">jedem Gespräch.</div></div>
+          <div class="face"><h3>Nummer bleibt</h3><p>Ziffer für Ziffer, zum Mitschreiben.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">Warum</div><div class="say">Nummern muss man hören können.</div></div>
+        </div></div>
+        <div class="flip"><div class="flip-in">
+          <div class="face"><h3>Deutsch & Griechisch</h3><p>Auch griechische Namen sitzen.</p><span class="hint">tippen zum Umdrehen</span></div>
+          <div class="face back"><div class="say-l">So sagen Sie es</div><div class="say">Kalimera, ti rantevou exoume simera?</div></div>
         </div></div>
       </div>
       <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Beschreibe deine Persönlichkeit: zuverlässige, loyale Assistentin des Praxis-Chefs (sprich ihn mit Sie an), dezent trockener Humor aus festen Pools (nie erfunden), Deutsch und Griechisch, immer nur eine Frage auf einmal.</textarea>
-      </details>
-    </div>
-  </section>
-
-  <section class="chapter" style="--accent: var(--red)" data-title="Halluzinations-Schutz"
-    data-narr="Und das Wichtigste: Ich behaupte nie etwas, das nicht passiert ist. 'Erledigt', 'gebucht' oder 'verschickt' sage ich erst, wenn das Werkzeug es in genau diesem Moment bestätigt hat. Im Zweifel frage ich lieber nach, statt zu raten."
-    data-prompt="Erkläre den Halluzinations-Schutz: keine Aktion ohne Bestätigung, nur frische Tool-Daten, ehrliche Belege, im Zweifel nachfragen.">
-    <div class="inner">
-      <div class="kicker"><span class="no">13</span> Halluzinations-Schutz</div>
-      <h2>Ich sage nie, was nicht <span class="accent">passiert</span> ist.</h2>
-      <p class="lead">Keine Aktion ohne Bestätigung, nur frische Daten, ehrliche Belege — und im Zweifel eine Rückfrage statt Raten.</p>
-      <div class="cards">
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Keine Aktion ohne Bestätigung</h3><p>„gebucht" erst, wenn es wirklich gebucht ist.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Heißt</div><div class="say">Erst das Werkzeug, dann die Ansage.</div></div>
-        </div></div>
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Nur frische Daten</h3><p>Nie aus dem Gedächtnis geraten.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Heißt</div><div class="say">Ich schaue immer frisch nach.</div></div>
-        </div></div>
-        <div class="flip"><div class="flip-in">
-          <div class="face"><h3>Erst fragen statt raten</h3><p>Bei Unklarheit genau eine Rückfrage.</p><span class="hint">Umdrehen</span></div>
-          <div class="face back"><div class="say-l">Heißt</div><div class="say">Lieber einmal nachfragen.</div></div>
-        </div></div>
-      </div>
-      <details class="prompt"><summary>Claras Prompt für dieses Kapitel anpassen</summary>
-        <textarea>Erkläre den Halluzinations-Schutz: keine Aktion ohne Bestätigung, nur frische Tool-Daten, ehrliche Belege, im Zweifel nachfragen.</textarea>
+        <textarea>Erklaere, wie du sprichst: relatives Datum statt Zahlenkolonne (morgen, naechste Woche Montag), Uhrzeiten und Mengen als Woerter, Abkuerzungen ausgeschrieben, Telefonnummern bleiben Ziffer fuer Ziffer zum Mitschreiben. Erwaehne, dass du immer nur eine Frage auf einmal stellst und Deutsch und Griechisch verstehst, auch griechische Namen. Sprich NICHT ueber Zuverlaessigkeit, Wahrheit oder Halluzinationen.</textarea>
       </details>
     </div>
   </section>
