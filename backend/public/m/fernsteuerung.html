@@ -239,6 +239,9 @@
           text = text.slice(marke[0].length);
         }
       }
+      // Vom PC-Chat gespiegelt — die Marke ist nur fuer den Waechter
+      // (kein zweiter Lauf), der Chef soll sie nicht lesen.
+      if (/^\s*\[PC\]\s*/i.test(text)) text = text.replace(/^\s*\[PC\]\s*/i, "");
       const name = NAMEN[wer] || "";
       div.className = "msg " + (m.role === "agent" ? "agent" : "user")
         + (statusCls ? " " + statusCls : "") + (name ? " von-" + wer : "");

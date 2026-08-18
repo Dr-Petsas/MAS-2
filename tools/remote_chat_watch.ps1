@@ -586,6 +586,13 @@ while ($true) {
         $text = [string]$m.text
         if (-not $id -or -not $text) { continue }
         Log "Neue Nachricht $id : $($text.Substring(0, [Math]::Min(80, $text.Length)))"
+        # Spiegel vom PC-Chat (Chef 18.08.2026): diese Zeile steht schon in
+        # Cursor. Ein zweiter Agent-Lauf waere dasselbe Chaos wie das Dreierteam.
+        if ($text -match '^\s*\[PC\]') {
+          try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
+          Log "Spiegel vom PC - kein zweiter Lauf ($id)"
+          continue
+        }
         try { Api-Post "/remote/ack" @{ ids = @($id); status = "in_arbeit" } | Out-Null } catch {}
         try { Api-Post "/remote/board" @{ text = ("In Arbeit seit " + (Get-Date).ToString("HH:mm") + ":`n" + $text.Substring(0, [Math]::Min(200, $text.Length))) } | Out-Null } catch {}
 
