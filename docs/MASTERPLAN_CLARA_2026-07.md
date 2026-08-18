@@ -435,8 +435,35 @@ Arbeitspakete (jedes FERTIG bevor das naechste beginnt):
         (`/m/lena-01/`): schichtbasiertes SVG-Odontogramm (Base Zahn+Wurzeln,
         Overlays Karies/Fuellung/Krone/WF/Belag/Implantat, Arch-Gingiva +
         Brueckenband). Orientiert an `F:\struktur01` Lena01/OdontogramSvg,
-        aber modular statt Monolith. OFFEN: Editor-Interaktion, Persistenz,
-        Bedarf→Termine/Docs (spaeter, bewusst nach Visual-Freigabe).
+        aber modular statt Monolith.
+      - [~] **8e-Definition + Paket 1 (Chef 15.08.2026).** Die 01 ist die
+        Erstuntersuchung, getrennt von fastAe1 (Alltag: Doku→Nachdiktat→
+        Holen→Karteikarte). EIN Einstieg ("01-Modus") am iPad
+        (`ipad-app.html` `syncLena01Links`) UND am Desktop (`m/lena-01.html`)
+        fuehrt auf die eigene Auswahlseite `m/lena-01/start.html` mit ZWEI
+        Kacheln (Arzt-gefuehrt = "nur das Wichtigste, Sie entscheiden";
+        KI-gefuehrt = "kompletter Maximalbefund, alle Fachgruppen Kons bis
+        KB"). Die Wahl kommt als `?mode=` zurueck ins Odontogramm; `perio.html`
+        ohne mode leitet selbst auf `start.html` (kein Einstieg ohne Wahl).
+        Zwei Fuehrungen auf DEMSELBEN Odontogramm: **KI-gefuehrt** (Lena geht alle Fachbereiche der
+        Reihe nach durch, oeffnet je Schritt den passenden Befund-Tab) und
+        **Arzt-gefuehrt** (frei diktieren, Lena zeigt nur die noch offenen
+        Faecher/Luecken). Fuehrungs-Logik: `m/lena-01/lena-01-flow.js`
+        (nutzt die Bruecke `window.Lena01.setTab/snapshot/fachCounts/
+        toPvsText` aus `perio.js` — kein Eingriff in perio-voice/Clara).
+        Ende-Frage **Bedarf berechnen?** (zwei Knoepfe): *Ja* merkt die
+        Absicht (Kaskade folgt, siehe Warteliste), *Nein* legt den
+        01-Befundtext direkt in die Uebertragungsliste (Holen, wie fastAe1).
+        Persistenz additiv am Termin: `treatment/main.zahnstatus01`
+        (`{mode,decision,text,teethJson}`) ueber den PUBLIC-Endpunkt
+        `POST /treatment/lena-01-state` (auth.js public; deviceKey/Bearer wie
+        `/treatment/structure`). PVS-Weg wiederverwendet `enqueueFromFinalize`
+        (`pvs/writePath.js`) — kein neuer Outbox-Pfad.
+      - [ ] **8e Paket 2 (Warteliste).** Bedarfs-Kaskade nach *Ja*: A Bedarf
+        aus dem 01-Befund → B hierarchisieren → C gemeinsames Worksheet →
+        D Termine + Plaene (HKP/KVA/PAR). Bewusst NICHT in Paket 1. Auch
+        offen: gesprochene KI-Fuehrung (heute visuelle Fuehrung + Voice-Poll),
+        Reihenfolge-Feinschliff der Fachbereiche.
 
 ## Phase W-SUCHE - MAS-Cockpit als Gedaechtnis-Suchmaschine (beschlossen 05.07.)
 
@@ -3128,5 +3155,53 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
     Parser-Syntaxcheck gruen. NICHT-Ziel/Risiko dokumentiert: der Agent laeuft
     im Force-Modus und kann live committen/neustarten; er ist an die AGENTS.md
     (Release-Gate, keine ungetesteten Worker-Neustarts) gebunden und fragt bei
-    Unklarheit/Deploy-Risiko im Chat zurueck. Kill-Switch: geplante Aufgaben
-    "MAS-Urlaubswaechter*" deaktivieren bzw. Waechter-Fenster schliessen.
+  Unklarheit/Deploy-Risiko im Chat zurueck. Kill-Switch: geplante Aufgaben
+  "MAS-Urlaubswaechter*" deaktivieren bzw. Waechter-Fenster schliessen.
+- 18.08.2026 (Chef): DREIERTEAM AN DER FERNSTEUERUNG — nicht rueckbauen.
+  Wunsch im Wortlaut: "wenn ich auf der fernsteuerung antworte moechte ich,
+  dass dieses dreierteam weiterarbeitet. grok opus und fable wie bisher... die
+  fernsteuerung bietet momentan nur opus an." Genau so war es: jede
+  Handy-Nachricht lief durch GENAU EINEN Opus-Lauf, Grok und Fable kamen nur in
+  den Sitzungen am Rechner dazu. Jetzt fuehrt Opus das Team auch am Draht.
+  * Ablauf pro Nachricht (`tools/remote_chat_watch.ps1`): Opus arbeitet und
+    antwortet SOFORT (der Chef wartet nicht laenger als vorher). An seine
+    Antwort haengt er Regie-Zeilen `[TEAM] grok: <Auftrag>` /
+    `[TEAM] fable: <Auftrag>`; die werden herausgeschnitten (`Parse-TeamOrders`)
+    und starten NACHEINANDER je einen Lauf mit `cursor-grok-4.6-high-fast`
+    (Pruefer) bzw. `claude-fable-5-thinking-max` (Feinschliff). Jeder Kollege
+    schreibt dem Chef selbst und schliesst mit `[URTEIL] gruen|gelb|rot`
+    (`Parse-Verdict`). Nur bei gelb/rot bekommt Opus einen Abschluss-Zug
+    (`Build-ClosePrompt`) — der Chef soll EINE Aussage haben, nicht drei
+    Meinungen. Zusaetzlich darf Opus WAEHREND seines Laufs Unteragenten mit
+    diesen Modellen starten (Cursor-CLI kann das, am 18.08. echt gegengeprueft).
+  * NIE parallel: die Kollegen arbeiten im selben Arbeitsverzeichnis (F:\), also
+    laufen sie streng nacheinander — die Regel "nie zwei Agenten gleichzeitig"
+    (watchdog.ps1) bleibt unangetastet. Jeder Kopf hat seinen EIGENEN
+    Gespraechsfaden (`.run/remote_chat_session_grok.txt` usw.), Opus behaelt
+    seinen alten. Kollegen-Modelle landen NIE in `.run/remote_chat_watch.model`,
+    sonst wuerde der Urlaubs-Waechter den Draht mitten im Gegenlesen abschiessen.
+  * Gespart wird bewusst: bei kurzen Fragen/Smalltalk fordert Opus keine
+    Kollegen an; bei Konto-Problem (Ersatzmodell), gescheitertem oder
+    abgebrochenem Lauf ruht das Team ganz. Kollegen-Laeufe haben eine kuerzere
+    Leine (`$MateTimeoutMin` 12 min statt 25).
+  * Sichtbarkeit: Agent-Nachrichten tragen einen Absender (`speaker` =
+    opus|grok|fable|team, feste Liste in `backend/src/remoteChat.js` — die
+    /remote/*-Routen sind oeffentlich erreichbar, deshalb kein Freitext). Beide
+    Handy-Seiten (`backend/public/m/fernsteuerung.html`, Firebase-Seite
+    `tools/remote_chat_site/public/index.html`) zeigen Namensschild + eigene
+    Farbe je Kopf. Der Absender steht ZUSAETZLICH als erste Zeile im Text
+    (`[Grok]`) — die Seiten sind statisch, so klappt die Anzeige auch ohne
+    MAS-Neustart; die Zeile wird beim Anzeigen entfernt.
+  * Notaus ohne Codeaenderung: im Chat "nur opus" (bzw. "team aus") — dann
+    antwortet Opus allein, Marker `.run/remote_chat_team_aus.txt`. Zurueck mit
+    "team an". Der Guthaben-Befehl "opus wieder an" bleibt davon unberuehrt
+    (wird zuerst geprueft, per Test abgesichert).
+  * Absicherung: `tools/test_remote_chat_guards.ps1` (44 Pruefungen gruen) —
+    u.a. dass Regie-Zeilen NIE im Chat landen, dass "opus wieder an" kein
+    Team-Befehl ist, dass Kollegen-Modelle nicht in die Modell-Datei geraten
+    und dass das Team bei Konto-Problem ruht.
+  * Clara wurde NICHT angefasst (Chef 18.08.: "mach mir auf keinen Fall Clara
+    kaputt"). Geaendert wurden nur Fernsteuerungs-Dateien; der laufende
+    Clara-Worker (`F:\Clara-Voice-dev`, Health-Port 8093) blieb waehrend des
+    ganzen Umbaus in Betrieb. MAS wurde einmal neu gestartet (3 s, auf
+    ausdrueckliche Freigabe) — Tunnel und Clara liefen weiter.

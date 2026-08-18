@@ -40,6 +40,19 @@
   .msg.agent { align-self: flex-start; background: var(--agent); border-bottom-left-radius: 4px; }
   .msg .meta { font-size: 10.5px; color: rgba(232,237,246,.55); margin-top: 4px; }
   .msg .st { font-style: italic; }
+  /* WER spricht? (Chef 18.08.2026) Am Draht haengt ein Dreierteam: Opus fuehrt,
+     Grok prueft nach, Fable macht den Feinschliff. Absender ueber der Blase,
+     eigene Farbe je Kopf. Alte Nachrichten ohne Absender bleiben schlicht. */
+  .msg.agent { border-left: 3px solid #33415f; }
+  .msg.agent .wer { font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; }
+  .msg.von-opus { border-left-color: #3ddc84; }
+  .msg.von-opus .wer { color: #3ddc84; }
+  .msg.von-grok { border-left-color: #ffb347; }
+  .msg.von-grok .wer { color: #ffb347; }
+  .msg.von-fable { border-left-color: #c58cff; }
+  .msg.von-fable .wer { color: #c58cff; }
+  .msg.von-team { border-left-color: #8a96ad; }
+  .msg.von-team .wer { color: #a9bad6; }
   form {
     display: flex; gap: 8px; padding: 10px 12px;
     padding-bottom: calc(10px + env(safe-area-inset-bottom));
@@ -172,11 +185,11 @@
       var pulseAge = now - liveChangedAt;
       var worked = now - workSeenAt;
       if (pulseAge <= 45000) {
-        setAgent("live", "Ich arbeite - Puls vor " + Math.round(pulseAge / 1000) + " Sek. (seit " + fmtDur(worked) + ")");
+        setAgent("live", "Team arbeitet - Puls vor " + Math.round(pulseAge / 1000) + " Sek. (seit " + fmtDur(worked) + ")");
       } else if (pulseAge >= 80000) {
         setAgent("dead", "Kein Lebenszeichen seit " + fmtDur(pulseAge) + " - haengt evtl. oder ist abgestuerzt. Wenn es so bleibt, Nachricht neu senden.");
       } else {
-        setAgent("warns", "Ich arbeite (seit " + fmtDur(worked) + ") - warte auf naechstes Lebenszeichen...");
+        setAgent("warns", "Team arbeitet (seit " + fmtDur(worked) + ") - warte auf naechstes Lebenszeichen...");
       }
       return;
     }
@@ -215,9 +228,16 @@
   }
   function statusLabel(s) {
     if (s === "neu") return "wartet auf Abruf";
-    if (s === "in_arbeit") return "Agent arbeitet…";
+    if (s === "in_arbeit") return "Team arbeitet…";
     return "";
   }
+  // Absender-Namen fuer die Blasen. Nur diese vier laesst das Backend durch.
+  var NAMEN = {
+    opus: "Opus · führt",
+    grok: "Grok · prüft",
+    fable: "Fable · Feinschliff",
+    team: "Team",
+  };
 
   function render(state) {
     var key = JSON.stringify(state);
@@ -234,9 +254,27 @@
     chat.innerHTML = "";
     (state.messages || []).forEach(function (m) {
       var div = document.createElement("div");
-      div.className = "msg " + (m.role === "agent" ? "agent" : "user");
+      var wer = m.role === "agent" ? String(m.speaker || "") : "";
+      var text = m.text || "";
+      // Absender steht auch als erste Zeile im Text ("[Grok]") - so klappt die
+      // Anzeige ohne MAS-Neustart. Feld gewinnt, Zeile wird immer entfernt.
+      if (m.role === "agent") {
+        var marke = text.match(/^\s*\[(opus|grok|fable|team)\]\s*\r?\n?/i);
+        if (marke) {
+          if (!wer) wer = marke[1].toLowerCase();
+          text = text.slice(marke[0].length);
+        }
+      }
+      var name = NAMEN[wer] || "";
+      div.className = "msg " + (m.role === "agent" ? "agent" : "user") + (name ? " von-" + wer : "");
+      if (name) {
+        var w = document.createElement("div");
+        w.className = "wer";
+        w.textContent = name;
+        div.appendChild(w);
+      }
       var txt = document.createElement("div");
-      txt.textContent = m.text || "";
+      txt.textContent = text;
       div.appendChild(txt);
       var meta = document.createElement("div");
       meta.className = "meta";

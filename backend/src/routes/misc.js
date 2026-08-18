@@ -304,7 +304,7 @@ router.post("/remote/message", async (req, res) => {
   try {
     if (!remoteGuard(req, res)) return;
     const out = await addRemoteMessage(DEFAULT_CLIENT_ID, {
-      role: req.body?.role, text: req.body?.text,
+      role: req.body?.role, text: req.body?.text, speaker: req.body?.speaker,
     });
     res.status(out.ok ? 200 : 400).json(out);
   } catch (e) {

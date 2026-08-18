@@ -24,17 +24,30 @@ export function remoteTokenOk(req) {
   try { return timingSafeEqual(a, b); } catch { return false; }
 }
 
-export async function addRemoteMessage(clientId, { role, text }) {
+// WER antwortet? (Chef 18.08.2026) Am Draht haengt nicht mehr ein einzelner
+// Agent, sondern das Dreierteam: Opus fuehrt, Grok prueft nach, Fable macht den
+// Feinschliff. Damit der Chef am Handy sieht, wer da schreibt, tragen
+// Agent-Nachrichten optional einen Sprecher. Feste Liste, kein Freitext: die
+// /remote/*-Routen sind oeffentlich erreichbar (nur token-gated), sonst koennte
+// dort jeder beliebige Absender-Namen in den Chat schreiben.
+const SPRECHER = new Set(["opus", "grok", "fable", "team"]);
+
+export async function addRemoteMessage(clientId, { role, text, speaker } = {}) {
   const cleanText = String(text || "").trim().slice(0, 8000);
   if (!cleanText) return { ok: false, reason: "text_required" };
   const cleanRole = role === "agent" ? "agent" : "user";
   const ref = masCollection(clientId, COL).doc();
-  await ref.set({
+  const doc = {
     role: cleanRole,
     text: cleanText,
     status: cleanRole === "user" ? "neu" : "fertig",
     createdAt: Date.now(),
-  });
+  };
+  // Nur setzen, wenn bekannt: alte Nachrichten ohne Feld bleiben gueltig und
+  // werden am Handy wie bisher dargestellt.
+  const wer = String(speaker || "").trim().toLowerCase();
+  if (cleanRole === "agent" && SPRECHER.has(wer)) doc.speaker = wer;
+  await ref.set(doc);
   return { ok: true, id: ref.id };
 }
 
