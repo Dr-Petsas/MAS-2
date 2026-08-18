@@ -3,7 +3,7 @@
 //
 //   node scripts/test-demo-tor.mjs
 
-import { handyE164, istEmail, behandlerVorschlag, benutzerHaltbar, passwortHaltbar } from "../src/demo/tor.js";
+import { handyE164, istEmail, behandlerVorschlag, websiteHaltbar } from "../src/demo/tor.js";
 import { smsAbsenderAus, absenderSaeubern, identitaetsRahmen } from "../src/lisa/identitaet.js";
 
 let ok = 0;
@@ -36,13 +36,11 @@ for (const rein of schlecht) {
   pruef(`abgelehnt: ${JSON.stringify(rein)}`, handyE164(rein) === "", handyE164(rein));
 }
 
-console.log("3a) Benutzername und Passwort");
-pruef("Benutzername mpetsas gilt", benutzerHaltbar("mpetsas"));
-pruef("Benutzername mit Punkt gilt", benutzerHaltbar("dr.petsas"));
-pruef("zu kurz faellt durch", !benutzerHaltbar("ab"));
-pruef("mit Leerzeichen faellt durch", !benutzerHaltbar("dr petsas"));
-pruef("Passwort mit 8 Zeichen gilt", passwortHaltbar("geheim12"));
-pruef("Passwort zu kurz faellt durch", !passwortHaltbar("kurz"));
+console.log("3a) Praxiswebseite");
+pruef("www.praxis.de gilt", websiteHaltbar("www.praxis.de").includes("praxis.de"));
+pruef("https://zahnarzt-berlin.de gilt", websiteHaltbar("https://zahnarzt-berlin.de").includes("zahnarzt-berlin.de"));
+pruef("ohne Punkt faellt durch", websiteHaltbar("praxis") === "");
+pruef("leer faellt durch", websiteHaltbar("") === "");
 
 console.log("3) E-Mail-Plausibilitaet");
 pruef("normale Adresse", istEmail("dr.petsas@pickadoc.de"));

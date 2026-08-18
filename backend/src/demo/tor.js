@@ -142,32 +142,32 @@ function ipDrossel(ip, maxProStunde = 5) {
   return rec.anzahl <= maxProStunde;
 }
 
-export function benutzerHaltbar(rein) {
-  return /^[a-zA-Z][a-zA-Z0-9._-]{2,31}$/.test(text(rein));
-}
-
-export function passwortHaltbar(rein) {
-  const s = text(rein);
-  return s.length >= 8 && s.length <= 100;
-}
-
-function passwortHashen(passwort) {
-  const salt = crypto.randomBytes(16);
-  const hash = crypto.scryptSync(text(passwort), salt, 32);
-  return salt.toString("hex") + ":" + hash.toString("hex");
+/** Praxiswebseite: mit oder ohne https, Domain mit Punkt. */
+export function websiteHaltbar(rein) {
+  let s = text(rein);
+  if (!s || s.length > 200) return "";
+  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
+  try {
+    const u = new URL(s);
+    if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(u.hostname)) return "";
+    return u.href;
+  } catch {
+    return "";
+  }
 }
 
 /**
  * Schritt 1: Konto aufnehmen, Freischalt-Token per E-Mail schicken.
  *
- * Chef 18.08.2026: nach der Live-Kachel ein Anmeldefenster mit Name, Vorname,
- * Handy, E-Mail, Benutzername und Passwort — der Token kommt per Mail, nicht
- * per SMS. Die Handynummer bleibt gespeichert, weil Lisa spaeter genau dort
- * anruft; sie ist nicht mehr der Weg fuer den Code.
+ * Chef 18.08.2026: Name, Vorname, Website, Handy, E-Mail. Kein Benutzername,
+ * kein Passwort. Der Token kommt per Mail. Die Handynummer bleibt gespeichert,
+ * weil Lisa spaeter genau dort anruft. Pflicht ist die Bestaetigung, dass der
+ * Besucher einem medizinischen Beruf angehoert und nur fiktive Patientendaten
+ * verwendet.
  *
  * @param {{vorname?:string, name?:string, praxis?:string, behandler?:string,
- *          website?:string, email?:string, handy?:string, benutzername?:string,
- *          passwort?:string, ip?:string}} rein
+ *          website?:string, email?:string, handy?:string, beruf?:boolean,
+ *          ip?:string}} rein
  * @param {(auftrag:{an:string, betreff:string, text:string}) => Promise<{ok:boolean}>} mailVersand
  */
 export async function codeSenden(rein, mailVersand) {
@@ -176,29 +176,21 @@ export async function codeSenden(rein, mailVersand) {
   const vorname = text(rein?.vorname);
   const praxis = text(rein?.praxis) || (name ? `Praxis ${name}` : "");
   const email = text(rein?.email);
-  const benutzername = text(rein?.benutzername);
+  const website = websiteHaltbar(rein?.website);
+  const beruf = rein?.beruf === true || rein?.beruf === "true" || rein?.beruf === "on";
 
   if (!vorname) return { ok: false, fehler: "vorname_fehlt", klartext: "Bitte den Vornamen eintragen." };
   if (!name) return { ok: false, fehler: "name_fehlt", klartext: "Bitte den Nachnamen eintragen." };
+  if (!website) return { ok: false, fehler: "website_fehlt", klartext: "Bitte die Praxiswebseite eintragen." };
   if (!handy) return { ok: false, fehler: "handy_ungueltig", klartext: "Diese Handynummer sieht nicht nach einem Mobilanschluss in Deutschland, Österreich oder der Schweiz aus." };
   if (!istEmail(email)) return { ok: false, fehler: "email_ungueltig", klartext: "Bitte die E-Mail-Adresse prüfen." };
-  if (!benutzerHaltbar(benutzername)) return { ok: false, fehler: "benutzername", klartext: "Der Benutzername beginnt mit einem Buchstaben und hat 3 bis 32 Zeichen (Buchstaben, Zahlen, Punkt, Unterstrich)." };
-  if (!passwortHaltbar(rein?.passwort)) return { ok: false, fehler: "passwort", klartext: "Das Passwort braucht mindestens acht Zeichen." };
+  if (!beruf) return { ok: false, fehler: "beruf_fehlt", klartext: "Bitte bestätigen, dass Sie einem medizinischen Beruf angehören und nur fiktive Patientendaten verwenden." };
 
   if (rein?.ip && !ipDrossel(rein.ip)) {
     return { ok: false, fehler: "zu_viele_versuche", klartext: "Von diesem Anschluss kamen gerade viele Anfragen. Bitte in einer Stunde noch einmal." };
   }
   if (await tagesGrenzeErreicht("codes", 100)) {
     return { ok: false, fehler: "tagesgrenze", klartext: "Die Demo hat heute ihr Kontingent erreicht. Bitte melde dich direkt bei uns — wir zeigen es dir persönlich." };
-  }
-
-  const nameKlein = benutzername.toLowerCase();
-  const nameBelegt = await leads().where("benutzernameKlein", "==", nameKlein).limit(1).get();
-  if (!nameBelegt.empty) {
-    const altName = nameBelegt.docs[0].data() || {};
-    if (text(altName.email).toLowerCase() !== email.toLowerCase()) {
-      return { ok: false, fehler: "benutzername_belegt", klartext: "Dieser Benutzername ist schon vergeben. Bitte einen anderen wählen." };
-    }
   }
 
   // Dieselbe Nummer oder dieselbe Mail soll denselben Lead weiterfuehren.
@@ -222,7 +214,6 @@ export async function codeSenden(rein, mailVersand) {
       `Guten Tag ${vorname || name},\n\n` +
       `Ihr Freischaltcode für die Live-Demo: ${code}\n` +
       `Er gilt zehn Minuten.\n\n` +
-      `Benutzername: ${benutzername}\n\n` +
       `Pickadoc`,
   });
   if (!versand?.ok) {
@@ -236,12 +227,11 @@ export async function codeSenden(rein, mailVersand) {
     name,
     praxis,
     behandler,
-    website: text(rein?.website),
+    website,
     email,
     handy,
-    benutzername,
-    benutzernameKlein: nameKlein,
-    passwortHash: passwortHashen(rein.passwort),
+    berufBestaetigt: true,
+    nurFiktiv: true,
     status: "code_gesendet",
     code,
     codeBis: Date.now() + CODE_GUELTIG_MS,
