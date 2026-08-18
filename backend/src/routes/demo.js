@@ -42,17 +42,19 @@ function absenderFuer(lead) {
   return smsAbsenderAus(lead?.praxis) || absenderSaeubern(lead?.praxis) || "Pickadoc";
 }
 
-// --- Schritt 1: Code aufs Handy ---------------------------------------------
+// --- Schritt 1: Konto anlegen, Token per E-Mail -----------------------------
 router.post("/demo/code", async (req, res) => {
   try {
-    const out = await codeSenden({ ...(req.body || {}), ip: ip(req) }, async ({ an, text, absender }) => {
-      // Dieser eine Versand kommt von UNS, nicht von der Praxis: Absender
-      // "Pickadoc" ist hier richtig — der Besucher erwartet uns, nicht sich selbst.
-      const r = await lisaSendSms(DEMO_MANDANT, {
-        phone: an, message: text, recipientName: "Demo-Interessent",
-        by: "Erlebnis-Demo", absender,
-      });
-      return { ok: !!r?.ok, error: r?.message };
+    const out = await codeSenden({ ...(req.body || {}), ip: ip(req) }, async ({ an, betreff, text }) => {
+      const konten = await listAccounts(DEMO_MANDANT).catch(() => []);
+      const konto = konten.find((k) => k.id) || null;
+      if (!konto) return { ok: false, error: "kein_mailkonto" };
+      try {
+        await sendMail(DEMO_MANDANT, konto.id, { to: [an], subject: betreff, text });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
+      }
     });
     if (!out.ok) return res.status(400).json({ ok: false, fehler: out.fehler, klartext: out.klartext });
     res.json({ ok: true, leadId: out.leadId });
@@ -192,7 +194,8 @@ async function leadMelden(lead) {
     `Behandler: ${lead.behandler || "-"}`,
     `Website:   ${lead.website || "-"}`,
     `E-Mail:    ${lead.email}`,
-    `Handy:     ${lead.handy}   (per SMS-Code bestätigt)`,
+    `Handy:     ${lead.handy}   (per E-Mail-Token bestätigt)`,
+    `Benutzer:  ${lead.benutzername || "-"}`,
     "",
     "Diese Person hat die Erlebnis-Demo interaktiv freigeschaltet — sie hat also",
     "nicht nur zugeschaut, sondern selbst angefasst. Lisa meldet sich in der Demo",

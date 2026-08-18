@@ -3,7 +3,7 @@
 //
 //   node scripts/test-demo-tor.mjs
 
-import { handyE164, istEmail, behandlerVorschlag } from "../src/demo/tor.js";
+import { handyE164, istEmail, behandlerVorschlag, benutzerHaltbar, passwortHaltbar } from "../src/demo/tor.js";
 import { smsAbsenderAus, absenderSaeubern, identitaetsRahmen } from "../src/lisa/identitaet.js";
 
 let ok = 0;
@@ -35,6 +35,14 @@ const schlecht = ["030 123456", "0211 30293029", "+1 555 0100", "abc", "", null,
 for (const rein of schlecht) {
   pruef(`abgelehnt: ${JSON.stringify(rein)}`, handyE164(rein) === "", handyE164(rein));
 }
+
+console.log("3a) Benutzername und Passwort");
+pruef("Benutzername mpetsas gilt", benutzerHaltbar("mpetsas"));
+pruef("Benutzername mit Punkt gilt", benutzerHaltbar("dr.petsas"));
+pruef("zu kurz faellt durch", !benutzerHaltbar("ab"));
+pruef("mit Leerzeichen faellt durch", !benutzerHaltbar("dr petsas"));
+pruef("Passwort mit 8 Zeichen gilt", passwortHaltbar("geheim12"));
+pruef("Passwort zu kurz faellt durch", !passwortHaltbar("kurz"));
 
 console.log("3) E-Mail-Plausibilitaet");
 pruef("normale Adresse", istEmail("dr.petsas@pickadoc.de"));
