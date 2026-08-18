@@ -19,6 +19,12 @@
 //
 //   node scripts/lisa-agent-praxis-fix.mjs           (Vorschau, aendert nichts)
 //   node scripts/lisa-agent-praxis-fix.mjs --apply   (schreiben, mit Sicherung)
+//
+// Der ganze Ablauf steckt in main(): `process.exit()` reisst unter Windows die
+// Standardausgabe mitten im Schreiben ab (libuv-Assertion in async.c), sobald
+// die Ausgabe durch eine Pipe laeuft — etwa `| Select-Object -Last 40`. Dann
+// stirbt das Skript mit 0xC0000409, obwohl es seine Arbeit getan hat. Also nur
+// noch `return` und `process.exitCode`.
 import "dotenv/config";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -26,11 +32,6 @@ import path from "node:path";
 const APPLY = process.argv.includes("--apply");
 const KEY = process.env.ELEVENLABS_API_KEY;
 const ID = process.env.LISA_AGENT_ID;
-
-if (!KEY || !ID) {
-  console.error("ELEVENLABS_API_KEY oder LISA_AGENT_ID fehlt in der .env — Abbruch.");
-  process.exit(1);
-}
 
 const NEUE_ROLLE =
   "Du bist Lisa, Telefonassistentin einer Zahnarztpraxis. WELCHE Praxis du "
@@ -40,60 +41,78 @@ const NEUE_ROLLE =
 
 const NEUES_BEISPIEL = "„Hallo, hier ist Lisa aus der Praxis <Praxisname aus dem Auftrag>.";
 
-const r = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${ID}`, {
-  headers: { "xi-api-key": KEY },
-});
-if (!r.ok) {
-  console.error("Agent nicht abrufbar:", r.status, await r.text());
-  process.exit(1);
-}
-const agent = await r.json();
-const alt = agent?.conversation_config?.agent?.prompt?.prompt || "";
-if (!alt) {
-  console.error("Kein Prompt im Agenten gefunden — Abbruch.");
-  process.exit(1);
-}
+async function main() {
+  if (!KEY || !ID) {
+    console.error("ELEVENLABS_API_KEY oder LISA_AGENT_ID fehlt in der .env — Abbruch.");
+    process.exitCode = 1;
+    return;
+  }
 
-const treffer = (alt.match(/Petsas/g) || []).length;
-console.log(`Prompt geladen: ${alt.length} Zeichen, "Petsas" kommt ${treffer}x vor.`);
-if (!treffer) {
-  console.log("Nichts zu tun — die feste Praxis ist schon heraus.");
-  process.exit(0);
-}
-
-let neu = alt;
-// 1) Rollensatz am Anfang.
-const rolleRe = /Du bist Lisa, Telefonassistentin von Dr\.? ?Petsas\.[^\n]*/;
-if (rolleRe.test(neu)) {
-  neu = neu.replace(rolleRe, NEUE_ROLLE);
-  console.log("OK    Rollensatz ersetzt (keine feste Praxis mehr).");
-} else {
-  console.log("FEHLT Rollensatz nicht gefunden — bitte von Hand pruefen.");
-}
-
-// 2) Beispielzeilen ("Hallo, hier ist Lisa aus der Praxis Dr. Petsas.").
-const beispielRe = /„?Hallo, hier ist Lisa aus der Praxis Dr\.? ?Petsas\./g;
-const anzahl = (neu.match(beispielRe) || []).length;
-neu = neu.replace(beispielRe, NEUES_BEISPIEL);
-console.log(`OK    ${anzahl} Beispielzeile(n) auf den Auftrag umgestellt.`);
-
-// 3) Rest absichern: sollte irgendwo noch "Petsas" stehen, sagen wir es laut,
-// statt es stillschweigend stehen zu lassen.
-const restlich = (neu.match(/Petsas/g) || []).length;
-if (restlich) {
-  console.log(`ACHTUNG "Petsas" steht noch ${restlich}x im Prompt:`);
-  neu.split(/\r?\n/).forEach((z, i) => {
-    if (z.includes("Petsas")) console.log(`  Zeile ${i + 1}: ${z}`);
+  const r = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${ID}`, {
+    headers: { "xi-api-key": KEY },
   });
-}
+  if (!r.ok) {
+    console.error("Agent nicht abrufbar:", r.status, await r.text());
+    process.exitCode = 1;
+    return;
+  }
+  const agent = await r.json();
+  const alt = agent?.conversation_config?.agent?.prompt?.prompt || "";
+  if (!alt) {
+    console.error("Kein Prompt im Agenten gefunden — Abbruch.");
+    process.exitCode = 1;
+    return;
+  }
 
-if (neu === alt) {
-  console.error("Prompt unveraendert — Abbruch, damit nichts Halbes geschrieben wird.");
-  process.exit(1);
-}
-console.log(`\nLaenge: ${alt.length} -> ${neu.length}`);
+  const treffer = (alt.match(/Petsas/g) || []).length;
+  console.log(`Prompt geladen: ${alt.length} Zeichen, "Petsas" kommt ${treffer}x vor.`);
+  if (!treffer) {
+    console.log("Nichts zu tun — die feste Praxis ist schon heraus.");
+    return;
+  }
 
-if (APPLY) {
+  let neu = alt;
+  // 1) Rollensatz am Anfang.
+  const rolleRe = /Du bist Lisa, Telefonassistentin von Dr\.? ?Petsas\.[^\n]*/;
+  if (rolleRe.test(neu)) {
+    neu = neu.replace(rolleRe, NEUE_ROLLE);
+    console.log("OK    Rollensatz ersetzt (keine feste Praxis mehr).");
+  } else {
+    console.log("FEHLT Rollensatz nicht gefunden — bitte von Hand pruefen.");
+  }
+
+  // 2) Beispielzeilen ("Hallo, hier ist Lisa aus der Praxis Dr. Petsas.").
+  const beispielRe = /„?Hallo, hier ist Lisa aus der Praxis Dr\.? ?Petsas\./g;
+  const anzahl = (neu.match(beispielRe) || []).length;
+  neu = neu.replace(beispielRe, NEUES_BEISPIEL);
+  console.log(`OK    ${anzahl} Beispielzeile(n) auf den Auftrag umgestellt.`);
+
+  // 3) Rest absichern: sollte irgendwo noch "Petsas" stehen, sagen wir es laut,
+  // statt es stillschweigend stehen zu lassen.
+  const restlich = (neu.match(/Petsas/g) || []).length;
+  if (restlich) {
+    console.log(`ACHTUNG "Petsas" steht noch ${restlich}x im Prompt:`);
+    neu.split(/\r?\n/).forEach((z, i) => {
+      if (z.includes("Petsas")) console.log(`  Zeile ${i + 1}: ${z}`);
+    });
+  }
+
+  if (neu === alt) {
+    console.error("Prompt unveraendert — Abbruch, damit nichts Halbes geschrieben wird.");
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`\nLaenge: ${alt.length} -> ${neu.length}`);
+
+  if (!APPLY) {
+    console.log("\n--- neuer Rollensatz ---");
+    console.log(neu.split(/\r?\n/)[0]);
+    console.log("\n--- neue Beispielzeile ---");
+    console.log(NEUES_BEISPIEL);
+    console.log("\nTrockenlauf. Mit --apply schreiben.");
+    return;
+  }
+
   // Sicherung: der alte Prompt bleibt als Datei liegen, damit ein Rueckbau ohne
   // ElevenLabs-Historie moeglich ist.
   const stempel = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
@@ -109,13 +128,9 @@ if (APPLY) {
   if (!p.ok) {
     console.error("PATCH fehlgeschlagen:", p.status, await p.text());
     process.exitCode = 1;
-  } else {
-    console.log("Prompt aktualisiert. Lisa nennt jetzt die Praxis aus dem Auftrag.");
+    return;
   }
-} else {
-  console.log("\n--- neuer Rollensatz ---");
-  console.log(neu.split(/\r?\n/)[0]);
-  console.log("\n--- neue Beispielzeile ---");
-  console.log(NEUES_BEISPIEL);
-  console.log("\nTrockenlauf. Mit --apply schreiben.");
+  console.log("Prompt aktualisiert. Lisa nennt jetzt die Praxis aus dem Auftrag.");
 }
+
+await main();

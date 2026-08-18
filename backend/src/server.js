@@ -40,6 +40,7 @@ import treatmentRouter from "./routes/treatment.js";
 import claraSwitchRouter from "./routes/claraSwitch.js";
 import pvsRouter from "./routes/pvs.js";
 import zusageRouter from "./routes/zusage.js";
+import demoRouter from "./routes/demo.js";
 import claraRouter from "./routes/clara.js";
 import { sttBenchProxy } from "./routes/sttBench.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
@@ -212,6 +213,9 @@ app.use(pvsRouter);
 // Online-Zusage aus Recall-SMS (oeffentlich, token-gesichert) — vor dem
 // Clara-Catch-all mounten.
 app.use(zusageRouter);
+// Erlebnis-Demo, interaktiver Weg (oeffentlich, ticket-gesichert) — ebenfalls
+// vor dem Clara-Catch-all.
+app.use(demoRouter);
 app.use(claraRouter);
 
 

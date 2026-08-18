@@ -94,6 +94,14 @@ function isPublic(req) {
   // eingeloggt). Der Claim-Token im Pfad ist das Ticket (96 Bit Zufall,
   // ein Kandidat, ein Slot, Ablauf mit Slot-Beginn — routes/zusage.js).
   if (/^\/z\/[^/]+\/[^/]+$/.test(p)) return true;
+  // Erlebnis-Demo, interaktiver Weg (pickadoc.ai): Interessenten sollen sich
+  // NICHT anmelden muessen — das ist der Sinn der Demo. Die Routen bewachen sich
+  // selbst (routes/demo.js + demo/tor.js): Freischaltcode per SMS, danach ein
+  // Ticket, und SMS/Anruf gehen ausschliesslich an die damit bestaetigte Nummer.
+  // Dazu Kontingent pro Nummer und Tagesobergrenze — die Endpunkte loesen echte
+  // Anrufe aus, also darf hier weder Geld verbrannt noch ein Dritter belaestigt
+  // werden koennen.
+  if (p.startsWith("/demo/")) return true;
   // Behandlungs-Companion (iPad/Handy per QR am Behandlungsstuhl, NICHT
   // eingeloggt): Presence-Heartbeat + geteilter Aufnahme-Zustand. Der QR-Link
   // (clientId+locationId+appointmentId, nicht erratbar) ist das Ticket —

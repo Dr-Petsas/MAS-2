@@ -311,7 +311,7 @@ async function twilioSendSms({ to, body, from }) {
  * @param {{phone:string, message:string, recipientName?:string, by?:string}} input
  * @returns {Promise<{ok:boolean, message:string, taskId?:string}>} `message` is speakable.
  */
-export async function lisaSendSms(clientId, { phone, message, recipientName, by } = {}) {
+export async function lisaSendSms(clientId, { phone, message, recipientName, by, absender } = {}) {
   if (!smsConfigured()) {
     return { ok: false, message: "SMS-Versand ist nicht konfiguriert." };
   }
@@ -351,10 +351,11 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
   // globalen Absender aus der Umgebung; auf dem Handy des Patienten stand damit
   // ein fremder Name, obwohl im Text "hier ist <Praxis>" steht. Quelle ist die
   // Einstellung der Praxis selbst (siehe identitaet.js), sonst aus dem
-  // Praxisnamen abgeleitet.
-  const ident = await ladeLisaIdentitaet(clientId).catch(() => null);
+  // Praxisnamen abgeleitet. `absender` uebersteuert: die Erlebnis-Demo kennt die
+  // Praxis des Besuchers, bevor es zu ihr einen Mandanten gibt.
+  const ident = absender ? null : await ladeLisaIdentitaet(clientId).catch(() => null);
 
-  const send = await twilioSendSms({ to, body, from: ident?.absender });
+  const send = await twilioSendSms({ to, body, from: absender || ident?.absender });
   if (!send.ok) {
     log.warn("lisa.sms.failed", { clientId, error: send.error });
     return { ok: false, message: "Die SMS konnte nicht gesendet werden. Bitte später erneut versuchen." };
@@ -485,7 +486,7 @@ export function rahmeAuftrag(prompt) {
     + `oder einen Grund erfinden.]`;
 }
 
-export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext, taskId } = {}) {
+export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext, taskId, identitaet, sofort } = {}) {
   if (!callConfigured()) {
     return { ok: false, message: "Outbound-Anrufe sind nicht konfiguriert." };
   }
@@ -524,7 +525,12 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   // sondern eingeplant. Test-Redirect (eigenes Handy) uebersteuert; die
   // Wiedervorlage eines eingeplanten Anrufs (taskId gesetzt) laeuft ohnehin
   // nur im Fenster los.
-  if (!redirected && !taskId && !imAnrufFenster()) {
+  // `sofort`: der Angerufene hat den Anruf selbst und gerade eben angefordert
+  // (Erlebnis-Demo: "Lisa soll mich jetzt anrufen"). Das Anruf-Fenster schuetzt
+  // Patienten vor ungefragten Anrufen zur Unzeit — hier gibt es niemanden zu
+  // schuetzen, und ein "ich habe den Anruf fuer morgen 9 Uhr eingeplant" waere
+  // in einer Vorfuehrung das Ende.
+  if (!redirected && !taskId && !sofort && !imAnrufFenster()) {
     const wannMs = naechsterFensterStartMs();
     // Kein Doppel-Einplanen: gleicher Empfaenger + gleicher Auftrag wartet schon.
     const schedSnap = await tasksCol(clientId)
@@ -599,7 +605,9 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   // Name am Telefon. Die Identitaet reist deshalb IM AUFTRAG mit: das ist die
   // einzige Angabe, die pro Anruf sicher ankommt. Kalendername aus dem Anlass
   // gewinnt (beim Recall haengt der Termin an genau diesem Behandler).
-  const ident = await ladeLisaIdentitaet(clientId, {
+  // `identitaet` uebersteuert: die Erlebnis-Demo kennt Praxis und Behandler des
+  // Besuchers aus dem Lead-Tor, bevor es dazu einen Mandanten gibt.
+  const ident = identitaet || await ladeLisaIdentitaet(clientId, {
     calendarName: bookingContext?.calendarName,
   }).catch(() => null);
 
