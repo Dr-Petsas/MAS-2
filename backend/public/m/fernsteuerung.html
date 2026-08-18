@@ -14,8 +14,9 @@
      holt jede neue Nachricht ab, startet eine cursor-agent-Session
      (Session-Resume = ein durchgehendes Gespraech) und schreibt die
      Antwort per /remote/message (role=agent) + ein Kurz-Board zurueck.
-     Selbsttragend: der Token steht in der URL, die Seite laeuft ueber
-     denselben Tunnel wie MAS. */
+     Auf dem PC (http://127.0.0.1:4000/m/fernsteuerung.html) kein Token:
+     das Backend laesst Anfragen von diesem Rechner durch. Vom Handy bleibt
+     der Token im Link (#t=…), sonst waere der Draht oeffentlich. */
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
@@ -89,11 +90,8 @@
     font-size: 20px; font-weight: 800; cursor: pointer;
   }
   button#send:disabled { opacity: .4; }
-  #tokenGate { margin: auto; max-width: 340px; text-align: center; padding: 24px; }
-  #tokenGate h2 { font-size: 18px; margin-bottom: 10px; }
-  #tokenGate p { font-size: 14px; color: #8fa0bd; margin-bottom: 14px; }
-  #tokenGate input { width: 100%; background: #0f1626; color: #e6edf6; border: 1px solid #26375a; border-radius: 12px; padding: 11px 14px; font-size: 15px; margin-bottom: 12px; }
-  #tokenGate button { background: linear-gradient(135deg, #2ee6c8, #1899b0); color: #08121f; border: none; border-radius: 12px; padding: 11px 20px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  /* Token-Tor ist raus (Chef 18.08.2026): auf dem PC reicht die lokale
+     Adresse. Das Handy behält den Token im Link, sieht dieses Feld nie. */
   #boardToggle { background: none; border: none; color: #7fe6d3; font-size: 11px; cursor: pointer; text-transform: none; letter-spacing: 0; }
   #toEnd {
     position: fixed; right: 14px;
@@ -129,13 +127,6 @@
 </div>
 <button id="toEnd" type="button" title="Zum Ende springen" aria-label="Zum Ende springen" hidden>↓</button>
 
-<div id="tokenGate" hidden>
-  <h2>Zugang</h2>
-  <p>Dieser Draht ist token-geschützt. Bitte den Zugangs-Token einfügen (steht in der E-Mail).</p>
-  <input id="tokenInput" type="text" placeholder="Token" autocomplete="off" autocapitalize="off" spellcheck="false">
-  <button id="tokenSave" type="button">Verbinden</button>
-</div>
-
 <footer id="foot" hidden>
   <div class="row">
     <input id="datei" type="file" multiple hidden>
@@ -149,44 +140,33 @@
 (function () {
   const API = window.location.origin;
   const qs = new URLSearchParams(window.location.search);
-  let token = (qs.get("token") || localStorage.getItem("remoteChatToken") || "").trim();
+  const hashTok = (location.hash || "").replace(/^#t=/, "").trim();
+  let token = (qs.get("token") || hashTok || localStorage.getItem("remoteChatToken") || "").trim();
 
   const els = {
     hdr: document.getElementById("hdr"), hdrSub: document.getElementById("hdrSub"),
     dot: document.getElementById("dot"), board: document.getElementById("board"),
     boardTxt: document.getElementById("boardTxt"), boardToggle: document.getElementById("boardToggle"),
     log: document.getElementById("log"), empty: document.getElementById("empty"),
-    gate: document.getElementById("tokenGate"), tokenInput: document.getElementById("tokenInput"),
-    tokenSave: document.getElementById("tokenSave"), foot: document.getElementById("foot"),
+    foot: document.getElementById("foot"),
     input: document.getElementById("input"), send: document.getElementById("send"),
     toEnd: document.getElementById("toEnd"),
     clip: document.getElementById("clip"), datei: document.getElementById("datei"),
   };
 
-  // Wenn der Token aus der URL kam, in localStorage sichern und die URL
-  // bereinigen (Token nicht im Verlauf/Screenshot stehen lassen).
-  if (qs.get("token")) {
+  // Token aus dem Link merken und aus der Adresszeile nehmen (Handy-Lesezeichen
+  // mit #t=… bleibt gültig; auf dem PC braucht es den Link nicht mehr).
+  if (qs.get("token") || hashTok) {
     localStorage.setItem("remoteChatToken", token);
     history.replaceState(null, "", window.location.pathname);
   }
 
-  function showGate() {
-    els.gate.hidden = false; els.hdr.hidden = true; els.foot.hidden = true; els.log.hidden = true; els.board.classList.remove("show");
-    if (els.toEnd) els.toEnd.hidden = true;
-  }
   function showChat() {
-    els.gate.hidden = true; els.hdr.hidden = false; els.foot.hidden = false; els.log.hidden = false;
+    els.hdr.hidden = false; els.foot.hidden = false; els.log.hidden = false;
     if (els.toEnd) els.toEnd.hidden = false;
   }
   // Sofort ans Ende des Verlaufs springen (auf Wunsch von Dr. Petsas).
   if (els.toEnd) els.toEnd.addEventListener("click", () => { els.log.scrollTop = els.log.scrollHeight; });
-
-  els.tokenSave.addEventListener("click", () => {
-    const t = els.tokenInput.value.trim();
-    if (!t) return;
-    token = t; localStorage.setItem("remoteChatToken", t);
-    showChat(); poll(); startPolling();
-  });
 
   let boardHidden = false;
   els.boardToggle.addEventListener("click", () => {
@@ -280,16 +260,23 @@
     if (atBottom) els.log.scrollTop = els.log.scrollHeight;
   }
 
+  function stateUrl() {
+    return API + "/remote/state?limit=120" + (token ? "&token=" + encodeURIComponent(token) : "");
+  }
+
   async function poll() {
-    if (!token) { showGate(); return; }
     try {
-      const r = await fetch(API + "/remote/state?limit=120&token=" + encodeURIComponent(token), { cache: "no-store" });
-      if (r.status === 401) { setDot("err"); showGate(); return; }
+      const r = await fetch(stateUrl(), { cache: "no-store" });
+      if (r.status === 401) {
+        setDot("err");
+        els.hdrSub.textContent = "vom Handy: Link mit Zugang öffnen";
+        return;
+      }
       const data = await r.json();
       if (!data.ok) { setDot("err"); return; }
       showChat();
       setDot("on");
-      els.hdrSub.textContent = "verbunden";
+      els.hdrSub.textContent = "verbunden · Grok 4.6";
       render(data);
     } catch (e) {
       setDot("err");
@@ -301,9 +288,14 @@
     els.dot.className = state === "on" ? "on" : state === "err" ? "err" : "";
   }
 
+  function mitToken(obj) {
+    if (token) obj.token = token;
+    return obj;
+  }
+
   async function doSend() {
     const text = els.input.value.trim();
-    if (!text || !token) return;
+    if (!text) return;
     els.input.value = ""; els.input.style.height = "auto"; els.send.disabled = true;
     const optimistic = { id: "local-" + Date.now(), role: "user", text, status: "neu", createdAt: Date.now() };
     localPending.push(optimistic);
@@ -312,7 +304,7 @@
     try {
       const r = await fetch(API + "/remote/message", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, role: "user", text }),
+        body: JSON.stringify(mitToken({ role: "user", text })),
       });
       const data = await r.json();
       if (!data.ok) throw new Error(data.error || "senden fehlgeschlagen");
@@ -329,7 +321,7 @@
   // Bemerkung mitgeschickt ("schau dir den Fehler oben rechts an").
   async function doUpload(dateien) {
     const liste = Array.prototype.slice.call(dateien || []);
-    if (!liste.length || !token) return;
+    if (!liste.length) return;
     els.clip.disabled = true;
     let bemerkung = els.input.value.trim();
     try {
@@ -342,7 +334,7 @@
         });
         const r = await fetch(API + "/remote/upload", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, name: f.name, data: daten, note: bemerkung }),
+          body: JSON.stringify(mitToken({ name: f.name, data: daten, note: bemerkung })),
         });
         const data = await r.json();
         if (!data.ok) throw new Error(data.reason || data.error || "senden fehlgeschlagen");
@@ -369,7 +361,7 @@
     pollTimer = setInterval(poll, 4000);
   }
 
-  if (!token) showGate(); else { showChat(); }
+  showChat();
   poll();
   startPolling();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });

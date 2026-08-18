@@ -15,7 +15,19 @@ const COL = "mas_remote_chat";
 const BOARD_DOC = "_board";
 const TOKEN = (process.env.REMOTE_CHAT_TOKEN || "").trim();
 
+/** Anfrage kommt vom Rechner selbst (PC oeffnet die Seite lokal). */
+export function remoteVonHier(req) {
+  const ip = String(req.socket?.remoteAddress || req.ip || "").replace(/^::ffff:/, "");
+  return ip === "127.0.0.1" || ip === "::1";
+}
+
 export function remoteTokenOk(req) {
+  // Chef 18.08.2026: Die Seite auf DIESEM Rechner braucht kein Token-Feld
+  // mehr. Wer http://127.0.0.1:4000/m/fernsteuerung.html oeffnet, sitzt schon
+  // am Geraet — ein zweites Schloss auf derselben Tastatur ist nur Aerger.
+  // Vom Tunnel / vom Handy bleibt der Token Pflicht: die Endpunkte sind sonst
+  // fuer jeden erreichbar, der die oeffentliche Adresse kennt.
+  if (remoteVonHier(req)) return true;
   const t = String(req.body?.token || req.query?.token || "").trim();
   if (!TOKEN || !t) return false;
   const a = Buffer.from(t);

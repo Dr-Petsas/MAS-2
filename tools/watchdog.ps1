@@ -203,9 +203,16 @@ function Check-ChatWatcher() {
   # dann NICHT auf Opus zurueckzwingen (das wuerde nur erneut scheitern).
   $billingBlock = Test-Path $BillingFile
   $model = ChatWatcher-Model
-  $modelOk = $billingBlock -or ($model -eq $ExpectedModel)
+  # Chef 18.08.2026: "nur grok 4.6" stellt den Draht um. Diese Datei ist der
+  # Schalter — ohne sie bleibt Opus der Soll-Fuehrer, mit ihr darf Grok laufen
+  # und der Waechter darf ihn NICHT wieder auf Opus zurueckzwingen.
+  $lead = ""
+  $leadFile = Join-Path $RunDir "remote_chat_lead.txt"
+  if (Test-Path $leadFile) { try { $lead = (Get-Content $leadFile -Raw).Trim().ToLower() } catch {} }
+  $grokOk = ($lead -eq "grok" -and $model -eq "cursor-grok-4.6-high-fast")
+  $modelOk = $billingBlock -or ($model -eq $ExpectedModel) -or $grokOk
   if ((ChatWatcher-Alive) -and $modelOk) {
-    $script:Status["Chat-Waechter"] = if ($billingBlock) { "ok (Ersatz - Opus-Guthaben aus)" } else { "ok (Opus 4.8)" }
+    $script:Status["Chat-Waechter"] = if ($billingBlock) { "ok (Ersatz - Opus-Guthaben aus)" } elseif ($grokOk) { "ok (Grok 4.6)" } else { "ok (Opus 5)" }
     return
   }
   if ((ChatWatcher-Alive) -and -not $modelOk) {

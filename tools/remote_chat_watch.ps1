@@ -66,9 +66,13 @@ $BillingFile = Join-Path $RunDir "opus_billing_block.txt"
 $AuthFile = Join-Path $RunDir "agent_auth_block.txt"
 $AuthHintMin = 30                        # so selten wird der Hinweis wiederholt
 $AuthRuheMin = 5                         # so lange gar nichts annehmen (kein Flackern)
-# Team-Schalter: Liegt diese Datei vor, antwortet Opus allein ("nur opus" im
-# Chat). Default ist also TEAM AN - ohne Datei arbeitet das Dreierteam.
+# Team-Schalter: Liegt diese Datei vor, antwortet der Fuehrer allein ("nur opus"
+# oder "nur grok" im Chat). Default ist TEAM AN - ohne Datei das Dreierteam.
 $TeamFile = Join-Path $RunDir "remote_chat_team_aus.txt"
+# Wer FUEHRT? (Chef 18.08.2026): "Nein sorry nur grok 4.6". Vorher blieb Opus
+# der Fuehrer, auch wenn das Team aus war. Diese Datei stellt den Draht auf
+# Grok um; der Urlaubs-Waechter darf das dann NICHT wieder auf Opus zwingen.
+$LeadFile = Join-Path $RunDir "remote_chat_lead.txt"
 # Wer heisst wie und mit welchem Modell laeuft er? Eine Stelle, damit ein
 # Modellwechsel nicht an drei Orten nachgezogen werden muss.
 $Team = [ordered]@{
@@ -81,7 +85,15 @@ $OpusModel = $Model                      # Wunschmodell (aktuell Opus 5)
 # Opus 5 war das schlicht falsch und stiftete Verwirrung (03.08.2026).
 $OpusName = if ($OpusModel -match "opus-?5") { "Opus 5" } elseif ($OpusModel -match "opus-?4[-.]?8") { "Opus 4.8" } else { $OpusModel }
 $FallbackModel = "auto"                   # Ersatz: Konto-Standard, haelt den Draht offen
-$script:ActiveModel = $OpusModel
+# Chef 18.08.2026: kein Dreierteam mehr — Grok allein. Opus/Fable nur noch,
+# wenn die Lead-Datei ausdruecklich "opus" steht (Befehl "nur opus").
+$script:Lead = "grok"
+$script:ActiveModel = $GrokModel
+if (Test-Path $LeadFile) {
+  $leadRoh = ""
+  try { $leadRoh = (Get-Content $LeadFile -Raw).Trim().ToLower() } catch {}
+  if ($leadRoh -eq "opus") { $script:Lead = "opus"; $script:ActiveModel = $OpusModel }
+}
 if (Test-Path $BillingFile) { $script:ActiveModel = $FallbackModel }
 if (-not (Test-Path $RunDir)) { New-Item -ItemType Directory -Path $RunDir -Force | Out-Null }
 
@@ -167,6 +179,22 @@ function Test-AuthError([string]$t) {
 #   - kurz (bis 40 Zeichen) - ein Arbeitsauftrag ist immer laenger,
 #   - keine Frage (Fragezeichen -> der Chef will eine Antwort, keinen Schalter),
 #   - und die Wendung steht am ANFANG (nicht irgendwo mitten im Text).
+# Wer soll den Draht fuehren? Streng wie Test-TeamCmd: kurz, keine Frage,
+# Wendung am Anfang. "nur grok 4.6" und "ich moechte nur mit grok" zaehlen.
+# Lange Saetze, in denen "Grok" nur vorkommt, bleiben Arbeitsauftraege.
+function Test-LeadCmd([string]$t) {
+  $s = ([string]$t).Trim()
+  if (-not $s) { return "" }
+  if ($s.Length -gt 80) { return "" }
+  if ($s.Contains("?")) { return "" }
+  if ($s -match "(?i)^(bitte\s+)?(nein\s+sorry\s+)?nur\s+grok(\s*4\.?6)?\b" -or
+      $s -match "(?i)^ich\s+m(ö|oe)chte\s+nur\s+mit\s+grok\b" -or
+      $s -match "(?i)^(bitte\s+)?(nur|allein|solo)\s+mit\s+grok\b" -or
+      $s -match "(?i)^grok\s+(allein|solo|uebernimmt|übernimmt)\b") { return "grok" }
+  if ($s -match "(?i)^(bitte\s+)?(nur|allein|solo)\s+opus\b") { return "opus" }
+  return ""
+}
+
 # Wichtig: "opus wieder an" (Guthaben-Befehl) darf hier NICHT anschlagen.
 function Test-TeamCmd([string]$t) {
   $s = ([string]$t).Trim()
@@ -520,14 +548,15 @@ Beat
 # Aktives Modell hinterlegen, damit der Urlaubs-Waechter es gegenpruefen kann.
 try { Set-Content -Path $ModelFile -Value $script:ActiveModel -Encoding ASCII -NoNewline } catch {}
 $TeamAn = -not (Test-Path $TeamFile)
-Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$script:ActiveModel (Wunsch=$OpusModel) Intervall=${IntervalSeconds}s Timeout=${AgentTimeoutMin}min Team=$(if ($TeamAn) { "an (Opus fuehrt, $GrokModel prueft, $FableModel schleift)" } else { "aus (nur Opus)" })"
+$leadTxt = if ($script:Lead -eq "grok") { "Fuehrer=Grok 4.6" } else { "Fuehrer=Opus" }
+Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$script:ActiveModel ($leadTxt, Wunsch=$OpusModel) Intervall=${IntervalSeconds}s Timeout=${AgentTimeoutMin}min Team=$(if ($TeamAn) { "an (Opus fuehrt, $GrokModel prueft, $FableModel schleift)" } else { "aus (nur $($script:Lead))" })"
 Requeue-Orphans
 # Beim Start ehrlich melden, WAS der Fall ist: "bereit fuer Korrekturen" ist eine
 # Luege, solange dem kopflosen Agenten der Zugangsschluessel fehlt (17.08.2026).
 if (Test-Path $AuthFile) {
   try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + ", ABER: dem Agenten fehlt CURSOR_API_KEY in backend\.env. Nachrichten bleiben liegen und werden nach dem Eintragen automatisch bearbeitet.") } | Out-Null } catch {}
 } else {
-  $besatzung = if ($TeamAn) { "Team an Bord: Opus fuehrt, Grok prueft, Fable schleift." } else { "Nur Opus (Team ruht - 'team an' holt es zurueck)." }
+  $besatzung = if ($script:Lead -eq "grok") { "Am Draht: Grok 4.6 allein. 'team an' holt Opus und Fable zurueck." } elseif ($TeamAn) { "Team an Bord: Opus fuehrt, Grok prueft, Fable schleift." } else { "Nur Opus (Team ruht - 'team an' holt es zurueck)." }
   try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + " - bereit fuer Korrekturen.`n" + $besatzung) } | Out-Null } catch {}
 }
 
@@ -560,6 +589,31 @@ while ($true) {
         try { Api-Post "/remote/ack" @{ ids = @($id); status = "in_arbeit" } | Out-Null } catch {}
         try { Api-Post "/remote/board" @{ text = ("In Arbeit seit " + (Get-Date).ToString("HH:mm") + ":`n" + $text.Substring(0, [Math]::Min(200, $text.Length))) } | Out-Null } catch {}
 
+        # --- Steuerbefehl: wer fuehrt (Chef 18.08.2026, "nur grok 4.6") ----
+        # Steht VOR dem Team-Schalter: "nur grok" ist kein Team-Aus, sondern
+        # ein Fuehrerwechsel. Sonst bleibt Opus am Mikro und behauptet nur,
+        # Grok uebernehme — genau der Vorfall von 11:13.
+        $leadCmd = Test-LeadCmd $text
+        if ($leadCmd -eq "grok") {
+          try { Set-Content -Path $LeadFile -Value "grok" -Encoding ASCII -NoNewline } catch {}
+          try { Set-Content -Path $TeamFile -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
+          $script:Lead = "grok"
+          $script:ActiveModel = $GrokModel
+          $TeamAn = $false
+          try { Set-Content -Path $ModelFile -Value $script:ActiveModel -Encoding ASCII -NoNewline } catch {}
+          Say "grok" "Hier ist Grok 4.6. Opus und Fable sind vom Draht. Die Seite auf diesem Rechner braucht kein Token-Feld mehr: http://127.0.0.1:4000/m/fernsteuerung.html — einfach oeffnen."
+          try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
+          Log "Fuehrer GROK (Wunsch des Chefs)"
+          continue
+        }
+        if ($leadCmd -eq "opus") {
+          try { Set-Content -Path $LeadFile -Value "opus" -Encoding ASCII -NoNewline } catch {}
+          $script:Lead = "opus"
+          $script:ActiveModel = $OpusModel
+          try { Set-Content -Path $ModelFile -Value $script:ActiveModel -Encoding ASCII -NoNewline } catch {}
+          # "nur opus" kommt gleich noch als Team-Aus — hier nur der Fuehrer.
+        }
+
         # --- Steuerbefehl: Team an oder aus --------------------------------
         # Der Chef soll das Team ohne Codeaenderung bremsen koennen ("nur opus")
         # und genauso zurueckholen ("team an"). Steht VOR dem Opus-Befehl, weil
@@ -568,12 +622,23 @@ while ($true) {
         if ($teamCmd -eq "aus") {
           try { Set-Content -Path $TeamFile -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
           $TeamAn = $false
-          Say "team" "Verstanden - ab jetzt antworte ich allein (Opus). Grok und Fable bleiben draussen, bis du 'team an' schreibst."
+          $ausTxt = if ($script:Lead -eq "grok") { "Passt - ich (Grok) bleibe allein am Draht." } else { "Verstanden - ab jetzt antworte ich allein (Opus). Grok und Fable bleiben draussen, bis du 'team an' schreibst." }
+          Say $(if ($script:Lead -eq "grok") { "grok" } else { "team" }) $ausTxt
           try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
           Log "Team AUS (Wunsch des Chefs)"
           continue
         }
         if ($teamCmd -eq "an") {
+          # Chef 18.08.2026: "kein dreier team mehr". Solange Grok fuehrt,
+          # holt 'team an' niemanden zurueck — das war eben das Chaos.
+          if ($script:Lead -eq "grok") {
+            try { Set-Content -Path $TeamFile -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
+            $TeamAn = $false
+            Say "grok" "Kein Dreierteam mehr. Ich (Grok 4.6) bleibe allein. Wenn du Opus wieder willst, schreib 'nur opus'."
+            try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
+            Log "Team AN verweigert - Grok fuehrt allein"
+            continue
+          }
           Remove-Item $TeamFile -ErrorAction SilentlyContinue
           $TeamAn = $true
           Say "team" "Das Team ist zurueck: Ich (Opus) fuehre, Grok liest gegen, Fable macht den Feinschliff. Du siehst an jeder Nachricht, wer schreibt."
@@ -605,7 +670,7 @@ while ($true) {
         # Live-Puls fuers Handy aktivieren (laeuft in Run-Agents Warteschleife).
         $script:PulseStart = Get-Date
         $script:PulseText = $text
-        $script:PulseWho = "Opus arbeitet"
+        $script:PulseWho = $(if ($script:Lead -eq "grok") { "Grok arbeitet" } else { "Opus arbeitet" })
         $sid = Get-Session
         $prompt = Build-Prompt $text $TeamAn
         $res = Run-Agent $prompt $sid
@@ -685,7 +750,8 @@ Deine Nachricht bleibt liegen und wird automatisch bearbeitet, sobald der Schlue
         }
         $zerlegt = Parse-TeamOrders $reply
         $reply = if ($zerlegt.text) { $zerlegt.text } else { $reply }
-        Say "opus" $reply
+        $werAntwort = if ($script:Lead -eq "grok") { "grok" } else { "opus" }
+        Say $werAntwort $reply
         Log "Beantwortet $id (ok=$($res.ok), billing=$($res.billing), modell=$script:ActiveModel, session=$($res.session))"
 
         # --- Kollegen dazu: Grok liest gegen, Fable schleift ----------------
@@ -747,7 +813,7 @@ Deine Nachricht bleibt liegen und wird automatisch bearbeitet, sobald der Schlue
         }
 
         $script:PulseText = ""   # Puls aus - alle fertig
-        $script:PulseWho = "Opus arbeitet"
+        $script:PulseWho = $(if ($script:Lead -eq "grok") { "Grok arbeitet" } else { "Opus arbeitet" })
         try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
         $mitgelesen = if ($berichte.Count -gt 0) { " Gegengelesen: " + (($berichte | ForEach-Object { ($_ -split ":")[0] }) -join ", ") + "." } else { "" }
         try { Api-Post "/remote/board" @{ text = ("Zuletzt beantwortet " + (Get-Date).ToString("HH:mm") + " (Modell: $script:ActiveModel)." + $mitgelesen + "`n" + $reply.Substring(0, [Math]::Min(280, $reply.Length))) } | Out-Null } catch {}

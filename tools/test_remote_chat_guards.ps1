@@ -25,7 +25,7 @@ $tokens = $null; $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($src, [ref]$tokens, [ref]$errors)
 if ($errors -and $errors.Count) { Write-Host "ABBRUCH: Syntaxfehler in $src"; exit 1 }
 foreach ($fn in @("Test-BillingError", "Test-TransientError", "Test-OpusRestoreCmd",
-                  "Test-TeamCmd", "Parse-TeamOrders", "Parse-Verdict", "Glaetten")) {
+                  "Test-TeamCmd", "Test-LeadCmd", "Parse-TeamOrders", "Parse-Verdict", "Glaetten")) {
   $def = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $fn }, $true) | Select-Object -First 1
   if (-not $def) { Write-Host "ABBRUCH: Funktion $fn nicht gefunden"; exit 1 }
   . ([scriptblock]::Create($def.Extent.Text))
@@ -74,6 +74,11 @@ $hard = Select-String -Path $src -Pattern '(rep|hinweis) = "[^"]*Opus 4\.8' -Err
 Check "keine fest verdrahteten Modellnamen mehr in den Chat-Texten" ($null -eq $hard)
 
 Write-Host "6) Dreierteam (Chef 18.08.2026): Schalter, Regie-Zeilen, Urteile"
+Check "'nur grok' stellt Grok an die Spitze"  ((Test-LeadCmd "nur grok 4.6") -eq "grok")
+Check "'ich moechte nur mit grok' gilt"       ((Test-LeadCmd "Ich moechte nur mit grok reden") -eq "grok")
+Check "'nein sorry nur grok' gilt"            ((Test-LeadCmd "Nein sorry nur grok 4.6!!!") -eq "grok")
+Check "'nur opus' als Fuehrer"                ((Test-LeadCmd "nur opus") -eq "opus")
+Check "langer Auftrag mit Grok schaltet nicht" ((Test-LeadCmd "Bitte pruefe mit Grok die Termine von morgen und schreib eine Zusammenfassung") -eq "")
 Check "'nur opus' schaltet das Team aus"      ((Test-TeamCmd "nur opus bitte") -eq "aus")
 Check "'team aus' schaltet das Team aus"      ((Test-TeamCmd "Team aus, mach das allein") -eq "aus")
 Check "'ohne das Team' schaltet aus"          ((Test-TeamCmd "mach das ohne das Team") -eq "aus")
