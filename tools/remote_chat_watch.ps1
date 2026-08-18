@@ -275,9 +275,24 @@ function Api-Post([string]$path, [hashtable]$body) {
 # die Handy-Seiten sind statisch (kein Neustart) und machen daraus das farbige
 # Namensschild. Sieht eine alte, zwischengespeicherte Seite die Zeile doch,
 # liest der Chef schlicht "[Grok]" - haesslich, aber verstaendlich.
+# Zusammengeklebte Saetze trennen (18.08.2026, erster Team-Lauf am Handy):
+# Manche Modelle melden sich WAEHREND der Arbeit ("Ich lese jetzt ...") und die
+# Cursor-Ausgabe reiht diese Zwischenmeldungen ohne Leerzeichen an die
+# Schlussfassung - am Handy stand dann "...Absenderliste kennt.Ich bin Grok".
+# Nur dort wird getrennt, wo ein Satzende DIREKT an einem grossgeschriebenen
+# Wort klebt UND davor mindestens zwei Kleinbuchstaben stehen (oder eine
+# schliessende Klammer). Damit bleiben Abkuerzungen unberuehrt: bei "z.B.Das"
+# steht vor jedem Punkt nur ein einzelner Buchstabe.
+function Glaetten([string]$text) {
+  $t = [string]$text
+  if (-not $t) { return "" }
+  return [regex]::Replace($t, "(?<=(?:[a-z\u00e4\u00f6\u00fc\u00df]{2}|\))[.!?:])(?=[A-Z\u00c4\u00d6\u00dc])", "`n`n")
+}
+
 function Say([string]$wer, [string]$text) {
   $schild = switch ($wer) { "opus" { "[Opus]" } "grok" { "[Grok]" } "fable" { "[Fable]" } "team" { "[Team]" } default { "" } }
-  $rumpf = if ($schild) { $schild + "`n" + [string]$text } else { [string]$text }
+  $sauber = Glaetten $text
+  $rumpf = if ($schild) { $schild + "`n" + [string]$sauber } else { [string]$sauber }
   try { Api-Post "/remote/message" @{ role = "agent"; text = $rumpf; speaker = $wer } | Out-Null }
   catch { Log "FEHLER beim Zurueckschreiben: $($_.Exception.Message)" }
 }
@@ -374,6 +389,8 @@ $leadText
 
 [DEIN AUFTRAG VON OPUS]
 $auftrag
+
+Melde dich NICHT zwischendurch ("Ich lese jetzt ...") - der Chef bekommt nur EINEN Text von dir, und zwar am Ende. Arbeite still, schreib dann die Antwort.
 
 Antworte AUSSCHLIESSLICH auf Deutsch, 2 bis 4 Saetze, ohne Code-Bloecke und ohne Tool-Namen. Sag als Erstes, was du wirklich geprueft hast. Danach als LETZTE Zeile genau eine dieser drei:
 [URTEIL] gruen

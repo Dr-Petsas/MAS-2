@@ -25,7 +25,7 @@ $tokens = $null; $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($src, [ref]$tokens, [ref]$errors)
 if ($errors -and $errors.Count) { Write-Host "ABBRUCH: Syntaxfehler in $src"; exit 1 }
 foreach ($fn in @("Test-BillingError", "Test-TransientError", "Test-OpusRestoreCmd",
-                  "Test-TeamCmd", "Parse-TeamOrders", "Parse-Verdict")) {
+                  "Test-TeamCmd", "Parse-TeamOrders", "Parse-Verdict", "Glaetten")) {
   $def = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $fn }, $true) | Select-Object -First 1
   if (-not $def) { Write-Host "ABBRUCH: Funktion $fn nicht gefunden"; exit 1 }
   . ([scriptblock]::Create($def.Extent.Text))
@@ -94,6 +94,13 @@ Aendere NICHTS an Clara. Hole danach beide Kollegen dazu.
 Check "langer Auftrag mit 'Dreierteam' wird NICHT geschluckt" ((Test-TeamCmd $langerAuftrag) -eq "")
 Check "Frage nach dem Team ist kein Schalter"  ((Test-TeamCmd "Wie laeuft das Dreierteam?") -eq "")
 Check "'Team' mitten im Satz schaltet nichts"  ((Test-TeamCmd "Sag dem Team an, es soll warten - dann weiter im Kalender") -eq "")
+# VORFALL 18.08.2026 (erster Team-Lauf): Zwischenmeldungen der Kollegen klebten
+# ohne Leerzeichen an der Schlussfassung - am Handy stand "...kennt.Ich bin Grok".
+Check "verklebte Saetze werden getrennt"   ((Glaetten "Absenderliste kennt.Ich bin Grok, der Pruefer.") -eq "Absenderliste kennt.`n`nIch bin Grok, der Pruefer.")
+Check "Abkuerzung bleibt unberuehrt"       ((Glaetten "Das gilt z.B.Das sagt niemand") -eq "Das gilt z.B.Das sagt niemand")
+Check "normaler Text bleibt unveraendert"  ((Glaetten "Erster Satz. Zweiter Satz.") -eq "Erster Satz. Zweiter Satz.")
+Check "Umlaut-Satzanfang wird getrennt"    ((Glaetten "geprueft.Aenderung folgt") -eq "geprueft.`n`nAenderung folgt")
+Check "leerer Text bleibt leer"            ((Glaetten "") -eq "")
 
 $antwort = @"
 Ich habe die Absenderkennung eingebaut und getestet.
