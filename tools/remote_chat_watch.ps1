@@ -29,9 +29,19 @@ param(
   # 03.08.2026 (Dr. Petsas): VORUEBERGEHEND Opus 5 zum Durchtesten. Morgen zurueck
   # auf "claude-opus-4-8-thinking-high" (auch $ExpectedModel in watchdog.ps1).
   [string]$Model = "claude-opus-5-thinking-high",
+  # DREIERTEAM (Chef 18.08.2026): "wenn ich auf der Fernsteuerung antworte, soll
+  # das Dreierteam weiterarbeiten - Grok, Opus und Fable wie bisher." Vorher lief
+  # jede Handy-Nachricht durch GENAU EINEN Opus-Lauf; Grok und Fable kamen nur in
+  # den Sitzungen am Rechner dazu. Jetzt fuehrt Opus auch am Draht das Team:
+  # er arbeitet, Grok liest gegen, Fable macht den Feinschliff.
+  [string]$GrokModel = "cursor-grok-4.6-high-fast",
+  [string]$FableModel = "claude-fable-5-thinking-max",
   # Harte Obergrenze pro Agent-Lauf. Bricht ein Lauf hier ab, wird die Nachricht
   # NICHT als Waise verloren, sondern als "neu" zurueckgereiht (siehe Schleife).
   [int]$AgentTimeoutMin = 25,
+  # Kollegen-Laeufe sind Gegenlesen, nicht Bauen - kuerzere Leine, damit der
+  # Draht nach der Antwort von Opus nicht noch eine halbe Stunde blockiert ist.
+  [int]$MateTimeoutMin = 12,
   # Wie alt darf eine haengengebliebene ("verwaiste") Nachricht hoechstens sein,
   # um beim Start noch einmal ausgefuehrt zu werden? Aeltere werden nur
   # abgeschlossen - siehe Requeue-Orphans (Vorfall 03.08.2026: MAS-Stopp).
@@ -56,6 +66,15 @@ $BillingFile = Join-Path $RunDir "opus_billing_block.txt"
 $AuthFile = Join-Path $RunDir "agent_auth_block.txt"
 $AuthHintMin = 30                        # so selten wird der Hinweis wiederholt
 $AuthRuheMin = 5                         # so lange gar nichts annehmen (kein Flackern)
+# Team-Schalter: Liegt diese Datei vor, antwortet Opus allein ("nur opus" im
+# Chat). Default ist also TEAM AN - ohne Datei arbeitet das Dreierteam.
+$TeamFile = Join-Path $RunDir "remote_chat_team_aus.txt"
+# Wer heisst wie und mit welchem Modell laeuft er? Eine Stelle, damit ein
+# Modellwechsel nicht an drei Orten nachgezogen werden muss.
+$Team = [ordered]@{
+  grok  = @{ name = "Grok";  rolle = "Pruefer";     modell = $GrokModel;  verb = "prueft" }
+  fable = @{ name = "Fable"; rolle = "Feinschliff"; modell = $FableModel; verb = "schleift" }
+}
 $OpusModel = $Model                      # Wunschmodell (aktuell Opus 5)
 # Sprechender Name fuers Handy: der Chef soll lesen, WELCHES Opus gerade laeuft.
 # Vorher stand in allen Hinweistexten fest "Opus 4.8" - nach dem Umschalten auf
@@ -75,14 +94,17 @@ function Beat() { try { Set-Content -Path $HeartbeatFile -Value ((Get-Date).ToSt
 # Chef sah bei langen Laeufen sonst nur Stille und wusste nicht, ob ich lebe.
 $script:PulseText = ""
 $script:PulseStart = Get-Date
+# Wer schlaegt gerade den Puls? Seit dem Dreierteam (18.08.2026) soll im Board
+# stehen, WER arbeitet - "Grok prueft seit 09:12" sagt mehr als "Arbeite seit".
+$script:PulseWho = "Opus arbeitet"
 function Post-Pulse() {
   if (-not $script:PulseText) { return }
   $now = Get-Date
   $secs = [int](($now - $script:PulseStart).TotalSeconds)
   $t = [string]$script:PulseText
   $short = if ($t.Length -gt 160) { $t.Substring(0, 160) + "..." } else { $t }
-  $body = ("Arbeite seit {0} (laeuft {1}s, Puls {2}) an:`n{3}" -f `
-    $script:PulseStart.ToString("HH:mm"), $secs, $now.ToString("HH:mm:ss"), $short)
+  $body = ("{0} seit {1} (laeuft {2}s, Puls {3})`nAuftrag: {4}" -f `
+    $script:PulseWho, $script:PulseStart.ToString("HH:mm"), $secs, $now.ToString("HH:mm:ss"), $short)
   try { Api-Post "/remote/board" @{ text = $body } | Out-Null } catch {}
 }
 
@@ -126,6 +148,84 @@ function Test-AuthError([string]$t) {
   return ($t -match "(?i)(authentication required|agent login|CURSOR_API_KEY|not (logged|signed) in|unauthorized|401)")
 }
 
+# --- DREIERTEAM (Chef 18.08.2026) -----------------------------------------
+# Der Chef will am Handy dasselbe Team wie am Rechner: Opus fuehrt, Grok liest
+# gegen, Fable macht den Feinschliff. Drei kleine, testbare Bausteine:
+#   Test-TeamCmd     - schaltet der Chef das Team per Chat ein oder aus?
+#   Parse-TeamOrders - welche Kollegen will Opus dazuholen? (Steuerzeilen)
+#   Parse-Verdict    - welches Urteil faellt ein Kollege?
+# Alle drei arbeiten nur auf Text, damit sie ohne Modell pruefbar sind
+# (tools\test_remote_chat_guards.ps1).
+
+# "nur opus" / "team aus" -> allein; "team an" / "zu dritt" -> Team. Sonst "".
+#
+# STRENG, und zwar aus Erfahrung (18.08.2026, erster Selbsttest): Die erste
+# Fassung pruefte nur auf Schluesselwoerter irgendwo im Text. Prompt verschluckte
+# sie einen langen Arbeitsauftrag, in dem das Wort "Dreierteam" bloss VORKAM -
+# der Waechter antwortete "Team ist zurueck" und die Aufgabe war weg. Ein
+# Steuerbefehl ist deshalb nur, was auch wirklich wie einer aussieht:
+#   - kurz (bis 40 Zeichen) - ein Arbeitsauftrag ist immer laenger,
+#   - keine Frage (Fragezeichen -> der Chef will eine Antwort, keinen Schalter),
+#   - und die Wendung steht am ANFANG (nicht irgendwo mitten im Text).
+# Wichtig: "opus wieder an" (Guthaben-Befehl) darf hier NICHT anschlagen.
+function Test-TeamCmd([string]$t) {
+  $s = ([string]$t).Trim()
+  if (-not $s) { return "" }
+  if ($s.Length -gt 40) { return "" }
+  if ($s.Contains("?")) { return "" }
+  if ($s -match "(?i)^(bitte\s+)?(nur|allein|solo)\s+opus\b" -or
+      $s -match "(?i)^team\s+(aus|weg|pausiert|ruht|stopp)\b" -or
+      $s -match "(?i)\bohne\s+(das\s+)?team\b" -or
+      $s -match "(?i)\bohne\s+grok\s+und\s+fable\b") { return "aus" }
+  if ($s -match "(?i)^team\s+(an|wieder an|zurueck|zur(\u00fc|ue)ck|ein)\b" -or
+      $s -match "(?i)^(dreierteam|alle\s+drei)\b" -or
+      $s -match "(?i)\bzu\s+dritt\b" -or
+      $s -match "(?i)^mit\s+grok\s+und\s+fable\b") { return "an" }
+  return ""
+}
+
+# Opus haengt an seine Antwort Steuerzeilen "[TEAM] grok: <Auftrag>". Sie sind
+# NICHT fuer den Chef - sie werden herausgeschnitten und steuern den naechsten
+# Lauf. Rueckgabe: gereinigter Text + Liste der Auftraege (je Kollege einmal).
+function Parse-TeamOrders([string]$antwort) {
+  $rest = @()
+  $orders = @()
+  $gesehen = @{}
+  foreach ($zeile in (([string]$antwort) -split "`r?`n")) {
+    $m = [regex]::Match($zeile, '^\s*\[TEAM\]\s*(grok|fable)\s*[:\-\u2013]\s*(.+?)\s*$', 'IgnoreCase')
+    if ($m.Success) {
+      $wer = $m.Groups[1].Value.ToLower()
+      if (-not $gesehen.ContainsKey($wer)) {
+        $gesehen[$wer] = $true
+        $orders += @{ who = $wer; task = $m.Groups[2].Value.Trim() }
+      }
+      continue
+    }
+    # Auch unbrauchbare TEAM-Zeilen ("[TEAM] niemand") wandern in den Papierkorb,
+    # damit der Chef nie Maschinen-Zeilen liest.
+    if ($zeile -match '^\s*\[TEAM\]') { continue }
+    $rest += $zeile
+  }
+  return @{ text = (($rest -join "`n").Trim()); orders = $orders }
+}
+
+# Letzte Zeile eines Kollegen: "[URTEIL] gruen|gelb|rot". gruen = alles gut,
+# gelb/rot = Opus muss noch einmal ran.
+function Parse-Verdict([string]$antwort) {
+  $rest = @()
+  $urteil = ""
+  foreach ($zeile in (([string]$antwort) -split "`r?`n")) {
+    $m = [regex]::Match($zeile, '^\s*\[URTEIL\]\s*(gruen|gr(\u00fc|ue)n|green|gelb|rot)\s*$', 'IgnoreCase')
+    if ($m.Success) {
+      $w = $m.Groups[1].Value.ToLower()
+      $urteil = if ($w -match "^(gruen|gr(\u00fc|ue)n|green)$") { "gruen" } else { $w }
+      continue
+    }
+    $rest += $zeile
+  }
+  return @{ text = (($rest -join "`n").Trim()); urteil = $urteil }
+}
+
 # Token aus backend\.env lesen.
 $envPath = "F:\MAS-2\backend\.env"
 $Token = ""
@@ -165,18 +265,68 @@ function Api-Post([string]$path, [hashtable]$body) {
   return Invoke-RestMethod -Uri ($MasBase + $path) -Method Post -ContentType "application/json; charset=utf-8" -Body ($body | ConvertTo-Json -Depth 6) -TimeoutSec 20
 }
 
-function Get-Session() {
-  if (Test-Path $SessionFile) { return (Get-Content $SessionFile -Raw).Trim() }
+# Eine Nachricht in den Handy-Chat, mit Absender (opus/grok/fable/team). Nur
+# diese vier laesst das Backend durch; alles andere erscheint namenlos.
+#
+# ZWEI WEGE, absichtlich: Das Feld "speaker" ist der saubere Weg, greift aber
+# erst nach einem MAS-Neustart. Der Chef haengt am Draht und MAS ist seine
+# einzige Leitung - ein Neustart nur fuer eine Anzeige ist das Risiko nicht wert
+# (18.08.2026). Deshalb steht der Absender ZUSAETZLICH als erste Zeile im Text:
+# die Handy-Seiten sind statisch (kein Neustart) und machen daraus das farbige
+# Namensschild. Sieht eine alte, zwischengespeicherte Seite die Zeile doch,
+# liest der Chef schlicht "[Grok]" - haesslich, aber verstaendlich.
+function Say([string]$wer, [string]$text) {
+  $schild = switch ($wer) { "opus" { "[Opus]" } "grok" { "[Grok]" } "fable" { "[Fable]" } "team" { "[Team]" } default { "" } }
+  $rumpf = if ($schild) { $schild + "`n" + [string]$text } else { [string]$text }
+  try { Api-Post "/remote/message" @{ role = "agent"; text = $rumpf; speaker = $wer } | Out-Null }
+  catch { Log "FEHLER beim Zurueckschreiben: $($_.Exception.Message)" }
+}
+
+# Jeder Kopf hat seinen EIGENEN Gespraechsfaden. Opus behaelt die alte Datei
+# (sein Faden laeuft seit Juli durch); Grok und Fable bekommen eigene. Sonst
+# wuerde ein Kollegen-Lauf mitten in Opus' Faden landen und dessen Verlauf mit
+# fremdem Modell fortsetzen.
+function Session-Datei([string]$wer) {
+  if (-not $wer -or $wer -eq "opus") { return $SessionFile }
+  return (Join-Path $RunDir ("remote_chat_session_{0}.txt" -f $wer))
+}
+function Get-Session([string]$wer = "opus") {
+  $f = Session-Datei $wer
+  if (Test-Path $f) { return (Get-Content $f -Raw).Trim() }
   return ""
 }
-function Set-Session([string]$id) {
-  if ($id) { Set-Content -Path $SessionFile -Value $id -Encoding ASCII -NoNewline }
+function Set-Session([string]$id, [string]$wer = "opus") {
+  if ($id) { Set-Content -Path (Session-Datei $wer) -Value $id -Encoding ASCII -NoNewline }
 }
 
-function Build-Prompt([string]$userText) {
-  return @"
-[SYSTEM] Du bist der Cursor-Coding-Agent fuer Dr. Petsas' System (Pickadoc-Frontend F:\pickadoc-live-base, Backend F:\MAS-2, Sprach-Stack F:\Clara-Voice, Doku F:\Lena-Voice). Dr. Petsas schreibt dir gerade VOM HANDY AUS DEM URLAUB. Er sieht nur kurze Chat-Antworten, keinen Code.
+function Build-Prompt([string]$userText, [bool]$teamAn = $true) {
+  # Der Team-Teil steht NUR im Prompt, wenn das Team an ist. Sonst wuerde Opus
+  # Kollegen anfordern, die niemand ruft - und der Chef bekaeme Steuerzeilen
+  # ohne Wirkung.
+  $teamTeil = ""
+  if ($teamAn) {
+    $teamTeil = @"
 
+DEIN TEAM (du fuehrst es):
+- GROK, Modell $GrokModel - der Pruefer. Zweites Augenpaar: findet Fehler, Luecken, Regelverstoesse, prueft selbst nach.
+- FABLE, Modell $FableModel - der Feinschliff. Sprache, Texte, Oberflaeche, Laientauglichkeit.
+
+Du hast zwei Wege, sie einzubeziehen:
+1. WAEHREND deines Laufs: Starte Unteragenten mit genau diesen Modellen und gib ihnen Teilaufgaben (Recherche, Parallelarbeit, Gegenlesen). Nutze das bei allem, was Umfang hat.
+2. NACH deiner Antwort: Haenge fuer jeden Kollegen, der noch daraufschauen soll, GENAU EINE Zeile ganz am Ende an - Format exakt so:
+[TEAM] grok: <konkreter Auftrag in einem Satz>
+[TEAM] fable: <konkreter Auftrag in einem Satz>
+Diese Zeilen liest Dr. Petsas NICHT, sie werden herausgeschnitten und steuern den naechsten Lauf. Der Kollege sieht deine Antwort und seinen Auftrag, arbeitet im selben Arbeitsverzeichnis und schreibt Dr. Petsas selbst eine kurze Nachricht. Meldet ein Kollege einen Mangel, bekommst du danach noch einen Zug, um nachzulegen.
+
+Wann wen:
+- Du hast Code geaendert, gebaut oder etwas repariert: IMMER "[TEAM] grok" (nachpruefen, ob es wirklich laeuft und den Regeln entspricht).
+- Es geht um Texte oder Oberflaechen, die Praxen oder Patienten lesen: "[TEAM] fable".
+- Reine Auskunft, kurze Frage, Smalltalk ("wie steht's?"): KEINE Team-Zeile. Das Team wird nicht geweckt, wenn es nichts zu pruefen gibt.
+"@
+  }
+  return @"
+[SYSTEM] Du bist OPUS, der leitende Coding-Agent fuer Dr. Petsas' System (Pickadoc-Frontend F:\pickadoc-live-base, Backend F:\MAS-2, Sprach-Stack F:\Clara-Voice, Doku F:\Lena-Voice). Dr. Petsas schreibt dir gerade VOM HANDY. Er sieht nur kurze Chat-Antworten, keinen Code.
+$teamTeil
 Verbindliche Regeln:
 - Halte dich strikt an die AGENTS.md jedes betroffenen Repos: Release-Gate vor jedem Neustart/Commit, deutsche Commit-Messages (was + warum), NICHTS Ungetestetes an den Live-Worker, Clara darf keinen Schaden nehmen.
 - Ist die Korrektur klar und sicher: fuehre sie VOLLSTAENDIG aus (Code aendern, testen, committen). Nenne in der Antwort, was du getan, getestet und committet hast.
@@ -190,7 +340,69 @@ $userText
 "@
 }
 
-function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride = "__ACTIVE__") {
+# Prompt fuer einen Kollegen (Grok oder Fable). Er sieht den Wunsch des Chefs,
+# was Opus geantwortet hat und seinen eigenen Auftrag - und schreibt dem Chef
+# selbst. Das Urteil in der letzten Zeile entscheidet, ob Opus nachlegen muss.
+function Build-MatePrompt([string]$wer, [string]$auftrag, [string]$chefText, [string]$leadText) {
+  $k = $Team[$wer]
+  $eigenart = if ($wer -eq "grok") {
+    @"
+Du bist der PRUEFER. Dein Wert liegt darin, NICHT zu glauben, was Opus schreibt:
+- Sieh selbst nach (Dateien lesen, Tests/Checks laufen lassen, Log pruefen).
+- Kleine, eindeutig richtige Fehler behebst du selbst und sagst, was du geaendert hast.
+- Grosse oder riskante Aenderungen fuehrst du NICHT eigenmaechtig aus - benenne sie klar.
+"@
+  } else {
+    @"
+Du bist der FEINSCHLIFF. Du achtest darauf, was ein Mensch am Ende liest und bedient:
+- Deutsche Texte in Oberflaechen, SMS, Mails: verstaendlich, richtig, ohne Fachjargon.
+- Kleine Text- und Darstellungsfehler behebst du selbst und sagst, was du geaendert hast.
+- Am Bauwerk selbst (Logik, Datenwege) aenderst du nichts eigenmaechtig - benenne es.
+"@
+  }
+  return @"
+[SYSTEM] Du bist $($k.name), $($k.rolle) im Dreierteam von Dr. Petsas (Pickadoc-Frontend F:\pickadoc-live-base, Backend F:\MAS-2, Sprach-Stack F:\Clara-Voice, Doku F:\Lena-Voice). Opus fuehrt und hat gerade gearbeitet. Dr. Petsas liest mit - AM HANDY, ohne Code.
+
+$eigenart
+Verbindliche Regeln: die AGENTS.md jedes betroffenen Repos gelten auch fuer dich (Release-Gate vor Neustart/Commit, deutsche Commit-Messages, nichts Ungetestetes an den Live-Worker, Clara nimmt keinen Schaden). Erfinde nichts; was du nicht geprueft hast, sagst du nicht.
+
+[WAS DR. PETSAS WOLLTE]
+$chefText
+
+[WAS OPUS GEANTWORTET HAT]
+$leadText
+
+[DEIN AUFTRAG VON OPUS]
+$auftrag
+
+Antworte AUSSCHLIESSLICH auf Deutsch, 2 bis 4 Saetze, ohne Code-Bloecke und ohne Tool-Namen. Sag als Erstes, was du wirklich geprueft hast. Danach als LETZTE Zeile genau eine dieser drei:
+[URTEIL] gruen
+[URTEIL] gelb
+[URTEIL] rot
+gruen = geprueft, in Ordnung. gelb = kleinere Sachen, von mir behoben oder benannt. rot = so nicht in Ordnung, Opus muss nachlegen.
+"@
+}
+
+# Abschluss-Zug fuer Opus, wenn ein Kollege gelb oder rot gemeldet hat. Der Chef
+# soll am Ende EINE verbindliche Aussage haben, nicht drei Meinungen.
+function Build-ClosePrompt([string]$chefText, [string]$berichte) {
+  return @"
+[SYSTEM] Du bist wieder OPUS und fuehrst das Team. Deine Kollegen haben gegengelesen und einen Mangel gemeldet. Dr. Petsas wartet am Handy auf EINE klare Aussage.
+
+[WAS DR. PETSAS WOLLTE]
+$chefText
+
+[WAS DIE KOLLEGEN MELDEN]
+$berichte
+
+Jetzt: Pruefe, was zu Recht bemaengelt wurde, und behebe es vollstaendig (aendern, testen, committen - AGENTS.md gilt). Was du fuer unbegruendet haeltst, sagst du mit Begruendung. Was riskant waere (Deploy, Datenloeschung, Live-Worker ohne gruenes Gate), machst du NICHT, sondern schlaegst es vor.
+
+Antworte AUSSCHLIESSLICH auf Deutsch, 2 bis 5 Saetze, ohne Code-Bloecke und ohne Tool-Namen: was jetzt gilt und was noch offen ist. KEINE Team-Zeilen mehr.
+"@
+}
+
+function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride = "__ACTIVE__", [int]$timeoutMin = 0) {
+  if ($timeoutMin -le 0) { $timeoutMin = $AgentTimeoutMin }
   $mdl = if ($modelOverride -eq "__ACTIVE__") { $script:ActiveModel } else { $modelOverride }
   $outFile = Join-Path $RunDir ("agent-out-{0}.json" -f ([guid]::NewGuid().ToString("N").Substring(0,8)))
   $errFile = "$outFile.err"
@@ -210,7 +422,7 @@ function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride =
     $p = Start-Process -FilePath $CursorAgent -ArgumentList $agentArgs `
       -RedirectStandardInput $inFile -RedirectStandardOutput $outFile -RedirectStandardError $errFile `
       -NoNewWindow -PassThru
-    $deadline = (Get-Date).AddMinutes($AgentTimeoutMin)
+    $deadline = (Get-Date).AddMinutes($timeoutMin)
     $nextPulse = (Get-Date).AddSeconds(15)
     while (-not $p.HasExited) {
       Beat
@@ -222,7 +434,7 @@ function Run-Agent([string]$prompt, [string]$sessionId, [string]$modelOverride =
         Start-Sleep -Seconds 1
         Remove-Item $inFile, $outFile, $errFile -ErrorAction SilentlyContinue
         return @{ ok = $false; timeout = $true; session = $sessionId; billing = $false;
-          text = ("Diese Aufgabe hat laenger als $AgentTimeoutMin Minuten gebraucht und wurde abgebrochen, damit der Draht frei bleibt. Bitte in kleineren Schritten anfragen oder erneut senden - ich nehme sie dann neu auf.") }
+          text = ("Diese Aufgabe hat laenger als $timeoutMin Minuten gebraucht und wurde abgebrochen, damit der Draht frei bleibt. Bitte in kleineren Schritten anfragen oder erneut senden - ich nehme sie dann neu auf.") }
       }
     }
     Beat
@@ -290,14 +502,16 @@ function Requeue-Orphans() {
 Beat
 # Aktives Modell hinterlegen, damit der Urlaubs-Waechter es gegenpruefen kann.
 try { Set-Content -Path $ModelFile -Value $script:ActiveModel -Encoding ASCII -NoNewline } catch {}
-Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$script:ActiveModel (Wunsch=$OpusModel) Intervall=${IntervalSeconds}s Timeout=${AgentTimeoutMin}min"
+$TeamAn = -not (Test-Path $TeamFile)
+Log "Fernsteuerungs-Waechter gestartet. MAS=$MasBase Workspace=$Workspace Modell=$script:ActiveModel (Wunsch=$OpusModel) Intervall=${IntervalSeconds}s Timeout=${AgentTimeoutMin}min Team=$(if ($TeamAn) { "an (Opus fuehrt, $GrokModel prueft, $FableModel schleift)" } else { "aus (nur Opus)" })"
 Requeue-Orphans
 # Beim Start ehrlich melden, WAS der Fall ist: "bereit fuer Korrekturen" ist eine
 # Luege, solange dem kopflosen Agenten der Zugangsschluessel fehlt (17.08.2026).
 if (Test-Path $AuthFile) {
   try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + ", ABER: dem Agenten fehlt CURSOR_API_KEY in backend\.env. Nachrichten bleiben liegen und werden nach dem Eintragen automatisch bearbeitet.") } | Out-Null } catch {}
 } else {
-  try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + " - bereit fuer Korrekturen.") } | Out-Null } catch {}
+  $besatzung = if ($TeamAn) { "Team an Bord: Opus fuehrt, Grok prueft, Fable schleift." } else { "Nur Opus (Team ruht - 'team an' holt es zurueck)." }
+  try { Api-Post "/remote/board" @{ text = ("Waechter online seit " + (Get-Date).ToString("HH:mm") + " - bereit fuer Korrekturen.`n" + $besatzung) } | Out-Null } catch {}
 }
 
 while ($true) {
@@ -329,6 +543,28 @@ while ($true) {
         try { Api-Post "/remote/ack" @{ ids = @($id); status = "in_arbeit" } | Out-Null } catch {}
         try { Api-Post "/remote/board" @{ text = ("In Arbeit seit " + (Get-Date).ToString("HH:mm") + ":`n" + $text.Substring(0, [Math]::Min(200, $text.Length))) } | Out-Null } catch {}
 
+        # --- Steuerbefehl: Team an oder aus --------------------------------
+        # Der Chef soll das Team ohne Codeaenderung bremsen koennen ("nur opus")
+        # und genauso zurueckholen ("team an"). Steht VOR dem Opus-Befehl, weil
+        # "nur opus" sonst wie eine Modell-Wiederherstellung aussehen koennte.
+        $teamCmd = Test-TeamCmd $text
+        if ($teamCmd -eq "aus") {
+          try { Set-Content -Path $TeamFile -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
+          $TeamAn = $false
+          Say "team" "Verstanden - ab jetzt antworte ich allein (Opus). Grok und Fable bleiben draussen, bis du 'team an' schreibst."
+          try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
+          Log "Team AUS (Wunsch des Chefs)"
+          continue
+        }
+        if ($teamCmd -eq "an") {
+          Remove-Item $TeamFile -ErrorAction SilentlyContinue
+          $TeamAn = $true
+          Say "team" "Das Team ist zurueck: Ich (Opus) fuehre, Grok liest gegen, Fable macht den Feinschliff. Du siehst an jeder Nachricht, wer schreibt."
+          try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
+          Log "Team AN (Wunsch des Chefs)"
+          continue
+        }
+
         # --- Steuerbefehl: zurueck auf das Wunsch-Opus ----------------------
         if ((Test-Path $BillingFile) -and (Test-OpusRestoreCmd $text)) {
           Log "Opus-Wiederherstellung angefragt - teste $OpusName ($OpusModel)"
@@ -343,7 +579,7 @@ while ($true) {
           } else {
             $rep = "Der Opus-Test meldete: " + [string]$test.text + " - ich bleibe vorerst auf dem Ersatzmodell."
           }
-          try { Api-Post "/remote/message" @{ role = "agent"; text = $rep } | Out-Null } catch {}
+          Say "team" $rep
           try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
           Log "Opus-Restore: $rep"
           continue
@@ -352,8 +588,9 @@ while ($true) {
         # Live-Puls fuers Handy aktivieren (laeuft in Run-Agents Warteschleife).
         $script:PulseStart = Get-Date
         $script:PulseText = $text
+        $script:PulseWho = "Opus arbeitet"
         $sid = Get-Session
-        $prompt = Build-Prompt $text
+        $prompt = Build-Prompt $text $TeamAn
         $res = Run-Agent $prompt $sid
         if ($res.session) { Set-Session $res.session }
 
@@ -383,7 +620,7 @@ So ist es in zwei Minuten behoben: auf cursor.com anmelden, unter Dashboard > In
 
 Deine Nachricht bleibt liegen und wird automatisch bearbeitet, sobald der Schluessel da ist - es geht nichts verloren.
 "@
-            try { Api-Post "/remote/message" @{ role = "agent"; text = $hinweis } | Out-Null } catch {}
+            Say "team" $hinweis
             try { Set-Content -Path $hinweisMarke -Value ((Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
           }
           try { Api-Post "/remote/board" @{ text = ("ANMELDUNG FEHLT (seit " + (Get-Date).ToString("HH:mm") + "): Der Agent braucht CURSOR_API_KEY in backend\.env. Nachrichten bleiben liegen und werden danach automatisch bearbeitet.") } | Out-Null } catch {}
@@ -416,21 +653,87 @@ Deine Nachricht bleibt liegen und wird automatisch bearbeitet, sobald der Schlue
           try { Set-Content -Path $ModelFile -Value $FallbackModel -Encoding ASCII -NoNewline } catch {}
           try { Set-Content -Path $BillingFile -Value ("Opus-Guthaben erschoepft seit " + (Get-Date).ToString("o")) -Encoding ASCII -NoNewline } catch {}
           $hinweis = "WICHTIG: Der Dienst meldet gerade ein Konto-Problem fuer $OpusName. Damit du mich weiter erreichst, antworte ich vorlaeufig mit einem Ersatzmodell (Konto-Standard). Sobald das geklaert ist, schreib einfach 'opus wieder an' - dann stelle ich sofort auf $OpusName zurueck."
-          try { Api-Post "/remote/message" @{ role = "agent"; text = $hinweis } | Out-Null } catch {}
+          Say "team" $hinweis
           $res = Run-Agent $prompt $res.session $FallbackModel
           if ($res.session) { Set-Session $res.session }
         }
 
-        $script:PulseText = ""   # Puls aus - Lauf fertig
+        # --- Antwort von Opus: Steuerzeilen raus, dann ans Handy -------------
+        # Die "[TEAM] ..."-Zeilen sind Regie-Anweisungen an die Kollegen und
+        # duerfen NIE im Chat landen (der Chef liest sonst Maschinentext).
         $reply = [string]$res.text
         if (-not $reply.Trim()) { $reply = "(Der Agent hat keine Textantwort geliefert.)" }
         if ($res.billing -and $script:ActiveModel -eq $FallbackModel) {
           $reply = "Auch das Ersatzmodell ist gerade nicht verfuegbar - das Konto scheint komplett ohne Guthaben zu sein. Bitte lade auf; danach 'opus wieder an' schreiben. (Urspruengliche Meldung: " + $reply + ")"
         }
-        try { Api-Post "/remote/message" @{ role = "agent"; text = $reply } | Out-Null } catch { Log "FEHLER beim Zurueckschreiben: $($_.Exception.Message)" }
-        try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
-        try { Api-Post "/remote/board" @{ text = ("Zuletzt beantwortet " + (Get-Date).ToString("HH:mm") + " (Modell: $script:ActiveModel).`n" + $reply.Substring(0, [Math]::Min(280, $reply.Length))) } | Out-Null } catch {}
+        $zerlegt = Parse-TeamOrders $reply
+        $reply = if ($zerlegt.text) { $zerlegt.text } else { $reply }
+        Say "opus" $reply
         Log "Beantwortet $id (ok=$($res.ok), billing=$($res.billing), modell=$script:ActiveModel, session=$($res.session))"
+
+        # --- Kollegen dazu: Grok liest gegen, Fable schleift ----------------
+        # Nacheinander, nie gleichzeitig: die Kollegen arbeiten im SELBEN
+        # Arbeitsverzeichnis - zwei Agenten parallel wuerden sich in denselben
+        # Dateien begegnen. Der Chef sieht jede Meldung einzeln mit Absender.
+        # Gespart wird an drei Stellen: Team aus, Opus hat gar keinen Kollegen
+        # angefordert, oder der Lauf ist gescheitert (dann gibt es nichts zu
+        # pruefen). Bei einem Konto-Problem bleibt das Team ebenfalls draussen -
+        # weitere Laeufe wuerden nur dieselbe Wand treffen.
+        $auftraege = @($zerlegt.orders)
+        $teamLaeuft = $TeamAn -and ($auftraege.Count -gt 0) -and $res.ok -and (-not $res.billing) `
+          -and (-not $res.timeout) -and ($script:ActiveModel -eq $OpusModel)
+        $berichte = @()
+        $nachbessern = $false
+        if ($teamLaeuft) {
+          foreach ($auftrag in $auftraege) {
+            $wer = [string]$auftrag.who
+            $k = $Team[$wer]
+            if (-not $k) { continue }
+            $script:PulseStart = Get-Date
+            $script:PulseText = [string]$auftrag.task
+            $script:PulseWho = ("{0} {1}" -f $k.name, $k.verb)
+            try { Api-Post "/remote/board" @{ text = ("{0} {1} seit {2}`nAuftrag: {3}" -f $k.name, $k.verb, (Get-Date).ToString("HH:mm"), $script:PulseText) } | Out-Null } catch {}
+            Log ("Kollege {0} ({1}) uebernimmt: {2}" -f $k.name, $k.modell, $script:PulseText)
+            $mp = Build-MatePrompt $wer ([string]$auftrag.task) $text $reply
+            $mres = Run-Agent $mp (Get-Session $wer) $k.modell $MateTimeoutMin
+            if ($mres.session) { Set-Session $mres.session $wer }
+            if (-not $mres.ok) {
+              # Ehrlich bleiben: der Chef muss wissen, dass das Sicherheitsnetz
+              # diesmal NICHT gespannt war. Opus' Antwort steht ja schon.
+              Log ("Kollege {0} scheiterte: {1}" -f $k.name, [string]$mres.text)
+              Say "team" ("{0} konnte diesmal nicht gegenlesen (der Dienst meldete ein Problem). Die Antwort von Opus oben bleibt unveraendert stehen - schreib 'nochmal pruefen', wenn du das Gegenlesen nachholen willst." -f $k.name)
+              continue
+            }
+            $u = Parse-Verdict ([string]$mres.text)
+            $mtext = if ($u.text) { $u.text } else { [string]$mres.text }
+            Say $wer $mtext
+            $urteil = if ($u.urteil) { $u.urteil } else { "gruen" }
+            $berichte += ("{0} ({1}): {2}" -f $k.name, $urteil, $mtext)
+            if ($urteil -ne "gruen") { $nachbessern = $true }
+            Log ("Kollege {0} fertig, Urteil={1}" -f $k.name, $urteil)
+          }
+        }
+
+        # --- Abschluss: EINE verbindliche Aussage --------------------------
+        # Nur wenn wirklich ein Mangel gemeldet wurde. Sonst waere das ein
+        # vierter Lauf, der nichts hinzufuegt.
+        if ($nachbessern) {
+          $script:PulseStart = Get-Date
+          $script:PulseText = "Nachbesserung nach dem Gegenlesen"
+          $script:PulseWho = "Opus legt nach"
+          Log "Kollegen melden Mangel - Opus legt nach"
+          $cres = Run-Agent (Build-ClosePrompt $text ($berichte -join "`n")) (Get-Session) $script:ActiveModel
+          if ($cres.session) { Set-Session $cres.session }
+          $ctext = (Parse-TeamOrders ([string]$cres.text)).text
+          if ($cres.ok -and $ctext) { Say "opus" $ctext }
+          else { Log ("Nachbesserung ohne brauchbare Antwort: " + [string]$cres.text) }
+        }
+
+        $script:PulseText = ""   # Puls aus - alle fertig
+        $script:PulseWho = "Opus arbeitet"
+        try { Api-Post "/remote/ack" @{ ids = @($id); status = "fertig" } | Out-Null } catch {}
+        $mitgelesen = if ($berichte.Count -gt 0) { " Gegengelesen: " + (($berichte | ForEach-Object { ($_ -split ":")[0] }) -join ", ") + "." } else { "" }
+        try { Api-Post "/remote/board" @{ text = ("Zuletzt beantwortet " + (Get-Date).ToString("HH:mm") + " (Modell: $script:ActiveModel)." + $mitgelesen + "`n" + $reply.Substring(0, [Math]::Min(280, $reply.Length))) } | Out-Null } catch {}
       }
     }
   } catch {

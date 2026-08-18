@@ -56,6 +56,20 @@
   .msg.user { align-self: flex-end; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; border-bottom-right-radius: 5px; }
   .msg.agent { align-self: flex-start; background: #172642; color: #e6edf6; border-bottom-left-radius: 5px; }
   .msg .meta { font-size: 10px; opacity: .6; margin-top: 5px; text-align: right; }
+  /* WER spricht? (Chef 18.08.2026) Am Draht haengt ein Dreierteam: Opus fuehrt,
+     Grok prueft nach, Fable macht den Feinschliff. Der Absender steht ueber der
+     Blase und hat eine eigene Farbe, damit man im Verlauf sofort sieht, wessen
+     Wort man liest. Alte Nachrichten ohne Absender bleiben schlicht. */
+  .msg.agent { border-left: 3px solid #2b3f66; }
+  .msg.agent .wer { font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 5px; }
+  .msg.von-opus { border-left-color: #2ee6c8; }
+  .msg.von-opus .wer { color: #2ee6c8; }
+  .msg.von-grok { border-left-color: #ffb347; }
+  .msg.von-grok .wer { color: #ffb347; }
+  .msg.von-fable { border-left-color: #c58cff; }
+  .msg.von-fable .wer { color: #c58cff; }
+  .msg.von-team { border-left-color: #8fa0bd; }
+  .msg.von-team .wer { color: #a9bad6; }
   .msg.user.pending { opacity: .72; }
   .msg.user.working .meta::after { content: " · wird bearbeitet …"; color: #ffd98a; }
   .msg.user.done .meta::after { content: " · erledigt"; color: #8fe6c8; }
@@ -195,6 +209,14 @@
 
   let lastRenderKey = "";
   let localPending = []; // optimistisch angezeigte, noch nicht bestaetigte User-Zeilen
+  // Absender-Namen fuer die Blasen. Nur diese vier sind erlaubt (das Backend
+  // laesst auch nur sie durch) — alles andere wird ohne Namen dargestellt.
+  const NAMEN = {
+    opus: "Opus · führt",
+    grok: "Grok · prüft",
+    fable: "Fable · Feinschliff",
+    team: "Team",
+  };
   function fmtTime(ms) {
     if (!ms) return "";
     try { return new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
@@ -225,11 +247,33 @@
     for (const m of msgs) {
       const div = document.createElement("div");
       const statusCls = m.role === "user" ? (m.status === "fertig" ? "done" : m.status === "in_arbeit" ? "working" : "pending") : "";
-      div.className = "msg " + (m.role === "agent" ? "agent" : "user") + (statusCls ? " " + statusCls : "");
+      let wer = m.role === "agent" ? String(m.speaker || "") : "";
+      let text = m.text || "";
+      // Absender steht auch als erste Zeile im Text ("[Grok]"). Das ist der Weg,
+      // der OHNE MAS-Neustart funktioniert: diese Seite ist statisch. Feld
+      // gewinnt, wenn es da ist; die Zeile wird immer herausgeschnitten.
+      if (m.role === "agent") {
+        const marke = text.match(/^\s*\[(opus|grok|fable|team)\]\s*\r?\n?/i);
+        if (marke) {
+          if (!wer) wer = marke[1].toLowerCase();
+          text = text.slice(marke[0].length);
+        }
+      }
+      const name = NAMEN[wer] || "";
+      div.className = "msg " + (m.role === "agent" ? "agent" : "user")
+        + (statusCls ? " " + statusCls : "") + (name ? " von-" + wer : "");
+      if (name) {
+        const w = document.createElement("div");
+        w.className = "wer";
+        w.textContent = name;
+        div.appendChild(w);
+      }
+      const txt = document.createElement("div");
+      txt.textContent = text;
+      div.appendChild(txt);
       const meta = document.createElement("div");
       meta.className = "meta";
       meta.textContent = fmtTime(m.createdAt);
-      div.textContent = m.text || "";
       div.appendChild(meta);
       els.log.appendChild(div);
     }

@@ -24,7 +24,8 @@ function Check([string]$name, [bool]$cond) {
 $tokens = $null; $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($src, [ref]$tokens, [ref]$errors)
 if ($errors -and $errors.Count) { Write-Host "ABBRUCH: Syntaxfehler in $src"; exit 1 }
-foreach ($fn in @("Test-BillingError", "Test-TransientError", "Test-OpusRestoreCmd")) {
+foreach ($fn in @("Test-BillingError", "Test-TransientError", "Test-OpusRestoreCmd",
+                  "Test-TeamCmd", "Parse-TeamOrders", "Parse-Verdict")) {
   $def = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $fn }, $true) | Select-Object -First 1
   if (-not $def) { Write-Host "ABBRUCH: Funktion $fn nicht gefunden"; exit 1 }
   . ([scriptblock]::Create($def.Extent.Text))
@@ -71,6 +72,77 @@ foreach ($case in @(@{ m = "claude-opus-5-thinking-high"; n = "Opus 5" }, @{ m =
 }
 $hard = Select-String -Path $src -Pattern '(rep|hinweis) = "[^"]*Opus 4\.8' -ErrorAction SilentlyContinue
 Check "keine fest verdrahteten Modellnamen mehr in den Chat-Texten" ($null -eq $hard)
+
+Write-Host "6) Dreierteam (Chef 18.08.2026): Schalter, Regie-Zeilen, Urteile"
+Check "'nur opus' schaltet das Team aus"      ((Test-TeamCmd "nur opus bitte") -eq "aus")
+Check "'team aus' schaltet das Team aus"      ((Test-TeamCmd "Team aus, mach das allein") -eq "aus")
+Check "'ohne das Team' schaltet aus"          ((Test-TeamCmd "mach das ohne das Team") -eq "aus")
+Check "'team an' holt das Team zurueck"       ((Test-TeamCmd "team an") -eq "an")
+Check "'zu dritt' holt das Team zurueck"      ((Test-TeamCmd "macht das bitte zu dritt") -eq "an")
+# Der Guthaben-Befehl darf NICHT als Team-Befehl durchgehen - sonst waere er
+# nach dem Umbau nicht mehr erreichbar (er wird zuerst geprueft).
+Check "'opus wieder an' bleibt Guthaben-Befehl" ((Test-TeamCmd "opus wieder an") -eq "")
+Check "normale Nachricht schaltet nichts"      ((Test-TeamCmd "Bitte pruefe die Termine von morgen") -eq "")
+# VORFALL 18.08.2026 (erster Selbsttest): Ein langer Arbeitsauftrag, in dem das
+# Wort "Dreierteam" nur VORKAM, wurde als Schalter verstanden - der Waechter
+# antwortete "Team ist zurueck" und die Aufgabe war verloren. Ein Steuerbefehl
+# ist nur, was kurz ist, keine Frage stellt und am Anfang steht.
+$langerAuftrag = @"
+SELBSTTEST DES DREIERTEAMS (ausgeloest von Opus am Rechner).
+Aendere NICHTS an Clara. Hole danach beide Kollegen dazu.
+"@
+Check "langer Auftrag mit 'Dreierteam' wird NICHT geschluckt" ((Test-TeamCmd $langerAuftrag) -eq "")
+Check "Frage nach dem Team ist kein Schalter"  ((Test-TeamCmd "Wie laeuft das Dreierteam?") -eq "")
+Check "'Team' mitten im Satz schaltet nichts"  ((Test-TeamCmd "Sag dem Team an, es soll warten - dann weiter im Kalender") -eq "")
+
+$antwort = @"
+Ich habe die Absenderkennung eingebaut und getestet.
+Committet in MAS-2.
+[TEAM] grok: Pruefe, ob die Handy-Seite ohne Absender-Feld weiterhin sauber anzeigt.
+[TEAM] fable: Lies die neuen Chat-Texte auf Verstaendlichkeit.
+"@
+$z = Parse-TeamOrders $antwort
+Check "zwei Auftraege erkannt"                  ($z.orders.Count -eq 2)
+Check "erster Auftrag geht an Grok"             ($z.orders[0].who -eq "grok")
+Check "zweiter Auftrag geht an Fable"           ($z.orders[1].who -eq "fable")
+Check "Auftragstext kommt vollstaendig an"      ($z.orders[0].task -like "Pruefe, ob die Handy-Seite*")
+# Das ist der wichtigste Punkt: Maschinen-Zeilen duerfen NIE im Chat des Chefs
+# landen - er liest sonst Regie-Anweisungen statt einer Antwort.
+Check "Regie-Zeilen sind aus dem Chat-Text raus" ($z.text -notmatch '\[TEAM\]')
+Check "eigentliche Antwort bleibt erhalten"      ($z.text -like "Ich habe die Absenderkennung*")
+$doppelt = Parse-TeamOrders "Fertig.`n[TEAM] grok: einmal`n[TEAM] grok: nochmal"
+Check "derselbe Kollege wird nur einmal geholt"  ($doppelt.orders.Count -eq 1)
+$unsinn = Parse-TeamOrders "Fertig.`n[TEAM] niemand"
+Check "unbrauchbare Regie-Zeile wird verworfen"  ($unsinn.orders.Count -eq 0 -and $unsinn.text -eq "Fertig.")
+$ohne = Parse-TeamOrders "Nur eine Auskunft, kein Team noetig."
+Check "Antwort ohne Regie-Zeile bleibt unberuehrt" ($ohne.orders.Count -eq 0 -and $ohne.text -eq "Nur eine Auskunft, kein Team noetig.")
+
+$gruen = Parse-Verdict "Geprueft, laeuft.`n[URTEIL] gruen"
+Check "gruenes Urteil erkannt"                  ($gruen.urteil -eq "gruen")
+Check "Urteilszeile ist aus dem Chat-Text raus"  ($gruen.text -eq "Geprueft, laeuft.")
+Check "rotes Urteil erkannt"                    ((Parse-Verdict "So nicht.`n[URTEIL] rot").urteil -eq "rot")
+Check "gelbes Urteil erkannt"                    ((Parse-Verdict "Kleinigkeit behoben.`n[URTEIL] gelb").urteil -eq "gelb")
+Check "fehlendes Urteil bleibt leer"             ((Parse-Verdict "Habe geschaut, passt.").urteil -eq "")
+
+Write-Host "7) Dreierteam: Sparregeln und Vertraege im Waechter"
+# Kollegen-Modelle duerfen NIE in die Modell-Datei geschrieben werden: der
+# Urlaubs-Waechter vergleicht sie mit Opus und wuerde den Draht sonst mitten im
+# Gegenlesen abschiessen.
+$modellZeilen = @(Select-String -Path $src -Pattern 'Set-Content -Path \$ModelFile' -ErrorAction SilentlyContinue)
+Check "Modell-Datei wird ueberhaupt geschrieben" ($modellZeilen.Count -ge 2)
+Check "kein Kollegen-Modell in der Modell-Datei" (-not ($modellZeilen | Where-Object { $_.Line -match "Grok|Fable" }))
+# Bei Konto-Problem oder gescheitertem Lauf bleibt das Team draussen.
+$sparen = Select-String -Path $src -Pattern '\$teamLaeuft = \$TeamAn' -Context 0,1 -ErrorAction SilentlyContinue
+$sparText = if ($sparen) { $sparen.Line + " " + ($sparen.Context.PostContext -join " ") } else { "" }
+Check "Team ruht bei Konto-Problem"              ($sparText -match '-not \$res\.billing')
+Check "Team ruht bei gescheitertem Lauf"         ($sparText -match '\$res\.ok')
+Check "Team laeuft nur auf dem Wunsch-Opus"      ($sparText -match '\$script:ActiveModel -eq \$OpusModel')
+# Jeder Kopf braucht seinen eigenen Gespraechsfaden.
+Check "eigene Sitzungsdatei je Kollege"          ($null -ne (Select-String -Path $src -Pattern 'remote_chat_session_\{0\}' -ErrorAction SilentlyContinue))
+# Absender an jeder Agent-Nachricht (sonst sieht der Chef nicht, wer schreibt).
+Check "Nachrichten tragen einen Absender"        ($null -ne (Select-String -Path $src -Pattern 'speaker = \$wer' -ErrorAction SilentlyContinue))
+$roh = Select-String -Path $src -Pattern 'Api-Post "/remote/message"' -ErrorAction SilentlyContinue
+Check "keine Nachricht mehr ohne Absender"       ($roh.Count -eq 1)
 
 Write-Host ""
 if ($fails -gt 0) { Write-Host "ERGEBNIS: $oks ok, $fails FEHLGESCHLAGEN" -ForegroundColor Red; exit 1 }
