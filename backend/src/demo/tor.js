@@ -142,6 +142,20 @@ function ipDrossel(ip, maxProStunde = 5) {
   return rec.anzahl <= maxProStunde;
 }
 
+/** SMS-Absender: wie auf dem Handy, hoechstens 11 Zeichen, Buchstaben noetig. */
+export function absenderHaltbar(rein) {
+  const kurz = text(rein)
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+    .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue")
+    .replace(/ß/g, "ss")
+    .replace(/[^0-9A-Za-z ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 11)
+    .trim();
+  return kurz.length >= 2 && /[A-Za-z]/.test(kurz) ? kurz : "";
+}
+
 /** Praxiswebseite: mit oder ohne https, Domain mit Punkt. */
 export function websiteHaltbar(rein) {
   let s = text(rein);
@@ -166,8 +180,8 @@ export function websiteHaltbar(rein) {
  * verwendet.
  *
  * @param {{vorname?:string, name?:string, praxis?:string, behandler?:string,
- *          website?:string, email?:string, handy?:string, beruf?:boolean,
- *          ip?:string}} rein
+ *          website?:string, absender?:string, email?:string, handy?:string,
+ *          beruf?:boolean, ip?:string}} rein
  * @param {(auftrag:{an:string, betreff:string, text:string}) => Promise<{ok:boolean}>} mailVersand
  */
 export async function codeSenden(rein, mailVersand) {
@@ -177,11 +191,13 @@ export async function codeSenden(rein, mailVersand) {
   const praxis = text(rein?.praxis) || (name ? `Praxis ${name}` : "");
   const email = text(rein?.email);
   const website = websiteHaltbar(rein?.website);
+  const absender = absenderHaltbar(rein?.absender);
   const beruf = rein?.beruf === true || rein?.beruf === "true" || rein?.beruf === "on";
 
   if (!vorname) return { ok: false, fehler: "vorname_fehlt", klartext: "Bitte den Vornamen eintragen." };
   if (!name) return { ok: false, fehler: "name_fehlt", klartext: "Bitte den Nachnamen eintragen." };
   if (!website) return { ok: false, fehler: "website_fehlt", klartext: "Bitte die Praxiswebseite eintragen." };
+  if (!absender) return { ok: false, fehler: "absender_fehlt", klartext: "Bitte den SMS-Absender eintragen — so steht der Name auf dem Handy, höchstens 11 Zeichen." };
   if (!handy) return { ok: false, fehler: "handy_ungueltig", klartext: "Diese Handynummer sieht nicht nach einem Mobilanschluss in Deutschland, Österreich oder der Schweiz aus." };
   if (!istEmail(email)) return { ok: false, fehler: "email_ungueltig", klartext: "Bitte die E-Mail-Adresse prüfen." };
   if (!beruf) return { ok: false, fehler: "beruf_fehlt", klartext: "Bitte bestätigen, dass Sie einem medizinischen Beruf angehören und nur fiktive Patientendaten verwenden." };
@@ -228,6 +244,7 @@ export async function codeSenden(rein, mailVersand) {
     praxis,
     behandler,
     website,
+    absender,
     email,
     handy,
     berufBestaetigt: true,

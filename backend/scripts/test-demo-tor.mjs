@@ -3,7 +3,7 @@
 //
 //   node scripts/test-demo-tor.mjs
 
-import { handyE164, istEmail, behandlerVorschlag, websiteHaltbar } from "../src/demo/tor.js";
+import { handyE164, istEmail, behandlerVorschlag, websiteHaltbar, absenderHaltbar } from "../src/demo/tor.js";
 import { smsAbsenderAus, absenderSaeubern, identitaetsRahmen } from "../src/lisa/identitaet.js";
 
 let ok = 0;
@@ -41,6 +41,13 @@ pruef("www.praxis.de gilt", websiteHaltbar("www.praxis.de").includes("praxis.de"
 pruef("https://zahnarzt-berlin.de gilt", websiteHaltbar("https://zahnarzt-berlin.de").includes("zahnarzt-berlin.de"));
 pruef("ohne Punkt faellt durch", websiteHaltbar("praxis") === "");
 pruef("leer faellt durch", websiteHaltbar("") === "");
+
+console.log("3b) SMS-Absender");
+pruef("IhrePraxis gilt", absenderHaltbar("IhrePraxis") === "IhrePraxis");
+pruef("Müller wird Mueller", absenderHaltbar("Müller") === "Mueller");
+pruef("zu lang wird gekuerzt", absenderHaltbar("ZahnarztpraxisSeeblick").length <= 11);
+pruef("nur Zeichen faellt durch", absenderHaltbar("!!!") === "");
+pruef("leer faellt durch", absenderHaltbar("") === "");
 
 console.log("3) E-Mail-Plausibilitaet");
 pruef("normale Adresse", istEmail("dr.petsas@pickadoc.de"));

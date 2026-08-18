@@ -39,7 +39,7 @@ function ip(req) {
 
 /** Absendername fuer die Praxis des Besuchers (SMS-Standard, 11 Zeichen). */
 function absenderFuer(lead) {
-  return smsAbsenderAus(lead?.praxis) || absenderSaeubern(lead?.praxis) || "Pickadoc";
+  return absenderSaeubern(lead?.absender) || smsAbsenderAus(lead?.praxis) || absenderSaeubern(lead?.praxis) || "Pickadoc";
 }
 
 // --- Schritt 1: Konto anlegen, Token per E-Mail -----------------------------
@@ -195,13 +195,14 @@ async function leadMelden(lead) {
     `Praxis:    ${lead.praxis}`,
     `Behandler: ${lead.behandler || "-"}`,
     `Website:   ${lead.website || "-"}`,
+    `SMS-Abs.:  ${absenderFuer(lead)}`,
     `E-Mail:    ${lead.email}`,
     `Handy:     ${lead.handy}   (per E-Mail-Token bestätigt)`,
     `Beruf:     medizinisch, nur fiktive Patientendaten`,
     "",
     "Diese Person hat die Erlebnis-Demo interaktiv freigeschaltet — sie hat also",
     "nicht nur zugeschaut, sondern selbst angefasst. Lisa meldet sich in der Demo",
-    `unter "${lead.praxis}", SMS gehen mit dem Absender "${smsAbsenderAus(lead.praxis) || "Pickadoc"}" raus.`,
+    `unter "${lead.praxis}", SMS gehen mit dem Absender "${absenderFuer(lead)}" raus.`,
   ];
   await sendMail(DEMO_MANDANT, konto.id, {
     to: [LEAD_MAIL_AN],
