@@ -6,6 +6,7 @@ import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { upsertSharedContact } from "../brain/addressBook.js";
 import { lisaDisclosurePrefix } from "../brain/aiDisclosure.js";
 import { resolveOutboundRedirect } from "../clara/testRedirect.js";
+import { ladeLisaIdentitaet, identitaetsRahmen } from "./identitaet.js";
 import { summarizeForSpeech } from "../clara/summarize.js";
 import { getOperator } from "../clara/sessions.js";
 import { notifyOperator } from "../clara/devices.js";
@@ -261,15 +262,16 @@ async function lisaVoiceFrom() {
 // ----------------------------------------------------------------------------
 
 /**
- * Send one SMS via Twilio. Sender is the alphanumeric LISA_SMS_SENDER (no
- * reply channel — outbound notifications only, which is exactly Lisa's job).
+ * Send one SMS via Twilio. Sender is alphanumeric (no reply channel — outbound
+ * notifications only, which is exactly Lisa's job).
  *
- * @returns {Promise<{ok:boolean, sid?:string, error?:string}>}
+ * @param {{to:string, body:string, from?:string}} input `from` = Absendername
+ *        der Praxis; ohne Angabe die globale Umgebungsvariable.
+ * @returns {Promise<{ok:boolean, sid?:string, error?:string, from?:string}>}
  */
-async function twilioSendSms({ to, body }) {
+async function twilioSendEinmal({ to, body, from }) {
   const sid = env("TWILIO_ACCOUNT_SID");
   const token = env("TWILIO_AUTH_TOKEN");
-  const from = env("LISA_SMS_SENDER");
   const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
   const auth = Buffer.from(`${sid}:${token}`).toString("base64");
   const form = new URLSearchParams({ To: to, From: from, Body: body });
@@ -281,9 +283,24 @@ async function twilioSendSms({ to, body }) {
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
-    return { ok: false, error: data?.message || `twilio_http_${r.status}` };
+    return { ok: false, error: data?.message || `twilio_http_${r.status}`, from };
   }
-  return { ok: true, sid: data?.sid || null };
+  return { ok: true, sid: data?.sid || null, from };
+}
+
+async function twilioSendSms({ to, body, from }) {
+  const global = env("LISA_SMS_SENDER");
+  const wunsch = String(from || "").trim() || global;
+  const erst = await twilioSendEinmal({ to, body, from: wunsch });
+  if (erst.ok || !global || wunsch === global) return erst;
+  // NETZ (18.08.2026): Der Absendername der Praxis ist neu; ob Twilio einen
+  // frei gewaehlten alphanumerischen Absender annimmt, haengt am Konto und am
+  // Zielland. Wird er abgelehnt, darf die Nachricht NICHT verloren gehen —
+  // dann geht sie wie bisher unter dem globalen Absender raus. Schlechter
+  // Absender ist ein Schoenheitsfehler, eine nicht angekommene Terminabsage
+  // ist ein Praxisproblem.
+  log.warn("lisa.sms.absender_abgelehnt", { to, absender: wunsch, error: erst.error });
+  return twilioSendEinmal({ to, body, from: global });
 }
 
 /**
@@ -330,7 +347,14 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
   const taskRef = tasksCol(clientId).doc();
   const now = Date.now();
 
-  const send = await twilioSendSms({ to, body });
+  // ABSENDER = PRAXISNAME (Chef 18.08.2026). Vorher trug jede Lisa-SMS den
+  // globalen Absender aus der Umgebung; auf dem Handy des Patienten stand damit
+  // ein fremder Name, obwohl im Text "hier ist <Praxis>" steht. Quelle ist die
+  // Einstellung der Praxis selbst (siehe identitaet.js), sonst aus dem
+  // Praxisnamen abgeleitet.
+  const ident = await ladeLisaIdentitaet(clientId).catch(() => null);
+
+  const send = await twilioSendSms({ to, body, from: ident?.absender });
   if (!send.ok) {
     log.warn("lisa.sms.failed", { clientId, error: send.error });
     return { ok: false, message: "Die SMS konnte nicht gesendet werden. Bitte später erneut versuchen." };
@@ -344,6 +368,7 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by 
     contactName: name || null,
     body,
     providerSid: send.sid || null,
+    senderName: send.from || null,
     assignedBy: by || "Team",
     createdAt: FieldValue.serverTimestamp(),
     ts: now,
@@ -568,6 +593,16 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   // DSGVO: KI-Ansage nur, wenn der Schalter im Cockpit AN ist (Default aus).
   const disclosure = await lisaDisclosurePrefix(clientId).catch(() => "");
 
+  // RICHTIGE PRAXIS, RICHTIGER BEHANDLER (Chef 18.08.2026). Lisas Agenten-Prompt
+  // bei ElevenLabs nannte eine feste Praxis ("Telefonassistentin von Dr. Petsas")
+  // — fuer jeden anderen Mandanten und fuer die Erlebnis-Demo ist das der falsche
+  // Name am Telefon. Die Identitaet reist deshalb IM AUFTRAG mit: das ist die
+  // einzige Angabe, die pro Anruf sicher ankommt. Kalendername aus dem Anlass
+  // gewinnt (beim Recall haengt der Termin an genau diesem Behandler).
+  const ident = await ladeLisaIdentitaet(clientId, {
+    calendarName: bookingContext?.calendarName,
+  }).catch(() => null);
+
   // Same dynamic-variable contract as Lisa's agent prompt expects.
   // client_id geht mit, damit die Kalender-Webhook-Tools (offer_slots/
   // book_slot) den Mandanten sicher auflösen — NIE vom LLM erfunden, sondern
@@ -579,7 +614,8 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     delegated_to: "Lisa",
     contact_name: name || to,
     phone_number: to,
-    task_prompt: rahmeAuftrag(disclosure ? `${disclosure}${prompt}` : prompt),
+    task_prompt: rahmeAuftrag(disclosure ? `${disclosure}${prompt}` : prompt)
+      + identitaetsRahmen(ident),
     patient_name: name || "",
     doctor: by || "",
     scheduled_for: "",
@@ -605,6 +641,10 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     callSid: call.callSid || null,
     voiceFrom: voiceFrom || null,
     assignedBy: by || "Team",
+    // Unter welchem Namen hat Lisa sich gemeldet? Gehoert ins Protokoll: bei
+    // einer Beschwerde ("wer hat mich da angerufen?") muss das nachweisbar sein.
+    praxisName: ident?.praxisName || null,
+    behandler: ident?.behandler || null,
     outcome: null,
     resultSummary: null,
     transcriptText: null,
