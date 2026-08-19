@@ -2425,6 +2425,11 @@ Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
 Regel: Neue Idee/Wunsch -> Eintrag mit Datum + 1 Satz. Bewertung erst, wenn
 das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
+- 19.08.2026: Bianca-Routine-FAQ — Katalog 100 typischer Patientenfragen
+  mit telefonierbaren Antworten zum Chef-Editieren
+  (`docs/TELEFON_FAQ_ROUTINEFRAGEN.md`). Nicht in den Live-Prompt kippen
+  (FAQ-Block ist auf 6 Paare gedeckelt). Spaeter: Freigabe + Retrieval der
+  passenden Karte pro Turn.
 - 04.07.2026: Firestore-Export als Datensicherung einrichten (gcloud fehlt
   auf der Maschine; Code-Sicherung besteht, Daten-Backup noch offen).
 - 05.07.2026: W-OUTREACH-Folgen: E-Mail-Kanal im Lueckenfueller (Nadine) mit
