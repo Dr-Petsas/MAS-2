@@ -43,6 +43,7 @@ import zusageRouter from "./routes/zusage.js";
 import demoRouter from "./routes/demo.js";
 import claraRouter from "./routes/clara.js";
 import { sttBenchProxy } from "./routes/sttBench.js";
+import { conformerBenchProxy } from "./routes/conformerBench.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
 
@@ -178,6 +179,8 @@ app.use((req, res, next) => {
 // STT-Bench (Mikrofon-Vergleich) hinter demselben Tunnel wie MAS.
 // VOR static + Auth: die Seite ist oeffentlich (kein Login, nur HTTPS fuers Mic).
 app.use("/stt-bench", sttBenchProxy);
+// Conformer-Live-Test (ehemals stt.pickadoc-tunnel.com) — eigener GPU-Prozess.
+app.use("/stt", conformerBenchProxy);
 
 app.use(express.static(path.join(__dirname, "..", "public")));
 
@@ -215,7 +218,13 @@ app.use(pvsRouter);
 app.use(zusageRouter);
 // Erlebnis-Demo, interaktiver Weg (oeffentlich, ticket-gesichert) — ebenfalls
 // vor dem Clara-Catch-all.
-app.use(demoRouter);
+// Weiche (Chef 19.08.2026, docs/DEMO_TRENNUNG.md): Standard AN, damit ein
+// Live-Neustart die oeffentliche Demo nicht totlegt. Isolation: Env
+// DEMO_IM_HAUPTPROZESS=0 und eigener Prozess start-demo-mas.ps1 (Port 4010).
+// Clara-Router und Clara v7 werden hier nicht veraendert.
+if (process.env.DEMO_IM_HAUPTPROZESS !== "0") {
+  app.use(demoRouter);
+}
 app.use(claraRouter);
 
 
@@ -299,28 +308,19 @@ async function syncLisaTools() {
   }
 }
 
-// Lena-STT WebSocket-Proxy: iPad holt wss vom Named-Tunnel (mas.pickadoc-tunnel.com)
-// statt fragiler Quick-Tunnel. Pfad /lena-stt → lokal ws://127.0.0.1:8140/stt.
+// WebSocket-Proxys hinter dem Named-Tunnel (mas.pickadoc-tunnel.com):
+//   /lena-stt  ->  ws://127.0.0.1:8140/stt   (Live-Lena)
+//   /stt       ->  ws://127.0.0.1:8155/stt   (Conformer-Bench, ehem. stt.pickadoc-tunnel.com)
+// /stt-bench ist HTTP-only (Vergleichs-Bench) und darf hier NICHT mitmatchen.
 const LENA_STT_PORT = Number(process.env.LENA_STT_PORT || 8140);
+const CONFORMER_BENCH_PORT = Number(process.env.CONFORMER_BENCH_PORT || 8155);
 const server = http.createServer(app);
-server.on("upgrade", (req, socket, head) => {
-  const rawUrl = String(req.url || "");
-  if (!rawUrl.startsWith("/lena-stt")) {
-    socket.destroy();
-    return;
-  }
-  let targetPath = "/stt";
-  try {
-    const u = new URL(rawUrl, "http://127.0.0.1");
-    // /lena-stt  oder  /lena-stt/stt  (+ Query channel/session)
-    targetPath = "/stt" + (u.search || "");
-  } catch {
-    /* keep /stt */
-  }
-  const headers = { ...req.headers, host: `127.0.0.1:${LENA_STT_PORT}` };
+
+function proxyWsUpgrade(req, socket, head, { port, targetPath, name }) {
+  const headers = { ...req.headers, host: `127.0.0.1:${port}` };
   const proxyReq = http.request({
     hostname: "127.0.0.1",
-    port: LENA_STT_PORT,
+    port,
     path: targetPath,
     method: "GET",
     headers,
@@ -339,16 +339,36 @@ server.on("upgrade", (req, socket, head) => {
     socket.pipe(proxySocket);
   });
   proxyReq.on("error", (err) => {
-    log.warn("lena-stt proxy upgrade failed", { err: String(err?.message || err) });
+    log.warn(`${name} proxy upgrade failed`, { err: String(err?.message || err) });
     try { socket.write("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n"); } catch { /* noop */ }
     try { socket.destroy(); } catch { /* noop */ }
   });
   socket.on("error", () => { try { proxyReq.destroy(); } catch { /* noop */ } });
   proxyReq.end();
-  if (head?.length) {
-    // head already belongs to the client socket stream after upgrade;
-    // http.request('upgrade') handles the handshake without needing head write.
+}
+
+server.on("upgrade", (req, socket, head) => {
+  const rawUrl = String(req.url || "");
+  let port;
+  let name;
+  if (rawUrl.startsWith("/lena-stt")) {
+    port = LENA_STT_PORT;
+    name = "lena-stt";
+  } else if (rawUrl === "/stt" || rawUrl.startsWith("/stt?")) {
+    port = CONFORMER_BENCH_PORT;
+    name = "conformer-bench";
+  } else {
+    socket.destroy();
+    return;
   }
+  let targetPath = "/stt";
+  try {
+    const u = new URL(rawUrl, "http://127.0.0.1");
+    targetPath = "/stt" + (u.search || "");
+  } catch {
+    /* keep /stt */
+  }
+  proxyWsUpgrade(req, socket, head, { port, targetPath, name });
 });
 
 // Lena-Provider registrieren (GUARDED, 23.07.2026): ein defektes oder neu
