@@ -218,11 +218,11 @@ app.use(pvsRouter);
 app.use(zusageRouter);
 // Erlebnis-Demo, interaktiver Weg (oeffentlich, ticket-gesichert) — ebenfalls
 // vor dem Clara-Catch-all.
-// Weiche (Chef 19.08.2026, docs/DEMO_TRENNUNG.md): Standard AN, damit ein
-// Live-Neustart die oeffentliche Demo nicht totlegt. Isolation: Env
-// DEMO_IM_HAUPTPROZESS=0 und eigener Prozess start-demo-mas.ps1 (Port 4010).
-// Clara-Router und Clara v7 werden hier nicht veraendert.
-if (process.env.DEMO_IM_HAUPTPROZESS !== "0") {
+// Weiche (Chef 19.08.2026, docs/DEMO_TRENNUNG.md): Standard AUS — die Demo
+// laeuft allein auf Port 4010 (start-demo-mas.ps1). Nur mit
+// DEMO_IM_HAUPTPROZESS=1 haengt sie noch im Hauptprozess. Clara-Router
+// und Clara v7 werden hier nicht veraendert.
+if (process.env.DEMO_IM_HAUPTPROZESS === "1") {
   app.use(demoRouter);
 }
 app.use(claraRouter);

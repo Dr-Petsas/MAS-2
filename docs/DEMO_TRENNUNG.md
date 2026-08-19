@@ -24,12 +24,14 @@
 
 `DEMO_IM_HAUPTPROZESS` in `backend/src/server.js`:
 
-- nicht `0` (Standard): Demo-Routen bleiben im Hauptprozess gemountet,
-  damit ein Live-Neustart die oeffentliche Demo nicht totlegt, solange
-  der Demo-MAS noch keinen eigenen Tunnel hat.
-- `0`: Haupt-MAS dient keine `/demo`-Routen mehr. Dann muss
-  `start-demo-mas.ps1` laufen, und die Demo-Seite zeigt auf Port 4010
-  (`?mas=http://127.0.0.1:4010`).
+- Standard (nicht gesetzt): Haupt-MAS dient **keine** `/demo`-Routen.
+  Die Demo laeuft allein: `start-demo-mas.ps1`, Port 4010.
+- `DEMO_IM_HAUPTPROZESS=1`: Notnagel, Demo wieder im Hauptprozess
+  (nur wenn der eigene Demo-Prozess fehlt).
+
+Der gerade laufende Live-Dienst aendert sich erst beim naechsten
+Neustart. Diesen Neustart machen wir nicht, solange die oeffentliche
+Demo noch den Live-Tunnel nutzt.
 
 Clara-Router, Clara-Scheduler und F:\Clara-Voice* werden von dieser
 Weiche nicht veraendert.
