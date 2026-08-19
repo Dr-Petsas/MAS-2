@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { log } from "../log.js";
+import { crawlHintergrund } from "./webcrawl.js";
+import { wegwerfKontoAnlegen, PETSAS_ID } from "./wegwerfKonto.js";
 
 // ============================================================================
 // Das Tor zur Erlebnis-Demo (Chef 18.08.2026).
@@ -34,6 +36,7 @@ export const DEMO_MANDANT = (process.env.DEFAULT_CLIENT_ID || "MEe4ZQHEzOPzLcexy
 
 const CODE_GUELTIG_MS = 10 * 60000;
 const TICKET_GUELTIG_MS = 24 * 3600000;
+const PETSAS_TICKET_MS = 90 * 24 * 3600000;
 const CODE_VERSUCHE_MAX = 5;
 
 /** Kontingente. Bewusst klein: die Demo soll ueberzeugen, nicht telefonieren. */
@@ -184,22 +187,22 @@ export function websiteHaltbar(rein) {
  *          beruf?:boolean, ip?:string}} rein
  * @param {(auftrag:{an:string, betreff:string, text:string}) => Promise<{ok:boolean}>} mailVersand
  */
-export async function codeSenden(rein, mailVersand) {
+export async function codeSenden(rein, versandFn) {
   const handy = handyE164(rein?.handy);
-  const name = text(rein?.name);
-  const vorname = text(rein?.vorname);
+  const rohName = text(rein?.name);
+  const teile = rohName.split(/\s+/).filter(Boolean);
+  const vorname = text(rein?.vorname) || (teile.length >= 2 ? teile[0] : rohName);
+  const name = teile.length >= 2 ? teile.slice(1).join(" ") : rohName;
   const praxis = text(rein?.praxis) || (name ? `Praxis ${name}` : "");
   const email = text(rein?.email);
   const website = websiteHaltbar(rein?.website);
-  const absender = absenderHaltbar(rein?.absender);
+  const absender = absenderHaltbar(rein?.absender) || absenderHaltbar(praxis) || absenderHaltbar(name);
   const beruf = rein?.beruf === true || rein?.beruf === "true" || rein?.beruf === "on";
 
-  if (!vorname) return { ok: false, fehler: "vorname_fehlt", klartext: "Bitte den Vornamen eintragen." };
-  if (!name) return { ok: false, fehler: "name_fehlt", klartext: "Bitte den Nachnamen eintragen." };
+  if (!rohName) return { ok: false, fehler: "name_fehlt", klartext: "Bitte Ihren Namen eintragen." };
   if (!website) return { ok: false, fehler: "website_fehlt", klartext: "Bitte die Praxiswebseite eintragen." };
-  if (!absender) return { ok: false, fehler: "absender_fehlt", klartext: "Bitte den SMS-Absender eintragen — so steht der Name auf dem Handy, höchstens 11 Zeichen." };
+  if (!emailOk(email)) return { ok: false, fehler: "email_fehlt", klartext: "Bitte eine gültige E-Mail-Adresse eintragen — dorthin kommt der Link für den Praxis-PC." };
   if (!handy) return { ok: false, fehler: "handy_ungueltig", klartext: "Diese Handynummer sieht nicht nach einem Mobilanschluss in Deutschland, Österreich oder der Schweiz aus." };
-  if (!istEmail(email)) return { ok: false, fehler: "email_ungueltig", klartext: "Bitte die E-Mail-Adresse prüfen." };
   if (!beruf) return { ok: false, fehler: "beruf_fehlt", klartext: "Bitte bestätigen, dass Sie einem medizinischen Beruf angehören und nur fiktive Patientendaten verwenden." };
 
   if (rein?.ip && !ipDrossel(rein.ip)) {
@@ -221,20 +224,17 @@ export async function codeSenden(rein, mailVersand) {
   }
 
   const code = code6();
-  const behandler = behandlerVorschlag(rein);
+  const behandler = behandlerVorschlag({ vorname, name, behandler: rein?.behandler });
 
-  const versand = await mailVersand({
-    an: email,
+  const versand = await versandFn({
+    an: handy,
     betreff: "Ihr Freischaltcode für die Pickadoc-Demo",
     text:
-      `Guten Tag ${vorname || name},\n\n` +
-      `Ihr Freischaltcode für die Live-Demo: ${code}\n` +
-      `Er gilt zehn Minuten.\n\n` +
-      `Pickadoc`,
+      `Ihr Pickadoc-Code: ${code}. Gilt zehn Minuten.`,
   });
   if (!versand?.ok) {
-    log.warn("demo.code.mail_fehlgeschlagen", { email, fehler: versand?.error || "" });
-    return { ok: false, fehler: "mail_fehlgeschlagen", klartext: "Die E-Mail ließ sich nicht senden. Bitte die Adresse prüfen oder später noch einmal." };
+    log.warn("demo.code.sms_fehlgeschlagen", { handy, fehler: versand?.error || "" });
+    return { ok: false, fehler: "sms_fehlgeschlagen", klartext: "Die SMS ließ sich nicht senden. Bitte die Nummer prüfen oder später noch einmal." };
   }
 
   await ref.set({
@@ -274,7 +274,7 @@ export async function codeSenden(rein, mailVersand) {
 export async function freischalten({ leadId, code } = {}) {
   const id = text(leadId);
   const eingabe = text(code).replace(/\D/g, "");
-  if (!id || !eingabe) return { ok: false, fehler: "unvollstaendig", klartext: "Bitte den Code aus der E-Mail eintragen." };
+  if (!id || !eingabe) return { ok: false, fehler: "unvollstaendig", klartext: "Bitte den Code aus der SMS eintragen." };
 
   const ref = leads().doc(id);
   const snap = await ref.get();
@@ -304,7 +304,80 @@ export async function freischalten({ leadId, code } = {}) {
   }, { merge: true });
 
   log.info("demo.freigeschaltet", { leadId: id, praxis: d.praxis, handy: d.handy });
-  return { ok: true, ticket, lead: { ...d, id } };
+
+  // Komplettes Wegwerf-Konto, damit Clara wie in einer Praxis laeuft
+  // (Chef 19.08.2026). Fehler hier duerfen das Ticket nicht zurueckhalten.
+  let clientId = text(d.clientId);
+  try {
+    const konto = await wegwerfKontoAnlegen({ ...d, id });
+    if (konto.ok && konto.clientId) {
+      clientId = konto.clientId;
+      await ref.set({ clientId }, { merge: true });
+    }
+  } catch (e) {
+    log.warn("demo.wegwerf.fehler", { leadId: id, error: String(e?.message || e) });
+  }
+
+  // Hintergrund-Crawl der Praxis-Webseite anstossen (fire-and-forget): fuellt
+  // spaeter den Onboarder vor, falls der Besucher auf "14 Tage testen" klickt.
+  // Bewusst OHNE await — darf die Freischaltung nie bremsen. Nur einmal je
+  // Lead und nur, wenn eine Website hinterlegt ist.
+  if (text(d.website) && text(d.crawlStatus) !== "ok") {
+    crawlHintergrund(ref, d.website).catch(() => {});
+  }
+
+  return { ok: true, ticket, lead: { ...d, id, clientId } };
+}
+
+/**
+ * Entwickler-Zugang fuer Dr. Petsas: festes Wegwerf-Konto, langes Ticket,
+ * keine SMS und kein Formular (Chef 19.08.2026).
+ */
+export async function petsasDevOeffnen() {
+  const konto = await wegwerfKontoAnlegen({
+    id: "petsas",
+    praxis: "Praxis Dr. Petsas",
+    name: "Petsas",
+    vorname: "Michael",
+    website: "https://pickadoc.de",
+  }, {
+    dauerhaft: true,
+    note: "Entwickler-Konto Petsas — nicht mit den Wegwerf-Konten der Interessenten loeschen.",
+  });
+  if (!konto.ok) return konto;
+
+  const ref = leads().doc("dev-petsas");
+  const snap = await ref.get();
+  const alt = snap.exists ? (snap.data() || {}) : {};
+  let ticket = text(alt.ticket);
+  let ticketBis = Number(alt.ticketBis || 0);
+  if (ticket.length !== 48 || !ticketBis || Date.now() > ticketBis) {
+    ticket = crypto.randomBytes(24).toString("hex");
+    ticketBis = Date.now() + PETSAS_TICKET_MS;
+  }
+
+  const lead = {
+    vorname: "Michael",
+    name: "Petsas",
+    praxis: "Praxis Dr. Petsas",
+    website: "https://pickadoc.de",
+    email: "development@pickadoc.de",
+    behandler: "Dr. Petsas",
+    absender: "DrPetsas",
+    status: "freigeschaltet",
+    ticket,
+    ticketBis,
+    clientId: PETSAS_ID,
+    devKonto: true,
+  };
+  await ref.set({
+    ...lead,
+    freigeschaltetAm: alt.freigeschaltetAm || FieldValue.serverTimestamp(),
+    ts: Date.now(),
+  }, { merge: true });
+
+  log.info("demo.dev.petsas", { clientId: PETSAS_ID });
+  return { ok: true, ticket, lead: { ...lead, id: "dev-petsas", clientId: PETSAS_ID } };
 }
 
 /**
@@ -359,5 +432,86 @@ export function kontingentStand(lead) {
   return {
     sms: Math.max(0, KONTINGENT.smsProNummer - Number(lead?.smsGenutzt || 0)),
     anrufe: Math.max(0, KONTINGENT.anrufeProNummer - Number(lead?.anrufeGenutzt || 0)),
+  };
+}
+
+// ============================================================================
+// Uebergabe Handy -> Praxis-PC (Chef 19.08.2026).
+//
+// Problem: Film und Live-Demo laufen am Handy, die Einrichtung (Onboarder)
+// aber nur am Praxis-PC. Wechselt der Zahnarzt das Geraet, ist das Ticket im
+// localStorage des Handys — der PC weiss nichts. Der Zwischenstand ginge
+// verloren.
+//
+// Loesung: den Stand am Lead sichern und einen Wiederaufnahme-Token ausgeben.
+// Die Route mailt einen Link mit diesem Token (und der Homepage) an die
+// E-Mail des Besuchers. Am PC geoeffnet, laeuft die Einrichtung nahtlos
+// weiter. Der Token ist NICHT das Ticket: er loest keine SMS/Anrufe aus,
+// er transportiert nur den Wiederaufnahme-Stand.
+// ============================================================================
+
+const UEBERGABE_GUELTIG_MS = 7 * 24 * 3600000; // eine Woche: der Link darf in Ruhe am PC geoeffnet werden
+
+function emailOk(v) {
+  const s = text(v);
+  return s.length <= 200 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s);
+}
+
+/** Nur ein kleines, reines Objekt sichern — kein Firestore-Ref, keine Riesen-Blobs. */
+function standSicher(stand) {
+  try {
+    if (!stand || typeof stand !== "object") return null;
+    const roh = JSON.stringify(stand);
+    if (roh.length > 4000) return { gekuerzt: true, ts: Date.now() };
+    return JSON.parse(roh);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Zwischenstand am Lead sichern und einen Wiederaufnahme-Token ausgeben.
+ * Der E-Mail-Versand passiert in der Route (dort liegen die Mailkonten).
+ *
+ * @returns {Promise<{ok:boolean, token?:string, lead?:object, fehler?:string, klartext?:string}>}
+ */
+export async function uebergabeSpeichern({ ticket, email, stand } = {}) {
+  const lead = await ticketPruefen(ticket);
+  if (!lead) return { ok: false, fehler: "ticket", klartext: "Bitte die Demo neu freischalten." };
+  const mail = text(email);
+  if (!emailOk(mail)) {
+    return { ok: false, fehler: "email", klartext: "Bitte eine gültige E-Mail-Adresse eintragen — dorthin kommt der Link für den Praxis-PC." };
+  }
+
+  const token = crypto.randomBytes(18).toString("hex"); // 36 Zeichen
+  await lead.ref.set({
+    email: mail,
+    uebergabeToken: token,
+    uebergabeBis: Date.now() + UEBERGABE_GUELTIG_MS,
+    uebergabeStand: standSicher(stand),
+    uebergabeAm: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  log.info("demo.uebergabe.gespeichert", { leadId: lead.id, email: mail });
+  return { ok: true, token, lead: { ...lead, email: mail } };
+}
+
+/**
+ * Wiederaufnahme-Stand zu einem Token holen (fuer den Praxis-PC).
+ * Gibt bewusst NUR die harmlosen Wiederaufnahme-Felder zurueck — nie Handy,
+ * Ticket oder Kontingent.
+ */
+export async function uebergabeHolen(token) {
+  const t = text(token);
+  if (t.length !== 36) return null;
+  const snap = await leads().where("uebergabeToken", "==", t).limit(1).get();
+  if (snap.empty) return null;
+  const d = snap.docs[0].data() || {};
+  if (!d.uebergabeBis || Date.now() > Number(d.uebergabeBis)) return null;
+  return {
+    website: d.website || "",
+    praxis: d.praxis || "",
+    name: [d.vorname, d.name].filter(Boolean).join(" "),
+    stand: d.uebergabeStand || null,
   };
 }
