@@ -5,6 +5,36 @@
 // Scan als Bild (JPG/PNG) läuft dagegen durch die OCR.
 import { ocrImage } from "./ocr.js";
 
+/**
+ * Text aus einem PDF holen. pdf-parse 2.x exportiert eine Klasse `PDFParse` und
+ * versperrt den frueheren Tiefen-Import "pdf-parse/lib/pdf-parse.js" ueber das
+ * exports-Feld — genau daran scheiterte der Upload im KI-Bereich des Composers
+ * ("Package subpath … is not defined by exports"). Der alte Weg bleibt als
+ * Rueckfallebene, falls irgendwo noch pdf-parse 1.x installiert ist.
+ */
+async function pdfText(buf) {
+  const mod = await import("pdf-parse");
+  const PDFParse = mod.PDFParse || mod.default?.PDFParse;
+  if (PDFParse) {
+    const parser = new PDFParse({ data: new Uint8Array(buf) });
+    try {
+      const res = await parser.getText();
+      // pdf-parse 2.x setzt Seitenmarker "-- 3 of 12 --" in den Text. Im
+      // LLM-Kontext ist das nur Rauschen.
+      return String(res?.text || "")
+        .replace(/^[ \t]*--[ \t]*\d+[ \t]+of[ \t]+\d+[ \t]*--[ \t]*$/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    } finally {
+      await parser.destroy?.().catch?.(() => {});
+    }
+  }
+  const legacy = mod.default || mod;
+  if (typeof legacy !== "function") throw new Error("pdf-parse: keine bekannte Schnittstelle");
+  const data = await legacy(buf);
+  return String(data?.text || "").trim();
+}
+
 function guessKind(filename = "", contentType = "") {
   const ct = String(contentType).toLowerCase();
   const fn = String(filename).toLowerCase();
@@ -31,15 +61,11 @@ export async function extractText({ base64, text, filename, contentType } = {}) 
 
   if (kind === "pdf") {
     try {
-      // Import the lib directly: the package entry runs debug code on ESM import.
-      const mod = await import("pdf-parse/lib/pdf-parse.js");
-      const pdfParse = mod.default || mod;
-      const data = await pdfParse(buf);
-      const t = String(data?.text || "").trim();
+      const t = await pdfText(buf);
       if (t) return { ok: true, text: t, kind: "pdf" };
       return { ok: false, text: "", kind: "pdf", note: "PDF enthält keinen Text-Layer (vermutlich gescannt). Bitte als Bild (JPG/PNG) hochladen oder Text einfügen." };
     } catch (e) {
-      return { ok: false, text: "", kind: "pdf", note: "PDF-Textextraktion nicht verfügbar (" + String(e?.message || e).slice(0, 80) + "). Bitte Text einfügen." };
+      return { ok: false, text: "", kind: "pdf", note: "PDF-Textextraktion nicht verfügbar (" + String(e?.message || e).slice(0, 120) + "). Bitte Text einfügen." };
     }
   }
 
