@@ -529,4 +529,73 @@ export async function rewritePassage(clientId, { selection, instruction, fullTex
   return { ok: true, text: out, model: res.model };
 }
 
+// Marker um das fallengelassene Fragment. Bewusst unnatuerliche Zeichenfolgen:
+// sie duerfen in echtem Brieftext nie vorkommen und ueberleben das Tokenisieren.
+const DROP_OPEN = "<<<EINGEFUEGT>>>";
+const DROP_CLOSE = "<<</EINGEFUEGT>>>";
+
+/**
+ * Ein aus dem Gespraech nach rechts gezogenes Fragment an GENAU der Stelle in
+ * die E-Mail einweben, an der es fallengelassen wurde.
+ *
+ * Der Aufrufer setzt das Fragment bereits an die Zielposition und markiert es;
+ * das Modell bekommt also den vollstaendigen Entwurf inklusive Zielstelle und
+ * muss nur noch glaetten. Das ist robuster als eine Positionsangabe als Zahl —
+ * das Modell kann die Stelle nicht "verrutschen" lassen.
+ *
+ * Scheitert das Modell, faellt der Aufrufer auf den roh eingefuegten Text
+ * zurueck: gezogener Text darf NIE verloren gehen.
+ *
+ * @param {string} clientId
+ * @param {{body?:string, fragment?:string, index?:number, subject?:string, recipient?:string, tone?:string}} input
+ * @returns {Promise<{ok:boolean, body:string, model:string, reason?:string}>}
+ */
+export async function integrateSnippet(clientId, { body, fragment, index, subject, recipient, tone } = {}) {
+  const snippet = String(fragment || "").trim();
+  if (!snippet) return { ok: false, body: String(body || ""), model: "", reason: "no_fragment" };
+
+  const paragraphs = String(body || "").split(/\n{2,}/).filter((p) => p.trim());
+  const at = Math.max(0, Math.min(Number.isFinite(index) ? Number(index) : paragraphs.length, paragraphs.length));
+  const marked = [
+    ...paragraphs.slice(0, at),
+    `${DROP_OPEN}\n${snippet}\n${DROP_CLOSE}`,
+    ...paragraphs.slice(at),
+  ].join("\n\n");
+
+  const sp = await loadSenderProfile(clientId);
+  const system = [
+    "Du bist Nadine, eine professionelle Schreibkraft.",
+    sp.orgName ? `Absender ist ${sp.orgName}${sp.branchLabel ? ` (${sp.branchLabel})` : ""}.` : "",
+    `Du bekommst einen E-Mail-Entwurf, in dem ein Textstueck zwischen ${DROP_OPEN} und ${DROP_CLOSE} steht.`,
+    "Das markierte Stueck stammt aus einer Notiz oder einem Chat und ist noch KEIN Briefdeutsch.",
+    "Deine Aufgabe: dieses Stueck an GENAU DIESER STELLE in die E-Mail einweben — als vollstaendige Sätze in Sie-Form, mit passendem Übergang zum Absatz davor und danach.",
+    "Alles ausserhalb der Markierung bleibt inhaltlich UNVERAENDERT. Du darfst höchstens einen Anschlusssatz minimal anpassen, damit der Übergang stimmt.",
+    "Erfinde nichts: keine Beträge, Termine, Aktenzeichen, Diagnosen oder Namen, die nicht dastehen. Zahlen und Daten wortgetreu übernehmen.",
+    "Ist der Entwurf noch leer, mache aus dem Stueck den Anfang einer E-Mail (Anrede und Grußformel nur, wenn sie fehlen).",
+    tone ? `Tonfall: ${tone}.` : "Tonfall: sachlich, freundlich, verbindlich.",
+    "Füge KEINEN Briefkopf und KEINE Absenderadresse hinzu.",
+    "Gib NUR den vollständigen neuen E-Mail-Text zurück — ohne die Markierungen, ohne Erklärung, ohne Anführungszeichen, ohne Betreffzeile.",
+  ].filter(Boolean).join(" ");
+
+  const user = [
+    recipient ? `EMPFÄNGER: ${clip(recipient, 200)}` : "",
+    subject ? `BETREFF: ${clip(subject, 200)}` : "",
+    "",
+    `ENTWURF MIT EINGEFÜGTEM STÜCK:\n${clip(marked, 8000)}`,
+  ].filter(Boolean).join("\n");
+
+  const { base: strongBase, model: strongModel } = strongLlm();
+  const res = await chat(
+    [{ role: "system", content: system }, { role: "user", content: user }],
+    { temperature: 0.25, maxTokens: 1200, model: strongModel, baseUrl: strongBase, timeoutMs: 120000 }
+  );
+  if (!res.ok) return { ok: false, body: marked.split(DROP_OPEN).join("").split(DROP_CLOSE).join("").trim(), model: res.model, reason: res.reason };
+
+  let out = res.text.trim().replace(/^```[a-z]*\n?|\n?```$/gi, "").trim();
+  // Sicherheitsnetz: laesst das Modell die Marker stehen, fliegen sie raus.
+  out = out.split(DROP_OPEN).join("").split(DROP_CLOSE).join("").trim();
+  if (!out) return { ok: false, body: marked.split(DROP_OPEN).join("").split(DROP_CLOSE).join("").trim(), model: res.model, reason: "empty" };
+  return { ok: true, body: out, model: res.model };
+}
+
 export { llmInfo };

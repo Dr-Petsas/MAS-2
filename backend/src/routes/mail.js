@@ -20,7 +20,7 @@ import { getLetterSettings, setLetterSettings } from "../mail/letterSettings.js"
 import { saveLetterheadAsset, getLetterheadMeta, deleteLetterheadAsset, listLetterheads, setActiveLetterhead, deleteLetterhead } from "../mail/letterhead.js";
 import { saveLetterAsset, getLetterAssetMeta, deleteLetterAsset, getLetterAssetBuffer } from "../mail/letterAssets.js";
 import { listBlocks, createBlock, updateBlock, deleteBlock, seedDefaultBlocks } from "../mail/letterBlocks.js";
-import { draftLetter, draftFromDiscussion, discussCompose, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
+import { draftLetter, draftFromDiscussion, discussCompose, integrateSnippet, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
 import { extractText } from "../mail/extract.js";
 import { saveDocument } from "../mail/documents.js";
 import { archiveLetter, listLetters, getLetter } from "../mail/letterArchive.js";
@@ -641,6 +641,31 @@ router.post("/mail/compose/ai-from-chat", async (req, res) => {
     });
     if (!out.ok && !out.body) return res.status(400).json({ ok: false, ...out, llm: llmInfo() });
     res.json({ ok: true, clientId, ...out, llm: llmInfo() });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Drag & Drop im Composer: ein aus dem Gespraech nach rechts gezogenes Stueck
+// wird an der Absatz-Position `index` in den Entwurf eingewoben.
+// Body: { body?, fragment, index?, subject?, recipient?, tone? }
+// Scheitert das Modell, kommt der roh eingefuegte Text zurueck (ok:false) —
+// gezogener Text darf nie verloren gehen, deshalb kein 400.
+router.post("/mail/compose/integrate", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const b = req.body || {};
+    const out = await integrateSnippet(clientId, {
+      body: b.body,
+      fragment: b.fragment,
+      index: b.index,
+      subject: b.subject,
+      recipient: b.recipient,
+      tone: b.tone,
+    });
+    res.json({ clientId, ...out, llm: llmInfo() });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
