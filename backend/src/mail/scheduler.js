@@ -108,9 +108,15 @@ export async function drainOutboxes({ maxTenants = 200 } = {}) {
 /**
  * Nightly Living-Prompt reflection across all tenants (same tenant discovery
  * as the mail sweep). maybeReflectNightly is self-gating (after 03:00 Berlin,
- * max once per ~day, state in Firestore), so calling it every tick is cheap.
+ * max once per ~day). Vor 03:00 wird gar nicht erst gelesen.
  */
 export async function runNightlyReflections() {
+  // Vor 03:00 Berlin nichts lesen: maybeReflectNightly wuerde sowieso
+  // abbrechen, und der collectionGroup-Lauf alle 2 min war reiner Leerlauf.
+  const hh = Number(new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin", hour: "numeric", hour12: false,
+  }).format(new Date()));
+  if (hh < 3) return { tenants: 0, ran: 0, skipped: "before_window" };
   const snap = await db.collectionGroup("mas_mail_accounts").get();
   const tenants = new Set();
   for (const doc of snap.docs) {
