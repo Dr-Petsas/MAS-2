@@ -19,6 +19,38 @@ function clip(s, n) {
   return t.length > n ? t.slice(0, n) + " …" : t;
 }
 
+// Hochgeladene Unterlagen fuer den Prompt aufbereiten. Lange PDFs (12k+ Zeichen)
+// haben den Lauf auf ~76 s getrieben — der Tunnel (mas.pickadoc-tunnel.com)
+// bricht dann oft ab, bevor die Antwort ankommt. Deshalb laeuft alles ueber
+// DIGEST_LIMIT zuerst durch den faktentreuen 5090-Steckbrief; scheitert der,
+// wird gekappt statt die Unterlage ganz zu verlieren.
+const DIGEST_LIMIT = 2200;
+
+async function condenseDocuments(documents, max = 4) {
+  const raw = Array.isArray(documents)
+    ? documents.filter((d) => d && String(d.text || "").trim()).slice(0, max)
+    : [];
+  const out = [];
+  for (let i = 0; i < raw.length; i++) {
+    const d = raw[i];
+    const full = String(d.text || "").trim();
+    let text = clip(full, DIGEST_LIMIT);
+    let condensed = false;
+    if (full.length > DIGEST_LIMIT) {
+      const digest = await summarizeDocument(full).catch(() => "");
+      if (digest && digest.trim()) { text = digest.trim(); condensed = true; }
+    }
+    out.push({ filename: clip(d.filename || `Unterlage ${i + 1}`, 120), text, condensed, chars: full.length });
+  }
+  return out;
+}
+
+function documentsBlock(docs) {
+  if (!docs.length) return "";
+  return "\n\nHOCHGELADENE UNTERLAGEN (verbindlicher Fakten-Kontext — nichts erfinden, was nicht darin steht):\n"
+    + docs.map((d, i) => `--- ${i + 1}. ${d.filename}${d.condensed ? " (Steckbrief)" : ""} ---\n${d.text}`).join("\n\n");
+}
+
 // HTML-Mail auf sprechbaren/lesbaren Fliesstext reduzieren (fuer den Fall, dass
 // nur ein htmlBody vorliegt). Bewusst simpel — es geht um Kontext, nicht um
 // pixelgenaues Rendering.
@@ -285,12 +317,19 @@ function inferRecipientType(haystack) {
 /**
  * Draft a letter from a rough direction + brain context.
  * @param {string} clientId
- * @param {{caseId?:string, patientName?:string, recipient?:string, sourceText?:string, direction?:string, tone?:string, recipientType?:string, useContext?:boolean}} input
+ * @param {{caseId?:string, patientName?:string, recipient?:string, sourceText?:string, direction?:string, tone?:string, recipientType?:string, useContext?:boolean, documents?:Array<{filename?:string,text:string}>}} input
  *   recipientType (optional): behoerde | anwalt | versicherung | geschaeftlich | patient. Fehlt er,
  *   wird er aus der Klassifizierung des Eingangsschreibens bzw. per Heuristik abgeleitet.
- * @returns {Promise<{ok:boolean, subject:string, body:string, contextUsed:object, model:string, fallback:boolean, reason?:string}>}
+ *   documents (optional): frisch hochgeladene Unterlagen, die NICHT im Gehirn liegen.
+ *   Sie fliessen als eigener, verbindlicher Faktenblock in den Prompt — lange
+ *   Texte vorher als Steckbrief verdichtet. Der Empfaengertyp wird bewusst NICHT
+ *   daraus abgeleitet: der Absender der Unterlage ist oft ein anderer als der
+ *   Empfaenger der neuen Mail (Kassenbrief lesen, an den Patienten schreiben).
+ * @returns {Promise<{ok:boolean, subject:string, body:string, contextUsed:object, model:string, fallback:boolean, reason?:string, documentsUsed:Array<object>}>}
  */
-export async function draftLetter(clientId, { caseId, patientName, recipient, sourceText, sourceLetterIds, direction, tone, recipientType, useContext = true } = {}) {
+export async function draftLetter(clientId, { caseId, patientName, recipient, sourceText, sourceLetterIds, direction, tone, recipientType, useContext = true, documents } = {}) {
+  const docs = await condenseDocuments(documents);
+  const docsBlock = documentsBlock(docs);
   const ctx = useContext
     ? await assembleContext(clientId, { caseId, patientName, sourceText, sourceLetterIds })
     : { contextText: (sourceText && sourceText.trim()) ? "## Hochgeladener/zitierter Brief\n" + clip(sourceText, 4000) : "(kein Kontext vorhanden)", caseId: null, patient: patientName || null, sourceCategory: null, counts: { calls: 0, emails: 0, docs: 0, letters: 0 }, sourceIncluded: !!(sourceText && sourceText.trim()) };
@@ -314,6 +353,9 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
     "Schreibe professionell, höflich und präzise auf Deutsch (Sie-Form).",
     "Nutze AUSSCHLIESSLICH die bereitgestellten Fakten aus Kontext und Quelle — erfinde nichts, keine erfundenen Beträge, Daten oder Namen.",
     "Gehe KONKRET auf das Eingangsschreiben ein: greife dessen Anliegen, Fragen und — falls vorhanden — Aktenzeichen/Bezug ausdrücklich auf.",
+    docs.length
+      ? "Es liegen hochgeladene Unterlagen bei: werte sie aus und nimm ausdrücklich auf ihre Fakten Bezug (Aktenzeichen, Fristen, Forderungen, Beträge). Zahlen, Daten und Aktenzeichen übernimmst du WORTGETREU."
+      : "",
     registerLine,
     "Schlage NIEMALS konkrete Termine, Daten oder Uhrzeiten vor, die nicht ausdrücklich im Kontext stehen.",
     "Wenn eine Information fehlt, formuliere neutral oder bitte höflich um die fehlende Angabe.",
@@ -327,6 +369,7 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
   const user = [
     direction ? `RICHTUNG / AUFTRAG:\n${direction}` : "RICHTUNG / AUFTRAG:\n(keine — formuliere ein passendes, neutrales Schreiben aus dem Kontext)",
     recipient ? `\nEMPFÄNGER:\n${recipient}` : "",
+    docsBlock,
     `\nKONTEXT AUS DEM GEMEINSAMEN GEHIRN:\n${ctx.contextText}`,
   ].join("\n");
 
@@ -341,16 +384,18 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
     { temperature: 0.3, maxTokens: 900, model: strongModel, baseUrl: strongBase, timeoutMs: 120000 }
   );
 
+  const documentsUsed = docs.map((d) => ({ filename: d.filename, condensed: d.condensed, chars: d.chars }));
+
   if (!res.ok) {
-    return { ok: false, ...fallbackDraft({ direction, recipient, context: ctx.contextText, signature: sp.signature }), contextUsed: ctx, model: res.model, fallback: true, reason: res.reason };
+    return { ok: false, ...fallbackDraft({ direction, recipient, context: ctx.contextText, signature: sp.signature }), contextUsed: ctx, model: res.model, fallback: true, reason: res.reason, documentsUsed };
   }
 
   const parsed = parseLetterJson(res.text);
   if (!parsed) {
     // Model answered but not as JSON — use the raw text as the body.
-    return { ok: true, subject: clip((direction || "Ihr Schreiben").replace(/[\r\n]+/g, " "), 60), body: res.text.trim(), contextUsed: ctx, model: res.model, fallback: false };
+    return { ok: true, subject: clip((direction || "Ihr Schreiben").replace(/[\r\n]+/g, " "), 60), body: res.text.trim(), contextUsed: ctx, model: res.model, fallback: false, documentsUsed };
   }
-  return { ok: true, subject: parsed.subject || clip(direction || "Ihr Schreiben", 60), body: parsed.body, contextUsed: ctx, model: res.model, fallback: false };
+  return { ok: true, subject: parsed.subject || clip(direction || "Ihr Schreiben", 60), body: parsed.body, contextUsed: ctx, model: res.model, fallback: false, documentsUsed };
 }
 
 // Inline edit: rewrite ONLY the marked passage per the user's instruction. Used
@@ -372,34 +417,10 @@ export async function discussCompose(clientId, { messages, documents, recipient,
     : [];
   if (!history.length) return { ok: false, reason: "no_messages", text: "", model: "" };
 
-  // Lange PDFs (12k+ Zeichen) haben den Chat auf ~76s getrieben — der Tunnel
-  // (mas.pickadoc-tunnel.com) bricht dann oft ab, bevor die Antwort ankommt.
-  // Deshalb: große Unterlagen zuerst zum Steckbrief verdichten, dann chatten.
-  const rawDocs = Array.isArray(documents)
-    ? documents.filter((d) => d && String(d.text || "").trim()).slice(0, 4)
-    : [];
-  const docs = [];
-  for (let i = 0; i < rawDocs.length; i++) {
-    const d = rawDocs[i];
-    const filename = clip(d.filename || `Unterlage ${i + 1}`, 120);
-    const full = String(d.text || "").trim();
-    let text = full;
-    let condensed = false;
-    if (full.length > 2200) {
-      const digest = await summarizeDocument(full).catch(() => "");
-      if (digest && digest.trim()) { text = digest.trim(); condensed = true; }
-      else text = clip(full, 2200);
-    } else {
-      text = clip(full, 2200);
-    }
-    docs.push({ filename, text, condensed });
-  }
+  const docs = await condenseDocuments(documents);
 
   const sp = await loadSenderProfile(clientId);
-  const docsBlock = docs.length
-    ? "\n\nHOCHGELADENE UNTERLAGEN (verbindlicher Fakten-Kontext — nichts erfinden, was nicht darin steht):\n"
-      + docs.map((d, i) => `--- ${i + 1}. ${d.filename}${d.condensed ? " (Steckbrief)" : ""} ---\n${d.text}`).join("\n\n")
-    : "";
+  const docsBlock = documentsBlock(docs);
 
   const system = [
     "Du bist Nadine, die Schreib- und Beratungs-KI der Praxis. Du hilfst dem Team, ein Thema ZUERST zu erörtern, bevor eine E-Mail niedergeschrieben wird.",
