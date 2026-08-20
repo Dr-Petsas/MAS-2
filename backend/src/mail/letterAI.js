@@ -1,7 +1,7 @@
 import { chat, llmInfo, strongLlm } from "./llm.js";
 import { getCaseContext, listCases } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
-import { listMessagesForCase } from "./store.js";
+import { getMessage, listMessagesForCase } from "./store.js";
 import { listDocumentsForCase, summarizeDocument } from "./documents.js";
 import { getLetter, listLetters } from "./letterArchive.js";
 import { getLetterSettings } from "./letterSettings.js";
@@ -66,12 +66,102 @@ function htmlToText(html) {
 
 // Bester verfuegbarer Klartext einer Mail: Textteil, sonst HTML entkernt, sonst
 // die Vorschau. So bekommt Nadine den ECHTEN Inhalt statt nur eines Snippets.
+// Kopfzeilen, die eine Mail-Quelle einleiten (vom Frontend oder von uns selbst
+// vorangestellt). Sie duerfen NICHT als Zitat-Marker durchgehen, sonst landet
+// die ganze Nachricht in der "Vorgeschichte".
+const LEAD_HEADER = /^(?:(?:Betreff|Von|An|Cc|Datum|Gesendet|Anh[äa]nge|Subject|From|To|Date|Sent)\s*:[^\n]*(?:\n|$))+/i;
+
+// Wo beginnt das Zitat? Outlook/Thunderbird/Gmail markieren den Uebergang
+// unterschiedlich — der frueheste Treffer gewinnt.
+const QUOTE_MARKERS = [
+  /-{2,}\s*(?:urspr[üu]ngliche nachricht|original message|weitergeleitete nachricht|forwarded message)[^\n]*/i,
+  /\n_{5,}[^\n]*\n/,
+  /\n(?:Von|From)\s*:[^\n]+\n(?:(?:Gesendet|Sent|An|To|Datum|Date|Betreff|Subject|Cc)\s*:[^\n]*\n){1,6}/i,
+  /\nAm\s[^\n]{5,90}\sschrieb[^\n]{0,140}:\s*\n/i,
+  /\nOn\s[^\n]{5,90}\swrote:\s*\n/i,
+  /\n>[^\n]*\n/,
+];
+
+/**
+ * Eine Mail-Quelle in Kopf, neuesten Teil und zitierte Vorgeschichte zerlegen.
+ * Bei einer Weiterleitung steht oben nur eine Notiz ("kuemmern Sie sich bitte")
+ * und das eigentliche Anliegen unten im Zitat — ohne diese Trennung antwortete
+ * das Modell auf die Notiz statt auf die Sache.
+ */
+function splitThread(text) {
+  const raw = String(text || "").replace(/\r\n/g, "\n").trim();
+  if (!raw) return { head: "", latest: "", quoted: "" };
+  const lead = raw.match(LEAD_HEADER);
+  const head = lead ? lead[0].trim() : "";
+  const rest = (lead ? raw.slice(lead[0].length) : raw).trim();
+
+  let cut = -1;
+  for (const re of QUOTE_MARKERS) {
+    const m = rest.match(re);
+    if (m && m.index != null && m.index > 0 && (cut < 0 || m.index < cut)) cut = m.index;
+  }
+  if (cut < 0) return { head, latest: rest, quoted: "" };
+  return { head, latest: rest.slice(0, cut).trim(), quoted: rest.slice(cut).trim() };
+}
+
+/**
+ * Die Quelle als beschrifteter Prompt-Block. Der neueste Teil und das Zitat
+ * bekommen EIGENE Budgets: frueher lief beides durch ein gemeinsames Limit von
+ * 4000 Zeichen, wodurch bei langen Verlaeufen ausgerechnet das weitergeleitete
+ * Anliegen am Ende abgeschnitten wurde.
+ */
+function sourceSection(sourceText) {
+  const { head, latest, quoted } = splitThread(sourceText);
+  if (!latest && !quoted) return "";
+  const out = ["## Eingegangene Nachricht, auf die geantwortet wird"];
+  if (head) out.push(head);
+  if (latest) out.push(`### Neuester Teil (zuletzt geschrieben)\n${clip(latest, 3500)}`);
+  if (quoted) {
+    out.push(
+      "### Zitierte Vorgeschichte (älter — bei einer Weiterleitung steht HIER das eigentliche Anliegen)\n"
+      + clip(quoted, 6000),
+    );
+  }
+  return out.join("\n\n");
+}
+
 function plainBody(m) {
   const t = String(m?.textBody || "").trim();
   if (t) return t;
   const h = htmlToText(m?.htmlBody);
   if (h) return h;
   return String(m?.preview || "").trim();
+}
+
+/**
+ * Den Quelltext bevorzugt SERVERSEITIG aus der gespeicherten Nachricht holen.
+ * Das Frontend schickte bisher `textBody || preview` — bei einer reinen
+ * HTML-Mail ist textBody leer, also kam beim Modell nur der 200-Zeichen-Anriss
+ * an und die Antwort blieb zwangslaeufig inhaltsleer. Hier greift plainBody()
+ * mit HTML-Entkernung, ohne Kappung durch den Browser.
+ * Faellt der Zugriff aus, bleibt der mitgeschickte sourceText gueltig.
+ */
+async function resolveSourceText(clientId, { sourceMessageId, sourceText } = {}) {
+  const id = String(sourceMessageId || "").trim();
+  const fallback = String(sourceText || "");
+  if (!id) return fallback;
+  try {
+    const m = await getMessage(clientId, id);
+    if (!m) return fallback;
+    const body = plainBody(m);
+    if (!body) return fallback;
+    const from = m.from?.name ? `${m.from.name} <${m.from.address || ""}>` : (m.from?.address || "unbekannt");
+    const names = (m.attachments || []).map((a) => a?.filename).filter(Boolean);
+    const head = [
+      `Betreff: ${m.subject || "(kein Betreff)"}`,
+      `Von: ${from}`,
+      m.date ? `Gesendet: ${new Date(m.date).toLocaleString("de-DE")}` : "",
+      names.length ? `Anhänge: ${names.join(", ")}` : "",
+    ].filter(Boolean).join("\n");
+    return `${head}\n\n${body}`;
+  } catch {
+    return fallback;
+  }
 }
 
 /**
@@ -200,7 +290,8 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
   }
 
   if (sourceText && sourceText.trim()) {
-    sections.push("## Hochgeladener/zitierter Brief (worauf geantwortet wird)\n" + clip(sourceText, 4000));
+    const block = sourceSection(sourceText);
+    if (block) sections.push(block);
   }
 
   return {
@@ -211,6 +302,32 @@ export async function assembleContext(clientId, { caseId, patientName, sourceTex
     counts: { calls, emails, docs, letters },
     sourceIncluded: !!(sourceText && sourceText.trim()),
   };
+}
+
+const GREETING_LINE = /^(?:mit freundlichen gr[üu][ßs]en|freundliche gr[üu][ßs]e|mit besten gr[üu][ßs]en|beste gr[üu][ßs]e|mit kollegialen gr[üu][ßs]en)[\s,.!]*$/i;
+
+/**
+ * Alles ab der ERSTEN Grußformel abschneiden und nur die konfigurierte Signatur
+ * anhängen. Rein per Prompt war das nicht zu halten: das Modell setzte mal
+ * „Nadine“, mal „Team Dr. Petsas“ darunter und wiederholte die Grußformel
+ * sogar doppelt, obwohl die Anweisung das ausdrücklich verbot. Briefkopf und
+ * Unterschrift setzt ohnehin der Versandweg.
+ */
+function tidyClosing(body, signature) {
+  const text = String(body || "").replace(/\r\n/g, "\n");
+  const lines = text.split("\n");
+  const idx = lines.findIndex((l) => GREETING_LINE.test(l.trim()));
+  if (idx < 0) return text.trim();
+  const kept = lines.slice(0, idx + 1);
+  const sig = String(signature || "").trim();
+  if (sig) kept.push("", sig);
+  return kept.join("\n").trim();
+}
+
+// Das Modell uebernimmt gern die Beschriftung aus dem Quellkopf ("Betreff: …")
+// in den Betreff selbst — einmal reicht.
+function tidySubject(s) {
+  return String(s || "").replace(/^\s*(?:betreff|subject)\s*:\s*/i, "").replace(/\s+/g, " ").trim();
 }
 
 const FALLBACK_NOTE = "[KI-Modell nicht erreichbar — Vorlage aus Kontext. Bitte Text ergänzen.]";
@@ -327,12 +444,13 @@ function inferRecipientType(haystack) {
  *   Empfaenger der neuen Mail (Kassenbrief lesen, an den Patienten schreiben).
  * @returns {Promise<{ok:boolean, subject:string, body:string, contextUsed:object, model:string, fallback:boolean, reason?:string, documentsUsed:Array<object>}>}
  */
-export async function draftLetter(clientId, { caseId, patientName, recipient, sourceText, sourceLetterIds, direction, tone, recipientType, useContext = true, documents } = {}) {
+export async function draftLetter(clientId, { caseId, patientName, recipient, sourceText, sourceMessageId, sourceLetterIds, direction, tone, recipientType, useContext = true, documents } = {}) {
   const docs = await condenseDocuments(documents);
   const docsBlock = documentsBlock(docs);
+  const src = await resolveSourceText(clientId, { sourceMessageId, sourceText });
   const ctx = useContext
-    ? await assembleContext(clientId, { caseId, patientName, sourceText, sourceLetterIds })
-    : { contextText: (sourceText && sourceText.trim()) ? "## Hochgeladener/zitierter Brief\n" + clip(sourceText, 4000) : "(kein Kontext vorhanden)", caseId: null, patient: patientName || null, sourceCategory: null, counts: { calls: 0, emails: 0, docs: 0, letters: 0 }, sourceIncluded: !!(sourceText && sourceText.trim()) };
+    ? await assembleContext(clientId, { caseId, patientName, sourceText: src, sourceLetterIds })
+    : { contextText: sourceSection(src) || "(kein Kontext vorhanden)", caseId: null, patient: patientName || null, sourceCategory: null, counts: { calls: 0, emails: 0, docs: 0, letters: 0 }, sourceIncluded: !!(src && src.trim()) };
 
   // Empfaengertyp: expliziter Wert > Kategorie des Eingangsschreibens > Heuristik.
   const rtype =
@@ -345,30 +463,59 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
   const sp = await loadSenderProfile(clientId);
   const closing = sp.signature
     ? `Beende den Brief mit der Grußformel „Mit freundlichen Grüßen“ und darunter der Signatur „${sp.signature}“.`
-    : "Beende den Brief mit der Grußformel „Mit freundlichen Grüßen“ ohne erfundene Personennamen — die Unterschrift/Signatur ergänzt der Absender selbst.";
+    : "Beende den Brief mit der Grußformel „Mit freundlichen Grüßen“ und schreibe DANACH NICHTS MEHR — keinen Namen, kein Team, keine Praxis, keinen Platzhalter. Die Signatur ergänzt der Absender selbst.";
 
+  // Zeilenweise statt zu EINEM Absatz verkettet: als Liste haelt sich das
+  // Modell nachweislich besser an die einzelnen Regeln.
   const system = [
-    "Du bist Nadine, eine professionelle Schreibkraft. Du verfasst im Auftrag des Absenders Briefe und E-Mails.",
-    sp.orgName ? `Absender ist ${sp.orgName}${sp.branchLabel ? ` (${sp.branchLabel})` : ""}.` : "",
-    "Schreibe professionell, höflich und präzise auf Deutsch (Sie-Form).",
-    "Nutze AUSSCHLIESSLICH die bereitgestellten Fakten aus Kontext und Quelle — erfinde nichts, keine erfundenen Beträge, Daten oder Namen.",
-    "Gehe KONKRET auf das Eingangsschreiben ein: greife dessen Anliegen, Fragen und — falls vorhanden — Aktenzeichen/Bezug ausdrücklich auf.",
+    "Du bist Nadine, eine erfahrene Schreibkraft. Du verfasst im Auftrag des Absenders Briefe und E-Mails auf Deutsch in der Sie-Form.",
+    sp.orgName ? `Absender ist ${sp.orgName}${sp.branchLabel ? ` (${sp.branchLabel})` : ""}.` : null,
+    "",
+    "ANREDE:",
+    "- Sprich die Person aus dem Feld EMPFÄNGER an — nicht eine Person, die nur in der zitierten Vorgeschichte vorkommt.",
+    "- Verwende NIEMALS eine E-Mail-Adresse als Anrede.",
+    "- Sammeladresse oder Organisation als Empfänger (info@, praxis@, kontakt@, Team, Praxis, GmbH, Kanzlei, Kasse, Amt): „Sehr geehrte Damen und Herren“.",
+    "- Nachname UND Geschlecht eindeutig aus dem Schriftverkehr belegt: „Sehr geehrter Herr <Nachname>“ bzw. „Sehr geehrte Frau <Nachname>“.",
+    "- Sonst: „Guten Tag <Vorname Nachname>“. Rate niemals ein Geschlecht.",
+    "",
+    "VERLAUF LESEN:",
+    "- Der Kontext kann einen E-Mail-Verlauf enthalten: der neueste Teil steht oben, ältere Nachrichten darunter im Zitat.",
+    "- Bei einer Weiterleitung („WG:“, „FW:“) steht oben oft nur eine kurze Notiz und das eigentliche Anliegen im Zitat. Antworte auf das ANLIEGEN, nicht auf die Notiz.",
+    "- Kläre für dich, wer was geschrieben hat, welche Fragen offen sind und welche davon der Absender beantworten muss.",
+    "",
+    "SUBSTANZ (der wichtigste Teil):",
+    "- Beantworte JEDE Frage und JEDE Bitte aus dem Eingangsschreiben EINZELN und ausdrücklich. Keine darf unbeantwortet bleiben.",
+    "- Verboten sind Leerformeln, die nichts aussagen: „wir werden das prüfen“, „wir melden uns“, „wir nehmen Ihr Anliegen zur Kenntnis“, „gerne teilen wir Ihnen mit, ob …“, „wir werden uns damit befassen“.",
+    "- Schreibe stattdessen, WAS geschieht, WER es tut und BIS WANN — und begründe es.",
+    "- Fehlt eine Angabe, benenne sie konkret („Für die Begründung fehlt uns X“) und nenne den nächsten Schritt. Weiche nicht allgemein aus.",
+    "- Formuliere aus: ordne ein, erkläre Zusammenhänge, nimm Zahlen, Fristen, Aktenzeichen und Namen wörtlich auf. Wiederhole den Eingangstext nicht bloß in anderen Worten.",
+    "- Umfang: in der Regel 180–350 Wörter in mindestens vier Absätzen — Bezug, Sachstand, Antwort auf jede einzelne Frage, konkreter nächster Schritt.",
+    "",
+    "FAKTEN (gilt stärker als die Substanz-Regeln, wenn beides kollidiert):",
+    "- Erfinde keine Beträge, Daten, Namen, Diagnosen oder Zusagen, die nicht im Kontext stehen.",
+    "- Behaupte NICHTS über bereits Geschehenes, das nicht im Kontext belegt ist — also keine Sätze wie „wir haben das bereits weitergeleitet“, „der Arzt hat das geprüft“, „die Unterlagen sind unterwegs“.",
+    "- Konkret: Perfekt-Sätze über eigenes Handeln („wir haben … weitergeleitet/veranlasst/geprüft“, „wurde bereits übermittelt“) sind NUR erlaubt, wenn genau das im Kontext steht. Sonst schreibe im Futur, was ihr tun WERDET.",
+    "- Zusagen (Ratenzahlung, Kulanz, Kostenübernahme, Termine, Fristen) machst du nur, wenn sie im Kontext gedeckt sind.",
+    "- Muss die Praxis erst entscheiden und steht die Antwort NICHT im Kontext, erfindest du sie nicht — du schreibst den Satz trotzdem aus und hängst einen Platzhalter in eckigen Klammern an, zum Beispiel: „Den Eigenanteil können Sie in Raten zahlen [bitte prüfen: Ratenzahlung möglich? Laufzeit? Höhe?].“ So sieht die Person, die den Entwurf freigibt, sofort, was noch zu klären ist.",
+    "- Substanz heißt nicht Erfindung: lieber ausführlich erklären, WAS als Nächstes passiert und WELCHE Angabe fehlt, als eine Zusage zu erfinden.",
+    "- Schlage keine Termine, Daten oder Uhrzeiten vor, die nicht ausdrücklich im Kontext stehen.",
     docs.length
-      ? "Es liegen hochgeladene Unterlagen bei: werte sie aus und nimm ausdrücklich auf ihre Fakten Bezug (Aktenzeichen, Fristen, Forderungen, Beträge). Zahlen, Daten und Aktenzeichen übernimmst du WORTGETREU."
-      : "",
-    registerLine,
-    "Schlage NIEMALS konkrete Termine, Daten oder Uhrzeiten vor, die nicht ausdrücklich im Kontext stehen.",
-    "Wenn eine Information fehlt, formuliere neutral oder bitte höflich um die fehlende Angabe.",
-    tone ? `Tonfall: ${tone}.` : "Tonfall: sachlich, freundlich, verbindlich.",
-    "WICHTIG: Füge KEINEN Briefkopf, KEINE Absenderadresse und KEINE Telefonnummer/E-Mail hinzu — Briefkopf und Signatur ergänzt der Absender automatisch.",
-    closing,
-    "Antworte NUR mit JSON in genau diesem Format: {\"subject\": \"…\", \"body\": \"…\"}.",
-    "Der body enthält nur Anrede, Fließtext und Grußformel mit Zeilenumbrüchen (\\n).",
-  ].filter(Boolean).join(" ");
+      ? "- Es liegen hochgeladene Unterlagen bei: werte sie aus und nimm ausdrücklich auf ihre Fakten Bezug (Aktenzeichen, Fristen, Forderungen, Beträge). Zahlen, Daten und Aktenzeichen übernimmst du WORTGETREU."
+      : null,
+    registerLine ? `- ${registerLine}` : null,
+    tone ? `- Tonfall: ${tone}.` : "- Tonfall: sachlich, freundlich, verbindlich.",
+    "",
+    "FORM:",
+    "- Füge KEINEN Briefkopf, KEINE Absenderadresse und KEINE Telefonnummer/E-Mail hinzu — Briefkopf und Signatur ergänzt der Absender automatisch.",
+    `- ${closing}`,
+    "- Unterschreibe NIEMALS mit „Nadine“ — das ist der Name des Schreibwerkzeugs, nicht des Absenders.",
+    "- Antworte NUR mit JSON in genau diesem Format: {\"subject\": \"…\", \"body\": \"…\"}.",
+    "- Der body enthält nur Anrede, Fließtext und Grußformel mit Zeilenumbrüchen (\\n).",
+  ].filter((l) => l !== null).join("\n");
 
   const user = [
     direction ? `RICHTUNG / AUFTRAG:\n${direction}` : "RICHTUNG / AUFTRAG:\n(keine — formuliere ein passendes, neutrales Schreiben aus dem Kontext)",
-    recipient ? `\nEMPFÄNGER:\n${recipient}` : "",
+    recipient ? `\nEMPFÄNGER (an diese Adresse geht die Antwort, an DIESE Person richtet sich die Anrede):\n${recipient}` : "",
     docsBlock,
     `\nKONTEXT AUS DEM GEMEINSAMEN GEHIRN:\n${ctx.contextText}`,
   ].join("\n");
@@ -381,7 +528,9 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
   const { base: strongBase, model: strongModel } = strongLlm();
   const res = await chat(
     [{ role: "system", content: system }, { role: "user", content: user }],
-    { temperature: 0.3, maxTokens: 900, model: strongModel, baseUrl: strongBase, timeoutMs: 120000 }
+    // 900 Tokens deckelten den geforderten Umfang (bis 350 Woerter plus
+    // JSON-Rahmen) zu knapp — der Brief brach sonst vor der Grussformel ab.
+    { temperature: 0.35, maxTokens: 1500, model: strongModel, baseUrl: strongBase, timeoutMs: 120000 }
   );
 
   const documentsUsed = docs.map((d) => ({ filename: d.filename, condensed: d.condensed, chars: d.chars }));
@@ -393,9 +542,9 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
   const parsed = parseLetterJson(res.text);
   if (!parsed) {
     // Model answered but not as JSON — use the raw text as the body.
-    return { ok: true, subject: clip((direction || "Ihr Schreiben").replace(/[\r\n]+/g, " "), 60), body: res.text.trim(), contextUsed: ctx, model: res.model, fallback: false, documentsUsed };
+    return { ok: true, subject: clip((direction || "Ihr Schreiben").replace(/[\r\n]+/g, " "), 60), body: tidyClosing(res.text, sp.signature), contextUsed: ctx, model: res.model, fallback: false, documentsUsed };
   }
-  return { ok: true, subject: parsed.subject || clip(direction || "Ihr Schreiben", 60), body: parsed.body, contextUsed: ctx, model: res.model, fallback: false, documentsUsed };
+  return { ok: true, subject: tidySubject(parsed.subject) || clip(direction || "Ihr Schreiben", 60), body: tidyClosing(parsed.body, sp.signature), contextUsed: ctx, model: res.model, fallback: false, documentsUsed };
 }
 
 // Inline edit: rewrite ONLY the marked passage per the user's instruction. Used

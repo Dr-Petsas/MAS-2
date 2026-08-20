@@ -555,6 +555,9 @@ router.post("/mail/letter/ai-draft", async (req, res) => {
       patientName: b.patientName,
       recipient: b.recipient,
       sourceText: b.sourceText,
+      // Vorrang vor sourceText: der Server liest die Mail selbst (inkl.
+      // HTML-Entkernung) statt den gekappten Browser-Text zu nehmen.
+      sourceMessageId: b.sourceMessageId,
       sourceLetterIds: b.sourceLetterIds,
       direction: b.direction,
       tone: b.tone,
