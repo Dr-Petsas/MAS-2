@@ -1,9 +1,9 @@
 {
   "lenaStt": {
     "exists": true,
-    "hash": "974bae6c098c5031",
+    "hash": "9856ee9cb42aa684",
     "data": {
-      "wsUrl": "wss://laptops-suite-xbox-usually.trycloudflare.com/stt"
+      "wsUrl": "wss://[ephemeral-tunnel]/stt"
     }
   },
   "sophieKatalog": {

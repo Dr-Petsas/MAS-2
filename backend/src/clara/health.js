@@ -360,6 +360,9 @@ async function newestWorkerLog() {
 // laesst den Exporter im Vergleichsmodus laufen: Drift (z. B. jemand aendert
 // den Lisa-Prompt in der ElevenLabs-Konsole) macht die Status-Seite ROT und
 // kommt ueber den Morgenlauf aufs Handy. Cache 10 min.
+// Vergleich ist kanonisch: neue ElevenLabs-Defaultfelder und ephemere
+// Tunnel-Hosts (trycloudflare/ngrok) zaehlen NICHT als Drift — sonst ging
+// der Morgenlauf nach jedem Stack-Start grundlos ROT.
 const konfigCache = { ts: 0, result: null };
 export async function checkKonfigDrift() {
   if (konfigCache.result && Date.now() - konfigCache.ts < 10 * 60_000) return konfigCache.result;

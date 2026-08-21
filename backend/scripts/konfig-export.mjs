@@ -6,13 +6,17 @@
 //      Stimme, LLM, Tool-NAMEN — der Prompt lebt NUR in der ElevenLabs-
 //      Konsole; eine Aenderung dort war bisher fuer Git unsichtbar.
 //   2. Firestore-Settings (global): settings/lenaStt, settings/sophieKatalog
-//      — als Inhalt + Hash.
+//      — als Inhalt + Hash. Tunnel-Hosts (trycloudflare/ngrok) werden
+//      normalisiert, sonst wird der Morgenlauf nach jedem Stack-Start ROT.
 //   3. Env-Schluessel-NAMEN (nie Werte!) aus backend/.env und
 //      F:\Clara-Voice\.env — die Pflichtliste, gegen die Health-Ping und
 //      Clara-Start pruefen.
 //
-// SECRETS: Werte von Schluesseln, Headers, Tokens werden VOR dem Schreiben
-// rekursiv entfernt (ersetzt durch "[entfernt]"). Der Snapshot ist committbar.
+// Vergleich ist KANONISCH (src/clara/konfigSnapshot.js): nur Verhaltensfelder.
+// ElevenLabs-Schema-Zuwachs und ephemere Tunnel zaehlen nicht als Drift.
+//
+// SECRETS: der kanonische Agent speichert nur Tool-Namen und normalisierte
+// URL-Pfade, nie Header/Keys. Env-Snapshots speichern nur Schluessel-NAMEN.
 //
 // Aufruf:   node scripts/konfig-export.mjs          (schreibt + zeigt Drift)
 //           node scripts/konfig-export.mjs --check  (nur vergleichen, Exit 1 bei Drift)
@@ -21,6 +25,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import {
+  canonicalElevenAgent, canonicalFirestoreDoc,
+} from "../src/clara/konfigSnapshot.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND = path.resolve(__dirname, "..");
@@ -31,20 +38,6 @@ dotenv.config({ path: path.join(BACKEND, ".env") });
 const CHECK_ONLY = process.argv.includes("--check");
 
 // --- Helfer -----------------------------------------------------------------
-
-const SECRET_KEY_RE = /(secret|api_key|apikey|token|authorization|password|credential|headers?)$/i;
-
-/** Ersetzt Werte sicherheitsrelevanter Schluessel rekursiv. */
-function scrub(value, keyName = "") {
-  if (SECRET_KEY_RE.test(keyName)) return "[entfernt]";
-  if (Array.isArray(value)) return value.map((v) => scrub(v));
-  if (value && typeof value === "object") {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = scrub(v, k);
-    return out;
-  }
-  return value;
-}
 
 /** Stabil serialisieren (Schluessel sortiert), damit Hashes vergleichbar sind. */
 function stableStringify(value) {
@@ -88,13 +81,7 @@ async function elevenAgent(agentId, label) {
   });
   if (!r.ok) throw new Error(`ElevenLabs ${label}: HTTP ${r.status}`);
   const raw = await r.json();
-  // Nur Verhaltens-Felder behalten; platform_settings (Widget/Auth/Privacy)
-  // und Metadaten bewusst draussen. Tool-Definitionen: Secrets/Headers raus.
-  const kept = scrub({
-    agent_id: raw.agent_id,
-    name: raw.name,
-    conversation_config: raw.conversation_config || null,
-  });
+  const kept = canonicalElevenAgent(raw);
   return { label, hash: sha(kept), config: kept };
 }
 
@@ -103,10 +90,8 @@ async function firestoreSettings() {
   const out = {};
   for (const docName of ["lenaStt", "sophieKatalog"]) {
     const snap = await admin.firestore().collection("settings").doc(docName).get();
-    const data = snap.exists ? snap.data() : null;
-    // Zeitstempel raus, sonst gibt es Dauer-Drift ohne inhaltliche Aenderung.
-    if (data && typeof data === "object") delete data.updatedAt;
-    out[docName] = { exists: snap.exists, hash: data ? sha(scrub(data)) : null, data: scrub(data) };
+    const data = snap.exists ? canonicalFirestoreDoc(snap.data()) : null;
+    out[docName] = { exists: snap.exists, hash: data ? sha(data) : null, data };
   }
   return out;
 }
