@@ -12,7 +12,7 @@ import { findContactsByPhone } from "../brain/addressBook.js";
 import { outboxHealth, processBrainOutbox } from "../brain/outbox.js";
 import { createAccount, updateAccount, deleteAccount, getAccountPublic } from "../mail/accounts.js";
 import { testImap, syncAccount, syncAll, sendMail } from "../mail/mailbox.js";
-import { listMessages, getMessage, markRead, listContacts, getAttachmentUrl, getAttachmentData, setMessageClassification, deleteMessage, linkMessageToCase, markAnswered, folderCounts } from "../mail/store.js";
+import { listMessages, findInboxSenders, getMessage, markRead, listContacts, getAttachmentUrl, getAttachmentData, setMessageClassification, deleteMessage, linkMessageToCase, markAnswered, folderCounts } from "../mail/store.js";
 import { classifyWithLLM, deriveMailSignals } from "../mail/classify.js";
 import { buildLetterPdf, letterFilename } from "../mail/letter.js";
 import { buildMailBriefing } from "../mail/briefing.js";
@@ -20,7 +20,7 @@ import { getLetterSettings, setLetterSettings } from "../mail/letterSettings.js"
 import { saveLetterheadAsset, getLetterheadMeta, deleteLetterheadAsset, listLetterheads, setActiveLetterhead, deleteLetterhead } from "../mail/letterhead.js";
 import { saveLetterAsset, getLetterAssetMeta, deleteLetterAsset, getLetterAssetBuffer } from "../mail/letterAssets.js";
 import { listBlocks, createBlock, updateBlock, deleteBlock, seedDefaultBlocks } from "../mail/letterBlocks.js";
-import { draftLetter, draftFromDiscussion, discussCompose, integrateSnippet, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
+import { draftLetter, draftFromDiscussion, discussCompose, discussComposeStream, integrateSnippet, suggestSubject, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
 import { extractText } from "../mail/extract.js";
 import { saveDocument } from "../mail/documents.js";
 import { archiveLetter, listLetters, getLetter } from "../mail/letterArchive.js";
@@ -431,6 +431,16 @@ router.get("/mail/address-book", async (req, res) => {
     const cb = await listContacts(clientId, { q, limit: Number(req.query?.limit) || 300, cursor: req.query?.cursor || null });
     const contacts = cb.items;
     const contactsCursor = cb.nextCursor;
+    if (q.length >= 2) {
+      const inbox = await findInboxSenders(clientId, q, { limit: 12 }).catch(() => []);
+      const have = new Set(contacts.map((c) => String(c.address || "").toLowerCase()).filter(Boolean));
+      for (const c of inbox) {
+        const k = String(c.address || "").toLowerCase();
+        if (!k || have.has(k)) continue;
+        contacts.push(c);
+        have.add(k);
+      }
+    }
     let patients = [];
     let patientsError = null;
     if (q && q.length >= 2) {
@@ -617,6 +627,7 @@ router.post("/mail/compose/ai-chat", async (req, res) => {
     const out = await discussCompose(clientId, {
       messages: b.messages,
       documents: b.documents,
+      activeDocument: b.activeDocument,
       recipient: b.recipient,
       subjectHint: b.subjectHint,
     });
@@ -624,6 +635,48 @@ router.post("/mail/compose/ai-chat", async (req, res) => {
     res.json({ ok: true, clientId, ...out, llm: llmInfo() });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Dieselbe Diskussion, aber als SSE (event: start|delta|done|error) — der
+// Composer zeigt die Antwort Buchstabe fuer Buchstabe, nicht erst am Ende.
+router.post("/mail/compose/ai-chat-stream", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const b = req.body || {};
+    res.set({
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders?.();
+    const send = (event, data) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+    send("start", { ok: true, clientId });
+    const ac = new AbortController();
+    req.on("close", () => ac.abort());
+    for await (const ev of discussComposeStream(clientId, {
+      messages: b.messages,
+      documents: b.documents,
+      activeDocument: b.activeDocument,
+      recipient: b.recipient,
+      subjectHint: b.subjectHint,
+    }, { signal: ac.signal })) {
+      if (res.writableEnded) break;
+      if (ev.type === "start") send("start", { model: ev.model });
+      else if (ev.type === "delta") send("delta", { text: ev.text });
+      else if (ev.type === "reset") send("reset", { text: ev.text });
+      else if (ev.type === "done") send("done", { text: ev.text, model: ev.model, llm: llmInfo() });
+      else if (ev.type === "error") send("error", { reason: ev.reason || "llm_error", model: ev.model });
+    }
+    res.end();
+  } catch (e) {
+    if (!res.headersSent) return res.status(400).json({ error: String(e?.message || e) });
+    try { res.write(`event: error\ndata: ${JSON.stringify({ reason: String(e?.message || e) })}\n\n`); } catch { /* already closed */ }
+    try { res.end(); } catch { /* already closed */ }
   }
 });
 
@@ -669,6 +722,19 @@ router.post("/mail/compose/integrate", async (req, res) => {
       tone: b.tone,
     });
     res.json({ clientId, ...out, llm: llmInfo() });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Betreff aus dem aktuellen Entwurf nachziehen.
+router.post("/mail/compose/subject", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const b = req.body || {};
+    const out = await suggestSubject(clientId, { body: b.body, recipient: b.recipient });
+    res.json({ ok: out.ok, clientId, subject: out.subject || "", model: out.model, llm: llmInfo() });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

@@ -43,6 +43,39 @@ function listShape(id, d) {
   };
 }
 
+/**
+ * Absender aus dem Posteingang zur Empfaengersuche. Das Adressbuch speichert
+ * nur praxisrelevante Frisch-Mails — ein Absender wie "Deutsche Monumentum"
+ * fehlt dort, obwohl die Mail im Posteingang liegt.
+ */
+export async function findInboxSenders(clientId, q, { limit = 12 } = {}) {
+  const needle = String(q || "").toLowerCase().trim();
+  if (needle.length < 2) return [];
+  const rows = await listMessages(clientId, { folder: "INBOX", limit: 500 });
+  const seen = new Set();
+  const out = [];
+  for (const m of rows) {
+    const name = String(m.from?.name || "").trim();
+    const address = String(m.from?.address || "").trim();
+    if (!address) continue;
+    const blob = `${name} ${address} ${m.subject || ""}`.toLowerCase();
+    if (!blob.includes(needle)) continue;
+    const key = address.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: `inbox_${key}`,
+      name: name || address,
+      address,
+      lastSubject: m.subject || "",
+      lastSeenAt: m.date || 0,
+      source: "inbox_sender",
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 export async function listMessages(clientId, { accountId, accountIds, folder = "INBOX", limit = 50, since = 0 } = {}) {
   // Neueste zuerst DIREKT per Firestore-Sortierung (Composite-Index folder+date
   // bzw. accountId+folder+date). Vorfall 06.07.2026: 458 Werbemails an einem Tag

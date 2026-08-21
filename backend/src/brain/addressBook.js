@@ -92,9 +92,10 @@ function looksLikePhoneName(name) {
  *
  * @param {string} clientId
  * @param {{name?:string, email?:string, phone?:string, source:string, category?:string, subject?:string, ts?:number}} c
+ * @param {{bumpCount?:boolean}} [opts]
  * @returns {Promise<string|null>} doc id oder null
  */
-export async function upsertSharedContact(clientId, c = {}) {
+export async function upsertSharedContact(clientId, c = {}, { bumpCount = true } = {}) {
   try {
     const email = String(c.email || "").toLowerCase().trim();
     const phone = normalizeBookPhone(c.phone);
@@ -127,12 +128,15 @@ export async function upsertSharedContact(clientId, c = {}) {
       }
     }
 
+    const prev = await contacts(clientId).doc(id).get().catch(() => null);
+    const prevSeen = Number(prev?.data()?.lastSeenAt || 0);
+    const nextSeen = Number(c.ts || Date.now());
     const patch = {
-      lastSeenAt: c.ts || Date.now(),
-      count: FieldValue.increment(1),
+      lastSeenAt: Math.max(prevSeen, nextSeen || 0),
       relevant: true,
       sources: FieldValue.arrayUnion(String(c.source || "unbekannt")),
     };
+    if (bumpCount) patch.count = FieldValue.increment(1);
     if (email) patch.address = email;
     if (phone) patch.phones = FieldValue.arrayUnion(phone);
     // Eine echte Namensangabe nie durch eine als Name durchgereichte Nummer

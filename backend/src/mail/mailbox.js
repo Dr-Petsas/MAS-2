@@ -120,11 +120,10 @@ function addrList(field) {
     .filter((a) => a.address);
 }
 
-// The address book. We only ever store senders of PRACTICE-RELEVANT mail here
-// (newsletters/spam are skipped by the caller), and enrich the entry with the
-// category and the last subject so Nadine has a useful directory, not a dump.
-// Writes through the SHARED address book (brain/addressBook) so phone numbers
-// from signatures land on the same record that Lisa/Bianca/Clara read.
+// Jeder eingehende Absender landet im geteilten Adressbuch — nicht nur die
+// als "praxisrelevant" klassifizierten. Sonst fehlt z. B. Deutsche Monumentum
+// in der Empfaengersuche, obwohl die Mail im Posteingang liegt.
+// lastSeenAt laeuft nur vorwaerts (siehe upsertSharedContact).
 async function upsertContact(clientId, person, extra = {}) {
   if (!person?.address) return;
   await upsertSharedContact(clientId, {
@@ -135,7 +134,7 @@ async function upsertContact(clientId, person, extra = {}) {
     category: extra.category || "",
     subject: extra.subject || "",
     ts: extra.ts || Date.now(),
-  });
+  }, { bumpCount: extra.bumpCount !== false });
 }
 
 // --- attachments -----------------------------------------------------------
@@ -262,23 +261,17 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
 
   await ref.set(doc, { merge: true });
   const created = !existing.exists;
-  // Frische-Wache: Adressbuch und Gehirn nur fuer Mails der letzten 14 Tage
-  // (Fenster wie backfillInboundMailBrain) — ein Historien-Backfill (07.07.2026)
-  // darf keine Monate alten Mails als "neue" Vorgaenge in Briefings/Tickets
-  // spuelen oder lastSeenAt im geteilten Adressbuch zurueckdrehen.
+  // Frische-Wache nur fuers Gehirn: ein Historien-Backfill (07.07.2026) darf
+  // keine Monate alten Mails als "neue" Vorgaenge in Briefings/Tickets spuelen.
+  // Absender ins Adressbuch: immer (lastSeenAt nur vorwaerts).
   const isFresh = (doc.date || 0) > Date.now() - 14 * 86400000;
-  // Only practice-relevant inbound senders enter the address book — including
-  // the phone number from the signature, so "Ruf Herrn Kasper an" works without
-  // re-digging through the inbox.
-  if (effDirection === "in" && classification.relevant !== false && isFresh) {
+  if (effDirection === "in" && from.address) {
     const sigPhone = extractPhoneFromText(`${text.value} ${html.value.replace(/<[^>]+>/g, " ")}`);
-    await upsertContact(clientId, from, { category: classification.category, subject: doc.subject, ts: doc.date, phone: sigPhone });
+    await upsertContact(clientId, from, { category: classification.category, subject: doc.subject, ts: doc.date, phone: sigPhone, bumpCount: created });
   }
-  // Inbound, practice-relevant, NEW mail enters the shared brain at sync time so
-  // Clara's timeline and the case/ticket system see patient mail IMMEDIATELY —
-  // not only once someone happens to reply. Idempotent (stable event id) and
-  // failure-safe (recordCommunication queues a retry on error, never throws).
-  if (created && effDirection === "in" && classification.relevant !== false && isFresh) {
+  // Jede neue Eingangsmail ins Gehirn — nicht nur die als relevant markierten.
+  // Idempotent (stable event id), failure-safe (Outbox bei Fehler).
+  if (created && effDirection === "in" && isFresh && effFolder !== "Trash") {
     await recordInboundMail(clientId, id, doc).catch(() => { /* outbox already captured it */ });
     // W-STABIL-8: Hauspost kommt GESCANNT ALS E-MAIL-ANLAGE (O-Ton Chef). Die
     // Anlage wird deshalb beim Sync gelesen (PDF-Textlayer bzw. Hybrid-OCR)
@@ -286,7 +279,7 @@ async function storeMessage(clientId, account, { parsed, uid, folder, direction,
     // Frist/Rechnung/Betrag, damit der Scan in der Wiedervorlage auftaucht.
     // Bewusst NICHT awaited: OCR (Vision-Modell) darf den Sync nie aufhalten.
     // Notaus: MAS_MAIL_ANHANG_OCR=0.
-    if (process.env.MAS_MAIL_ANHANG_OCR !== "0" && (parsed.attachments || []).length) {
+    if (process.env.MAS_MAIL_ANHANG_OCR !== "0" && classification.relevant !== false && (parsed.attachments || []).length) {
       ocrInboundAttachments(clientId, doc, parsed.attachments).catch(() => {});
     }
   }
@@ -428,7 +421,12 @@ export async function backfillInboundMailBrain(clientId, { sinceDays = 14, max =
     const m = d.data();
     if ((m.date || 0) < cutoff) break; // sorted desc — everything after is older
     if ((m.direction || "in") !== "in") continue;
-    if (m.relevant === false || m.folder === "Trash") continue;
+    if (m.folder === "Trash") continue;
+    if (m.from?.address) {
+      await upsertContact(clientId, m.from, {
+        category: m.category, subject: m.subject, ts: m.date, bumpCount: false,
+      }).catch(() => {});
+    }
     checked++;
     const ev = await eventsCol.doc(`mail-in:${d.id}`).get();
     if (!ev.exists) {
