@@ -3288,8 +3288,10 @@ Arbeitspakete (jedes FERTIG vor dem naechsten):
       Kippern — Nachtest: mail-02/team-03 gruen (Streuung), snooze-01/aufn-01
       reproduzierbar rot AUCH mit Vor-Commit-Stand (A/B per git checkout
       HEAD~1 belegt, 0/2) => NICHT W-NAME; Ursache Toolwahl-Drift (Warteliste
-      unten). OFFEN: Live-Probe mit Zweitname nach Chef-Freigabe (kein
-      Live-Neustart ohne Freigabe).
+      unten). Chef-Freigabe 26.08. ~16:20: MAS-Backend neu gestartet
+      (GET /clara/assistant-name live, Probestart auf 4001 vorab),
+      Clara-Worker per clara-switch gestartet (Schnell-Gate gruen,
+      Status "live"). OFFEN: Live-Probe mit Zweitname durch Chef.
 - [x] **WP-NAME-4 Onboarder.** (fertig 26.08.2026, pickadoc-live-base
       d07901d1) Wizard-Feld "Wie soll Ihre Assistentin heissen?" in der
       Praxis-Karte mit Live-Hinweis (Exoten-/STT-Warnung: Sonderzeichen,
@@ -3299,9 +3301,23 @@ Arbeitspakete (jedes FERTIG vor dem naechsten):
       .assistantName -> Functions PracticeData/Client (clone/toJSON/
       fromObject) -> createNewClientV2 (max. 24 Zeichen) ->
       clients/{id}.assistantName — exakt das Feld, das MAS
-      src/shared/rufname.js liest. Typecheck functions gruen. OFFEN
-      (Deploy): Wizard-HTML auf pickadoc.ai hochladen, Import-Server-Stand
-      (liveavatar) nachziehen, Functions deployen.
+      src/shared/rufname.js liest. Typecheck functions gruen.
+      ERLEDIGT 26.08. (operativ): Import-Server-Stand liveavatar per SSH
+      nachgezogen (index.html + scraper-v3/pickadoc-mapper.js nach
+      /opt/onboarder, Backups .bak-20260826, onboarder.service neu
+      gestartet, Feld live verifiziert); lokaler Import-Server 8790 neu
+      gestartet; Server-Kopie onboarding-pickadoc/index.html an die
+      Upload-Kopie angeglichen (Commit 849d4c47, +83 Zeilen: Feld +
+      Funnel-Schritte). Functions deployt (startWizardInstallationV2,
+      createOnboardingMagicLink, consumeMagicLink; europe-west3;
+      FUNCTIONS_DISCOVERY_TIMEOUT=120 noetig). Hosting deployt
+      (docgenda.web.app, Build vom committeten Stand, fremde WIP
+      masSettings/nadineWorkspace via Stash ausgeklammert). MAS-Backend
+      (Port 4000) neu gestartet — GET /clara/assistant-name live.
+      demo-mas neu gestartet — POST /demo/uebernahme (401 ohne Ticket)
+      und GET /demo/los/:token (410 ungueltig) live. Clara-Worker per
+      clara-switch gestartet (Schnell-Gate gruen). NOCH OFFEN: Chef laedt
+      pickadoc-ai-upload auf pickadoc.ai hoch; Live-Probe mit Zweitname.
 
 Grenze (ehrlich): Exotenname = STT-Risiko. Gegenmittel: automatische
 Varianten-Erzeugung, Hinweis beim Setzen, Name jederzeit in den
@@ -3364,9 +3380,12 @@ Arbeitspakete (erst NACH Phase W-NAME, sonst gebrochenes Versprechen):
       langlebiger /demo/los/<token> (14 Tage, mehrfach klickbar), der beim
       Klick FRISCH createOnboardingMagicLink zieht und 302 weiterleitet.
       SMS + Mail tragen den Los-Link. Demo-Ticket wird auf 14 Tage
-      verlaengert ("Ihre Demo ansehen" bleibt begehbar). OFFEN (Betrieb):
-      ONBOARDER_API_KEY in demo-mas/.env eintragen + demo-mas neu starten;
-      Functions-Deploy (assistantName-Felder); Wizard-Upload pickadoc.ai;
+      verlaengert ("Ihre Demo ansehen" bleibt begehbar). Betrieb 26.08.
+      ERLEDIGT: ONBOARDER_API_KEY in demo-mas/.env; demo-mas neu
+      gestartet (Health OK, POST /demo/uebernahme -> 401 ohne Ticket,
+      GET /demo/los/:token -> 410 ungueltig); Functions-Deploy
+      (startWizardInstallationV2 + createOnboardingMagicLink +
+      consumeMagicLink). OFFEN: Wizard-Upload pickadoc.ai (Chef);
       Ende-zu-Ende-Probe mit echter Nummer.
 - [x] **WP-SPRUNG-3 Ankunft + Funnel.** (Code fertig 26.08.2026, c44a03d +
       03594c2 + pickadoc-live-base bd760cf2) Ankunft = exakt der
