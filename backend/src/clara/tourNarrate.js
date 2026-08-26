@@ -268,6 +268,7 @@ export async function synthClaraVoice(text, { timeoutMs = 20000 } = {}) {
   const clean = String(text || "").trim();
   if (!key) return { ok: false, reason: "tts_not_configured" };
   if (!clean) return { ok: false, reason: "empty_text" };
+  // Kurze Pause vorn, sonst schluckt ElevenLabs die erste Silbe.
   const voiceId = CLARA_VOICE_ID();
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -282,7 +283,7 @@ export async function synthClaraVoice(text, { timeoutMs = 20000 } = {}) {
           accept: "audio/mpeg",
         },
         body: JSON.stringify({
-          text: clean,
+          text: /^\u2026/.test(clean) ? clean : ("\u2026 " + clean),
           model_id: env("CLARA_TTS_MODEL") || "eleven_multilingual_v2",
           voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
         }),

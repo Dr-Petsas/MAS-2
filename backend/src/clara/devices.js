@@ -1,4 +1,7 @@
 import { randomUUID, randomBytes, createHash, timingSafeEqual } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import webpush from "web-push";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
@@ -52,6 +55,34 @@ export function pushConfigured() {
 
 export function vapidPublicKey() {
   return VAPID_PUBLIC_KEY;
+}
+
+// Wochenend-Pause (Chef 21.08.2026): Datei `.run/clara-push-pause-until.txt`
+// mit ISO-Zeit. Bis dahin gehen weder Info-Push noch Anruf-Push raus.
+// Datei weg oder Zeit vorbei => wieder normal, ohne Neustart.
+const PUSH_PAUSE_FILE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".run", "clara-push-pause-until.txt",
+);
+
+function pushPauseUntilMs() {
+  const fromEnv = String(process.env.CLARA_PUSH_PAUSE_UNTIL || "").trim();
+  if (fromEnv) {
+    const t = Date.parse(fromEnv);
+    if (Number.isFinite(t)) return t;
+  }
+  try {
+    if (!existsSync(PUSH_PAUSE_FILE)) return 0;
+    const t = Date.parse(readFileSync(PUSH_PAUSE_FILE, "utf8").trim());
+    return Number.isFinite(t) ? t : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function pushPausedNow() {
+  const until = pushPauseUntilMs();
+  if (!until || until <= Date.now()) return 0;
+  return until;
 }
 
 // ── Small helpers ───────────────────────────────────────────────────────────
@@ -454,6 +485,11 @@ export function buildCallPayload({ publicBaseUrl, clientId, deviceId, reason = "
  * removed so the registry never accumulates corpses.
  */
 export async function sendCallToDevice(clientId, device, { reason = "", publicBaseUrl = "" } = {}) {
+  const pausedUntil = pushPausedNow();
+  if (pausedUntil) {
+    log.info("push paused", { kind: "call", until: new Date(pausedUntil).toISOString() });
+    return { ok: false, reason: "push_paused" };
+  }
   if (!vapidReady) return { ok: false, reason: "push_not_configured" };
   const sub = device?.subscription;
   if (!sub?.endpoint) return { ok: false, reason: "no_subscription" };
@@ -486,6 +522,11 @@ export async function sendCallToDevice(clientId, device, { reason = "", publicBa
 // bewusst PII drinstehen (z.B. Patientenname + Telefonnummer auf Wunsch des
 // Behandlers) — der Inhalt geht nur an dessen eigene gekoppelte Geräte.
 export async function sendNoteToDevice(clientId, device, { title = "", body = "", url = "", image = "" } = {}) {
+  const pausedUntil = pushPausedNow();
+  if (pausedUntil) {
+    log.info("push paused", { kind: "note", until: new Date(pausedUntil).toISOString() });
+    return { ok: false, reason: "push_paused" };
+  }
   if (!vapidReady) return { ok: false, reason: "push_not_configured" };
   const sub = device?.subscription;
   if (!sub?.endpoint) return { ok: false, reason: "no_subscription" };

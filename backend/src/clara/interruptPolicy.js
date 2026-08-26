@@ -251,12 +251,18 @@ export async function runProaktivSweep(clientId, { publicBaseUrl = "", nowMs = D
             status: "none", extractor: "proaktiv@sweep", tags: ["proaktiv", "p0"],
           }).catch(() => {});
         }
-      } else {
-        // Anruf-Budget verbraucht oder p0Call aus: P0 als Push melden.
+      } else if (!pushUsedThisSweep) {
+        // Anruf-Budget verbraucht oder p0Call aus: P0 als Push — aber nur
+        // EINER pro Sweep. Sonst gehen 10+ Meldungen auf einmal aufs Handy
+        // (live 21.08.2026: announced=11 in einem Takt).
         const r = await notifyOperator(clientId, operatorId, {
           title: "Dringend (P0)", body: item.spoken.slice(0, 240), url: "",
         }).catch(() => ({ ok: false }));
-        if (r?.ok) { state.announced[d.key] = { at: nowMs, via: "push" }; announcedCount++; }
+        if (r?.ok) {
+          state.announced[d.key] = { at: nowMs, via: "push" };
+          announcedCount++;
+          pushUsedThisSweep = true;
+        }
       }
     } else if (d.action === "push" && !pushUsedThisSweep) {
       const r = await notifyOperator(clientId, operatorId, {
