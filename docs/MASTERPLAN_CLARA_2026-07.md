@@ -3270,27 +3270,49 @@ Arbeitspakete (jedes FERTIG vor dem naechsten):
       (12 Pruefungen) gruen; npm test = 107 Dateien, 4 rote sind belegt
       Altbestand/fremde WIP (dens, lena-zahnstatus, wiedervorlage,
       briefing-tempo — alle ohne W-NAME-Bezug).
-- [ ] **WP-NAME-3 Clara-Voice (flag-gated, der heikle Teil).** Profil bekommt
-      Platzhalter `{{assistant_name}}` in system_prompt/greeting/
-      greeting_pools/Tool-Beschreibungen; der Worker ersetzt beim
-      set_profile. DYNAMISCH aus dem Namen erzeugt: Wake-Keywords (Name +
-      phonetische Hoerfehler-Varianten wie heute Klara/Carla), Stop-Phrasen
-      ("<Name> stopp/fertig"), Start ("<Name> Start"), stt_keywords-Bias
-      (derselbe Mechanismus wie der Patientennamen-Bias) und die
-      Trigger-Phrase fuer "<Name>, Fehler melden"
-      (worker_fehlermeldung.py). Begruessungs-PCM wird beim Namenswechsel
-      einmal vorgerendert und gecacht. Notaus: ohne assistant_name alles
-      byte-identisch. DoD: test_wake_word.py + neuer Namens-Test gruen,
-      Release-Gate VOLL gruen, Live-Probe mit Zweitname; kein Live-Neustart
-      ohne Freigabe.
-- [ ] **WP-NAME-4 Onboarder.** Feld "Wie soll Ihre Assistentin heissen?"
-      (Default Clara) im Wizard, schreibt ins Client-Dokument; Warnung bei
-      STT-schwierigen Exotennamen. DoD: kalter Weg setzt den Namen, App +
-      Telefon benutzen ihn.
+- [x] **WP-NAME-3 Clara-Voice.** (Code fertig 26.08.2026, Commit ad5fbd2 —
+      Live-Probe offen) UMSETZUNG STATT PLATZHALTER: kein `{{assistant_name}}`
+      in den Profil-Dateien noetig — `services/worker_rufname.py` (pure Logik)
+      personalisiert das GELADENE Profil beim set_profile (Begruessung,
+      Systemprompt, wake_word.keywords + Stop-Phrasen, stt_keywords; Genitiv;
+      Ersetzung nur ganzer Woerter). Name kommt aus MAS
+      (`GET /clara/stt-patient-names` additiv + `GET /clara/assistant-name`),
+      Prozess-Cache im Worker. worker_human (Roast-/Chat-Persona,
+      Faehigkeiten, Selbstbezuege) laeuft durch die Ersetzung; Anreden mit
+      Wunschnamen werden fuer die Klassifikations-Regexe auf 'clara'
+      normalisiert (deckt auch "<Name>, Fehler melden"). Begruessungs-PCM:
+      kein eigener Cache noetig — das Vorrendern nutzt das bereits
+      personalisierte Profil. OHNE gesetzten Namen byte-identisch
+      (test_rufname.py, im Schnell-Gate). Schnell-Gate GRUEN. Voll-Gate
+      26.08. 16:00: Quote 90.5% (>85% verlangt) OK, Flip-Sperre ROT mit 4
+      Kippern — Nachtest: mail-02/team-03 gruen (Streuung), snooze-01/aufn-01
+      reproduzierbar rot AUCH mit Vor-Commit-Stand (A/B per git checkout
+      HEAD~1 belegt, 0/2) => NICHT W-NAME; Ursache Toolwahl-Drift (Warteliste
+      unten). OFFEN: Live-Probe mit Zweitname nach Chef-Freigabe (kein
+      Live-Neustart ohne Freigabe).
+- [x] **WP-NAME-4 Onboarder.** (fertig 26.08.2026, pickadoc-live-base
+      d07901d1) Wizard-Feld "Wie soll Ihre Assistentin heissen?" in der
+      Praxis-Karte mit Live-Hinweis (Exoten-/STT-Warnung: Sonderzeichen,
+      <3 Zeichen, kein Vokal, 4+ Konsonanten in Folge; sonst Bestaetigung).
+      Leer/'Clara' = Feld wird NICHT gesetzt (Standard). Kette:
+      mergeUserEditsIntoCrawlAnalysis -> pickadoc-mapper payload.practice
+      .assistantName -> Functions PracticeData/Client (clone/toJSON/
+      fromObject) -> createNewClientV2 (max. 24 Zeichen) ->
+      clients/{id}.assistantName — exakt das Feld, das MAS
+      src/shared/rufname.js liest. Typecheck functions gruen. OFFEN
+      (Deploy): Wizard-HTML auf pickadoc.ai hochladen, Import-Server-Stand
+      (liveavatar) nachziehen, Functions deployen.
 
 Grenze (ehrlich): Exotenname = STT-Risiko. Gegenmittel: automatische
 Varianten-Erzeugung, Hinweis beim Setzen, Name jederzeit in den
 Einstellungen aenderbar.
+
+Warteliste (aus dem Voll-Gate 26.08., NICHT W-NAME): snooze-01
+(proaktiv_snooze) und aufn-01 (start_treatment_recording) liefern
+reproduzierbar tool=none — auch mit Vor-W-NAME-Stand (A/B belegt). Die
+Toolliste ist inzwischen bei 81 Eintraegen (AGENTS nennt ~60); vermutlich
+Prompt-/Subsetting-Drift durch fremde Erweiterungen. Eigenes Arbeitspaket,
+nicht nebenbei fixen.
 
 ## Phase W-SPRUNG - Demo -> echter 14-Tage-Account (Chef 26.08.2026, 13:48)
 
@@ -3316,23 +3338,46 @@ Entschieden (Chef 26.08., Gespraech):
 
 Arbeitspakete (erst NACH Phase W-NAME, sonst gebrochenes Versprechen):
 
-- [ ] **WP-SPRUNG-1 Bestaetigungskarte + /demo/uebernahme.** Klick auf
-      "14 Tage testen" -> EINE Karte, vorbefuellt aus der Demo:
-      Assistentinnen-Name (aenderbar), Praxis-/Arztname (Pseudonym
-      korrigierbar), E-Mail (Pflicht), Website (optional). Handynummer wird
-      NICHT erneut gefragt — die angekommene SMS ist der Beweis. Neuer
-      Endpunkt /demo/uebernahme im demo-mas (F:\Pickadoc-Demo — Aenderung
-      dort erst in DIESER Phase, vorsichtig, Regie-Tests gruen).
-- [ ] **WP-SPRUNG-2 Trial sofort anlegen.** Aus den bestaetigten Daten
-      erzeugt der Server SOFORT den echten 14-Tage-Mandanten ueber die
-      BESTEHENDE Installations-Strecke des Onboarders (installationsService
-      — kein Duplikat): Praxis, Behandler, assistantName, Crawl-Daten falls
-      Website da. Dann SMS UND Mail mit Magic-Link auf cal.pickadoc.de.
-      Sicherheit: nur mit gueltigem Ticket + verifizierter Nummer, ein Trial
-      pro Nummer/E-Mail, Tagesgrenze.
-- [ ] **WP-SPRUNG-3 Ankunft + Funnel.** Magic-Login -> Kalender mit
-      onboarder_tour=1 -> Tooltip-Show -> Deep-Dive -> App (exakt der
-      heutige Einstieg). Am PC in der Demo: direkt weiter ohne
-      Geraetewechsel. Funnel-Events uebernahme_karte / trial_erzeugt /
-      magic_login / tour_fertig. DoD: ein Fremder kommt von /erleben bis in
-      seine echte Probe-Praxis, ohne etwas doppelt einzugeben.
+- [x] **WP-SPRUNG-1 Bestaetigungskarte + /demo/uebernahme.** (Code fertig
+      26.08.2026, Pickadoc-Demo c44a03d) web/scripts/onboarder.js: der
+      14-Tage-Klick zeigt (Handy UND Desktop) EINE Karte — Praxisname,
+      Arzt/AErztin, Assistentinnen-Name (aus demoClaraName), E-Mail
+      (Pflicht), Website — vorbefuellt, Scherznamen korrigierbar, nichts
+      wird ungefragt festgeschrieben; Handynummer wird NICHT erneut gefragt.
+      Ohne Ticket bleibt der kalte Wizard-Weg (zumOnboarder) unveraendert.
+      Server: POST /demo/uebernahme (Ticket-Pflicht) in
+      demo-mas/src/routes/demo.js. demo-clara (Regie/Worker) NICHT
+      angefasst — Regie-Tests unberuehrt; eigener Test
+      scripts/test-uebernahme.mjs 33/33 gruen.
+- [x] **WP-SPRUNG-2 Trial sofort anlegen.** (Code fertig 26.08.2026,
+      c44a03d) demo-mas/src/demo/uebernahme.js: payloadBauen (Lead + Karte
+      + Crawl -> InstallationModel; practice.assistantName aus W-NAME;
+      practitioners aus Arztname mit Titel-Zerlegung; specialtyKey aus
+      Demo-Fach; trial {enabled, days:14}; Praxistelefon aus dem
+      Hintergrund-Crawl) -> BESTEHENDE Strecke startWizardInstallationV2
+      (ONBOARDER_API_KEY, kein Duplikat; die Strecke schickt zusaetzlich
+      ihre Zugangsdaten-SMS). Sicherheit: nur gueltiges Ticket +
+      verifizierte Nummer, EIN Trial pro Nummer/E-Mail
+      (mas_demo_uebernahmen; Wiederholung = Link erneut statt zweitem
+      Mandanten), Tagesgrenze (DEMO_UEBERNAHMEN_AM_TAG, Default 20).
+      ZUGANGSWEG: Pickadoc-Magic-Link lebt 5 min/single-use — deshalb
+      langlebiger /demo/los/<token> (14 Tage, mehrfach klickbar), der beim
+      Klick FRISCH createOnboardingMagicLink zieht und 302 weiterleitet.
+      SMS + Mail tragen den Los-Link. Demo-Ticket wird auf 14 Tage
+      verlaengert ("Ihre Demo ansehen" bleibt begehbar). OFFEN (Betrieb):
+      ONBOARDER_API_KEY in demo-mas/.env eintragen + demo-mas neu starten;
+      Functions-Deploy (assistantName-Felder); Wizard-Upload pickadoc.ai;
+      Ende-zu-Ende-Probe mit echter Nummer.
+- [x] **WP-SPRUNG-3 Ankunft + Funnel.** (Code fertig 26.08.2026, c44a03d +
+      03594c2 + pickadoc-live-base bd760cf2) Ankunft = exakt der
+      Onboarder-Weg: returnPath /calendr?onboarder_tour=1&onboarder_guide=1
+      (Magic-Login -> Tooltip-Show -> Deep-Dive). Am PC in der Demo: die
+      Erfolgskarte traegt "Meine Praxis jetzt oeffnen" (losUrl) — direkt
+      weiter ohne Geraetewechsel; am Handy bleibt die SMS der Weg.
+      Funnel-Events (statt der Plan-Namen, gleiche Semantik):
+      uebernahme_karte / uebernahme_angelegt / uebernahme_erneut /
+      uebernahme_fehler / uebernahme_login; tour_fertig existiert als
+      onboarder_fertig. Superuser-Trichter kennt die Schritte
+      (demoFunnelService + FUNNEL_SCHRITTE). DoD-Probe (Fremder von
+      /erleben bis in die echte Probe-Praxis) steht mit der
+      Ende-zu-Ende-Probe aus WP-SPRUNG-2 zusammen aus.
