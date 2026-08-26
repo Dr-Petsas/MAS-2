@@ -3245,7 +3245,20 @@ Arbeitspakete (jedes FERTIG vor dem naechsten):
 
 - [x] **WP-NAME-1 App (docgendaweb).** (fertig 26.08.2026, Commit 920bc58c
       in pickadoc-live-base; masSettings/nadineWorkspace-Texte folgen mit dem
-      offenen WIP-Commit dieser Dateien) Feld `assistantName` am Client-Modell
+      offenen WIP-Commit dieser Dateien)
+      NACHZUG 26.08. abends (Commit ee2db1ff, Chef-Frage "in allen Erklaer-
+      und Einstellungstexten?"): Vollpruefung ueber alle 204 harten
+      "Clara"-Vorkommen in 52 src-Dateien. Befund: masSettings-
+      Personalisierung (Team/PIN, Geraete-Kopplung, Arbeitsplaetze) lag
+      UNCOMMITTET in der fremd-markierten Datei und fehlte deshalb im
+      Hosting-Deploy vom Nachmittag — nachcommittet (fremder Konten-
+      Dedupe-Hunk blieb draussen) und Hosting NEU deployed. Zwei echte
+      Restluecken gefixt: Aufraeumen-Text (PrivacySection "Clara-
+      Sitzungen") + claraBrain Bucket-Kopfzeile. Bewusst hart "Clara"
+      bleiben: PraxisHub-Katalog/Pakete/Lizenzen (Produktname im Verkauf),
+      Kampagnen-Stimmen ("Clara/Lena/Max/Felix" = Stimm-Presets),
+      Admin-/Superuser-/Report-Seiten, Code-Kommentare.
+      Feld `assistantName` am Client-Modell
       + zentraler Helper (Default "Clara"); kundensichtbare Stellen lesen nur
       noch das Feld: Top-Navigation, Clara-Seite, Orb, Kalender-Hinweise,
       Einstellungen, Tour-TEXTE, iPad-/Companion-Seiten, Workspaces.
