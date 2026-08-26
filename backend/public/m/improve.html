@@ -217,7 +217,7 @@
   .kzug:first-child { border-top: 0; }
   .kzug .frage2:before { content: "Sie: "; color: var(--dunkelgrau); }
   .kzug .antwort { color: #a9bcdc; margin-top: 2px; }
-  .kzug .antwort:before { content: "Clara: "; color: var(--dunkelgrau); }
+  .kzug .antwort:before { content: var(--aname-prefix, "Clara: "); color: var(--dunkelgrau); }
 
   .urteil {
     border-radius: 14px; padding: 15px; margin-top: 4px; font-size: 15.5px; font-weight: 600;
@@ -503,6 +503,22 @@
   // fuer welche Praxis und fuer wen es spricht (Auftrag Dr. Petsas 10.08.2026).
   var CLIENT = QS.get("client") || QS.get("c") || "";
   var VON = QS.get("von") || "";
+
+  // Ruf-Name der Assistentin (Phase W-NAME): Praxis kann "Clara" umbenennen.
+  // Wird beim Start nachgeladen; bis dahin (und ohne Feld) bleibt "Clara".
+  var RUFNAME = "Clara";
+  (function ladeRufname() {
+    if (!CLIENT) return;
+    fetch("/clara/assistant-name?clientId=" + encodeURIComponent(CLIENT))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var n = j && j.assistantName ? String(j.assistantName).trim() : "";
+        if (!n) return;
+        RUFNAME = n;
+        document.documentElement.style.setProperty("--aname-prefix", JSON.stringify(n + ": "));
+      })
+      .catch(function () { /* Name bleibt Clara */ });
+  })();
   function kopf(json) {
     var h = {};
     if (json) h["Content-Type"] = "application/json";
@@ -726,7 +742,7 @@
   function zeigeHoerkarte() {
     var erg = $("ergebnis");
     var h = el("div", "abschnitt");
-    h.appendChild(el("div", "frage", "Was Clara gehört hat"));
+    h.appendChild(el("div", "frage", "Was " + RUFNAME + " gehört hat"));
     h.appendChild(el("div", "frageSub", "Ihre Aufnahme läuft durch dieselbe Erkennung wie im Anruf."));
     var karte = el("div", "karte");
     karte.appendChild(wschritt("", "wird erkannt", "einen Moment …", null, undefined));

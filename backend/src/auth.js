@@ -80,14 +80,26 @@ function isPublic(req) {
   if (/^\/clara\/[^/]+(\/connect|\/status)?$/.test(p)) return true;
   // /clara/health (globaler Stack-Health als JSON, keine PII, nebenwirkungsfrei).
   if (p === "/clara/health") return true;
+  // Ruf-Name der Assistentin (Phase W-NAME): gekoppelte Geraete (Companion-App,
+  // iPad-Konsole) laufen ohne Login und muessen nach einer Umbenennung den
+  // neuen Namen ziehen koennen. Nur der Ruf-Name (keine PII), Entitlement wird
+  // in der Route selbst geprueft (assertAppEnabled).
+  if (p === "/clara/assistant-name") return true;
   // Clara-Umschalter (Handy-Seite /m/cx7.html, nicht eingeloggt): schaltet
   // zwischen Live-Clara und der Testinstanz V6. Keine PII, kein Kalenderzugriff
   // — nur Worker beenden/starten auf diesem Rechner. Der Seitenpfad ist bewusst
   // unauffaellig gewaehlt, weil hier ohne Login umgeschaltet werden kann.
   if (p.startsWith("/clara-switch/")) return true;
+  // Dampsoft-VDDS-Knopf auf diesem Rechner: Text holen/ablegen, nur Loopback
+  // (die Route selbst lehnt Nicht-Localhost ab).
+  if (p === "/pvs/pending-chart") return true;
+  if (p === "/pvs/outbox" && (req.method === "GET" || req.method === "POST")) return true;
+  if (/^\/pvs\/outbox\/[^/]+\/(collected|undo)$/.test(p) && req.method === "POST") return true;
   // STT-Bench (Mikrofon-Vergleich) hinter mas.pickadoc-tunnel.com/stt-bench.
   // Kein Login: die Seite selbst ist der Teststand, Proxy vor Auth in server.js.
   if (p === "/stt-bench" || p.startsWith("/stt-bench/")) return true;
+  // Conformer-Live-Test (ehemals stt.pickadoc-tunnel.com) hinter /stt.
+  if (p === "/stt" || p.startsWith("/stt/")) return true;
   // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
   if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
   // Online-Zusage aus Recall-SMS (Patient klickt den SMS-Link, nicht
@@ -115,7 +127,12 @@ function isPublic(req) {
     || p === "/treatment/current" || p === "/treatment/lena-segment"
     || p === "/treatment/lena-segment-update" || p === "/treatment/lena-segment-delete"
     || p === "/treatment/structure" || p === "/treatment/billing"
+    || p === "/treatment/patient-docs" || p === "/treatment/finalize"
+    || p === "/treatment/lena-01-state"
   ) return true;
+  // iPad-Zusammenfassung: welcher Schreibweg in den Einstellungen steht
+  // (nur der Name, keine Patientendaten).
+  if (p === "/pvs/write-path" && req.method === "GET") return true;
   if (p === "/treatment/lena-stt-url" && req.method === "GET") return true;
   return false;
 }
