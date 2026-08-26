@@ -12,6 +12,7 @@ import { karteRecallKandidaten, karteLisaSms } from "../clara/karten.js";
 import { getLisaTaskDetail, lisaSendSms, normalizePhoneE164 } from "../lisa/outbound.js";
 import { takeoverLisaCall, TAKEOVER_REASON_DE } from "../lisa/takeover.js";
 import { log } from "../log.js";
+import { getAssistantName } from "../shared/rufname.js";
 import { PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 
 const router = express.Router();
@@ -216,7 +217,7 @@ router.post("/clara/devices/self-test", async (req, res) => {
     const who = await identifyByDevice(clientId, req.body?.deviceId, req.body?.deviceKey);
     if (!who) return res.status(401).json({ ok: false, error: "device_auth_failed" });
     const r = await callDevice(clientId, who.deviceId, {
-      reason: "Probeanruf – so klingt es, wenn Clara Sie anruft",
+      reason: `Probeanruf – so klingt es, wenn ${await getAssistantName(clientId)} Sie anruft`,
       publicBaseUrl: PUBLIC_BASE_URL,
     });
     res.status(r.ok ? 200 : 502).json(r);

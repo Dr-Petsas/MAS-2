@@ -11,6 +11,7 @@ import { runProaktivSweep } from "./clara/interruptPolicy.js";
 import { sweepRecallOutcomes, dailyInitiativeScan } from "./clara/recallCoach.js";
 import { sweepAbsenceRebookings } from "./clara/absencePlanner.js";
 import { ensureCatalog } from "./clara/patientCatalog.js";
+import { getAssistantName } from "./shared/rufname.js";
 import { listContextPatientIds } from "./clara/sttPatientNames.js";
 import { runRetentionSweep } from "./brain/retention.js";
 import { materializeDueJobs as qmMaterializeDueJobs } from "./qm/schedules.js";
@@ -108,13 +109,16 @@ app.use((req, res, next) => {
 // pair.html MIT dem Code, ganz ohne Safari-Speicher. Muss VOR express.static
 // stehen, sonst gewinnt die statische Datei. no-store, damit iOS den Token
 // nicht aus dem Cache zieht.
-app.get("/m/manifest.webmanifest", (req, res) => {
+app.get("/m/manifest.webmanifest", async (req, res) => {
   const c = String(req.query.c || "").trim();
   const t = String(req.query.t || "").trim();
+  // Ruf-Name (Phase W-NAME): der Homescreen-Name der installierten App folgt
+  // dem Praxis-Namen; ohne c-Parameter oder ohne gesetzten Namen bleibt "Clara".
+  const aName = c ? await getAssistantName(c) : "Clara";
   const manifest = {
-    name: "Clara – Praxis-Assistentin",
-    short_name: "Clara",
-    description: "Clara ruft Sie an: Briefings und Rückfragen Ihrer Praxis-KI direkt aufs Handy.",
+    name: `${aName} – Praxis-Assistentin`,
+    short_name: aName,
+    description: `${aName} ruft Sie an: Briefings und Rückfragen Ihrer Praxis-KI direkt aufs Handy.`,
     display: "standalone",
     background_color: "#0a1322",
     theme_color: "#0a1322",

@@ -27,6 +27,7 @@ import { runMorgenlauf } from "../clara/morgenlauf.js";
 import { recordToolError, recentToolErrors } from "../clara/toolErrors.js";
 import { loadProof, proofToSvg } from "../clara/proofCard.js";
 import { narrateChapter, chatGuide, synthClaraVoice, ttsConfigured } from "../clara/tourNarrate.js";
+import { getAssistantName } from "../shared/rufname.js";
 import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, qmRoute, resolveClientId } from "./_shared.js";
 
 const router = express.Router();
@@ -58,7 +59,7 @@ router.post("/clara/tour/narrate", qmRoute(async (clientId, req, res) => {
   const first = body.first === true || body.first === "true" || body.first === 1;
   const userName = String(body.userName || "").slice(0, 80);
 
-  const spoken = await narrateChapter({ title, prompt, fallbackText, first, userName });
+  const spoken = await narrateChapter({ title, prompt, fallbackText, first, userName, assistantName: await getAssistantName(clientId) });
   const out = { ok: !!spoken.text, clientId, text: spoken.text, source: spoken.source, model: spoken.model || null, ttsConfigured: ttsConfigured() };
 
   if (wantAudio && spoken.text && ttsConfigured()) {
@@ -80,7 +81,7 @@ router.post("/clara/tour/chat", qmRoute(async (clientId, req, res) => {
   let history = Array.isArray(body.messages) ? body.messages : [];
   if (!history.length && body.text) history = [{ role: "user", content: String(body.text) }];
 
-  const spoken = await chatGuide(history);
+  const spoken = await chatGuide(history, { assistantName: await getAssistantName(clientId) });
   const out = { ok: !!spoken.text, clientId, text: spoken.text, source: spoken.source, model: spoken.model || null, ttsConfigured: ttsConfigured() };
 
   if (wantAudio && spoken.text && ttsConfigured()) {
@@ -335,8 +336,29 @@ router.get("/clara/stt-patient-names", async (req, res) => {
       specialty,
       spec,
       knowledge,
+      // Ruf-Name (Phase W-NAME): der Worker holt diese Antwort ohnehin bei
+      // set_profile — der Name faehrt additiv mit (WP-NAME-3 nutzt ihn fuer
+      // Platzhalter/Wake-Woerter; alte Worker ignorieren das Feld einfach).
+      assistantName: await getAssistantName(clientId),
       names: out.names,
     });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Voice-Worker/Geraete: Ruf-Name der Assistentin dieses Mandanten (Phase
+// W-NAME). Eigener schlanker Endpunkt, damit auch Stellen OHNE den
+// STT-Namensabruf (z. B. iPad-Konsole, Onboarder-Vorschau) den Namen ziehen
+// koennen. WICHTIG: Route steht VOR den /clara/:clientId-Catch-alls.
+router.get("/clara/assistant-name", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    res.json({ ok: true, clientId, assistantName: await getAssistantName(clientId) });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -604,10 +626,11 @@ router.get("/clara/:clientId", async (req, res) => {
   } catch {
     qrDataUrl = "";
   }
+  const aName = await getAssistantName(clientId);
   res.set("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Clara verbinden</title>
+<title>${aName} verbinden</title>
 <style>
   body{font-family:system-ui,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#e2e8f0;
        margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -627,7 +650,7 @@ router.get("/clara/:clientId", async (req, res) => {
   .status.load{background:rgba(148,163,184,.15);color:#cbd5e1}
 </style></head><body>
 <div class="card">
-  <h1>Mit Clara sprechen</h1>
+  <h1>Mit ${aName} sprechen</h1>
   <p>Scanne den QR-Code mit dem Handy oder klicke unten.</p>
   ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" width="320" height="320">` : `<p>QR nicht verfügbar</p>`}
   <div><a class="btn" href="${connectUrl}">Jetzt verbinden</a></div>

@@ -5,6 +5,7 @@ import { getOperator } from "./sessions.js";
 import { listOperators } from "./operators.js";
 import { callOperator, notifyOperator, setPendingCallContext } from "./devices.js";
 import { appendEvent } from "../brain/eventStore.js";
+import { getAssistantName } from "../shared/rufname.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -234,7 +235,7 @@ export async function runProaktivSweep(clientId, { publicBaseUrl = "", nowMs = D
             date: day,
             spoken: `Ich habe Sie angerufen, weil etwas nicht liegen bleiben darf: ${item.spoken}. Sollen wir das jetzt angehen?`,
             instruction:
-              "KONTEXT: Du (Clara) hast den Chef soeben aktiv angerufen, weil ein kritischer Vorgang " +
+              `KONTEXT: Du (${await getAssistantName(clientId)}) hast den Chef soeben aktiv angerufen, weil ein kritischer Vorgang ` +
               `ansteht: ${item.spoken}. Erklaere kurz worum es geht und biete den naechsten Schritt an ` +
               "(z. B. Details vorlesen, Rueckruf delegieren, Team-Memo). Erfinde NICHTS dazu.",
           }).catch(() => {});

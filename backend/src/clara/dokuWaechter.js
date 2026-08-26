@@ -6,6 +6,7 @@ import { getOperator } from "./sessions.js";
 import { listOperators } from "./operators.js";
 import { callOperator, setPendingCallContext } from "./devices.js";
 import { appendEvent } from "../brain/eventStore.js";
+import { getAssistantName } from "../shared/rufname.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -268,7 +269,7 @@ export async function dokuAbendlauf(clientId, { publicBaseUrl = "", tageZurueck 
       ? `Ich habe Sie angerufen: eine Dokumentation fehlt noch — ${erster.patientName}, Termin ${erster.dateSpoken}${erster.motive ? `, im Kalender steht ${erster.motive}` : ""}. Was habt ihr gemacht?`
       : `Ich habe Sie angerufen: ${n} Dokumentationen fehlen noch. Fangen wir mit ${erster.patientName} an — Termin ${erster.dateSpoken}${erster.motive ? `, im Kalender steht ${erster.motive}` : ""}. Was habt ihr gemacht?`,
     instruction:
-      `KONTEXT: Du (Clara) hast den Chef soeben aktiv angerufen, weil Behandlungs-Dokumentationen fehlen. ` +
+      `KONTEXT: Du (${await getAssistantName(clientId)}) hast den Chef soeben aktiv angerufen, weil Behandlungs-Dokumentationen fehlen. ` +
       `Arbeite die Liste EINZELN ab: nenne Patient, Termintag und Besuchsgrund und frage, was gemacht wurde. ` +
       `Jede Antwort speicherst du SOFORT mit save_treatment_dictation (name = Nachname des Patienten, date = das angegebene date JJJJ-MM-TT, text = die Antwort woertlich). ` +
       `Danach weiter zum naechsten Patienten. Sagt der Chef 'spaeter' oder 'morgen', beende das Thema freundlich. ` +

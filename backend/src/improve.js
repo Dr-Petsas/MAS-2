@@ -32,6 +32,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { masCollection } from "./tenant.js";
+import { getAssistantName, withAssistantName } from "./shared/rufname.js";
 import { zentralEintragen } from "./improveZentrale.js";
 import { entryCodes, buildIndex, catalogMatch } from "./clara/patientCatalog.js";
 import { log } from "./log.js";
@@ -1018,10 +1019,11 @@ export function baueGespraechBeleg(fall = {}) {
  * @param {string} beleg
  * @param {{rolle:string,text:string}[]} historie
  * @param {string} frage  leer = Gespraech eroeffnen
+ * @param {string} assistantName  Ruf-Name (Phase W-NAME); leer = "Clara"
  */
-export function baueGespraechNachrichten(beleg, historie = [], frage = "") {
+export function baueGespraechNachrichten(beleg, historie = [], frage = "", assistantName = "") {
   const msgs = [
-    { role: "system", content: DIALOG_SYSTEM },
+    { role: "system", content: withAssistantName(DIALOG_SYSTEM, assistantName) },
     { role: "user", content: `Beleg zu diesem Fall:\n${beleg}` },
   ];
   for (const z of (historie || []).slice(-12)) {
@@ -1055,7 +1057,7 @@ export async function improveDialog(clientId, { fallId, text = "" } = {}) {
   if (historie.length >= 24) {
     return { ok: false, reason: "dialog_voll", dialog: historie };
   }
-  const msgs = baueGespraechNachrichten(baueGespraechBeleg(fall), historie, frage);
+  const msgs = baueGespraechNachrichten(baueGespraechBeleg(fall), historie, frage, await getAssistantName(clientId));
   const llm = strongLlm();
   const res = await chat(msgs, {
     temperature: 0.7,

@@ -3,6 +3,7 @@ import webpush from "web-push";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { log } from "../log.js";
+import { getAssistantName, DEFAULT_ASSISTANT_NAME } from "../shared/rufname.js";
 
 // ============================================================================
 // Device registry — "Clara ruft aufs Handy".
@@ -288,7 +289,10 @@ export async function redeemPairingToken(clientId, token, { subscription, userAg
     // failed re-redeem (token_used/expired) never deletes the good device.
     // Only relevant for push devices (an endpoint identifies one physical phone).
     if (sub?.endpoint) await deleteDevicesByEndpoint(clientId, sub.endpoint, { exceptId: deviceId }).catch(() => {});
-    return { ok: true, deviceId, deviceKey, operator, apps: operator.apps, deviceType: operator.deviceType };
+    // Ruf-Name mitliefern (Phase W-NAME): das gekoppelte Geraet zeigt die
+    // Assistentin ohne Login mit dem Praxis-Namen an (Companion/iPad).
+    const assistantName = await getAssistantName(clientId);
+    return { ok: true, deviceId, deviceKey, operator, apps: operator.apps, deviceType: operator.deviceType, assistantName };
   } catch (e) {
     return { ok: false, reason: e?.code || String(e?.message || e) };
   }
@@ -433,12 +437,15 @@ export async function refreshSubscription(clientId, deviceId, deviceKey, subscri
 /**
  * Build the (PII-free) push payload. The service worker turns this into a
  * call-style notification; tapping it opens the /m/call page which dials in.
+ * `assistantName` (Phase W-NAME): Ruf-Name der Praxis — ohne Angabe "Clara",
+ * byte-identisch zum Alt-Verhalten.
  */
-export function buildCallPayload({ publicBaseUrl, clientId, deviceId, reason = "", kind = "clara_call" } = {}) {
-  const cleanReason = s(reason).slice(0, 90) || "Clara möchte Sie sprechen";
+export function buildCallPayload({ publicBaseUrl, clientId, deviceId, reason = "", kind = "clara_call", assistantName = "" } = {}) {
+  const aName = s(assistantName) || DEFAULT_ASSISTANT_NAME;
+  const cleanReason = s(reason).slice(0, 90) || `${aName} möchte Sie sprechen`;
   const url = `${String(publicBaseUrl || "").replace(/\/+$/, "")}/m/call.html` +
     `?c=${encodeURIComponent(clientId)}&d=${encodeURIComponent(deviceId)}&reason=${encodeURIComponent(cleanReason)}`;
-  return { kind, title: "Clara ruft an", reason: cleanReason, url, ts: Date.now() };
+  return { kind, title: `${aName} ruft an`, reason: cleanReason, url, ts: Date.now() };
 }
 
 /**
@@ -450,7 +457,8 @@ export async function sendCallToDevice(clientId, device, { reason = "", publicBa
   if (!vapidReady) return { ok: false, reason: "push_not_configured" };
   const sub = device?.subscription;
   if (!sub?.endpoint) return { ok: false, reason: "no_subscription" };
-  const payload = buildCallPayload({ publicBaseUrl, clientId, deviceId: device.id, reason });
+  const assistantName = await getAssistantName(clientId);
+  const payload = buildCallPayload({ publicBaseUrl, clientId, deviceId: device.id, reason, assistantName });
   try {
     await webpush.sendNotification(sub, JSON.stringify(payload), {
       TTL: 90,            // a "call" older than 90s must not ring anymore
@@ -483,7 +491,7 @@ export async function sendNoteToDevice(clientId, device, { title = "", body = ""
   if (!sub?.endpoint) return { ok: false, reason: "no_subscription" };
   const payload = {
     kind: "clara_note",
-    title: s(title).slice(0, 60) || "Clara",
+    title: s(title).slice(0, 60) || await getAssistantName(clientId),
     reason: s(body).slice(0, 180),
     url: s(url),
     image: s(image),

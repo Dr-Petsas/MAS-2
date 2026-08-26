@@ -10,6 +10,7 @@ import { ladeLisaIdentitaet, identitaetsRahmen } from "./identitaet.js";
 import { summarizeForSpeech } from "../clara/summarize.js";
 import { getOperator } from "../clara/sessions.js";
 import { notifyOperator } from "../clara/devices.js";
+import { getAssistantName } from "../shared/rufname.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -780,7 +781,7 @@ async function meldeErgebnis(clientId, { who, outcome, summary, taskId, transcri
     if (url.length > 1900) url = bauUrl(0);
     const r = await notifyOperator(clientId, op.id, {
       title: `Lisa: ${who} ${OUTCOME_SPOKEN[outcome] || outcome}`,
-      body: clip(summary, 480) || "Frag Clara nach dem Gesprächsverlauf.",
+      body: clip(summary, 480) || `Frag ${await getAssistantName(clientId)} nach dem Gesprächsverlauf.`,
       url,
     });
     return { ok: !!r?.ok, sent: r?.sent || 0 };

@@ -69,6 +69,7 @@ import { strongLlm } from "../mail/llm.js";
 import { buildMailBriefing } from "../mail/briefing.js";
 import admin from "../firebase.js";
 import { log } from "../log.js";
+import { getAssistantName } from "../shared/rufname.js";
 import { addRemoteMessage } from "../remoteChat.js";
 import { PUBLIC_BASE_URL, actorName, buildSpokenPatientTimeline, clockHHMM, operatorMailAccountIds, resolveClientId, spokenClockBerlin } from "./_shared.js";
 
@@ -5705,7 +5706,7 @@ router.post("/tools/book-for-patient", async (req, res) => {
         counterparty: { kind: "patient", name: who, ref: null },
         subject: { patientId: selected.id, name: who, matchStatus: "matched", matchMethod: "calendar" },
         signals: { appointmentRequest: true },
-        summary: `Clara hat für ${who} am ${prettySlot(r.slotIso)}${r.calendarName ? ` bei ${r.calendarName}` : ""} gebucht (${r.visitMotiveName || "Kontrolle"})${opNow?.name ? ` — auf Zuruf von ${opNow.name}` : ""}.`,
+        summary: `${await getAssistantName(clientId)} hat für ${who} am ${prettySlot(r.slotIso)}${r.calendarName ? ` bei ${r.calendarName}` : ""} gebucht (${r.visitMotiveName || "Kontrolle"})${opNow?.name ? ` — auf Zuruf von ${opNow.name}` : ""}.`,
         extractor: "clara@booking",
         payloadRef: c.appointmentId ? { kind: "appointment", id: c.appointmentId } : null,
       }, { by: "Clara" });

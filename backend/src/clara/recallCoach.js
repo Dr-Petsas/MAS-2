@@ -19,6 +19,7 @@ import { getOperator, emitCommand } from "./sessions.js";
 import { listOperators } from "./operators.js";
 import { todayBerlin } from "./daySchedule.js";
 import { politurSchnell } from "./ansagePolitur.js";
+import { getAssistantName } from "../shared/rufname.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -880,7 +881,7 @@ export async function dailyInitiativeScan(clientId, { targetDate, publicBaseUrl 
           date,
           spoken: `Ich habe Sie angerufen: ${summary} Soll ich versuchen, die Lücken zu schließen und Recall-Patienten anrufen zu lassen?`,
           instruction:
-            `KONTEXT: Du (Clara) hast den Chef soeben aktiv per Push angerufen. Anlass: ${summary} ` +
+            `KONTEXT: Du (${await getAssistantName(clientId)}) hast den Chef soeben aktiv per Push angerufen. Anlass: ${summary} ` +
             `Du hast gefragt, ob du versuchen sollst, die Lücken zu schließen und Recall-Patienten anrufen zu lassen. ` +
             `Stimmt der Chef zu ('ja', 'ja bitte', 'ok', 'mach das', 'gib frei', 'leg los'), ` +
             `rufe SOFORT das Tool approve_recall mit date=${date} auf — auch bei einem einzelnen 'Ja'. ` +

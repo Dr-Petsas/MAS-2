@@ -3243,7 +3243,9 @@ SCHUTZREGELN (unverhandelbar, Chef 26.08.):
 
 Arbeitspakete (jedes FERTIG vor dem naechsten):
 
-- [ ] **WP-NAME-1 App (docgendaweb).** Feld `assistantName` am Client-Modell
+- [x] **WP-NAME-1 App (docgendaweb).** (fertig 26.08.2026, Commit 920bc58c
+      in pickadoc-live-base; masSettings/nadineWorkspace-Texte folgen mit dem
+      offenen WIP-Commit dieser Dateien) Feld `assistantName` am Client-Modell
       + zentraler Helper (Default "Clara"); kundensichtbare Stellen lesen nur
       noch das Feld: Top-Navigation, Clara-Seite, Orb, Kalender-Hinweise,
       Einstellungen, Tour-TEXTE, iPad-/Companion-Seiten, Workspaces.
@@ -3252,11 +3254,22 @@ Arbeitspakete (jedes FERTIG vor dem naechsten):
       Superuser-/Testseiten bleiben unveraendert. DoD: Typecheck gruen; mit
       gesetztem Feld zeigt der Kundenpfad nirgends mehr "Clara", ohne Feld
       byte-identisch.
-- [ ] **WP-NAME-2 MAS-2.** Helper "Ruf-Name pro Mandant" (ein Modul, cached);
-      alle KUNDENHOERBAREN/-LESBAREN Selbstbezuege laufen darueber
-      (Briefings, Ansagen, tourNarrate, devices, SMS-/Mail-Texte,
-      Tool-Messages). `set_profile` an den Worker traegt `assistant_name`.
-      DoD: node --check + bestehende Tests gruen; Stichprobe mit Testname.
+- [x] **WP-NAME-2 MAS-2.** (fertig 26.08.2026) Helper "Ruf-Name pro Mandant"
+      = `src/shared/rufname.js` (getAssistantName cached 10 min, nie werfend;
+      Genitiv; withAssistantName). Kundenhoerbar/-lesbar dynamisch: Push
+      "X ruft an" + Note-Titel (devices), Probeanruf, Pairing-Antwort traegt
+      assistantName, PWA-Manifest (Homescreen-Name), Tour-Erzaehlerin +
+      Tour-Chat (tourNarrate), Persona-Anweisungen der Proaktiv-/Doku-/
+      Recall-Anrufe, Verbinden-Seite, Improve-Dialog, Lisa-Ergebnis-Push,
+      Buchungs-Summary, Abwesenheits-Kalendertexte. NICHT umgestellt
+      (bewusst): Audit-Felder `by: "Clara"` / `extractor` / Event-Quellen
+      (stabile System-IDs; Anzeige personalisiert das Frontend). Worker-
+      Anbindung: `GET /clara/assistant-name` (neu) + assistantName in
+      `GET /clara/stt-patient-names` (set_profile-Abruf, additiv).
+      DoD erfuellt: node --check 13 Dateien gruen; tests/test-rufname.mjs
+      (12 Pruefungen) gruen; npm test = 107 Dateien, 4 rote sind belegt
+      Altbestand/fremde WIP (dens, lena-zahnstatus, wiedervorlage,
+      briefing-tempo — alle ohne W-NAME-Bezug).
 - [ ] **WP-NAME-3 Clara-Voice (flag-gated, der heikle Teil).** Profil bekommt
       Platzhalter `{{assistant_name}}` in system_prompt/greeting/
       greeting_pools/Tool-Beschreibungen; der Worker ersetzt beim

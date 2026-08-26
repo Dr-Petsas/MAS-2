@@ -8,10 +8,15 @@
 // spricht ihn dann per Browser-Stimme). So bricht die Seite nie.
 
 import { chat, strongLlm } from "../mail/llm.js";
+import { withAssistantName, assistantNameGenitive, DEFAULT_ASSISTANT_NAME } from "../shared/rufname.js";
 
 function env(name) {
   const v = process.env[name];
   return v == null ? "" : String(v).trim();
+}
+
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Claras Stimme (ElevenLabs). Standard = die in Clara-Voice hinterlegte Stimme
@@ -147,16 +152,19 @@ const GUIDE_SYSTEM = [
  * reine Erklärung des eigenen Könnens mit Beispiel-Kommandos.
  * @param {{role:string,content:string}[]} history
  */
-export async function chatGuide(history = []) {
+export async function chatGuide(history = [], { assistantName = "" } = {}) {
   const turns = (Array.isArray(history) ? history : [])
     .filter((m) => m && (m.role === "user" || m.role === "assistant") && String(m.content || "").trim())
     .slice(-12)
     .map((m) => ({ role: m.role, content: String(m.content).slice(0, 800) }));
   if (!turns.length) return { ok: false, text: "", source: "empty" };
   const s = strongLlm();
+  // Ruf-Name (Phase W-NAME): Persona + Katalog sprechen mit dem Praxis-Namen;
+  // ohne gesetzten Namen bleibt alles byte-identisch "Clara".
+  const aName = String(assistantName || "").trim() || DEFAULT_ASSISTANT_NAME;
   // Genau EINE System-Nachricht am Anfang (Server-Vorgabe), dann der Dialog.
   const messages = [
-    { role: "system", content: GUIDE_SYSTEM + "\n\nDein Funktionskatalog:\n" + CAPABILITIES + "\n\n" + EXAMPLES },
+    { role: "system", content: withAssistantName(GUIDE_SYSTEM + "\n\nDein Funktionskatalog:\n" + CAPABILITIES + "\n\n" + EXAMPLES, aName) },
     ...turns,
   ];
   const r = await chat(messages, { temperature: 0.7, maxTokens: 380, timeoutMs: 25000, model: s.model, baseUrl: s.base });
@@ -170,11 +178,25 @@ export async function chatGuide(history = []) {
  * @param {{title?:string, prompt?:string, fallbackText?:string}} chapter
  * @returns {Promise<{ok:boolean, text:string, model?:string, source:"llm"|"fallback"}>}
  */
-export async function narrateChapter({ title = "", prompt = "", fallbackText = "", first = false, userName = "" } = {}) {
+export async function narrateChapter({ title = "", prompt = "", fallbackText = "", first = false, userName = "", assistantName = "" } = {}) {
   const instruction = (prompt || "").trim() || (fallbackText || "").trim();
   const fallback = (fallbackText || prompt || "").trim();
   if (!instruction) {
     return { ok: false, text: "", source: "fallback" };
+  }
+  // Ruf-Name (Phase W-NAME): die Erzaehlerin stellt sich mit dem Praxis-Namen
+  // vor; ohne gesetzten Namen bleibt alles byte-identisch "Clara".
+  const aName = String(assistantName || "").trim() || DEFAULT_ASSISTANT_NAME;
+  // Auftakt nicht erst durchs LLM jagen: der Kapiteltext steht schon,
+  // und der Chef wartet sonst Sekunden auf den ersten Satz.
+  if (first && fallback) {
+    const name = String(userName || "").trim();
+    let text = withAssistantName(fallback, aName);
+    const introDone = new RegExp(`ich bin ${escapeRegex(aName)},`, "i");
+    if (name && !introDone.test(text)) {
+      text = text.replace(new RegExp(`\\bIch bin ${escapeRegex(aName)}\\b`), `Ich bin ${aName}, ` + name);
+    }
+    return { ok: true, text, source: "fallback" };
   }
   const s = strongLlm(); // starker 5090-Server für flüssige Sprache
   const name = String(userName || "").trim();
@@ -190,11 +212,11 @@ export async function narrateChapter({ title = "", prompt = "", fallbackText = "
   // sonst in jedem Abschnitt nervt ("Guten Morgen …").
   const greetRule = first
     ? "Dies ist der Auftakt der Tour: eine knappe, respektvolle Anrede (mit „Sie“) und eine kurze Vorstellung sind hier erlaubt — aber OHNE Tageszeit-Gruß, also KEIN „Guten Morgen“, „Guten Tag“ oder „Hallo“."
-    : "WICHTIG: Keine Anrede, kein Gruß, keine Vorstellung — steig direkt beim Thema ein. Sag NICHT „Hallo“, „Guten Morgen“ oder „Ich bin Clara“.";
+    : `WICHTIG: Keine Anrede, kein Gruß, keine Vorstellung — steig direkt beim Thema ein. Sag NICHT „Hallo“, „Guten Morgen“ oder „Ich bin ${aName}“.`;
   // Der Server erlaubt nur EINE System-Nachricht am Anfang — Persona + Katalog
   // deshalb in einem Block bündeln.
   const messages = [
-    { role: "system", content: SYSTEM + "\n\nDein vollständiger Funktionskatalog (nur daraus schöpfen):\n" + CAPABILITIES },
+    { role: "system", content: withAssistantName(SYSTEM + "\n\nDein vollständiger Funktionskatalog (nur daraus schöpfen):\n" + CAPABILITIES, aName) },
     {
       role: "user",
       content:
@@ -203,7 +225,7 @@ export async function narrateChapter({ title = "", prompt = "", fallbackText = "
         `${nameRule}\n` +
         `${greetRule}\n` +
         `Erzähle dazu lebendig und souverän aus deinem echten Können. ` +
-        `Antworte NUR mit Claras gesprochenem Text.`,
+        `Antworte NUR mit ${assistantNameGenitive(aName)} gesprochenem Text.`,
     },
   ];
   const r = await chat(messages, {

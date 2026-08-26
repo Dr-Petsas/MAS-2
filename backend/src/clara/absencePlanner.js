@@ -15,6 +15,7 @@ import { CASE_STATUS } from "../brain/cases.js";
 import { politurSchnell } from "./ansagePolitur.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { CHANNELS, DIRECTIONS, EVENT_TYPES } from "../brain/events.js";
+import { getAssistantName } from "../shared/rufname.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -505,7 +506,7 @@ async function writeAbsenceBlock(clientId, plan, { by } = {}) {
     end,
     isMultiDay: false,
     status: "confirmed",
-    comments: `Abwesenheit ${plan.calendarName || ""} (${plan.windowLabel || "ganztägig"}) — eingetragen durch Clara${by ? ` (freigegeben von ${by})` : ""}.`,
+    comments: `Abwesenheit ${plan.calendarName || ""} (${plan.windowLabel || "ganztägig"}) — eingetragen durch ${await getAssistantName(clientId)}${by ? ` (freigegeben von ${by})` : ""}.`,
     createdBy: "clara",
     createdAt: now,
     updatedAt: now,
@@ -721,7 +722,7 @@ export async function sweepAbsenceRebookings(clientId) {
       if (!neu) continue;
 
       const newStartMs = tsToMs(neu.start);
-      const note = `Termin verschoben durch die Praxis: ursprünglich am ${dateDeShort(p.startMs)} um ${p.timeLabel} Uhr (Abwesenheit ${plan.calendarName || ""}), neu gebucht für den ${dateDeShort(newStartMs)} um ${hhmm(newStartMs)} Uhr. (Clara)`;
+      const note = `Termin verschoben durch die Praxis: ursprünglich am ${dateDeShort(p.startMs)} um ${p.timeLabel} Uhr (Abwesenheit ${plan.calendarName || ""}), neu gebucht für den ${dateDeShort(newStartMs)} um ${hhmm(newStartMs)} Uhr. (${await getAssistantName(clientId)})`;
       const existing = s(neu.comments);
       await apptsCol(clientId, plan.locationId).doc(neu.docId)
         .update({ comments: existing ? `${existing}\n${note}` : note })
