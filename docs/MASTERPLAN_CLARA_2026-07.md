@@ -3332,9 +3332,57 @@ Arbeitspakete (jedes FERTIG vor dem naechsten):
       clara-switch gestartet (Schnell-Gate gruen). NOCH OFFEN: Chef laedt
       pickadoc-ai-upload auf pickadoc.ai hoch; Live-Probe mit Zweitname.
 
+- [x] **WP-NAME-5 Nachtraeglich umbenennen + Geraete + Verkaufstexte.**
+      (fertig 26.08.2026 abends, Chef-Auftrag: "Name in den Einstellungen
+      nachtraeglich aenderbar", "Feld ueber dem Orbit in iPhone-/iPad-App,
+      Tour, Improve", "Produktname muss immer variabel sein".)
+      Frontend 1b9d0c52 (deployt docgenda.web.app), MAS e5e1ca6 (neu
+      gestartet, Schnell-Gate gruen):
+      - EINSTELLUNGEN: masSettings neuer Abschnitt "Assistentin" —
+        Eingabefeld mit Onboarder-Validierung (nur Buchstaben, 2-24,
+        Vokal-Pflicht, Konsonanten-Hinweis), Crew-Namen gesperrt
+        (Lena/Nadine/Lisa/Bianca/Sophie/Julia/Marie/Max/Felix —
+        Verwechslung), leer/"Clara" speichert "" (Standard).
+        ClientsService.updateAssistantName (gezielter Feld-Merge) +
+        setCurrentClient => Oberflaeche schaltet SOFORT um; Hinweistext
+        erklaert Telefon-Verzoegerung (Cache ~10 min) und Geraete.
+      - GERAETE: GET /clara/assistant-name ist jetzt OEFFENTLICH (auth.js;
+        nur Ruf-Name, keine PII, Entitlement-Pruefung bleibt) — Companion-
+        Launcher (iPhone) und ipadRoomPage ziehen den Namen beim Oeffnen
+        nach (wp.assistantName wird aktualisiert; offline => alter Name).
+        Beide zeigen den Namen GROSS ueber dem Orb. Tour-Begleiter zeigte
+        ihn schon (ct-who-Sprechblase am Orb).
+      - IMPROVE: MAS public/m/improve.html laedt den Ruf-Namen selbst
+        (Hoerkarte "Was X gehoert hat" + Chat-Prefix "X:" per
+        CSS-Variable --aname-prefix); statische Datei, kein Neustart noetig.
+      - VERKAUFS-/PRODUKTTEXTE variabel (Chef-Korrektur: Produktname NIE
+        hart): personalizeDeep() in assistantNameService laeuft rekursiv
+        ueber Datenstrukturen (nur String-WERTE, wortgenau Clara/Claras,
+        Funktionen/Keys unberuehrt). Eingehaengt: PraxisHub (HUB_ITEMS,
+        CREW_PACKAGES-Showcase, Akkordeon-Sektionen, Stack-Karten,
+        Marketplace-Eintraege, Empfehlungen, practiceStack, cartOffer),
+        Warenkorb-Zeilen (hubCartPanel), Lizenzen (MAS_MODULES-Supervisor-
+        Zeile), Kampagnen-Stimmen (ANZEIGE personalisiert, gespeicherter
+        Wert cfg.phoneKi.voice bleibt stabil "Clara" — sonst brechen alte
+        Kampagnen).
+      - BEWUSST beim Produktnamen geblieben (Begruendung, kein Vergessen):
+        Neukunden-/Interessenten-Werkzeuge (prospectPackageUtils,
+        prospectQuotePreview, trialFollowUp, superuserDashboard) — dort
+        gibt es den Mandanten noch nicht bzw. die Ansicht ist
+        MANDANTENUEBERGREIFEND; der Ruf-Name einer fremden Praxis (oder
+        des Chef-Test-Mandanten) waere im Angebot an Dritte falsch.
+        Testfall-Rohdaten in testTrainView bleiben ebenfalls (Testdaten,
+        keine Kundensicht). Wenn spaeter das PRODUKT global umbenannt
+        werden soll (White-Label), ist das ein eigenes Paket (globale
+        Produktnamen-Konstante), nicht der Praxis-Ruf-Name.
+      Typecheck src/ 0 Fehler; Hosting-Deploy wieder per Stash-Verfahren
+      (fremde WIP masSettings-Dedupe/nadineWorkspace ausgeklammert und
+      zurueckgeholt). OFFEN: Live-Probe Chef (umbenennen -> Handy-App /
+      iPad / Hub gegenpruefen).
+
 Grenze (ehrlich): Exotenname = STT-Risiko. Gegenmittel: automatische
 Varianten-Erzeugung, Hinweis beim Setzen, Name jederzeit in den
-Einstellungen aenderbar.
+Einstellungen aenderbar (WP-NAME-5).
 
 Warteliste (aus dem Voll-Gate 26.08., NICHT W-NAME): snooze-01
 (proaktiv_snooze) und aufn-01 (start_treatment_recording) liefern
