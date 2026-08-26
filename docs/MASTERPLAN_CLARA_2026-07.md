@@ -3210,3 +3210,116 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
     Clara-Worker (`F:\Clara-Voice-dev`, Health-Port 8093) blieb waehrend des
     ganzen Umbaus in Betrieb. MAS wurde einmal neu gestartet (3 s, auf
     ausdrueckliche Freigabe) — Tunnel und Clara liefen weiter.
+
+## Phase W-NAME - Der Ruf-Name wird ein Feld (Chef 26.08.2026, 13:48)
+
+Auftrag woertlich: "fass das zusammen wie wir clara in pickadoc ueberall zum
+feld machen und den namen annehmen kann. denk auch an 'clara stop' oder
+'Clara start' befehle, Clara fehler melden auch... die muessen dann mit dem
+neuen namen funktionieren" + "setze das alles um OHNE clara demo oder clara
+dev v7.0 zu zerstoeren... bau das langsam und ordentlich."
+
+Hintergrund: In der Erlebnis-Demo (F:\Pickadoc-Demo) waehlt der Besucher den
+Namen seiner Assistentin frei. Im Produkt ist "Clara" aber ueberall fest
+verdrahtet (App ~60 Dateien, MAS ~30 Dateien, Sprach-Stack Profil/Wake/
+Fehlermelden). Der 14-Tage-Sprung aus der Demo (Phase W-SPRUNG unten) darf
+erst versprechen "sie heisst weiter so", wenn dieses Feld existiert.
+
+Grundsatz: EINE Quelle der Wahrheit — Feld `assistantName` am Mandanten
+(Client-Dokument, Default "Clara"). Produktnamen (CalendR, ClonR, ...), die
+anderen Agentinnen (Lena, Bianca, Lisa, Nadine, Sophie, Julia) und Code-/
+Routen-/Dateinamen bleiben unangetastet. Nur die INSTANZ der Praxis heisst
+anders. Interne Admin-/Test-Seiten duerfen "Clara" behalten.
+
+SCHUTZREGELN (unverhandelbar, Chef 26.08.):
+- Demo-Clara (F:\Pickadoc-Demo, Worker 8094) und Clara dev v7.0
+  (F:\Clara-Voice-dev, Worker 8093) werden in Phase W-NAME NICHT angefasst
+  und laufen unveraendert weiter.
+- Live-Clara (F:\Clara-Voice, Worker 8091): Aenderungen NUR flag-gated
+  (ohne `assistant_name` im set_profile => byte-identisch "Clara"),
+  Release-Gate vor jedem Commit, KEIN Worker-Neustart ohne gruenes Gate
+  und ausdrueckliche Freigabe.
+- Alles additiv: bestehende Routen/Formate nur erweitern, nie brechen.
+
+Arbeitspakete (jedes FERTIG vor dem naechsten):
+
+- [ ] **WP-NAME-1 App (docgendaweb).** Feld `assistantName` am Client-Modell
+      + zentraler Helper (Default "Clara"); kundensichtbare Stellen lesen nur
+      noch das Feld: Top-Navigation, Clara-Seite, Orb, Kalender-Hinweise,
+      Einstellungen, Tour-TEXTE, iPad-/Companion-Seiten, Workspaces.
+      Vorproduzierte Tour-Audios werden neutral formuliert ("Ihre
+      Assistentin") — nur dynamische TTS spricht den Namen. Admin-/
+      Superuser-/Testseiten bleiben unveraendert. DoD: Typecheck gruen; mit
+      gesetztem Feld zeigt der Kundenpfad nirgends mehr "Clara", ohne Feld
+      byte-identisch.
+- [ ] **WP-NAME-2 MAS-2.** Helper "Ruf-Name pro Mandant" (ein Modul, cached);
+      alle KUNDENHOERBAREN/-LESBAREN Selbstbezuege laufen darueber
+      (Briefings, Ansagen, tourNarrate, devices, SMS-/Mail-Texte,
+      Tool-Messages). `set_profile` an den Worker traegt `assistant_name`.
+      DoD: node --check + bestehende Tests gruen; Stichprobe mit Testname.
+- [ ] **WP-NAME-3 Clara-Voice (flag-gated, der heikle Teil).** Profil bekommt
+      Platzhalter `{{assistant_name}}` in system_prompt/greeting/
+      greeting_pools/Tool-Beschreibungen; der Worker ersetzt beim
+      set_profile. DYNAMISCH aus dem Namen erzeugt: Wake-Keywords (Name +
+      phonetische Hoerfehler-Varianten wie heute Klara/Carla), Stop-Phrasen
+      ("<Name> stopp/fertig"), Start ("<Name> Start"), stt_keywords-Bias
+      (derselbe Mechanismus wie der Patientennamen-Bias) und die
+      Trigger-Phrase fuer "<Name>, Fehler melden"
+      (worker_fehlermeldung.py). Begruessungs-PCM wird beim Namenswechsel
+      einmal vorgerendert und gecacht. Notaus: ohne assistant_name alles
+      byte-identisch. DoD: test_wake_word.py + neuer Namens-Test gruen,
+      Release-Gate VOLL gruen, Live-Probe mit Zweitname; kein Live-Neustart
+      ohne Freigabe.
+- [ ] **WP-NAME-4 Onboarder.** Feld "Wie soll Ihre Assistentin heissen?"
+      (Default Clara) im Wizard, schreibt ins Client-Dokument; Warnung bei
+      STT-schwierigen Exotennamen. DoD: kalter Weg setzt den Namen, App +
+      Telefon benutzen ihn.
+
+Grenze (ehrlich): Exotenname = STT-Risiko. Gegenmittel: automatische
+Varianten-Erzeugung, Hinweis beim Setzen, Name jederzeit in den
+Einstellungen aenderbar.
+
+## Phase W-SPRUNG - Demo -> echter 14-Tage-Account (Chef 26.08.2026, 13:48)
+
+Befund (26.08.): Die Demo endet als Show — der 14-Tage-Klick schickt nur
+einen Onboarder-Link (uebergabeToken, mode=wizard&resume=...), am Praxis-PC
+beginnt ein NEUES Setup: Praxis, Kalender, Clara-Name und der erlebte
+Termin sind weg. Dazwischen bricht der Verkauf. Ziel: Besitz bleibt —
+derselbe Name, kein zweites Setup, EIN Klick bis zur echten Probe.
+
+Entschieden (Chef 26.08., Gespraech):
+- ZWEI Eingaenge, EIN Onboarder: der kalte Weg (Homepage -> Wizard) bleibt
+  unveraendert; der Demo-Eingang ist nur eine kurze Bestaetigungs-Strecke
+  davor. KEIN zweiter Onboarder (keine zwei Maschinen, die auseinanderlaufen).
+- Scherzname/Pseudonym ("Banane", "Max Test") sind der Normalfall: die Demo
+  schreibt NICHTS ungefragt fest — eine Karte bestaetigt Assistentinnen-Name
+  und Praxis-/Arztname, erst dann werden sie echt.
+- Demo-Termine wandern NICHT in die echte Kartei; die Demo bleibt 14 Tage
+  ueber einen Knopf "Ihre Demo ansehen" erreichbar.
+- Ziel-Adresse ist die echte App: cal.pickadoc.de per Magic-Link (SMS +
+  E-Mail), am PC laeuft der normale Einstieg (onboarder_tour=1 ->
+  Tooltip-Show -> Deep-Dive); fehlende Pflichtangaben holt der bestehende
+  Guide nach.
+
+Arbeitspakete (erst NACH Phase W-NAME, sonst gebrochenes Versprechen):
+
+- [ ] **WP-SPRUNG-1 Bestaetigungskarte + /demo/uebernahme.** Klick auf
+      "14 Tage testen" -> EINE Karte, vorbefuellt aus der Demo:
+      Assistentinnen-Name (aenderbar), Praxis-/Arztname (Pseudonym
+      korrigierbar), E-Mail (Pflicht), Website (optional). Handynummer wird
+      NICHT erneut gefragt — die angekommene SMS ist der Beweis. Neuer
+      Endpunkt /demo/uebernahme im demo-mas (F:\Pickadoc-Demo — Aenderung
+      dort erst in DIESER Phase, vorsichtig, Regie-Tests gruen).
+- [ ] **WP-SPRUNG-2 Trial sofort anlegen.** Aus den bestaetigten Daten
+      erzeugt der Server SOFORT den echten 14-Tage-Mandanten ueber die
+      BESTEHENDE Installations-Strecke des Onboarders (installationsService
+      — kein Duplikat): Praxis, Behandler, assistantName, Crawl-Daten falls
+      Website da. Dann SMS UND Mail mit Magic-Link auf cal.pickadoc.de.
+      Sicherheit: nur mit gueltigem Ticket + verifizierter Nummer, ein Trial
+      pro Nummer/E-Mail, Tagesgrenze.
+- [ ] **WP-SPRUNG-3 Ankunft + Funnel.** Magic-Login -> Kalender mit
+      onboarder_tour=1 -> Tooltip-Show -> Deep-Dive -> App (exakt der
+      heutige Einstieg). Am PC in der Demo: direkt weiter ohne
+      Geraetewechsel. Funnel-Events uebernahme_karte / trial_erzeugt /
+      magic_login / tour_fertig. DoD: ein Fremder kommt von /erleben bis in
+      seine echte Probe-Praxis, ohne etwas doppelt einzugeben.
