@@ -13,9 +13,12 @@
  */
 import {
   ketteBauen, auffaelligkeiten, baueLauf, ordneEin, urteile, probeErlaubt,
-  KATEGORIEN, findeKategorie, zeitAusAufnahmename,
+  KATEGORIEN, findeKategorie, zeitAusAufnahmename, letztesGespraech,
   baueGespraechBeleg, baueGespraechNachrichten,
 } from "../src/improve.js";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 let ok = 0;
 let fail = 0;
@@ -221,6 +224,39 @@ pruefe("erster Schritt ist nie leer",
 console.log("\n11) Grenzfaelle");
 pruefe("kaputte Eingabe stuerzt nicht ab", ketteBauen(null, null).length === 0);
 pruefe("leere Kette erzeugt keine Funde", auffaelligkeiten(null).length === 0);
+
+// W-MANDANT-1 (30.08.2026): Alle Praxen legen ihre Aufnahmen im selben Ordner
+// ab (clara_<clientId>_...). Ohne Filter bekaeme Praxis B beim Melden das
+// letzte Gespraech von Praxis A angehaengt — ein Datenschutz-Leck, kein
+// Anzeigefehler. Der Filter haengt am Dateinamen-Praefix.
+console.log("\n12a) Mandanten-Filter: fremde Aufnahmen bleiben unsichtbar");
+{
+  const tmp = await mkdtemp(path.join(tmpdir(), "mas2-improve-"));
+  const vorher = process.env.CLARA_RUN_DIR;
+  try {
+    const dir = path.join(tmp, "call_transcripts");
+    await mkdir(dir, { recursive: true });
+    const turns = [{ seq: 1, role: "user", text: "Hallo, ich brauche einen Termin." }];
+    await writeFile(path.join(dir, "clara_praxisA_a1_20260830T090000.json"),
+      JSON.stringify({ id: "clara_praxisA_a1_20260830T090000", started_at: "2026-08-30T09:00:00", turns }));
+    await writeFile(path.join(dir, "clara_praxisB_b1_20260830T100000.json"),
+      JSON.stringify({ id: "clara_praxisB_b1_20260830T100000", started_at: "2026-08-30T10:00:00", turns }));
+    process.env.CLARA_RUN_DIR = tmp;
+
+    const ohne = await letztesGespraech();
+    pruefe("ohne Filter gewinnt das juengste Gespraech (praxisB)",
+      !!ohne && ohne.id.includes("praxisB"), ohne?.id || "null");
+    const a = await letztesGespraech({ clientId: "praxisA" });
+    pruefe("praxisA sieht nur die eigene, aeltere Aufnahme",
+      !!a && a.id.includes("praxisA"), a?.id || "null");
+    const fremd = await letztesGespraech({ clientId: "praxisC" });
+    pruefe("ein fremder Mandant sieht gar nichts", fremd === null, JSON.stringify(fremd));
+  } finally {
+    if (vorher === undefined) delete process.env.CLARA_RUN_DIR;
+    else process.env.CLARA_RUN_DIR = vorher;
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
 
 console.log("\n12) Gespraech ueber den Fehler");
 const beleg = baueGespraechBeleg({

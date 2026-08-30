@@ -210,13 +210,21 @@ export function zeitAusAufnahmename(name) {
  *
  * Ueberspringt Anrufe ohne einen einzigen Nutzerbeitrag: Ein Anruf, in dem nur
  * Clara "Was brauchen Sie?" gesagt hat, belegt nichts.
+ *
+ * W-MANDANT-1 (30.08.2026): Die Aufnahmen aller Praxen liegen im selben
+ * Ordner (Dateiname clara_<clientId>_<kuerzel>_<zeit>.json). Ohne Filter
+ * wuerde Praxis B beim Melden das letzte Gespraech von Praxis A angehaengt
+ * bekommen. Mit clientId zaehlen nur die eigenen Aufnahmen; ohne clientId
+ * bleibt das alte Verhalten (alle Dateien) fuer Diagnose-Skripte erhalten.
  */
-export async function letztesGespraech({ maxPruefen = 40 } = {}) {
+export async function letztesGespraech({ maxPruefen = 40, clientId = "" } = {}) {
   const dir = path.join(runDir(), "call_transcripts");
+  const praefix = clientId ? `clara_${String(clientId).trim()}_` : "";
   let dateien = [];
   try {
     const alle = await readdir(dir, { withFileTypes: true });
-    dateien = alle.filter((d) => d.isFile() && d.name.endsWith(".json"))
+    dateien = alle.filter((d) => d.isFile() && d.name.endsWith(".json")
+        && (!praefix || d.name.startsWith(praefix)))
       .map((d) => d.name)
       .sort((a, b) => {
         const za = zeitAusAufnahmename(a);
@@ -468,7 +476,7 @@ export async function meldeFall(clientId, {
     : { ...ordneEin(sauber), fehlerklasse: "unklar", kategorie: "" };
   const stufe = ["blocker", "stoerend", "kosmetik"].includes(String(schwere)) ? String(schwere) : "stoerend";
 
-  const gespraech = await letztesGespraech();
+  const gespraech = await letztesGespraech({ clientId });
   const prot = await leseZuege({ tage: 30 });
   const schritte = gespraech ? ketteBauen(gespraech, prot) : [];
   const funde = auffaelligkeiten(schritte);
@@ -796,14 +804,15 @@ export function nameGetroffen(gemeint, gehoert) {
  *
  * @param {string} anrufId       Kennung des Anrufs (leer = letztes Gespraech)
  * @param {string} gemeinterName optional: wie die Person wirklich heisst
+ * @param {string} clientId      Mandant — nur dessen Aufnahmen sind erreichbar
  * @param {(stufe:string,daten:object)=>void} onStage
  */
-export async function wiederholungslauf({ anruf = "", gemeinterName = "" } = {}, onStage = () => {}) {
+export async function wiederholungslauf({ anruf = "", gemeinterName = "", clientId = "" } = {}, onStage = () => {}) {
   const melde = (stufe, daten) => {
     try { onStage(stufe, daten); } catch { /* Anzeige darf den Lauf nie stoeren */ }
   };
 
-  const gespraech = anruf ? await gespraechLaden(anruf) : await letztesGespraech();
+  const gespraech = anruf ? await gespraechLaden(anruf, clientId) : await letztesGespraech({ clientId });
   if (!gespraech) {
     melde("ergebnis", { fehler: "Der Anruf ist nicht mehr auffindbar." });
     return;
@@ -910,9 +919,12 @@ export function urteilWiederholung({
 }
 
 /** Ein bestimmtes Gespraech laden (fuer den Wiederholungslauf eines alten Falls). */
-async function gespraechLaden(id) {
+async function gespraechLaden(id, clientId = "") {
   const sauber = String(id || "").replace(/[^A-Za-z0-9_.-]/g, "");
   if (!sauber) return null;
+  // W-MANDANT-1: Eine fremde Anrufkennung darf nicht ueber diesen Weg lesbar
+  // sein — die Kennung traegt den Mandanten im Namen (clara_<clientId>_...).
+  if (clientId && !sauber.startsWith(`clara_${String(clientId).trim()}_`)) return null;
   try {
     const daten = JSON.parse(await readFile(path.join(runDir(), "call_transcripts", `${sauber}.json`), "utf8"));
     const turns = Array.isArray(daten?.turns) ? daten.turns : [];

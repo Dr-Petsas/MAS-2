@@ -330,7 +330,8 @@ router.get("/improve/kategorien", (req, res) => {
 // VOR dem Absenden sehen, worauf sich seine Meldung bezieht.
 router.get("/improve/last", async (req, res) => {
   try {
-    const g = await letztesGespraech();
+    // W-MANDANT-1: nur die Aufnahmen des eigenen Mandanten anbieten.
+    const g = await letztesGespraech({ clientId: resolveClientId(req) });
     if (!g) return res.json({ ok: true, gespraech: null });
     const fragen = g.zuege.filter((z) => z.rolle === "user");
     res.json({
@@ -451,7 +452,8 @@ router.get("/improve/wiederholung", async (req, res) => {
   };
   try {
     await wiederholungslauf(
-      { anruf: req.query?.anruf, gemeinterName: req.query?.name },
+      // W-MANDANT-1: der Lauf sieht nur Aufnahmen des eigenen Mandanten.
+      { anruf: req.query?.anruf, gemeinterName: req.query?.name, clientId: mandant },
       sende,
     );
     if (fall && mandant && letztes && !letztes.fehler) {
