@@ -599,7 +599,10 @@ router.post("/tools/nachricht-an-entwickler", async (req, res) => {
       });
     }
     const op = await getOperator(clientId).catch(() => null);
-    const wer = op?.name ? String(op.name) : "Dr. Petsas";
+    // W-MANDANT-3: Ohne erkannten Operator KEIN fester Personenname mehr —
+    // bei mehreren Praxen waere "Dr. Petsas" schlicht falsch. Der Mandant im
+    // Absender sagt dem Entwickler trotzdem, woher die Nachricht kommt.
+    const wer = op?.name ? String(op.name) : `Praxis ${clientId}`;
     const wann = new Date().toLocaleString("de-DE", {
       timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
     });

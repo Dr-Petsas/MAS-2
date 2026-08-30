@@ -300,10 +300,16 @@ function remoteGuard(req, res) {
 }
 
 
+// W-MANDANT-3: Die Fernsteuerung kann den Mandanten mitgeben (?clientId= oder
+// im Body). Ohne Angabe bleibt alles beim Default-Mandanten — exakt das alte
+// Verhalten; die Chef-Seite muss nichts aendern.
+const remoteMandant = (req) =>
+  String(req.query?.clientId || req.body?.clientId || "").trim() || DEFAULT_CLIENT_ID;
+
 router.post("/remote/message", async (req, res) => {
   try {
     if (!remoteGuard(req, res)) return;
-    const out = await addRemoteMessage(DEFAULT_CLIENT_ID, {
+    const out = await addRemoteMessage(remoteMandant(req), {
       role: req.body?.role, text: req.body?.text, speaker: req.body?.speaker,
     });
     res.status(out.ok ? 200 : 400).json(out);
@@ -566,7 +572,7 @@ router.post("/improve/zentrale/stand", async (req, res) => {
 router.post("/remote/upload", async (req, res) => {
   try {
     if (!remoteGuard(req, res)) return;
-    const out = await saveRemoteFile(DEFAULT_CLIENT_ID, {
+    const out = await saveRemoteFile(remoteMandant(req), {
       name: req.body?.name, dataBase64: req.body?.data, note: req.body?.note,
     });
     res.status(out.ok ? 200 : 400).json(out);
@@ -579,7 +585,7 @@ router.post("/remote/upload", async (req, res) => {
 router.get("/remote/state", async (req, res) => {
   try {
     if (!remoteGuard(req, res)) return;
-    const out = await remoteState(DEFAULT_CLIENT_ID, { limit: Number(req.query?.limit) || 80 });
+    const out = await remoteState(remoteMandant(req), { limit: Number(req.query?.limit) || 80 });
     res.json({ ok: true, ...out });
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
@@ -590,7 +596,7 @@ router.get("/remote/state", async (req, res) => {
 router.post("/remote/board", async (req, res) => {
   try {
     if (!remoteGuard(req, res)) return;
-    res.json(await setRemoteBoard(DEFAULT_CLIENT_ID, req.body?.text));
+    res.json(await setRemoteBoard(remoteMandant(req), req.body?.text));
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
   }
@@ -600,7 +606,7 @@ router.post("/remote/board", async (req, res) => {
 router.get("/remote/pending", async (req, res) => {
   try {
     if (!remoteGuard(req, res)) return;
-    res.json({ ok: true, messages: await pendingRemoteMessages(DEFAULT_CLIENT_ID) });
+    res.json({ ok: true, messages: await pendingRemoteMessages(remoteMandant(req)) });
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
   }
@@ -610,7 +616,7 @@ router.get("/remote/pending", async (req, res) => {
 router.post("/remote/ack", async (req, res) => {
   try {
     if (!remoteGuard(req, res)) return;
-    res.json(await ackRemoteMessages(DEFAULT_CLIENT_ID, req.body?.ids, req.body?.status));
+    res.json(await ackRemoteMessages(remoteMandant(req), req.body?.ids, req.body?.status));
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e?.message || e) });
   }

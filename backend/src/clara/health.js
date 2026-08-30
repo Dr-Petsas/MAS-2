@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID } from "../routes/_shared.js";
 
 const OLLAMA_DEFAULT_BASE = "http://127.0.0.1:11434/v1";
 const OLLAMA_DEFAULT_MODEL = "qwen3:4b-instruct";
@@ -21,8 +22,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // "Profil-Tool -> existiert die MAS-Route wirklich?". Der Abwesenheits-Vorfall
 // (Tool zeigte WOCHEN auf eine nie gemountete Route, Antwort blieb hoeflich
 // leer) waere damit am ersten Tag aufgefallen.
+// W-MANDANT-3: Der Pfad folgt dem konfigurierten Profil (CLARA_PROFILE_ID,
+// heute clara_meddent) statt einem fest getippten meddent-Pfad.
 const CLARA_PROFILE_PATH = (process.env.CLARA_PROFILE_PATH
-  || "F:/Clara-Voice-dev/profiles/clara_meddent/profile.json").trim();
+  || `F:/Clara-Voice-dev/profiles/${CLARA_PROFILE_ID}/profile.json`).trim();
 // Alle Cloud Functions, die das MAS wirklich aufruft (cfProxy, agentBooking,
 // sophieBilling). OPTIONS-Anfrage = keine Ausfuehrung, nur Erreichbarkeit.
 const CF_NAMES = [
@@ -302,7 +305,7 @@ export async function checkElevenLabs() {
  * juengste Stoerung < 60 min her ist — heilt sich danach selbst.
  */
 export async function checkToolErrors() {
-  const clientId = (process.env.DEFAULT_CLIENT_ID || "MEe4ZQHEzOPzLcexyhdT").trim();
+  const clientId = DEFAULT_CLIENT_ID;
   try {
     const { recentToolErrors } = await import("./toolErrors.js");
     const errors = await recentToolErrors(clientId, {});
