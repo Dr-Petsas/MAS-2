@@ -45,13 +45,17 @@ import demoRouter from "./routes/demo.js";
 import claraRouter from "./routes/clara.js";
 import { sttBenchProxy } from "./routes/sttBench.js";
 import { conformerBenchProxy } from "./routes/conformerBench.js";
+import { qwenTtsProxy } from "./routes/qwenTtsProxy.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
+import { fuerAlleMandanten } from "./tenants.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+// Qwen3-TTS (5090:8213) fuer ClonR. VOR express.json, sonst ist der POST-Body weg.
+app.use("/qwen-tts", qwenTtsProxy);
 // 25mb: Nadines Composer erlaubt bis 15 MB Anhaenge pro Mail; base64 in JSON
 // blaeht das auf ~20 MB auf. Mit dem alten 8mb-Limit scheiterte /mail/send ab
 // ~6 MB echter Dateigroesse mit einem nichtssagenden HTTP 413.
@@ -386,6 +390,11 @@ try {
   log.warn("lena provider not loaded", { error: String(e?.message || e) });
 }
 
+// W-MANDANT-2 (30.08.2026): Hintergrundjobs laufen ueber fuerAlleMandanten()
+// (src/tenants.js) fuer JEDEN aktiven Mandanten, nicht mehr fest fuer
+// DEFAULT_CLIENT_ID. Solange die Registry nur [meddent] liefert, ist das
+// Verhalten byte-identisch zu vorher. Notaus: MAS_MULTI_TENANT_SCHEDULER=0.
+
 server.listen(PORT, () => {
   assertLocalLlm();
   log.info("backend listening", { port: PORT, authEnforced: AUTH_ENFORCED, lenaSttProxy: LENA_STT_PORT });
@@ -398,15 +407,19 @@ server.listen(PORT, () => {
   // Zweiter Anlaufweg der Suche (Termin-Patienten als Kontext) gleich mit —
   // sonst zahlt der erste Anrufer dessen Aufbau (gemessen: rund 9 s).
   if (DEFAULT_CLIENT_ID) {
-    Promise.all([
-      ensureCatalog(DEFAULT_CLIENT_ID),
-      listContextPatientIds(DEFAULT_CLIENT_ID).catch(() => []),
-    ])
-      .then(([c, ids]) => log.info("patient search warm", { names: c?.count || 0, contextIds: ids.length }))
-      .catch((e) => log.warn("patient_search_warmup_failed", { error: String(e?.message || e) }));
+    fuerAlleMandanten("patient_search_warmup", async (cid) => {
+      const [c, ids] = await Promise.all([
+        ensureCatalog(cid),
+        listContextPatientIds(cid).catch(() => []),
+      ]);
+      log.info("patient search warm", { clientId: cid, names: c?.count || 0, contextIds: ids.length });
+    });
   }
   // Lisa call finalizer: fetch transcripts of finished outbound calls and
   // write the outcome to the shared brain. Cheap no-op when nothing is calling.
+  // BEWUSST nur DEFAULT_CLIENT_ID (W-MANDANT, Chef 30.08.2026): Das ist die
+  // alte ElevenLabs-Strecke — sie wird durch die neue TelefonKI-Lisa ersetzt
+  // und nicht mehr mandantenfaehig ausgebaut.
   if (lisaCallConfigured() && DEFAULT_CLIENT_ID) {
     setInterval(() => {
       finalizeLisaCalls(DEFAULT_CLIENT_ID).catch((e) =>
@@ -424,6 +437,8 @@ server.listen(PORT, () => {
   // ConvAI-Agenten als bianca_call-Events ins Praxisgedächtnis holen — damit
   // Clara Anrufe kennt ("Waren Anrufe für mich da?") und Rückrufer für Bianca
   // Kontext haben. Billig im Leerlauf (eine Listen-Abfrage pro Takt).
+  // BEWUSST nur DEFAULT_CLIENT_ID: alte ElevenLabs-ConvAI-Strecke, Nachfolger
+  // ist die TelefonKI-Bianca (die schreibt ihr Gedaechtnis selbst, je Mandant).
   if (biancaConfigured() && DEFAULT_CLIENT_ID) {
     setInterval(() => {
       ingestBiancaCalls(DEFAULT_CLIENT_ID, { port: PORT }).catch((e) =>
@@ -435,11 +450,9 @@ server.listen(PORT, () => {
 
   // Adressbuch-Backfill: Bestands-Telefonate (Brain) und Nummern aus Mail-
   // Signaturen einmalig ins geteilte Adressbuch holen. Marker-Dokument macht
-  // Folge-Starts zum No-op.
+  // Folge-Starts zum No-op (je Mandant).
   if (DEFAULT_CLIENT_ID) {
-    backfillAddressBook(DEFAULT_CLIENT_ID).catch((e) =>
-      log.warn("addressbook.backfill_error", { error: String(e?.message || e) })
-    );
+    fuerAlleMandanten("addressbook.backfill", (cid) => backfillAddressBook(cid));
   }
 
   if (lisaCallConfigured() && DEFAULT_CLIENT_ID) {
@@ -451,35 +464,30 @@ server.listen(PORT, () => {
     // selbst Minuten — 5-Minuten-Takt verzoegert nur die Ergebnis-Zuordnung,
     // nie das Ergebnis. Notaus/Feintuning: MAS_RECALL_SWEEP_INTERVAL_MS.
     setInterval(() => {
-      sweepRecallOutcomes(DEFAULT_CLIENT_ID).catch((e) =>
-        log.warn("recall.sweep_error", { error: String(e?.message || e) })
-      );
+      fuerAlleMandanten("recall.sweep", (cid) => sweepRecallOutcomes(cid));
     }, Math.max(60_000, Number(process.env.MAS_RECALL_SWEEP_INTERVAL_MS || 300_000)));
 
     // Abwesenheits-Rückkanal: erkennt Neubuchungen abgesagter Patienten und
     // schreibt die Verschiebe-Notiz in den neuen Termin (Kalender-Quittung).
     setInterval(() => {
-      sweepAbsenceRebookings(DEFAULT_CLIENT_ID).catch((e) =>
-        log.warn("absence.sweep_error", { error: String(e?.message || e) })
-      );
+      fuerAlleMandanten("absence.sweep", (cid) => sweepAbsenceRebookings(cid));
     }, 300_000);
 
     // Datensparsamkeit: täglicher Aufräumlauf (ab 3 Uhr nachts, einmal pro
-    // Tag). Löscht Nachrichten, Tickets und Gedächtnis-Einträge älter als
-    // RETENTION_DAYS endgültig — idempotent, daher unkritisch bei Neustarts.
-    let lastRetentionDay = "";
-    setInterval(async () => {
-      try {
-        const hh = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
-        const today = todayBerlin();
-        if (hh >= 3 && lastRetentionDay !== today) {
-          lastRetentionDay = today;
-          const out = await runRetentionSweep(DEFAULT_CLIENT_ID);
-          log.info("retention.daily_run", out);
-        }
-      } catch (e) {
-        log.warn("retention.daily_error", { error: String(e?.message || e) });
-      }
+    // Tag JE Mandant). Löscht Nachrichten, Tickets und Gedächtnis-Einträge
+    // älter als RETENTION_DAYS endgültig — idempotent, daher unkritisch bei
+    // Neustarts.
+    const retentionTag = new Map(); // cid -> Tag des letzten Laufs
+    setInterval(() => {
+      const hh = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
+      const today = todayBerlin();
+      if (hh < 3) return;
+      fuerAlleMandanten("retention.daily", async (cid) => {
+        if (retentionTag.get(cid) === today) return;
+        retentionTag.set(cid, today);
+        const out = await runRetentionSweep(cid);
+        log.info("retention.daily_run", { clientId: cid, ...out });
+      });
     }, 1_800_000);
   }
 
@@ -487,27 +495,25 @@ server.listen(PORT, () => {
   // 7:30 für HEUTE). Läuft je einmal pro Tag; der Push selbst ist zusätzlich
   // über lastPushDay dedupliziert (max. 1 Push pro Tag, Entscheidung Chef).
   if (DEFAULT_CLIENT_ID) {
-    const initiativeRuns = { evening: "", morning: "" };
-    setInterval(async () => {
-      try {
-        const now = new Date();
-        const berlinHM = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
-        const [hh, mm] = berlinHM.split(":").map(Number);
-        const today = todayBerlin();
-        if (hh >= 18 && initiativeRuns.evening !== today) {
-          initiativeRuns.evening = today;
+    const initiativeRuns = { evening: new Map(), morning: new Map() }; // cid -> Tag
+    setInterval(() => {
+      const now = new Date();
+      const berlinHM = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
+      const [hh, mm] = berlinHM.split(":").map(Number);
+      const today = todayBerlin();
+      fuerAlleMandanten("recall.initiative", async (cid) => {
+        if (hh >= 18 && initiativeRuns.evening.get(cid) !== today) {
+          initiativeRuns.evening.set(cid, today);
           const tomorrow = new Date(now.getTime() + 86400000);
           const tIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(tomorrow);
-          const out = await dailyInitiativeScan(DEFAULT_CLIENT_ID, { targetDate: tIso, publicBaseUrl: PUBLIC_BASE_URL });
-          log.info("recall.evening_scan", { date: tIso, worthIt: out.worthIt, pushed: out.pushed });
-        } else if ((hh > 7 || (hh === 7 && mm >= 30)) && hh < 12 && initiativeRuns.morning !== today) {
-          initiativeRuns.morning = today;
-          const out = await dailyInitiativeScan(DEFAULT_CLIENT_ID, { targetDate: today, publicBaseUrl: PUBLIC_BASE_URL });
-          log.info("recall.morning_scan", { date: today, worthIt: out.worthIt, pushed: out.pushed });
+          const out = await dailyInitiativeScan(cid, { targetDate: tIso, publicBaseUrl: PUBLIC_BASE_URL });
+          log.info("recall.evening_scan", { clientId: cid, date: tIso, worthIt: out.worthIt, pushed: out.pushed });
+        } else if ((hh > 7 || (hh === 7 && mm >= 30)) && hh < 12 && initiativeRuns.morning.get(cid) !== today) {
+          initiativeRuns.morning.set(cid, today);
+          const out = await dailyInitiativeScan(cid, { targetDate: today, publicBaseUrl: PUBLIC_BASE_URL });
+          log.info("recall.morning_scan", { clientId: cid, date: today, worthIt: out.worthIt, pushed: out.pushed });
         }
-      } catch (e) {
-        log.warn("recall.initiative_scheduler_error", { error: String(e?.message || e) });
-      }
+      });
     }, 5 * 60_000);
     log.info("recall initiative scheduler enabled");
   }
@@ -520,20 +526,18 @@ server.listen(PORT, () => {
     const zeit = /^(\d{1,2}):(\d{2})$/.exec((process.env.CLARA_MORGENLAUF_ZEIT || "06:30").trim());
     const zH = zeit ? Number(zeit[1]) : 6;
     const zM = zeit ? Number(zeit[2]) : 30;
-    let lastMorgenlauf = "";
-    setInterval(async () => {
-      try {
-        const berlinHM = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
-        const [hh, mm] = berlinHM.split(":").map(Number);
-        const today = todayBerlin();
-        if ((hh > zH || (hh === zH && mm >= zM)) && hh < 12 && lastMorgenlauf !== today) {
-          lastMorgenlauf = today;
-          const out = await runMorgenlauf(DEFAULT_CLIENT_ID, { publicBaseUrl: PUBLIC_BASE_URL });
-          log.info("morgenlauf.scheduled_run", { ok: out.ok, body: out.body || "", pushed: out.pushed?.ok });
-        }
-      } catch (e) {
-        log.warn("morgenlauf.scheduler_error", { error: String(e?.message || e) });
-      }
+    const lastMorgenlauf = new Map(); // cid -> Tag des letzten Laufs
+    setInterval(() => {
+      const berlinHM = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+      const [hh, mm] = berlinHM.split(":").map(Number);
+      const today = todayBerlin();
+      if (!((hh > zH || (hh === zH && mm >= zM)) && hh < 12)) return;
+      fuerAlleMandanten("morgenlauf", async (cid) => {
+        if (lastMorgenlauf.get(cid) === today) return;
+        lastMorgenlauf.set(cid, today);
+        const out = await runMorgenlauf(cid, { publicBaseUrl: PUBLIC_BASE_URL });
+        log.info("morgenlauf.scheduled_run", { clientId: cid, ok: out.ok, body: out.body || "", pushed: out.pushed?.ok });
+      });
     }, 5 * 60_000);
     log.info("morgenlauf scheduler enabled", { zeit: `${String(zH).padStart(2, "0")}:${String(zM).padStart(2, "0")}` });
   }
@@ -542,13 +546,11 @@ server.listen(PORT, () => {
   // offene/überfällige Jobs erneut anstupsen bzw. eskalieren. Billig im Leerlauf
   // (zwei Firestore-Reads pro Takt). Push-Versand respektiert die Ruhezeiten.
   if (DEFAULT_CLIENT_ID) {
-    setInterval(async () => {
-      try {
-        await qmMaterializeDueJobs(DEFAULT_CLIENT_ID, {});
-        await qmRunEscalationSweep(DEFAULT_CLIENT_ID, { publicBaseUrl: PUBLIC_BASE_URL });
-      } catch (e) {
-        log.warn("qm.scheduler_error", { error: String(e?.message || e) });
-      }
+    setInterval(() => {
+      fuerAlleMandanten("qm.scheduler", async (cid) => {
+        await qmMaterializeDueJobs(cid, {});
+        await qmRunEscalationSweep(cid, { publicBaseUrl: PUBLIC_BASE_URL });
+      });
     }, 5 * 60_000);
     log.info("qm scheduler enabled", { intervalMs: 5 * 60_000 });
   }
@@ -558,19 +560,17 @@ server.listen(PORT, () => {
   // wir mit Herrn X an ...") und arbeitet die Liste im Gespräch einzeln ab.
   // Anti-Nerv: der Lauf selbst dedupliziert auf einen Anruf pro Tag.
   if (DEFAULT_CLIENT_ID) {
-    let lastDokuRun = "";
-    setInterval(async () => {
-      try {
-        const hh = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
-        const today = todayBerlin();
-        if (hh >= 18 && hh < 21 && lastDokuRun !== today) {
-          lastDokuRun = today;
-          const out = await dokuAbendlauf(DEFAULT_CLIENT_ID, { publicBaseUrl: PUBLIC_BASE_URL });
-          log.info("doku.abendlauf", out);
-        }
-      } catch (e) {
-        log.warn("doku.abendlauf_error", { error: String(e?.message || e) });
-      }
+    const lastDokuRun = new Map(); // cid -> Tag des letzten Laufs
+    setInterval(() => {
+      const hh = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
+      const today = todayBerlin();
+      if (!(hh >= 18 && hh < 21)) return;
+      fuerAlleMandanten("doku.abendlauf", async (cid) => {
+        if (lastDokuRun.get(cid) === today) return;
+        lastDokuRun.set(cid, today);
+        const out = await dokuAbendlauf(cid, { publicBaseUrl: PUBLIC_BASE_URL });
+        log.info("doku.abendlauf", { clientId: cid, ...out });
+      });
     }, 5 * 60_000);
     log.info("doku waechter scheduler enabled");
   }
@@ -581,13 +581,11 @@ server.listen(PORT, () => {
   // Lauf markiert den Bestand nur als bekannt (Baseline) und meldet nichts.
   // Not-Aus: MAS_PROAKTIV=0 oder mas_config/proaktiv { enabled: false }.
   if (DEFAULT_CLIENT_ID && process.env.MAS_PROAKTIV !== "0") {
-    setInterval(async () => {
-      try {
-        const out = await runProaktivSweep(DEFAULT_CLIENT_ID, { publicBaseUrl: PUBLIC_BASE_URL });
-        if (out?.announced || out?.baselined) log.info("proaktiv.sweep_result", out);
-      } catch (e) {
-        log.warn("proaktiv.sweep_error", { error: String(e?.message || e) });
-      }
+    setInterval(() => {
+      fuerAlleMandanten("proaktiv.sweep", async (cid) => {
+        const out = await runProaktivSweep(cid, { publicBaseUrl: PUBLIC_BASE_URL });
+        if (out?.announced || out?.baselined) log.info("proaktiv.sweep_result", { clientId: cid, ...out });
+      });
     }, 5 * 60_000);
     log.info("proaktiv scheduler enabled", { intervalMs: 5 * 60_000 });
   }
@@ -597,13 +595,11 @@ server.listen(PORT, () => {
   // mit strengen Gates + LLM-Validierung (qwen3.6/5090). Billig im Leerlauf
   // (eine indizierte Query pro Takt). Not-Aus: MAS_LENA_LEARN=0.
   if (DEFAULT_CLIENT_ID && process.env.MAS_LENA_LEARN !== "0") {
-    setInterval(async () => {
-      try {
-        const out = await runLenaLearnSweep(DEFAULT_CLIENT_ID, {});
-        if (out?.promoted) log.info("lena.learn_promoted", { promoted: out.promoted, list: out.promotedList });
-      } catch (e) {
-        log.warn("lena.learn_error", { error: String(e?.message || e) });
-      }
+    setInterval(() => {
+      fuerAlleMandanten("lena.learn", async (cid) => {
+        const out = await runLenaLearnSweep(cid, {});
+        if (out?.promoted) log.info("lena.learn_promoted", { clientId: cid, promoted: out.promoted, list: out.promotedList });
+      });
     }, 10 * 60_000);
     log.info("lena auto-learn scheduler enabled", { intervalMs: 10 * 60_000 });
   }

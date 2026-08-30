@@ -5,7 +5,7 @@
 import "dotenv/config";
 import admin from "../src/firebase.js";
 import { DEFAULT_CLIENT_ID } from "../src/routes/_shared.js";
-import { aktiveMandanten, schedulerMandanten, mandantenCacheLeeren } from "../src/tenants.js";
+import { aktiveMandanten, schedulerMandanten, mandantenCacheLeeren, fuerAlleMandanten } from "../src/tenants.js";
 
 let fails = 0;
 const check = (ok, name, extra = "") => {
@@ -52,6 +52,20 @@ try {
   mandantenCacheLeeren();
   const sched = await schedulerMandanten();
   check(sched.includes(DEFAULT_CLIENT_ID), "Scheduler-Liste traegt den Default-Mandanten");
+
+  // 6) Fehler-Isolation (W-MANDANT-2): ein kaputter Mandant stoppt die
+  // anderen nicht — der Fehler wird geschluckt und geloggt.
+  process.env.MAS_MANDANTEN = "praxisA,praxisB,praxisC";
+  mandantenCacheLeeren();
+  const gelaufen = [];
+  await fuerAlleMandanten("testjob", async (cid) => {
+    if (cid === "praxisB") throw new Error("kaputt");
+    gelaufen.push(cid);
+  });
+  check(JSON.stringify(gelaufen) === JSON.stringify(["praxisA", "praxisC"]),
+    "Fehler-Isolation: A und C laufen trotz kaputtem B", JSON.stringify(gelaufen));
+  delete process.env.MAS_MANDANTEN;
+  mandantenCacheLeeren();
 
   console.log(`\nRegistry heute: ${JSON.stringify(sched)}`);
 } finally {

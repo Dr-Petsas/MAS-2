@@ -15,6 +15,7 @@
 //   duerfen nie Hintergrundjobs einsammeln.
 import { DEFAULT_CLIENT_ID } from "./routes/_shared.js";
 import { tenantsWithCalendar } from "./clara/calendarWatch.js";
+import { log } from "./log.js";
 
 // Registry-Antwort kurz cachen: die Scheduler-Takte fragen im Sekunden-/
 // Minutenrhythmus — eine collectionGroup-Query pro Takt und Job waere Geld
@@ -56,4 +57,32 @@ export async function schedulerMandanten() {
 /** Nur fuer Tests: Cache verwerfen, damit Env-Aenderungen sofort greifen. */
 export function mandantenCacheLeeren() {
   cache = { ids: null, ts: 0 };
+}
+
+// W-MANDANT-2: Ein Hintergrundjob laeuft fuer JEDEN aktiven Mandanten.
+// Fehler-Isolation nach dem Muster aus mail/scheduler.js: Ein kaputter
+// Mandant (fehlende Config, kaputte Daten) stoppt NIE die anderen — er wird
+// geloggt und die Schleife laeuft weiter. Die Mandantenliste wird einmal beim
+// Start und bei jeder Aenderung geloggt, nicht bei jedem Takt (Rauschen).
+let letzteMandantenMeldung = "";
+export async function fuerAlleMandanten(jobName, fn) {
+  let mandanten = [];
+  try {
+    mandanten = await schedulerMandanten();
+  } catch (e) {
+    log.warn("scheduler.mandanten_error", { job: jobName, error: String(e?.message || e) });
+    return;
+  }
+  const alsText = JSON.stringify(mandanten);
+  if (alsText !== letzteMandantenMeldung) {
+    letzteMandantenMeldung = alsText;
+    log.info("scheduler.mandanten", { mandanten });
+  }
+  for (const cid of mandanten) {
+    try {
+      await fn(cid);
+    } catch (e) {
+      log.warn(`${jobName}.tenant_error`, { clientId: cid, error: String(e?.message || e) });
+    }
+  }
 }
