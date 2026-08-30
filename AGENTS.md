@@ -37,6 +37,24 @@ verloren gehen**.
 6. **Umsatz-/Euro-Zahlen** gehoeren NICHT in Briefings oder Clara-Antworten
    (Vorgabe: separates Element mit Lena/Sophie).
 
+## Mandanten (W-MANDANT, 30.08.2026)
+
+- Registry: `src/tenants.js` — `aktiveMandanten()` = Praxen mit
+  `mas_config/booking` + Default-Mandant (zzz-Testmandanten gefiltert,
+  5-min-Cache). Hintergrundjobs laufen ueber `fuerAlleMandanten(job, fn)`
+  mit Fehler-Isolation je Praxis — NEUE Scheduler-Bloecke nie fest auf
+  `DEFAULT_CLIENT_ID` schreiben. Notaus `MAS_MULTI_TENANT_SCHEDULER=0`
+  (exakt altes Verhalten), Override `MAS_MANDANTEN=id1,id2`.
+- Requests: `resolveClientId(req)` ist die einzige Quelle des Mandanten;
+  die Fernsteuerung (`/remote/*`) nimmt optional `clientId` an.
+- Testmandant `praxis2` (clients/praxis2, Kalender "Dr. Vlachos") ist der
+  stehende Mandantenfaehigkeits-Beweis — nicht loeschen. Smoke:
+  `node scripts/smoke-praxis2.mjs` (Registry, Scheduler-Isolation, Buchung,
+  Brain-Event, Gedaechtnis — alles mandanten-scharf).
+- Lisa/Bianca-alt (ElevenLabs, `src/lisa/outbound.js`, `src/bianca/ingest.js`)
+  bleibt BEWUSST single-tenant: wird durch die TelefonKI ersetzt
+  (Chef 28.08.: "es geht nichts mehr zu elevenlabs").
+
 ## Kanonische Ordner (Stand 12.06.2026)
 
 - `F:\MAS-2` — Backend (dieses Repo)

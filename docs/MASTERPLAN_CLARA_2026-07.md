@@ -3461,3 +3461,70 @@ Arbeitspakete (erst NACH Phase W-NAME, sonst gebrochenes Versprechen):
       (demoFunnelService + FUNNEL_SCHRITTE). DoD-Probe (Fremder von
       /erleben bis in die echte Probe-Praxis) steht mit der
       Ende-zu-Ende-Probe aus WP-SPRUNG-2 zusammen aus.
+
+## Phase W-MANDANT - Mandantenfaehigkeit ohne Bruch (30.08.2026, UMGESETZT)
+
+Auftrag (Chef 30.08.): Kein Agent/Tool im Oekosystem darf meddent fest
+verdrahtet haben (Ausnahme DemoClara/Pickadoc-Demo). Umsetzung additiv,
+meddent byte-identisch, jedes Paket einzeln committet und rueckrollbar.
+Der zentrale Trick: Registry statt Umbau - alle Single-Tenant-Stellen laufen
+ueber `aktiveMandanten()`, die heute exakt [meddent, praxis2] liefert.
+
+- [x] **W-MANDANT-0 Registry** (MAS-2 9f38f03): `src/tenants.js` mit
+      `aktiveMandanten()` (mas_config/booking-Praxen + Default, zzz-Filter,
+      5-min-Cache), `schedulerMandanten()` mit Notaus
+      `MAS_MULTI_TENANT_SCHEDULER=0`, Override `MAS_MANDANTEN`. Test
+      scripts/test-mandanten.mjs.
+- [x] **W-MANDANT-1 Datenschutz** (MAS-2 ba39d2d): improve.js
+      letztesGespraech()/gespraechLaden() filtern Voice-Transcripts auf das
+      Praefix `clara_<clientId>_` - kein Cross-Tenant-Zugriff auf
+      Gespraechsdaten mehr; Routen reichen den Mandanten durch.
+- [x] **W-MANDANT-2 Scheduler-Schleife** (MAS-2 a34f4ae): alle
+      server.js-Bloecke (Warmup, Adressbuch, Recall, Absence, Retention,
+      Initiative, Morgenlauf, QM, Doku-Abend, Proaktiv, Lena-Learn) ueber
+      `fuerAlleMandanten()` mit Fehler-Isolation und Tages-Dedup je Praxis.
+      Lisa-Finalizer/Bianca-Ingest BEWUSST single-tenant (ElevenLabs-Altstrecke,
+      Nachfolger TelefonKI).
+- [x] **W-MANDANT-3 MAS-Hardcodes** (MAS-2 0401a2e): /clara/session loest
+      das Profil je Mandant (booking.claraProfileId), Entwickler-Nachricht
+      ohne Operator nennt "Praxis <id>" statt Dr. Petsas, Fernsteuerung
+      nimmt clientId an, health.js folgt CLARA_PROFILE_ID/DEFAULT_CLIENT_ID.
+      pvs.js-Fallback faehrt in der unversionierten Kollegen-WIP mit.
+- [x] **W-MANDANT-4 TelefonKI** (8c5d542): X-Client-Id aus der Sitzung,
+      Aussprache/dids im Tenant-JSON, Warm-Start alle Tenants, Ansagen
+      neutral. lauf_alle 545/545.
+- [x] **W-MANDANT-5 Clara profilisiert** (Clara-Voice 9d294a9): Behandler aus
+      booking.calendars, Parken aus knowledge_snippets (meddent-Satz jetzt im
+      Profil, sonst ehrliche Nicht-Antwort), tts_aussprache aus Profilen,
+      start-clara.ps1 -ProfileId/-HttpPort, OPT-IN CLARA_TOOL_URL_CLIENTID.
+      Schnell-Gate + Voll-Gate gruen (Register 33/33, 85,5%, Flip-Sperre 0).
+- [x] **W-MANDANT-6 Frontend-Entitlement** (pickadoc-live-base 4ddae520):
+      Allowlists geleert - masActive (Superuser-Billing) ist die Wahrheit
+      (vorab live verifiziert, dass meddent das Entitlement traegt);
+      Outbound-Default-Keywords aus den Behandlern des Mandanten;
+      Twilio-Stimme aus dem agents-Doc; totes Vapi-Widget entfernt.
+      Builds gruen. Deploy folgt getrennt nach den eisernen Deploy-Regeln.
+- [x] **W-MANDANT-7 Beweis** (MAS-2 + Clara 3b19e69 + TelefonKI 542c3da):
+      Testmandant praxis2 END-TO-END angelegt (clients/praxis2 +
+      mas_config/booking + Kalender Dr. Vlachos in Firestore,
+      tenants/praxis2.json, profiles/clara_praxis2).
+      Smoke `node scripts/smoke-praxis2.mjs` 10/10 GRUEN: Registry
+      [meddent, praxis2], Scheduler-Fehler-Isolation, Buchung wird vom
+      Kalender-Waechter im richtigen Mandanten erkannt (changes=1,
+      recorded=1), Brain-Event und Gedaechtnis nur in praxis2 sichtbar.
+      meddent-Regressionsbeweis: Clara-Voll-Gate gruen (Register 33/33,
+      Quote 85,5%, Flip-Sperre 0 gekippt), MAS npm test dieselben 5
+      Altfaelle wie die Baseline, TelefonKI 547/547.
+      Testsuiten parametrisiert: CLARA_TEST_PROFILE (run_tests.py),
+      TelefonKI-Suite prueft ALLE tenants/*.json.
+
+OFFEN (bewusst, Betrieb):
+- MAS-Backend-Neustart, damit W0-W3 live greifen (Gates gruen; Neustart ist
+  eine bewusste Betriebsentscheidung, nicht Teil dieser Session).
+- Frontend-Deploy von 4ddae520 nach den eisernen Deploy-Regeln (committeter
+  Stand, stash -u, build, firebase deploy --only hosting).
+- praxis2 hat KEIN Billing-Dokument: Backend-Routen default-enabled (gewollt,
+  Smoke laeuft), aber im Plattform-Frontend erscheint praxis2 erst mit
+  masActive im Superuser-Billing - fuer UI-Proben dort einschalten.
+- ElevenLabs-Identitaeten (LISA_AGENT_ID usw.) bleiben Env-gebunden - die
+  Altstrecke wird durch die TelefonKI ersetzt, kein Ausbau (Beschluss W3).
