@@ -5,6 +5,7 @@ import { SPOKEN_CATEGORY } from "../brain/critical.js";
 import { buildMailBriefing } from "../mail/briefing.js";
 import { findePraxisLuecken } from "./dokuWaechter.js";
 import { gapFillOverview } from "./gapFill.js";
+import { recentRatings } from "./ratings.js";
 import { pick } from "./variation.js";
 
 // ============================================================================
@@ -17,7 +18,8 @@ import { pick } from "./variation.js";
 //
 //   P0  sofort          rote Liste (Anwalt/Kammer/Mahnung/eskalierend) +
 //                       verstrichene/heutige Fristen
-//   P1  heute noch      Fristen <= 3 Tage, Beschwerden, ungeloest/braucht Mensch
+//   P1  heute noch      Fristen <= 3 Tage, Beschwerden, ungeloest/braucht
+//                       Mensch, neue Patienten-Bewertungen (ratedAt <= 48 h)
 //   P2  bei Gelegenheit Rueckrufbitten, Freigaben (Mail-Entwuerfe, Anruflisten),
 //                       Doku-Luecken
 //   P3  nur zaehlen     alles uebrige Offene (ungelesene Mails, Rest-Anliegen)
@@ -52,12 +54,15 @@ function fmtDate(ms) {
 export async function buildAsapQueue(clientId, { mailAccountIds } = {}) {
   const now = Date.now();
 
-  const [red, events, mail, doku, gaps] = await Promise.all([
+  const [red, events, mail, doku, gaps, bewertungen] = await Promise.all([
     buildRedList(clientId).catch(() => ({ critical: [], deadlines: [] })),
     queryRecent(clientId, now - OPEN_LOOKBACK_MS, 800).catch(() => []),
     buildMailBriefing(clientId, { accountIds: mailAccountIds }).catch(() => null),
     findePraxisLuecken(clientId, { tageZurueck: 7 }).catch(() => ({ ok: false, luecken: [] })),
     gapFillOverview(clientId).catch(() => ({ pending: [], approved: [] })),
+    // windowDays greift auf sendAt — eine Antwort kann Wochen nach dem
+    // Versand eintrudeln, darum grosszuegig; gefiltert wird unten auf ratedAt.
+    recentRatings(clientId, { windowDays: 60 }).catch(() => ({ ok: false, ratings: [] })),
   ]);
 
   const items = [];
@@ -125,6 +130,25 @@ export async function buildAsapQueue(clientId, { mailAccountIds } = {}) {
       ts: it.ts,
     });
   }
+  // --- P1: frische Patienten-Bewertungen (Chef-Wunsch 30.08.2026: Clara
+  // meldet sich von selbst, wenn eine Bewertung eingeht). Gleiches Fenster
+  // wie die offenen Anliegen (48 h auf ratedAt); jede Bewertung nur einmal —
+  // das erledigt die Unterbrechungs-Politik ueber eventId + announced-Set.
+  for (const r of (bewertungen.ratings || [])) {
+    if (!(r.ratedAtMs >= now - OPEN_LOOKBACK_MS)) continue;
+    const sterne = r.rating === 1 ? "einem Stern" : `${r.rating} Sternen`;
+    const kommentar = r.comments
+      ? ` — "${r.comments.length > 120 ? `${r.comments.slice(0, 117)}...` : r.comments}"`
+      : "";
+    push("P1", "bewertung", {
+      eventId: `rating:${r.id}`,
+      who: r.patientName || "Ein Patient",
+      summary: `Neue Bewertung: ${r.rating} von 5${r.doctorName ? ` fuer ${r.doctorName}` : ""}`,
+      spoken: `Neue Bewertung: ${r.patientName || "ein Patient"} hat uns mit ${sterne} bewertet${kommentar}`,
+      ts: r.ratedAtMs,
+    });
+  }
+
   for (const it of [...g.callbacks, ...g.colleagueCalls, ...identCallback]) {
     push("P2", "rueckrufe", {
       eventId: it.eventId,

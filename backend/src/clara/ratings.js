@@ -49,7 +49,11 @@ export async function recentRatings(clientId, { windowDays = 60 } = {}) {
       return {
         id: d.id,
         rating: Number(o.rating || 0),
-        comments: s(o.comments),
+        // Firestore-Feld heisst "comment" (Singular — so schreibt es
+        // docgendaweb Rating.toJSON und die Patient-App). Der fruehere
+        // Lesezugriff auf "comments" traf NIE ein Feld, darum las Clara
+        // die Kommentartexte nicht vor (Befund 30.08.2026).
+        comments: s(o.comment),
         patientName: `${s(o.patientFirstName)} ${s(o.patientLastName)}`.trim(),
         doctorName: s(o.doctorName),
         ratedAtMs: tsToMs(o.ratedAt),
