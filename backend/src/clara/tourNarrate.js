@@ -1,10 +1,12 @@
 // Clara Fähigkeits-Tour (Audio-Menü): erzeugt zu einem Kapitel Claras
 // gesprochenen Text über das LOKALE LLM (volle Prompt-Anpassung pro Kapitel)
-// und optional das Audio in Claras Stimme über ElevenLabs Text-to-Speech.
+// und optional das Audio in Claras Stimme über den Qwen3-TTS-Container auf
+// der 5090 (Stimmklon "clara"; seit 30.08.2026 statt ElevenLabs — Konto
+// zahlungsblockiert, und die Agenten sprechen ohnehin komplett inhouse).
 //
 // Kein Patientenbezug — reine Produkt-/Fähigkeits-Ansage. Robust: ist das LLM
-// offline, fällt der Aufruf auf den vorgegebenen Kapiteltext zurück; ist
-// ElevenLabs nicht konfiguriert, liefert der Endpunkt nur Text (das Frontend
+// offline, fällt der Aufruf auf den vorgegebenen Kapiteltext zurück; ist der
+// TTS-Container nicht erreichbar, liefert der Endpunkt nur Text (das Frontend
 // spricht ihn dann per Browser-Stimme). So bricht die Seite nie.
 
 import { chat, strongLlm } from "../mail/llm.js";
@@ -18,10 +20,6 @@ function env(name) {
 function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
-// Claras Stimme (ElevenLabs). Standard = die in Clara-Voice hinterlegte Stimme
-// "Anna"; per Env überschreibbar, falls die Praxis eine andere Stimme wählt.
-const CLARA_VOICE_ID = () => env("CLARA_VOICE_ID") || "cgSgspJ2msm6clMCkdW9";
 
 // Persona-Rahmen: Clara spricht als interne Kollegin, in ganzen, natürlichen
 // Sätzen, ohne Markdown/Emojis, ohne "Als KI …", und erfindet NICHTS.
@@ -254,49 +252,68 @@ function stripGreeting(t) {
   return s.trim() || t.trim();
 }
 
-/** ElevenLabs verfügbar? (API-Key gesetzt) */
+// Qwen3-TTS-Container auf der 5090 — gleiche Env-Knoepfe wie der
+// /qwen-tts-Proxy (routes/qwenTtsProxy.js), damit es genau EINE Wahrheit gibt.
+const QWEN_TTS_BASE = () =>
+  `http://${env("QWEN_TTS_HOST") || "192.168.0.246"}:${env("QWEN_TTS_PORT") || "8213"}`;
+const CLARA_CONTAINER_VOICE = () => env("CLARA_CONTAINER_VOICE") || "clara";
+
+/** TTS verfügbar? Der Container braucht keinen Key — nur Abschalt-Knopf. */
 export function ttsConfigured() {
-  return !!env("ELEVENLABS_API_KEY");
+  return env("CLARA_TOUR_TTS") !== "0";
 }
 
 /**
- * Text in Claras Stimme (ElevenLabs TTS) synthetisieren.
+ * Rohes PCM16 (mono, little-endian) in einen WAV-Container verpacken, damit
+ * der Browser es als data-URL abspielen kann (MP3 gibt es beim Qwen-Container
+ * nicht — er liefert bewusst rohes PCM, siehe tts_serve/api.md).
+ */
+function pcm16ToWav(pcm, sampleRate) {
+  const header = Buffer.alloc(44);
+  const byteRate = sampleRate * 2; // mono, 16 Bit
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);          // fmt-Chunk-Groesse
+  header.writeUInt16LE(1, 20);           // PCM
+  header.writeUInt16LE(1, 22);           // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(2, 32);           // Block-Align
+  header.writeUInt16LE(16, 34);          // Bits pro Sample
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+/**
+ * Text in Claras Stimme synthetisieren (Qwen3-TTS-Container, Stimmklon
+ * "clara"). Kein ElevenLabs-Rueckfall — Fehler sollen sichtbar sein, das
+ * Frontend spricht dann per Browser-Stimme weiter.
  * @returns {Promise<{ok:boolean, audioBase64?:string, mime?:string, reason?:string}>}
  */
-export async function synthClaraVoice(text, { timeoutMs = 20000 } = {}) {
-  const key = env("ELEVENLABS_API_KEY");
+export async function synthClaraVoice(text, { timeoutMs = 60000 } = {}) {
   const clean = String(text || "").trim();
-  if (!key) return { ok: false, reason: "tts_not_configured" };
+  if (!ttsConfigured()) return { ok: false, reason: "tts_not_configured" };
   if (!clean) return { ok: false, reason: "empty_text" };
-  // Kurze Pause vorn, sonst schluckt ElevenLabs die erste Silbe.
-  const voiceId = CLARA_VOICE_ID();
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const resp = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "xi-api-key": key,
-          accept: "audio/mpeg",
-        },
-        body: JSON.stringify({
-          text: /^\u2026/.test(clean) ? clean : ("\u2026 " + clean),
-          model_id: env("CLARA_TTS_MODEL") || "eleven_multilingual_v2",
-          voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
-        }),
-        signal: ctrl.signal,
-      }
-    );
+    const resp = await fetch(`${QWEN_TTS_BASE()}/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: clean, voice: CLARA_CONTAINER_VOICE() }),
+      signal: ctrl.signal,
+    });
     if (!resp.ok) {
       const detail = await resp.text().catch(() => "");
-      return { ok: false, reason: `elevenlabs_http_${resp.status}`, detail: detail.slice(0, 200) };
+      return { ok: false, reason: `qwen_tts_http_${resp.status}`, detail: detail.slice(0, 200) };
     }
-    const buf = Buffer.from(await resp.arrayBuffer());
-    if (!buf.length) return { ok: false, reason: "empty_audio" };
-    return { ok: true, audioBase64: buf.toString("base64"), mime: "audio/mpeg" };
+    const pcm = Buffer.from(await resp.arrayBuffer());
+    if (!pcm.length) return { ok: false, reason: "empty_audio" };
+    const rate = Number(resp.headers.get("x-sample-rate")) || 24000;
+    return { ok: true, audioBase64: pcm16ToWav(pcm, rate).toString("base64"), mime: "audio/wav" };
   } catch (e) {
     return { ok: false, reason: e?.name === "AbortError" ? "tts_timeout" : "tts_unreachable" };
   } finally {
