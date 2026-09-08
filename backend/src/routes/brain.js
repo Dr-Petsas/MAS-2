@@ -15,7 +15,7 @@ import { listCalendar as qmListCalendar } from "../qm/jobs.js";
 import { runRetentionSweep, getRetentionConfig, setRetentionDays } from "../brain/retention.js";
 import { searchPatient } from "../clara/agentBooking.js";
 import { getOperator } from "../clara/sessions.js";
-import { buildCallerContext } from "../bianca/callerContext.js";
+import { buildCallerContext, resolveOpenCallerItems } from "../bianca/callerContext.js";
 import { appendEvent, getEvent, queryRecent, queryByPatient, resolveItem, annotateEvent } from "../brain/eventStore.js";
 import { buildBriefing, buildSpokenBriefing } from "../brain/briefing.js";
 import { extractFromTranscript, extractPatientName } from "../brain/extractor.js";
@@ -454,7 +454,28 @@ router.get("/brain/caller-context", async (req, res) => {
     const out = await buildCallerContext(clientId, phone);
     res.json({ ok: true, ...out });
   } catch (e) {
-    res.status(200).json({ ok: false, found: false, context: "", error: String(e?.message || e) });
+    res.status(200).json({ ok: false, found: false, context: "", openEventIds: [], error: String(e?.message || e) });
+  }
+});
+
+
+// Offene Team-/Rückruf-Notizen zu einer Nummer erledigen (Bianca, sobald
+// der Rückrufer den Grund gehört hat — mitgeteilt — oder das Team).
+// Additive Route, nie werfend nach außen.
+router.post("/brain/caller-context/resolve", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const phone = String(req.body?.phone || req.query?.phone || "").trim();
+    const out = await resolveOpenCallerItems(clientId, phone, {
+      actor: String(req.body?.actor || "Bianca").trim() || "Bianca",
+      note: String(req.body?.note || "").trim(),
+    });
+    res.json({ ok: true, clientId, ...out });
+  } catch (e) {
+    res.status(200).json({ ok: false, resolved: [], cases: [], error: String(e?.message || e) });
   }
 });
 
