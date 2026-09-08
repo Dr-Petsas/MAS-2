@@ -281,7 +281,13 @@ router.get("/brain/patients", async (req, res) => {
     if (!q) return res.json({ ok: true, clientId, patients: [] });
     const result = await searchPatient(clientId, q);
     if (!result.ok) return res.json({ ok: false, error: result.error });
-    res.json({ ok: true, clientId, patients: result.patients || [] });
+    // phone: Mobil, sonst Festnetz — die Notiz-Maske braucht Ziffern fuer
+    // Biancas CLIP-Abgleich (counterparty.ref). Bestehende Felder bleiben.
+    const patients = (result.patients || []).map((p) => {
+      const phone = String(p.mobilePhoneNumber || p.phoneNumber || p.phone || "").replace(/\s+/g, "");
+      return { ...p, phone, hasPhone: !!(p.hasPhone || phone) };
+    });
+    res.json({ ok: true, clientId, patients });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

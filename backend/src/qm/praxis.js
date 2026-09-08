@@ -3,7 +3,7 @@ import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 
 // ============================================================================
-// Praxen innerhalb EINES Logins (Praxisgemeinschaft): z. B. Meddent Duesseldorf
+// Praxen innerhalb EINES Logins (Praxisgemeinschaft): z. B. Zahnärzte im Medical Center Düsseldorf
 // mit Dr. Petsas / Dr. Petrikis / Dr. Nikolaou. Ein Standort, aber jede/r fuehrt
 // offiziell eigene QM-Buecher. Diese Datei verwaltet nur die LISTE der Praxen +
 // die aktuell gewaehlte. Das Zuordnen der einzelnen Buecher/Jobs zu einer Praxis

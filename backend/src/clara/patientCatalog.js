@@ -384,9 +384,8 @@ export async function ensureCatalog(clientId, opts = {}) {
       // erneuern) galt bisher NUR fuer den Speicher, nicht fuer die Platte.
       // Bewusster Preis: fuer wenige Sekunden sucht Clara in einem bis zu
       // mehrere Tage alten Namensstand. Ganz frisch angelegte Patienten fehlen
-      // darin kurz -- die Plattform-Suche (masSearchPatients) findet sie
-      // weiterhin, der Katalog ist laut agentBooking nur die Ergaenzung fuer
-      // Doppelnamen. Haengen ist das groessere Uebel.
+      // darin kurz -- die Plattform-Suche (masSearchPatients) bleibt der
+      // Notnagel genau fuer diesen Fall. Haengen ist das groessere Uebel.
     }
   }
 
@@ -438,6 +437,29 @@ export async function findInCatalog(clientId, spoken, opts = {}) {
   }
 }
 
+/** Getippte Autovervollstaendigung: Anfang des Vor- oder Nachnamens, nicht Klang. */
+export async function findPrefixInCatalog(clientId, typed, opts = {}) {
+  try {
+    const cat = await ensureCatalog(clientId);
+    if (!cat || !cat.entries.length) return [];
+    const needle = String(typed || "").toLowerCase().trim();
+    if (needle.length < 2) return [];
+    const limit = Math.max(1, opts.limit || 12);
+    const out = [];
+    for (const e of cat.entries) {
+      const f = String(e.f || "").toLowerCase();
+      const l = String(e.l || "").toLowerCase();
+      if (f.startsWith(needle) || l.startsWith(needle) || `${f} ${l}`.startsWith(needle) || `${l} ${f}`.startsWith(needle)) {
+        out.push(e);
+        if (out.length >= limit) break;
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Stammdaten zu Katalog-Treffern nachladen (gezielte Einzelabrufe, keine Suche).
  * Gleiche Felder wie die Plattform-Suche, damit nachgelagerte Logik
@@ -464,7 +486,9 @@ export async function fetchPatientsByIds(clientId, ids) {
   for (const doc of docs) {
     if (!doc.exists) continue;
     const d = doc.data() || {};
-    const phone = String(d.mobilePhoneNumber || "").replace(/\s+/g, "");
+    const mobile = String(d.mobilePhoneNumber || "").replace(/\s+/g, "");
+    const landline = String(d.phoneNumber || "").replace(/\s+/g, "");
+    const phone = mobile || landline;
     const birth = d.birthDate ? new Date(d.birthDate?.toDate?.() || d.birthDate) : null;
     const created = d.createdAt ? new Date(d.createdAt?.toDate?.() || d.createdAt) : null;
     out.push({
@@ -473,7 +497,9 @@ export async function fetchPatientsByIds(clientId, ids) {
       lastName: String(d.lastName || ""),
       gender: String(d.gender || ""),
       birthDate: birth && !isNaN(birth.getTime()) ? birth.toISOString().slice(0, 10) : null,
-      mobilePhoneNumber: phone,
+      mobilePhoneNumber: mobile,
+      phoneNumber: landline,
+      phone,
       email: String(d.email || ""),
       hasPhone: phone.length > 0,
       createdAt: created && !isNaN(created.getTime()) ? created.toISOString() : null,
