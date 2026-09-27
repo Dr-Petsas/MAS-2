@@ -3528,3 +3528,28 @@ OFFEN (bewusst, Betrieb):
   masActive im Superuser-Billing - fuer UI-Proben dort einschalten.
 - ElevenLabs-Identitaeten (LISA_AGENT_ID usw.) bleiben Env-gebunden - die
   Altstrecke wird durch die TelefonKI ersetzt, kein Ausbau (Beschluss W3).
+
+---
+
+## Warteliste (neue Pakete, noch nicht freigegeben)
+
+### W-PORTAL - Pickadoc-Portal und Create Studio (aufgenommen 27.09.2026)
+
+Auftrag Chef (27.09.): Aus dem Video-Mockup wird ein echtes Produkt. Ein
+eigenstaendiges Selfservice-Portal, in dem eine Praxis einen Account anlegt,
+das Pickadoc-Oekosystem (SelfCheckin, CalendR, Frontdesk, MAS) als Upsell
+kennenlernt und mit einem ausgebauten "Create Studio" KI-Avatar-Videos baut
+(Simple + Expert mit Mehrspur-Editor, Off-Stimme, Tafeln, Musik). Credits
+kompatibel zum ClonR-Creditsystem. Payment (Stripe/Lastschrift) ist der LETZTE
+Baustein und wird nur vorbereitet (Endpunkte deaktiviert), nicht scharfgestellt.
+
+Arbeit laeuft in `F:\pickadoc-live-base` (Deploy-Quelle) auf eigenem Branch
+`feat/portal-create-studio`, jedes Paket einzeln committet (deutsche Message),
+fremde WIP-Dateien anderer Sessions bleiben unangetastet. Detailplan liegt in
+Cursor (`portal_create_studio`), 10 Pakete (0 Sicherung ... 9 Release-Gate).
+
+- Plattform-Regel: kein med-dent-Spezialbau; Fachwissen in Kataloge.
+- Entitlement/Feature-Flag: neuer Portal-Plan unabhaengig, Pilot laeuft weiter.
+- Credit-Vertrag: ClonR-Formel bleibt (0,10 EUR/Credit, 5 Credits/4s);
+  Freemium 1 Freivideo + 50 einmalig, Basic 150 erneuerbar, Premium 350.
+- DoD je Paket: Gate gruen (jest/tsc/build), committet, dokumentiert.
