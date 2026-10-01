@@ -40,9 +40,48 @@ function Test-Health([string]$Base, [int]$TimeoutSec = 20) {
     } catch { return $false }
 }
 
+function Get-ListeningPid([int]$Port) {
+    # Get-NetTCPConnection laesst sich auf manchen Praxis-PCs nicht laden.
+    # netstat ist auf allen unterstuetzten Windows-Versionen vorhanden; die
+    # Statusspalte darf lokalisiert sein, deshalb wird nur die letzte Zahl
+    # (PID) ausgewertet.
+    foreach ($line in (& netstat -ano -p tcp 2>$null)) {
+        if ($line -match "^\s*TCP\s+\S+:$Port\s+\S+\s+\S+\s+(\d+)\s*$") {
+            return [int]$Matches[1]
+        }
+    }
+    return 0
+}
+
+function Stop-MasBackendListener {
+    $listenerPid = Get-ListeningPid 4000
+    if (-not $listenerPid) { return $true }
+    try {
+        $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$listenerPid" -ErrorAction Stop
+        $cmd = [string]$proc.CommandLine
+        if ($cmd -notmatch '(?i)src[\\/]+server\.js(?:\s|$)') {
+            Log "backend: Port 4000 gehoert PID $listenerPid, aber nicht MAS ($cmd) - kein Fremdprozess-Abschuss"
+            return $false
+        }
+        Log "backend: beende blockierten Listener PID $listenerPid"
+        Stop-Process -Id $listenerPid -Force -ErrorAction Stop
+        for ($i = 0; $i -lt 20 -and (Get-ListeningPid 4000); $i++) {
+            Start-Sleep -Milliseconds 250
+        }
+        return -not [bool](Get-ListeningPid 4000)
+    } catch {
+        Log "backend: Listener PID $listenerPid konnte nicht beendet werden - $($_.Exception.Message)"
+        return $false
+    }
+}
+
 # --- 1) Lokales Backend sicherstellen (ohne Backend nuetzt kein Tunnel) ---
 if (-not (Test-Health $MasLocal 10)) {
-    Log "backend: lokal nicht erreichbar - starte neu"
+    Log "backend: lokal nicht erreichbar - ersetze blockierten Prozess"
+    if (-not (Stop-MasBackendListener)) {
+        Log "backend: alter Listener blieb aktiv - kein blinder Zweitstart"
+        exit 1
+    }
     $Stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
     Start-Process -FilePath 'node' -ArgumentList 'src/server.js' `
         -WorkingDirectory 'F:\MAS-2\backend' -WindowStyle Hidden `

@@ -177,6 +177,7 @@ const CARRY_LOOKBACK_MS = 45 * 24 * 60 * 60 * 1000;
 const CARRY_LOOKAHEAD_MS = 120 * 24 * 60 * 60 * 1000;
 const CARRY_TTL_MS = 10 * 60 * 1000;
 const carryCache = new Map(); // `${clientId}:${locationId}` -> { fetchedAt, fromMs, toMs, items }
+const carryInflight = new Map(); // gleicher Key -> laufender Firestore-Read
 
 /** Zwischenspeicher der Abwesenheiten verwerfen (nach jedem Schreibzugriff). */
 export function clearAbsenceCache(clientId) {
@@ -192,22 +193,36 @@ async function loadAbsenceWindow(clientId, locationId) {
   const cached = carryCache.get(key);
   if (cached && now - cached.fetchedAt < CARRY_TTL_MS) return cached;
 
-  const fromMs = now - CARRY_LOOKBACK_MS;
-  const toMs = now + CARRY_LOOKAHEAD_MS;
-  const snap = await admin.firestore()
-    .collection("clients").doc(clientId)
-    .collection("locations").doc(locationId)
-    .collection("appointments")
-    .where("start", ">=", new Date(fromMs))
-    .where("start", "<=", new Date(toMs))
-    .orderBy("start")
-    .get();
-  const items = snap.docs
-    .map((d) => normalizeAppointment(d.id, d.data()))
-    .filter((a) => a && a.isAbsence);
-  const eintrag = { fetchedAt: now, fromMs, toMs, items };
-  carryCache.set(key, eintrag);
-  return eintrag;
+  // findePraxisLuecken fragt acht Tage parallel ab. Ohne In-flight-Dedupe sahen
+  // alle acht Aufrufe denselben leeren Cache und luden das breite 165-Tage-
+  // Fenster achtmal gleichzeitig. Ein Promise pro Praxis/Standort verhindert
+  // diese CPU-/Read-Spitze, ohne die Cache-Laufzeit oder Ergebnisse zu aendern.
+  const laufend = carryInflight.get(key);
+  if (laufend) return laufend;
+
+  let pending;
+  pending = (async () => {
+    const fromMs = now - CARRY_LOOKBACK_MS;
+    const toMs = now + CARRY_LOOKAHEAD_MS;
+    const snap = await admin.firestore()
+      .collection("clients").doc(clientId)
+      .collection("locations").doc(locationId)
+      .collection("appointments")
+      .where("start", ">=", new Date(fromMs))
+      .where("start", "<=", new Date(toMs))
+      .orderBy("start")
+      .get();
+    const items = snap.docs
+      .map((d) => normalizeAppointment(d.id, d.data()))
+      .filter((a) => a && a.isAbsence);
+    const eintrag = { fetchedAt: Date.now(), fromMs, toMs, items };
+    carryCache.set(key, eintrag);
+    return eintrag;
+  })().finally(() => {
+    if (carryInflight.get(key) === pending) carryInflight.delete(key);
+  });
+  carryInflight.set(key, pending);
+  return pending;
 }
 
 /**

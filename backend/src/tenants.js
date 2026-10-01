@@ -65,24 +65,39 @@ export function mandantenCacheLeeren() {
 // geloggt und die Schleife laeuft weiter. Die Mandantenliste wird einmal beim
 // Start und bei jeder Aenderung geloggt, nicht bei jedem Takt (Rauschen).
 let letzteMandantenMeldung = "";
+const laufendeJobs = new Map(); // jobName -> Startzeit; verhindert setInterval-Rueckstau
 export async function fuerAlleMandanten(jobName, fn) {
+  const job = String(jobName || "scheduler.job");
+  const laufendSeit = laufendeJobs.get(job);
+  if (laufendSeit) {
+    const runningMs = Date.now() - laufendSeit;
+    log.warn("scheduler.overlap_skipped", { job, runningMs });
+    return { ok: false, skipped: "already_running", runningMs };
+  }
+  laufendeJobs.set(job, Date.now());
+
   let mandanten = [];
   try {
-    mandanten = await schedulerMandanten();
-  } catch (e) {
-    log.warn("scheduler.mandanten_error", { job: jobName, error: String(e?.message || e) });
-    return;
-  }
-  const alsText = JSON.stringify(mandanten);
-  if (alsText !== letzteMandantenMeldung) {
-    letzteMandantenMeldung = alsText;
-    log.info("scheduler.mandanten", { mandanten });
-  }
-  for (const cid of mandanten) {
     try {
-      await fn(cid);
+      mandanten = await schedulerMandanten();
     } catch (e) {
-      log.warn(`${jobName}.tenant_error`, { clientId: cid, error: String(e?.message || e) });
+      log.warn("scheduler.mandanten_error", { job, error: String(e?.message || e) });
+      return { ok: false, error: "mandanten_lookup_failed" };
     }
+    const alsText = JSON.stringify(mandanten);
+    if (alsText !== letzteMandantenMeldung) {
+      letzteMandantenMeldung = alsText;
+      log.info("scheduler.mandanten", { mandanten });
+    }
+    for (const cid of mandanten) {
+      try {
+        await fn(cid);
+      } catch (e) {
+        log.warn(`${job}.tenant_error`, { clientId: cid, error: String(e?.message || e) });
+      }
+    }
+    return { ok: true, tenants: mandanten.length };
+  } finally {
+    laufendeJobs.delete(job);
   }
 }

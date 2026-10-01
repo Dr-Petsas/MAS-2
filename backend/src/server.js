@@ -258,11 +258,36 @@ app.use((err, req, res, next) => {
 process.on("unhandledRejection", (reason) => {
   log.error("unhandledRejection", { err: reason instanceof Error ? reason : new Error(String(reason)) });
 });
+let fatalExitScheduled = false;
 process.on("uncaughtException", (err) => {
   log.error("uncaughtException", { err });
+  // Nach einer ungefangenen Exception ist der Prozesszustand unbekannt.
+  // Insbesondere EADDRINUSE durfte bisher als scheinbar laufender Zombie
+  // weiterleben. Kurz Zeit zum Schreiben des strukturierten Logs geben, dann
+  // mit Fehlercode beenden, damit der Waechter eindeutig reagieren kann.
+  if (!fatalExitScheduled) {
+    fatalExitScheduled = true;
+    setTimeout(() => process.exit(1), 100);
+  }
 });
 
 const PORT = Number(process.env.PORT || 4000);
+
+function startEventLoopWatchdog() {
+  const intervalMs = 1000;
+  let lastTick = Date.now();
+  let lastWarning = 0;
+  const timer = setInterval(() => {
+    const now = Date.now();
+    const lagMs = Math.max(0, now - lastTick - intervalMs);
+    lastTick = now;
+    if (lagMs >= 1000 && now - lastWarning >= 30000) {
+      lastWarning = now;
+      log.warn("event_loop.lag", { lagMs });
+    }
+  }, intervalMs);
+  timer.unref?.();
+}
 
 // DSGVO guard: patient content must stay on the practice network. If the LLM
 // endpoint is not local/private, warn loudly — and refuse to start when
@@ -325,6 +350,13 @@ async function syncLisaTools() {
 const LENA_STT_PORT = Number(process.env.LENA_STT_PORT || 8140);
 const CONFORMER_BENCH_PORT = Number(process.env.CONFORMER_BENCH_PORT || 8155);
 const server = http.createServer(app);
+server.once("error", (err) => {
+  log.error("server.listen_error", { port: PORT, err });
+  if (!fatalExitScheduled) {
+    fatalExitScheduled = true;
+    setTimeout(() => process.exit(1), 100);
+  }
+});
 
 function proxyWsUpgrade(req, socket, head, { port, targetPath, name }) {
   const headers = { ...req.headers, host: `127.0.0.1:${port}` };
@@ -398,6 +430,7 @@ try {
 // Verhalten byte-identisch zu vorher. Notaus: MAS_MULTI_TENANT_SCHEDULER=0.
 
 server.listen(PORT, () => {
+  startEventLoopWatchdog();
   assertLocalLlm();
   log.info("backend listening", { port: PORT, authEnforced: AUTH_ENFORCED, lenaSttProxy: LENA_STT_PORT });
   publishRuntimeConfig();

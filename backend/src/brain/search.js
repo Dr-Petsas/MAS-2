@@ -90,13 +90,26 @@ function makeSnippet(text, tokens) {
   return `${start > 0 ? "…" : ""}${raw.slice(start, end).trim()}${end < raw.length ? "…" : ""}`;
 }
 
+function deadlineOr(promise, timeoutMs, fallback = null) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(fallback), timeoutMs);
+      timer.unref?.();
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 /**
  * Universal-Suche. Liefert eine gemischte, gerankte Trefferliste + Facetten.
  *
  * @param {string} clientId
  * @param {object} opts
  * @param {string} [opts.q]        Suchbegriff (leer = letzte Vorgaenge)
- * @param {string} [opts.kind]     "patient" | "case" | "event" (leer = alle)
+ * @param {string} [opts.kind]     "patient" | "contact" | "case" | "event" (leer = alle)
  * @param {string} [opts.status]   "open" | "done" | konkreter Case-Status
  * @param {string} [opts.topic]    Themen-Key (billing, appointment, …)
  * @param {string} [opts.channel]  Kanal-Key (nadine_email, bianca_call, …)
@@ -109,24 +122,45 @@ export async function searchBrain(clientId, opts = {}) {
   const tokens = tokenize(q);
   const limit = Math.max(1, Math.min(100, Number(opts.limit) || 40));
   const now = Date.now();
+  const fKind = String(opts.kind || "").trim().toLowerCase();
+  const onlyKind = new Set(["patient", "contact", "case", "event"]).has(fKind) ? fKind : "";
+  const wantsCases = !onlyKind || onlyKind === "case";
+  const wantsEvents = !onlyKind || onlyKind === "case" || onlyKind === "event";
+  const wantsPatients = !onlyKind || onlyKind === "patient";
+  const wantsContacts = !onlyKind || onlyKind === "contact";
+  // Die Universal-Suche muss unter zwei Sekunden antworten. Der lokale
+  // Namenskatalog bleibt unbegrenzt; nur der langsame Plattform-Notnagel
+  // bekommt in diesem interaktiven Lesepfad ein Gesamtbudget.
+  const patientPlatformTimeoutMs = Math.max(250, Math.min(1500,
+    Number(process.env.MAS_BRAIN_PATIENT_SEARCH_TIMEOUT_MS || 500)));
 
   // Startseite (leere Suche) zeigt nur die letzten Vorgaenge. Dafuer reicht ein
   // kleines Fenster: die neuesten ~40 Cases (listCases sortiert updatedAt desc)
   // + genug Ereignisse, um deren Snippets/Kanaele/Fristen anzureichern. Frueher
   // wurden hier IMMER 300 Cases + bis zu 2000 Ereignisse ueber 400 Tage geladen
   // — nur um 5 Zeilen zu zeigen (langsamer Erst-Load). Die echte Suche (mit
-  // Begriff) laedt unveraendert breit, damit kein Treffer verloren geht.
+  // Begriff) bleibt breit, hat aber eine feste interaktive Obergrenze: 300
+  // vollstaendige Case-Dokumente kosteten allein bereits >2 s. Die Limits
+  // koennen fuer einen Export/Diagnoselauf per Env bis zum alten Wert erhoeht
+  // werden, ohne den API-Vertrag zu aendern.
   const browse = tokens.length === 0;
   const defaultSinceDays = browse ? 120 : 400;
   const sinceDays = Math.max(1, Math.min(1000, Number(opts.sinceDays) || defaultSinceDays));
   const sinceTs = now - sinceDays * 24 * 3_600_000;
-  const caseLimit = browse ? Math.max(40, limit * 4) : 300;
-  const eventLimit = browse ? 300 : 2000;
+  const searchCaseLimit = Math.max(40, Math.min(300,
+    Number(process.env.MAS_BRAIN_SEARCH_CASE_LIMIT || 50)));
+  const searchEventLimit = Math.max(300, Math.min(2000,
+    Number(process.env.MAS_BRAIN_SEARCH_EVENT_LIMIT || 500)));
+  const caseLimit = browse ? Math.max(40, limit * 4) : searchCaseLimit;
+  const eventLimit = browse ? 300 : searchEventLimit;
 
-  const [cases, events, patientsRes] = await Promise.all([
-    listCases(clientId, { limit: caseLimit }).catch(() => []),
-    queryLatest(clientId, sinceTs, eventLimit).catch(() => []),
-    tokens.length ? searchPatient(clientId, q).catch(() => null) : Promise.resolve(null),
+  const [cases, events, patientsRes, contacts] = await Promise.all([
+    wantsCases ? listCases(clientId, { limit: caseLimit }).catch(() => []) : Promise.resolve([]),
+    wantsEvents ? queryLatest(clientId, sinceTs, eventLimit).catch(() => []) : Promise.resolve([]),
+    tokens.length && wantsPatients
+      ? deadlineOr(searchPatient(clientId, q).catch(() => null), patientPlatformTimeoutMs)
+      : Promise.resolve(null),
+    tokens.length && wantsContacts ? searchContacts(clientId, q, 5) : Promise.resolve([]),
   ]);
   const evById = new Map(events.map((e) => [e.id, e]));
 
@@ -333,8 +367,7 @@ export async function searchBrain(clientId, opts = {}) {
   }
 
   // ---- 4) Kontakte (Adressbuch, ohne Gesundheitsdaten) ----------------------
-  if (tokens.length) {
-    const contacts = await searchContacts(clientId, q, 5);
+  if (tokens.length && wantsContacts) {
     for (const c of contacts) {
       hits.push({
         kind: "contact",
@@ -362,7 +395,6 @@ export async function searchBrain(clientId, opts = {}) {
 
   // Filter anwenden.
   let filtered = hits;
-  const fKind = (opts.kind || "").trim().toLowerCase();
   if (fKind) filtered = filtered.filter((r) => r.kind === fKind);
   const fStatus = (opts.status || "").trim().toLowerCase();
   if (fStatus === "open") filtered = filtered.filter((r) => !["patient", "contact"].includes(r.kind) && r.isActive);
