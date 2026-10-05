@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 1e4ff2307179)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 e3af8c12e2da)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26124,21 +26124,35 @@ function einzelAuftrag(text) {
 	else if (/\b(75|fünfundsiebzig|fuenfundsiebzig) ?(%|prozent)|\b(30|dreißig|dreissig) ?(%|prozent) bonus|bonus (von )?(30|dreißig|dreissig)\b|zehn jahre bonus|bonus (über |ueber )?zehn jahre/.test(t)) auftrag.bonus = "75";
 	else if (/\b(70|siebzig) ?(%|prozent)|\b(20|zwanzig) ?(%|prozent) bonus|bonus (von )?(20|zwanzig)\b|fünf jahre bonus|fuenf jahre bonus|bonusheft/.test(t)) auftrag.bonus = "70";
 	else if (/\b(60|sechzig) ?(%|prozent)/.test(t)) auftrag.bonus = "60";
-	for (const teil of satzteile(text)) {
+	const alleTeile = satzteile(text);
+	let pfeilerDavor = false;
+	alleTeile.forEach((teil, i) => {
 		const zs = zaehneIn(teil, auftrag.kiefer);
-		if (!zs.length) continue;
+		if (!zs.length) return;
+		if (NUR_ZAEHNE.test(teil)) {
+			const weiter = alleTeile.slice(i + 1).find((u) => !NUR_ZAEHNE.test(u));
+			if (pfeilerDavor && !(weiter && BEFUND_WORTE.some(([re]) => re.test(weiter)))) auftrag.pfeiler.push(...zs.filter((z) => !auftrag.pfeiler.includes(z)));
+			return;
+		}
+		pfeilerDavor = false;
 		if (/entfern|extrah|ziehen|gezogen|raus/.test(teil)) auftrag.entfernen.push(...zs);
 		else if (/bleib|erhalt|behalt|stehen/.test(teil)) auftrag.erhalten.push(...zs);
-		else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|auf (den|dem|die)\b/.test(teil)) auftrag.pfeiler.push(...zs.filter((z) => !auftrag.pfeiler.includes(z)));
-	}
+		else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil)) {
+			const vorBefund = teil.split(BEFUND_BEGINN)[0];
+			const pf = vorBefund === teil ? zs : zaehneIn(vorBefund, auftrag.kiefer);
+			auftrag.pfeiler.push(...pf.filter((z) => !auftrag.pfeiler.includes(z)));
+			pfeilerDavor = vorBefund === teil;
+		}
+	});
 	if (!auftrag.kiefer && auftrag.pfeiler.length && auftrag.pfeiler.every((z) => kieferVon(z) === kieferVon(auftrag.pfeiler[0]))) auftrag.kiefer = kieferVon(auftrag.pfeiler[0]);
 	return auftrag;
 }
+var BEFUND_BEGINN = /\b(?:ersetzt\w*|(?:es )?fehl\w*|vorhanden|extrah\w*|entfern\w*)\b/;
 var BEFUND_WORTE = [
 	[/nicht erhaltungsw(ü|ue)rdig|zerst(ö|oe)rt|extrah|entfern|ziehen/, "x"],
 	[/erneuerungsbed(ü|ue)rftig|krone (ist )?(kaputt|defekt|insuffizient)/, "kw"],
 	[/(ü|ue)berkronungsbed(ü|ue)rftig|krone n(ö|oe)tig|braucht? (eine )?krone|kariös|karies/, "ww"],
-	[/fehl|ohne zahn|l(ü|ue)cke/, "f"],
+	[/fehl|ohne zahn|l(ü|ue)cke|ersetzt/, "f"],
 	[/vorhanden|gesund|intakt|da\b|steh|bleib|erhalt/, ""]
 ];
 /** Gesprochener Befund („es fehlen 15 bis 18 und 25 bis 28, 13 bis 23 vorhanden“) → eHKP-Kürzel je Zahn */
@@ -26183,7 +26197,7 @@ function befundVerstehen(text, kiefer) {
 		letztes = code;
 	});
 	for (const k of nurKiefer) for (const z of REIHE[k]) if (!(z in befund)) befund[z] = "f";
-	if (kiefer && /alle (anderen|übrigen|uebrigen|restlichen) fehlen|sonst (fehlt|fehlen) alle|rest fehlt/.test(norm(text))) {
+	if (kiefer && /alle (anderen|übrigen|uebrigen|restlichen) fehlen|sonst (fehlt|fehlen) alle|rest fehlt|(anderen|übrigen|uebrigen|restlichen) z(ä|ae)hne (sind |werden )?(ersetzt|fehlen)/.test(norm(text))) {
 		for (const z of REIHE[kiefer]) if (!(z in befund)) befund[z] = "f";
 	}
 	return befund;
@@ -26195,13 +26209,18 @@ var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|
 var NUR_ZAEHNE = /^(?:(?:die|der|den|und|sowie|auch|noch|[1-4][1-8]|\d(?:er|ern)|einser|zweier|dreier|eckz(?:ah|äh|aeh)ne?n?|vierer|f(?:ü|ue)nfer|sechser|siebe?ner|achter)n?\s*)+$/;
 function befundAusAuftrag(text) {
 	const ausTeil = (abschnitt) => {
-		const teile = satzteile(abschnitt);
+		const teile = satzteile(abschnitt).flatMap((t) => {
+			const m = BEFUND_BEGINN.exec(t);
+			return m && m.index > 0 && VERSORGUNGS_TEIL.test(t.slice(0, m.index)) && !VERSORGUNGS_TEIL.test(t.slice(m.index)) ? [t.slice(0, m.index).trim(), t.slice(m.index)] : [t];
+		});
 		const istBefund = (t) => !VERSORGUNGS_TEIL.test(t) && BEFUND_WORTE.some(([re]) => re.test(t));
 		return teile.filter((t, i) => {
 			if (istBefund(t)) return true;
 			if (!NUR_ZAEHNE.test(t)) return false;
 			const weiter = teile.slice(i + 1).find((u) => !NUR_ZAEHNE.test(u));
-			return !!weiter && istBefund(weiter);
+			if (weiter && istBefund(weiter)) return true;
+			const davor = teile.slice(0, i).reverse().find((u) => !NUR_ZAEHNE.test(u));
+			return !!davor && istBefund(davor);
 		});
 	};
 	const abschnitte = kieferAbschnitte(text);
@@ -26364,7 +26383,7 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-05 18:56";
+var ENGINE_STAND = "2026-10-05 23:12";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
