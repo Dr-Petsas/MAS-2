@@ -117,6 +117,29 @@ export function entryCodes(firstName, lastName) {
   return out;
 }
 
+/**
+ * Gleicher Anfangsbuchstabe und hoechstens 1 (ab 7 Buchstaben: 2)
+ * Buchstaben Abstand — "petzers" ~ "petzas", nicht "psarris".
+ */
+export function schreibNah(a, b) {
+  if (!a || !b || a === b || a[0] !== b[0]) return false;
+  if (a.length < 5 || b.length < 5) return false;
+  const max = Math.min(a.length, b.length) >= 6 && Math.max(a.length, b.length) >= 7 ? 2 : 1;
+  if (Math.abs(a.length - b.length) > max) return false;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (cur[j] < rowMin) rowMin = cur[j];
+    }
+    if (rowMin > max) return false;
+    prev = cur;
+  }
+  return prev[b.length] <= max;
+}
+
 /** Nachschlagewerk Klang-Code -> Positionen im Katalog. */
 export function buildIndex(entries) {
   const index = new Map();
@@ -177,6 +200,16 @@ export function catalogMatch(spoken, entries, index, opts = {}) {
   for (const c of spokenCodes.keys()) {
     for (const i of index.get(c) || []) candIdx.add(i);
   }
+  // Schreib-Naehe im Nachnamen (Live 05.10.2026): "Petzers" klingt nach
+  // Koelner Phonetik wie "Psarris", nicht wie "Petzas" (das r zaehlt).
+  const editNah = process.env.MAS_CATALOG_EDIT === "0" ? [] : meaningful.filter((t) => t.length >= 5);
+  if (editNah.length) {
+    for (let i = 0; i < entries.length; i++) {
+      for (const nt of nameTokens(entries[i]?.l)) {
+        if (editNah.some((st) => schreibNah(st, nt))) { candIdx.add(i); break; }
+      }
+    }
+  }
   if (!candIdx.size) return [];
 
   const scored = [];
@@ -198,6 +231,9 @@ export function catalogMatch(spoken, entries, index, opts = {}) {
         if (usedSpoken.has(st)) continue;
         if (st === nt) { hit = 5; matchedSpoken = st; break; }
         if (ntCode && ntCode === koelnerPhonetikToken(st) && hit < 3) {
+          hit = 3; matchedSpoken = st;
+        }
+        if (inLast && !hit && editNah.includes(st) && schreibNah(st, nt)) {
           hit = 3; matchedSpoken = st;
         }
       }
