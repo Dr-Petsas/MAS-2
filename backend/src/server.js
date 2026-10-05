@@ -40,6 +40,7 @@ import lisaTwilioRouter from "./routes/lisaTwilio.js";
 import treatmentRouter from "./routes/treatment.js";
 import claraSwitchRouter from "./routes/claraSwitch.js";
 import pvsRouter from "./routes/pvs.js";
+import hkpRouter from "./routes/hkp.js";
 import zusageRouter from "./routes/zusage.js";
 import demoRouter from "./routes/demo.js";
 import claraRouter from "./routes/clara.js";
@@ -223,6 +224,8 @@ app.use(lisaTwilioRouter);
 app.use(treatmentRouter);
 app.use(claraSwitchRouter);
 app.use(pvsRouter);
+// HKP per Sprache + HKP-Register fuer PlanR (/planr/* praxisschluessel-gesichert).
+app.use(hkpRouter);
 // Online-Zusage aus Recall-SMS (oeffentlich, token-gesichert) — vor dem
 // Clara-Catch-all mounten.
 app.use(zusageRouter);

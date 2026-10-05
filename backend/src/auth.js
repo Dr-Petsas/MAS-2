@@ -133,6 +133,9 @@ function isPublic(req) {
   // iPad-Zusammenfassung: welcher Schreibweg in den Einstellungen steht
   // (nur der Name, keine Patientendaten).
   if (p === "/pvs/write-path" && req.method === "GET") return true;
+  // HKP-Register fuer PlanR (Browser-App ohne Plattform-Login): jede Route
+  // prueft selbst den Praxis-Schluessel X-PlanR-Key (routes/hkp.js, timing-safe).
+  if (p.startsWith("/planr/")) return true;
   if (p === "/treatment/lena-stt-url" && req.method === "GET") return true;
   return false;
 }

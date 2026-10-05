@@ -1182,7 +1182,7 @@ router.post("/tools/next-free-slot", async (req, res) => {
 // Mehrdeutigkeit Rueckfrage. Liefert entweder {done:true, payload} fuer eine
 // fertige (Frage-)Antwort oder {done:false, sel} mit dem eindeutigen Patienten.
 // Bricht NIE auf ein Geburtsdatum zu (am Telefon selten bekannt).
-async function resolveSpokenPatientForRead(clientId, { rawName, hint, askWho }) {
+export async function resolveSpokenPatientForRead(clientId, { rawName, hint, askWho }) {
   const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
   if (ordinalSource) {
     const remembered = await getPatientCandidates(clientId);

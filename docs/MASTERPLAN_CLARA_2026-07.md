@@ -2425,6 +2425,11 @@ Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
 Regel: Neue Idee/Wunsch -> Eintrag mit Datum + 1 Satz. Bewertung erst, wenn
 das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
+- 05.10.2026: HKP per Sprache (PlanR-Register, `routes/hkp.js`, Tools
+  `hkp_*`) – Folgen: (1) echter PVS-Befundleser statt Stub
+  `befundQuelle.pvsBefund()`; (2) Privat-HKP-App (`ZE\Privat-HKP`) ans
+  Register anbinden; (3) Sprach-Aenderungen am Werkstoff ("mach die Teleskope
+  in Hochgold"); (4) Kasse/Bonus aus der Patientenakte statt Annahme 60 %.
 - 19.08.2026: Bianca-Routine-FAQ — Katalog 100 typischer Patientenfragen
   mit telefonierbaren Antworten zum Chef-Editieren
   (`docs/TELEFON_FAQ_ROUTINEFRAGEN.md`). Nicht in den Live-Prompt kippen
