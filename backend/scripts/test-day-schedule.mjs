@@ -233,11 +233,12 @@ async function run() {
   await mk("temp", { start: at(10, 45), end: at(11, 0), calendar: { id: "cal1", name: "Dr. Test" }, patient: { id: "" }, status: "needsConfirmation", isMultiDay: false }); // temporary hold -> excluded
   await mk("absence", { start: at(14, 0), end: at(15, 0), calendar: { id: "cal1", name: "Dr. Test" }, calendarItemType: "absence", patient: { id: "" }, isMultiDay: false }); // block -> kept as absence
   await mk("multi", { start: at(8, 0), end: at(18, 0), calendar: { id: "cal1", name: "Dr. Test" }, patient: { id: "p9", firstName: "Multi", lastName: "Tag" }, isMultiDay: true }); // multi-day -> excluded
+  await mk("deleted", { start: at(12, 0), end: at(12, 30), calendar: { id: "cal1", name: "Dr. Test" }, visitMotive: { id: "vm1", name: "Kontrolle" }, patient: { id: "pDel", firstName: "Weg", lastName: "Geloescht" }, status: "confirmed", isMultiDay: false, isDeleted: true });
 
   const day = await getDayAppointments(C, { date: DATE });
   check(day.ok, "getDayAppointments ok");
   const ids = (day.appointments || []).map((a) => a.id).sort();
-  check(JSON.stringify(ids) === JSON.stringify(["a1", "a2", "absence"]), `Temp + Multi-Day gefiltert (gelesen: ${ids.join(",")})`);
+  check(JSON.stringify(ids) === JSON.stringify(["a1", "a2", "absence"]), `Temp + Multi-Day + Soft-Delete gefiltert (gelesen: ${ids.join(",")})`);
 
   const b2 = computeDayBriefing(day.appointments, { calendars: day.calendars });
   check(b2.total === 2 && b2.absences.length === 1, "Integration: 2 echte Termine + 1 Sperrzeit");

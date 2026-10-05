@@ -1,4 +1,4 @@
-import { queryRecent, resolveItem } from "../brain/eventStore.js";
+import { queryLatest, resolveItem } from "../brain/eventStore.js";
 import { applyHumanReview } from "../brain/events.js";
 import { findContactsByPhone } from "../brain/addressBook.js";
 import { listCases, setStatus } from "../brain/caseStore.js";
@@ -54,13 +54,22 @@ export function eventMatchesPhone(event, phone) {
   return sum.includes(tail);
 }
 
+function istOffenFuerBianca(event) {
+  if (!event) return false;
+  if (event.status === "resolved") return false;
+  if (event.status === "open") return true;
+  // Ältere Team-Notizen wurden ohne Schalter als status=none gespeichert.
+  // Der Kanal frontdesk ist genau dieser Kalender-Eintrag.
+  return event.status === "none" && event.channel === "frontdesk";
+}
+
 /** Offene Treffer zur Nummer, neueste zuerst — erledigte nie. */
 export function openCallerHits(events, phone) {
   const digits = canonDigits(phone);
   if (digits.length < 7) return [];
   return (events || [])
     .map((e) => applyHumanReview(e))
-    .filter((e) => e && e.status === "open" && eventMatchesPhone(e, digits))
+    .filter((e) => istOffenFuerBianca(e) && eventMatchesPhone(e, digits))
     .sort((a, b) => (b.ts || 0) - (a.ts || 0))
     .slice(0, MAX_ITEMS);
 }
@@ -76,7 +85,7 @@ export async function buildCallerContext(clientId, phone) {
   const digits = canonDigits(phone);
   if (digits.length < 7) return { found: false, name: "", context: "", openEventIds: [] };
 
-  const events = await queryRecent(clientId, Date.now() - LOOKBACK_MS, 800);
+  const events = await queryLatest(clientId, Date.now() - LOOKBACK_MS, 800);
   const hits = openCallerHits(events, digits);
 
   // Geteiltes Adressbuch: kennt die Nummer auch dann, wenn (noch) kein Event
@@ -132,7 +141,7 @@ export async function buildCallerContext(clientId, phone) {
 export async function resolveOpenCallerItems(clientId, phone, { actor = "Bianca", note = "" } = {}) {
   const digits = canonDigits(phone);
   if (digits.length < 7) return { ok: true, resolved: [], cases: [] };
-  const events = await queryRecent(clientId, Date.now() - LOOKBACK_MS, 800);
+  const events = await queryLatest(clientId, Date.now() - LOOKBACK_MS, 800);
   const hits = openCallerHits(events, digits);
   const resolved = [];
   for (const e of hits) {

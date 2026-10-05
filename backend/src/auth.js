@@ -100,6 +100,11 @@ function isPublic(req) {
   if (p === "/stt-bench" || p.startsWith("/stt-bench/")) return true;
   // Conformer-Live-Test (ehemals stt.pickadoc-tunnel.com) hinter /stt.
   if (p === "/stt" || p.startsWith("/stt/")) return true;
+  // Qwen3-TTS auf der 5090 (ClonR-Klon). Proxy steht vor Auth; Cloud Functions
+  // haben kein MAS-Token.
+  if (p === "/qwen-tts" || p.startsWith("/qwen-tts/")) return true;
+  if (p === "/qwen-asr" || p.startsWith("/qwen-asr/")) return true;
+  if (p === "/voice-enhance" || p.startsWith("/voice-enhance/")) return true;
   // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
   if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
   // Online-Zusage aus Recall-SMS (Patient klickt den SMS-Link, nicht

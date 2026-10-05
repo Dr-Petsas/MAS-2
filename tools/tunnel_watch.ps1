@@ -6,8 +6,10 @@
 #    .env-Update + Backend-Neustart + masRuntime-Publish nach Firestore) und den
 #    neuen Link per E-Mail an dr.petsas@pickadoc.de schicken (SMS als Fallback).
 # 2) Prueft, ob das Strato-Mailkonto (dr.petsas@med-dent.clinic) verbunden ist
-#    (IMAP-Sync). Wenn nicht: bekannte Passwort-Varianten testen, Konto
-#    reparieren (PATCH imap+smtp) bzw. neu anlegen und Sync neu anstossen.
+#    (IMAP-Sync). Wenn nicht: bekannte Passwort-Varianten testen und das
+#    bestehende Konto per PATCH reparieren. NIEMALS automatisch neu anlegen —
+#    Vorfall 26.08.2026: ohne Service-Token sah die API das private Postfach
+#    nicht, der Wächter erzeugte alle 20 min ein Duplikat (356× Dr. Petsas).
 #
 # Solange alles steht, passiert NICHTS (keine Mail, kein Neustart) -
 # nur OK-Zeilen in logs\tunnel-watch.log.
@@ -24,7 +26,22 @@ $MasLocal = 'http://127.0.0.1:4000'
 $ClientId = 'MEe4ZQHEzOPzLcexyhdT'
 $MailTo   = 'dr.petsas@pickadoc.de'
 $SmsTo    = '01776004600'
+$envFile  = 'F:\MAS-2\backend\.env'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+
+function Get-MasEnv([string]$Name) {
+    if (-not (Test-Path $envFile)) { return '' }
+    $line = (Get-Content $envFile | Where-Object { $_ -match "^\s*$Name\s*=" } | Select-Object -First 1)
+    if (-not $line) { return '' }
+    return ($line -split '=', 2)[1].Trim()
+}
+$ServiceToken = Get-MasEnv 'MAS_SERVICE_TOKEN'
+function MailHeaders([hashtable]$Extra = @{}) {
+    $h = @{ 'Content-Type' = 'application/json; charset=utf-8' }
+    if ($ServiceToken) { $h['X-Service-Token'] = $ServiceToken }
+    foreach ($k in $Extra.Keys) { $h[$k] = $Extra[$k] }
+    return $h
+}
 
 function Log([string]$Msg) {
     $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Msg"
@@ -156,12 +173,12 @@ bitte pruefen, ob cloudflared/das Backend auf dem Praxis-PC laufen.
 "@
     $mailOk = $false
     try {
-        $acc = (Invoke-RestMethod -Uri "$MasLocal/mail/accounts?clientId=$ClientId" -TimeoutSec 30).accounts | Select-Object -First 1
+        $acc = (Invoke-RestMethod -Uri "$MasLocal/mail/accounts?clientId=$ClientId" -Headers (MailHeaders) -TimeoutSec 30).accounts | Select-Object -First 1
         if ($acc) {
             $payload = @{ accountId = $acc.id; to = @($MailTo); logToBrain = $false
                           subject = "MAS-Tunnel gefallen (feste Adresse nicht erreichbar)"; text = $body } | ConvertTo-Json
             $res = Invoke-RestMethod -Uri "$MasLocal/mail/send?clientId=$ClientId" -Method Post `
-                -ContentType 'application/json; charset=utf-8' -Body $payload -TimeoutSec 120
+                -Headers (MailHeaders) -Body $payload -TimeoutSec 120
             $mailOk = [bool]$res.ok
         } else { Log "mail: kein Konto konfiguriert" }
     } catch { Log "mail: FEHLER $($_.Exception.Message)" }
@@ -181,27 +198,20 @@ bitte pruefen, ob cloudflared/das Backend auf dem Praxis-PC laufen.
 
 # --- 5) Mailkonto pruefen und bei Bedarf reparieren -------------------------
 # Das Backend synct alle 2 Minuten von selbst; hier geht es um den Fall, dass
-# das Konto kaputt ist (Passwort geaendert, Konto geloescht). Dann: bekannte
-# Passwort-Varianten durchprobieren, Konto patchen/neu anlegen, Sync anstossen.
+# das Konto kaputt ist (Passwort geaendert). Dann: Passwort-Varianten testen
+# und das bestehende Konto patchen. Kein POST /mail/accounts mehr.
 $MailEmail  = 'dr.petsas@med-dent.clinic'
 $MailOwner  = '7OPCoghiRzwzVtXE8eOJ'
 # Passwort-Varianten kommen aus backend\.env (MAIL_WATCH_PASSWORDS, mit ';'
 # getrennt) - Klartext-Secrets gehoeren nicht ins Git-versionierte Skript.
-$PwVariants = @()
-$envFile = 'F:\MAS-2\backend\.env'
-if (Test-Path $envFile) {
-    $line = (Get-Content $envFile | Where-Object { $_ -match '^\s*MAIL_WATCH_PASSWORDS\s*=' } | Select-Object -First 1)
-    if ($line) {
-        $PwVariants = ($line -split '=', 2)[1].Trim() -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-    }
-}
+$PwVariants = (Get-MasEnv 'MAIL_WATCH_PASSWORDS') -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 if (-not $PwVariants) { Log "mailkonto: MAIL_WATCH_PASSWORDS fehlt in backend\.env - Auto-Reparatur ohne Passwoerter" }
 $ImapCfg    = @{ host = 'imap.strato.de'; port = 993; secure = $true;  user = $MailEmail }
 $SmtpCfg    = @{ host = 'smtp.strato.de'; port = 587; secure = $false; user = $MailEmail }
 
 function Find-MailAccount {
     try {
-        $accs = (Invoke-RestMethod -Uri "$MasLocal/mail/accounts?clientId=$ClientId" -TimeoutSec 30).accounts
+        $accs = (Invoke-RestMethod -Uri "$MasLocal/mail/accounts?clientId=$ClientId" -Headers (MailHeaders) -TimeoutSec 30).accounts
         return ($accs | Where-Object { $_.email -eq $MailEmail } | Select-Object -First 1)
     } catch { return $null }
 }
@@ -210,7 +220,7 @@ function Test-MailSync([string]$AccountId) {
     try {
         $body = @{ accountId = $AccountId } | ConvertTo-Json
         $r = Invoke-RestMethod -Uri "$MasLocal/mail/sync?clientId=$ClientId" -Method Post `
-            -ContentType 'application/json; charset=utf-8' -Body $body -TimeoutSec 120
+            -Headers (MailHeaders) -Body $body -TimeoutSec 120
         # Mit accountId antwortet das Backend flach ({ok,fetched,...}),
         # ohne accountId mit {ok,results:[...]}.
         if ($r.results) {
@@ -226,7 +236,7 @@ function Get-WorkingPassword {
         try {
             $b = ($ImapCfg + @{ password = $pw }) | ConvertTo-Json
             $r = Invoke-RestMethod -Uri "$MasLocal/mail/accounts/test?clientId=$ClientId" -Method Post `
-                -ContentType 'application/json; charset=utf-8' -Body $b -TimeoutSec 60
+                -Headers (MailHeaders) -Body $b -TimeoutSec 60
             if ($r.ok) { return $pw }
         } catch { }
     }
@@ -244,20 +254,14 @@ if ($acc -and (Test-MailSync $acc.id)) {
         Log "mailkonto: KEINE Passwort-Variante funktioniert - manueller Eingriff noetig (Strato-Login pruefen)"
     } else {
         try {
-            if ($acc) {
+            if (-not $acc) {
+                Log "mailkonto: $MailEmail nicht in der sichtbaren Liste - KEINE Neuanlage (Duplikat-Schutz, Vorfall 26.08.2026)"
+            } else {
                 $patch = @{ active = $true
                             imap = ($ImapCfg + @{ password = $pw })
                             smtp = ($SmtpCfg + @{ password = $pw }) } | ConvertTo-Json -Depth 4
                 $r = Invoke-RestMethod -Uri "$MasLocal/mail/accounts/$($acc.id)?clientId=$ClientId" -Method Patch `
-                    -ContentType 'application/json; charset=utf-8' -Body $patch -TimeoutSec 60
-            } else {
-                $create = @{ label = 'Dr. Petsas'; email = $MailEmail; active = $true
-                             visibility = 'private'; ownerUserId = $MailOwner
-                             imap = ($ImapCfg + @{ password = $pw })
-                             smtp = ($SmtpCfg + @{ password = $pw }) } | ConvertTo-Json -Depth 4
-                $r = Invoke-RestMethod -Uri "$MasLocal/mail/accounts?clientId=$ClientId" -Method Post `
-                    -ContentType 'application/json; charset=utf-8' -Body $create -TimeoutSec 60
-                $acc = $r.account
+                    -Headers (MailHeaders) -Body $patch -TimeoutSec 60
             }
             # Neuladen/Refresh: Sync sofort anstossen, damit der Posteingang frisch ist.
             if ($acc -and (Test-MailSync $acc.id)) {

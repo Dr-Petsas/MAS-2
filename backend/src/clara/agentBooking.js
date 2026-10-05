@@ -6,9 +6,10 @@ import { findInCatalog, fetchPatientsByIds } from "./patientCatalog.js";
 //
 // Unlike the patient-facing phone flow (name + phone -> create patient), the
 // team books for an EXISTING patient that they cannot identify by phone number.
-// So this module talks to the two dedicated, additive Cloud Functions:
-//   masSearchPatients  -> find an existing patient by spoken name
-//   masBookAppointment -> book by patientId (no phone needed)
+// Patientensuche laeuft zuerst gegen den lokalen Namenskatalog (keine
+// Such-Reads). Die Cloud Function masSearchPatients bleibt Notnagel fuer
+// frisch angelegte Akten, die der Katalog noch nicht kennt.
+// Buchen: masBookAppointment (patientId, no phone needed).
 //
 // MAS-2 stays the source of truth: it resolves the calendar + visit motive from
 // the per-tenant mas_config/booking config (never hardcoded), and returns short
@@ -191,35 +192,27 @@ export function katalogtrefferIstEindeutig(hits) {
   return bester - (zweiter?.score || 0) >= 4;
 }
 
-export async function searchPatient(clientId, name, opts = {}) {
-  const t0 = Date.now();
-  const melde = (stufe, daten) => {
-    try {
-      if (typeof opts?.onStage === "function") opts.onStage(stufe, { ...daten, ms: Date.now() - t0 });
-    } catch { /* Beobachter darf die Suche nie kosten */ }
-  };
-  let booking = {};
-  try { booking = await loadBooking(clientId); } catch { booking = {}; }
-  const searchClientId = norm(booking.clientId) || clientId;
-  // Kandidaten-Schicht (additiv): Termin-Patienten der naechsten Tage als
-  // Kontext mitgeben, damit bei Namensvettern der wahrscheinlich Gemeinte oben
-  // steht. Best-effort + gecacht; faellt es aus, sucht die CF wie bisher.
-  let contextPatientIds = [];
-  try { contextPatientIds = await listContextPatientIds(searchClientId); } catch { contextPatientIds = []; }
-  // Mehrere Zuschnitte des gesprochenen Namens probieren (siehe
-  // nameQueryVariants). Treffer werden ueber die Patienten-Kennung
-  // zusammengefuehrt, Reihenfolge der ersten erfolgreichen Variante gewinnt.
-  // Mandantenfaehig: jede Abfrage traegt die Kennung dieses Standorts, es wird
-  // NICHTS zwischen Mandanten geteilt oder zwischengespeichert.
-  const variants = nameQueryVariants(name);
-  melde("varianten", { name, varianten: variants });
-  if (!variants.length) return { ok: true, patients: [] };
+/** Starke Katalog-Treffer brauchen die teure Plattform-Suche nicht. */
+export function katalogReichtOhnePlattform(hits) {
+  return (Array.isArray(hits) ? hits : []).some((h) => (h?.score || 0) >= 10);
+}
+
+async function ladeKatalogzeilen(clientId, hits) {
+  const liste = Array.isArray(hits) ? hits : [];
+  if (!liste.length) return [];
+  const rows = await fetchPatientsByIds(clientId, liste.map((h) => h.i));
+  const order = new Map(liste.map((h, idx) => [h.i, idx]));
+  rows.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
+  return rows;
+}
+
+async function sucheAufDerPlattform(searchClientId, locationId, variants, contextPatientIds) {
   const seen = new Map();
   let lastError = null;
   for (const query of variants) {
     const { status, data } = await cfPost("masSearchPatients", {
       clientId: searchClientId,
-      locationId: norm(booking.locationId),
+      locationId,
       query,
       contextPatientIds,
     });
@@ -234,29 +227,38 @@ export async function searchPatient(clientId, name, opts = {}) {
     // Genug gefunden? Dann keine weitere Abfrage — spart Lesevorgaenge.
     if (seen.size >= 3) break;
   }
-  melde("plattform", {
-    treffer: [...seen.values()].map((p) => ({
-      name: `${p?.firstName || ""} ${p?.lastName || ""}`.trim(), id: norm(p?.id),
-    })),
-    fehler: lastError || "",
-  });
+  return { seen, lastError };
+}
 
-  // NAMENSKATALOG (Dr. Petsas 04.08.2026) — wird IMMER befragt, nicht nur als
-  // Notnagel. Zwei Gruende:
-  //   1. Der Plattform-Index kennt bei Doppelnamen nur den ganzen Nachnamen am
-  //      Stueck ("el hajjami"), nie den unterscheidenden Teil ("hajjami").
-  //   2. Findet die Plattform-Suche ueber ihren Klang-Notbehelf IRGENDETWAS,
-  //      liefert sie auch Fremdnamen — bei "Makhoukhi" standen zwei voellig
-  //      andere Patienten VOR der richtigen. Ein Notnagel haette nie gegriffen.
-  // Der Katalog liegt lokal im Speicher (rund 50 ms, keine Datenbank-Kosten).
+export async function searchPatient(clientId, name, opts = {}) {
+  const t0 = Date.now();
+  const melde = (stufe, daten) => {
+    try {
+      if (typeof opts?.onStage === "function") opts.onStage(stufe, { ...daten, ms: Date.now() - t0 });
+    } catch { /* Beobachter darf die Suche nie kosten */ }
+  };
+  let booking = {};
+  try { booking = await loadBooking(clientId); } catch { booking = {}; }
+  const searchClientId = norm(booking.clientId) || clientId;
+  // Mehrere Zuschnitte des gesprochenen Namens (siehe nameQueryVariants).
+  const variants = nameQueryVariants(name);
+  melde("varianten", { name, varianten: variants });
+  if (!variants.length) return { ok: true, patients: [] };
+
+  // NAMENSKATALOG ZUERST (18.08.2026, Google-Bleeding).
+  // Der Katalog liegt lokal (rund 50 ms, keine Such-Reads). Die Cloud Function
+  // masSearchPatients kann bei Klang-Fallback bis zu 5.000 Akten lesen — und
+  // das bei jeder Namensvariante plus bei bis zu 12 parallelen STT-Schreibweisen.
+  // Sichere Katalog-Treffer brauchen die Plattform nicht. Frisch angelegte
+  // Patienten, die der Katalog noch nicht kennt, finden wir weiter ueber die
+  // Function (Notnagel). Notaus: MAS_SEARCH_CF_FIRST=1 stellt die alte Reihenfolge
+  // wieder her (Plattform zuerst).
   let catalogHits = [];
   try {
     catalogHits = await findInCatalog(searchClientId, name, { limit: 6 });
   } catch {
     catalogHits = [];
   }
-  // Ab 10 Punkten passt mindestens ein Wort buchstabengetreu oder der ganze
-  // Name klanglich — das ist sicher genug, um die Reihenfolge zu bestimmen.
   const strong = catalogHits.filter((h) => (h.score || 0) >= 10);
   const eindeutig = katalogtrefferIstEindeutig(catalogHits);
   melde("katalog", {
@@ -266,36 +268,49 @@ export async function searchPatient(clientId, name, opts = {}) {
     eindeutig,
   });
 
+  const plattformZuerst = process.env.MAS_SEARCH_CF_FIRST === "1" || opts.forcePlatform === true;
+  if (!plattformZuerst && katalogReichtOhnePlattform(catalogHits)) {
+    try {
+      const auswahl = eindeutig ? strong : catalogHits.slice(0, 4);
+      const rows = await ladeKatalogzeilen(searchClientId, auswahl);
+      if (rows.length) {
+        if (rows.length === 1 && eindeutig) return { ok: true, patients: rows };
+        return { ok: true, patients: rows };
+      }
+    } catch {
+      // Katalog-Nachladen ist Zugabe — dann Plattform wie bisher.
+    }
+  }
+
+  let contextPatientIds = [];
+  try { contextPatientIds = await listContextPatientIds(searchClientId); } catch { contextPatientIds = []; }
+  const { seen, lastError } = await sucheAufDerPlattform(
+    searchClientId, norm(booking.locationId), variants, contextPatientIds,
+  );
+  melde("plattform", {
+    treffer: [...seen.values()].map((p) => ({
+      name: `${p?.firstName || ""} ${p?.lastName || ""}`.trim(), id: norm(p?.id),
+    })),
+    fehler: lastError || "",
+    notnagel: !plattformZuerst,
+  });
+
   try {
     if (strong.length) {
-      // Ohne klaren Vorsprung bewusst die Verfolger mitnehmen: Clara soll dann
-      // nachfragen statt zu raten. Mit klarem Vorsprung bleibt es beim
-      // direkten Weg — die Rueckfragerei von damals kommt nicht zurueck.
       const auswahl = eindeutig ? strong : catalogHits.slice(0, 4);
-      const rows = await fetchPatientsByIds(searchClientId, auswahl.map((h) => h.i));
+      const rows = await ladeKatalogzeilen(searchClientId, auswahl);
       if (rows.length) {
-        const order = new Map(auswahl.map((h, idx) => [h.i, idx]));
-        rows.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
-        // EIN eindeutiger Volltreffer -> genau diese Person. Chef-Beschwerde
-        // 04.08.2026: "Ich nannte den Vornamen — trotzdem fragt Clara nach."
-        if (rows.length === 1 && eindeutig) return { ok: true, patients: rows };
-        // Mehrere gleich starke (echte Namensvettern) -> nach vorn, Rest dahinter.
         const merged = new Map(rows.map((p) => [norm(p.id), p]));
         for (const [k, v] of seen) if (!merged.has(k)) merged.set(k, v);
+        if (rows.length === 1 && eindeutig) return { ok: true, patients: rows };
         return { ok: true, patients: [...merged.values()] };
       }
     } else if (!seen.size && catalogHits.length) {
-      // Kein sicherer Treffer, aber die Plattform fand gar nichts: dann sind die
-      // Klang-Kandidaten des Katalogs besser als eine leere Antwort.
-      const rows = await fetchPatientsByIds(searchClientId, catalogHits.map((h) => h.i));
-      if (rows.length) {
-        const order = new Map(catalogHits.map((h, idx) => [h.i, idx]));
-        rows.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
-        return { ok: true, patients: rows };
-      }
+      const rows = await ladeKatalogzeilen(searchClientId, catalogHits);
+      if (rows.length) return { ok: true, patients: rows };
     }
   } catch {
-    // Katalog ist eine Zugabe — faellt er aus, bleibt es beim bisherigen Ergebnis.
+    // Katalog ist eine Zugabe — faellt er aus, bleibt es beim Plattform-Ergebnis.
   }
 
   if (!seen.size && lastError) return { ok: false, error: lastError };

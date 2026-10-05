@@ -62,6 +62,10 @@ function stripMotiveCode(name) {
 
 function normalizeAppointment(id, o) {
   if (!o) return null;
+  // Soft-delete wie der Plattform-Kalender: Papierkorb setzt isDeleted,
+  // der Datensatz bleibt confirmed. Ohne Filter liest Clara gelöschte
+  // Termine weiter vor (Petsas 20.09.2026: morgen 12 Uhr).
+  if (o.isDeleted === true) return null;
   return {
     id,
     startMs: tsToMs(o.start),
@@ -320,6 +324,21 @@ export async function getDayAppointments(clientId, { date, calendarId } = {}) {
   // gruenen Rahmen abweichen (Chef-Feedback 15.06.2026).
 
   return { ok: true, date: day, locationId, calendars: booking.calendars || [], appointments: appts };
+}
+
+export async function listLocationCalendars(clientId, locationId) {
+  if (!clientId || !locationId) return [];
+  const snap = await admin.firestore()
+    .collection("clients").doc(clientId)
+    .collection("locations").doc(locationId)
+    .collection("calendars")
+    .get();
+  return snap.docs.map((d) => {
+    const data = d.data() || {};
+    const name = String(data.name || "").trim();
+    if (!name || data.isDeleted === true || data.license === "disabled") return null;
+    return { id: d.id, name, internal: data.internal === true };
+  }).filter(Boolean);
 }
 
 // Obergrenze fuer einen Bereichs-Read (Firestore-Kosten + Sprech-Laenge). Ein

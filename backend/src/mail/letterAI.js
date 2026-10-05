@@ -1,4 +1,4 @@
-import { chat, llmInfo, strongLlm } from "./llm.js";
+import { chat, chatStream, llmInfo, strongLlm } from "./llm.js";
 import { getCaseContext, listCases } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { getMessage, listMessagesForCase } from "./store.js";
@@ -24,7 +24,7 @@ function clip(s, n) {
 // bricht dann oft ab, bevor die Antwort ankommt. Deshalb laeuft alles ueber
 // DIGEST_LIMIT zuerst durch den faktentreuen 5090-Steckbrief; scheitert der,
 // wird gekappt statt die Unterlage ganz zu verlieren.
-const DIGEST_LIMIT = 2200;
+const DIGEST_LIMIT = 8000;
 
 async function condenseDocuments(documents, max = 4) {
   const raw = Array.isArray(documents)
@@ -510,6 +510,7 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
     `- ${closing}`,
     "- Unterschreibe NIEMALS mit „Nadine“ — das ist der Name des Schreibwerkzeugs, nicht des Absenders.",
     "- Antworte NUR mit JSON in genau diesem Format: {\"subject\": \"…\", \"body\": \"…\"}.",
+    "- Der subject ist ein knapper Betreff (max. 70 Zeichen), der den KERN DIESES Schreibens trifft und sich ändert, wenn der Inhalt sich ändert. Kein 'Betreff:', keine Anführungszeichen.",
     "- Der body enthält nur Anrede, Fließtext und Grußformel mit Zeilenumbrüchen (\\n).",
   ].filter((l) => l !== null).join("\n");
 
@@ -557,16 +558,21 @@ export async function draftLetter(clientId, { caseId, patientName, recipient, so
  * Body-Felder (vom Aufrufer): messages[{role,content}], documents[{filename,text}],
  * recipient?, subjectHint?.
  */
-export async function discussCompose(clientId, { messages, documents, recipient, subjectHint } = {}) {
+async function prepareDiscussCompose(clientId, { messages, documents, activeDocument, recipient, subjectHint } = {}) {
   const history = Array.isArray(messages)
     ? messages
         .filter((m) => m && (m.role === "user" || m.role === "assistant") && String(m.content || "").trim())
         .slice(-16)
         .map((m) => ({ role: m.role, content: clip(m.content, 3500) }))
     : [];
-  if (!history.length) return { ok: false, reason: "no_messages", text: "", model: "" };
+  if (!history.length) return { ok: false, reason: "no_messages" };
 
-  const docs = await condenseDocuments(documents);
+  const rawDocs = Array.isArray(documents) ? documents.slice() : [];
+  const activeName = String(activeDocument || "").trim();
+  if (activeName) {
+    rawDocs.sort((a, b) => (String(a?.filename) === activeName ? -1 : String(b?.filename) === activeName ? 1 : 0));
+  }
+  const docs = await condenseDocuments(rawDocs);
 
   const sp = await loadSenderProfile(clientId);
   const docsBlock = documentsBlock(docs);
@@ -579,24 +585,67 @@ export async function discussCompose(clientId, { messages, documents, recipient,
     "WICHTIG: Schreibe in diesem Chat KEINE fertige, versandfertige E-Mail mit Anrede/Grußformel, es sei denn der Nutzer verlangt ausdrücklich einen Formulierungsvorschlag.",
     "Erfinde keine Beträge, Fristen, Aktenzeichen, Diagnosen oder Zusagen, die nicht in den Unterlagen oder im Gespräch stehen.",
     "Wenn eine Unterlage vorliegt, gehe KONKRET darauf ein (Aktenzeichen, Frist, Forderung, Ton).",
+    docs.length
+      ? "Die Unterlage ist BEREITS gelesen (Block HOCHGELADENE UNTERLAGEN). Frage NIEMALS nach Upload, Einfügen oder 'den Text hierher kopieren'. Steige sofort in den Inhalt ein."
+      : "Liegt noch keine Unterlage vor, darfst du nach dem Schreiben oder dem Ziel der Antwort fragen.",
+    activeDocument
+      ? `Aktive Unterlage, auf die sich DIESE Frage bezieht: ${clip(activeDocument, 160)}. Antworte in diesem Zug vorrangig zu dieser Datei; die anderen sind nur Hintergrund.`
+      : "",
     recipient ? `Geplanter Empfänger: ${clip(recipient, 200)}.` : "",
     subjectHint ? `Betreff-Hinweis: ${clip(subjectHint, 200)}.` : "",
     "Antworte als Chatpartner — nicht als JSON.",
   ].filter(Boolean).join(" ") + docsBlock;
 
   const { base: strongBase, model: strongModel } = strongLlm();
+  return {
+    ok: true,
+    llmMessages: [{ role: "system", content: system }, ...history],
+    model: strongModel,
+    base: strongBase,
+    docs,
+  };
+}
+
+export async function discussCompose(clientId, { messages, documents, activeDocument, recipient, subjectHint } = {}) {
+  const prep = await prepareDiscussCompose(clientId, { messages, documents, activeDocument, recipient, subjectHint });
+  if (!prep.ok) return { ok: false, reason: prep.reason, text: "", model: "" };
+
   const t0 = Date.now();
   const res = await chat(
-    [{ role: "system", content: system }, ...history],
-    { temperature: 0.35, maxTokens: 900, model: strongModel, baseUrl: strongBase, timeoutMs: 90000 }
+    prep.llmMessages,
+    { temperature: 0.35, maxTokens: 900, model: prep.model, baseUrl: prep.base, timeoutMs: 120000 }
   );
   const ms = Date.now() - t0;
   if (!res.ok) {
-    console.warn(`[compose-ai-chat] llm fail reason=${res.reason || "?"} model=${res.model} ms=${ms} docs=${docs.length}`);
+    console.warn(`[compose-ai-chat] llm fail reason=${res.reason || "?"} model=${res.model} ms=${ms} docs=${prep.docs.length}`);
     return { ok: false, reason: res.reason || "llm_error", text: "", model: res.model };
   }
-  console.log(`[compose-ai-chat] ok model=${res.model} ms=${ms} docs=${docs.length} chars=${res.text.length}`);
+  console.log(`[compose-ai-chat] ok model=${res.model} ms=${ms} docs=${prep.docs.length} chars=${res.text.length}`);
   return { ok: true, text: res.text.trim(), model: res.model };
+}
+
+/** Dieselben Prompts wie discussCompose, aber Token-Strom fuer den Chat. */
+export async function* discussComposeStream(clientId, args = {}, { signal } = {}) {
+  const prep = await prepareDiscussCompose(clientId, args);
+  if (!prep.ok) {
+    yield { type: "error", reason: prep.reason, model: "" };
+    return;
+  }
+  yield { type: "start", model: prep.model };
+  const t0 = Date.now();
+  let chars = 0;
+  for await (const ev of chatStream(prep.llmMessages, {
+    temperature: 0.35, maxTokens: 900, model: prep.model, baseUrl: prep.base, timeoutMs: 120000, signal,
+  })) {
+    if (ev.type === "delta") chars += ev.text.length;
+    if (ev.type === "done") {
+      console.log(`[compose-ai-chat] stream ok model=${ev.model} ms=${Date.now() - t0} docs=${prep.docs.length} chars=${ev.text.length}`);
+    }
+    if (ev.type === "error") {
+      console.warn(`[compose-ai-chat] stream fail reason=${ev.reason || "?"} model=${ev.model} ms=${Date.now() - t0} docs=${prep.docs.length} chars=${chars}`);
+    }
+    yield ev;
+  }
 }
 
 /**
@@ -678,6 +727,66 @@ export async function rewritePassage(clientId, { selection, instruction, fullTex
   return { ok: true, text: out, model: res.model };
 }
 
+/**
+ * Bestehenden Composer-/Brief-Entwurf UEBERARBEITEN (Kuerzen, Ausfuehrlicher,
+ * Foermlicher, freie Anweisung). Bewusst NICHT draftLetter: dessen Prompt
+ * behandelt Kontext als Eingangsmail und schreibt dann Antwortmails auf
+ * imaginäre Vorgänger-Schreiben (Vorfall Composer-Chips).
+ */
+export async function reviseDraft(clientId, { body, instruction, subject, recipient, tone, documents } = {}) {
+  const text = String(body || "").trim();
+  const ask = String(instruction || "").trim();
+  if (!text) return { ok: false, reason: "no_body", body: "", model: "" };
+  if (!ask) return { ok: false, reason: "no_instruction", body: "", model: "" };
+
+  const docs = await condenseDocuments(Array.isArray(documents) ? documents : []);
+  const docsBlock = documentsBlock(docs);
+  const sp = await loadSenderProfile(clientId);
+
+  const system = [
+    "Du bist Nadine, eine professionelle Schreibkraft.",
+    sp.orgName ? `Absender ist ${sp.orgName}${sp.branchLabel ? ` (${sp.branchLabel})` : ""}.` : "",
+    "Du bekommst einen BESTEHENDEN E-Mail- oder Brief-ENTWURF und eine ANWEISUNG zur Überarbeitung.",
+    "KRITISCH: Das ist KEIN Eingangsschreiben und KEIN Auftrag, darauf zu antworten.",
+    "Erfinde KEINE imaginäre Vorgänger-Mail, kein „vielen Dank für Ihre Nachricht“, keine Antwort auf Fragen, die nur in einem erfundenen Vortext stünden.",
+    "Überarbeite AUSSCHLIESSLICH den vorliegenden Entwurf gemäß der Anweisung — derselbe Inhalt, nur umformuliert/gekürzt/ausgebaut/förmlicher/korrigiert.",
+    "Behalte Anrede und Grußformel, sofern die Anweisung sie nicht ausdrücklich ändert.",
+    "Erfinde keine neuen Fakten, Beträge, Termine, Aktenzeichen, Diagnosen, Namen oder Zusagen.",
+    docs.length
+      ? "Unterlagen dienen nur als Fakten-Nachschlagewerk für Zahlen/Namen, die schon im Entwurf oder in den Unterlagen stehen — daraus keine neue Antwort-Mail bauen."
+      : "",
+    tone ? `Tonfall: ${tone}.` : "Tonfall: sachlich, freundlich, verbindlich.",
+    "Füge KEINEN Briefkopf und KEINE Absenderadresse hinzu.",
+    "Unterschreibe NIEMALS mit „Nadine“.",
+    "Gib NUR den vollständigen neuen Text zurück (Anrede, Fließtext, Grußformel) — keine Erklärung, kein Betreff, kein JSON, keine Anführungszeichen drumherum.",
+  ].filter(Boolean).join(" ");
+
+  const user = [
+    recipient ? `EMPFÄNGER (Anrede daran ausrichten, falls schon passend):\n${clip(recipient, 200)}` : "",
+    subject ? `BETREFF (nur Kontext — nicht zurückgeben):\n${clip(subject, 200)}` : "",
+    docsBlock,
+    `VORLIEGENDER ENTWURF (das ist der Text, den du überarbeitest):\n${clip(text, 8000)}`,
+    `ANWEISUNG:\n${ask}`,
+  ].filter(Boolean).join("\n\n");
+
+  const { base: strongBase, model: strongModel } = strongLlm();
+  const res = await chat(
+    [{ role: "system", content: system }, { role: "user", content: user }],
+    { temperature: 0.3, maxTokens: 1500, model: strongModel, baseUrl: strongBase, timeoutMs: 120000 }
+  );
+  const documentsUsed = docs.map((d) => ({ filename: d.filename, condensed: d.condensed, chars: d.chars }));
+  if (!res.ok) return { ok: false, reason: res.reason, body: "", model: res.model, documentsUsed };
+
+  let out = res.text.trim().replace(/^```[a-z]*\n?|\n?```$/gi, "").trim();
+  if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("„") && out.endsWith("“"))) out = out.slice(1, -1).trim();
+  // Modell liefert manchmal trotz Prompt JSON — Body herausziehen.
+  const parsed = parseLetterJson(out);
+  if (parsed?.body) out = parsed.body;
+  out = tidyClosing(out, sp.signature);
+  if (!out.trim()) return { ok: false, reason: "empty", body: "", model: res.model, documentsUsed };
+  return { ok: true, body: out, model: res.model, documentsUsed };
+}
+
 // Marker um das fallengelassene Fragment. Bewusst unnatuerliche Zeichenfolgen:
 // sie duerfen in echtem Brieftext nie vorkommen und ueberleben das Tokenisieren.
 const DROP_OPEN = "<<<EINGEFUEGT>>>";
@@ -744,7 +853,36 @@ export async function integrateSnippet(clientId, { body, fragment, index, subjec
   // Sicherheitsnetz: laesst das Modell die Marker stehen, fliegen sie raus.
   out = out.split(DROP_OPEN).join("").split(DROP_CLOSE).join("").trim();
   if (!out) return { ok: false, body: marked.split(DROP_OPEN).join("").split(DROP_CLOSE).join("").trim(), model: res.model, reason: "empty" };
-  return { ok: true, body: out, model: res.model };
+  const sub = await suggestSubject(clientId, { body: out, recipient }).catch(() => ({ subject: "" }));
+  return { ok: true, body: out, subject: sub.subject || "", model: res.model };
+}
+
+/**
+ * Betreff aus dem aktuellen Mailtext. Kurz und faktentreu — wird vom Composer
+ * nachgezogen, wenn der Entwurf waechst.
+ */
+export async function suggestSubject(clientId, { body, recipient } = {}) {
+  const text = String(body || "").trim();
+  if (!text) return { ok: true, subject: "", model: "" };
+  const { base: strongBase, model: strongModel } = strongLlm();
+  const res = await chat(
+    [
+      {
+        role: "system",
+        content:
+          "Du schreibst NUR den E-Mail-Betreff auf Deutsch. Ein kurzer Satz, höchstens 70 Zeichen. " +
+          "Kein 'Betreff:', keine Anführungszeichen, kein Gruß, kein Re:/Fwd:. " +
+          "Triff den Kern des Schreibens. Erfinde nichts, was nicht im Text steht.",
+      },
+      {
+        role: "user",
+        content: (recipient ? `An: ${clip(recipient, 80)}\n\n` : "") + clip(text, 2500),
+      },
+    ],
+    { temperature: 0.15, maxTokens: 50, model: strongModel, baseUrl: strongBase, timeoutMs: 20000 }
+  );
+  if (!res.ok) return { ok: false, subject: "", model: res.model, reason: res.reason };
+  return { ok: true, subject: tidySubject(res.text).replace(/^["„“]|["„“]$/g, "").slice(0, 90), model: res.model };
 }
 
 export { llmInfo };

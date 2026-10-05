@@ -32,6 +32,7 @@ import {
   consolidateBefund01,
 } from "../lena/lenaDoc.js";
 import { deleteEventsByIdPrefix } from "../brain/eventStore.js";
+import { enqueueFromFinalize } from "../pvs/writePath.js";
 import { identifyByDevice } from "../clara/devices.js";
 import { getActiveRecording } from "../clara/sessions.js";
 import { getDayAppointments, todayBerlin } from "../clara/daySchedule.js";
@@ -206,7 +207,7 @@ function normalizeRecorder(raw) {
   const o = raw || {};
   return {
     status: o.status === "recording" || o.status === "paused" ? o.status : "idle",
-    command: o.command === "pause" || o.command === "stop" ? o.command : "",
+    command: o.command === "start" || o.command === "pause" || o.command === "stop" ? o.command : "",
     commandAtMs: typeof o.commandAtMs === "number" ? o.commandAtMs : 0,
     deviceId: typeof o.deviceId === "string" ? o.deviceId : "",
     deviceLabel: typeof o.deviceLabel === "string" ? o.deviceLabel : "",
@@ -215,6 +216,29 @@ function normalizeRecorder(raw) {
     accumMs: typeof o.accumMs === "number" ? o.accumMs : 0,
     updatedAtMs: typeof o.updatedAtMs === "number" ? o.updatedAtMs : 0,
   };
+}
+
+function normalizeCaptureMode(v) {
+  const s = String(v || "").trim();
+  if (s === "headset" || s === "headset_room" || s === "room") return s;
+  if (s === "ipad_room" || s === "ipad") return "room";
+  if (s === "usb") return "headset_room";
+  return "";
+}
+
+function sourcesForCaptureMode(mode) {
+  if (mode === "headset") return { arztSource: "headset", raumSource: "pc-mono" };
+  if (mode === "room") return { arztSource: "lavalier", raumSource: "pc-stereo" };
+  return { arztSource: "headset", raumSource: "pc-stereo" };
+}
+
+function deriveCaptureMode(settings) {
+  const o = settings || {};
+  const explicit = normalizeCaptureMode(o.captureMode);
+  if (explicit) return explicit;
+  if (o.raumSource === "ipad") return "room";
+  if (o.arztSource === "headset") return "headset_room";
+  return "headset_room";
 }
 
 // POST /treatment/current — Raum→Termin fuer das gekoppelte iPad (Paket 2b).
@@ -482,8 +506,10 @@ const AUFKLAERUNG_NAME_RE =
 // damit der Poll keine pdocuments-Reads + signierten URLs pro Sekunde erzeugt.
 router.post("/treatment/patient-docs", async (req, res) => {
   try {
-    const who = await companionDeviceOk(req);
-    if (!who) return res.status(401).json({ ok: false, error: "device_auth_failed" });
+    const actor = await structureBillingActor(req);
+    if (!actor.ok) {
+      return res.status(actor.error === "invalid_token" ? 401 : 403).json({ ok: false, error: actor.error });
+    }
     const k = readIds(req);
     if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
 
@@ -602,12 +628,24 @@ router.post("/treatment/heartbeat", async (req, res) => {
       };
     });
 
-    // Kanal-Vertrag: das iPad muss wissen, ob ES das Raummikro ist ("ipad")
-    // oder ob der PC den Patienten aufnimmt ("pc-stereo"/"pc-mono").
-    const settings = setSnap.exists ? (setSnap.data() || {}) : {};
+    // Geteilter 3-Modi-Umschalter (PC + iPad). Ein Tap auf einem Gerät
+    // schreibt captureMode hier; das andere Gerät liest ihn im nächsten Heartbeat.
+    let settings = setSnap.exists ? (setSnap.data() || {}) : {};
+    const wantMode = normalizeCaptureMode(req.body?.captureMode);
+    if (wantMode) {
+      const src = sourcesForCaptureMode(wantMode);
+      await admin.firestore()
+        .collection("clients").doc(k.clientId)
+        .collection("locations").doc(k.locationId)
+        .collection("settings").doc("lenaRecorder")
+        .set({ captureMode: wantMode, ...src, updatedAt: Date.now() }, { merge: true });
+      settings = { ...settings, captureMode: wantMode, ...src };
+    }
+    const captureMode = deriveCaptureMode(settings);
+    const fromMode = sourcesForCaptureMode(captureMode);
     const raumSource = settings.raumSource === "ipad" || settings.raumSource === "pc-mono"
-      || settings.raumSource === "pc-stereo" ? settings.raumSource : "pc-stereo";
-    const arztSource = settings.arztSource === "headset" ? "headset" : "lavalier";
+      || settings.raumSource === "pc-stereo" ? settings.raumSource : fromMode.raumSource;
+    const arztSource = settings.arztSource === "headset" ? "headset" : fromMode.arztSource;
 
     // Zusammenfassung mitliefern, damit das iPad sie ohne Reload aktualisieren
     // kann (Web-Lena lauscht ohnehin per Firestore-Listener auf treatment/main).
@@ -642,6 +680,7 @@ router.post("/treatment/heartbeat", async (req, res) => {
       structuredHtml: typeof note.structuredHtml === "string" ? note.structuredHtml : "",
       raumSource,
       arztSource,
+      captureMode,
       roomCapture,
       specialty: specialty || "",
     });
@@ -665,7 +704,7 @@ router.post("/treatment/recorder", async (req, res) => {
     const p = req.body?.patch || {};
     const patch = {};
     if (p.status === "idle" || p.status === "recording" || p.status === "paused") patch.status = p.status;
-    if (p.command === "" || p.command === "pause" || p.command === "stop") patch.command = p.command;
+    if (p.command === "" || p.command === "start" || p.command === "pause" || p.command === "stop") patch.command = p.command;
     if (typeof p.commandAtMs === "number") patch.commandAtMs = p.commandAtMs;
     if (typeof p.deviceId === "string") patch.deviceId = p.deviceId.slice(0, 60);
     if (typeof p.deviceLabel === "string") patch.deviceLabel = p.deviceLabel.slice(0, 40);
@@ -916,6 +955,15 @@ router.post("/treatment/finalize", async (req, res) => {
     const r = await finalizeTreatmentDoc(k.clientId, k.locationId, k.appointmentId, {
       structuredText,
       updatedBy: actor.updatedBy,
+      identity: {
+        patientId: req.body?.patientId,
+        pickadocId: req.body?.pickadocId || req.body?.patientId,
+        patientName: req.body?.patientName,
+        firstName: req.body?.firstName,
+        lastName: req.body?.lastName,
+        dampsoftPatNr: req.body?.dampsoftPatNr,
+        locationId: k.locationId,
+      },
     });
     res.set("Cache-Control", "no-store");
     if (!r.ok) {
@@ -923,6 +971,72 @@ router.post("/treatment/finalize", async (req, res) => {
       return res.status(code).json(r);
     }
     res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// POST /treatment/lena-01-state — Erstuntersuchung (01-Modus, iPad /m/lena-01/)
+// speichern und den Anschluss entscheiden (Chef 15.08.2026). ADDITIV:
+//   treatment/main.zahnstatus01 = { mode, decision, text, teethJson, ... }
+// beruehrt keine bestehenden Felder (structuredText/templateFields/billing).
+//   mode      'ki' | 'arzt'  — wer hat die 01 gefuehrt (nur zur Doku)
+//   decision  'draft'        — nur speichern (Zwischenstand)
+//             'bedarf'       — Absicht "Behandlungsbedarf berechnen" merken;
+//                              die Kaskade (Termine/Worksheet/Plaene) folgt in
+//                              Paket 2, hier wird sie NUR vorgemerkt.
+//             'pvs'          — 01-Befundtext direkt in die Uebertragungsliste
+//                              (Holen) legen, wie der Finalize-Weg von fastAe1.
+// Auth wie /treatment/structure: deviceKey (gekoppeltes iPad) ODER Bearer.
+router.post("/treatment/lena-01-state", async (req, res) => {
+  try {
+    const actor = await structureBillingActor(req);
+    if (!actor.ok) {
+      return res.status(actor.error === "invalid_token" ? 401 : 403).json({ ok: false, error: actor.error });
+    }
+    const k = readIds(req);
+    if (!k) return res.status(400).json({ ok: false, error: "bad_ids" });
+    const mode = req.body?.mode === "ki" ? "ki" : "arzt";
+    const rawDecision = String(req.body?.decision || "draft").toLowerCase();
+    const decision = ["draft", "bedarf", "pvs"].includes(rawDecision) ? rawDecision : "draft";
+    const text = String(req.body?.text || "").trim().slice(0, 40000);
+    let teethJson = "";
+    try { teethJson = JSON.stringify(req.body?.teeth ?? null).slice(0, 60000); } catch { teethJson = ""; }
+    const now = new Date().toISOString();
+    const zahnstatus01 = { mode, decision, text, teethJson, updatedAt: now, updatedBy: actor.updatedBy };
+    await apptRef(k.clientId, k.locationId, k.appointmentId)
+      .collection("treatment").doc("main")
+      .set({ zahnstatus01, updatedAt: now, updatedBy: actor.updatedBy }, { merge: true });
+
+    let pvs = { queued: false };
+    if (decision === "pvs") {
+      if (!text) return res.status(409).json({ ok: false, error: "no_content" });
+      try {
+        pvs = await enqueueFromFinalize(k.clientId, {
+          text,
+          appointment: {
+            id: k.appointmentId,
+            appointmentId: k.appointmentId,
+            locationId: k.locationId,
+            patientId: req.body?.pickadocId || req.body?.patientId,
+            patientName: req.body?.patientName,
+          },
+          identity: {
+            patientId: req.body?.patientId,
+            pickadocId: req.body?.pickadocId || req.body?.patientId,
+            patientName: req.body?.patientName,
+            firstName: req.body?.firstName,
+            lastName: req.body?.lastName,
+            dampsoftPatNr: req.body?.dampsoftPatNr,
+            locationId: k.locationId,
+          },
+        });
+      } catch (e) {
+        pvs = { queued: false, reason: String(e?.code || e?.message || e) };
+      }
+    }
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, mode, decision, pvs, cascade: decision === "bedarf" ? "pending" : "none" });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

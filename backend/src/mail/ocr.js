@@ -55,21 +55,30 @@ function visionCfg() {
 // gegen ein bereits laufendes Endpoint). Der Container STOPPT sich selbst per
 // Idle-Timeout (Box-Seite) -> VRAM wird danach automatisch frei.
 async function ensureVlAwake(c) {
-  if (!c.wakeUrl && c.startupWaitMs <= 0) return;
+  // Ohne Wake-URL gibt es nichts zu starten — der Request scheitert dann
+  // selbst (und Tesseract uebernimmt). Die 90-s-Warte gilt nur, wenn wir
+  // gerade einen Container geweckt haben.
+  if (!c.wakeUrl) return true;
   if (c.wakeUrl) {
     try { await fetch(c.wakeUrl, { method: c.wakeMethod }); } catch { /* Trigger best-effort */ }
   }
-  if (c.startupWaitMs <= 0) return;
+  if (c.startupWaitMs <= 0) return true;
   const deadline = Date.now() + c.startupWaitMs;
   const modelsUrl = `${c.base}/models`;
   while (Date.now() < deadline) {
     try {
       const r = await fetch(modelsUrl, { headers: { Authorization: `Bearer ${c.apiKey}` } });
-      if (r.ok) return;
+      if (r.ok) return true;
     } catch { /* noch nicht bereit */ }
     await new Promise((res) => setTimeout(res, 2000));
   }
+  return false;
 }
+
+// Ein totes VL-Endpoint kurz merken. Sonst wartet ein mehrseitiger Scan die
+// Startup-Zeit (bis 90 s) PRO SEITE ab, bevor Tesseract drankommt.
+let vlStummBis = 0;
+const VL_STUMM_MS = 60000;
 
 const OCR_PROMPT =
   "Transkribiere den gesamten sichtbaren Text dieses Dokuments WORTGETREU. " +
@@ -152,10 +161,16 @@ async function visionOcrOpenai(c, buffer, contentType, timeoutMs) {
 async function visionOcr(buffer, contentType = "image/png", timeoutMs = 90000) {
   const c = visionCfg();
   if (!c) return { ok: false, text: "", engine: "vision", note: "kein Vision-Endpoint konfiguriert" };
-  await ensureVlAwake(c);
-  return c.kind === "ollama"
-    ? visionOcrOllama(c, buffer, timeoutMs)
-    : visionOcrOpenai(c, buffer, contentType, timeoutMs);
+  if (Date.now() < vlStummBis) return { ok: false, text: "", engine: "vision", note: "zuletzt nicht erreichbar" };
+  if (!(await ensureVlAwake(c))) {
+    vlStummBis = Date.now() + VL_STUMM_MS;
+    return { ok: false, text: "", engine: "vision", note: "nicht bereit" };
+  }
+  const r = c.kind === "ollama"
+    ? await visionOcrOllama(c, buffer, timeoutMs)
+    : await visionOcrOpenai(c, buffer, contentType, timeoutMs);
+  if (!r.ok && (r.note === "unreachable" || r.note === "timeout")) vlStummBis = Date.now() + VL_STUMM_MS;
+  return r;
 }
 
 // Grobe Format-Erkennung an den Magic-Bytes. Verhindert, dass abgeschnittene

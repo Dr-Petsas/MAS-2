@@ -637,6 +637,65 @@
     focusLastTouched(container, state);
   }
 
+  function sumSection(label, bodyHtml) {
+    return (
+      '<section class="tpl-sum-sec">' +
+      "<h3>" + escapeHtml(label) + "</h3>" +
+      bodyHtml +
+      "</section>"
+    );
+  }
+
+  function sumPlain(text) {
+    const t = String(text || "").trim();
+    if (!t) return { html: "", empty: true };
+    return { html: "<p>" + escapeHtml(t).replace(/\n/g, "<br>") + "</p>", empty: false };
+  }
+
+  /** Eine lesbare Doku-Box fuer die Zusammenfassung: Ueberschriften + Fliesstext,
+      kein Karten-Raster, kein 01-Schema, keine Luecken/leeren Felder
+      (Chef 15.08.2026). */
+  function renderSummaryOnly(container, state) {
+    if (!container || !state) return;
+    state.page = "doku";
+    const parts = [];
+    parts.push('<article class="tpl-sum"><header class="tpl-sum-h"><h2>Dokumentation</h2></header>');
+    const core = [
+      ["Termingrund", "anlass"],
+      ["Patientenanliegen heute", "anliegen"],
+      ["Anamnese-Risiken", "anamnese"],
+      ["Befund", "befund"],
+      ["Diagnose", "diagnose"],
+      ["Therapie / Behandlung", "therapie"],
+    ];
+    for (const [lab, key] of core) {
+      const bit = sumPlain(state.values[key]);
+      if (!bit.empty) parts.push(sumSection(lab, bit.html));
+    }
+    for (const b of TEMPLATE.blocks) {
+      if (!state.openBlocks.has(b.id)) continue;
+      const rows = [];
+      for (const f of b.fields) {
+        const t = String(state.values[f.key] || "").trim();
+        if (!t) continue;
+        rows.push("<p><strong>" + escapeHtml(f.label) + ".</strong> " + escapeHtml(t).replace(/\n/g, "<br>") + "</p>");
+      }
+      if (rows.length) parts.push(sumSection(b.title, rows.join("")));
+    }
+    const aufEmpty = !String(state.values.aufklaerung || "").trim()
+      && !(Array.isArray(state.aufklaerungDocs) && state.aufklaerungDocs.length);
+    if (!aufEmpty) parts.push(sumSection("Aufklärung & Dokumente", aufklaerungBodyHtml(state)));
+    const komp = sumPlain(state.values.komplikationen);
+    if (!komp.empty) parts.push(sumSection("Komplikationen", komp.html));
+    const proc = sumPlain(state.values.procedere);
+    if (!proc.empty) parts.push(sumSection("Procedere", proc.html));
+    if (parts.length === 1) {
+      parts.push('<p class="empty">Noch keine medizinische Zusammenfassung.</p>');
+    }
+    parts.push("</article>");
+    container.innerHTML = parts.join("");
+  }
+
   /**
    * SignR-/Akte-Anamnese in die Anamnese-Box legen (status=pre).
    * findings: [{ category, text }] von /treatment/current.
@@ -1442,13 +1501,26 @@
     focusLastTouched(container, state);
   }
 
+  function docsPlain(state) {
+    const docs = Array.isArray(state.aufklaerungDocs) ? state.aufklaerungDocs : [];
+    const names = [];
+    for (const d of docs) {
+      const name = String(d && d.name || "Dokument").trim();
+      if (!name) continue;
+      const when = d.signedAtMs ? " (" + new Date(d.signedAtMs).toLocaleDateString("de-DE") + ")" : "";
+      names.push(name + when);
+    }
+    return names;
+  }
+
   function toStructuredText(state) {
     if (!state) return "";
-    const lines = ["DOKU-TEMPLATE ZAHNMEDIZIN", ""];
+    const lines = ["KI-DOKUMENTATION PICKADOC", ""];
     const push = (lab, key) => {
-      const v = state.values[key];
+      const v = String(state.values[key] || "").trim();
       if (v) lines.push(lab + ": " + v);
     };
+    const blockHasValues = (b) => b.fields.some((f) => String(state.values[f.key] || "").trim());
     push("Anlass", "anlass");
     push("Patientenanliegen", "anliegen");
     push("Anamnese", "anamnese");
@@ -1456,18 +1528,24 @@
     push("Befund", "befund");
     push("Diagnose", "diagnose");
     push("Therapie", "therapie");
-    if (state.openBlocks.has("planwechsel")) {
+    if (state.openBlocks.has("planwechsel") && blockHasValues(TEMPLATE.blocks.find((x) => x.id === "planwechsel") || { fields: [] })) {
       lines.push("PLANÄNDERUNG");
       push("  Geplant", "plan_geplant");
       push("  Durchgeführt", "plan_durchgefuehrt");
       push("  Zustimmung", "plan_zustimmung");
     }
     for (const b of TEMPLATE.blocks) {
-      if (b.id === "planwechsel" || !state.openBlocks.has(b.id)) continue;
+      if (b.id === "planwechsel" || !state.openBlocks.has(b.id) || !blockHasValues(b)) continue;
       lines.push(b.title.toUpperCase());
       for (const f of b.fields) push("  " + f.label, f.key);
     }
-    push("Aufklärung", "aufklaerung");
+    const auf = String(state.values.aufklaerung || "").trim();
+    const docNames = docsPlain(state);
+    if (auf) lines.push("Aufklärung: " + auf);
+    if (docNames.length) {
+      lines.push("Dokumente:");
+      for (const n of docNames) lines.push("- " + n);
+    }
     push("Komplikationen", "komplikationen");
     push("Procedere", "procedere");
     return lines.join("\n").trim();
@@ -1494,6 +1572,7 @@
     render,
     renderSchemaOnly,
     renderBoxesOnly,
+    renderSummaryOnly,
     focusLastTouched,
     toStructuredText,
     corpus,

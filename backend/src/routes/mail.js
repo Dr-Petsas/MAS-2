@@ -3,7 +3,7 @@
 // byte-identisch uebernommen, nur app. -> router. Kein Verhalten geaendert.
 import express from "express";
 import { assertAppEnabled } from "../entitlements.js";
-import { searchPatient } from "../clara/agentBooking.js";
+import { findPrefixInCatalog, fetchPatientsByIds } from "../clara/patientCatalog.js";
 import { appendEvent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { linkEventToCase } from "../brain/caseStore.js";
@@ -12,7 +12,7 @@ import { findContactsByPhone } from "../brain/addressBook.js";
 import { outboxHealth, processBrainOutbox } from "../brain/outbox.js";
 import { createAccount, updateAccount, deleteAccount, getAccountPublic } from "../mail/accounts.js";
 import { testImap, syncAccount, syncAll, sendMail } from "../mail/mailbox.js";
-import { listMessages, findInboxSenders, getMessage, markRead, listContacts, getAttachmentUrl, getAttachmentData, setMessageClassification, deleteMessage, linkMessageToCase, markAnswered, folderCounts } from "../mail/store.js";
+import { listMessages, getMessage, markRead, listContacts, getAttachmentUrl, getAttachmentData, setMessageClassification, deleteMessage, linkMessageToCase, markAnswered, folderCounts } from "../mail/store.js";
 import { classifyWithLLM, deriveMailSignals } from "../mail/classify.js";
 import { buildLetterPdf, letterFilename } from "../mail/letter.js";
 import { buildMailBriefing } from "../mail/briefing.js";
@@ -20,7 +20,7 @@ import { getLetterSettings, setLetterSettings } from "../mail/letterSettings.js"
 import { saveLetterheadAsset, getLetterheadMeta, deleteLetterheadAsset, listLetterheads, setActiveLetterhead, deleteLetterhead } from "../mail/letterhead.js";
 import { saveLetterAsset, getLetterAssetMeta, deleteLetterAsset, getLetterAssetBuffer } from "../mail/letterAssets.js";
 import { listBlocks, createBlock, updateBlock, deleteBlock, seedDefaultBlocks } from "../mail/letterBlocks.js";
-import { draftLetter, draftFromDiscussion, discussCompose, discussComposeStream, integrateSnippet, suggestSubject, llmInfo, letterContextSummary, rewritePassage } from "../mail/letterAI.js";
+import { draftLetter, draftFromDiscussion, discussCompose, discussComposeStream, integrateSnippet, suggestSubject, llmInfo, letterContextSummary, rewritePassage, reviseDraft } from "../mail/letterAI.js";
 import { extractText } from "../mail/extract.js";
 import { saveDocument } from "../mail/documents.js";
 import { archiveLetter, listLetters, getLetter } from "../mail/letterArchive.js";
@@ -395,7 +395,9 @@ router.get("/mail/briefing", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
     if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
-    const out = await buildMailBriefing(clientId, { sinceMinutes: Number(req.query?.sinceMinutes) || 720 });
+    const access = await mailAccess(clientId, req);
+    const accountIds = access.allowedIds ? [...access.allowedIds] : undefined;
+    const out = await buildMailBriefing(clientId, { sinceMinutes: Number(req.query?.sinceMinutes) || 720, accountIds });
     res.json({ ok: true, clientId, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -428,27 +430,23 @@ router.get("/mail/address-book", async (req, res) => {
     const clientId = resolveClientId(req);
     if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
     const q = (req.query?.q || "").trim();
-    const cb = await listContacts(clientId, { q, limit: Number(req.query?.limit) || 300, cursor: req.query?.cursor || null });
-    const contacts = cb.items;
-    const contactsCursor = cb.nextCursor;
-    if (q.length >= 2) {
-      const inbox = await findInboxSenders(clientId, q, { limit: 12 }).catch(() => []);
-      const have = new Set(contacts.map((c) => String(c.address || "").toLowerCase()).filter(Boolean));
-      for (const c of inbox) {
-        const k = String(c.address || "").toLowerCase();
-        if (!k || have.has(k)) continue;
-        contacts.push(c);
-        have.add(k);
-      }
-    }
-    let patients = [];
-    let patientsError = null;
-    if (q && q.length >= 2) {
-      const pr = await searchPatient(clientId, q).catch((e) => ({ ok: false, error: String(e?.message || e) }));
-      if (pr.ok) patients = pr.patients || [];
-      else patientsError = pr.error || "Patientensuche fehlgeschlagen";
-    }
-    res.json({ ok: true, clientId, contacts, contactsCursor, patients, patientsError });
+    // Autocomplete muss in <1 s antworten. searchPatient() faellt bei vielen
+    // Treffern (z. B. "mich") auf die Cloud-Function um und braucht 10+ s —
+    // die UI blieb dann bei „Suche im Adressbuch" stehen. Katalog + begrenzter
+    // Kontakt-Scan reichen fuer das Tippen.
+    const contactLimit = Math.min(40, Number(req.query?.limit) || 16);
+    const wantPeople = q.length >= 2;
+    // Kein findInboxSenders hier: der liest 500 Inbox-Docs (~6 s) und blockiert
+    // die Autovervollstaendigung. Kontakte kommen aus dem Adressbuch-Index.
+    const [cb, patients] = await Promise.all([
+      listContacts(clientId, { q, limit: contactLimit, cursor: req.query?.cursor || null, scanCap: 600 }),
+      wantPeople
+        ? findPrefixInCatalog(clientId, q, { limit: 12 })
+          .then((hits) => fetchPatientsByIds(clientId, hits.map((h) => h.i).filter(Boolean)))
+          .catch(() => [])
+        : Promise.resolve([]),
+    ]);
+    res.json({ ok: true, clientId, contacts: cb.items, contactsCursor: cb.nextCursor, patients, patientsError: null });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -616,6 +614,30 @@ router.post("/mail/letter/ai-rewrite", async (req, res) => {
 });
 
 
+// Composer-Chips (Kuerzen/Ausfuehrlicher/…) und Anweisen MIT bestehendem Entwurf:
+// nur ueberarbeiten, nie als Antwort auf eine imaginaere Eingangsmail behandeln.
+// Body: { body, instruction, subject?, recipient?, tone?, documents? }
+router.post("/mail/compose/ai-revise", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    const b = req.body || {};
+    const out = await reviseDraft(clientId, {
+      body: b.body,
+      instruction: b.instruction || b.direction,
+      subject: b.subject,
+      recipient: b.recipient,
+      tone: b.tone,
+      documents: b.documents,
+    });
+    if (!out.ok) return res.status(400).json({ ok: false, ...out, llm: llmInfo() });
+    res.json({ ok: true, clientId, ...out, llm: llmInfo() });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
 // Composer-Diskussions-Chat (qwen3.6): Thema erörtern, PDFs/Briefe als Kontext,
 // Mehrfach-Turns — bevor „E-Mail generieren“ den Entwurf schreibt.
 // Body: { messages:[{role,content}], documents?:[{filename,text}], recipient?, subjectHint? }
@@ -654,23 +676,34 @@ router.post("/mail/compose/ai-chat-stream", async (req, res) => {
     res.flushHeaders?.();
     const send = (event, data) => {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      if (typeof res.flush === "function") res.flush();
     };
     send("start", { ok: true, clientId });
+    // Keepalive gegen Cloudflare-/Tunnel-Idle-Abbruch waehrend Unterlagen-
+    // Verdichtung und GPU-Warteschlange (Kommentar-Frames, kein Event).
+    const keepalive = setInterval(() => {
+      if (res.writableEnded) return;
+      try { res.write(`: ka ${Date.now()}\n\n`); if (typeof res.flush === "function") res.flush(); } catch { /* closed */ }
+    }, 12000);
     const ac = new AbortController();
     req.on("close", () => ac.abort());
-    for await (const ev of discussComposeStream(clientId, {
-      messages: b.messages,
-      documents: b.documents,
-      activeDocument: b.activeDocument,
-      recipient: b.recipient,
-      subjectHint: b.subjectHint,
-    }, { signal: ac.signal })) {
-      if (res.writableEnded) break;
-      if (ev.type === "start") send("start", { model: ev.model });
-      else if (ev.type === "delta") send("delta", { text: ev.text });
-      else if (ev.type === "reset") send("reset", { text: ev.text });
-      else if (ev.type === "done") send("done", { text: ev.text, model: ev.model, llm: llmInfo() });
-      else if (ev.type === "error") send("error", { reason: ev.reason || "llm_error", model: ev.model });
+    try {
+      for await (const ev of discussComposeStream(clientId, {
+        messages: b.messages,
+        documents: b.documents,
+        activeDocument: b.activeDocument,
+        recipient: b.recipient,
+        subjectHint: b.subjectHint,
+      }, { signal: ac.signal })) {
+        if (res.writableEnded) break;
+        if (ev.type === "start") send("start", { model: ev.model });
+        else if (ev.type === "delta") send("delta", { text: ev.text });
+        else if (ev.type === "reset") send("reset", { text: ev.text });
+        else if (ev.type === "done") send("done", { text: ev.text, model: ev.model, llm: llmInfo() });
+        else if (ev.type === "error") send("error", { reason: ev.reason || "llm_error", model: ev.model });
+      }
+    } finally {
+      clearInterval(keepalive);
     }
     res.end();
   } catch (e) {

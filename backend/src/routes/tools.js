@@ -1094,9 +1094,16 @@ router.post("/tools/patient-appointments", async (req, res) => {
         message,
         next: focus,
         upcoming: upcoming.map(named).filter(Boolean),
+        past: (Array.isArray(result?.past) ? result.past : []).map(named).filter(Boolean),
         surroundings,
       };
     };
+
+    const direkteId = String(req.body?.patientId || "").trim();
+    if (direkteId) {
+      const result = await getPatientAppointments(clientId, { patientId: direkteId });
+      return res.json(await packPatientAppts(result, rawName || "der Patient", { id: direkteId }));
+    }
 
     const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
     if (ordinalSource) {
@@ -5132,8 +5139,9 @@ router.post("/tools/book-appointment", async (req, res) => {
 // Clara books for the practice staff: they name an EXISTING patient (no phone).
 // search_patient finds them; the choice is remembered server-side; then
 // book_for_patient books by patientId and drives the live monitor (jump to the
-// day, open the appointment popup pre-filled). Uses the dedicated additive
-// Cloud Functions masSearchPatients / masBookAppointment.
+// day, open the appointment popup pre-filled). Suche: lokaler Namenskatalog
+// zuerst, Cloud Function masSearchPatients nur als Notnagel. Buchen weiter
+// ueber masBookAppointment.
 function prettySlot(iso) {
   return String(iso || "").replace("T", " ").slice(0, 16);
 }

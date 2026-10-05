@@ -329,7 +329,7 @@ export function toStructuredTextFromFields(fields, { nachdiktatLines = [] } = {}
   if (!fields || typeof fields !== "object") return "";
   const values = fields.values && typeof fields.values === "object" ? fields.values : {};
   const open = new Set(Array.isArray(fields.openBlocks) ? fields.openBlocks : []);
-  const lines = ["DOKU-TEMPLATE ZAHNMEDIZIN", ""];
+  const lines = ["KI-DOKUMENTATION PICKADOC", ""];
   const push = (key, indent = "") => {
     const v = String(values[key] || "").trim();
     if (!v) return;

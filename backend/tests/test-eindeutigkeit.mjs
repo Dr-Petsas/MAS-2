@@ -13,7 +13,7 @@
  *
  * Aufruf:  node tests/test-eindeutigkeit.mjs
  */
-import { katalogtrefferIstEindeutig } from "../src/clara/agentBooking.js";
+import { katalogtrefferIstEindeutig, katalogReichtOhnePlattform } from "../src/clara/agentBooking.js";
 
 let ok = 0;
 let fail = 0;
@@ -68,6 +68,16 @@ console.log("\n6) Grenzfaelle stuerzen nicht ab");
 pruefe("leere Liste", katalogtrefferIstEindeutig([]) === false);
 pruefe("null", katalogtrefferIstEindeutig(null) === false);
 pruefe("Eintrag ohne Punkte", katalogtrefferIstEindeutig([{}]) === false);
+
+console.log("\n7) Kostenbremse: starke Katalog-Treffer brauchen keine Plattform");
+pruefe("eindeutiger Volltreffer reicht ohne Cloud Function",
+  katalogReichtOhnePlattform([{ l: "El Otmani", score: 16 }]) === true);
+pruefe("Namensvettern reichen ohne Cloud Function (Clara fragt nach)",
+  katalogReichtOhnePlattform([{ score: 16 }, { score: 16 }]) === true);
+pruefe("nur schwache Treffer -> Plattform-Notnagel",
+  katalogReichtOhnePlattform([{ score: 8 }, { score: 5 }]) === false);
+pruefe("leere Liste -> Plattform-Notnagel",
+  katalogReichtOhnePlattform([]) === false);
 
 console.log("");
 if (fail) {

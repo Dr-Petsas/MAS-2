@@ -49,7 +49,22 @@ const after = await getAccountWithSecrets(TEST, id);
 check(after.smtpPassword === "smtpNeu3", "SMTP-Passwort aktualisiert");
 check(after.imapPassword === "imapGeheim1", "IMAP-Passwort unverändert");
 
-await deleteAccount(TEST, id);
+const again = await createAccount(TEST, {
+  label: "Praxis Klon",
+  email: "praxis@example.de",
+  imap: { host: "imap.example.de", user: "praxis@example.de", password: "imapGeheim1" },
+});
+check(again.ok && again.reused, "zweites Anlegen derselben Adresse wird wiederverwendet");
+check(again.account.id === id, "wiederverwendet ist das Original-Konto");
+check((await listAccounts(TEST)).length === 1, "Liste hat nach Klon-Versuch weiter ein Konto");
+
+await db.collection("clients").doc(TEST).collection("mas_mail_accounts").add({
+  label: "Praxis Klon-Doc", email: "praxis@example.de", visibility: "praxis", ownerUserId: "",
+  active: true, createdAt: Date.now() + 1000,
+});
+check((await listAccounts(TEST)).length === 1, "Liste zieht Roh-Klone auf das Original zusammen");
+
+await cleanup();
 check((await listAccounts(TEST)).length === 0, "Konto gelöscht");
 
 await cleanup();

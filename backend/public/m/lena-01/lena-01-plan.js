@@ -89,12 +89,16 @@
     (items || []).forEach(function (it) {
       idsForItem(it).forEach(function (id) { raw.push(id); });
     });
-    return expandIds(raw).map(function (id) {
+    var ids = expandIds(raw);
+    // KVA steckt im HKP-Feld als Privat-Variante, nicht extra.
+    if (ids.indexOf("hkp") >= 0) ids = ids.filter(function (id) { return id !== "kva"; });
+    return ids.map(function (id) {
       var row = Object.assign({ from: [] }, ANTRAEGE[id]);
       row.from = (items || []).filter(function (it) {
-        var ids = expandIds(idsForItem(it));
-        return ids.indexOf(id) >= 0;
-      }).map(function (it) { return it.title; });
+        return expandIds(idsForItem(it)).indexOf(id) >= 0;
+      }).map(function (it) {
+        return { id: it.id, title: it.title, fach: it.fach || "" };
+      });
       return row;
     });
   }

@@ -48,6 +48,8 @@ import portalCreateRouter from "./routes/portalCreate.js";
 import { sttBenchProxy } from "./routes/sttBench.js";
 import { conformerBenchProxy } from "./routes/conformerBench.js";
 import { qwenTtsProxy } from "./routes/qwenTtsProxy.js";
+import { qwenAsrProxy } from "./routes/qwenAsrProxy.js";
+import { voiceEnhanceProxy } from "./routes/voiceEnhanceProxy.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
 import { fuerAlleMandanten } from "./tenants.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
@@ -58,6 +60,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 // Qwen3-TTS (5090:8213) fuer ClonR. VOR express.json, sonst ist der POST-Body weg.
 app.use("/qwen-tts", qwenTtsProxy);
+app.use("/qwen-asr", qwenAsrProxy);
+app.use("/voice-enhance", voiceEnhanceProxy);
 // 25mb: Nadines Composer erlaubt bis 15 MB Anhaenge pro Mail; base64 in JSON
 // blaeht das auf ~20 MB auf. Mit dem alten 8mb-Limit scheiterte /mail/send ab
 // ~6 MB echter Dateigroesse mit einem nichtssagenden HTTP 413.

@@ -56,25 +56,37 @@ export function resolveUser(req) {
   return { userId: "", isAdmin: true };
 }
 
-// Resolve which mailboxes the caller may see.
+// Welche Postfächer darf dieser Aufrufer sehen? Rein, ohne Firestore —
+// mailAccess() lädt die Konten und ruft das hier auf.
 //
 //   private  ⇒ NUR der Inhaber (ownerUserId === eingeloggter Benutzer).
 //              Admin-Status spielt hier KEINE Rolle — privat ist privat.
-//   praxis   ⇒ jedes eingeloggte Teammitglied (Admins eingeschlossen).
-//
-// Nicht-Browser-Aufrufer (Service-Token: Voice-Worker, Scheduler; Dev-Anon)
-// behalten Vollzugriff — die Sprach-Tools scopen separat über die
-// Geräte-Kopplung (operatorMailAccountIds).
-export async function mailAccess(clientId, req) {
-  const a = req.auth || {};
-  const all = await listAccounts(clientId);
-  if (a.kind !== "user") return { isAdmin: true, userId: "", accounts: all, allowedIds: null };
-  const userId = String(a.userId || "");
-  const isAdmin = !!a.isAdmin;
-  const accounts = all.filter((acc) =>
+//   praxis   ⇒ jedes Teammitglied (Admins eingeschlossen).
+//   service  ⇒ Voice-Worker / Scheduler: alle Konten (Sprach-Tools scopen
+//              zusätzlich über operatorMailAccountIds).
+//   anon/public (kein User-Token, z. B. MAS_REQUIRE_AUTH aus) ⇒ nur Praxis.
+//              Vorher: Vollzugriff. Dadurch sah ein Kollege private Postfächer,
+//              sobald der Browser-Request ohne Firebase-Token ankam.
+export function visibleMailAccounts(all, auth) {
+  const a = auth || {};
+  const list = Array.isArray(all) ? all : [];
+  if (a.kind === "service") {
+    return { isAdmin: true, userId: "", accounts: list, allowedIds: null };
+  }
+  const userId = a.kind === "user" ? String(a.userId || "") : "";
+  const accounts = list.filter((acc) =>
     acc.visibility === "private" ? (!!userId && acc.ownerUserId === userId) : true
   );
-  return { isAdmin, userId, accounts, allowedIds: new Set(accounts.map((x) => x.id)) };
+  return {
+    isAdmin: a.kind === "user" && !!a.isAdmin,
+    userId,
+    accounts,
+    allowedIds: new Set(accounts.map((x) => x.id)),
+  };
+}
+
+export async function mailAccess(clientId, req) {
+  return visibleMailAccounts(await listAccounts(clientId), req.auth || {});
 }
 
 // Wer hat gehandelt? Für Audit-Spuren (Versand, Frist-Dokumentation): explizit
@@ -89,8 +101,8 @@ export function actorName(req, fallback = "Nadine") {
 //   private ⇒ nur der Inhaber. praxis ⇒ nur Admins.
 export async function canManageAccount(req, account) {
   const a = req.auth || {};
-  if (a.kind !== "user") return true; // Service/Dev
-  if (!account) return false;
+  if (a.kind === "service") return true;
+  if (a.kind !== "user" || !account) return false;
   if (account.visibility === "private") return !!a.userId && account.ownerUserId === a.userId;
   return !!a.isAdmin;
 }

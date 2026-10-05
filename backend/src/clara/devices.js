@@ -60,11 +60,19 @@ export function vapidPublicKey() {
 // Wochenend-Pause (Chef 21.08.2026): Datei `.run/clara-push-pause-until.txt`
 // mit ISO-Zeit. Bis dahin gehen weder Info-Push noch Anruf-Push raus.
 // Datei weg oder Zeit vorbei => wieder normal, ohne Neustart.
+// Notaus (Chef 09.09.2026): CLARA_PUSH=0 / MAS_PUSH=0 — kein Push mehr,
+// bis der Schalter wieder auf 1 steht (braucht Prozess-Neustart).
 const PUSH_PAUSE_FILE = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".run", "clara-push-pause-until.txt",
 );
 
+function pushAus() {
+  const v = String(process.env.CLARA_PUSH || process.env.MAS_PUSH || "1").trim().toLowerCase();
+  return v === "0" || v === "false" || v === "off" || v === "no";
+}
+
 function pushPauseUntilMs() {
+  if (pushAus()) return Date.parse("2099-12-31T23:59:59+01:00");
   const fromEnv = String(process.env.CLARA_PUSH_PAUSE_UNTIL || "").trim();
   if (fromEnv) {
     const t = Date.parse(fromEnv);

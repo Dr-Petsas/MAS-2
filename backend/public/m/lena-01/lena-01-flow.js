@@ -300,10 +300,7 @@
     started = true;
     MODE = mode === "ki" ? "ki" : "arzt";
     phase = MODE === "ki" ? "ki" : "arzt";
-    buildBar();
-    if (MODE === "ki") gotoStep(0); else renderBody();
-    // Fach-Zaehler/Luecken laufen mit dem Voice-Poll mit (leichter Takt).
-    setInterval(() => { if (!document.hidden) renderBody(); }, 2000);
+    // "01 · Arzt / Noch offen …" ist weg — Autosave bleibt.
     setInterval(() => { if (!document.hidden) autosave(); }, 15000);
     window.addEventListener("beforeunload", () => { try { autosave(); } catch (_) {} });
   }

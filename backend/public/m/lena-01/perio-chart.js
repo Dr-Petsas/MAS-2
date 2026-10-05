@@ -18,10 +18,9 @@
     versiegelung: { fill: "rgba(255,255,255,.88)", stroke: "#94a3b8" },
   };
   const ROOT_PAINT = {
-    // etwas fester/deckender — vorher .85 war zu transparent (Chef 20.07.2026)
-    wurzelfuellung: { fill: "rgba(70,130,210,.96)", stroke: "#2f5f9a" },
-    i_wurzelfuellung: { fill: "rgba(196,74,58,.96)", stroke: "#8f3a2e" },
-    wurzelstift: { fill: "#b8c0c8", stroke: "#6a7078" },
+    wurzelfuellung: { fill: "#2563eb", stroke: "#1e3a8a" },
+    i_wurzelfuellung: { fill: "#dc2626", stroke: "#7f1d1d" },
+    wurzelstift: { fill: "#cbd5e1", stroke: "#475569" },
   };
 
   function emptySurfaces() {
@@ -352,8 +351,8 @@
     const steps = Math.max(22, Math.round(spanLen / 1.4));
     const halfOf = (w, tApex) => {
       // etwas dicker als zuvor (palatinale 14/24 waren schon gut, +bisschen)
-      const frac = 0.36 * (1 - 0.62 * tApex * tApex);
-      return Math.max(1.45, Math.min(w * 0.44, w * frac * 0.5));
+      const frac = 0.48 * (1 - 0.55 * tApex * tApex);
+      return Math.max(2.4, Math.min(w * 0.52, w * frac * 0.62));
     };
     const tipSorted = tips.slice().sort((a, b) => a - b);
     const tracks = multi
@@ -412,7 +411,7 @@
         mid = Math.max(e.x0 + 1.8, Math.min(e.x1 - 1.8, mid));
         const widthForCanal = multi ? Math.min(w, 28) : w;
         let half = halfOf(widthForCanal, tApex);
-        if (multi) half = Math.min(half, 4.8);
+        if (multi) half = Math.min(half, 6.6);
         half = Math.min(half, mid - e.x0 - 0.35, e.x1 - mid - 0.35);
         half = Math.max(1.25, half);
         tr.mid = mid;
@@ -587,7 +586,8 @@
       fillRibs.forEach((rib) => {
         rootWrap.appendChild(mk("path", {
           d: rib.d, fill: style.fill, stroke: style.stroke,
-          "stroke-width": "1.15", "stroke-linejoin": "round", class: "bef-root-fill",
+          "stroke-width": "1.6", "stroke-linejoin": "round", class: "bef-root-fill",
+          opacity: "1",
         }));
       });
     }
@@ -736,9 +736,13 @@
         fill: "rgba(111,224,212,.08)",
         stroke: "rgba(111,224,212,.55)",
         "stroke-width": "1",
+        "data-fdi": String(c.fdi),
+        "data-surface": seg.key,
       });
       if (seg.schematic) p.setAttribute("stroke-dasharray", "3 2");
       const wireEvents = (el) => {
+        el.setAttribute("data-fdi", String(c.fdi));
+        el.setAttribute("data-surface", seg.key);
         el.style.cursor = "crosshair";
         el.addEventListener("click", (ev) => {
           ev.preventDefault();
@@ -755,7 +759,7 @@
       if (seg.hitD) {
         // sichtbares Oval nur Optik; die (groessere) unsichtbare Flaeche klickt
         p.setAttribute("pointer-events", "none");
-        const hp = mk("path", { d: seg.hitD, fill: "transparent", stroke: "none" });
+        const hp = mk("path", { d: seg.hitD, fill: "transparent", stroke: "none", class: "surface-hit-pad" });
         wireEvents(hp);
         g.appendChild(hp);
       } else {

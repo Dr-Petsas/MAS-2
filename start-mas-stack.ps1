@@ -40,6 +40,22 @@ if (Test-PortListening 4000) {
     Write-StackLog "Backend: $(if (Test-PortListening 4000) { 'OK' } else { 'FEHLER - siehe Log' })"
 }
 
+# --- 1b) DENSappConnect (Karteinotiz + ExtDok-PDFs, kein Bank-Zugriff) ---
+$densConnect = 'C:\Dens\DensOffice\Module\DENSappConnect.exe'
+$densExchange = 'C:\Dens\DensOffice\Module\Datenaustausch'
+if (Test-Path $densExchange) { } else { New-Item -ItemType Directory -Force -Path $densExchange | Out-Null }
+if (Test-Path $densConnect) {
+    $ac = Get-Process -Name 'DENSappConnect' -ErrorAction SilentlyContinue
+    if ($ac) {
+        Write-StackLog "DENSappConnect: laeuft bereits"
+    } else {
+        Write-StackLog "DENSappConnect: starte..."
+        Start-Process -FilePath $densConnect -WorkingDirectory 'C:\Dens\DensOffice\Module'
+        Start-Sleep -Seconds 2
+        Write-StackLog "DENSappConnect: $(if (Get-Process -Name 'DENSappConnect' -ErrorAction SilentlyContinue) { 'OK' } else { 'nicht gestartet' })"
+    }
+}
+
 # --- 2) Cloudflare-Tunnel (macht das Backend fuer Handy/Live-Seite erreichbar) ---
 # Startet cloudflared, schreibt die URL in backend\.env (PUBLIC_BASE_URL) und
 # startet das Backend bei URL-Wechsel neu. Aktuelle URL: logs\tunnel-url.txt

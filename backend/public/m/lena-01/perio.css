@@ -50,15 +50,19 @@ main.perio-half {
 }
 .befund-box-head p { margin: 4px 0 0; font-size: .7rem; color: #7f8b95; }
 
-/* Odontogramm + Lupe des aktiven Zahns (rechts, schmal). */
+/* Lupe links, Odontogramm Mitte, Plan rechts. */
 .schema-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 32%);
+  grid-template-columns: 96px minmax(0, 1fr) 220px;
+  grid-template-areas: "zoom stage plan";
   gap: 12px;
   align-items: stretch;
   flex: 1;
   min-height: 0;
 }
+.zoom-pane { grid-area: zoom; }
+.stage-wrap, #schemaStage { grid-area: stage; }
+.plan-pane { grid-area: plan; }
 
 .stage-wrap {
   border-radius: 16px;
@@ -71,11 +75,15 @@ main.perio-half {
 #stage { width: 100%; }
 .perio-svg { width: 100%; height: auto; display: block; }
 
-/* Lupe: gleiche Hoehe wie das 01-Schema, nicht bis unter die Legende */
+/* Lupe: Raster 96px bleibt (Odontogramm unbewegt). Extra-Breite nur in
+   den 12px-Innenabstand — nicht ueber den Kartenrand. */
 .zoom-pane {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  width: 116px;
+  margin-left: -8px;
+  justify-self: start;
   border: 1px solid #2c3540;
   border-radius: 16px;
   overflow: hidden;
@@ -83,8 +91,8 @@ main.perio-half {
   box-shadow: 0 16px 40px rgba(0,0,0,.35);
 }
 .zoom-head {
-  padding: 10px 14px;
-  font-size: .8rem;
+  padding: 6px 8px;
+  font-size: .68rem;
   font-weight: 800;
   color: #f0d3ac;
   border-bottom: 1px solid rgba(255,255,255,.06);
@@ -122,6 +130,19 @@ main.perio-half {
   stroke-width: 2.2;
   stroke-linejoin: round;
 }
+.studio-palatal-root {
+  opacity: .94;
+  stroke: rgba(70, 42, 26, .4);
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+}
+.studio-buccal-root {
+  fill: none;
+  stroke: rgba(62, 36, 22, .85);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
 /* zarte Wiederholung ueber dem Knochen, damit die Zweit-/Palatinalwurzel
    auch bei hoher Knochen-Deckkraft lesbar bleibt */
 .extra-root-echo path {
@@ -130,6 +151,16 @@ main.perio-half {
   stroke-width: 1.9;
   stroke-linejoin: round;
   pointer-events: none;
+}
+.extra-root-echo path.echo-palatal {
+  fill: rgba(120, 72, 46, .28);
+  stroke: rgba(70, 42, 26, .35);
+  stroke-width: 1.2;
+}
+.extra-root-echo path.echo-buccal {
+  fill: none;
+  stroke: rgba(62, 36, 22, .6);
+  stroke-width: 2.1;
 }
 /* Gingiva: Girlande mit Papillen im Studio-Warm-Stil */
 .gum-group { filter: drop-shadow(0 1.6px 1.2px rgba(70, 25, 22, .35)); }
@@ -218,6 +249,10 @@ main.perio-half {
 }
 .bef-implant, .bef-implant-screw, .bef-implant-loose { pointer-events: none; }
 .bef-surfaces, .bef-rootcanal, .bef-pontic { pointer-events: none; }
+.bef-rootcanal, .bef-root-fill {
+  opacity: 1;
+  mix-blend-mode: normal;
+}
 .bef-surface-lab {
   fill: rgba(240, 220, 180, .85);
   font-size: 8px;
@@ -260,41 +295,65 @@ main.perio-half {
   border: 0; border-radius: 0; background: transparent; box-shadow: none;
   display: flex; flex-direction: column; gap: 8px; overflow: hidden;
 }
-.legend-head { display: flex; align-items: baseline; gap: 12px; margin: 0 2px; flex: none; }
-.legend-head h3 { margin: 0; font-size: .85rem; color: #f0d3ac; letter-spacing: .04em; }
-.legend-head p { margin: 0; font-size: .68rem; color: #7f8b95; }
+.legend-head {
+  display: flex; align-items: baseline; gap: 12px; margin: 0 2px; flex: none;
+  min-height: 1.15em; overflow: hidden;
+}
+.legend-head h3 {
+  margin: 0; font-size: .85rem; color: #f0d3ac; letter-spacing: .04em;
+  white-space: nowrap; flex: none;
+}
+.legend-head p {
+  margin: 0; font-size: .68rem; color: #7f8b95;
+  min-width: 0; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .legend-items {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  flex: 1; min-height: 0; overflow-y: auto;
-  align-content: start; padding: 2px;
+  --legend-tile-h: 52px;
+  --legend-gap: 6px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--legend-gap);
+  flex: none;
+  height: calc(2 * var(--legend-tile-h) + var(--legend-gap));
+  overflow-x: hidden; overflow-y: auto;
+  align-content: start; padding: 0;
   -webkit-overflow-scrolling: touch;
 }
 .legend-item {
-  display: flex; align-items: center; gap: 10px;
-  border: 2px solid #3a4653; border-radius: 14px;
+  display: flex; align-items: center; gap: 8px;
+  height: var(--legend-tile-h);
+  border: 2px solid #3a4653; border-radius: 12px;
   background: linear-gradient(160deg, #1c2430, #121820);
-  padding: 10px 12px; cursor: pointer; text-align: left;
+  padding: 5px 8px; cursor: pointer; text-align: left;
   color: inherit; font: inherit; min-width: 0;
-  transition: border-color .15s, box-shadow .15s, transform .15s;
+  overflow: hidden;
+  transition: border-color .15s, box-shadow .15s;
 }
-.legend-item:hover { border-color: #7a5836; transform: translateY(-1px); }
+.legend-item:hover { border-color: #7a5836; }
 .legend-item.armed {
   border-color: #dda66e;
   box-shadow: 0 0 0 1px #dda66e, 0 8px 22px rgba(221, 166, 110, .18);
   background: linear-gradient(160deg, #2b2118, #1a130d);
 }
 .li-icon {
-  flex: 0 0 46px; width: 46px; height: 46px;
-  border-radius: 11px; overflow: hidden;
+  flex: 0 0 34px; width: 34px; height: 34px;
+  border-radius: 8px; overflow: hidden;
   background: radial-gradient(120% 120% at 30% 20%, #3d2c1f, #1c130c);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07);
   display: flex; align-items: center; justify-content: center;
 }
-.li-icon svg { width: 40px; height: 40px; display: block; }
+.li-icon svg { width: 30px; height: 30px; display: block; }
 .legend-item.armed .li-icon { box-shadow: inset 0 0 0 1px rgba(221, 166, 110, .55); }
-.li-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.li-label { font-size: .76rem; font-weight: 800; color: #e7edef; }
-.li-teeth { font-size: .64rem; color: #66727d; letter-spacing: .04em; }
+.li-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; overflow: hidden; }
+.li-label {
+  font-size: .7rem; font-weight: 800; color: #e7edef; line-height: 1.15;
+  overflow-wrap: anywhere; word-break: break-word; hyphens: auto;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.li-teeth {
+  font-size: .6rem; color: #66727d; letter-spacing: .03em; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .li-teeth.has { color: #dda66e; font-weight: 700; }
 body.finding-armed .hit { cursor: crosshair; }
 body.surface-armed .hit { cursor: default; }
@@ -306,7 +365,9 @@ body.surface-armed .surface-hit { cursor: crosshair; }
   pointer-events: none;
 }
 .hit { fill: rgba(0, 0, 0, 0.001); cursor: pointer; }
-.surface-hit { pointer-events: all; }
+.hit-bg { fill: rgba(0, 0, 0, 0.001); cursor: default; }
+.surface-hit, .surface-hit-pad { pointer-events: all; cursor: crosshair; }
+body.surface-armed .zoom-svg { cursor: crosshair; }
 .hit-lab { pointer-events: none; fill: #6fe0d4; font-size: 9px; font-weight: 800; }
 .flab, .flab-find { pointer-events: none; }
 .flab-find {
@@ -316,13 +377,58 @@ body.surface-armed .surface-hit { cursor: crosshair; }
   font-family: inherit;
   letter-spacing: 0.02em;
 }
-.flab-pocket {
-  fill: #c47a4a;
-  font-size: 8px;
-  font-weight: 700;
-  font-family: inherit;
-  opacity: .82;
+.flab-pocket-g {
+  cursor: ns-resize;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
+.flab-pocket-hit { fill: transparent; pointer-events: auto; }
+.flab-pocket-bg { stroke-width: 1.2; }
+.flab-pocket-bg.is-ok { fill: #eef1f4; stroke: #c5cdd6; }
+.flab-pocket-bg.is-mid { fill: #fff3d6; stroke: #d4a017; }
+.flab-pocket-bg.is-hi { fill: #ffe4e0; stroke: #c43121; }
+.flab-pocket-g.is-sel .flab-pocket-bg { stroke-width: 2.4; stroke: #e07a30; }
+.flab-pocket {
+  font-size: 16px;
+  font-weight: 800;
+  font-family: inherit;
+  pointer-events: none;
+}
+.flab-pocket.is-ok { fill: #5b6675; }
+.flab-pocket.is-mid { fill: #8a5a00; }
+.flab-pocket.is-hi { fill: #9a1f2e; }
+body.pocket-dragging { cursor: ns-resize; user-select: none; -webkit-user-select: none; }
+#parPocketPad {
+  position: fixed; z-index: 80;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 12px;
+  border: 1px solid #2c3540;
+  background: #161d26;
+  box-shadow: 0 10px 28px rgba(0,0,0,.35);
+  color: #e8e2d6;
+  font: 700 12px/1 system-ui, -apple-system, sans-serif;
+}
+#parPocketPad[hidden] { display: none !important; }
+#parPocketPad .pp-meta { min-width: 72px; color: #c9b8a0; letter-spacing: .02em; }
+#parPocketPad .pp-bump,
+#parPocketPad .pp-keys button {
+  appearance: none; border: 1px solid #2c3540; background: #0f141c;
+  color: #e8e2d6; border-radius: 8px; cursor: pointer;
+  font: 800 14px/1 system-ui, -apple-system, sans-serif;
+}
+#parPocketPad .pp-bump { width: 32px; height: 32px; }
+#parPocketPad #parPocketInput {
+  width: 36px; height: 32px; text-align: center;
+  border: 1px solid #2c3540; border-radius: 8px;
+  background: #0f141c; color: #f0d3ac;
+  font: 800 18px/1 system-ui, -apple-system, sans-serif;
+}
+#parPocketPad .pp-keys { display: flex; gap: 3px; margin-left: 4px; }
+#parPocketPad .pp-keys button { width: 26px; height: 28px; font-size: 12px; }
+#parPocketPad .pp-keys button.on { background: #e07a30; border-color: #e07a30; color: #fff; }
 .selout { fill: rgba(88,199,189,.14); stroke: #6fe0d4; stroke-width: 3; stroke-linejoin: round; pointer-events: none; filter: drop-shadow(0 0 6px rgba(111,224,212,.55)); }
 /* fehlender Zahn ausgewaehlt: nur zarte gestrichelte Positionsmarke */
 .selout.selout-miss { fill: none; stroke: rgba(111,224,212,.55); stroke-width: 1.6; stroke-dasharray: 7 6; filter: none; }
@@ -337,6 +443,9 @@ body.surface-armed .surface-hit { cursor: crosshair; }
 @media (max-width: 1040px) {
   main.perio-half { min-height: 0; }
   .legend-items { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 860px) {
+  .zoom-pane { width: auto; margin-left: 0; }
 }
 @media (max-width: 640px) {
   .legend-items { grid-template-columns: 1fr; }

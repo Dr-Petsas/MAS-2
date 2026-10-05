@@ -7,6 +7,7 @@ import { queryRecent } from "../brain/eventStore.js";
 import { listRuns, getRun, startRun, cancelRun, runStatus, catalogInfo } from "../testtrain/runner.js";
 import { listPlatformRuns, getPlatformRun, startPlatformRun, cancelPlatformRun, platformRunStatus, PLATFORM_GROUPS } from "../testtrain/platformRunner.js";
 import { startDuoRun, cancelDuoRun, duoRunStatus, listDuoRuns, getDuoRun, streamDuoAudio, streamDuoTurnAudio } from "../testtrain/duo.js";
+import { listDemoClaraSessions, getDemoClaraSession, streamDemoClaraFile } from "../testtrain/democlaraAudio.js";
 import { resolveClientId } from "./_shared.js";
 
 const router = express.Router();
@@ -212,6 +213,32 @@ router.get("/testtrain/duo/audio/:runId", async (req, res) => {
 router.get("/testtrain/duo/audio/:runId/:file", async (req, res) => {
   if (!requireSuperuser(req, res)) return;
   if (!streamDuoTurnAudio(req.params.runId, req.params.file, res)) {
+    res.status(404).json({ error: "audio_not_found" });
+  }
+});
+
+
+// --- DemoClara Audiotraining (Erlebnis-Demo: WAV + Skript, Superuser) ---
+
+router.get("/testtrain/democlara/sessions", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  try {
+    res.json({ ok: true, sessions: listDemoClaraSessions({ limit: Number(req.query?.limit) || 80 }) });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+router.get("/testtrain/democlara/sessions/:id", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  const session = getDemoClaraSession(req.params.id);
+  if (!session) return res.status(404).json({ error: "session_not_found" });
+  res.json({ ok: true, session });
+});
+
+router.get("/testtrain/democlara/audio/:id/:file", async (req, res) => {
+  if (!requireSuperuser(req, res)) return;
+  if (!streamDemoClaraFile(req.params.id, req.params.file, res)) {
     res.status(404).json({ error: "audio_not_found" });
   }
 });

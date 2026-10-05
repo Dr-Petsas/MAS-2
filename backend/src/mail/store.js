@@ -307,11 +307,11 @@ function keepContact(c, needle) {
  *
  * @returns {Promise<{items: object[], nextCursor: string|null}>}
  */
-export async function listContacts(clientId, { q = "", limit = 20, cursor = null } = {}) {
+export async function listContacts(clientId, { q = "", limit = 20, cursor = null, scanCap = 5000 } = {}) {
   const needle = q.toLowerCase().trim();
   const pageSize = Math.max(1, Math.min(200, Number(limit) || 20));
   const WINDOW = 200;
-  const SCAN_CAP = 5000; // hard safety bound on docs examined per request
+  const SCAN_CAP = Math.max(200, Math.min(5000, Number(scanCap) || 5000)); // hard safety bound on docs examined per request
   const base = masCollection(clientId, CONTACT_COL).orderBy("lastSeenAt", "desc");
 
   const items = [];

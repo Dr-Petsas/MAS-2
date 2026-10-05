@@ -18,7 +18,7 @@ export const PORTAL_AI_OPERATIONS = [
 
 const OPERATION_CONTRACT = {
   titles: `Antworte als JSON: {"titles":["...","...","..."]}. Genau 5 kurze, konkrete deutsche Videotitel.`,
-  script: `Antworte als JSON: {"title":"...","hook":"...","script":"...","cta":"..."}. Das Skript ist gesprochene Sprache, 80–180 Wörter.`,
+  script: `Antworte als JSON: {"title":"...","hook":"...","script":"...","cta":"..."}. Das Feld script ist ausschließlich der gesprochene Hauptteil. Halte die im Kontext genannte Wortzahl ein. Wenn keine Wortzahl genannt ist, 80–180 Wörter.`,
   storyboard: `Antworte als JSON: {"scenes":[{"title":"...","mode":"lipsync|ambient|board","narration":"...","visual":"...","durationHintSeconds":8,"bullets":[]}]}. 3–8 Szenen. Off-Stimme ist erlaubt: ambient/board laufen weiter unter narration.`,
   image_prompt: `Antworte als JSON: {"prompt":"...","negativePrompt":"..."}. Prompt beschreibt Ort, Perspektive, Abstand, Outfit, Licht und Pose; Gesicht/Identität unverändert.`,
   board_bullets: `Antworte als JSON: {"title":"...","bullets":["...","..."]}. Maximal 5 kurze, medizinisch verständliche Stichpunkte.`,

@@ -647,9 +647,11 @@
     const uk = K.FDI_UK;
     const therapyRow = (list) =>
       o.hideTherapy ? "" : layerRow(chart, list, "therapie", selectedFdi, "Therapie");
-    const foot = o.legend
-      ? legendHtml(chart, o.flashKeys)
-      : '<p class="zs-hint">B: c=Karies · f=fehlend · T: fMOD=Füllung · LA</p>';
+    const foot = o.hideLegend
+      ? ""
+      : o.legend
+        ? legendHtml(chart, o.flashKeys)
+        : '<p class="zs-hint">B: c=Karies · f=fehlend · T: fMOD=Füllung · LA</p>';
     return (
       '<div class="zs-schema" aria-label="Zahnschema Befund Therapie">' +
       '<div class="zs-block zs-ok">' +

@@ -17,6 +17,7 @@
   const CEJ_BONE_GAP_MM = 1.8;   // gesunder Knochen endet ~1,5-2 mm apikal der Grenzlinie
   const EXTRACT_DROP_MM = 2;     // Extraktionsdefekt: Knochenkante 2 mm apikal (sichtbare Mulde)
   const GUM_H = 24;              // Bandhoehe der freien Gingiva (px, ~4 mm, Wunsch: doppelt)
+  const GUM_CORONAL_MM = 2.5;    // Saum 2–3 mm zur Krone (Chef 16.08.2026)
   const GUM_X = { up: [73, 1303], lo: [63, 1313] };  // Fallback: Knochen-Ausdehnung
   let BONE_EDGE = null;          // koronale Knochenkante je Spalte (bone-edge.json)
 
@@ -28,8 +29,10 @@
   let SOURCE_CEJ_D = {};                // exakte Krone/Wurzel-Grenze je FDI (aus PIX)
   let SOURCE_CEJ_ARR = {};              // dieselbe Grenze als y-Werte je Quell-x (fuer Knochen)
   let EXTRA_ROOTS = {};                 // Zweit-/Palatinalwurzel-Pfade (14/25, 16/17/26/27)
+  let BUCAL_ROOTS = {};                 // OK-Molar: mesiale + distale Wurzelform
   let GUM_GEO = { up: null, lo: null }; // margin/apical je Kiefer fuer Befund-Clips
-  let LOSS_PX = { up: null, lo: null }; // Abbau in px je Spalte (Bogen Mid→Mid)
+  let LOSS_PX = { up: null, lo: null }; // Abbau in px je Spalte (Papillen-Peak, Apex→Apex)
+  let _pocketPlane = { up: null, lo: null };
   let svgEl = null;
   let APEXX = {};                       // Beschriftungs-x je FDI: Mitte der Wurzelspitzen
   const state = {};
@@ -37,6 +40,13 @@
   let boneOpacity = 0.45;   // Knochen-Deckkraft Default 45 % (permanent)
   let armedFinding = null;  // aktives Legenden-Item; null = nur Zahn waehlen
   let activeTab = "Pro";    // sichtbare Legende + Overlay-Filter
+  let pocketSel = { fdi: null, side: null };
+  let pocketDrag = null;
+  let pocketGuard = 0;
+  const POCKET_TAP = 8;
+  const POCKET_CURVE = 24;
+  const POCKET_STEP_Y = 14;
+  const POCKET_LONG_MS = 520;
 
   function markOf(s) {
     if (!s.mark) s.mark = {};
@@ -509,6 +519,82 @@
       const d = "M " + pts.map(([x, y]) => x.toFixed(1) + " " + y.toFixed(1)).join(" L ") + " Z";
       EXTRA_ROOTS[fdi] = [smoothPathD(d, 72, 2, 0)];
     });
+    buildBuccalRoots();
+  }
+
+  function samplePathPts(d, n) {
+    const tmp = document.createElementNS(SVGNS, "svg");
+    tmp.setAttribute("width", "0");
+    tmp.setAttribute("height", "0");
+    tmp.style.cssText = "position:absolute;left:-9999px";
+    const p = document.createElementNS(SVGNS, "path");
+    p.setAttribute("d", d);
+    tmp.appendChild(p);
+    document.body.appendChild(tmp);
+    const pts = [];
+    try {
+      const L = p.getTotalLength();
+      const m = n || 160;
+      if (L > 20) {
+        for (let i = 0; i < m; i++) {
+          const q = p.getPointAtLength((L * i) / m);
+          pts.push({ x: q.x, y: q.y });
+        }
+      }
+    } catch (e) { /* leer */ }
+    document.body.removeChild(tmp);
+    return pts;
+  }
+
+  function smoothEdge(xs, passes) {
+    let a = xs.slice();
+    for (let r = 0; r < (passes || 3); r++) {
+      a = a.map((x, i) => {
+        const p = a[Math.max(0, i - 1)], n = a[Math.min(a.length - 1, i + 1)];
+        return (p + 2 * x + n) / 4;
+      });
+    }
+    return a;
+  }
+
+  // Mesial/distal: Aussenkante = echte Silhouette, innen weich zur Furkation.
+  function buildBuccalRoots() {
+    BUCAL_ROOTS = {};
+    [16, 17, 26, 27].forEach((fdi) => {
+      const silD = SIL[fdi];
+      const seg = SOURCE_CEJ_ARR[fdi];
+      if (!silD || !seg) return;
+      const sb = pathBounds(silD);
+      if (!sb) return;
+      let cerv = 0;
+      seg.ys.forEach((y) => { cerv += y; });
+      cerv /= seg.ys.length;
+      const pts = samplePathPts(silD, 200);
+      if (pts.length < 24) return;
+      const rows = [];
+      for (let y = Math.floor(sb.y0); y <= cerv + 6; y += 2) {
+        let mn = Infinity, mx = -Infinity;
+        pts.forEach((q) => {
+          if (Math.abs(q.y - y) <= 2.2) {
+            mn = Math.min(mn, q.x);
+            mx = Math.max(mx, q.x);
+          }
+        });
+        if (mx - mn > 8) rows.push({ y, mn, mx });
+      }
+      if (rows.length < 8) return;
+      const mns = smoothEdge(rows.map((r) => r.mn), 4);
+      const mxs = smoothEdge(rows.map((r) => r.mx), 4);
+      rows.forEach((r, i) => { r.mn = mns[i]; r.mx = mxs[i]; });
+      const edge = (key) => {
+        let d = "M " + rows[0][key].toFixed(1) + " " + rows[0].y.toFixed(1);
+        for (let i = 1; i < rows.length; i++) {
+          d += " L " + rows[i][key].toFixed(1) + " " + rows[i].y.toFixed(1);
+        }
+        return d;
+      };
+      BUCAL_ROOTS[fdi] = [edge("mn"), edge("mx")];
+    });
   }
 
   function ensureGrad(defs, id, type, attrs, stops) {
@@ -736,6 +822,7 @@
       root.appendChild(bandRect(gc, "st-rx-" + fdi, "studio-root-tone"));
       root.appendChild(bandRect(gc, "st-rc-" + fdi, "studio-root-cyl"));
       root.appendChild(bandRect(gc, "st-ry-" + fdi, "studio-root-depth"));
+      const palMolar = fdi === 16 || fdi === 17 || fdi === 26 || fdi === 27;
       (EXTRA_ROOTS[fdi] || []).forEach((d, i) => {
         const rb = pathBounds(d);
         if (!rb) return;
@@ -747,9 +834,18 @@
         const p = document.createElementNS(SVGNS, "path");
         p.setAttribute("d", d);
         p.setAttribute("fill", "url(#st-xr-" + fdi + "-" + i + ")");
-        p.setAttribute("class", "studio-extra-root");
+        // OK-Molar: Palatinal OHNE Kontur (sonst wirkt sie vorne).
+        p.setAttribute("class", palMolar ? "studio-palatal-root" : "studio-extra-root");
         root.appendChild(p);
       });
+      if (palMolar) {
+        (BUCAL_ROOTS[fdi] || []).forEach((d) => {
+          const buc = document.createElementNS(SVGNS, "path");
+          buc.setAttribute("d", d);
+          buc.setAttribute("class", "studio-buccal-root");
+          root.appendChild(buc);
+        });
+      }
 
       const m = markOf(st(c.fdi));
       if (m.wurzelrest) {
@@ -1068,7 +1164,7 @@
 
   function marginPoints(margin, gx0, gx1) {
     // 2-px-Raster PLUS lokale Extrema: sonst verfehlt das Raster die
-    // Papillenspitze um 1-2 px und die Catmull-Kurve stumpft sie ab
+    // Papillenspitze und die Catmull-Kurve stumpft die Girlande ab.
     const pts = [];
     let lastX = -Infinity;
     for (let x = gx0; x <= gx1; x++) {
@@ -1099,8 +1195,8 @@
       const papMask = new Array(CW).fill(0);
       const sagArr = new Array(CW).fill(0);
       const raw = gumMarginArr(cols, base, upper, live, extractMask, papMask, sagArr);
-      // Par-Abbau nur an vorhandenen Zaehnen; Extraktionskamm ist schon live
       const lossArr = LOSS_PX[key] || new Array(CW).fill(0);
+      // Bei Taschen: Saum wandert mit dem Knochen. Bei 1 bleibt er am Zahnhals.
       for (let x = 0; x < CW; x++) {
         if (!Number.isFinite(raw[x]) || extractMask[x]) continue;
         raw[x] += apicalDir * (lossArr[x] || 0);
@@ -1108,7 +1204,6 @@
       // ausserhalb des Bandes mit Randwerten fuellen, damit die Glaettung sauber laeuft
       for (let x = 0; x < gx0; x++) raw[x] = raw[gx0];
       for (let x = gx1 + 1; x < CW; x++) raw[x] = raw[gx1];
-      // weich glaetten; Extraktionskamm + retromolar danach sanft auf Kamm
       const margin = smoothArr(smoothArr(raw, 9), 7);
       // Papillenspitzen re-injizieren: die Glaettung buegelt sie sonst rund
       // und kurz (schwarzes Dreieck interdental, Feedback 22 distal)
@@ -1133,16 +1228,9 @@
         if (w < 14) return;
         let wgt = digit >= 6 ? 0.85 : 0.5;
         for (let x = x0; x <= x1; x++) {
-          if (extractMask[x]) { wgt *= 0.5; break; } // neben Luecke sanfter
+          if (extractMask[x]) { wgt *= 0.5; break; }
         }
         const yL = margin[x0], yR = margin[x1];
-        // Amplitude: NIE unter der anatomischen Mindest-Bogentiefe und NIE
-        // flacher als der Bestand. Molaren liefern aus dem Raster eine fast
-        // flache CEJ, und die Interdental-Papillen sind dort winzig — die
-        // Sehne (yL->yR) liegt quasi AUF dem Zenit, der Bogen wurde
-        // horizontal (Chef 20.07.: "verliert die Bogenform"). Mindesttiefe
-        // deshalb kraeftig und breitenskaliert; apikal ist sicher (nie auf
-        // die Krone). Bestehende tiefe Boegen (Praemolaren) nicht deckeln.
         let D = 0;
         for (let x = x0 + 1; x < x1; x++) {
           const t = (x - x0) / w;
@@ -1155,13 +1243,10 @@
           const t = (x - x0) / w;
           const arc = yL + (yR - yL) * t
             + apicalDir * A * Math.sin(Math.PI * t);
-          // Randzonen (Papillenflanken) original lassen, Mitte runden
           const w2 = wgt * easeW(Math.min(t, 1 - t));
           margin[x] = margin[x] * (1 - w2) + arc * w2;
         }
       });
-      // Zenit-Boegen extra runden — NUR ausserhalb der Papillen, damit
-      // deren Spitzen stehen bleiben
       {
         const tmp = margin.slice();
         for (let x = gx0 + 2; x <= gx1 - 2; x++) {
@@ -1212,12 +1297,19 @@
         }
       }
 
+      {
+        const lift = GUM_CORONAL_MM * MM;
+        for (let x = gx0; x <= gx1; x++) {
+          if (extractMask[x]) continue;
+          margin[x] += crownward * lift;
+        }
+      }
+
       // Apikale Kante: folgt NICHT den Papillen nach koronal, sondern einer
       // geglaetteten Zenit-Huellkurve (erodiertes Margin-Profil). Unter den
       // Papillen bleibt so ein deutlich breiterer Saum stehen; an den
-      // Zahnhaelsen misst das Band weiterhin GUM_H. Endkappen kurz halten —
-      // lange CAP + steiler Ast = Nadelspitze.
-      const ERO = 35;   // halbe Fensterbreite ~ Zahnteilung/2 (Papille erfasst)
+      // Zahnhaelsen misst das Band weiterhin GUM_H.
+      const ERO = 35;
       const env = new Array(CW);
       for (let x = 0; x < CW; x++) {
         const a = Math.max(gx0, x - ERO), b = Math.min(gx1, x + ERO);
@@ -1228,13 +1320,8 @@
         env[x] = m;
       }
       const envSm = smoothArr(env, 21);
-      // Apikale Kante: BOGENFOERMIG kongruent zur CEJ-Girlande (Chef 20.07.:
-      // auch die apikale Seite muss die Bogenform zeigen, nicht horizontal).
-      // Die Zenit-Boegen werden stark mitgefahren (Rate ~0.85), die Papillen-
-      // Spitzen laufen aber in eine Saettigung — unter den Papillen bleibt
-      // der breite Saum erhalten (Anforderung 20.07. frueher am Tag).
-      const SAT = GUM_H * 0.55;   // maximale Anhebung unter Papillen (px)
-      const RATE = 0.85;          // Kongruenz an den Bogen-Flanken
+      const SAT = GUM_H * 0.55;
+      const RATE = 0.85;
       const apical = new Array(CW);
       const CAP = 8;
       for (let x = 0; x < CW; x++) {
@@ -1341,8 +1428,8 @@
   // gezeichnet.
   //
   // Logische Stack-Reihenfolge (unten → oben):
-  //   plastic → befundDeep (WF, Implantat-Schraube) → bone → echo →
-  //   befundApex (CAP/WSR, Konkremente) → gum → befundLayer (Krone/Flaechen/
+  //   plastic → befundDeep (Implantat-Schraube) → bone → echo →
+  //   befundApex (WF/Stift, CAP/WSR, Konkremente) → gum → befundLayer (Krone/Flaechen/
   //   Badges) → hitLayer
   // ---------------------------------------------------------------------
 
@@ -1777,6 +1864,12 @@
     return PerioChart.crownBox(c, sb, cej, SPLIT);
   }
 
+  function cejAtOf(c) {
+    const seg = SOURCE_CEJ_ARR[c.fdi];
+    if (!seg) return null;
+    return (x) => cejYAt(seg, x);
+  }
+
   // Live-Knochenkante (inkl. Abbau) an der Zahnmitte — Anker fuer Implantate
   function liveCrestY(c) {
     const base = c.upper ? BONE_UP : BONE_LO;
@@ -2148,10 +2241,10 @@
 
       if (seg) {
         if (!s.missing && !m.brueckenglied) {
-          // Deep: WF/Stift im Wurzelband — unter Knochen + Zahnfleisch
+          // WF/Stift ueber dem Knochen (sonst verschwinden sie im Bone-Overlay).
           const rootG = PerioChart.drawRootCanal(
             geo, s, seg, cejYAt, pathBounds, SIL[geo.fdi], EXTRA_ROOTS[geo.fdi], defs);
-          if (rootG) tfHost(deep, hostTf).appendChild(rootG);
+          if (rootG) tfHost(apex, hostTf).appendChild(rootG);
 
           // Apex: CAP/WSR an den Spitzen + Konkremente wurzelwaerts der CEJ
           // (nach Knochen/Echo, unter Gingiva)
@@ -2192,7 +2285,7 @@
           }
           // Flaechen anatomisch an der Aussenlinie (Clips setzt drawSurfaces
           // selbst; das Rueckseiten-Oval steht ungeclippt ueber dem Zahn)
-          const surfG = PerioChart.drawSurfaces(geo, s, box, showSurfGuides);
+          const surfG = PerioChart.drawSurfaces(geo, s, box, showSurfGuides, SIL[geo.fdi], cejAtOf(geo));
           if (surfG) crownHost.appendChild(surfG);
           // Keilfoermiger Defekt: bukkales Oval direkt oberhalb des
           // Zahnfleischs am Schmelz-/Zement-Uebergang
@@ -2297,9 +2390,53 @@
     return smoothArr(arr, 9);
   }
 
-  // Taschentiefe → Knochenabbau in mm (gesund 1–3 mm: kein Abbau)
+  // Taschentiefe → relativer Abbau (1 = gesund = 0, 9 = volle Wurzellaenge)
   function pocketToLoss(mm) {
-    return Math.max(0, (+mm || 0) - 3);
+    return Math.max(0, Math.min(8, (+mm || 1) - 1));
+  }
+
+  function apexXOf(c) {
+    return APEXX[c.fdi] != null ? APEXX[c.fdi] : c.cx;
+  }
+
+  function rootLenPx(c) {
+    const sb = pathBounds(SIL[c.fdi] || "");
+    const seg = SOURCE_CEJ_ARR[c.fdi];
+    const ax = apexXOf(c);
+    const cej = seg ? cejYAt(seg, ax) : (c.upper ? SPLIT * 0.75 : SPLIT * 1.25);
+    if (!sb) return 72;
+    const apexY = c.upper ? sb.y0 : sb.y1;
+    return Math.max(28, Math.abs(apexY - cej));
+  }
+
+  function pocketAmpPx(mm, rootLen) {
+    const t = (clampPocket(mm) - 1) / 8;
+    // 9 = tiefer Defekt, aber der Zahn bleibt im Knochen (apikales Drittel).
+    return t * Math.max(0, rootLen * 0.68);
+  }
+
+  // Cosinus-Huegel: 0 an den Apex-Enden, Peak auf der Papillen-x.
+  function cosineLobe(x, xA, peak, xB, amp) {
+    if (amp < 0.4) return 0;
+    if (!(xA < xB)) return 0;
+    if (!(xA < peak && peak < xB)) peak = (xA + xB) / 2;
+    if (x <= xA || x >= xB) return 0;
+    if (x <= peak) {
+      const span = peak - xA;
+      if (span < 1) return amp;
+      const t = (x - xA) / span;
+      return amp * 0.5 * (1 - Math.cos(Math.PI * t));
+    }
+    const span = xB - peak;
+    if (span < 1) return amp;
+    const t = (x - peak) / span;
+    return amp * 0.5 * (1 + Math.cos(Math.PI * t));
+  }
+
+  function pocketKeyAtScreen(fdi, screenSide) {
+    const mRight = mesialIsRight(fdi);
+    if (screenSide === "L") return mRight ? "d" : "m";
+    return mRight ? "m" : "d";
   }
 
   // Q1/Q4: Mesial liegt im Bild rechts (Richtung Front); Q2/Q3: Mesial links
@@ -2350,30 +2487,53 @@
     return teeth;
   }
 
-  // Abbau-Profil: raised-cosine je Zahn (rund am Maximum, keine Dreiecksspitze).
-  // Mesial/distal koennen unterschiedlich tief sein (Par-Taschen).
+  // Abbau-Profil: von Taschenzahl zu Taschenzahl interpolieren.
+  // Zahnmitte darf nicht auf 1 zurueckfallen — sonst Berg/Tal.
+  // 1 mm = gesund (0), 9 mm = vertikal bis an die Wurzelspitze.
   function lossPxArr(cols) {
     const arr = new Array(CW).fill(0);
-    const teeth = lossTeeth(cols);
-    teeth.forEach((t, i) => {
-      if (t.loss < 0.5) return;
-      const half = Math.max(8, (t.x1 - t.x0) / 2);
-      const gapL = i > 0 ? Math.max(0, t.x0 - teeth[i - 1].x1) : 20;
-      const gapR = i + 1 < teeth.length ? Math.max(0, teeth[i + 1].x0 - t.x1) : 20;
-      const reachL = half + Math.min(14, gapL * 0.28);
-      const reachR = half + Math.min(14, gapR * 0.28);
-      const xA = Math.max(0, Math.floor(t.mid - reachL));
-      const xB = Math.min(CW - 1, Math.ceil(t.mid + reachR));
-      for (let x = xA; x <= xB; x++) {
-        const dist = x - t.mid;
-        const R = dist < 0 ? reachL : reachR;
-        if (R < 1 || Math.abs(dist) >= R) continue;
-        const w = 0.5 * (1 + Math.cos((Math.PI * dist) / R));
-        const amp = dist < 0 ? t.lossL : t.lossR;
-        arr[x] = Math.max(arr[x], amp * w);
+    const teeth = cols.filter((c) => {
+      const s = st(c.fdi);
+      return s && !s.missing;
+    }).sort((a, b) => a.cx - b.cx);
+    if (!teeth.length) return arr;
+    const pts = [];
+    teeth.forEach((c, i) => {
+      const s = st(c.fdi);
+      const seg = SOURCE_CEJ_ARR[c.fdi];
+      const x0 = seg ? seg.x0 : c.x0;
+      const x1 = seg ? seg.x0 + seg.ys.length - 1 : c.x1;
+      const root = rootLenPx(c);
+      let ampL = pocketAmpPx(pocketMm(s, pocketKeyAtScreen(c.fdi, "L")), root);
+      let ampR = pocketAmpPx(pocketMm(s, pocketKeyAtScreen(c.fdi, "R")), root);
+      if (i > 0) {
+        const p = teeth[i - 1];
+        const pr = rootLenPx(p);
+        const mm = pocketMm(st(p.fdi), pocketKeyAtScreen(p.fdi, "R"));
+        ampL = Math.max(ampL, pocketAmpPx(mm, (root + pr) / 2));
       }
+      if (i + 1 < teeth.length) {
+        const n = teeth[i + 1];
+        const nr = rootLenPx(n);
+        const mm = pocketMm(st(n.fdi), pocketKeyAtScreen(n.fdi, "L"));
+        ampR = Math.max(ampR, pocketAmpPx(mm, (root + nr) / 2));
+      }
+      pts.push({ x: x0, amp: ampL });
+      pts.push({ x: x1, amp: ampR });
     });
-    return smoothArr(smoothArr(arr, 11), 9);
+    pts.sort((a, b) => a.x - b.x);
+    const first = pts[0], last = pts[pts.length - 1];
+    for (let x = 0; x < CW; x++) {
+      if (x <= first.x) { arr[x] = first.amp; continue; }
+      if (x >= last.x) { arr[x] = last.amp; continue; }
+      let i = 0;
+      while (i + 1 < pts.length && pts[i + 1].x < x) i++;
+      const a = pts[i], b = pts[Math.min(pts.length - 1, i + 1)];
+      const span = b.x - a.x;
+      const t = span < 1 ? 1 : (x - a.x) / span;
+      arr[x] = a.amp + (b.amp - a.amp) * t;
+    }
+    return smoothArr(arr, 9);
   }
 
   /** Extraktionsdefekt 2 mm: klare Mulde ueber der ehemaligen Zahnbreite. */
@@ -2419,7 +2579,7 @@
       const l = lossArr[Math.max(0, Math.min(CW - 1, x))] || 0;
       out[x] = h + apical * l;
     }
-    return smoothArr(out, 9);
+    return smoothArr(out, 3);
   }
 
   function clipPathD(cols, liveArr, upper, full) {
@@ -2469,6 +2629,7 @@
   }
 
   function render() {
+    _pocketPlane = { up: null, lo: null };
     let defs = svgEl.querySelector("defs#clipDefs");
     if (!defs) {
       defs = document.createElementNS(SVGNS, "defs");
@@ -2476,7 +2637,7 @@
       svgEl.insertBefore(defs, svgEl.firstChild);
     }
     const oc = upperCols(), lc = lowerCols();
-    // Live-Abbau: Peak an Zahnmitte, Papillen/Kontakte minimal mit
+    // Live-Abbau: Peak auf der Papille, Amplitude Apex→Apex
     LOSS_PX.up = mergeLossArr(lossPxArr(oc), extractDropPxArr(oc));
     LOSS_PX.lo = mergeLossArr(lossPxArr(lc), extractDropPxArr(lc));
     const liveUp = applyLossToCrest(BONE_UP, LOSS_PX.up, true);
@@ -2518,11 +2679,21 @@
         hostG.setAttribute("clip-path", "url(#st-impk-" + c.fdi + ")");
         g.appendChild(hostG);
       }
+      const palMolar = c.fdi === 16 || c.fdi === 17 || c.fdi === 26 || c.fdi === 27;
       EXTRA_ROOTS[c.fdi].forEach((d) => {
         const p = document.createElementNS(SVGNS, "path");
         p.setAttribute("d", d);
+        if (palMolar) p.setAttribute("class", "echo-palatal");
         hostG.appendChild(p);
       });
+      if (palMolar) {
+        (BUCAL_ROOTS[c.fdi] || []).forEach((d) => {
+          const buc = document.createElementNS(SVGNS, "path");
+          buc.setAttribute("d", d);
+          buc.setAttribute("class", "echo-buccal");
+          hostG.appendChild(buc);
+        });
+      }
       echo.appendChild(g);
     });
 
@@ -2636,14 +2807,15 @@
     const host = document.getElementById("zoomStage");
     if (!host || !svgEl) return;
     const label = document.getElementById("zoomLabel");
-    if (label) label.textContent = "Zahn " + selected;
+    if (label) label.textContent = selected != null ? "Zahn " + selected : "Zahn";
     host.textContent = "";
+    if (selected == null) return;
     const sb = zoomToothBounds(selected);
     if (!sb) return;
     const clone = svgEl.cloneNode(true);
     clone.removeAttribute("class");
     clone.removeAttribute("id");
-    clone.querySelectorAll(".hit, .flab, .flab-find, .flab-pocket, .selout").forEach((n) => n.remove());
+    clone.querySelectorAll(".hit, .hit-bg, .flab, .flab-find, .flab-pocket, .flab-pocket-g, .selout, .surface-hits").forEach((n) => n.remove());
     clone.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
 
     const tw = Math.max(8, sb.x1 - sb.x0);
@@ -2683,7 +2855,24 @@
     while (clone.firstChild) wrap.appendChild(clone.firstChild);
     clone.appendChild(zdefs);
     clone.appendChild(wrap);
+    wireZoomSurfaceHits(wrap);
     host.appendChild(clone);
+  }
+
+  /** Lupe ist ein toter SVG-Klon — Flaechen-Hits extra live draufsetzen. */
+  function wireZoomSurfaceHits(hostG) {
+    if (!hostG || selected == null || !needsSurfacePick(armedFinding)) return;
+    const c = COLS.cols.find((cc) => cc.fdi === selected);
+    if (!c || !st(c.fdi) || st(c.fdi).missing) return;
+    const milk = milkInfo(c);
+    const geo = milk ? milk.src : c;
+    const hits = PerioChart.buildSurfaceHits(
+      geo, crownBoxOf(geo), applySurfaceFinding, SIL[geo.fdi], cejAtOf(geo));
+    hits.querySelectorAll("[clip-path]").forEach((n) => n.removeAttribute("clip-path"));
+    const disp = chirDisplacement(c);
+    const tf = [disp && disp.str, milk && milk.transform].filter(Boolean).join(" ");
+    if (tf) hits.setAttribute("transform", tf);
+    hostG.appendChild(hits);
   }
 
   const SHORT = {
@@ -2733,12 +2922,423 @@
     return parts.slice(0, 6).join("·");
   }
 
-  function pocketLabel(s) {
-    if (!s || !s.pocket) return "";
-    const pm = +s.pocket.m || 0;
-    const pd = +s.pocket.d || 0;
-    if (pm <= 3 && pd <= 3) return "";
-    return pm + "/" + pd;
+  function pocketMm(s, side) {
+    const raw = s && s.pocket ? +s.pocket[side] : 1;
+    return Math.max(1, Math.min(9, raw || 1));
+  }
+
+  function pocketTone(mm) {
+    if (mm >= 6) return "is-hi";
+    if (mm >= 4) return "is-mid";
+    return "is-ok";
+  }
+
+  function clampPocket(mm) {
+    const n = parseInt(mm, 10);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(1, Math.min(9, n));
+  }
+
+  function setPocketMm(fdi, side, mm, paint) {
+    const s = st(fdi);
+    if (!s || s.missing) return false;
+    if (!s.pocket) s.pocket = { m: 1, d: 1 };
+    const next = clampPocket(mm);
+    if (+s.pocket[side] === next) {
+      if (paint) paintPocketDigit(fdi, side, next);
+      return false;
+    }
+    s.pocket[side] = next;
+    syncLossFromPockets(s);
+    if (paint) paintPocketDigit(fdi, side, next);
+    return true;
+  }
+
+  function paintPocketDigit(fdi, side, mm) {
+    if (!svgEl) return;
+    const g = svgEl.querySelector('.flab-pocket-g[data-fdi="' + fdi + '"][data-side="' + side + '"]');
+    if (!g) return;
+    const tone = pocketTone(mm);
+    const bg = g.querySelector(".flab-pocket-bg");
+    const t = g.querySelector(".flab-pocket");
+    if (bg) bg.setAttribute("class", "flab-pocket-bg " + tone);
+    if (t) {
+      t.setAttribute("class", "flab-pocket " + tone);
+      t.textContent = String(mm);
+    }
+    g.classList.toggle("is-sel", pocketSel.fdi === fdi && pocketSel.side === side);
+  }
+
+  function bumpPocket(fdi, side, dir) {
+    const s = st(fdi);
+    if (!s || s.missing) return;
+    const next = clampPocket(pocketMm(s, side) + (dir < 0 ? -1 : 1));
+    setPocketMm(fdi, side, next, false);
+    selected = fdi;
+    pocketSel = { fdi, side };
+    render();
+    syncPocketPad();
+  }
+
+  function pocketSideLabel(side) {
+    return side === "d" ? "distal" : "mesial";
+  }
+
+  function collectPocketEls(upper) {
+    if (!svgEl) return [];
+    return Array.from(svgEl.querySelectorAll(".flab-pocket-g")).map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        el,
+        fdi: +el.getAttribute("data-fdi"),
+        side: el.getAttribute("data-side"),
+        cx: r.left + r.width / 2,
+        cy: r.top + r.height / 2,
+        upper: el.getAttribute("data-upper") === "1",
+      };
+    }).filter((s) => s.fdi && s.side && (upper == null || s.upper === !!upper))
+      .sort((a, b) => a.cx - b.cx);
+  }
+
+  function pocketSiteOrder() {
+    const all = collectPocketEls(null);
+    const up = all.filter((s) => s.upper).sort((a, b) => a.cx - b.cx);
+    const lo = all.filter((s) => !s.upper).sort((a, b) => a.cx - b.cx);
+    return up.concat(lo);
+  }
+
+  function nextPocketSite(fdi, side) {
+    const order = pocketSiteOrder();
+    if (!order.length) return null;
+    const i = order.findIndex((s) => s.fdi === fdi && s.side === side);
+    const n = order[i < 0 ? 0 : (i + 1) % order.length];
+    return { fdi: n.fdi, side: n.side };
+  }
+
+  function applyPocketValueAndAdvance(mm) {
+    if (pocketSel.fdi == null) return;
+    const keepEdit = !!(document.activeElement && document.activeElement.id === "parPocketInput");
+    setPocketMm(pocketSel.fdi, pocketSel.side, mm, false);
+    const nxt = nextPocketSite(pocketSel.fdi, pocketSel.side);
+    if (nxt) {
+      selected = nxt.fdi;
+      pocketSel = nxt;
+    } else {
+      selected = pocketSel.fdi;
+    }
+    render();
+    syncPocketPad({ edit: keepEdit });
+  }
+
+  function pocketPadKeydown(ev) {
+    const pad = document.getElementById("parPocketPad");
+    if (!pad || pad.hidden || pocketSel.fdi == null || activeTab !== "Par") return;
+    const t = ev.target;
+    if (t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && t.id !== "parPocketInput"))) return;
+    if (ev.key >= "1" && ev.key <= "9") {
+      ev.preventDefault();
+      applyPocketValueAndAdvance(+ev.key);
+      return;
+    }
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      hidePocketPad();
+    }
+  }
+
+  function ensurePocketPad() {
+    let pad = document.getElementById("parPocketPad");
+    if (pad) return pad;
+    pad = document.createElement("div");
+    pad.id = "parPocketPad";
+    pad.hidden = true;
+    pad.innerHTML =
+      '<span class="pp-meta" id="parPocketMeta"></span>' +
+      '<button type="button" class="pp-bump" data-dir="-1" aria-label="flacher">−</button>' +
+      '<input id="parPocketInput" maxlength="1" inputmode="numeric" autocomplete="off" aria-label="Taschentiefe" />' +
+      '<button type="button" class="pp-bump" data-dir="1" aria-label="tiefer">+</button>' +
+      '<div class="pp-keys" id="parPocketKeys"></div>';
+    const keys = pad.querySelector("#parPocketKeys");
+    for (let n = 1; n <= 9; n++) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.mm = String(n);
+      b.textContent = String(n);
+      keys.appendChild(b);
+    }
+    pad.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    pad.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (pocketSel.fdi == null) return;
+      const bump = ev.target.closest(".pp-bump");
+      if (bump) {
+        bumpPocket(pocketSel.fdi, pocketSel.side, +bump.dataset.dir);
+        return;
+      }
+      const key = ev.target.closest("[data-mm]");
+      if (key) applyPocketValueAndAdvance(+key.dataset.mm);
+    });
+    const input = pad.querySelector("#parPocketInput");
+    input.addEventListener("change", () => {
+      if (pocketSel.fdi == null) return;
+      setPocketMm(pocketSel.fdi, pocketSel.side, clampPocket(input.value), false);
+      render();
+      syncPocketPad();
+    });
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        applyPocketValueAndAdvance(clampPocket(input.value));
+        return;
+      }
+      if (ev.key === "ArrowUp") { ev.preventDefault(); bumpPocket(pocketSel.fdi, pocketSel.side, 1); }
+      if (ev.key === "ArrowDown") { ev.preventDefault(); bumpPocket(pocketSel.fdi, pocketSel.side, -1); }
+    });
+    document.addEventListener("keydown", pocketPadKeydown);
+    document.body.appendChild(pad);
+    window.addEventListener("resize", () => { if (!pad.hidden) syncPocketPad(); });
+    return pad;
+  }
+
+  function hidePocketPad() {
+    const pad = document.getElementById("parPocketPad");
+    if (pad) pad.hidden = true;
+  }
+
+  function cancelPocketDrag() {
+    if (!pocketDrag) return;
+    if (pocketDrag.longTimer) clearTimeout(pocketDrag.longTimer);
+    window.removeEventListener("pointermove", onPocketPointerMove);
+    window.removeEventListener("pointerup", onPocketPointerUp);
+    window.removeEventListener("pointercancel", onPocketPointerUp);
+    document.body.classList.remove("pocket-dragging");
+    pocketDrag = null;
+  }
+
+  function syncPocketPad(opts) {
+    const pad = ensurePocketPad();
+    const show = activeTab === "Par" && pocketSel.fdi != null && st(pocketSel.fdi);
+    if (!show) { pad.hidden = true; return; }
+    const s = st(pocketSel.fdi);
+    const mm = pocketMm(s, pocketSel.side);
+    pad.hidden = false;
+    const meta = pad.querySelector("#parPocketMeta");
+    if (meta) meta.textContent = pocketSel.fdi + " " + pocketSideLabel(pocketSel.side);
+    const input = pad.querySelector("#parPocketInput");
+    if (input && document.activeElement !== input) input.value = String(mm);
+    pad.querySelectorAll("[data-mm]").forEach((b) => {
+      b.classList.toggle("on", +b.dataset.mm === mm);
+    });
+    const g = svgEl && svgEl.querySelector(
+      '.flab-pocket-g[data-fdi="' + pocketSel.fdi + '"][data-side="' + pocketSel.side + '"]');
+    if (g) {
+      const r = g.getBoundingClientRect();
+      const pw = pad.offsetWidth || 320;
+      const ph = pad.offsetHeight || 48;
+      let left = r.left + r.width / 2 - pw / 2;
+      let top = r.bottom + 10;
+      left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+      if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 10);
+      pad.style.left = left + "px";
+      pad.style.top = top + "px";
+    }
+    if (opts && opts.edit && input) {
+      input.focus();
+      input.select();
+    }
+  }
+
+  function selectPocketSite(fdi, side, opts) {
+    selected = fdi;
+    pocketSel = { fdi, side };
+    render();
+    syncPocketPad(opts);
+  }
+
+  function pocketBrushMm(startMm, y0, y) {
+    return clampPocket(startMm + Math.round((y0 - y) / POCKET_STEP_Y));
+  }
+
+  function onPocketPointerMove(ev) {
+    if (!pocketDrag || ev.pointerId !== pocketDrag.id) return;
+    const dx = ev.clientX - pocketDrag.x0;
+    const dy = ev.clientY - pocketDrag.y0;
+    if (!pocketDrag.moved && Math.hypot(dx, dy) < POCKET_TAP) return;
+    pocketDrag.moved = true;
+    if (pocketDrag.longTimer) {
+      clearTimeout(pocketDrag.longTimer);
+      pocketDrag.longTimer = 0;
+    }
+    hidePocketPad();
+    const brush = pocketBrushMm(pocketDrag.startMm, pocketDrag.y0, ev.clientY);
+    if (pocketDrag.mode !== "curve" && Math.abs(dx) >= POCKET_CURVE) pocketDrag.mode = "curve";
+    else if (!pocketDrag.mode) pocketDrag.mode = "axis";
+    if (pocketDrag.mode === "axis") {
+      setPocketMm(pocketDrag.fdi, pocketDrag.side, brush, true);
+      selected = pocketDrag.fdi;
+      pocketSel = { fdi: pocketDrag.fdi, side: pocketDrag.side };
+      pocketDrag.lastX = ev.clientX;
+      return;
+    }
+    const fromX = pocketDrag.lastX != null ? pocketDrag.lastX : pocketDrag.x0;
+    const lo = Math.min(fromX, ev.clientX) - 18;
+    const hi = Math.max(fromX, ev.clientX) + 18;
+    let nearest = null, best = 1e9;
+    pocketDrag.sites.forEach((site) => {
+      if (site.cx < lo || site.cx > hi) return;
+      setPocketMm(site.fdi, site.side, brush, true);
+      const d = Math.abs(site.cx - ev.clientX);
+      if (d < best) { best = d; nearest = site; }
+    });
+    pocketDrag.lastX = ev.clientX;
+    if (nearest) {
+      selected = nearest.fdi;
+      pocketSel = { fdi: nearest.fdi, side: nearest.side };
+    }
+  }
+
+  function onPocketPointerUp(ev) {
+    if (!pocketDrag || ev.pointerId !== pocketDrag.id) return;
+    if (pocketDrag.longTimer) clearTimeout(pocketDrag.longTimer);
+    const drag = pocketDrag;
+    pocketDrag = null;
+    window.removeEventListener("pointermove", onPocketPointerMove);
+    window.removeEventListener("pointerup", onPocketPointerUp);
+    window.removeEventListener("pointercancel", onPocketPointerUp);
+    document.body.classList.remove("pocket-dragging");
+    pocketGuard = Date.now();
+    if (drag.el && drag.el.releasePointerCapture) {
+      try { drag.el.releasePointerCapture(drag.id); } catch (e) { /* schon frei */ }
+    }
+    if (drag.long && !drag.moved) {
+      selectPocketSite(drag.fdi, drag.side, { edit: true });
+      return;
+    }
+    if (!drag.moved) {
+      const again = pocketSel.fdi === drag.fdi && pocketSel.side === drag.side
+        && document.getElementById("parPocketPad")
+        && !document.getElementById("parPocketPad").hidden;
+      selectPocketSite(drag.fdi, drag.side, { edit: again });
+      return;
+    }
+    selected = pocketSel.fdi != null ? pocketSel.fdi : drag.fdi;
+    render();
+    syncPocketPad();
+  }
+
+  function startPocketDrag(ev, fdi, side) {
+    if (ev.button != null && ev.button !== 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const col = COLS.cols.find((c) => c.fdi === fdi);
+    const el = ev.currentTarget;
+    if (el.setPointerCapture) {
+      try { el.setPointerCapture(ev.pointerId); } catch (e) { /* iOS */ }
+    }
+    pocketDrag = {
+      id: ev.pointerId,
+      fdi,
+      side,
+      el,
+      x0: ev.clientX,
+      y0: ev.clientY,
+      startMm: pocketMm(st(fdi), side),
+      mode: null,
+      moved: false,
+      long: false,
+      lastX: ev.clientX,
+      sites: collectPocketEls(col ? col.upper : null),
+      longTimer: setTimeout(() => {
+        if (pocketDrag && !pocketDrag.moved) pocketDrag.long = true;
+      }, POCKET_LONG_MS),
+    };
+    document.body.classList.add("pocket-dragging");
+    window.addEventListener("pointermove", onPocketPointerMove);
+    window.addEventListener("pointerup", onPocketPointerUp);
+    window.addEventListener("pointercancel", onPocketPointerUp);
+  }
+
+  function pocketPlaneY(upper) {
+    const key = upper ? "up" : "lo";
+    if (_pocketPlane[key] != null) return _pocketPlane[key];
+    const ys = [];
+    COLS.cols.forEach((c) => {
+      if (!!c.upper !== !!upper) return;
+      const s = st(c.fdi);
+      if (s && s.missing) return;
+      const seg = SOURCE_CEJ_ARR[c.fdi];
+      if (!seg || !seg.ys.length) return;
+      ys.push(cejYAt(seg, seg.x0 + seg.ys.length / 2));
+    });
+    let plane = upper ? SPLIT * 0.78 : SPLIT * 1.22;
+    if (ys.length) {
+      ys.sort((a, b) => a - b);
+      plane = ys[(ys.length / 2) | 0];
+    }
+    _pocketPlane[key] = plane;
+    return plane;
+  }
+
+  // Eine Ziffer am Zahnhals, eigene Schulter — nicht unter die FDI-Zahl.
+  // Y auf einer Kiefer-Ebene (Median der CEJ), damit nichts in die Krone rutscht.
+  function pocketAnchor(c, screenSide) {
+    const seg = SOURCE_CEJ_ARR[c.fdi];
+    const sb = pathBounds(SIL[c.fdi] || "");
+    let x0 = seg ? seg.x0 : (sb ? sb.x0 : c.x0);
+    let x1 = seg ? seg.x0 + seg.ys.length - 1 : (sb ? sb.x1 : c.x1);
+    const w = Math.max(16, x1 - x0);
+    const inset = Math.max(8, Math.min(13, w * 0.18));
+    const x = screenSide === "L" ? x0 + inset : x1 - inset;
+    const y = pocketPlaneY(c.upper) + (c.upper ? 10 : -10);
+    return { x, y };
+  }
+
+  function addPocketDigit(front, c, screenSide, value, key, hostTf) {
+    const { x, y } = pocketAnchor(c, screenSide);
+    const tone = pocketTone(value);
+    const on = pocketSel.fdi === c.fdi && pocketSel.side === key;
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "flab-pocket-g" + (on ? " is-sel" : ""));
+    g.setAttribute("data-fdi", String(c.fdi));
+    g.setAttribute("data-side", key);
+    g.setAttribute("data-upper", c.upper ? "1" : "0");
+    if (hostTf) g.setAttribute("transform", hostTf);
+    const hit = document.createElementNS(SVGNS, "circle");
+    hit.setAttribute("cx", x);
+    hit.setAttribute("cy", y);
+    hit.setAttribute("r", "16");
+    hit.setAttribute("class", "flab-pocket-hit");
+    const bg = document.createElementNS(SVGNS, "circle");
+    bg.setAttribute("cx", x);
+    bg.setAttribute("cy", y);
+    bg.setAttribute("r", "11");
+    bg.setAttribute("class", "flab-pocket-bg " + tone);
+    const t = document.createElementNS(SVGNS, "text");
+    t.setAttribute("x", x);
+    t.setAttribute("y", y + 5.4);
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("class", "flab-pocket " + tone);
+    t.textContent = String(value);
+    g.appendChild(hit);
+    g.appendChild(bg);
+    g.appendChild(t);
+    g.addEventListener("pointerdown", (ev) => startPocketDrag(ev, c.fdi, key));
+    g.addEventListener("click", (ev) => { ev.stopPropagation(); ev.preventDefault(); });
+    g.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      bumpPocket(c.fdi, key, -1);
+    });
+    front.appendChild(g);
+  }
+
+  function drawPocketDigits(front, c, hostTf) {
+    if (activeTab !== "Par") return;
+    const s = st(c.fdi);
+    if (!s || s.missing) return;
+    const mRight = mesialIsRight(c.fdi);
+    addPocketDigit(front, c, "L", pocketMm(s, mRight ? "d" : "m"), mRight ? "d" : "m", hostTf);
+    addPocketDigit(front, c, "R", pocketMm(s, mRight ? "m" : "d"), mRight ? "m" : "d", hostTf);
   }
 
   function buildHits() {
@@ -2749,9 +3349,25 @@
 
     // Auswahl-Kontur: bei Milchzahn/chirurgischer Lage (retiniert/impaktiert/
     // verlagert/Luxation) derselbe Transform wie der gezeichnete Zahn
-    const selC = COLS.cols.find((cc) => cc.fdi === selected);
+    const bg = document.createElementNS(SVGNS, "rect");
+    bg.setAttribute("x", "0");
+    bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(CW));
+    bg.setAttribute("height", String(CH));
+    bg.setAttribute("class", "hit-bg");
+    bg.addEventListener("click", () => {
+      if (Date.now() - pocketGuard < 250) return;
+      if (selected == null && pocketSel.fdi == null) return;
+      selected = null;
+      pocketSel = { fdi: null, side: null };
+      hidePocketPad();
+      render();
+    });
+    front.appendChild(bg);
+
+    const selC = selected != null ? COLS.cols.find((cc) => cc.fdi === selected) : null;
     const selMilk = selC ? milkInfo(selC) : null;
-    const selD = SIL[selMilk ? selMilk.src.fdi : selected];
+    const selD = selC ? SIL[selMilk ? selMilk.src.fdi : selected] : null;
     if (selD) {
       const sp = document.createElementNS(SVGNS, "path");
       sp.setAttribute("d", selD);
@@ -2768,26 +3384,36 @@
     const surfArmed = needsSurfacePick(armedFinding);
 
     COLS.cols.forEach((c) => {
-      const b = missCoverBounds(c);
-      const hit = document.createElementNS(SVGNS, "rect");
-      hit.setAttribute("x", b.x0);
-      hit.setAttribute("width", Math.max(1, b.x1 - b.x0));
-      hit.setAttribute("y", c.upper ? 0 : SPLIT);
-      hit.setAttribute("height", c.upper ? SPLIT : CH - SPLIT);
-      hit.setAttribute("class", "hit");
+      const milk = milkInfo(c);
+      const geo = milk ? milk.src : c;
+      const disp = chirDisplacement(c);
+      const hostTf = [disp && disp.str, milk && milk.transform].filter(Boolean).join(" ");
       const applyClick = (mode) => {
+        if (Date.now() - pocketGuard < 250) return;
         selected = c.fdi;
+        pocketSel = { fdi: null, side: null };
+        hidePocketPad();
         if (armedFinding && !surfArmed) applyFindingToTooth(c.fdi, armedFinding, mode);
         else if (armedFinding && surfArmed) {
-          // Daneben geklickt: Okklusal als Default, Flaechen-Hits bleiben praezise.
           applySurfaceFinding(c.fdi, "okklusal", mode);
           return;
         }
         render();
       };
-      hit.addEventListener("click", () => applyClick("toggle"));
-      hit.addEventListener("contextmenu", (ev) => { ev.preventDefault(); applyClick("remove"); });
-      front.appendChild(hit);
+      const addHit = (d) => {
+        if (!d) return;
+        const hit = document.createElementNS(SVGNS, "path");
+        hit.setAttribute("d", d);
+        hit.setAttribute("class", "hit");
+        if (hostTf) hit.setAttribute("transform", hostTf);
+        hit.addEventListener("click", (ev) => { ev.stopPropagation(); applyClick("toggle"); });
+        hit.addEventListener("contextmenu", (ev) => {
+          ev.preventDefault(); ev.stopPropagation(); applyClick("remove");
+        });
+        front.appendChild(hit);
+      };
+      addHit(SIL[geo.fdi]);
+      (EXTRA_ROOTS[geo.fdi] || []).forEach(addHit);
 
       const x = APEXX[c.fdi] != null ? APEXX[c.fdi] : c.cx;
       const t = document.createElementNS(SVGNS, "text");
@@ -2808,16 +3434,12 @@
         ft.textContent = codes;
         front.appendChild(ft);
       }
-      const pk = pocketLabel(st(c.fdi));
-      if (pk) {
-        const pt = document.createElementNS(SVGNS, "text");
-        pt.setAttribute("x", x);
-        pt.setAttribute("y", c.upper ? (codes ? 42 : 32) : (codes ? CH - 30 : CH - 20));
-        pt.setAttribute("text-anchor", "middle");
-        pt.setAttribute("class", "flab-pocket");
-        pt.textContent = pk;
-        front.appendChild(pt);
-      }
+    });
+    COLS.cols.forEach((c) => {
+      const milk = milkInfo(c);
+      const disp = chirDisplacement(c);
+      const hostTf = [disp && disp.str, milk && milk.transform].filter(Boolean).join(" ");
+      drawPocketDigits(front, c, hostTf);
     });
     // Flaechen-Hits in einem ZWEITEN Durchlauf, damit sie ueber ALLEN
     // Spalten-Rechtecken liegen (sonst deckt der Spalten-Hit des
@@ -2827,7 +3449,7 @@
         if (st(c.fdi).missing) return;
         // Hits clippen sich selbst (anatomische Regionen); das schematische
         // Rueckseiten-Oval liegt bewusst UNGECLIPPT ueber dem Zahn
-        front.appendChild(PerioChart.buildSurfaceHits(c, crownBoxOf(c), applySurfaceFinding));
+        front.appendChild(PerioChart.buildSurfaceHits(c, crownBoxOf(c), applySurfaceFinding, SIL[c.fdi], cejAtOf(c)));
       });
     }
     svgEl.appendChild(front);
@@ -2835,16 +3457,27 @@
 
   function syncParPocketUI() {
     const box = document.getElementById("parPocketBox");
-    if (!box) return;
-    const show = activeTab === "Par";
-    box.hidden = !show;
-    box.style.display = show ? "" : "none";
-    const s = st(selected);
-    if (!s.pocket) s.pocket = { m: 1, d: 1 };
-    const pm = document.getElementById("pocketM");
-    const pd = document.getElementById("pocketD");
-    if (pm) pm.value = s.pocket.m;
-    if (pd) pd.value = s.pocket.d;
+    if (box) {
+      const show = activeTab === "Par";
+      box.hidden = !show;
+      box.style.display = show ? "" : "none";
+      const s = selected != null ? st(selected) : null;
+      if (s) {
+        if (!s.pocket) s.pocket = { m: 1, d: 1 };
+        const pm = document.getElementById("pocketM");
+        const pd = document.getElementById("pocketD");
+        if (pm) pm.value = s.pocket.m;
+        if (pd) pd.value = s.pocket.d;
+      }
+    }
+    if (activeTab !== "Par") {
+      cancelPocketDrag();
+      pocketSel = { fdi: null, side: null };
+      hidePocketPad();
+      return;
+    }
+    if (pocketSel.fdi != null) syncPocketPad();
+    else hidePocketPad();
   }
 
   function syncLossFromPockets(s) {
@@ -2853,9 +3486,10 @@
   }
 
   function syncPanel() {
-    const s = st(selected);
-    document.getElementById("selLabel").textContent = "Zahn " + selected;
-    document.getElementById("miss").checked = s.missing;
+    const s = selected != null ? st(selected) : null;
+    document.getElementById("selLabel").textContent = selected != null ? "Zahn " + selected : "Zahn";
+    document.getElementById("miss").checked = !!(s && s.missing);
+    if (!s) { syncParPocketUI(); return; }
     syncParPocketUI();
   }
 
@@ -3074,11 +3708,11 @@
     const sub = document.querySelector("#legendPro .legend-head p");
     if (!host || !window.PerioLegend) return;
     const tab = PerioLegend.TABS.find((t) => t.id === activeTab);
-    if (head) head.textContent = tab ? tab.title : activeTab;
+    if (head) head.textContent = tab ? tab.label : activeTab;
     if (sub) {
       sub.textContent = activeTab === "Par"
-        ? "Par: Taschen mesial/distal im Panel → Knochenabbau. Weitere Befunde wählen und auf Zähne übertragen."
-        : "Icon klicken = setzen. Füllung/Karies/Inlay: danach Fläche O·M·D·B·P/L anklicken. Versiegelung färbt direkt okklusal. Icon nochmal = abwählen. Rechtsklick = löschen.";
+        ? "Tasche: senkrecht ziehen = Tiefe, seitlich = Reihe. Tippen = Pfeile, nochmal = Zahl."
+        : "Icon wählen, Zahn tippen. Nochmal derselbe Zahn = weg.";
     }
     host.textContent = "";
     PerioLegend.itemsForTab(activeTab).forEach((it) => {
@@ -3140,29 +3774,88 @@
 
   const SCHEMA_OK = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
   const SCHEMA_UK = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+  const SURF_TO_ZS = {
+    okklusal: "o", mesial: "m", distal: "d",
+    vestibulaer: "v", lingual_palatinal: "l",
+  };
+  const PERIO_TO_ZS = {
+    zahn_fehlt: "f", prothesenzahn: "e", krone: "k",
+    brueckenglied: "b", implantat: "sk", teilkrone: "pkw",
+    teleskop: "t", karies: "Ka", fuellung: "Fu", insuffizient: "Fu",
+    zahn_zerstoert: "ww", lueckenschluss: ")(", retiniert: "rt",
+    impaktiert: "imp", verlagert: "verl", wurzelfuellung: "WF",
+  };
+
+  function chartFrom01() {
+    const VC = window.LenaVoiceChart;
+    if (!VC || typeof VC.emptyChart !== "function") return null;
+    const chart = VC.emptyChart();
+    if (!chart || !COLS) return chart;
+    COLS.cols.forEach((c) => {
+      const s = state[c.fdi];
+      if (!s) return;
+      const m = markOf(s);
+      const replaced = !!(m.implantat || m.brueckenglied || m.prothesenzahn || m.lueckenschluss);
+      if (s.missing && !replaced) {
+        VC.mergeEvent(chart, { fdi: c.fdi, codes: ["f"], surfaces: [] });
+      }
+      Object.keys(m).forEach((id) => {
+        if (!m[id] || id === "zahn_fehlt") return;
+        const code = PERIO_TO_ZS[id];
+        if (code) VC.mergeEvent(chart, { fdi: c.fdi, codes: [code], surfaces: [], forceLayer: "befund" });
+      });
+      if (s.surfaces) {
+        Object.keys(s.surfaces).forEach((sk) => {
+          const surf = SURF_TO_ZS[sk] ? [SURF_TO_ZS[sk]] : [];
+          (s.surfaces[sk] || []).forEach((markerId) => {
+            const code = PERIO_TO_ZS[markerId];
+            if (code) VC.mergeEvent(chart, {
+              fdi: c.fdi, codes: [code], surfaces: surf, forceLayer: "befund",
+            });
+          });
+        });
+      }
+      (s.rootMarkers || []).forEach((id) => {
+        const code = PERIO_TO_ZS[id];
+        if (code) VC.mergeEvent(chart, { fdi: c.fdi, codes: [code], surfaces: [], forceLayer: "befund" });
+      });
+    });
+    return chart;
+  }
+
   function paintSchemaStage() {
     const host = document.getElementById("schemaStage");
     if (!host) return;
-    const lbl = findingLabelMap01();
-    const cell = (fdi) => {
-      const t = toothFindings01(fdi, lbl);
-      const miss = !!(state[fdi] && state[fdi].missing);
-      const marks = t ? t.parts.slice(0, 2).join(" · ") : "";
-      const cls = "zs01-cell"
-        + (selected === fdi ? " is-sel" : "")
-        + (miss ? " is-miss" : "")
-        + (t ? " has" : "");
-      return '<button type="button" class="' + cls + '" data-fdi="' + fdi + '">'
-        + '<span class="n">' + fdi + "</span>"
-        + (marks ? '<span class="m">' + marks.replace(/</g, "") + "</span>" : "")
-        + "</button>";
-    };
-    host.innerHTML =
-      '<div class="zs01-lab">OK</div><div class="zs01-arch">' + SCHEMA_OK.map(cell).join("") + "</div>"
-      + '<div class="zs01-lab">UK</div><div class="zs01-arch">' + SCHEMA_UK.map(cell).join("") + "</div>";
+    const VC = window.LenaVoiceChart;
+    const named = selected != null ? new Set([selected]) : null;
+    const styled = (VC && typeof VC.renderSchemaHtml === "function")
+      ? VC.renderSchemaHtml(chartFrom01(), selected, named, { hideTherapy: true, hideLegend: true })
+      : "";
+    if (styled) {
+      host.innerHTML = styled;
+    } else {
+      const lbl = findingLabelMap01();
+      const cell = (fdi) => {
+        const t = toothFindings01(fdi, lbl);
+        const miss = !!(state[fdi] && state[fdi].missing);
+        const marks = t ? t.parts.slice(0, 2).join(" · ") : "";
+        const cls = "zs01-cell"
+          + (selected === fdi ? " is-sel" : "")
+          + (miss ? " is-miss" : "")
+          + (t ? " has" : "");
+        return '<button type="button" class="' + cls + '" data-fdi="' + fdi + '">'
+          + '<span class="n">' + fdi + "</span>"
+          + (marks ? '<span class="m">' + marks.replace(/</g, "") + "</span>" : "")
+          + "</button>";
+      };
+      host.innerHTML =
+        '<div class="zs01-lab">OK</div><div class="zs01-arch">' + SCHEMA_OK.map(cell).join("") + "</div>"
+        + '<div class="zs01-lab">UK</div><div class="zs01-arch">' + SCHEMA_UK.map(cell).join("") + "</div>";
+    }
     if (!host.dataset.bound) {
       host.dataset.bound = "1";
       host.addEventListener("click", (e) => {
+        if (e.target.closest(".zs-leg-more, .zs-legend-panel")) return;
         const b = e.target.closest("[data-fdi]");
         if (!b) return;
         const fdi = Number(b.dataset.fdi);

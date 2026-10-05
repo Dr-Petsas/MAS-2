@@ -7,9 +7,9 @@
   <meta name="theme-color" content="#0b0e13" />
   <!-- Desktop bekommt ?theme=light (weiss). iPad ohne Parameter bleibt dunkel. -->
   <script>if (new URLSearchParams(location.search).get("theme") === "light") document.documentElement.classList.add("theme-light");</script>
-  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816m" />
+  <link rel="stylesheet" href="/m/lena-01/perio.css?v=20260816ak" />
   <!-- Weisse Variante (nur wirksam bei html.theme-light — iPad unberuehrt). -->
-  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816m" />
+  <link rel="stylesheet" href="/m/lena-01/perio-light.css?v=20260816aa" />
   <style>
     /* ═══════════════════════════════════════════════════════════════════
        PC-WIZARD (Chef 22.07. 01:58): rechter Bereich = kompakter Wizard,
@@ -37,8 +37,8 @@
     body.skin-schema #lenaWizard { display: none !important; }
     body.skin-schema .stage-wrap { display: none; }
     body.skin-schema .zoom-pane { display: none; }
-    body.skin-schema #schemaStage { display: block; }
-    #schemaStage { display: none; padding: 8px 4px 4px; }
+    body.skin-schema #schemaStage { display: block; overflow: auto; }
+    #schemaStage { display: none; padding: 8px 8px 10px; }
     #schemaStage .zs01-arch { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; }
     #schemaStage .zs01-lab { font-size: 11px; font-weight: 800; color: #91a0ab; margin: 6px 0 4px; letter-spacing: .06em; }
     #schemaStage .zs01-cell {
@@ -62,13 +62,16 @@
       padding: 7px 16px; font: 700 13px/1 system-ui, -apple-system, sans-serif; color: #b9c2cc;
     }
     .skin-switch button.on { background: #e07a30; color: #fff; }
-    .half-schema { overflow-y: auto; }
+    .half-schema { overflow: hidden; }
     .half-schema .schema-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(132px, 22%);
+      grid-template-columns: 96px minmax(0, 1fr) 220px;
+      grid-template-areas: "zoom stage plan";
       gap: 10px; flex: 1; min-height: 0;
     }
-    .half-schema .zoom-pane { display: flex; }
+    .half-schema .zoom-pane { display: flex; grid-area: zoom; width: 116px; margin-left: -8px; justify-self: start; }
+    .half-schema .stage-wrap, .half-schema #schemaStage { grid-area: stage; }
+    .half-schema .plan-pane { grid-area: plan; }
     .half-schema .stage-wrap { width: 100%; min-width: 0; }
     /* Befund-Tabs + Legende ziehen unter das linke Schema (der rechte
        Platz gehoert jetzt dem Wizard) — Ids/Verhalten unveraendert. */
@@ -79,8 +82,7 @@
     .half-schema .left-befund .befund-box-head { padding: 0 4px; }
     .half-schema .left-befund .legend { flex: none; }
     .half-schema .left-befund .legend-items {
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      max-height: 280px; overflow-y: auto;
+      grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
     }
 
     #lenaWizard {
@@ -246,82 +248,82 @@
     }
     #lenaWizard .tpl-block-head em { font-style: normal; margin-left: auto; font-size: .58rem; color: #c8fff4; font-weight: 700; letter-spacing: 0; text-transform: none; }
     #lenaWizard .tpl-block-body { padding: 8px 9px; display: grid; grid-template-columns: 1fr; gap: 7px; }
-    #lenaWizard .zs-schema { display: flex; flex-direction: column; gap: 8px; }
-    #lenaWizard .zs-block { border: 1px solid #c8c0b0; border-radius: 12px; padding: 5px 5px 7px; background: #fffef9; }
-    #lenaWizard .zs-block-h {
+    #lenaWizard .zs-schema, #schemaStage .zs-schema{ display: flex; flex-direction: column; gap: 8px; }
+    #lenaWizard .zs-block, #schemaStage .zs-block{ border: 1px solid #c8c0b0; border-radius: 12px; padding: 5px 5px 7px; background: #fffef9; }
+    #lenaWizard .zs-block-h, #schemaStage .zs-block-h{
       font-size: .56rem; font-weight: 900; letter-spacing: .08em;
       text-transform: uppercase; color: #6b6560; padding: 0 4px 4px;
     }
-    #lenaWizard .zs-row { display: grid; grid-template-columns: 15px 1fr; gap: 3px; align-items: stretch; margin-bottom: 2px; }
-    #lenaWizard .zs-row-lab { font-size: .52rem; font-weight: 900; color: #3d3a34; display: grid; place-items: center; line-height: 1; }
-    #lenaWizard .zs-arch { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 1px; }
-    #lenaWizard .zs-cell {
+    #lenaWizard .zs-row, #schemaStage .zs-row{ display: grid; grid-template-columns: 15px 1fr; gap: 3px; align-items: stretch; margin-bottom: 2px; }
+    #lenaWizard .zs-row-lab, #schemaStage .zs-row-lab{ font-size: .52rem; font-weight: 900; color: #3d3a34; display: grid; place-items: center; line-height: 1; }
+    #lenaWizard .zs-arch, #schemaStage .zs-arch{ display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 1px; }
+    #lenaWizard .zs-cell, #schemaStage .zs-cell{
       min-height: 17px; border-radius: 4px; border: 1px solid #d4cdc0;
       background: #f7f4ee; display: grid; place-items: center;
       font-size: .44rem; font-weight: 800; color: #1a1a1a;
       padding: 1px 0; text-align: center; line-height: 1.05; overflow: hidden;
     }
-    #lenaWizard .zs-row-nums .zs-cell { min-height: 20px; background: #fff; border-color: #b0a898; }
-    #lenaWizard .zs-fdi { font-size: .5rem; font-weight: 900; color: #3d3a34; }
-    #lenaWizard .zs-cell.has-mark { border-color: #0f766e; background: #e8f6f4; color: #0a5c56; }
-    #lenaWizard .zs-cell.is-miss { border-color: #9a3412; background: #ffedd5; color: #9a3412; }
-    #lenaWizard .zs-cell.is-sel { outline: 2px solid #0f766e; }
-    #lenaWizard .zs-cell.is-done { border-color: #1b7a4e; background: #d8f3e2; }
-    #lenaWizard .zs-cell.is-named { border-color: #0f766e; background: #d2efe9; }
-    #lenaWizard .zs-cell.is-named .zs-fdi { color: #0a5c56; }
-    #lenaWizard .zs-cell.is-sel .zs-fdi { color: #0a5c56; }
-    #lenaWizard .zs-cell.is-sel.zs-num { background: #bfe8e0; border-color: #0f766e; box-shadow: 0 0 0 2px rgba(15,118,110,.25); }
-    #lenaWizard .zs-row-layer[data-layer="therapie"] .zs-cell.has-mark { background: #eaf7ef; border-color: #1b7a4e; color: #0d5c32; }
-    #lenaWizard .zs-row-layer[data-layer="befund"] .zs-cell.has-mark { background: #fff8e1; border-color: #d4a017; color: #7a5500; }
-    #lenaWizard .zs-hint { margin: 2px 0 0; font-size: .54rem; color: #6b6560; font-weight: 600; }
-    #lenaWizard .zs-legend-panel {
+    #lenaWizard .zs-row-nums .zs-cell, #schemaStage .zs-row-nums .zs-cell{ min-height: 20px; background: #fff; border-color: #b0a898; }
+    #lenaWizard .zs-fdi, #schemaStage .zs-fdi{ font-size: .5rem; font-weight: 900; color: #3d3a34; }
+    #lenaWizard .zs-cell.has-mark, #schemaStage .zs-cell.has-mark{ border-color: #0f766e; background: #e8f6f4; color: #0a5c56; }
+    #lenaWizard .zs-cell.is-miss, #schemaStage .zs-cell.is-miss{ border-color: #9a3412; background: #ffedd5; color: #9a3412; }
+    #lenaWizard .zs-cell.is-sel, #schemaStage .zs-cell.is-sel{ outline: 2px solid #0f766e; }
+    #lenaWizard .zs-cell.is-done, #schemaStage .zs-cell.is-done{ border-color: #1b7a4e; background: #d8f3e2; }
+    #lenaWizard .zs-cell.is-named, #schemaStage .zs-cell.is-named{ border-color: #0f766e; background: #d2efe9; }
+    #lenaWizard .zs-cell.is-named .zs-fdi, #schemaStage .zs-cell.is-named .zs-fdi{ color: #0a5c56; }
+    #lenaWizard .zs-cell.is-sel .zs-fdi, #schemaStage .zs-cell.is-sel .zs-fdi{ color: #0a5c56; }
+    #lenaWizard .zs-cell.is-sel.zs-num, #schemaStage .zs-cell.is-sel.zs-num{ background: #bfe8e0; border-color: #0f766e; box-shadow: 0 0 0 2px rgba(15,118,110,.25); }
+    #lenaWizard .zs-row-layer[data-layer="therapie"] .zs-cell.has-mark, #schemaStage .zs-row-layer[data-layer="therapie"] .zs-cell.has-mark{ background: #eaf7ef; border-color: #1b7a4e; color: #0d5c32; }
+    #lenaWizard .zs-row-layer[data-layer="befund"] .zs-cell.has-mark, #schemaStage .zs-row-layer[data-layer="befund"] .zs-cell.has-mark{ background: #fff8e1; border-color: #d4a017; color: #7a5500; }
+    #lenaWizard .zs-hint, #schemaStage .zs-hint{ margin: 2px 0 0; font-size: .54rem; color: #6b6560; font-weight: 600; }
+    #lenaWizard .zs-legend-panel, #schemaStage .zs-legend-panel{
       margin: 6px 0 0; padding: 5px 6px 6px; border-radius: 8px;
       background: #fffef8; border: 1px solid #c8c0b0;
     }
-    #lenaWizard .zs-legend-head {
+    #lenaWizard .zs-legend-head, #schemaStage .zs-legend-head{
       display: flex; align-items: center; justify-content: space-between; gap: 6px;
       font-size: .48rem; font-weight: 900; letter-spacing: .04em;
       text-transform: uppercase; color: #3d3a34; margin: 0 0 4px;
     }
-    #lenaWizard .zs-legend {
+    #lenaWizard .zs-legend, #schemaStage .zs-legend{
       display: flex; flex-direction: column; gap: 4px;
       max-height: 7.5rem; overflow-y: auto;
     }
-    #lenaWizard .zs-legend-panel:not(.is-open) .zs-legend { display: none; }
-    #lenaWizard .zs-leg-g { border-radius: 6px; padding: 3px 4px 4px; }
-    #lenaWizard .zs-leg-g-title {
+    #lenaWizard .zs-legend-panel:not(.is-open) .zs-legend, #schemaStage .zs-legend-panel:not(.is-open) .zs-legend{ display: none; }
+    #lenaWizard .zs-leg-g, #schemaStage .zs-leg-g{ border-radius: 6px; padding: 3px 4px 4px; }
+    #lenaWizard .zs-leg-g-title, #schemaStage .zs-leg-g-title{
       font-size: .42rem; font-weight: 900; letter-spacing: .04em;
       text-transform: uppercase; margin: 0 0 3px;
     }
-    #lenaWizard .zs-leg-g-chips { display: flex; flex-wrap: wrap; gap: 2px 4px; }
-    #lenaWizard .zs-leg-g--status { background: #ffe8e4; }
-    #lenaWizard .zs-leg-g--status .zs-leg-g-title { color: #9a1f2e; }
-    #lenaWizard .zs-leg-g--karies { background: #fff1cc; }
-    #lenaWizard .zs-leg-g--karies .zs-leg-g-title { color: #7a5500; }
-    #lenaWizard .zs-leg-g--fuellung { background: #e3eefc; }
-    #lenaWizard .zs-leg-g--fuellung .zs-leg-g-title { color: #1e4d8c; }
-    #lenaWizard .zs-leg-g--krone { background: #e8f6f4; }
-    #lenaWizard .zs-leg-g--krone .zs-leg-g-title { color: #0a5c56; }
-    #lenaWizard .zs-leg-g--bruecke { background: #ebe7fb; }
-    #lenaWizard .zs-leg-g--bruecke .zs-leg-g-title { color: #4c2f9e; }
-    #lenaWizard .zs-leg-g--implantat { background: #e4f4fb; }
-    #lenaWizard .zs-leg-g--implantat .zs-leg-g-title { color: #0b5f7a; }
-    #lenaWizard .zs-leg-g--sonst { background: #f0ebe1; }
-    #lenaWizard .zs-leg-g--sonst .zs-leg-g-title { color: #3d3a34; }
-    #lenaWizard .zs-leg {
+    #lenaWizard .zs-leg-g-chips, #schemaStage .zs-leg-g-chips{ display: flex; flex-wrap: wrap; gap: 2px 4px; }
+    #lenaWizard .zs-leg-g--status, #schemaStage .zs-leg-g--status{ background: #ffe8e4; }
+    #lenaWizard .zs-leg-g--status .zs-leg-g-title, #schemaStage .zs-leg-g--status .zs-leg-g-title{ color: #9a1f2e; }
+    #lenaWizard .zs-leg-g--karies, #schemaStage .zs-leg-g--karies{ background: #fff1cc; }
+    #lenaWizard .zs-leg-g--karies .zs-leg-g-title, #schemaStage .zs-leg-g--karies .zs-leg-g-title{ color: #7a5500; }
+    #lenaWizard .zs-leg-g--fuellung, #schemaStage .zs-leg-g--fuellung{ background: #e3eefc; }
+    #lenaWizard .zs-leg-g--fuellung .zs-leg-g-title, #schemaStage .zs-leg-g--fuellung .zs-leg-g-title{ color: #1e4d8c; }
+    #lenaWizard .zs-leg-g--krone, #schemaStage .zs-leg-g--krone{ background: #e8f6f4; }
+    #lenaWizard .zs-leg-g--krone .zs-leg-g-title, #schemaStage .zs-leg-g--krone .zs-leg-g-title{ color: #0a5c56; }
+    #lenaWizard .zs-leg-g--bruecke, #schemaStage .zs-leg-g--bruecke{ background: #ebe7fb; }
+    #lenaWizard .zs-leg-g--bruecke .zs-leg-g-title, #schemaStage .zs-leg-g--bruecke .zs-leg-g-title{ color: #4c2f9e; }
+    #lenaWizard .zs-leg-g--implantat, #schemaStage .zs-leg-g--implantat{ background: #e4f4fb; }
+    #lenaWizard .zs-leg-g--implantat .zs-leg-g-title, #schemaStage .zs-leg-g--implantat .zs-leg-g-title{ color: #0b5f7a; }
+    #lenaWizard .zs-leg-g--sonst, #schemaStage .zs-leg-g--sonst{ background: #f0ebe1; }
+    #lenaWizard .zs-leg-g--sonst .zs-leg-g-title, #schemaStage .zs-leg-g--sonst .zs-leg-g-title{ color: #3d3a34; }
+    #lenaWizard .zs-leg, #schemaStage .zs-leg{
       display: inline-flex; align-items: center; gap: 3px;
       padding: 2px 4px; border-radius: 6px; border: 1px solid rgba(0,0,0,.12);
       background: #fff; font-size: .46rem; font-weight: 600; color: #1a1a1a; white-space: nowrap;
     }
-    #lenaWizard .zs-leg-k { font-size: .52rem; font-weight: 900; color: #0a0a0a; font-family: ui-monospace, Menlo, monospace; }
-    #lenaWizard .zs-leg.is-used { border-width: 1.5px; font-weight: 800; }
-    #lenaWizard .zs-leg.is-flash {
+    #lenaWizard .zs-leg-k, #schemaStage .zs-leg-k{ font-size: .52rem; font-weight: 900; color: #0a0a0a; font-family: ui-monospace, Menlo, monospace; }
+    #lenaWizard .zs-leg.is-used, #schemaStage .zs-leg.is-used{ border-width: 1.5px; font-weight: 800; }
+    #lenaWizard .zs-leg.is-flash, #schemaStage .zs-leg.is-flash{
       border-color: #0f766e; background: #bfe8e0; color: #0a5c56;
       box-shadow: 0 0 0 2px rgba(15,118,110,.25);
       animation: lwLegFlash 1s ease-in-out 3;
     }
-    #lenaWizard .zs-leg.is-flash .zs-leg-k { color: #0a5c56; }
-    #lenaWizard .zs-leg-more {
+    #lenaWizard .zs-leg.is-flash .zs-leg-k, #schemaStage .zs-leg.is-flash .zs-leg-k{ color: #0a5c56; }
+    #lenaWizard .zs-leg-more, #schemaStage .zs-leg-more{
       border: 1px solid #8f8778; background: #f0ebe1; color: #1a1a1a;
       font: inherit; font-size: .44rem; font-weight: 800; padding: 2px 7px;
       border-radius: 999px; cursor: pointer; line-height: 1; text-transform: none;
@@ -330,15 +332,19 @@
       0%, 100% { box-shadow: 0 0 0 2px rgba(15,118,110,.25); }
       50% { box-shadow: 0 0 0 5px rgba(15,118,110,.45); }
     }
-    #lenaWizard .zs-schema-lead { margin: 0 0 6px; font-size: .62rem; font-weight: 600; color: #5c564e; line-height: 1.3; }
-    #lenaWizard .zs-live-line {
+    #lenaWizard .zs-schema-lead, #schemaStage .zs-schema-lead{ margin: 0 0 6px; font-size: .62rem; font-weight: 600; color: #5c564e; line-height: 1.3; }
+    #lenaWizard .zs-live-line, #schemaStage .zs-live-line{
       margin: 0 0 6px; padding: 6px 9px; border-radius: 9px;
       background: #e8f6f4; border: 1px solid rgba(15,118,110,.35);
       font-size: .68rem; font-weight: 700; color: #0a5c56;
     }
-    #lenaWizard .zs-live-line--empty { background: #f7f4ee; border-color: #d4cdc0; color: #6b6560; font-weight: 600; }
-    #lenaWizard .zs-pend { color: #b45309; font-weight: 900; margin-left: 6px; }
-    #lenaWizard .zs-schema-sum { margin-top: 6px; font-size: .62rem; }
+    #lenaWizard .zs-live-line--empty, #schemaStage .zs-live-line--empty{ background: #f7f4ee; border-color: #d4cdc0; color: #6b6560; font-weight: 600; }
+    #lenaWizard .zs-pend, #schemaStage .zs-pend{ color: #b45309; font-weight: 900; margin-left: 6px; }
+    #lenaWizard .zs-schema-sum, #schemaStage .zs-schema-sum{ margin-top: 6px; font-size: .62rem; }
+    /* Skin 2: gleiche KZBV-Zellen, groesser als im Wizard */
+    #schemaStage .zs-cell { min-height: 26px; font-size: .62rem; cursor: pointer; }
+    #schemaStage .zs-row-nums .zs-cell { min-height: 32px; }
+    #schemaStage .zs-fdi { font-size: .78rem; }
     #lenaWizard .doku-tpl--schema .zs-schema-lead,
     #lenaWizard .doku-tpl--schema .zs-schema-sum { background: #f4f1ea; border-radius: 8px; padding: 5px 8px; }
     #lenaWizard .teeth { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
@@ -448,14 +454,14 @@
         </div>
       </div>
       <div class="schema-row">
+        <aside class="zoom-pane">
+          <div class="zoom-head" id="zoomLabel">Zahn</div>
+          <div id="zoomStage"></div>
+        </aside>
         <div class="stage-wrap">
           <div id="stage"></div>
         </div>
         <div id="schemaStage" aria-label="Zahnschema"></div>
-        <aside class="zoom-pane" hidden>
-          <div class="zoom-head" id="zoomLabel">Zahn</div>
-          <div id="zoomStage"></div>
-        </aside>
         <aside class="plan-pane" id="planPane" aria-label="Bedarfsplanung"></aside>
       </div>
       <!-- Stubs fuer perio.js syncPanel (Panel wurde im Halfscreen-Umbau entfernt) -->
@@ -611,8 +617,8 @@
   </main>
 
   <style>
-    /* 01-Fuehrungs-Flow (lena-01-flow.js) — fixierte Leiste unten. */
-    body { padding-bottom: 76px; }
+    /* 01-Fuehrungs-Flow (lena-01-flow.js) — Leiste "01 · Arzt / Noch offen" ist weg. */
+    #lena01Bar { display: none !important; }
     #lena01Bar {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
       display: flex; align-items: center; gap: 14px;
@@ -722,68 +728,134 @@
     html.theme-light .l01-wiz button { border-color: #c5d0dc; color: #16202e; }
     html.theme-light .l01-wiz button.on { background: #e07a30; color: #fff; }
     .plan-pane {
-      min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px;
-      border: 1px solid #2c3540; border-radius: 16px; padding: 10px 12px;
+      width: 220px; min-width: 220px; max-width: 220px;
+      min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px;
+      border: 1px solid #2c3540; border-radius: 12px; padding: 8px;
       background: #121820;
     }
     html.theme-light .plan-pane { background: #fff; border-color: #d3dae3; box-shadow: 0 8px 20px rgba(15,23,42,.06); }
+    .plan-tabs { display: flex; gap: 4px; flex: none; height: 30px; }
+    .plan-tabs button {
+      flex: 1 1 0; min-width: 0; height: 30px; box-sizing: border-box;
+      border: 1px solid #c5d0dc; background: #f3f5f9; color: #5b6675;
+      border-radius: 8px; padding: 0 4px; font: 800 11px/1 system-ui, sans-serif; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .plan-tabs button.on { background: #2b6fd6; color: #fff; border-color: #2b6fd6; }
+    .plan-tabs button[data-tab="vorschlag"].on { background: #3a3f46; border-color: #3a3f46; }
+    .plan-count {
+      min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+      display: inline-grid; place-items: center;
+      background: #2b6fd6; color: #fff; font-size: 10px; font-weight: 800; line-height: 1;
+    }
+    .plan-tabs button.on .plan-count { background: #fff; color: #2b6fd6; }
+    .plan-list { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
     .plan-kicker { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #8a94a2; }
-    .plan-lead, .plan-empty { margin: 0; font-size: 13px; color: #8a94a2; }
-    .plan-card {
-      border: 1px solid #2c3540; border-radius: 12px; padding: 8px 10px; cursor: pointer;
+    .plan-lead, .plan-empty { margin: 0; font-size: 12px; color: #8a94a2; }
+    .plan-suggest {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+      border: 1px solid #dce3ec; border-radius: 11px; padding: 8px 10px;
+      background: #f7f9fc; color: #16202e;
     }
-    html.theme-light .plan-card { border-color: #dce3ec; }
-    .plan-card.is-on { border-color: #0f766e; }
-    .plan-card .fach { font-size: 11px; font-weight: 800; color: #0f766e; }
-    .plan-card h3 { margin: 2px 0 0; font-size: 14px; }
-    .plan-card p { margin: 2px 0 0; font-size: 12px; color: #8a94a2; }
-    .plan-card button {
+    .plan-suggest .fach { font-size: 10.5px; font-weight: 800; color: #5b6675; text-transform: uppercase; }
+    .plan-suggest h3 { margin: 2px 0 0; font-size: 13.5px; font-weight: 800; color: #16202e; }
+    .plan-suggest p { margin: 2px 0 0; font-size: 11.5px; color: #64748b; }
+    .plan-take {
       margin-top: 6px; border: 0; border-radius: 8px; padding: 5px 10px;
-      background: #e07a30; color: #fff; font-weight: 800; cursor: pointer;
+      background: #3a3f46; color: #e8edf2; font: 800 11px/1.1 system-ui, sans-serif; cursor: pointer;
     }
-    .plan-card.is-on button { background: #0f766e; }
-    .plan-add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .plan-take:hover { background: #4a5058; }
+    .plan-taken {
+      position: relative;
+      background: #eef4fd; border: 1px solid #cfe0f7; border-radius: 11px;
+      padding: 8px 28px 8px 10px; color: #16202e;
+    }
+    .plan-taken .fach { font-size: 10.5px; font-weight: 800; color: #1c4f9e; }
+    .plan-taken h3 { margin: 2px 0 0; font-size: 13.5px; font-weight: 800; color: #16202e; }
+    .plan-taken p { margin: 2px 0 0; font-size: 11.5px; color: #64748b; }
+    .plan-taken .plan-x {
+      position: absolute; top: 6px; right: 6px;
+      width: 20px; height: 20px; border: 0; border-radius: 50%;
+      background: rgba(43,111,214,.14); color: #2b6fd6;
+      font-size: 13px; line-height: 18px; cursor: pointer; padding: 0;
+    }
+    .plan-card {
+      border: 1px solid #cfe0f7; border-radius: 11px; padding: 8px 10px;
+      background: #eef4fd; color: #16202e;
+    }
+    .plan-card .fach { font-size: 11px; font-weight: 800; color: #1c4f9e; }
+    .plan-card h3 { margin: 2px 0 0; font-size: 14px; }
+    .plan-card p { margin: 2px 0 0; font-size: 12px; color: #64748b; }
+    .antrag-switch { display: flex; margin-top: 7px; border: 1px solid #cfe0f7; border-radius: 8px; overflow: hidden; }
+    .antrag-switch button {
+      flex: 1; border: 0; padding: 5px 6px; cursor: pointer;
+      background: #fff; color: #5b6675; font: 800 10px/1 system-ui, sans-serif;
+    }
+    .antrag-switch button.on { background: #2b6fd6; color: #fff; }
+    .antrag-switch button[data-hkp="privat"].on { background: #3a3f46; }
+    .antrag-from { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .antrag-from li {
+      display: flex; align-items: center; gap: 6px;
+      background: #fff; border: 1px solid #dbe4f6; border-radius: 8px;
+      padding: 5px 6px 5px 8px; font-size: 12px; font-weight: 700; color: #16202e;
+    }
+    .antrag-from li span { flex: 1; min-width: 0; }
+    .antrag-del {
+      flex: none; width: 22px; height: 22px; border: 0; border-radius: 6px;
+      background: #f1f5f9; color: #64748b; cursor: pointer;
+      display: grid; place-items: center; padding: 0;
+    }
+    .antrag-del:hover { background: #fee2e2; color: #b91c1c; }
+    .plan-add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
     .plan-add input, .plan-add select {
-      flex: 1 1 120px; border-radius: 8px; border: 1px solid #2c3540;
-      background: #0f141c; color: inherit; padding: 7px 8px;
-    }
-    html.theme-light .plan-add input, html.theme-light .plan-add select {
-      background: #fff; border-color: #c5d0dc; color: #16202e;
+      flex: 1 1 90px; border-radius: 8px; border: 1px solid #cdd6e0;
+      background: #fff; color: #16202e; padding: 6px 8px;
     }
     .plan-add button, .plan-foot button {
-      border: 0; border-radius: 8px; padding: 7px 10px; background: #0f766e; color: #fff;
+      border: 0; border-radius: 8px; padding: 7px 10px; background: #2b6fd6; color: #fff;
       font-weight: 800; cursor: pointer;
     }
-    .plan-foot { font-size: 12px; color: #8a94a2; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
+    .plan-foot { font-size: 12px; color: #8a94a2; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; }
     .half-schema .schema-row {
-      grid-template-columns: minmax(0, 1fr) minmax(260px, 32%);
+      grid-template-columns: 96px minmax(0, 1fr) 220px;
+      grid-template-areas: "zoom stage plan";
     }
     body.plan-wide .half-schema .schema-row {
-      grid-template-columns: minmax(0, 42%) minmax(300px, 1fr);
+      grid-template-columns: 96px minmax(0, 1fr) 220px;
+    }
+    body.skin-schema .half-schema .schema-row {
+      grid-template-columns: minmax(0, 1fr) 220px;
+      grid-template-areas: "stage plan";
     }
     .half-schema .left-befund { margin-top: 0; margin-bottom: 8px; }
     .half-schema .left-befund .legend-items {
-      grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-      max-height: none; overflow: visible; gap: 6px;
+      grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
     }
     @media (max-width: 860px) {
-      .half-schema .schema-row, body.plan-wide .half-schema .schema-row { grid-template-columns: 1fr; }
-      .plan-pane { max-height: 38vh; }
+      .half-schema .schema-row,
+      body.plan-wide .half-schema .schema-row,
+      body.skin-schema .half-schema .schema-row {
+        grid-template-columns: 1fr;
+        grid-template-areas: "zoom" "stage" "plan";
+      }
+      .zoom-pane { max-height: 28vh; width: auto; margin-left: 0; }
+      .half-schema { margin-left: 0; padding: 12px; }
+      .plan-pane { width: auto; min-width: 0; max-width: none; max-height: 38vh; }
       body.plan-wide .plan-pane { max-height: none; }
     }
   </style>
   <script src="/m/lena-zahnstatus-katalog.js?v=20260722i"></script>
-  <script src="/m/lena-voice-chart.js?v=20260722i"></script>
+  <script src="/m/lena-voice-chart.js?v=20260816a"></script>
   <script src="/m/lena-doku-template-zahn.js?v=20260722d"></script>
   <script src="/m/lena-01/perio-legend.js?v=20260721b"></script>
-  <script src="/m/lena-01/perio-chart.js?v=20260721b"></script>
-  <script src="/m/lena-01/perio.js?v=20260816m"></script>
+  <script src="/m/lena-01/perio-chart.js?v=20260816ae"></script>
+  <script src="/m/lena-01/perio.js?v=20260816bc"></script>
   <script src="/m/lena-01/perio-voice.js?v=20260816k"></script>
   <script src="/m/lena-01/lena-01-ask.js?v=20260816k"></script>
   <script src="/m/lena-01/lena-01-bedarf.js?v=20260816m"></script>
-  <script src="/m/lena-01/lena-01-plan.js?v=20260816k"></script>
-  <script src="/m/lena-01/lena-01-flow.js?v=20260816m"></script>
-  <script src="/m/lena-01/lena-01-plan-ui.js?v=20260816m"></script>
+  <script src="/m/lena-01/lena-01-plan.js?v=20260816y"></script>
+  <script src="/m/lena-01/lena-01-flow.js?v=20260816p"></script>
+  <script src="/m/lena-01/lena-01-plan-ui.js?v=20260816y"></script>
   <script>
     /* ═══ PC-WIZARD (read-only Spiegel des iPad-Lena-Wizards) ═══════════════
        Datenpfad identisch zur iPad-App (ipad-app.html):

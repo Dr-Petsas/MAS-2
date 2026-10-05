@@ -30,6 +30,48 @@ export function accountVisibility(doc) {
   return s(doc?.ownerUserId) ? "private" : "praxis";
 }
 
+/**
+ * Eine Praxis-Adresse + Sichtbarkeit + Inhaber = EIN Postfach.
+ * Vorfall 26.08.2026: der Tunnel-Wächter legte alle 20 min dasselbe private
+ * Konto neu an (API ohne Token blendet Privatpostfächer aus → „nicht da“ →
+ * POST). Nadines linke Spalte zeigte 356× „Dr. Petsas“.
+ */
+export function accountDedupeKey(doc) {
+  const visibility = accountVisibility(doc);
+  const owner = visibility === "private" ? s(doc?.ownerUserId) : "";
+  return `${s(doc?.email).toLowerCase()}|${visibility}|${owner}`;
+}
+
+function createdMs(doc) {
+  const c = doc?.createdAt;
+  if (c && typeof c.toMillis === "function") return c.toMillis();
+  return Number(c) || 0;
+}
+
+/** Bei Klonen gewinnt das älteste Dokument (das Original mit der IMAP-Historie). */
+export function pickCanonicalAccount(docs) {
+  const list = (docs || []).filter(Boolean);
+  if (!list.length) return null;
+  return list.slice().sort((a, b) => {
+    const ac = createdMs(a);
+    const bc = createdMs(b);
+    if (ac && bc && ac !== bc) return ac - bc;
+    if (ac && !bc) return -1;
+    if (!ac && bc) return 1;
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  })[0];
+}
+
+function dedupeAccountDocs(docs) {
+  const groups = new Map();
+  for (const doc of docs || []) {
+    const k = accountDedupeKey(doc);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(doc);
+  }
+  return [...groups.values()].map((g) => pickCanonicalAccount(g));
+}
+
 /** Public shape: safe to send to the browser (no secrets). */
 export function toPublic(doc) {
   if (!doc) return null;
@@ -56,7 +98,20 @@ export function toPublic(doc) {
 
 export async function listAccounts(clientId) {
   const snap = await col(clientId).orderBy("createdAt", "asc").get().catch(async () => col(clientId).get());
-  return snap.docs.map((d) => toPublic({ id: d.id, ...d.data() }));
+  const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return dedupeAccountDocs(raw).map((d) => toPublic(d));
+}
+
+export async function findExistingAccount(clientId, input = {}) {
+  const email = s(input.email);
+  if (!email) return null;
+  const visibility = s(input.visibility).toLowerCase() === "private" ? "private" : "praxis";
+  const want = accountDedupeKey({ email, visibility, ownerUserId: s(input.ownerUserId) });
+  const snap = await col(clientId).get();
+  const matches = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((d) => accountDedupeKey(d) === want);
+  return pickCanonicalAccount(matches);
 }
 
 /** Internal: full doc incl. decrypted passwords, for IMAP/SMTP use only. */
@@ -84,6 +139,14 @@ export async function createAccount(clientId, input = {}) {
   // sichtbar (oder schlimmer: für alle).
   const visibility = s(input.visibility).toLowerCase() === "private" ? "private" : "praxis";
   if (visibility === "private" && !s(input.ownerUserId)) return { ok: false, reason: "owner_required_for_private" };
+  const existing = await findExistingAccount(clientId, { email, visibility, ownerUserId: s(input.ownerUserId) });
+  if (existing) {
+    if (input.imap?.password || input.smtp?.password) {
+      const patched = await updateAccount(clientId, existing.id, input);
+      return { ...patched, reused: true };
+    }
+    return { ok: true, reused: true, account: toPublic(existing) };
+  }
   const ref = col(clientId).doc();
   const doc = {
     label: s(input.label) || email,

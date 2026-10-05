@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sprachnachricht — Clara</title>
+<link rel="icon" href="/m/icon-192.png">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(130% 95% at 50% 0%, #13203a 0%, #0a1322 55%, #060b16 100%);
+    color: #e6edf6; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 420px; background: #11203b; border-radius: 22px;
+    padding: 32px 26px; box-shadow: 0 18px 50px rgba(0,0,0,.45); text-align: center;
+  }
+  .avatar {
+    width: 76px; height: 76px; border-radius: 50%; margin: 0 auto 14px;
+    background: linear-gradient(135deg, #2ee6c8, #1899b0);
+    color: #08121f;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; font-weight: 800;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: #8fa0bd; margin-bottom: 22px; }
+  audio { width: 100%; margin-top: 8px; }
+  .hint { margin-top: 16px; font-size: 13px; color: #8fa0bd; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="avatar">C</div>
+  <h1>Sprachnachricht</h1>
+  <div class="sub">Demo von Clara</div>
+  <audio id="player" controls preload="auto" src="/m/audio-demo.wav"></audio>
+  <p class="hint">Tippe Play. Das ist nur ein Demo-Push — noch kein fertiges Produktfeature.</p>
+</div>
+<script>
+  // Autoplay oft vom OS blockiert; Play-Button reicht. Falls erlaubt: versuchen.
+  const a = document.getElementById("player");
+  a.play().catch(() => {});
+</script>
+</body>
+</html>

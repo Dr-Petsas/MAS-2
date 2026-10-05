@@ -105,6 +105,7 @@ async function fetchWindow(clientId, horizonDays) {
   const items = {};
   for (const d of snap.docs) {
     const o = d.data();
+    if (o.isDeleted === true) continue;
     if (o.isMultiDay === true || o.calendarItemType === "absence") continue;
     if (!o.patient?.id) continue; // temporary holds — not patient facts
     if (!showVirtual && isVirtualStatus(o.status)) continue;

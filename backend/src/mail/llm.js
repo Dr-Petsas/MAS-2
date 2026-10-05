@@ -17,6 +17,20 @@ function stripThink(text) {
   return String(text || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
+/**
+ * Denk-Tags auch MITTEN im Stream ausblenden: fertige <think>…</think>-Bloecke
+ * weg, offenen Block und ein angeanfangtes "<thi…" am Ende nicht zeigen.
+ * Bewusst ohne trim — sonst verschluckt der Stream fuehrende Leerzeichen.
+ */
+export function visibleLlmText(raw) {
+  let t = String(raw || "").replace(/<think>[\s\S]*?<\/think>/gi, "");
+  const open = t.search(/<think>/i);
+  if (open >= 0) t = t.slice(0, open);
+  const lt = t.lastIndexOf("<");
+  if (lt >= 0 && /<t(?:h(?:i(?:n(?:k)?)?)?)?$/i.test(t.slice(lt))) t = t.slice(0, lt);
+  return t;
+}
+
 // Heuristik: nur echte Ollama-Instanzen sprechen die native /api/chat-API. Der
 // Standard-Port 11434 ODER ein localhost-Endpunkt gelten als Ollama; alles
 // andere (z. B. vLLM auf dem RTX-5090-Server unter :8000) hat kein /api/chat und
@@ -31,6 +45,20 @@ function looksLikeOllama(base) {
   } catch {
     return true; // im Zweifel wie bisher: nativ zuerst probieren
   }
+}
+
+// vLLM/Qwen3.6: Denken frisst Tokens und Latenz (Vorfall Nadine „reagiert nicht“).
+// QM und Bianca schalten es bereits aus — gleicher Default fuer den OpenAI-Pfad.
+// Aufrufer koennen per extraBody ueberschreiben.
+const NO_THINK = {
+  chat_template_kwargs: { enable_thinking: false },
+  enable_thinking: false,
+};
+
+function openaiBody(fields, extraBody) {
+  // Denken immer aus auf dem OpenAI-Pfad (vLLM und Ollama-/v1); native Ollama
+  // nutzt bereits think:false. extraBody gewinnt bei Konflikten.
+  return JSON.stringify({ ...fields, ...NO_THINK, ...(extraBody || {}) });
 }
 
 /**
@@ -92,7 +120,7 @@ export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeo
     const resp = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens, stream: false, ...(extraBody || {}) }),
+      body: openaiBody({ model, messages, temperature, max_tokens: maxTokens, stream: false }, extraBody),
       signal: ctrl.signal,
     });
     if (!resp.ok) {
@@ -108,6 +136,106 @@ export async function chat(messages, { temperature = 0.4, maxTokens = 900, timeo
     return { ok: false, text: "", reason, model };
   } finally {
     clearTimeout(t);
+  }
+}
+
+/**
+ * Dieselbe Chat-Completion, aber Token fuer Token (OpenAI-SSE). Nadines
+ * Diskussions-Chat zeigt das sofort, statt auf das fertige JSON zu warten.
+ * Yields: {type:"delta", text} | {type:"done", text, model} | {type:"error", reason, model}
+ */
+export async function* chatStream(messages, { temperature = 0.4, maxTokens = 900, timeoutMs = 45000, model: modelOverride, baseUrl: baseOverride, extraBody, signal } = {}) {
+  const c = cfg();
+  const base = (baseOverride || c.base).replace(/\/+$/, "");
+  const apiKey = c.apiKey;
+  const model = modelOverride || c.model;
+  const ctrl = new AbortController();
+  // Frueher: ein starrer Wall-Clock-Timeout ab Request-Start — bei GPU-Warteschlange
+  // oder langen Antworten (maxTokens 900–1500) brach der Stream MITTEN im Schreiben
+  // ab, obwohl noch Tokens kamen. Jetzt: Idle ohne Chunks + harte Obergrenze.
+  const idleMs = Math.max(30000, timeoutMs);
+  const hardMs = Math.max(timeoutMs * 2, 180000);
+  const startedAt = Date.now();
+  let lastChunkAt = startedAt;
+  const watchdog = setInterval(() => {
+    const now = Date.now();
+    if (now - lastChunkAt > idleMs || now - startedAt > hardMs) ctrl.abort();
+  }, 1000);
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+  }
+
+  let raw = "";
+  let shown = "";
+  const emitVisible = function* () {
+    const clean = visibleLlmText(raw);
+    if (clean.length > shown.length && clean.startsWith(shown)) {
+      const add = clean.slice(shown.length);
+      shown = clean;
+      if (add) yield { type: "delta", text: add };
+    } else if (clean !== shown) {
+      shown = clean;
+      yield { type: "reset", text: clean };
+    }
+  };
+
+  try {
+    const resp = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: openaiBody({ model, messages, temperature, max_tokens: maxTokens, stream: true }, extraBody),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      yield { type: "error", reason: `llm_http_${resp.status}`, model };
+      return;
+    }
+    if (!resp.body) {
+      yield { type: "error", reason: "llm_empty", model };
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      lastChunkAt = Date.now();
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split(/\r?\n/);
+      buf = lines.pop() || "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        let data;
+        try { data = JSON.parse(payload); } catch { continue; }
+        const piece = data?.choices?.[0]?.delta?.content || "";
+        if (piece) {
+          raw += piece;
+          yield* emitVisible();
+        }
+      }
+    }
+
+    const final = visibleLlmText(raw).trim();
+    if (!final) {
+      yield { type: "error", reason: "llm_empty", model };
+      return;
+    }
+    if (final.startsWith(shown) && final.length > shown.length) {
+      yield { type: "delta", text: final.slice(shown.length) };
+    } else if (final !== shown) {
+      yield { type: "reset", text: final };
+    }
+    yield { type: "done", text: final, model };
+  } catch (e) {
+    yield { type: "error", reason: e?.name === "AbortError" ? "llm_timeout" : "llm_unreachable", model };
+  } finally {
+    clearInterval(watchdog);
   }
 }
 

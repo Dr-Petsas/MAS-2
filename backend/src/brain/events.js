@@ -237,7 +237,11 @@ export function buildEvent(input = {}) {
       sig.critical ||
       // W-STABIL-8: Rechnungen/Zahlungen bleiben offen, bis jemand "erledigt" sagt.
       sig.invoiceOrPayment;
-    status = actionable ? ITEM_STATUS.OPEN : ITEM_STATUS.NONE;
+    // Team-Notiz aus dem Kalender (Kanal frontdesk) ist immer ein offener
+    // Eintrag. Freitext ohne Schalter landete sonst auf status=none, verschwand
+    // aus der Liste und aus Biancas Rückrufer-Kontext.
+    const teamNotiz = channel === CHANNELS.FRONTDESK;
+    status = (actionable || teamNotiz) ? ITEM_STATUS.OPEN : ITEM_STATUS.NONE;
   }
   assertEnum(status, STATUS_SET, "status");
 

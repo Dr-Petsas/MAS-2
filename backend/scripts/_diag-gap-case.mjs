@@ -1,0 +1,15 @@
+﻿import "dotenv/config";
+import { masCollection } from "../src/tenant.js";
+const C = "MEe4ZQHEzOPzLcexyhdT";
+const d = await masCollection(C, "mas_cases").doc("gapfill_fa66c704606a071056b6").get();
+const c = d.data();
+console.log("status   =", c.status);
+console.log("assignee =", JSON.stringify(c.assignee));
+console.log("kind     =", JSON.stringify(c.kind));
+console.log("updatedAt=", c.updatedAt?.constructor?.name, c.updatedAt?.toDate ? c.updatedAt.toDate().toISOString() : c.updatedAt);
+console.log("createdAt=", c.createdAt?.constructor?.name);
+console.log("title    =", c.title);
+console.log("slot     =", JSON.stringify(c.callList?.slot));
+console.log("date     =", c.callList?.date, " calId=", c.callList?.calendarId);
+console.log("felder   =", Object.keys(c).sort().join(", "));
+process.exit(0);

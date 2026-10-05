@@ -30,6 +30,7 @@ uploads/
 # lokal, wurde bei Aufraeumarbeiten geloescht, Wiederherstellung noetig).
 !backend/src/data/
 !backend/src/data/**
+backend/src/data/dens-drop/
 
 # Logs
 *.log
@@ -54,3 +55,31 @@ Folder.jpg
 
 # OCR-Sprachdaten (Tesseract, binaer, per Download holen - nie committen)
 *.traineddata
+
+# Clara Live-Replay: echte Anruf-WAVs (lokal generiert, nicht committen)
+backend/public/m/replay-audio/
+backend/public/m/replay-audio-dev/
+# ... und die daraus erzeugten Seiten (echte Gespraechstexte mit Patientennamen)
+backend/public/m/clara-replay.html
+backend/public/m/clara-replay-dev.html
+
+# PVS-Warteschlange zur Laufzeit (echte Patienten- und Anamnesedaten)
+backend/src/data/pvs-pending-chart.json
+
+# Ablage fuer Dokumente/Bilder, die der Chef dem Agenten gibt
+_posteingang/
+
+# Neustart-Logs, Debug-Screenshots, DENS-Analyse-Artefakte
+*.log.err
+backend/public/img/_shot-*
+backend/public/img/_debug-*.html
+backend/scripts/dens-*.png
+backend/scripts/dens-*-strings.txt
+backend/scripts/dens-ui-dump.txt
+# DENS-Fremdsoftware (DENSimport, lizenziert, 19 MB) - lokal vorhalten
+backend/scripts/_densimport/
+backend/scripts/_densimport.zip
+# Hilfsprogramme werden aus den .cs-Quellen gebaut; nur das zur Laufzeit
+# gebrauchte DensUiDeliver.exe (src/pvs/densUiWrite.js) liegt im Repo
+backend/scripts/*.exe
+!backend/scripts/DensUiDeliver.exe

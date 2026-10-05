@@ -32,6 +32,7 @@ import {
   serializeTemplateFields,
   composeStructuredFromTemplate,
 } from "./templateZahn.js";
+import { enqueueFromFinalize } from "../pvs/writePath.js";
 
 // MUSS mit LENA_SECTIONS im Frontend uebereinstimmen
 // (docgendaweb/src/services/treatmentDictationService.ts).
@@ -971,7 +972,19 @@ export async function structureTreatment(clientId, locationId, appointmentId, { 
     console.warn(`[lena/template] appt=${appointmentId} uebersprungen: ${tfErr?.message || tfErr}`);
   }
 
-  console.log(`[lena/structure] appt=${appointmentId} segmente=${segs.length} klassifiziert=${byId.size} korrigiert=${correctedCount}${correctModel ? ` (correct=${correctModel})` : ""}${strongModel ? ` (dialog=${strongModel})` : ""}${templateFields ? ` template=${templateFields.gapCount}luecken` : ""}`);
+  let pvs = { queued: false };
+  try {
+    const apptSnap = await apptRef(clientId, locationId, appointmentId).get();
+    const ap = apptSnap.exists ? (apptSnap.data() || {}) : {};
+    pvs = await enqueueFromFinalize(clientId, {
+      text: structuredText,
+      appointment: { ...ap, id: appointmentId, locationId },
+    });
+  } catch (pvsErr) {
+    console.warn(`[lena/structure] pvs: ${pvsErr?.message || pvsErr}`);
+  }
+
+  console.log(`[lena/structure] appt=${appointmentId} segmente=${segs.length} klassifiziert=${byId.size} korrigiert=${correctedCount}${correctModel ? ` (correct=${correctModel})` : ""}${strongModel ? ` (dialog=${strongModel})` : ""}${templateFields ? ` template=${templateFields.gapCount}luecken` : ""} pvs=${pvs.queued ? pvs.id : pvs.reason || "no"}`);
 
   return {
     ok: true,
@@ -997,7 +1010,7 @@ export async function finalizeTreatmentDoc(
   clientId,
   locationId,
   appointmentId,
-  { structuredText: incomingText = "", updatedBy = "mas-lena" } = {},
+  { structuredText: incomingText = "", updatedBy = "mas-lena", identity = null } = {},
 ) {
   const segs = await loadSegments(clientId, locationId, appointmentId);
   const treatmentRef = apptRef(clientId, locationId, appointmentId).collection("treatment").doc("main");
@@ -1109,8 +1122,22 @@ export async function finalizeTreatmentDoc(
     console.warn(`[lena/finalize] memory segments: ${memErr?.message || memErr}`);
   }
 
+  let pvs = { queued: false };
+  try {
+    const apptSnap = await apptRef(clientId, locationId, appointmentId).get();
+    const ap = apptSnap.exists ? (apptSnap.data() || {}) : {};
+    pvs = await enqueueFromFinalize(clientId, {
+      text: String(incomingText || "").trim() || structuredText,
+      appointment: { ...ap, id: appointmentId, locationId, patientId: ap.patientId || ap.patient?.id },
+      identity,
+    });
+  } catch (pvsErr) {
+    console.warn(`[lena/finalize] pvs: ${pvsErr?.message || pvsErr}`);
+    pvs = { queued: false, reason: pvsErr?.code || "pvs_error", error: String(pvsErr?.message || pvsErr) };
+  }
+
   console.log(
-    `[lena/finalize] appt=${appointmentId} chars=${structuredText.length} segs=${segs.length} memory=${memorySegments}`,
+    `[lena/finalize] appt=${appointmentId} chars=${structuredText.length} segs=${segs.length} memory=${memorySegments} pvs=${pvs.queued ? pvs.id : pvs.reason || "no"}`,
   );
   return {
     ok: true,
@@ -1118,6 +1145,7 @@ export async function finalizeTreatmentDoc(
     reinschrift: reinschrift || "",
     segmentsCount: segs.length,
     memorySegments,
+    pvs,
   };
 }
 

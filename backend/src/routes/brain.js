@@ -4,7 +4,7 @@
 import express from "express";
 import { createHash } from "node:crypto";
 import { assertAppEnabled } from "../entitlements.js";
-import { getDayAppointments, computeDayBriefing, buildSpokenDayBriefing, todayBerlin } from "../clara/daySchedule.js";
+import { getDayAppointments, listLocationCalendars, computeDayBriefing, buildSpokenDayBriefing, todayBerlin } from "../clara/daySchedule.js";
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "../brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "../brain/livingPrompt.js";
 import { reflectOnce } from "../brain/reflect.js";
@@ -823,7 +823,14 @@ router.get("/brain/day-schedule", async (req, res) => {
     if (!day.ok) return res.status(400).json({ ok: false, ...day });
     const briefing = computeDayBriefing(day.appointments, { calendars: day.calendars });
     const message = buildSpokenDayBriefing(briefing, { date: day.date });
-    res.json({ ok: true, clientId, date: day.date, briefing, message, appointments: day.appointments });
+    let calendars = [];
+    try { calendars = await listLocationCalendars(clientId, day.locationId); } catch { calendars = []; }
+    const gesehen = new Set(calendars.map((c) => c.id));
+    for (const c of day.calendars || []) {
+      if (!c?.id || gesehen.has(String(c.id))) continue;
+      calendars.push({ id: String(c.id), name: String(c.name || "Kalender"), internal: false });
+    }
+    res.json({ ok: true, clientId, date: day.date, briefing, message, appointments: day.appointments, calendars });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

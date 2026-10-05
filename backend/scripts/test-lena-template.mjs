@@ -101,7 +101,7 @@ function testStructuredFromTemplate() {
     teeth: [36],
   }, { anlass: "Füllung 36" });
   const text = toStructuredTextFromFields(fields, { nachdiktatLines: ["Okklusion kontrolliert"] });
-  assert.match(text, /DOKU-TEMPLATE ZAHNMEDIZIN/);
+  assert.match(text, /KI-DOKUMENTATION PICKADOC/);
   assert.match(text, /Befund: Karies mesial/);
   assert.match(text, /FÜLLUNG/);
   assert.match(text, /NACHDIKTAT/);
