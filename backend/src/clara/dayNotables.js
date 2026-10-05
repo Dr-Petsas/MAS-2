@@ -7,7 +7,7 @@
 // Saetze. "weil" kommt NUR vor, wenn der Grund im Beleg steht — sonst
 // Nebensatz mit "und"/"dabei"/"ausserdem". Kein LLM, keine Erfindung.
 
-import { vary } from "./speech.js";
+import { vary, sprechNotiz } from "./speech.js";
 
 const VERSAEUMT = /no.?show|didnotattend|not_showed|missed|nicht.?erschienen|versaeumt|versäumt/i;
 const KALENDER_ECHO = /^(Neuer Termin|Termin verschoben|Termin abgesagt|Dokumenten-Ampel)/i;
@@ -76,7 +76,7 @@ export function sammleAuffaelligkeiten({
   else if (yellow) items.push({ art: "docs_yellow", n: yellow });
 
   for (const a of briefing.attention || []) {
-    const text = clip(a.comments, 90);
+    const text = sprechNotiz(a.comments, 90);
     if (text.length < 8) continue;
     items.push({
       art: "notiz",

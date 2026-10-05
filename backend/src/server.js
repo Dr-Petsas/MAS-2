@@ -521,7 +521,7 @@ server.listen(PORT, () => {
     // Neustarts.
     const retentionTag = new Map(); // cid -> Tag des letzten Laufs
     setInterval(() => {
-      const hh = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
+      const hh = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
       const today = todayBerlin();
       if (hh < 3) return;
       fuerAlleMandanten("retention.daily", async (cid) => {
@@ -604,7 +604,7 @@ server.listen(PORT, () => {
   if (DEFAULT_CLIENT_ID) {
     const lastDokuRun = new Map(); // cid -> Tag des letzten Laufs
     setInterval(() => {
-      const hh = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
+      const hh = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date()));
       const today = todayBerlin();
       if (!(hh >= 18 && hh < 21)) return;
       fuerAlleMandanten("doku.abendlauf", async (cid) => {

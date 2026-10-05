@@ -186,6 +186,30 @@ export function warmClose(key = "warm.close") {
   return maybe(key, WARM_CLOSE, 0.3);
 }
 
+/**
+ * Terminnotiz fuers VORLESEN (live 05.10.2026: "Notiz: Alte Nummer 0210283816
+ * aktualisiert; Anrufer woertlich: „Ach, ich verstehe, mein Gott ..."). Biancas
+ * Maschinen-Vermerke (Nummernwechsel, Woertlich-Zitat, "// Bianca") sind fuer
+ * den Bildschirm, nicht fuers Ohr. Der Rest wird gekuerzt; leer => "".
+ * @param {string} text
+ * @param {number} [max=100]
+ * @returns {string}
+ */
+export function sprechNotiz(text, max = 100) {
+  const NUMMER = /\s*(?:unter|an|auf|von)?\s*\+?\d[\d\s/-]{6,}\d/gi;
+  let t = String(text || "")
+    .replace(/Anrufer\s+w(?:ö|oe)rtlich:\s*[„"»]?[^“"«]*[“"«]?/gi, " ")
+    .replace(/\b(?:alte|neue)\s+(?:Telefon)?nummer\b[^;.\n]*?(?:aktualisiert|ge(?:ä|ae)ndert|ersetzt)\b/gi, " ")
+    .replace(NUMMER, " ")
+    .replace(/(?:\/\/|\(|-)\s*(?:Bianca|Lisa|Clara)\b\)?/gi, " ")
+    .replace(/\s*[;|]\s*/g, ", ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,.:—–-]+|[\s,:—–-]+$/g, "")
+    .trim();
+  if (t.replace(/[^A-Za-zÄÖÜäöüß]/g, "").length < 4) return "";
+  return t.length > max ? `${t.slice(0, max - 3).replace(/\s+\S*$/, "")} …` : t;
+}
+
 // Klinische Entscheidungs-Hinweise fuer den Zahnarzt, deterministisch aus den
 // Anamnese-Befunden abgeleitet. Bewusst als "erwaegen/pruefen" formuliert —
 // Clara erinnert, ordnet nichts an und erfindet nichts.

@@ -35,9 +35,13 @@ function berlinDay(ts) {
 }
 
 function spokenClock(ts) {
-  const d = new Date(ts);
-  const h = Number(new Intl.DateTimeFormat("de-DE", { timeZone: TZ, hour: "2-digit", hour12: false }).format(d));
-  const m = Number(new Intl.DateTimeFormat("de-DE", { timeZone: TZ, minute: "2-digit" }).format(d));
+  // Nur-Stunde formatiert de-DE als "09 Uhr" -> Number() = NaN ("um NaN Uhr").
+  const teile = new Intl.DateTimeFormat("de-DE", {
+    timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(ts));
+  const h = Number(teile.find((p) => p.type === "hour")?.value);
+  const m = Number(teile.find((p) => p.type === "minute")?.value);
+  if (!Number.isFinite(h)) return "";
   return m ? `${h} Uhr ${m}` : `${h} Uhr`;
 }
 

@@ -3,7 +3,7 @@ import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { TOPIC_LABELS } from "../brain/cases.js";
 import { holidayName, isWeekend, daySpecialLabel } from "./holidays.js";
 import { redDocsQuip } from "./humor.js";
-import { pick, vary, maybe, dayLoadReaction, warmClose } from "./speech.js";
+import { pick, vary, maybe, dayLoadReaction, warmClose, sprechNotiz } from "./speech.js";
 
 // Clara's day-schedule read model: a spoken "what's on the calendar today" that
 // reads the ACTUAL booked appointments (not just free slots, not tickets).
@@ -868,7 +868,7 @@ export function buildSpokenDayBriefing(briefing, { date, operatorDoctorName = ""
       const bits = [];
       if (a.docsStatus === "yellow") bits.push("die Unterlagen sind noch nicht unterschrieben");
       else if (a.docsStatus === "red") bits.push("die Unterlagen wurden noch nicht verschickt");
-      if (a.comments) bits.push(`dazu steht in der Notiz: ${a.comments.length > 100 ? `${a.comments.slice(0, 97)}...` : a.comments}`);
+      if (sprechNotiz(a.comments)) bits.push(`dazu steht in der Notiz: ${sprechNotiz(a.comments)}`);
       return `Um ${spokenTime(a.startMs)} haben Sie ${spokenPatient(a)} — ${bits.join(", und ")}.`;
     });
     const rest = att.length - SPOKEN_ATTENTION_MAX;
@@ -1062,7 +1062,7 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
     const flag = a.newPatient && !/Erstuntersuchung/.test(motive) ? ", ein Neupatient" : "";
     let e = `um ${spokenTime(a.startMs)} ${spokenPatient(a)}${motive ? ` ${motive}` : ""}${flag}`;
     // Terminnotiz aus dem Kalender ("bringt vielleicht seine Frau mit ...").
-    if (a.comments) e += `, Notiz: ${a.comments.length > 120 ? `${a.comments.slice(0, 117)}...` : a.comments}`;
+    if (sprechNotiz(a.comments, 120)) e += `, Notiz: ${sprechNotiz(a.comments, 120)}`;
     // Ampel der Patientenunterlagen — gelb/rot ist genau das, was das Team
     // VOR dem Termin wissen will (green stays silent). Plattform-Semantik:
     // gelb = verschickt, aber noch nicht unterschrieben; rot = noch nicht raus.
@@ -1257,7 +1257,7 @@ export function buildSpokenTreatmentHistory(result, { who = "der Patient" } = {}
     // bliebe bei alten Behandlungen unklar, welches Jahr gemeint ist.
     if (year !== thisYear && !/^(gestern|vorgestern)$/.test(rel)) rel = `${rel} ${year}`;
     const motive = spokenMotive(a.visitMotive) || (a.visitMotive ? `für ${a.visitMotive}` : "");
-    const note = a.comments ? `, Notiz: ${a.comments.length > 120 ? `${a.comments.slice(0, 117)}...` : a.comments}` : "";
+    const note = sprechNotiz(a.comments, 120) ? `, Notiz: ${sprechNotiz(a.comments, 120)}` : "";
     return `${rel}${motive ? ` ${motive}` : ""}${note}`;
   };
   if (recent.length === 1) {
