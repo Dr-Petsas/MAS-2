@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 3b850d10fbe3)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 be006212017f)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26015,7 +26015,58 @@ function zaehneIn(teil, kiefer) {
 	return out;
 }
 var satzteile = (t) => norm(t).split(/[,;.]| und nach | sowie | dazu | außerdem | ausserdem /).map((s) => s.trim()).filter(Boolean);
+var KIEFER_WORT = /\b(ok|o\.k\.|oberkiefer|oben|uk|u\.k\.|unterkiefer|unten)\b/g;
+/** Text an jeder Kiefer-Nennung schneiden: „Im Oberkiefer … und im Unterkiefer …“ → je Kiefer ein Abschnitt */
+function kieferAbschnitte(text) {
+	const t = norm(text);
+	const treffer = [...t.matchAll(KIEFER_WORT)];
+	const out = [];
+	treffer.forEach((m, i) => {
+		const kiefer = /^(ok|o\.k\.|oberkiefer|oben)$/.test(m[1]) ? "OK" : "UK";
+		const stueck = t.slice(i === 0 ? 0 : m.index, treffer[i + 1]?.index ?? t.length);
+		const letzter = out[out.length - 1];
+		if (letzter?.kiefer === kiefer) letzter.text += stueck;
+		else out.push({
+			kiefer,
+			text: stueck
+		});
+	});
+	return out;
+}
+function versorgungIn(t, coverDenture) {
+	if (/teleskop|konus|doppelkrone/.test(t) || coverDenture) return "teleskopprothese";
+	if (/totalprothese|vollprothese|totale/.test(t)) return "totalprothese";
+	if (/br(ü|ue)cke/.test(t)) return "bruecke";
+	if (/krone/.test(t)) return "kronen";
+}
 function auftragVerstehen(text) {
+	const auftrag = einzelAuftrag(text);
+	const abschnitte = kieferAbschnitte(text);
+	if (abschnitte.length < 2) return auftrag;
+	const teile = abschnitte.map((a) => ({
+		...einzelAuftrag(a.text),
+		kiefer: a.kiefer
+	})).filter((x) => x.versorgung && x.versorgung !== "kronen");
+	const kiefer = new Set(teile.map((x) => x.kiefer));
+	if (!teile.length) return auftrag;
+	for (const x of teile) x.pfeiler = x.pfeiler.filter((z) => kieferVon(z) === x.kiefer);
+	if (kiefer.size === 1) return {
+		...auftrag,
+		...teile[0],
+		text,
+		bonus: auftrag.bonus,
+		haertefall: auftrag.haertefall
+	};
+	return {
+		...auftrag,
+		versorgung: teile[0].versorgung,
+		kiefer: void 0,
+		teile,
+		pfeiler: teile.flatMap((x) => x.pfeiler),
+		coverDenture: teile.some((x) => x.coverDenture)
+	};
+}
+function einzelAuftrag(text) {
 	const t = norm(text);
 	const auftrag = {
 		text,
@@ -26025,10 +26076,7 @@ function auftragVerstehen(text) {
 		coverDenture: /co?ver.?dent|kover.?dent|deckprothese/.test(t),
 		mitAchtern: /(mit|inklusive|inkl\.?|samt) (den )?achter/.test(t)
 	};
-	if (/teleskop|konus|doppelkrone/.test(t) || auftrag.coverDenture) auftrag.versorgung = "teleskopprothese";
-	else if (/totalprothese|vollprothese|totale/.test(t)) auftrag.versorgung = "totalprothese";
-	else if (/br(ü|ue)cke/.test(t)) auftrag.versorgung = "bruecke";
-	else if (/krone/.test(t)) auftrag.versorgung = "kronen";
+	auftrag.versorgung = versorgungIn(t, auftrag.coverDenture);
 	auftrag.kiefer = kieferIn(t);
 	const nummern = [...t.matchAll(FDI)].map((m) => kieferVon(m[1]));
 	if (!auftrag.kiefer && nummern.length && nummern.every((k) => k === nummern[0])) auftrag.kiefer = nummern[0];
@@ -26066,56 +26114,104 @@ var BEFUND_WORTE = [
 /** Gesprochener Befund („es fehlen 15 bis 18 und 25 bis 28, 13 bis 23 vorhanden“) → eHKP-Kürzel je Zahn */
 function befundVerstehen(text, kiefer) {
 	const befund = {};
+	const nurKiefer = /* @__PURE__ */ new Set();
+	const roh = satzteile(text);
+	const genannt = roh.map((teil) => kieferIn(norm(teil)));
+	/** Satzteil ohne Kiefer („die Sechser fehlen“) erbt ihn vom Nachbarn – erst davor, sonst danach */
+	const kieferFuer = (i) => genannt[i] ?? kiefer ?? genannt.slice(0, i).reverse().find(Boolean) ?? genannt.slice(i + 1).find(Boolean);
+	const teile = roh.map((teil, i) => {
+		const k = kieferFuer(i);
+		const treffer = BEFUND_WORTE.map(([re, code]) => ({
+			m: re.exec(teil),
+			code
+		})).find((x) => x.m);
+		const ersterZahn = teil.search(/\b[1-4][1-8]\b|er(n|s)?\b|front|eckz/);
+		return {
+			teil,
+			k,
+			zs: zaehneIn(teil, k),
+			code: treffer?.code,
+			/** Verb am Ende („…, die Sechser und Siebener fehlen“) gilt auch für die Satzteile davor */
+			nachgestellt: !!treffer?.m && ersterZahn >= 0 && treffer.m.index > ersterZahn
+		};
+	});
 	let letztes;
-	for (const teil of satzteile(text)) {
-		const zs = zaehneIn(teil, kiefer);
-		const code = BEFUND_WORTE.find(([re]) => re.test(teil))?.[1] ?? letztes;
-		if (code === void 0 || !zs.length) continue;
-		for (const z of zs) befund[z] = code;
+	teile.forEach((x, i) => {
+		let code = x.code;
+		if (code === void 0) {
+			const naechstes = teile.slice(i + 1).find((y) => y.code !== void 0);
+			code = naechstes?.nachgestellt ? naechstes.code : letztes;
+		}
+		if (code === void 0 || !x.zs.length) return;
+		const sammelbegriff = /\bfront/.test(x.teil);
+		for (const z of x.zs) if (!(sammelbegriff && z in befund)) befund[z] = code;
+		if (code === "" && x.k && /\bnur\b/.test(x.teil)) nurKiefer.add(x.k);
 		letztes = code;
-	}
+	});
+	for (const k of nurKiefer) for (const z of REIHE[k]) if (!(z in befund)) befund[z] = "f";
 	if (kiefer && /alle (anderen|übrigen|uebrigen|restlichen) fehlen|sonst (fehlt|fehlen) alle|rest fehlt/.test(norm(text))) {
 		for (const z of REIHE[kiefer]) if (!(z in befund)) befund[z] = "f";
 	}
 	return befund;
+}
+var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|co?ver.?dent|kover|bonus|scan|abdruck|abform|gold|zirkon|keramik|\bnem\b|erstell|plan|hkp|kostenpl/;
+/** Befund-Satzteile aus einem gesprochenen Auftrag („… die Sechser und Siebener fehlen …“), sonst '' */
+function befundAusAuftrag(text) {
+	return satzteile(text).filter((t) => !VERSORGUNGS_TEIL.test(t) && BEFUND_WORTE.some(([re]) => re.test(t))).join(", ");
 }
 var liste = (zs) => zs.length <= 1 ? zs.join("") : `${zs.slice(0, -1).join(", ")} und ${zs[zs.length - 1]}`;
 var fehlt = (b, z) => FEHLEND.has((b[z] ?? "").trim().toLowerCase());
 /** Erzeugt aus Auftrag und Befund einen gerechneten Plan – oder eine Rückfrage. */
 function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 	const befund = Object.fromEntries(Object.entries(befundRoh).map(([z, b]) => [z, (b ?? "").trim().toLowerCase()]));
-	for (const z of auftrag.entfernen) befund[z] = "x";
 	const hinweise = [];
-	if (!auftrag.versorgung) return {
-		status: "rueckfrage",
-		grund: "versorgung",
-		frage: "Welche Versorgung soll ich planen – zum Beispiel Teleskopprothese, Totalprothese oder Kronen?"
-	};
-	if (auftrag.versorgung === "bruecke") return {
-		status: "rueckfrage",
-		grund: "nicht_unterstuetzt",
-		frage: "Brücken kann ich noch nicht per Sprache planen. Bitte den HKP in PlanR anlegen."
-	};
-	const kiefer = auftrag.kiefer;
-	if (!kiefer && auftrag.versorgung !== "kronen") return {
-		status: "rueckfrage",
-		grund: "kiefer",
-		frage: "Für welchen Kiefer – Oberkiefer oder Unterkiefer?"
-	};
-	if (!Object.keys(befund).length) return {
+	const teile = auftrag.teile?.length ? auftrag.teile : [auftrag];
+	for (const teil of teile) for (const z of teil.entfernen) befund[z] = "x";
+	for (const teil of teile) {
+		if (!teil.versorgung) return {
+			status: "rueckfrage",
+			grund: "versorgung",
+			frage: "Welche Versorgung soll ich planen – zum Beispiel Teleskopprothese, Totalprothese oder Kronen?"
+		};
+		if (teil.versorgung === "bruecke") return {
+			status: "rueckfrage",
+			grund: "nicht_unterstuetzt",
+			frage: "Brücken kann ich noch nicht per Sprache planen. Bitte den HKP in PlanR anlegen."
+		};
+		if (!teil.kiefer && teil.versorgung !== "kronen") return {
+			status: "rueckfrage",
+			grund: "kiefer",
+			frage: "Für welchen Kiefer – Oberkiefer oder Unterkiefer?"
+		};
+	}
+	const nurTotal = teile.every((x) => x.versorgung === "totalprothese");
+	if (!Object.keys(befund).length && !nurTotal) return {
 		status: "rueckfrage",
 		grund: "befund_fehlt",
 		frage: "Ich habe keinen Befund. Welche Zähne fehlen, und welche sind vorhanden?"
 	};
 	const tp = {};
-	if (auftrag.versorgung === "teleskopprothese" || auftrag.versorgung === "totalprothese") {
+	for (const teil of teile) {
+		const r = teil.versorgung === "kronen" ? kronenPlanen(teil, befund, tp) : kieferPlanen(teil, teil.kiefer, befund, tp, hinweise);
+		if (r) return r;
+	}
+	return planRechnen(auftrag, teile, befund, tp, hinweise, optionen);
+}
+function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
+	const name = kiefer === "OK" ? "Oberkiefer" : "Unterkiefer";
+	{
 		const reihe = REIHE[kiefer];
 		const unbekannt = reihe.filter((z) => !(z in befund) && !istWeisheitszahn(z));
-		if (unbekannt.length === reihe.filter((z) => !istWeisheitszahn(z)).length) return {
-			status: "rueckfrage",
-			grund: "befund_fehlt",
-			frage: `Für den ${kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"} habe ich keinen Befund. Welche Zähne fehlen dort?`
-		};
+		if (unbekannt.length === reihe.filter((z) => !istWeisheitszahn(z)).length) {
+			if (auftrag.versorgung !== "totalprothese") return {
+				status: "rueckfrage",
+				grund: "befund_fehlt",
+				frage: `Für den ${name} habe ich keinen Befund. Welche Zähne fehlen dort?`
+			};
+			for (const z of reihe) befund[z] = "f";
+			hinweise.push(`${name}: kein Befund genannt – für die Totalprothese als zahnlos angenommen.`);
+			unbekannt.length = 0;
+		}
 		const pfeiler = auftrag.versorgung === "teleskopprothese" ? auftrag.pfeiler.filter((z) => kieferVon(z) === kiefer) : [];
 		if (auftrag.versorgung === "teleskopprothese" && !pfeiler.length) return {
 			status: "rueckfrage",
@@ -26147,22 +26243,25 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 			tp[z] = "E";
 		}
 		if (auftrag.coverDenture) hinweise.push("Cover-Denture: gaumen- bzw. schleimhautgetragene Deckprothese auf den Teleskopen. Metallbasis (Befund 4.5) nur bei Notwendigkeit ankreuzen.");
-	} else {
-		const kronen = auftrag.pfeiler;
-		if (!kronen.length) return {
-			status: "rueckfrage",
-			grund: "pfeiler",
-			frage: "Welche Zähne sollen überkront werden?"
-		};
-		const ohneBefund = kronen.filter((z) => !KRONE_NOETIG.has(befund[z] ?? ""));
-		if (ohneBefund.length) return {
-			status: "rueckfrage",
-			grund: "krone_befund",
-			zaehne: ohneBefund,
-			frage: `Für ${liste(ohneBefund)} steht im Befund keine Kronenbedürftigkeit. Ist ${ohneBefund.length > 1 ? "sie" : "er"} überkronungsbedürftig oder ist die Krone erneuerungsbedürftig?`
-		};
-		if (auftrag.werkstoff && WERKSTOFFE[auftrag.werkstoff].art === "keramik") for (const z of kronen) tp[z] = "KM";
 	}
+}
+function kronenPlanen(auftrag, befund, tp) {
+	const kronen = auftrag.pfeiler;
+	if (!kronen.length) return {
+		status: "rueckfrage",
+		grund: "pfeiler",
+		frage: "Welche Zähne sollen überkront werden?"
+	};
+	const ohneBefund = kronen.filter((z) => !KRONE_NOETIG.has(befund[z] ?? ""));
+	if (ohneBefund.length) return {
+		status: "rueckfrage",
+		grund: "krone_befund",
+		zaehne: ohneBefund,
+		frage: `Für ${liste(ohneBefund)} steht im Befund keine Kronenbedürftigkeit. Ist ${ohneBefund.length > 1 ? "sie" : "er"} überkronungsbedürftig oder ist die Krone erneuerungsbedürftig?`
+	};
+	if (auftrag.werkstoff && WERKSTOFFE[auftrag.werkstoff].art === "keramik") for (const z of kronen) tp[z] = "KM";
+}
+function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 	const plan = leererPlan();
 	plan.patient = {
 		...plan.patient,
@@ -26172,7 +26271,7 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 	for (const [z, t] of Object.entries(tp)) plan.zaehne[z].TP = t;
 	plan.abformung = auftrag.abformung ?? optionen.abformung ?? "abdruck";
 	if (!auftrag.abformung && !optionen.abformung) hinweise.push("Abformung nicht genannt – konventioneller Abdruck angenommen.");
-	if (auftrag.versorgung === "teleskopprothese") plan.abformungProthese = plan.abformung;
+	if (teile.some((x) => x.versorgung === "teleskopprothese")) plan.abformungProthese = plan.abformung;
 	const bonus = auftrag.bonus ?? optionen.bonus;
 	plan.zuschuss = {
 		bonus: bonus ?? "60",
@@ -26206,7 +26305,7 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-05 15:03";
+var ENGINE_STAND = "2026-10-05 15:49";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
@@ -26499,4 +26598,4 @@ function positionPruefen(e, listen, frage) {
 	};
 }
 //#endregion
-export { ENGINE_STAND, STANDARD_LISTEN, auftragVerstehen, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, rechnen, zahlwort, zusammenfassen };
+export { ENGINE_STAND, STANDARD_LISTEN, auftragVerstehen, befundAusAuftrag, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, rechnen, zahlwort, zusammenfassen };

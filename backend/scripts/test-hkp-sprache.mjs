@@ -5,7 +5,7 @@ import "dotenv/config";
 import * as E from "../src/vendor/hkp-engine.mjs";
 import { befundAusLena01, befundErmitteln } from "../src/hkp/befundQuelle.js";
 import { euroSprech, uebersichtSatz, zahlWort } from "../src/hkp/sprech.js";
-import { annahmenSatz, doppelungen, waehleHkp } from "../src/routes/hkp.js";
+import { annahmenSatz, doppelungen, namePasst, waehleHkp } from "../src/routes/hkp.js";
 import { KonfliktFehler, hkpAktualisieren, hkpAnlegen, hkpFeldSetzen, hkpListe, hkpLesen, hkpLoeschenFuerTest, praxisLaden, praxisSpeichern } from "../src/hkp/store.js";
 
 let fehler = 0;
@@ -52,6 +52,13 @@ b = await befundErmitteln("x", PATIENT, { lena: lenaFrisch, pvs: nichts, gesproc
 check("Kaskade: gesprochen ueberschreibt Lena", b.ok && b.befund["14"] === "f" && b.befund["16"] === "f" && b.quelle.art === "gesprochen+lena01");
 b = await befundErmitteln("x", PATIENT, { lena: nichts, pvs: nichts });
 check("Kaskade: nichts -> fragen", !b.ok && b.grund === "befund_fehlt");
+b = await befundErmitteln("x", PATIENT, { lena: nichts, pvs: nichts, ohneBefundOk: true });
+check("Kaskade: reine Totalprothese braucht keinen Befund", b.ok && !Object.keys(b.befund).length);
+const tp = E.hkpEntwurf("Im Oberkiefer eine Vollprothese und im Unterkiefer eine Vollprothese", b.befund, {});
+check("Entwurf: Vollprothese in beiden Kiefern ohne Befund", tp.status === "ok", tp.status === "ok" ? "" : tp.frage);
+check("Name: 'Michael Petzers' trifft Michael Petzas",
+  namePasst("Michael Petzers", { firstName: "Michael", lastName: "Petzas" }) === 2
+  && namePasst("Michael Petzers", { firstName: "Rozana", lastName: "Psarris" }) === 0);
 
 // --- Entwurf aus Lena-Befund ---
 const lb = await befundErmitteln("x", PATIENT, { lena: lenaFrisch, pvs: nichts });

@@ -5220,7 +5220,7 @@ router.post("/tools/search-patient", async (req, res) => {
         : `${patientLabel(byOrd)} ist eindeutig gemerkt.${warn}`;
       return res.json({
         ok: true,
-        message: `${anschluss} Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden.`,
+        message: `${anschluss} Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS, hkp_create_draft fuer einen Heil- und Kostenplan — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden.`,
       });
     }
     if (relSearch.pure) {
@@ -5324,7 +5324,7 @@ router.post("/tools/search-patient", async (req, res) => {
       // ein Auftrag — dann das Modell zum Ausfuehren lotsen statt es weiter
       // suchen zu lassen (Stefan-Meier-Loop 12.06.).
       const followUp = !rawName
-        ? " Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden."
+        ? " Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS, hkp_create_draft fuer einen Heil- und Kostenplan — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden."
         : "";
       return res.json({
         ok: true,

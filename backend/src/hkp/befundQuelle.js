@@ -89,7 +89,7 @@ export async function pvsBefund() {
  * gesprochen: Befundtext aus dem Gespraech; bestaetigt: Chef hat einen alten
  * Lena-01-Befund ausdruecklich als gueltig bestaetigt.
  */
-export async function befundErmitteln(clientId, patient, { gesprochen = "", kiefer, bestaetigt = false, lena = letzterLena01, pvs = pvsBefund } = {}) {
+export async function befundErmitteln(clientId, patient, { gesprochen = "", kiefer, bestaetigt = false, ohneBefundOk = false, lena = letzterLena01, pvs = pvsBefund } = {}) {
   const hinweise = [];
   const gesagt = gesprochen ? befundVerstehen(gesprochen, kiefer) : {};
   let basis = null;
@@ -126,6 +126,8 @@ export async function befundErmitteln(clientId, patient, { gesprochen = "", kief
     };
   }
   if (basis) return { ok: true, befund: basis, quelle, hinweise };
+  // Reine Totalprothese: die Engine plant zahnlos und vermerkt die Annahme.
+  if (ohneBefundOk) return { ok: true, befund: {}, quelle: { art: "keiner" }, hinweise };
   return {
     ok: false, grund: "befund_fehlt",
     frage: `Für ${patient.label} habe ich keinen Befund – weder aus der Lena-Erstuntersuchung noch aus dem Praxisprogramm. Welche Zähne fehlen, und welche sind vorhanden?`,

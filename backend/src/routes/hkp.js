@@ -20,6 +20,9 @@ import { assertAppEnabled } from "../entitlements.js";
 import { log } from "../log.js";
 import { DEFAULT_CLIENT_ID, resolveClientId } from "./_shared.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
+import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js";
+import { soundsSame } from "../clara/phonetics.js";
+import { disambiguationQuestion } from "../clara/patientDisambig.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpFeldSetzen, hkpLesen, hkpListe, kopf, praxisLaden, praxisSpeichern,
 } from "../hkp/store.js";
@@ -30,6 +33,9 @@ const router = express.Router();
 
 const VERSORGUNG_TEXT = {
   teleskopprothese: "Teleskop-HKP", totalprothese: "Totalprothesen-HKP", kronen: "Kronen-HKP", bruecke: "Brücken-HKP",
+};
+const VERSORGUNG_NAME = {
+  teleskopprothese: "Teleskopprothese", totalprothese: "Totalprothese", kronen: "Kronen", bruecke: "Brücke",
 };
 const AENDERUNG_GUELTIG_MS = 5 * 60 * 1000;
 const PRAXIS_FELDER = ["labor", "praxisPlz", "kzv", "gozFaktor", "mwstLabor", "eigenKasseProzent", "eigenPrivatAufschlag",
@@ -248,12 +254,69 @@ async function claraVorspann(req, res) {
 
 const wahr = (v) => v === true || ["true", "1", "ja", "yes"].includes(String(v || "").trim().toLowerCase());
 
+function abstand(a, b) {
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let vorher = d[0];
+    d[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = d[j];
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, vorher + (a[i - 1] === b[j - 1] ? 0 : 1));
+      vorher = tmp;
+    }
+  }
+  return d[b.length];
+}
+
+const ANREDE = new Set(["herr", "herrn", "frau", "patient", "patientin", "den", "die", "der", "fuer"]);
+
+/** Passt ein gesprochener Name (STT: "Petzers") zum Patienten ("Michael Petzas")? 0 = nein, 1 = Nachname, 2 = Vor- und Nachname */
+export function namePasst(gesprochen, p) {
+  const sp = nameNorm(gesprochen).split(" ").filter((t) => t && !ANREDE.has(t));
+  const nach = nameNorm(p?.lastName), vor = nameNorm(p?.firstName);
+  if (!sp.length || !nach) return 0;
+  const n = sp[sp.length - 1];
+  const nachOk = soundsSame(n, nach) || abstand(n, nach) <= (nach.length >= 5 ? 2 : 1);
+  if (!nachOk) return 0;
+  if (sp.length < 2) return 1;
+  const v = sp[0];
+  return v === vor || soundsSame(v, vor) ? 2 : 0;
+}
+
+function bestePassung(gesprochen, kandidaten) {
+  const bewertet = kandidaten.map((c) => ({ c, s: namePasst(gesprochen, c) })).filter((x) => x.s > 0);
+  const top = Math.max(0, ...bewertet.map((x) => x.s));
+  return bewertet.filter((x) => x.s === top).map((x) => x.c);
+}
+
 async function patientAufloesen(clientId, body, askWho) {
-  const r = await resolveSpokenPatientForRead(clientId, {
-    rawName: String(body?.name || "").trim(), hint: String(body?.hint || "").trim(), askWho,
-  });
-  if (r.done) return { antwort: r.payload };
-  return { patient: patientVon(r.sel) };
+  const rawName = String(body?.name || "").trim();
+  const hint = String(body?.hint || "").trim();
+  // Gerade per search_patient bestimmt ("Michael Petzas ist eindeutig gemerkt")?
+  // Dann gewinnt der gemerkte Patient, wenn der gesprochene Name aehnlich klingt
+  // (Gespraech 05.10.2026: "Petzers" lieferte sonst 21 Kandidaten).
+  if (rawName && !hint) {
+    const gemerkt = await getPatientCandidates(clientId);
+    const passend = bestePassung(rawName, gemerkt);
+    if (passend.length === 1) {
+      await setPatientCandidates(clientId, passend, passend[0]);
+      return { patient: patientVon(passend[0]) };
+    }
+  }
+  const r = await resolveSpokenPatientForRead(clientId, { rawName, hint, askWho });
+  if (!r.done) return { patient: patientVon(r.sel) };
+  const kandidaten = rawName ? await getPatientCandidates(clientId) : [];
+  if (kandidaten.length > 1) {
+    const passend = bestePassung(rawName, kandidaten);
+    if (passend.length === 1) {
+      await setPatientCandidates(clientId, passend, passend[0]);
+      return { patient: patientVon(passend[0]) };
+    }
+    const auswahl = passend.length > 1 ? passend : kandidaten;
+    await setPatientCandidates(clientId, auswahl, null);
+    return { antwort: { ok: true, message: disambiguationQuestion(auswahl, { max: 3 }) } };
+  }
+  return { antwort: r.payload };
 }
 
 /** HKP eines Patienten bestimmen (mit Rueckfrage bei mehreren) */
@@ -288,8 +351,11 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       });
     }
 
+    // Befund steckt oft im Auftrag selbst ("... die Sechser und Siebener fehlen").
     const befund = await befundErmitteln(clientId, patient, {
-      gesprochen: String(b.befund || "").trim(), kiefer: auftrag.kiefer, bestaetigt: wahr(b.befund_bestaetigt),
+      gesprochen: String(b.befund || "").trim() || E.befundAusAuftrag(auftragText),
+      kiefer: auftrag.kiefer, bestaetigt: wahr(b.befund_bestaetigt),
+      ohneBefundOk: (auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung === "totalprothese"),
     });
     if (!befund.ok) return res.json({ ok: true, rueckfrage: befund.grund, message: befund.frage });
 
@@ -301,7 +367,9 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (r.status !== "ok") return res.json({ ok: true, rueckfrage: r.grund, message: r.frage });
 
     const summen = summenAus(r.ergebnis);
-    const versorgungText = VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
+    const versorgungText = auftrag.teile?.length > 1
+      ? `HKP (${auftrag.teile.map((t) => `${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"} ${VERSORGUNG_NAME[t.versorgung] || t.versorgung}`).join(", ")})`
+      : VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
     const h = await hkpAnlegen(clientId, {
       patient, art: "kasse", status: "wartet_auf_freigabe", kiefer: auftrag.kiefer || "", versorgung: auftrag.versorgung || "",
       versorgungText, auftragText, auftrag: JSON.parse(JSON.stringify(auftrag)), befundQuelle: befund.quelle,
