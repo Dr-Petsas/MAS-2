@@ -2,7 +2,7 @@
 // Start: node backend/tests/hkpKieferLink.test.mjs
 import assert from "node:assert/strict";
 process.env.PLANR_HKP_KEY = "test-schluessel";
-const { vergessenerKiefer, hkpLinkToken, hkpLinkOk, hkpLink } = await import("../src/routes/hkp.js");
+const { vergessenerKiefer, hkpLinkToken, hkpLinkOk, hkpLink, nurVornamePasst, namePasst } = await import("../src/routes/hkp.js");
 const E = await import("../src/vendor/hkp-engine.mjs");
 
 let ok = 0;
@@ -31,6 +31,15 @@ t("Lese-Link: gueltig nur fuer seine ID und nicht abgelaufen", () => {
   assert.ok(!hkpLinkOk("abc", tok.replace(/.$/, (c) => (c === "A" ? "B" : "A"))));
   assert.ok(!hkpLinkOk("abc", tok, Date.now() + 15 * 86400e3));
   assert.ok(!hkpLink("abc").includes("test-schluessel"));
+});
+
+t("Nur-Vorname haelt den gemerkten Patienten (Live 05.10.2026 22:45)", () => {
+  const petzas = { firstName: "Michael", lastName: "Petzas" };
+  assert.ok(nurVornamePasst("Patienten Michael", petzas));
+  assert.ok(nurVornamePasst("Michael", petzas));
+  assert.ok(!nurVornamePasst("Thomas", petzas));
+  assert.ok(!nurVornamePasst("Michael Braun", petzas));
+  assert.equal(namePasst("Patienten Michael Petzers", petzas), 2);
 });
 
 console.log(`${ok} Tests ok`);

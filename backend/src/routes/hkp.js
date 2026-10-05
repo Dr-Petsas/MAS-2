@@ -310,7 +310,14 @@ function abstand(a, b) {
   return d[b.length];
 }
 
-const ANREDE = new Set(["herr", "herrn", "frau", "patient", "patientin", "den", "die", "der", "fuer"]);
+const ANREDE = new Set(["herr", "herrn", "frau", "patient", "patientin", "patienten", "den", "die", "der", "dem", "einen", "eine", "fuer"]);
+
+/** Nur der Vorname des gerade gemerkten Patienten ("Patienten Michael" nach "Michael Petzas") */
+export function nurVornamePasst(gesprochen, p) {
+  const sp = nameNorm(gesprochen).split(" ").filter((t) => t && !ANREDE.has(t));
+  const vor = nameNorm(p?.firstName);
+  return sp.length === 1 && !!vor && (sp[0] === vor || soundsSame(sp[0], vor));
+}
 
 /** Passt ein gesprochener Name (STT: "Petzers") zum Patienten ("Michael Petzas")? 0 = nein, 1 = Nachname, 2 = Vor- und Nachname */
 export function namePasst(gesprochen, p) {
@@ -343,6 +350,11 @@ async function patientAufloesen(clientId, body, askWho) {
     if (passend.length === 1) {
       await setPatientCandidates(clientId, passend, passend[0]);
       return { patient: patientVon(passend[0]) };
+    }
+    // Live 05.10.2026 22:45: Nachname ging verloren, "Michael" lieferte 20 Michaels.
+    if (gemerkt.length === 1 && process.env.MAS_HKP_VORNAME_ANKER !== "0" && nurVornamePasst(rawName, gemerkt[0])) {
+      log.info?.("[hkp] nur Vorname genannt -> gemerkter Patient bleibt");
+      return { patient: patientVon(gemerkt[0]) };
     }
   }
   const r = await resolveSpokenPatientForRead(clientId, { rawName, hint, askWho });
