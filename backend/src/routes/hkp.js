@@ -14,7 +14,7 @@
 // /planr/*  : PlanR (Praxis-Schluessel X-PlanR-Key, in auth.js oeffentlich gefuehrt)
 // /tools/hkp-* : Clara-Tools (Profil-Gruppe "hkp"); Notaus MAS_HKP_TOOLS=0.
 import express from "express";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import * as E from "../vendor/hkp-engine.mjs";
 import { assertAppEnabled } from "../entitlements.js";
 import { log } from "../log.js";
@@ -135,6 +135,48 @@ function planrGuard(req, res, next) {
   res.set("Cache-Control", "no-store");
   next();
 }
+
+// Lese-Link fuer genau EINEN HKP (SMS an den Chef): ohne Praxis-Schluessel im
+// Browser, nur lesend, befristet. Signiert mit PLANR_HKP_KEY.
+const LINK_TAGE = 14;
+const linkSignatur = (id, exp) => createHmac("sha256", String(process.env.PLANR_HKP_KEY || "").trim())
+  .update(`hkp-link:${id}:${exp}`).digest("base64url").slice(0, 24);
+
+export function hkpLinkToken(id, jetztMs = Date.now()) {
+  if (!String(process.env.PLANR_HKP_KEY || "").trim() || !id) return "";
+  const exp = Math.floor(jetztMs / 1000) + LINK_TAGE * 86400;
+  return `${exp}.${linkSignatur(id, exp)}`;
+}
+
+export function hkpLinkOk(id, token, jetztMs = Date.now()) {
+  const [expRoh, sig] = String(token || "").split(".");
+  const exp = Number(expRoh);
+  if (!id || !sig || !Number.isFinite(exp) || exp * 1000 < jetztMs) return false;
+  if (!String(process.env.PLANR_HKP_KEY || "").trim()) return false;
+  const a = Buffer.from(linkSignatur(id, exp)), b = Buffer.from(sig);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export function hkpLink(id) {
+  const basis = String(process.env.PLANR_PUBLIC_URL || "https://hkp.pickadoc-tunnel.com").replace(/\/+$/, "");
+  const t = hkpLinkToken(id);
+  return t ? `${basis}/?hkp=${encodeURIComponent(id)}&t=${t}` : "";
+}
+
+router.get("/planr/hkp-link/:id", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  if (!hkpLinkOk(req.params.id, req.header("X-PlanR-Link") || req.query?.t)) {
+    return res.status(401).json({ ok: false, error: "link_ungueltig", message: "Der Link ist abgelaufen oder ungültig." });
+  }
+  try {
+    const clientId = String(process.env.PLANR_HKP_CLIENT_ID || DEFAULT_CLIENT_ID).trim();
+    const h = await hkpLesen(clientId, req.params.id);
+    if (!h) return res.status(404).json({ ok: false, error: "nicht_gefunden" });
+    res.json({ ok: true, hkp: h });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
 
 router.get("/planr/status", planrGuard, async (req, res) => {
   try {
@@ -330,6 +372,24 @@ async function hkpAufloesen(clientId, body, askWho) {
   return { patient: p.patient, hkp: h };
 }
 
+// Kiefer-Waechter (Live 05.10.2026: "totale OK- und totale UK-Prothese" -> nur OK angelegt,
+// Clara sagte "fuer beide Kiefer"). Genannter, aber ungeplanter Kiefer => nichts anlegen.
+// Ausnahme: der Kiefer steht nur mit einem Befund im Satz ("unten bleibt alles").
+// Notaus MAS_HKP_KIEFER_CHECK=0.
+export function vergessenerKiefer(text, auftrag) {
+  if (process.env.MAS_HKP_KIEFER_CHECK === "0") return "";
+  const t = String(text || "").toLowerCase();
+  const beide = /\bbeide[nr]?\s+kiefer|\bober-?\s+und\s+unter|\bok\s+und\s+uk\b|\boben\s+und\s+unten\b|\bunten\s+und\s+oben\b/.test(t);
+  const genannt = {
+    OK: beide || /ober\s*-?\s*k\S*f+er|\bok\b|\boben\b/.test(t),
+    UK: beide || /unter\s*-?\s*k\S*f+er|\buk\b|\bunten\b/.test(t),
+  };
+  const geplant = new Set((auftrag?.teile?.length ? auftrag.teile : [auftrag]).map((x) => x?.kiefer).filter(Boolean));
+  if (!geplant.size) return "";
+  if (/bleib|erhalt|vorhanden|nichts|\bkein|gesund|intakt|so lassen/.test(t)) return "";
+  return ["OK", "UK"].find((k) => genannt[k] && !geplant.has(k)) || "";
+}
+
 router.post("/tools/hkp-create-draft", async (req, res) => {
   try {
     const clientId = await claraVorspann(req, res);
@@ -342,6 +402,15 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (!auftragText) return res.json({ ok: true, message: `Was soll ich für ${patient.anredeLabel} planen – zum Beispiel eine Teleskopprothese, eine Totalprothese oder Kronen?` });
 
     const auftrag = E.auftragVerstehen(auftragText);
+    const vergessen = vergessenerKiefer(auftragText, auftrag);
+    if (vergessen) {
+      log.warn?.(`[hkp] Kiefer-Waechter: ${vergessen} genannt, aber nicht geplant – nichts angelegt`);
+      const name = vergessen === "OK" ? "Oberkiefer" : "Unterkiefer";
+      return res.json({
+        ok: true, rueckfrage: "kiefer_fehlt",
+        message: `Ich habe noch nichts angelegt: Sie haben auch den ${name} genannt, aber ich habe dafür keine Versorgung verstanden. Was soll ich im ${name} planen?`,
+      });
+    }
     const zusaetzlich = wahr(b.zusaetzlich);
     const doppelt = doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
     if (doppelt.length && !zusaetzlich) {
@@ -368,7 +437,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
 
     const summen = summenAus(r.ergebnis);
     const versorgungText = auftrag.teile?.length > 1
-      ? `HKP (${auftrag.teile.map((t) => `${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"} ${VERSORGUNG_NAME[t.versorgung] || t.versorgung}`).join(", ")})`
+      ? `HKP mit ${liste(auftrag.teile.map((t) => `${VERSORGUNG_NAME[t.versorgung] || t.versorgung} im ${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}`))}`
       : VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
     const h = await hkpAnlegen(clientId, {
       patient, art: "kasse", status: "wartet_auf_freigabe", kiefer: auftrag.kiefer || "", versorgung: auftrag.versorgung || "",

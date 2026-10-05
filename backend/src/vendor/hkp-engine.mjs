@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 be006212017f)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 1e4ff2307179)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -25961,6 +25961,7 @@ var ZAHL_WORT = {
 	fünfer: "5",
 	sechser: "6",
 	siebener: "7",
+	siebner: "7",
 	achter: "8"
 };
 var QUADRANT = {
@@ -25978,7 +25979,12 @@ var REIHE = {
 	UK: UNTERKIEFER
 };
 var FDI = /\b([1-4][1-8])\b/g;
-var norm = (t) => ` ${t.toLowerCase().replace(/[‐–—]/g, "-").replace(/\s+/g, " ")} `;
+/**
+* Gesprochene Kiefer-Wörter vereinheitlichen: „Oberkieferprothese“ → „oberkiefer prothese“,
+* STT-Hörfehler „Oberkäfer“, „Ober- und Unterkiefer“ → beide Kiefer ausgeschrieben.
+*/
+var kieferWorte = (t) => t.replace(/\bober-?\s+(und|oder|sowie)\s+unter/g, "oberkiefer $1 unter").replace(/\bunter-?\s+(und|oder|sowie)\s+ober/g, "unterkiefer $1 ober").replace(/\b(ober|unter)-?\s?k(?:ie|ä|ae|i|e)ff?er(s)?\b-?/g, " $1kiefer ").replace(/\b(ober|unter)k(?:ie|ä|ae|i|e)ff?er(?=[a-zäöüß])/g, " $1kiefer ");
+var norm = (t) => ` ${kieferWorte(t.toLowerCase().replace(/[‐–—]/g, "-")).replace(/\s+/g, " ")} `;
 function kieferIn(t) {
 	const ok = /\b(ok|o\.k\.|oberkiefer|oben)\b/.test(t);
 	const uk = /\b(uk|u\.k\.|unterkiefer|unten)\b/.test(t);
@@ -26006,7 +26012,7 @@ function zaehneIn(teil, kiefer) {
 	const k = kieferIn(t) ?? kiefer;
 	const re = /\brechte?[nmrs]?\b/.test(t), li = /\blinke?[nmrs]?\b/.test(t);
 	const seiten = re && !li ? ["rechts"] : li && !re ? ["links"] : ["rechts", "links"];
-	for (const m of t.matchAll(/\b(\d)er(?:n|s)?\b|\b(einser|zweier|dreier|eckz(?:ah|äh|aeh)ne?|vierer|f(?:ü|ue)nfer|sechser|siebener|achter)n?\b/g)) {
+	for (const m of t.matchAll(/\b(\d)er(?:n|s)?\b|\b(einser|zweier|dreier|eckz(?:ah|äh|aeh)ne?|vierer|f(?:ü|ue)nfer|sechser|siebe?ner|achter)n?\b/g)) {
 		const stelle = m[1] ?? ZAHL_WORT[m[2].replace(/n$/, "")] ?? (m[2].startsWith("eckz") ? "3" : void 0);
 		if (!stelle || !k || stelle === "0" || stelle === "9") continue;
 		dazu(seiten.map((s) => QUADRANT[k][s] + stelle));
@@ -26021,9 +26027,16 @@ function kieferAbschnitte(text) {
 	const t = norm(text);
 	const treffer = [...t.matchAll(KIEFER_WORT)];
 	const out = [];
+	const schnitt = (i) => {
+		if (i === 0) return 0;
+		const von = (treffer[i - 1].index ?? 0) + treffer[i - 1][0].length;
+		const grenzen = [...t.slice(von, treffer[i].index).matchAll(/[,;.]| und | sowie | dazu | außerdem | ausserdem /g)];
+		const g = grenzen[grenzen.length - 1];
+		return g ? von + (g.index ?? 0) : treffer[i].index;
+	};
 	treffer.forEach((m, i) => {
 		const kiefer = /^(ok|o\.k\.|oberkiefer|oben)$/.test(m[1]) ? "OK" : "UK";
-		const stueck = t.slice(i === 0 ? 0 : m.index, treffer[i + 1]?.index ?? t.length);
+		const stueck = t.slice(schnitt(i), i + 1 < treffer.length ? schnitt(i + 1) : t.length);
 		const letzter = out[out.length - 1];
 		if (letzter?.kiefer === kiefer) letzter.text += stueck;
 		else out.push({
@@ -26033,6 +26046,8 @@ function kieferAbschnitte(text) {
 	});
 	return out;
 }
+/** „Totalprothese für beide Kiefer“, „oben und unten“ – eine Versorgung für OK und UK */
+var BEIDE_KIEFER = /\bbeide(n)? kiefer|\bbeidkiefer|\bok und uk\b|\buk und ok\b|\boben und unten\b|\bunten und oben\b/;
 function versorgungIn(t, coverDenture) {
 	if (/teleskop|konus|doppelkrone/.test(t) || coverDenture) return "teleskopprothese";
 	if (/totalprothese|vollprothese|totale/.test(t)) return "totalprothese";
@@ -26042,11 +26057,26 @@ function versorgungIn(t, coverDenture) {
 function auftragVerstehen(text) {
 	const auftrag = einzelAuftrag(text);
 	const abschnitte = kieferAbschnitte(text);
-	if (abschnitte.length < 2) return auftrag;
-	const teile = abschnitte.map((a) => ({
+	const beide = BEIDE_KIEFER.test(norm(text));
+	if (abschnitte.length < 2 && !(beide && auftrag.versorgung === "totalprothese")) return auftrag;
+	const roh = abschnitte.map((a) => ({
 		...einzelAuftrag(a.text),
 		kiefer: a.kiefer
-	})).filter((x) => x.versorgung && x.versorgung !== "kronen");
+	}));
+	roh.forEach((x, i) => {
+		if (x.versorgung || /bleib|erhalt|vorhanden|fehl|nichts|kein|gesund|intakt/.test(norm(abschnitte[i].text))) return;
+		const nachbar = roh.slice(0, i).reverse().find((y) => y.versorgung) ?? roh.slice(i + 1).find((y) => y.versorgung);
+		if (nachbar?.versorgung) x.versorgung = nachbar.versorgung;
+	});
+	if (beide && auftrag.versorgung === "totalprothese") {
+		for (const k of ["OK", "UK"]) if (!roh.some((x) => x.kiefer === k && x.versorgung)) roh.push({
+			...einzelAuftrag(text),
+			kiefer: k,
+			versorgung: "totalprothese",
+			pfeiler: []
+		});
+	}
+	const teile = roh.filter((x) => x.versorgung && x.versorgung !== "kronen").filter((x, i, alle) => alle.findIndex((y) => y.kiefer === x.kiefer) === i);
 	const kiefer = new Set(teile.map((x) => x.kiefer));
 	if (!teile.length) return auftrag;
 	for (const x of teile) x.pfeiler = x.pfeiler.filter((z) => kieferVon(z) === x.kiefer);
@@ -26142,6 +26172,10 @@ function befundVerstehen(text, kiefer) {
 			const naechstes = teile.slice(i + 1).find((y) => y.code !== void 0);
 			code = naechstes?.nachgestellt ? naechstes.code : letztes;
 		}
+		if (ALLE_FEHLEN.test(x.teil)) {
+			for (const kk of x.k ? [x.k] : ["OK", "UK"]) for (const z of REIHE[kk]) if (!(z in befund)) befund[z] = "f";
+			return;
+		}
 		if (code === void 0 || !x.zs.length) return;
 		const sammelbegriff = /\bfront/.test(x.teil);
 		for (const z of x.zs) if (!(sammelbegriff && z in befund)) befund[z] = code;
@@ -26154,10 +26188,35 @@ function befundVerstehen(text, kiefer) {
 	}
 	return befund;
 }
+var ALLE_FEHLEN = /\b(fehlen|fehlt) (ihm |ihr )?(schon )?alle z(ä|ae)hne\b|\balle z(ä|ae)hne (fehlen|sind (weg|raus|gezogen))\b|\bzahnlos\b|\bkeine z(ä|ae)hne mehr\b/;
 var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|co?ver.?dent|kover|bonus|scan|abdruck|abform|gold|zirkon|keramik|\bnem\b|erstell|plan|hkp|kostenpl/;
 /** Befund-Satzteile aus einem gesprochenen Auftrag („… die Sechser und Siebener fehlen …“), sonst '' */
+/** Satzteil, der nur Zähne aufzählt („die Vierer“, „Fünfer“) – sein Verb steht weiter hinten */
+var NUR_ZAEHNE = /^(?:(?:die|der|den|und|sowie|auch|noch|[1-4][1-8]|\d(?:er|ern)|einser|zweier|dreier|eckz(?:ah|äh|aeh)ne?n?|vierer|f(?:ü|ue)nfer|sechser|siebe?ner|achter)n?\s*)+$/;
 function befundAusAuftrag(text) {
-	return satzteile(text).filter((t) => !VERSORGUNGS_TEIL.test(t) && BEFUND_WORTE.some(([re]) => re.test(t))).join(", ");
+	const ausTeil = (abschnitt) => {
+		const teile = satzteile(abschnitt);
+		const istBefund = (t) => !VERSORGUNGS_TEIL.test(t) && BEFUND_WORTE.some(([re]) => re.test(t));
+		return teile.filter((t, i) => {
+			if (istBefund(t)) return true;
+			if (!NUR_ZAEHNE.test(t)) return false;
+			const weiter = teile.slice(i + 1).find((u) => !NUR_ZAEHNE.test(u));
+			return !!weiter && istBefund(weiter);
+		});
+	};
+	const abschnitte = kieferAbschnitte(text);
+	if (abschnitte.length < 2) return ausTeil(text).join(", ");
+	const ersteTeile = satzteile(abschnitte[0].text);
+	const k = ersteTeile.findIndex((t) => new RegExp(KIEFER_WORT.source).test(norm(t)));
+	const vorspann = k > 0 ? ersteTeile.slice(0, k).join(", ") : "";
+	if (vorspann) abschnitte[0] = {
+		...abschnitte[0],
+		text: ersteTeile.slice(k).join(", ")
+	};
+	return [...vorspann ? ausTeil(vorspann) : [], ...abschnitte.flatMap((a) => {
+		const name = a.kiefer === "OK" ? "oberkiefer" : "unterkiefer";
+		return ausTeil(a.text).map((t) => kieferIn(norm(t)) ? t : `im ${name} ${t}`);
+	})].join(", ");
 }
 var liste = (zs) => zs.length <= 1 ? zs.join("") : `${zs.slice(0, -1).join(", ")} und ${zs[zs.length - 1]}`;
 var fehlt = (b, z) => FEHLEND.has((b[z] ?? "").trim().toLowerCase());
@@ -26305,7 +26364,7 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-05 15:49";
+var ENGINE_STAND = "2026-10-05 18:56";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
