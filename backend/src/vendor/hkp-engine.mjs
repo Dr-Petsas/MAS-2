@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 e3af8c12e2da)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 140ac8abd463)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26137,9 +26137,10 @@ function einzelAuftrag(text) {
 		pfeilerDavor = false;
 		if (/entfern|extrah|ziehen|gezogen|raus/.test(teil)) auftrag.entfernen.push(...zs);
 		else if (/bleib|erhalt|behalt|stehen/.test(teil)) auftrag.erhalten.push(...zs);
-		else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil)) {
+		else if (PFEILER_WORT.test(teil)) {
 			const vorBefund = teil.split(BEFUND_BEGINN)[0];
-			const pf = vorBefund === teil ? zs : zaehneIn(vorBefund, auftrag.kiefer);
+			const nachWort = zaehneIn(vorBefund.slice(Math.max(0, vorBefund.search(PFEILER_WORT))), auftrag.kiefer);
+			const pf = nachWort.length && nachWort.length < zaehneIn(vorBefund, auftrag.kiefer).length ? nachWort : vorBefund === teil ? zs : zaehneIn(vorBefund, auftrag.kiefer);
 			auftrag.pfeiler.push(...pf.filter((z) => !auftrag.pfeiler.includes(z)));
 			pfeilerDavor = vorBefund === teil;
 		}
@@ -26148,6 +26149,11 @@ function einzelAuftrag(text) {
 	return auftrag;
 }
 var BEFUND_BEGINN = /\b(?:ersetzt\w*|(?:es )?fehl\w*|vorhanden|extrah\w*|entfern\w*)\b/;
+var PFEILER_WORT = /teleskop|konus|doppelkrone|pfeiler|krone|anker|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/;
+/** Erste Zahnangabe im Satzteil („14“, „4er“, „Vierer“, „Front“) – nicht das „er“ in „Oberkiefer“ */
+var ZAHN_ANGABE = /\b[1-4][1-8]\b|\b\d\s?er(n|s)?\b|\b(einser|zweier|dreier|vierer|f(ü|ue)nfer|sechser|siebe?ner|achter)|front|eckz/;
+/** „25 fehlt nicht“, „die 26 ist nicht weg“ */
+var NICHT_FEHLEND = /\bfehl\w*\s+(doch\s+)?nicht\b|\bnicht\s+(mehr\s+)?(fehl\w*|weg|raus|gezogen|ersetzt)\b/;
 var BEFUND_WORTE = [
 	[/nicht erhaltungsw(ü|ue)rdig|zerst(ö|oe)rt|extrah|entfern|ziehen/, "x"],
 	[/erneuerungsbed(ü|ue)rftig|krone (ist )?(kaputt|defekt|insuffizient)/, "kw"],
@@ -26169,23 +26175,27 @@ function befundVerstehen(text, kiefer) {
 			m: re.exec(teil),
 			code
 		})).find((x) => x.m);
-		const ersterZahn = teil.search(/\b[1-4][1-8]\b|er(n|s)?\b|front|eckz/);
+		const ersterZahn = teil.search(ZAHN_ANGABE);
 		return {
 			teil,
 			k,
 			zs: zaehneIn(teil, k),
-			code: treffer?.code,
+			code: treffer?.code === "f" && NICHT_FEHLEND.test(teil) ? "" : treffer?.code,
 			/** Verb am Ende („…, die Sechser und Siebener fehlen“) gilt auch für die Satzteile davor */
 			nachgestellt: !!treffer?.m && ersterZahn >= 0 && treffer.m.index > ersterZahn
 		};
 	});
 	let letztes;
+	/** Verb vorn („es fehlen 14, 15, … 27 und 28“): die Aufzählung danach setzt es fort, bis „und“ sie schließt */
+	let vorn;
+	const schliesst = (t) => /\b(und|sowie)\b/.test(t);
 	teile.forEach((x, i) => {
 		let code = x.code;
 		if (code === void 0) {
 			const naechstes = teile.slice(i + 1).find((y) => y.code !== void 0);
-			code = naechstes?.nachgestellt ? naechstes.code : letztes;
-		}
+			code = vorn !== void 0 ? vorn : naechstes?.nachgestellt ? naechstes.code : letztes;
+			if (schliesst(x.teil)) vorn = void 0;
+		} else vorn = x.nachgestellt || schliesst(x.teil) ? void 0 : code;
 		if (ALLE_FEHLEN.test(x.teil)) {
 			for (const kk of x.k ? [x.k] : ["OK", "UK"]) for (const z of REIHE[kk]) if (!(z in befund)) befund[z] = "f";
 			return;
@@ -26209,9 +26219,13 @@ var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|
 var NUR_ZAEHNE = /^(?:(?:die|der|den|und|sowie|auch|noch|[1-4][1-8]|\d(?:er|ern)|einser|zweier|dreier|eckz(?:ah|äh|aeh)ne?n?|vierer|f(?:ü|ue)nfer|sechser|siebe?ner|achter)n?\s*)+$/;
 function befundAusAuftrag(text) {
 	const ausTeil = (abschnitt) => {
-		const teile = satzteile(abschnitt).flatMap((t) => {
+		const befundAbtrennen = (t) => {
 			const m = BEFUND_BEGINN.exec(t);
 			return m && m.index > 0 && VERSORGUNGS_TEIL.test(t.slice(0, m.index)) && !VERSORGUNGS_TEIL.test(t.slice(m.index)) ? [t.slice(0, m.index).trim(), t.slice(m.index)] : [t];
+		};
+		const teile = satzteile(abschnitt).flatMap((t) => {
+			const kopf = /^((?:[1-4][1-8]\s*)+)\s+(?:und|sowie)\s+(.+)$/.exec(t);
+			return kopf && VERSORGUNGS_TEIL.test(kopf[2]) ? [kopf[1].trim(), ...befundAbtrennen(kopf[2])] : befundAbtrennen(t);
 		});
 		const istBefund = (t) => !VERSORGUNGS_TEIL.test(t) && BEFUND_WORTE.some(([re]) => re.test(t));
 		return teile.filter((t, i) => {
@@ -26311,7 +26325,7 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 			frage: `Im ${kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"} ${offen.length > 1 ? "stehen" : "steht"} noch ${liste(offen)}. ${offen.length > 1 ? "Sollen die" : "Soll er"} erhalten bleiben oder entfernt werden?`
 		};
 		if (unbekannt.length) hinweise.push(`Kein Befund für ${liste(unbekannt)} – als vorhanden angenommen.`);
-		const achter = reihe.filter((z) => istWeisheitszahn(z) && !(z in befund));
+		const achter = reihe.filter((z) => istWeisheitszahn(z) && !(z in befund) && !pfeiler.includes(z));
 		for (const z of achter) befund[z] = "f";
 		if (achter.length) hinweise.push(`${liste(achter)} nicht genannt – als fehlend angenommen.`);
 		for (const z of pfeiler) tp[z] = imVerblendbereich(z) ? "TV" : "T";
@@ -26383,7 +26397,7 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-05 23:12";
+var ENGINE_STAND = "2026-10-06 10:32";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];

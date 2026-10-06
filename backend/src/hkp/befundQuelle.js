@@ -130,6 +130,8 @@ export async function befundErmitteln(clientId, patient, { gesprochen = "", kief
   if (ohneBefundOk) return { ok: true, befund: {}, quelle: { art: "keiner" }, hinweise };
   return {
     ok: false, grund: "befund_fehlt",
-    frage: `Für ${patient.label} habe ich keinen Befund – weder aus der Lena-Erstuntersuchung noch aus dem Praxisprogramm. Welche Zähne fehlen, und welche sind vorhanden?`,
+    frage: `Für ${patient.label} habe ich keinen Befund – weder aus der Lena-Erstuntersuchung noch aus dem Praxisprogramm. `
+      + `Dann nehme ich ihn jetzt auf: Welche Zähne fehlen im ${kiefer === "UK" ? "Unterkiefer" : kiefer === "OK" ? "Oberkiefer" : "Ober- und Unterkiefer"}, `
+      + "welche sind überkront und welche sind nicht erhaltungswürdig? Alle übrigen nehme ich als vorhanden auf, nicht genannte Weisheitszähne als fehlend – ich lese Ihnen danach alles zur Kontrolle vor.",
   };
 }

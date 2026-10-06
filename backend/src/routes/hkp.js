@@ -22,7 +22,9 @@ import { DEFAULT_CLIENT_ID, resolveClientId } from "./_shared.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
 import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js";
 import { soundsSame } from "../clara/phonetics.js";
-import { disambiguationQuestion } from "../clara/patientDisambig.js";
+import { disambiguationQuestion, ordinalPick } from "../clara/patientDisambig.js";
+import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
+import { jahrgangWahl, vetternFrage, vorleseSatz } from "../hkp/vorlesen.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpFeldSetzen, hkpLesen, hkpListe, kopf, praxisLaden, praxisSpeichern,
 } from "../hkp/store.js";
@@ -332,15 +334,60 @@ export function namePasst(gesprochen, p) {
   return v === vor || soundsSame(v, vor) ? 2 : 0;
 }
 
-function bestePassung(gesprochen, kandidaten) {
+export function bestePassung(gesprochen, kandidaten) {
   const bewertet = kandidaten.map((c) => ({ c, s: namePasst(gesprochen, c) })).filter((x) => x.s > 0);
   const top = Math.max(0, ...bewertet.map((x) => x.s));
-  return bewertet.filter((x) => x.s === top).map((x) => x.c);
+  const beste = bewertet.filter((x) => x.s === top).map((x) => x.c);
+  if (beste.length < 2) return beste;
+  const nach = nameNorm(gesprochen).split(" ").filter((t) => t && !ANREDE.has(t)).pop();
+  const genau = beste.filter((c) => nameNorm(c.lastName) === nach);
+  return genau.length ? genau : beste;
 }
 
-async function patientAufloesen(clientId, body, askWho) {
+// Gleich klingende Kartei-Eintraege (Petsas/Petzas) sind per Sprache nicht
+// unterscheidbar: vor einer HKP-Anlage wird mit Jahrgang nachgefragt.
+const VETTERN_MS = 10 * 60 * 1000;
+const vetternOffen = new Map();
+const vetternAus = () => process.env.MAS_HKP_NAMENSVETTER === "0";
+
+/** Gleich klingende andere Patienten (gleicher Vorname, Nachname klingt gleich oder 1 Buchstabe Abstand) */
+export function sindVettern(p, q) {
+  if (!p?.lastName || !q?.lastName || String(p.id || "") === String(q.id || "")) return false;
+  const v1 = nameNorm(p.firstName), v2 = nameNorm(q.firstName);
+  const n1 = nameNorm(p.lastName), n2 = nameNorm(q.lastName);
+  const vorOk = v1 === v2 || (v1 && v2 && soundsSame(v1, v2));
+  return !!vorOk && (n1 === n2 || soundsSame(n1, n2) || abstand(n1, n2) <= 1);
+}
+
+async function namensvettern(clientId, patient) {
+  const treffer = await findInCatalog(clientId, `${patient.firstName} ${patient.lastName}`, { limit: 8 });
+  const ids = treffer.filter((e) => sindVettern(patient, { id: e.i, firstName: e.f, lastName: e.l })).map((e) => e.i);
+  return ids.length ? fetchPatientsByIds(clientId, ids) : [];
+}
+
+/** Antwort auf die Namensvetter-Rueckfrage: { wahl } | { erneut } | null (anderer Name) */
+export function vetterAntwort(offen, text) {
+  const t = String(text || "").trim();
+  const wahl = ordinalPick(t.toLowerCase(), offen.kandidaten) || jahrgangWahl(t, offen.kandidaten);
+  if (wahl) return { wahl };
+  if (!t || offen.kandidaten.some((p) => namePasst(t, p) > 0)) return { erneut: offen.kandidaten };
+  return null;
+}
+
+async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}) {
   const rawName = String(body?.name || "").trim();
   const hint = String(body?.hint || "").trim();
+  const offen = vettern ? vetternOffen.get(clientId) : null;
+  if (offen && Date.now() - offen.at < VETTERN_MS) {
+    const a = vetterAntwort(offen, `${hint} ${rawName}`);
+    if (a?.wahl) {
+      vetternOffen.delete(clientId);
+      await setPatientCandidates(clientId, [a.wahl], a.wahl);
+      return { patient: patientVon(a.wahl), sel: a.wahl, gewaehlt: true };
+    }
+    if (a?.erneut) return { antwort: { ok: true, rueckfrage: "namensvetter", message: vetternFrage(a.erneut, { erneut: true }) } };
+  }
+  if (vettern) vetternOffen.delete(clientId);
   // Gerade per search_patient bestimmt ("Michael Petzas ist eindeutig gemerkt")?
   // Dann gewinnt der gemerkte Patient, wenn der gesprochene Name aehnlich klingt
   // (Gespraech 05.10.2026: "Petzers" lieferte sonst 21 Kandidaten).
@@ -349,25 +396,29 @@ async function patientAufloesen(clientId, body, askWho) {
     const passend = bestePassung(rawName, gemerkt);
     if (passend.length === 1) {
       await setPatientCandidates(clientId, passend, passend[0]);
-      return { patient: patientVon(passend[0]) };
+      return { patient: patientVon(passend[0]), sel: passend[0] };
     }
     // Live 05.10.2026 22:45: Nachname ging verloren, "Michael" lieferte 20 Michaels.
     if (gemerkt.length === 1 && process.env.MAS_HKP_VORNAME_ANKER !== "0" && nurVornamePasst(rawName, gemerkt[0])) {
       log.info?.("[hkp] nur Vorname genannt -> gemerkter Patient bleibt");
-      return { patient: patientVon(gemerkt[0]) };
+      return { patient: patientVon(gemerkt[0]), sel: gemerkt[0] };
     }
   }
   const r = await resolveSpokenPatientForRead(clientId, { rawName, hint, askWho });
-  if (!r.done) return { patient: patientVon(r.sel) };
+  if (!r.done) return { patient: patientVon(r.sel), sel: r.sel };
   const kandidaten = rawName ? await getPatientCandidates(clientId) : [];
   if (kandidaten.length > 1) {
     const passend = bestePassung(rawName, kandidaten);
     if (passend.length === 1) {
       await setPatientCandidates(clientId, passend, passend[0]);
-      return { patient: patientVon(passend[0]) };
+      return { patient: patientVon(passend[0]), sel: passend[0] };
     }
     const auswahl = passend.length > 1 ? passend : kandidaten;
     await setPatientCandidates(clientId, auswahl, null);
+    if (vettern && !vetternAus() && auswahl.length <= 5 && auswahl.every((x, i) => !i || sindVettern(auswahl[0], x))) {
+      vetternOffen.set(clientId, { kandidaten: auswahl, at: Date.now() });
+      return { antwort: { ok: true, rueckfrage: "namensvetter", message: vetternFrage(auswahl) } };
+    }
     return { antwort: { ok: true, message: disambiguationQuestion(auswahl, { max: 3 }) } };
   }
   return { antwort: r.payload };
@@ -402,15 +453,72 @@ export function vergessenerKiefer(text, auftrag) {
   return ["OK", "UK"].find((k) => genannt[k] && !geplant.has(k)) || "";
 }
 
+// Angelegt wird nur, was vorgelesen und mit Ja bestaetigt wurde.
+const VORSCHAU_MS = 10 * 60 * 1000;
+const vorschauOffen = new Map();
+const vorlesenAus = () => process.env.MAS_HKP_VORLESEN === "0";
+const textNorm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9äöüß]+/g, "");
+
+/** Gilt ein bestaetigt=true-Aufruf der offenen Vorschau (gleicher Patient, kein neuer Auftragsinhalt)? */
+export function vorschauPasst(vs, b, jetzt = Date.now()) {
+  if (!vs || jetzt - vs.at > VORSCHAU_MS) return false;
+  const name = String(b?.name || "").trim();
+  if (name && namePasst(name, vs.patient) === 0 && !nurVornamePasst(name, vs.patient)) return false;
+  const auftrag = textNorm(b?.auftrag);
+  return !auftrag || textNorm(vs.auftragText).includes(auftrag);
+}
+
+function geplanteKiefer(auftrag, zusammenfassung) {
+  const k = new Set((auftrag?.teile?.length ? auftrag.teile : [auftrag]).map((t) => t?.kiefer).filter(Boolean));
+  if (!k.size) {
+    for (const z of [...(zusammenfassung?.teleskope || []), ...(zusammenfassung?.kronen || []), ...(zusammenfassung?.ersetzt || [])]) {
+      k.add(/^[12]/.test(String(z)) ? "OK" : "UK");
+    }
+  }
+  return ["OK", "UK"].filter((x) => k.has(x));
+}
+
+async function entwurfAnlegen(clientId, d) {
+  const { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt } = d;
+  const h = await hkpAnlegen(clientId, {
+    patient, art: "kasse", status: "wartet_auf_freigabe", kiefer: auftrag.kiefer || "", versorgung: auftrag.versorgung || "",
+    versorgungText, auftragText, auftrag: JSON.parse(JSON.stringify(auftrag)), befundQuelle: befund.quelle,
+    befundJson: JSON.stringify(befund.befund), planJson: JSON.stringify(r.plan), summen,
+    zusammenfassung: r.zusammenfassung, hinweise: [...befund.hinweise, ...r.hinweise], engineStand: E.ENGINE_STAND,
+    erstelltVon: "clara",
+    verlaufText: `von Clara per Sprache angelegt${d.vorgelesen ? " (vorgelesen und bestätigt)" : ""}${zusaetzlich && doppelt.length ? " (bewusst zusätzlich zu einem bestehenden HKP)" : ""}`,
+  }, "Clara");
+  log.info?.(`[hkp] Entwurf ${h.id} angelegt (${versorgungText}, Befund ${befund.quelle?.art}, Patient ${patient.id})`);
+  const quelle = befund.quelle?.art?.includes("lena01") ? ` Befund aus der Lena-Erstuntersuchung vom ${datumDe(befund.quelle.datum)}.` : "";
+  return {
+    ok: true, hkpId: h.id,
+    message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR. Geplant: ${versorgungSatz(r.zusammenfassung)}. ${summenSatz(summen)}.${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen)}`,
+  };
+}
+
 router.post("/tools/hkp-create-draft", async (req, res) => {
   try {
     const clientId = await claraVorspann(req, res);
     if (!clientId) return;
     const b = req.body || {};
     const auftragText = String(b.auftrag || "").trim();
-    const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den HKP erstellen?");
+    const vs = vorschauOffen.get(clientId);
+    if (wahr(b.bestaetigt) && vorschauPasst(vs, b)) {
+      vorschauOffen.delete(clientId);
+      return res.json(await entwurfAnlegen(clientId, { ...vs, vorgelesen: true }));
+    }
+    vorschauOffen.delete(clientId);
+    const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den HKP erstellen?", { vettern: true });
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
+    const vettern = vetternAus() || p.gewaehlt ? [] : await namensvettern(clientId, patient).catch(() => []);
+    if (vettern.length) {
+      const kandidaten = [p.sel || patient, ...vettern];
+      vetternOffen.set(clientId, { kandidaten, at: Date.now() });
+      await setPatientCandidates(clientId, kandidaten, null);
+      log.warn?.(`[hkp] Namensvetter zu ${patient.id}: ${vettern.map((v) => v.id).join(", ")} - Rueckfrage`);
+      return res.json({ ok: true, rueckfrage: "namensvetter", message: vetternFrage(kandidaten) });
+    }
     if (!auftragText) return res.json({ ok: true, message: `Was soll ich für ${patient.anredeLabel} planen – zum Beispiel eine Teleskopprothese, eine Totalprothese oder Kronen?` });
 
     const auftrag = E.auftragVerstehen(auftragText);
@@ -451,18 +559,15 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const versorgungText = auftrag.teile?.length > 1
       ? `HKP mit ${liste(auftrag.teile.map((t) => `${VERSORGUNG_NAME[t.versorgung] || t.versorgung} im ${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}`))}`
       : VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
-    const h = await hkpAnlegen(clientId, {
-      patient, art: "kasse", status: "wartet_auf_freigabe", kiefer: auftrag.kiefer || "", versorgung: auftrag.versorgung || "",
-      versorgungText, auftragText, auftrag: JSON.parse(JSON.stringify(auftrag)), befundQuelle: befund.quelle,
-      befundJson: JSON.stringify(befund.befund), planJson: JSON.stringify(r.plan), summen,
-      zusammenfassung: r.zusammenfassung, hinweise: [...befund.hinweise, ...r.hinweise], engineStand: E.ENGINE_STAND,
-      erstelltVon: "clara", verlaufText: `von Clara per Sprache angelegt${zusaetzlich && doppelt.length ? " (bewusst zusätzlich zu einem bestehenden HKP)" : ""}`,
-    }, "Clara");
-    log.info?.(`[hkp] Entwurf ${h.id} angelegt (${versorgungText}, Befund ${befund.quelle?.art})`);
-    const quelle = befund.quelle?.art?.includes("lena01") ? ` Befund aus der Lena-Erstuntersuchung vom ${datumDe(befund.quelle.datum)}.` : "";
+    const daten = { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt };
+    if (vorlesenAus()) return res.json(await entwurfAnlegen(clientId, daten));
+    vorschauOffen.set(clientId, { ...daten, at: Date.now() });
     return res.json({
-      ok: true, hkpId: h.id,
-      message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR. Geplant: ${versorgungSatz(r.zusammenfassung)}. ${summenSatz(summen)}.${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen)}`,
+      ok: true, rueckfrage: "vorlesen",
+      message: vorleseSatz({
+        patient, versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
+        versorgung: versorgungSatz(r.zusammenfassung),
+      }),
     });
   } catch (e) {
     log.error?.(`[hkp] create-draft: ${e?.stack || e}`);

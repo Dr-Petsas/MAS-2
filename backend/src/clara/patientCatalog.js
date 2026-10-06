@@ -455,6 +455,65 @@ export async function ensureCatalog(clientId, opts = {}) {
   return job;
 }
 
+// Der Vollaufbau laeuft nur einmal pro TTL. Ohne Nachtrag fehlt ein neu
+// angelegter Patient so lange — und die Klangsuche greift zur aehnlich
+// klingenden Dublette (HKP auf "Petzas" statt "Petsas").
+const NEU_ABSTAND_MS = Math.max(30_000, Number(process.env.CLARA_PATIENT_CATALOG_NEU_MS || 120_000));
+const NEU_WARTEN_MS = 1500;
+const NEU_VORLAUF_MS = 10 * 60 * 1000;
+
+/** Eintraege einfuegen bzw. umbenennen; true, wenn sich etwas geaendert hat. */
+export function eintraegeNachtragen(entries, neue) {
+  const pos = new Map(entries.map((e, i) => [e.i, i]));
+  let geaendert = false;
+  for (const n of neue) {
+    const i = pos.get(n.i);
+    if (i === undefined) {
+      pos.set(n.i, entries.length);
+      entries.push(n);
+      geaendert = true;
+    } else if (entries[i].f !== n.f || entries[i].l !== n.l) {
+      entries[i] = n;
+      geaendert = true;
+    }
+  }
+  return geaendert;
+}
+
+async function neueLesen(cid, held) {
+  const seit = new Date(held.at - NEU_VORLAUF_MS);
+  const snap = await admin.firestore()
+    .collection("clients").doc(cid)
+    .collection("locations").doc(held.locationId)
+    .collection("patients")
+    .where("createdAt", ">", admin.firestore.Timestamp.fromDate(seit))
+    .select("firstName", "lastName")
+    .get();
+  const neue = [];
+  for (const doc of snap.docs) {
+    const d = doc.data() || {};
+    const l = String(d.lastName || "").trim();
+    const f = String(d.firstName || "").trim();
+    if (l || f) neue.push({ i: doc.id, f, l, c: entryCodes(f, l) });
+  }
+  if (eintraegeNachtragen(held.entries, neue)) {
+    held.index = buildIndex(held.entries);
+    held.count = held.entries.length;
+  }
+  held.neu = neue.length;
+  return held;
+}
+
+/** Seit dem Vollaufbau angelegte Patienten nachtragen (gedrosselt, mit Zeitlimit). */
+async function mitNeuen(cid, held) {
+  if (!held?.locationId || process.env.CLARA_PATIENT_CATALOG_NEU === "0") return held;
+  if (Date.now() - (held.neuGeprueft || 0) < NEU_ABSTAND_MS) return held;
+  held.neuGeprueft = Date.now();
+  const lauf = neueLesen(cid, held).catch(() => held);
+  await Promise.race([lauf, new Promise((r) => setTimeout(r, NEU_WARTEN_MS))]);
+  return held;
+}
+
 /**
  * Gesprochenen Namen gegen ALLE Namen der Praxis halten.
  * Liefert Kandidaten mit Patienten-Kennung — die Stammdaten holt der Aufrufer.
@@ -465,7 +524,7 @@ export async function ensureCatalog(clientId, opts = {}) {
  */
 export async function findInCatalog(clientId, spoken, opts = {}) {
   try {
-    const cat = await ensureCatalog(clientId);
+    const cat = await mitNeuen(String(clientId || "").trim(), await ensureCatalog(clientId));
     if (!cat || !cat.entries.length) return [];
     return catalogMatch(spoken, cat.entries, cat.index, opts);
   } catch {
@@ -476,7 +535,7 @@ export async function findInCatalog(clientId, spoken, opts = {}) {
 /** Getippte Autovervollstaendigung: Anfang des Vor- oder Nachnamens, nicht Klang. */
 export async function findPrefixInCatalog(clientId, typed, opts = {}) {
   try {
-    const cat = await ensureCatalog(clientId);
+    const cat = await mitNeuen(String(clientId || "").trim(), await ensureCatalog(clientId));
     if (!cat || !cat.entries.length) return [];
     const needle = String(typed || "").toLowerCase().trim();
     if (needle.length < 2) return [];
@@ -554,6 +613,7 @@ export function catalogStatus() {
       truncated: v.truncated,
       ageMinutes: Math.round((Date.now() - v.at) / 60000),
       codes: v.index.size,
+      neuSeitAufbau: v.neu ?? null,
     });
   }
   return { ttlMs: TTL_MS, cap: MAX_PATIENTS, dir: CACHE_DIR, diskError: lastDiskError, tenants: rows };
