@@ -78,6 +78,9 @@ t("Namensvetter: genaue Schreibweise in der Antwort waehlt, der Auftragsname nic
   assert.equal(vetterAntwort(offen, "Petsas. Michael Petzers", "Petsas.").wahl?.id, "b");
   assert.ok(vetterAntwort(offen, " Michael Petzas", "").erneut);
   assert.equal(vetterAntwort(offen, "den ersten", "den ersten").wahl?.id, "a");
+  // Live 06.10.2026 17:23: "Nein, erstens, erstens."
+  assert.equal(vetterAntwort(offen, "erstens, erstens.", "erstens, erstens.").wahl?.id, "a");
+  assert.equal(vetterAntwort(offen, "Zweitens.", "Zweitens.").wahl?.id, "b");
 });
 
 console.log(`hkpDialog: ${ok} Tests ok`);

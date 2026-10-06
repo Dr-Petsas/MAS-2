@@ -159,11 +159,11 @@ export function ordinalPick(hintLower, candidates = []) {
   if (looksLikeSlotChoice(h)) return null;
   if (/\b(letzte|letzter|letzten)\b/.test(h)) return candidates[candidates.length - 1];
   const map = [
-    [/\b(erste|ersten|erster|eins|nummer 1|nummer eins)\b/, 0],
-    [/\b(zweite|zweiten|zweiter|zwei|nummer 2|nummer zwei)\b/, 1],
-    [/\b(dritte|dritten|dritter|drei|nummer 3|nummer drei)\b/, 2],
-    [/\b(vierte|vierten|vierter|nummer 4|nummer vier)\b/, 3],
-    [/\b(fünfte|fünften|fünfter|fuenfte|nummer 5|nummer fünf)\b/, 4],
+    [/\b(erste|ersten|erster|erstens|eins|nummer 1|nummer eins)\b/, 0],
+    [/\b(zweite|zweiten|zweiter|zweitens|zwei|nummer 2|nummer zwei)\b/, 1],
+    [/\b(dritte|dritten|dritter|drittens|drei|nummer 3|nummer drei)\b/, 2],
+    [/\b(vierte|vierten|vierter|viertens|nummer 4|nummer vier)\b/, 3],
+    [/\b(fünfte|fünften|fünfter|fünftens|fuenfte|nummer 5|nummer fünf)\b/, 4],
   ];
   for (const [re, idx] of map) {
     if (re.test(h) && idx < candidates.length) return candidates[idx];
