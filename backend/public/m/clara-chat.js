@@ -97,6 +97,13 @@ export function renderOverviewCard(card, { when = "", onRemoveKandidat = null } 
     </div>` : ""}
   `;
 
+  // HKP-Karte: Antippen oeffnet die Regler-Ansicht (call.html hoert auf "clara-hkp").
+  if (String(card?.kind) === "hkp" && card?.url) {
+    el.addEventListener("click", () => {
+      el.dispatchEvent(new CustomEvent("clara-hkp", { bubbles: true, detail: card }));
+    });
+  }
+
   // Tonnen-Klick: Zeile sofort ausblenden (optimistisch), Handler entscheidet.
   // Meldet der Server einen Fehler, holt der Handler die Zeile zurueck.
   if (mitTonnen) {

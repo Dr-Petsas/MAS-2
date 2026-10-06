@@ -402,6 +402,26 @@
     .chat-st-writing .chat-orb { animation: breathe 1.3s ease-in-out infinite; }
     .chat-st-writing .chat-ring.r1 { animation: rip 1.5s ease-out infinite; }
     .chat-st-writing .chat-ring.r2 { animation: rip 1.5s ease-out .75s infinite; }
+
+    /* HKP-Ansicht (PlanR mobil): Clara legt nach dem Anlegen den HKP mit Reglern
+       und Freigabe-Knopf darüber. Schließen behält den Regler-Stand. */
+    .hkp-sheet {
+      position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+      background: #fdf4f8; animation: hkpRein .28s ease-out;
+    }
+    .hkp-sheet.hidden { display: none; }
+    .hkp-sheet-bar {
+      display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+      background: #a3195b; color: #fff; font-weight: 600; font-size: 15px;
+    }
+    .hkp-sheet-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hkp-sheet-bar button {
+      border: 0; border-radius: 16px; background: rgba(255,255,255,.18); color: #fff;
+      font-size: 14px; font-weight: 600; padding: 6px 14px; cursor: pointer;
+    }
+    .hkp-sheet iframe { flex: 1; width: 100%; border: 0; background: #fdf4f8; }
+    .card[data-kind="hkp"] { cursor: pointer; }
+    @keyframes hkpRein { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
   </style>
 </head>
 <body class="st-idle clara-mode-audio" data-clara-root>
@@ -504,6 +524,14 @@
 
   <audio id="agentAudio" autoplay playsinline></audio>
 
+  <div class="hkp-sheet hidden" id="hkpSheet" role="dialog" aria-label="Heil- und Kostenplan">
+    <div class="hkp-sheet-bar">
+      <span id="hkpSheetTitel">HKP</span>
+      <button type="button" id="hkpSheetZu">Zu den Karten</button>
+    </div>
+    <iframe id="hkpSheetFrame" title="HKP mit Reglern" referrerpolicy="no-referrer"></iframe>
+  </div>
+
   <script>
     // iOS-Kopplung: Die installierte App startet hier (start_url), aber der
     // gescannte QR-Token liegt noch unbenutzt im Speicher (pair.html hat ihn
@@ -522,7 +550,7 @@
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
-    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-3";
+    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-4";
     import { mountLisaLive } from "/m/lisa-live.js?v=8";
     import { bindCrewChips } from "/m/crew.js?v=1";
 
@@ -801,11 +829,60 @@
       // schadet aber nicht; im Audio-Modus wird sofort umgeblaettert.
       // (Kehrt die Badge-nur-Sonderregel fuer recall_kandidaten vom 28.07. um.)
       setFlipped(true);
+      if (card?.kind === "hkp") hkpOeffnen(card);
       if (card?.kind === "lisa_live" || card?.kind === "lisa_sms") lisaLive.start(card);
       if (typeof noteCrew === "function") noteCrew({ card });
     }
 
     renderDeck();
+
+    // HKP-Karte -> PlanR-Handyansicht (Regler, Summen, Freigeben) als Vollbild.
+    // Der iframe bleibt beim Schließen geladen, damit der Regler-Stand nicht verloren geht.
+    const hkpSheet = {
+      el: document.getElementById("hkpSheet"),
+      frame: document.getElementById("hkpSheetFrame"),
+      titel: document.getElementById("hkpSheetTitel"),
+      url: "",
+    };
+    function hkpUrl(u) {
+      try {
+        const x = new URL(String(u || ""));
+        return x.protocol === "https:" && x.searchParams.get("hkp") ? x.href : "";
+      } catch { return ""; }
+    }
+    function hkpOeffnen(card) {
+      const url = hkpUrl(card?.url);
+      if (!url || !hkpSheet.el) return;
+      if (hkpSheet.url !== url) {
+        hkpSheet.frame.src = url;
+        hkpSheet.url = url;
+      }
+      hkpSheet.titel.textContent = [card.title, card.subtitle].filter(Boolean).join(" · ") || "HKP";
+      hkpSheet.el.classList.remove("hidden");
+    }
+    document.getElementById("hkpSheetZu")?.addEventListener("click", () => hkpSheet.el.classList.add("hidden"));
+    document.addEventListener("clara-hkp", (ev) => hkpOeffnen(ev.detail));
+    window.addEventListener("message", (ev) => {
+      if (ev.source !== hkpSheet.frame?.contentWindow) return;
+      const m = ev.data || {};
+      if (m.type !== "planr-hkp" || m.status !== "freigegeben") return;
+      const euro = (x) => `${(Number(x) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+      deck = deck.map((e) => {
+        if (e.card?.kind !== "hkp" || e.card?.hkpId !== m.id) return e;
+        const s = m.summen || {};
+        return { ...e, card: {
+          ...e.card, status: "freigegeben", tag: "HKP · freigegeben", footer: "Auf dem Handy freigegeben",
+          items: m.summen ? [
+            { icon: "euro", level: "info", text: `Gesamt ${euro(s.gesamt)}` },
+            { icon: "check", level: "ok", text: `Festzuschuss ${euro(s.kassenanteil ?? s.festzuschuss)}` },
+            { icon: "person", level: "warn", text: `Eigenanteil ${euro(s.eigenanteil)}` },
+          ] : e.card.items,
+        } };
+      });
+      try { sessionStorage.setItem(CARDS_KEY, JSON.stringify(deck)); } catch {}
+      renderDeck();
+      setTimeout(() => hkpSheet.el.classList.add("hidden"), 1800);
+    });
 
     // Kolleginnen-Chips: nur bei echtem Tool/Karten-Trigger, nie per Satz-Rate.
     const crew = bindCrewChips(els.agents);

@@ -140,42 +140,144 @@ function planrGuard(req, res, next) {
 
 // Lese-Link fuer genau EINEN HKP (SMS an den Chef): ohne Praxis-Schluessel im
 // Browser, nur lesend, befristet. Signiert mit PLANR_HKP_KEY.
+// Freigabe-Schluessel (zweck "hkp-freigabe"): erlaubt zusaetzlich Regler-Stand
+// speichern + freigeben. Geht NUR ueber die Karte an die angemeldete Clara-App,
+// nie in eine SMS.
 const LINK_TAGE = 14;
-const linkSignatur = (id, exp) => createHmac("sha256", String(process.env.PLANR_HKP_KEY || "").trim())
-  .update(`hkp-link:${id}:${exp}`).digest("base64url").slice(0, 24);
+const FREIGABE_TAGE = 3;
+const signatur = (zweck, id, exp) => createHmac("sha256", String(process.env.PLANR_HKP_KEY || "").trim())
+  .update(`${zweck}:${id}:${exp}`).digest("base64url").slice(0, 24);
 
-export function hkpLinkToken(id, jetztMs = Date.now()) {
+const standardClient = () => String(process.env.PLANR_HKP_CLIENT_ID || DEFAULT_CLIENT_ID).trim();
+const signierteId = (id, clientId) => (clientId && clientId !== standardClient() ? `${clientId}/${id}` : id);
+
+function tokenFuer(zweck, tage, id, clientId, jetztMs) {
   if (!String(process.env.PLANR_HKP_KEY || "").trim() || !id) return "";
-  const exp = Math.floor(jetztMs / 1000) + LINK_TAGE * 86400;
-  return `${exp}.${linkSignatur(id, exp)}`;
+  const exp = Math.floor(jetztMs / 1000) + tage * 86400;
+  return `${exp}.${signatur(zweck, signierteId(id, clientId), exp)}`;
 }
 
-export function hkpLinkOk(id, token, jetztMs = Date.now()) {
+function tokenOk(zweck, id, token, clientId, jetztMs) {
   const [expRoh, sig] = String(token || "").split(".");
   const exp = Number(expRoh);
   if (!id || !sig || !Number.isFinite(exp) || exp * 1000 < jetztMs) return false;
   if (!String(process.env.PLANR_HKP_KEY || "").trim()) return false;
-  const a = Buffer.from(linkSignatur(id, exp)), b = Buffer.from(sig);
+  const a = Buffer.from(signatur(zweck, signierteId(id, clientId), exp)), b = Buffer.from(sig);
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function hkpLink(id) {
-  const basis = String(process.env.PLANR_PUBLIC_URL || "https://hkp.pickadoc-tunnel.com").replace(/\/+$/, "");
-  const t = hkpLinkToken(id);
-  return t ? `${basis}/?hkp=${encodeURIComponent(id)}&t=${t}` : "";
+export const hkpLinkToken = (id, jetztMs = Date.now(), clientId = "") => tokenFuer("hkp-link", LINK_TAGE, id, clientId, jetztMs);
+export const hkpLinkOk = (id, token, jetztMs = Date.now(), clientId = "") => tokenOk("hkp-link", id, token, clientId, jetztMs);
+export const hkpFreigabeToken = (id, jetztMs = Date.now(), clientId = "") => tokenFuer("hkp-freigabe", FREIGABE_TAGE, id, clientId, jetztMs);
+export const hkpFreigabeOk = (id, token, jetztMs = Date.now(), clientId = "") => tokenOk("hkp-freigabe", id, token, clientId, jetztMs);
+
+const planrBasis = () => String(process.env.PLANR_PUBLIC_URL || "https://hkp.pickadoc-tunnel.com").replace(/\/+$/, "");
+const clientParam = (clientId) => (clientId && clientId !== standardClient() ? `&c=${encodeURIComponent(clientId)}` : "");
+
+export function hkpLink(id, clientId = "") {
+  const t = hkpLinkToken(id, Date.now(), clientId);
+  return t ? `${planrBasis()}/?hkp=${encodeURIComponent(id)}&t=${t}${clientParam(clientId)}` : "";
+}
+
+/** Handy-Ansicht mit Reglern und Freigabe-Knopf (nur fuer die Karte in der Clara-App) */
+export function hkpMobilLink(id, clientId = "") {
+  const t = hkpLinkToken(id, Date.now(), clientId);
+  const f = hkpFreigabeToken(id, Date.now(), clientId);
+  return t && f ? `${planrBasis()}/?hkp=${encodeURIComponent(id)}&t=${t}&f=${f}${clientParam(clientId)}&ansicht=mobil` : "";
+}
+
+/** Karte fuers Handy: Clara flippt nach dem Anlegen/Vorlesen auf die Regler-Ansicht. Notaus MAS_HKP_KARTE=0. */
+export function hkpKarte(h, clientId = "") {
+  if (process.env.MAS_HKP_KARTE === "0" || !h?.id) return null;
+  const url = hkpMobilLink(h.id, clientId);
+  if (!url) return null;
+  const s = h.summen || {};
+  const euro = (x) => `${(Number(x) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  const wartet = h.status === "wartet_auf_freigabe";
+  return {
+    kind: "hkp", hkpId: h.id, url, status: h.status,
+    tag: `HKP · ${STATUS_TEXT[h.status] || h.status}`,
+    title: h.patient?.label || "HKP",
+    subtitle: hkpTitel(h),
+    heading: "Kosten",
+    items: [
+      { icon: "euro", level: "info", text: `Gesamt ${euro(s.gesamt)}` },
+      { icon: "check", level: "ok", text: `Festzuschuss ${euro(s.kassenanteil ?? s.festzuschuss)}` },
+      { icon: "person", level: "warn", text: `Eigenanteil ${euro(s.eigenanteil)}` },
+    ],
+    footer: wartet ? "Regler und Freigabe: Karte antippen" : "Regler ansehen: Karte antippen",
+  };
+}
+
+function linkClient(req) {
+  const c = String(req.query?.c || "").trim();
+  return /^[\w-]{1,80}$/.test(c) ? c : standardClient();
 }
 
 router.get("/planr/hkp-link/:id", async (req, res) => {
   res.set("Cache-Control", "no-store");
-  if (!hkpLinkOk(req.params.id, req.header("X-PlanR-Link") || req.query?.t)) {
+  const clientId = linkClient(req);
+  if (!hkpLinkOk(req.params.id, req.header("X-PlanR-Link") || req.query?.t, Date.now(), clientId)) {
     return res.status(401).json({ ok: false, error: "link_ungueltig", message: "Der Link ist abgelaufen oder ungültig." });
   }
   try {
-    const clientId = String(process.env.PLANR_HKP_CLIENT_ID || DEFAULT_CLIENT_ID).trim();
     const h = await hkpLesen(clientId, req.params.id);
     if (!h) return res.status(404).json({ ok: false, error: "nicht_gefunden" });
-    res.json({ ok: true, hkp: h });
+    const plan = planAus(h);
+    const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [] }));
+    res.json({
+      ok: true, hkp: h,
+      listen: plan ? E.listenFuer(plan, praxisListen(praxis)) : null,
+      freigabe: hkpFreigabeOk(req.params.id, req.header("X-PlanR-Freigabe"), Date.now(), clientId),
+    });
   } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Freigabe vom Handy (Regler-Stand + Status). Gerechnet wird hier neu mit den
+// Praxis-Listen; Patient bleibt der des gespeicherten Plans.
+router.put("/planr/hkp-link/:id", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const id = req.params.id;
+  const clientId = linkClient(req);
+  if (!hkpLinkOk(id, req.header("X-PlanR-Link"), Date.now(), clientId) || !hkpFreigabeOk(id, req.header("X-PlanR-Freigabe"), Date.now(), clientId)) {
+    return res.status(401).json({ ok: false, error: "freigabe_ungueltig", message: "Freigeben geht nur aus der Clara-App heraus – der Link ist abgelaufen oder nur zum Ansehen." });
+  }
+  const b = req.body || {};
+  if (b.status !== "freigegeben") return res.status(400).json({ ok: false, error: "nur_freigabe" });
+  if (b.version === undefined || b.version === null) return res.status(400).json({ ok: false, error: "version_fehlt" });
+  try {
+    const felder = { status: "freigegeben", freigegeben: new Date().toISOString(), offeneAenderung: null };
+    const was = [];
+    if (b.plan) {
+      const alt = await hkpLesen(clientId, id);
+      if (!alt) return res.status(404).json({ ok: false, error: "nicht_gefunden" });
+      const plan = E.planNormalisieren(b.plan);
+      const vorher = planAus(alt);
+      if (vorher) plan.patient = vorher.patient;
+      const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [] }));
+      const ergebnis = E.rechnen(plan, praxisListen(praxis));
+      Object.assign(felder, { planJson: JSON.stringify(plan), summen: summenAus(ergebnis), zusammenfassung: E.zusammenfassen(plan, ergebnis) });
+      was.push("Regler auf dem Handy angepasst");
+    }
+    was.push("auf dem Handy freigegeben");
+    const h = await hkpAktualisieren(clientId, id, {
+      version: b.version, felder, wer: "Handy", was: was.join(", "),
+      pruefen: (a) => {
+        if (a.status === "wartet_auf_freigabe") return;
+        const e = new Error("status");
+        e.code = "status";
+        e.status = a.status;
+        throw e;
+      },
+    });
+    log.info?.(`[hkp] ${id} auf dem Handy freigegeben${b.plan ? " (mit Regler-Stand)" : ""}`);
+    res.json({ ok: true, hkp: kopf(h) });
+  } catch (e) {
+    if (e instanceof KonfliktFehler) return res.status(409).json({ ok: false, error: "version_konflikt", message: "Der HKP wurde inzwischen geändert – bitte neu laden.", aktuell: e.aktuell });
+    if (e?.code === "status") return res.status(409).json({ ok: false, error: "nicht_wartend", message: `Der HKP ist schon ${STATUS_TEXT[e.status] || e.status}.` });
+    if (e?.code === "nicht_gefunden") return res.status(404).json({ ok: false, error: "nicht_gefunden" });
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
@@ -497,8 +599,9 @@ async function entwurfAnlegen(clientId, d) {
   }, "Clara");
   log.info?.(`[hkp] Entwurf ${h.id} angelegt (${versorgungText}, Befund ${befund.quelle?.art}, Patient ${patient.id})`);
   const quelle = befund.quelle?.art?.includes("lena01") ? ` Befund aus der Lena-Erstuntersuchung vom ${datumDe(befund.quelle.datum)}.` : "";
+  const card = hkpKarte(h, clientId);
   return {
-    ok: true, hkpId: h.id,
+    ok: true, hkpId: h.id, ...(card ? { card } : {}),
     message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR. Geplant: ${versorgungSatz(r.zusammenfassung)}. ${summenSatz(summen)}.${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen)}`,
   };
 }
@@ -612,7 +715,8 @@ router.post("/tools/hkp-details", async (req, res) => {
     if (!clientId) return;
     const r = await hkpAufloesen(clientId, req.body, "Zu welchem Patienten soll ich den HKP vorlesen?");
     if (r.antwort) return res.json(r.antwort);
-    return res.json({ ok: true, hkpId: r.hkp.id, message: detailSatz({ ...r.hkp, patient: { ...r.hkp.patient, label: r.patient.anredeLabel } }) });
+    const card = hkpKarte(r.hkp, clientId);
+    return res.json({ ok: true, hkpId: r.hkp.id, ...(card ? { card } : {}), message: detailSatz({ ...r.hkp, patient: { ...r.hkp.patient, label: r.patient.anredeLabel } }) });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
