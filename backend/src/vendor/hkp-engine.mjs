@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 a3289305e26b)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 03626d107bcb)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26320,8 +26320,40 @@ function einzelAuftrag(text) {
 			pfeilerDavor = vorBefund === teil;
 		}
 	});
+	if (auftrag.versorgung === "bruecke") brueckeVerstehen(t, auftrag);
 	if (!auftrag.kiefer && auftrag.pfeiler.length && auftrag.pfeiler.every((z) => kieferVon(z) === kieferVon(auftrag.pfeiler[0]))) auftrag.kiefer = kieferVon(auftrag.pfeiler[0]);
 	return auftrag;
+}
+var BRUECKEN_SPANNE = /\b([1-4][1-8])\s*(?:bis|auf|nach|zu|-)\s*(?:zahn\s*)?([1-4][1-8])\b/g;
+var GLIED_WORT = "(?:br(?:ü|ue)cken|zwischen)?glied(?:er|ern)?";
+var ZAHN_LISTE = "[1-4][1-8](?:\\s*(?:,|und)\\s*[1-4][1-8])*";
+var GLIED_DAVOR = new RegExp(`\\b(${ZAHN_LISTE})\\s+(?:(ist|sind|wird|werden|als)\\s+)?(?:(?:ein|eine|das|die|der|zum|zu)\\s+)?${GLIED_WORT}`, "g");
+var GLIED_DANACH = new RegExp(`${GLIED_WORT}\\s+(?:(?:auf|in|bei|regio|f(?:ü|ue)r|an)\\s+)?(?:zahn\\s*)?(${ZAHN_LISTE})`, "g");
+/**
+* Brücke: Anker sind die Enden („von 14 auf 16“, „14 bis 16“) bzw. die genannten Kronen, Glieder die genannten
+* („15 ist ein Brückenglied“) oder die Zähne zwischen genau zwei Ankern. Einzahl-Form („16 und 15 ist ein Glied“)
+* nimmt nur den Zahn direkt am Glied-Wort.
+*/
+function brueckeVerstehen(t, a) {
+	const nummern = (s) => [...s.matchAll(FDI)].map((m) => m[1]);
+	const spannen = [...t.matchAll(BRUECKEN_SPANNE)].filter((m) => kieferVon(m[1]) === kieferVon(m[2]));
+	const anker = [];
+	for (const m of spannen) for (const z of [m[1], m[2]]) if (!anker.includes(z)) anker.push(z);
+	const glieder = [];
+	const dazu = (zs) => zs.forEach((z) => !glieder.includes(z) && !anker.includes(z) && glieder.push(z));
+	for (const m of t.matchAll(GLIED_DAVOR)) {
+		const zs = nummern(m[1]).filter((z) => !anker.includes(z));
+		dazu(/sind|werden/.test(m[2] ?? "") || /glieder/.test(m[0]) ? zs : zs.slice(-1));
+	}
+	for (const m of t.matchAll(GLIED_DANACH)) {
+		const zs = nummern(m[1]).filter((z) => !anker.includes(z));
+		dazu(/glieder/.test(m[0]) ? zs : zs.slice(0, 1));
+	}
+	for (const m of spannen) dazu(zahnSpanne(m[1], m[2]).slice(1, -1));
+	const pfeiler = [...anker, ...a.pfeiler.filter((z) => !anker.includes(z))].filter((z) => !glieder.includes(z));
+	if (!glieder.length && pfeiler.length === 2 && kieferVon(pfeiler[0]) === kieferVon(pfeiler[1])) dazu(zahnSpanne(pfeiler[0], pfeiler[1]).slice(1, -1));
+	a.pfeiler = pfeiler;
+	a.glieder = glieder;
 }
 var BEFUND_BEGINN = /\b(?:ersetzt\w*|(?:es )?fehl\w*|vorhanden|extrah\w*|entfern\w*)\b/;
 var BEFUND_WORTE = [
@@ -26384,6 +26416,13 @@ var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|
 /** Satzteil, der nur Zähne aufzählt („die Vierer“, „Fünfer“) – sein Verb steht weiter hinten */
 var NUR_ZAEHNE = /^(?:(?:die|der|den|und|sowie|auch|noch|[1-4][1-8]|\d(?:er|ern)|einser|zweier|dreier|eckz(?:ah|äh|aeh)ne?n?|vierer|f(?:ü|ue)nfer|sechser|siebe?ner|achter)n?\s*)+$/;
 function befundAusAuftrag(text) {
+	const satz = befundSaetze(text);
+	const a = auftragVerstehen(text);
+	const luecke = (a.teile?.length ? a.teile : [a]).flatMap((x) => x.versorgung === "bruecke" ? x.glieder ?? [] : []).filter((z) => !(satz && zaehneIn(satz).includes(z)));
+	if (!luecke.length) return satz;
+	return [satz, `${liste(luecke)} ${luecke.length > 1 ? "fehlen" : "fehlt"}`].filter(Boolean).join(", ");
+}
+function befundSaetze(text) {
 	const ausTeil = (abschnitt) => {
 		const teile = satzteile(abschnitt).flatMap((t) => {
 			const m = BEFUND_BEGINN.exec(t);
@@ -26427,12 +26466,7 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 			grund: "versorgung",
 			frage: "Welche Versorgung soll ich planen – zum Beispiel Teleskopprothese, Totalprothese oder Kronen?"
 		};
-		if (teil.versorgung === "bruecke") return {
-			status: "rueckfrage",
-			grund: "nicht_unterstuetzt",
-			frage: "Brücken kann ich noch nicht per Sprache planen. Bitte den HKP in PlanR anlegen."
-		};
-		if (!teil.kiefer && teil.versorgung !== "kronen") return {
+		if (!teil.kiefer && teil.versorgung !== "kronen" && teil.versorgung !== "bruecke") return {
 			status: "rueckfrage",
 			grund: "kiefer",
 			frage: "Für welchen Kiefer – Oberkiefer oder Unterkiefer?"
@@ -26446,10 +26480,38 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 	};
 	const tp = {};
 	for (const teil of teile) {
-		const r = teil.versorgung === "kronen" ? kronenPlanen(teil, befund, tp) : kieferPlanen(teil, teil.kiefer, befund, tp, hinweise);
+		const r = teil.versorgung === "kronen" ? kronenPlanen(teil, befund, tp) : teil.versorgung === "bruecke" ? brueckePlanen(teil, befund, tp) : kieferPlanen(teil, teil.kiefer, befund, tp, hinweise);
 		if (r) return r;
 	}
 	return planRechnen(auftrag, teile, befund, tp, hinweise, optionen);
+}
+function brueckePlanen(auftrag, befund, tp) {
+	const anker = auftrag.pfeiler;
+	const glieder = auftrag.glieder ?? [];
+	if (anker.length < 2 || !glieder.length || new Set([...anker, ...glieder].map(kieferVon)).size > 1) return {
+		status: "rueckfrage",
+		grund: "pfeiler",
+		frage: "Von welchem bis zu welchem Zahn soll die Brücke gehen – zum Beispiel von 14 auf 16?"
+	};
+	const ankerFehlt = anker.filter((z) => fehlt(befund, z) && befund[z] !== "x");
+	if (ankerFehlt.length) return {
+		status: "rueckfrage",
+		grund: "pfeiler_fehlt",
+		zaehne: ankerFehlt,
+		frage: `Laut Befund ${ankerFehlt.length > 1 ? "fehlen" : "fehlt"} ${liste(ankerFehlt)}. Auf welchen Zähnen soll die Brücke stattdessen verankert sein?`
+	};
+	const stehen = glieder.filter((z) => z in befund && !fehlt(befund, z));
+	if (stehen.length) return {
+		status: "rueckfrage",
+		grund: "glied_vorhanden",
+		zaehne: stehen,
+		frage: `Laut Befund ${stehen.length > 1 ? "sind" : "ist"} ${liste(stehen)} noch vorhanden. Soll ich ${stehen.length > 1 ? "sie" : "ihn"} als zu entfernen planen? Dann sagen Sie zum Beispiel: ${stehen[0]} wird entfernt.`
+	};
+	for (const z of glieder) if (!(z in befund)) befund[z] = "f";
+	if (auftrag.werkstoff && WERKSTOFFE[auftrag.werkstoff].art === "keramik") {
+		for (const z of anker) tp[z] = "KM";
+		for (const z of glieder) tp[z] = "BM";
+	}
 }
 function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 	const name = kiefer === "OK" ? "Oberkiefer" : "Unterkiefer";
@@ -26559,7 +26621,7 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-06 13:16";
+var ENGINE_STAND = "2026-10-06 15:12";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
@@ -26577,6 +26639,7 @@ function zusammenfassen(plan, e) {
 		teleskope: mit(/^T2?V?$/),
 		kronen: mit(/^(K|KV|KH|KVH|KM|PK|PKM|PKV)$/),
 		ersetzt: mit(/^(E|B|BV|BM|BH|BVH)$/),
+		glieder: mit(/^(B|BV|BM|BH|BVH)$/),
 		befunde: [...new Set(e.befunde.map((b) => b.nr))],
 		festzuschuss: e.summen.festzuschuss,
 		gesamt: e.summen.gesamt,

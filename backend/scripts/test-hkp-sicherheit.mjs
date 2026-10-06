@@ -33,7 +33,8 @@ check("Antwort: der zweite", vetterAntwort(offen, "Den zweiten bitte")?.wahl?.id
 check("Antwort: Jahrgang", vetterAntwort(offen, "Der von 1968")?.wahl?.id === "neu");
 check("Antwort: Jahrgang zweistellig", vetterAntwort(offen, "Jahrgang 68")?.wahl?.id === "neu");
 check("Antwort: ohne Geburtsdatum", vetterAntwort(offen, "der ohne Geburtsdatum")?.wahl?.id === "alt");
-check("Antwort: nur der gleich klingende Name -> erneut fragen", !!vetterAntwort(offen, "Michael Petsas")?.erneut);
+check("Antwort: genaue Schreibweise waehlt (Vorlesen mit Geburtsdatum folgt)", vetterAntwort(offen, "Michael Petsas")?.wahl?.id === "neu");
+check("Antwort: nur gleich klingender Name -> erneut fragen", !!vetterAntwort(offen, "Michael Petzers")?.erneut);
 check("Antwort: ganz anderer Name -> neue Suche", vetterAntwort(offen, "Hans Mueller") === null);
 check("Jahrgang passt auf keinen -> keine Wahl", jahrgangWahl("von 1990", [PETSAS, PETZAS]) === null);
 const wahl = { id: PETSAS.id, at: Date.now() };

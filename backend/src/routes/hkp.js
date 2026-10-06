@@ -29,7 +29,7 @@ import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpFeldSetzen, hkpLesen, hkpListe, kopf, praxisLaden, praxisSpeichern,
 } from "../hkp/store.js";
 import { befundErmitteln, datumDe } from "../hkp/befundQuelle.js";
-import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, summenSatz, uebersichtSatz, versorgungSatz } from "../hkp/sprech.js";
+import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, summenSatz, uebersichtSatz, versorgungSatz, zahlWort } from "../hkp/sprech.js";
 
 const router = express.Router();
 
@@ -474,10 +474,15 @@ async function namensvettern(clientId, patient) {
 }
 
 /** Antwort auf die Namensvetter-Rueckfrage: { wahl } | { erneut } | null (anderer Name) */
-export function vetterAntwort(offen, text) {
+export function vetterAntwort(offen, text, antwort = text) {
   const t = String(text || "").trim();
   const wahl = ordinalPick(t.toLowerCase(), offen.kandidaten) || jahrgangWahl(t, offen.kandidaten);
   if (wahl) return { wahl };
+  // Live 06.10.2026: "Petsas." auf Petzas/Petsas – die genaue Schreibweise der Antwort entscheidet
+  // (nicht der Name aus dem Auftrag; vorgelesen wird danach mit Geburtsdatum).
+  const woerter = new Set(nameNorm(antwort).split(" ").filter(Boolean));
+  const genau = offen.kandidaten.filter((p) => woerter.has(nameNorm(p.lastName)));
+  if (genau.length === 1) return { wahl: genau[0] };
   if (!t || offen.kandidaten.some((p) => namePasst(t, p) > 0)) return { erneut: offen.kandidaten };
   return null;
 }
@@ -487,7 +492,7 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
   const hint = String(body?.hint || "").trim();
   const offen = vettern ? vetternOffen.get(clientId) : null;
   if (offen && Date.now() - offen.at < VETTERN_MS) {
-    const a = vetterAntwort(offen, `${hint} ${rawName}`);
+    const a = vetterAntwort(offen, `${hint} ${rawName}`, hint);
     if (a?.wahl) {
       vetternOffen.delete(clientId);
       vetterWahl.set(clientId, { id: a.wahl.id, at: Date.now() });
@@ -535,12 +540,21 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
 
 /** HKP eines Patienten bestimmen (mit Rueckfrage bei mehreren) */
 async function hkpAufloesen(clientId, body, askWho) {
+  if (!String(body?.name || "").trim() && !String(body?.hint || "").trim() && !String(body?.auswahl || "").trim()) {
+    const l = letzterHkp.get(clientId);
+    const h = l && Date.now() - l.at < LETZTER_MS ? await hkpLesen(clientId, l.id).catch(() => null) : null;
+    if (h) {
+      letzterMerken(clientId, h);
+      return { patient: { ...h.patient, anredeLabel: h.patient?.anredeLabel || h.patient?.label }, hkp: h };
+    }
+  }
   const p = await patientAufloesen(clientId, body, askWho);
   if (p.antwort) return p;
   const hkps = await hkpsVonPatient(clientId, p.patient);
   if (!hkps.length) return { antwort: { ok: true, message: `Für ${p.patient.anredeLabel} gibt es noch keinen HKP.` } };
   const h = waehleHkp(hkps, body?.auswahl || body?.hint);
   if (!h) return { antwort: { ok: true, message: welcherFrage(hkps, p.patient.anredeLabel), hkpAuswahl: hkps.map((x) => x.id) } };
+  letzterMerken(clientId, h);
   return { patient: p.patient, hkp: h };
 }
 
@@ -568,13 +582,38 @@ const vorschauOffen = new Map();
 const vorlesenAus = () => process.env.MAS_HKP_VORLESEN === "0";
 const textNorm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9äöüß]+/g, "");
 
+export function doppelungHinweis(doppelt, verwerfen = false) {
+  const wartend = doppelt.filter((h) => h.status === "wartet_auf_freigabe");
+  const kurz = `${doppelt.length === 1 ? "einen" : zahlWort(doppelt.length)} ${hkpKurz(doppelt[0])}${doppelt.length > 1 ? " und weitere" : ""}`;
+  if (verwerfen && wartend.length) return `Den bestehenden ${hkpTitel(wartend[0])}${wartend.length > 1 ? " und die weiteren wartenden" : ""} verwerfe ich dabei.`;
+  return `Achtung, es gibt schon ${kurz}. Der bleibt bestehen${wartend.length ? " – außer Sie sagen: alten verwerfen" : ""}.`;
+}
+
+/** Was die Engine aus einem Auftrag versteht – ohne den Wortlaut */
+function auftragKern(text) {
+  const a = E.auftragVerstehen(String(text || ""));
+  const kern = (x) => ({
+    versorgung: x.versorgung || "", kiefer: x.kiefer || "", pfeiler: [...(x.pfeiler || [])].sort(), glieder: [...(x.glieder || [])].sort(),
+    entfernen: [...(x.entfernen || [])].sort(), erhalten: [...(x.erhalten || [])].sort(), coverDenture: !!x.coverDenture,
+    mitAchtern: !!x.mitAchtern, werkstoff: x.werkstoff || "", abformung: x.abformung || "", bonus: x.bonus || "", haertefall: !!x.haertefall,
+  });
+  const teile = a.teile?.length ? a.teile : [a];
+  return JSON.stringify({ teile: teile.map(kern), befund: E.befundVerstehen(E.befundAusAuftrag(String(text || "")), a.kiefer) });
+}
+
 /** Gilt ein bestaetigt=true-Aufruf der offenen Vorschau (gleicher Patient, kein neuer Auftragsinhalt)? */
 export function vorschauPasst(vs, b, jetzt = Date.now()) {
   if (!vs || jetzt - vs.at > VORSCHAU_MS) return false;
   const name = String(b?.name || "").trim();
   if (name && namePasst(name, vs.patient) === 0 && !nurVornamePasst(name, vs.patient)) return false;
   const auftrag = textNorm(b?.auftrag);
-  return !auftrag || textNorm(vs.auftragText).includes(auftrag);
+  if (!auftrag || textNorm(vs.auftragText).includes(auftrag)) return true;
+  // Live 06.10.2026: Ja kam mit dem STT-Wortlaut ("Oberkäfertotalprothese"), vorgelesen war die Umschreibung
+  try {
+    return auftragKern(b.auftrag) === auftragKern(vs.auftragText);
+  } catch {
+    return false;
+  }
 }
 
 function geplanteKiefer(auftrag, zusammenfassung) {
@@ -585,6 +624,28 @@ function geplanteKiefer(auftrag, zusammenfassung) {
     }
   }
   return ["OK", "UK"].filter((x) => k.has(x));
+}
+
+// Folgefragen ohne Namen ("Was sind die Summen?") meinen den HKP, ueber den gerade gesprochen wurde.
+const LETZTER_MS = 15 * 60 * 1000;
+const letzterHkp = new Map();
+const letzterMerken = (clientId, h) => h?.id && letzterHkp.set(clientId, { id: h.id, at: Date.now() });
+
+/** Doppelte, noch nicht freigegebene HKPs verwerfen – freigegebene bleiben unberuehrt */
+async function alteVerwerfen(clientId, doppelt, neu) {
+  const weg = [];
+  for (const h of doppelt.filter((x) => x.status === "wartet_auf_freigabe")) {
+    try {
+      await hkpAktualisieren(clientId, h.id, {
+        version: h.version, felder: { status: "verworfen" }, wer: "Clara",
+        was: `per Sprache verworfen, ersetzt durch ${hkpTitel(neu)} (${neu.id})`,
+      });
+      weg.push(h);
+    } catch (e) {
+      log.warn?.(`[hkp] verwerfen ${h.id}: ${e?.message || e}`);
+    }
+  }
+  return weg;
 }
 
 async function entwurfAnlegen(clientId, d) {
@@ -598,11 +659,14 @@ async function entwurfAnlegen(clientId, d) {
     verlaufText: `von Clara per Sprache angelegt${d.vorgelesen ? " (vorgelesen und bestätigt)" : ""}${zusaetzlich && doppelt.length ? " (bewusst zusätzlich zu einem bestehenden HKP)" : ""}`,
   }, "Clara");
   log.info?.(`[hkp] Entwurf ${h.id} angelegt (${versorgungText}, Befund ${befund.quelle?.art}, Patient ${patient.id})`);
+  letzterMerken(clientId, h);
   const quelle = befund.quelle?.art?.includes("lena01") ? ` Befund aus der Lena-Erstuntersuchung vom ${datumDe(befund.quelle.datum)}.` : "";
+  const weg = d.alteVerwerfen && doppelt?.length ? await alteVerwerfen(clientId, doppelt, h) : [];
+  const wegSatz = weg.length ? ` Der alte ${hkpTitel(weg[0])}${weg.length > 1 ? " und weitere" : ""} ist verworfen.` : "";
   const card = hkpKarte(h, clientId);
   return {
-    ok: true, hkpId: h.id, ...(card ? { card } : {}),
-    message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR. Geplant: ${versorgungSatz(r.zusammenfassung)}. ${summenSatz(summen)}.${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen)}`,
+    ok: true, hkpId: h.id, ...(card ? { card } : {}), ...(weg.length ? { verworfen: weg.map((x) => x.id) } : {}),
+    message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR.${d.vorgelesen ? "" : ` Geplant: ${versorgungSatz(r.zusammenfassung)}.`} ${summenSatz(summen)}.${wegSatz}${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen)}`,
   };
 }
 
@@ -616,7 +680,9 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (wahr(b.bestaetigt) && vorschauPasst(vs, b)) {
       vorschauOffen.delete(clientId);
       vetterWahl.delete(clientId);
-      return res.json(await entwurfAnlegen(clientId, { ...vs, vorgelesen: true }));
+      return res.json(await entwurfAnlegen(clientId, {
+        ...vs, vorgelesen: true, zusaetzlich: true, alteVerwerfen: vs.alteVerwerfen || wahr(b.alte_verwerfen),
+      }));
     }
     vorschauOffen.delete(clientId);
     const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den HKP erstellen?", { vettern: true });
@@ -643,9 +709,17 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         message: `Ich habe noch nichts angelegt: Sie haben auch den ${name} genannt, aber ich habe dafür keine Versorgung verstanden. Was soll ich im ${name} planen?`,
       });
     }
-    const zusaetzlich = wahr(b.zusaetzlich);
+    if (!(auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung)) {
+      return res.json({
+        ok: true, rueckfrage: "versorgung",
+        message: `Was soll ich für ${patient.anredeLabel} planen – zum Beispiel eine Teleskopprothese, eine Totalprothese, Kronen oder eine Brücke?`,
+      });
+    }
+    const alteWeg = wahr(b.alte_verwerfen);
+    const zusaetzlich = wahr(b.zusaetzlich) || alteWeg;
     const doppelt = doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
-    if (doppelt.length && !zusaetzlich) {
+    // Mit Vorlesen steht die Doppelung als Hinweis in der Vorschau – eine Frage weniger.
+    if (doppelt.length && !zusaetzlich && vorlesenAus()) {
       return res.json({
         ok: true, doppelung: doppelt.map((h) => h.id),
         message: `Für ${patient.anredeLabel} gibt es schon ${doppelt.length === 1 ? "einen" : doppelt.length} ${hkpKurz(doppelt[0])}${doppelt.length > 1 ? " und weitere" : ""}. Soll ich trotzdem einen weiteren HKP anlegen?`,
@@ -671,17 +745,18 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const versorgungText = auftrag.teile?.length > 1
       ? `HKP mit ${liste(auftrag.teile.map((t) => `${VERSORGUNG_NAME[t.versorgung] || t.versorgung} im ${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}`))}`
       : VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
-    const daten = { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt };
+    const daten = { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt, alteVerwerfen: alteWeg };
     if (vorlesenAus()) {
       vetterWahl.delete(clientId);
       return res.json(await entwurfAnlegen(clientId, daten));
     }
     vorschauOffen.set(clientId, { ...daten, at: Date.now() });
     return res.json({
-      ok: true, rueckfrage: "vorlesen",
+      ok: true, rueckfrage: "vorlesen", ...(doppelt.length ? { doppelung: doppelt.map((h) => h.id) } : {}),
       message: vorleseSatz({
         patient, versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
-        versorgung: versorgungSatz(r.zusammenfassung),
+        versorgung: versorgungSatz(r.zusammenfassung), summen: summenSatz(summen),
+        doppelt: doppelt.length ? doppelungHinweis(doppelt, alteWeg) : "",
       }),
     });
   } catch (e) {
@@ -713,8 +788,19 @@ router.post("/tools/hkp-details", async (req, res) => {
   try {
     const clientId = await claraVorspann(req, res);
     if (!clientId) return;
-    const r = await hkpAufloesen(clientId, req.body, "Zu welchem Patienten soll ich den HKP vorlesen?");
+    const b = req.body || {};
+    if (!String(b.name || "").trim() && !String(b.hint || "").trim()) {
+      const vs = vorschauOffen.get(clientId);
+      if (vs && Date.now() - vs.at < VORSCHAU_MS) {
+        return res.json({
+          ok: true, rueckfrage: "vorlesen",
+          message: `Der Entwurf für ${vs.patient.anredeLabel} ist noch nicht angelegt. Voraussichtlich ${summenSatz(vs.summen)}. Soll ich den Entwurf so anlegen?`,
+        });
+      }
+    }
+    const r = await hkpAufloesen(clientId, b, "Zu welchem Patienten soll ich den HKP vorlesen?");
     if (r.antwort) return res.json(r.antwort);
+    letzterMerken(clientId, r.hkp);
     const card = hkpKarte(r.hkp, clientId);
     return res.json({ ok: true, hkpId: r.hkp.id, ...(card ? { card } : {}), message: detailSatz({ ...r.hkp, patient: { ...r.hkp.patient, label: r.patient.anredeLabel } }) });
   } catch (e) {

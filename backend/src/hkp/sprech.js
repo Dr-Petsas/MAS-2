@@ -36,9 +36,12 @@ const zahn = (zs) => (zs.length === 1 ? `Zahn ${zs[0]}` : `den Zähnen ${liste(z
 export function versorgungSatz(z) {
   if (!z) return "";
   const teile = [];
+  const glieder = z.glieder || [];
   if (z.teleskope?.length) teile.push(`Teleskope auf ${liste(z.teleskope)}`);
-  if (z.kronen?.length) teile.push(`Kronen auf ${liste(z.kronen)}`);
-  if (z.ersetzt?.length) teile.push(`${z.ersetzt.length} ersetzte Zähne`);
+  if (z.kronen?.length) teile.push(`${glieder.length ? "Brückenanker-Kronen" : "Kronen"} auf ${liste(z.kronen)}`);
+  if (glieder.length) teile.push(`${glieder.length === 1 ? "Brückenglied" : "Brückenglieder"} ${liste(glieder)}`);
+  const ersetzt = (z.ersetzt || []).filter((x) => !glieder.includes(x));
+  if (ersetzt.length) teile.push(`${ersetzt.length === 1 ? "ein ersetzter Zahn" : `${ersetzt.length} ersetzte Zähne`}`);
   return teile.join(", ");
 }
 
