@@ -3,7 +3,7 @@
 import "dotenv/config";
 import { befundErmitteln } from "../src/hkp/befundQuelle.js";
 import { befundSatz, geburtSprech, jahrgangWahl, vetternFrage, vorleseSatz, zahnBereiche } from "../src/hkp/vorlesen.js";
-import { bestePassung, sindVettern, vetterAntwort, vorschauPasst } from "../src/routes/hkp.js";
+import { bestePassung, sindVettern, vetterAntwort, vetterSchonGewaehlt, vorschauPasst } from "../src/routes/hkp.js";
 import { eintraegeNachtragen } from "../src/clara/patientCatalog.js";
 
 let fehler = 0;
@@ -36,6 +36,10 @@ check("Antwort: ohne Geburtsdatum", vetterAntwort(offen, "der ohne Geburtsdatum"
 check("Antwort: nur der gleich klingende Name -> erneut fragen", !!vetterAntwort(offen, "Michael Petsas")?.erneut);
 check("Antwort: ganz anderer Name -> neue Suche", vetterAntwort(offen, "Hans Mueller") === null);
 check("Jahrgang passt auf keinen -> keine Wahl", jahrgangWahl("von 1990", [PETSAS, PETZAS]) === null);
+const wahl = { id: PETSAS.id, at: Date.now() };
+check("Wahl gilt fuer den Folgeschritt (keine zweite Vetter-Frage)", vetterSchonGewaehlt(wahl, PETSAS));
+check("Wahl gilt nicht fuer den anderen Datensatz", !vetterSchonGewaehlt(wahl, PETZAS));
+check("Wahl verfaellt nach 10 min", !vetterSchonGewaehlt(wahl, PETSAS, Date.now() + 11 * 60 * 1000));
 
 const frage = vetternFrage([PETSAS, PETZAS]);
 check("Rueckfrage nennt Jahrgang und fehlendes Geburtsdatum",

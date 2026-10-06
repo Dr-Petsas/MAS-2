@@ -348,7 +348,13 @@ export function bestePassung(gesprochen, kandidaten) {
 // unterscheidbar: vor einer HKP-Anlage wird mit Jahrgang nachgefragt.
 const VETTERN_MS = 10 * 60 * 1000;
 const vetternOffen = new Map();
+/** Getroffene Wahl gilt fuer die Folgeschritte desselben Auftrags (Doppelung, Befund, Korrektur) */
+const vetterWahl = new Map();
 const vetternAus = () => process.env.MAS_HKP_NAMENSVETTER === "0";
+
+export function vetterSchonGewaehlt(wahl, patient, jetzt = Date.now()) {
+  return !!wahl && !!patient?.id && jetzt - wahl.at < VETTERN_MS && String(wahl.id) === String(patient.id);
+}
 
 /** Gleich klingende andere Patienten (gleicher Vorname, Nachname klingt gleich oder 1 Buchstabe Abstand) */
 export function sindVettern(p, q) {
@@ -382,6 +388,7 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
     const a = vetterAntwort(offen, `${hint} ${rawName}`);
     if (a?.wahl) {
       vetternOffen.delete(clientId);
+      vetterWahl.set(clientId, { id: a.wahl.id, at: Date.now() });
       await setPatientCandidates(clientId, [a.wahl], a.wahl);
       return { patient: patientVon(a.wahl), sel: a.wahl, gewaehlt: true };
     }
@@ -505,13 +512,15 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const vs = vorschauOffen.get(clientId);
     if (wahr(b.bestaetigt) && vorschauPasst(vs, b)) {
       vorschauOffen.delete(clientId);
+      vetterWahl.delete(clientId);
       return res.json(await entwurfAnlegen(clientId, { ...vs, vorgelesen: true }));
     }
     vorschauOffen.delete(clientId);
     const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den HKP erstellen?", { vettern: true });
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
-    const vettern = vetternAus() || p.gewaehlt ? [] : await namensvettern(clientId, patient).catch(() => []);
+    const gewaehlt = p.gewaehlt || vetterSchonGewaehlt(vetterWahl.get(clientId), p.sel || patient);
+    const vettern = vetternAus() || gewaehlt ? [] : await namensvettern(clientId, patient).catch(() => []);
     if (vettern.length) {
       const kandidaten = [p.sel || patient, ...vettern];
       vetternOffen.set(clientId, { kandidaten, at: Date.now() });
@@ -560,7 +569,10 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       ? `HKP mit ${liste(auftrag.teile.map((t) => `${VERSORGUNG_NAME[t.versorgung] || t.versorgung} im ${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}`))}`
       : VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
     const daten = { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt };
-    if (vorlesenAus()) return res.json(await entwurfAnlegen(clientId, daten));
+    if (vorlesenAus()) {
+      vetterWahl.delete(clientId);
+      return res.json(await entwurfAnlegen(clientId, daten));
+    }
     vorschauOffen.set(clientId, { ...daten, at: Date.now() });
     return res.json({
       ok: true, rueckfrage: "vorlesen",
