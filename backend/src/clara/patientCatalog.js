@@ -291,8 +291,25 @@ export function catalogMatch(spoken, entries, index, opts = {}) {
  * Clara in der falschen Trefferliste haengen (Chef 14.08.2026:
  * Muhamedjanowa nach Amofa/Karadavut).
  */
-export function spokenLooksLikeNewPerson(hint, candidates = []) {
+const NAME_MARKER_RE = /\b(?:[Hh]errn?|[Ff]rau|[Pp]atient(?:in)?|für|fuer|heißt|heisst|namens|meine|meinte|sondern)\s+((?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+\s*){1,3})/;
+
+/**
+ * Name aus einem Hinweis. Kurze Hinweise (bis 4 Woerter) bleiben, wie sie
+ * sind; ein ganzer Satz liefert nur einen ausdruecklich genannten Namen
+ * ("Nein, ich meinte Frau Muhamedjanowa von gestern"), sonst "".
+ * Live 06.10.2026 17:22: "Ja, ich möchte einen heilen Kostenplan erstellen
+ * für den Patienten" wurde per Klang zu "Ellen Amoyan". Notaus
+ * MAS_HINWEIS_NAME=0.
+ */
+export function nameAusHinweis(hint) {
   const raw = String(hint || "").trim();
+  if (process.env.MAS_HINWEIS_NAME === "0" || raw.split(/\s+/).filter(Boolean).length <= 4) return raw;
+  const m = raw.match(NAME_MARKER_RE);
+  return m ? m[1].replace(/^(?:Herrn?|Frau|Patient(?:in)?)\s+/, "").trim() : "";
+}
+
+export function spokenLooksLikeNewPerson(hint, candidates = []) {
+  const raw = nameAusHinweis(hint);
   if (!raw) return false;
   const tokens = nameTokens(raw).filter(isMeaningful);
   if (!tokens.length) return false;

@@ -87,9 +87,13 @@ export function waehleHkp(hkps, auswahl) {
   if (/neueste|letzte|aktuell|juengste|jüngste/.test(a)) return hkps[0];
   const nachKiefer = /oberkiefer|\bok\b|oben/.test(a) ? "OK" : /unterkiefer|\buk\b|unten/.test(a) ? "UK" : "";
   const nachStatus = /wartet|freigabe|entwurf/.test(a) ? "wartet_auf_freigabe" : /genehmigt/.test(a) ? "genehmigt" : /eingereicht/.test(a) ? "eingereicht" : "";
-  const passend = hkps.filter((h) => (!nachKiefer || h.kiefer === nachKiefer) && (!nachStatus || h.status === nachStatus));
-  return nachKiefer || nachStatus ? (passend.length === 1 ? passend[0] : null) : null;
+  const nachArt = HKP_ARTEN.find((re) => re.test(a)) || null;
+  const passend = hkps.filter((h) => (!nachKiefer || h.kiefer === nachKiefer) && (!nachStatus || h.status === nachStatus)
+    && (!nachArt || nachArt.test(String(h.versorgungText || "").toLowerCase())));
+  return nachKiefer || nachStatus || nachArt ? (passend.length === 1 ? passend[0] : null) : null;
 }
+/** "den Teleskop-HKP", "die Brücke": Versorgungsart waehlt unter mehreren HKPs */
+const HKP_ARTEN = [/teleskop/, /totalprothese|\btotal/, /br(?:ü|ue)cke/, /implantat/, /krone/, /modellguss|klammer/, /cover/];
 
 const welcherFrage = (hkps, label) => `Für ${label} gibt es ${hkps.length} HKPs: ${hkps.slice(0, 4).map((h, i) => `${["erstens", "zweitens", "drittens", "viertens"][i]} ${hkpKurz(h)}`).join("; ")}. Welchen meinen Sie?`;
 
@@ -461,12 +465,26 @@ export function vetterSchonGewaehlt(wahl, patient, jetzt = Date.now()) {
   return !!wahl && !!patient?.id && jetzt - wahl.at < VETTERN_MS && String(wahl.id) === String(patient.id);
 }
 
+/** Vornamen einer Person in zwei Schreibweisen (Kyriakos/Kiriakos, Christina/Kristina) */
+export function vornameGleich(v1, v2) {
+  if (v1 === v2) return true;
+  if (!v1 || !v2) return false;
+  if (vornameStreng()) {
+    // Koelner Phonetik allein ist fuer Vornamen zu grob: Kiriakos und Georgios
+    // haben denselben Code (Anruf 06.10.2026 17:22, Tzannis/Zannas).
+    const d = abstand(v1, v2);
+    return d <= 1 || (d <= 2 && soundsSame(v1, v2));
+  }
+  return soundsSame(v1, v2);
+}
+const vornameStreng = () => process.env.MAS_HKP_VETTER_VORNAME !== "0";
+
 /** Gleich klingende andere Patienten (gleicher Vorname, Nachname klingt gleich oder 1 Buchstabe Abstand) */
 export function sindVettern(p, q) {
   if (!p?.lastName || !q?.lastName || String(p.id || "") === String(q.id || "")) return false;
   const v1 = nameNorm(p.firstName), v2 = nameNorm(q.firstName);
   const n1 = nameNorm(p.lastName), n2 = nameNorm(q.lastName);
-  const vorOk = v1 === v2 || (v1 && v2 && soundsSame(v1, v2));
+  const vorOk = vornameGleich(v1, v2);
   return !!vorOk && (n1 === n2 || soundsSame(n1, n2) || abstand(n1, n2) <= 1);
 }
 
@@ -479,7 +497,9 @@ async function namensvettern(clientId, patient) {
 /** Antwort auf die Namensvetter-Rueckfrage: { wahl } | { erneut } | null (anderer Name) */
 export function vetterAntwort(offen, text, antwort = text) {
   const t = String(text || "").trim();
-  const wahl = ordinalPick(t.toLowerCase(), offen.kandidaten) || jahrgangWahl(t, offen.kandidaten);
+  // "eins"/"zwei" waehlen nur als Kurzantwort; im Satz sind es Zahnnummern oder Mengen ("zwei Kronen").
+  const ord = String(antwort || "").trim().split(/\s+/).length <= 3 ? t : t.replace(/\b(?:eins|zwei|drei)\b/gi, " ");
+  const wahl = ordinalPick(ord.toLowerCase(), offen.kandidaten) || jahrgangWahl(t, offen.kandidaten);
   if (wahl) return { wahl };
   // Live 06.10.2026: "Petsas." auf Petzas/Petsas – die genaue Schreibweise der Antwort entscheidet
   // (nicht der Name aus dem Auftrag; vorgelesen wird danach mit Geburtsdatum).
@@ -805,6 +825,7 @@ router.post("/tools/hkp-overview", async (req, res) => {
       const p = await patientAufloesen(clientId, b, "Für welchen Patienten?");
       if (p.antwort) return res.json(p.antwort);
       const eigene = await hkpsVonPatient(clientId, p.patient, { liste: alle });
+      if (eigene.length === 1) letzterMerken(clientId, eigene[0]);
       return res.json({ ok: true, anzahl: eigene.length, message: uebersichtSatz(eigene, { patientLabel: p.patient.anredeLabel }) });
     }
     const warten = alle.filter((h) => h.status === "wartet_auf_freigabe").length;
@@ -814,6 +835,18 @@ router.post("/tools/hkp-overview", async (req, res) => {
   }
 });
 
+/**
+ * Meint die Lesefrage den noch nicht angelegten Entwurf? Nein, wenn eine andere
+ * Versorgungsart verlangt ist ("den Teleskop-HKP" bei Brücken-Vorschau) oder seit
+ * der Vorschau ein echter HKP besprochen wurde. Notaus MAS_HKP_VORSCHAU_VORRANG=0.
+ */
+export function vorschauGemeint(vs, auswahl, letzter) {
+  if (process.env.MAS_HKP_VORSCHAU_VORRANG === "0") return true;
+  const art = HKP_ARTEN.find((re) => re.test(String(auswahl || "").toLowerCase()));
+  if (art && !art.test(String(vs?.versorgungText || "").toLowerCase())) return false;
+  return !(letzter?.at > (vs?.at || 0));
+}
+
 router.post("/tools/hkp-details", async (req, res) => {
   try {
     const clientId = await claraVorspann(req, res);
@@ -822,7 +855,7 @@ router.post("/tools/hkp-details", async (req, res) => {
     const name = String(b.name || "").trim();
     if (!String(b.hint || "").trim()) {
       const vs = vorschauen(clientId).find((v) => !name || namePasst(name, v.patient) > 0 || nurVornamePasst(name, v.patient));
-      if (vs) {
+      if (vs && vorschauGemeint(vs, b.auswahl, letzterHkp.get(clientId))) {
         return res.json({
           ok: true, rueckfrage: "vorlesen",
           message: `Der ${vs.versorgungText || "HKP"} für ${vs.patient.anredeLabel} ist noch nicht angelegt. Voraussichtlich ${summenSatz(vs.summen)}. Soll ich den Entwurf so anlegen?`,
