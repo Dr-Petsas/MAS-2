@@ -377,3 +377,19 @@ export async function commitBooking(clientId, args = {}) {
   }
   return { ok: false, error: data?.message || `masBookAppointment failed (${status})` };
 }
+
+// Gegenstueck zu commitBooking fuer "Nee, doch nicht" (clara/rueckgaengig.js):
+// dieselbe Cloud Function wie Claras cancelAppointmentById.
+export async function cancelBookingById(clientId, appointmentId) {
+  const id = norm(appointmentId);
+  if (!id) return { ok: false, error: "no_appointment" };
+  if (process.env.MAS_BOOKING_DRY_RUN === "1") return { ok: true, dryRun: true };
+  const booking = await loadBooking(clientId);
+  const { status, data } = await cfPost("agentCancelAppointmentById", {
+    clientId: norm(booking.clientId) || clientId,
+    locationId: norm(booking.locationId),
+    appointmentId: id,
+  });
+  if (status === 200 && data?.status === "success") return { ok: true };
+  return { ok: false, error: data?.message || `agentCancelAppointmentById failed (${status})` };
+}

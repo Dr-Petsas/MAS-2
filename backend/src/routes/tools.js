@@ -44,6 +44,7 @@ import { dayInboundComms, buildSpokenComms, cardInboundComms } from "../clara/co
 import { spokenRatings } from "../clara/ratings.js";
 import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
+import { mitUndo, rueckgaengigAn, zuruecknehmen } from "../clara/rueckgaengig.js";
 import { spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
@@ -122,7 +123,10 @@ router.post("/tools/create-task", async (req, res) => {
       status: "open",
       updates: text ? [{ by, kind: "note", text }] : [],
     });
-    res.status(201).json({ ok: true, clientId, task: caseAsTask(c), caseId: c.id });
+    res.status(201).json({
+      ok: true, clientId, task: caseAsTask(c), caseId: c.id,
+      ...mitUndo("aufgabe", { id: c.id, label: `die Aufgabe${subject.name ? ` zu ${subject.name}` : ""}` }),
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -2968,7 +2972,7 @@ router.post("/tools/recall-approve", async (req, res) => {
       caseId: req.body?.caseId,
       by: op?.name || "Team",
     });
-    res.json(out);
+    res.json(out?.ok ? { ...out, ...mitUndo("endgueltig", { label: "die Recall-Freigabe" }) } : out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -4001,6 +4005,7 @@ router.post("/tools/send-prepared-email", async (req, res) => {
       resolvedBy: how,
       dryRun: !!sent.dryRun,
       message: `Erledigt. Ich habe die E-Mail an ${to} gesendet${sent.dryRun ? " (Testmodus)" : ""}.`,
+      ...mitUndo("endgueltig", { label: `die E-Mail an ${name || to}` }),
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -4043,7 +4048,10 @@ router.post("/tools/close-case", async (req, res) => {
     if (!out.ok) return res.json({ ok: false, message: `Schließen nicht möglich: ${out.reason}` });
     await clearActiveCase(clientId);
     const who = active.subject?.name ? ` von ${active.subject.name}` : "";
-    return res.json({ ok: true, message: `Vorgang${who} als ${status === "closed" ? "geschlossen" : "gelöst"} markiert.` });
+    return res.json({
+      ok: true, message: `Vorgang${who} als ${status === "closed" ? "geschlossen" : "gelöst"} markiert.`,
+      ...mitUndo("vorgang", { id: active.id, vorher: active.status, label: `den Vorgang${who}` }),
+    });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -4846,7 +4854,7 @@ router.post("/tools/send-sms", async (req, res) => {
         status: out.ok ? "done" : "failed",
       });
     } catch { /* Karte ist Komfort */ }
-    res.json(out);
+    res.json(out.ok ? { ...out, ...mitUndo("endgueltig", { label: `die SMS an ${out.contactName || target.name || target.phone}` }) } : out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -4899,7 +4907,7 @@ router.post("/tools/delegate-call", async (req, res) => {
           });
         } catch { /* Karte ist Komfort — der Anruf laeuft trotzdem */ }
       }
-      return res.json(out);
+      return res.json(out?.ok ? { ...out, ...mitUndo("endgueltig", { label: `den Anruf-Auftrag an Lisa${dialName ? ` für ${dialName}` : ""}` }) } : out);
     }
 
     const target = await resolveDelegationTarget(clientId, req.body);
@@ -5744,7 +5752,30 @@ router.post("/tools/book-for-patient", async (req, res) => {
       ok: true,
       booked: true,
       message: `${pre} für ${who} am ${prettySlot(r.slotIso)}${r.calendarName ? ` bei ${r.calendarName}` : ""}.${memoryHint}${proofNote}`,
+      ...(c.alreadyBooked || !c.appointmentId ? {} : mitUndo("termin", {
+        id: c.appointmentId, label: `den Termin für ${who} am ${prettySlot(r.slotIso)}`,
+      })),
     });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// "Nee, doch nicht": Clara schickt den `undo`-Eintrag ihrer letzten
+// Schreib-Aktion zurueck (clara/rueckgaengig.js).
+router.post("/tools/undo-last", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    if (!rueckgaengigAn()) {
+      return res.json({ ok: false, undoErledigt: true, message: "Rückgängig per Sprache ist gerade abgeschaltet. Bitte in der Plattform ändern." });
+    }
+    const out = await zuruecknehmen(clientId, req.body?.undo);
+    log.info?.(`[rueckgaengig] ${req.body?.undo?.art || "-"} -> ${out.ok ? "ok" : "nein"}`);
+    res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

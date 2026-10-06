@@ -25,6 +25,7 @@ import { soundsSame } from "../clara/phonetics.js";
 import { disambiguationQuestion, ordinalPick } from "../clara/patientDisambig.js";
 import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
 import { jahrgangWahl, vetternFrage, vorleseSatz } from "../hkp/vorlesen.js";
+import { mitUndo } from "../clara/rueckgaengig.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpFeldSetzen, hkpLesen, hkpListe, kopf, praxisLaden, praxisSpeichern,
 } from "../hkp/store.js";
@@ -688,6 +689,7 @@ async function entwurfAnlegen(clientId, d) {
   const card = hkpKarte(h, clientId);
   return {
     ok: true, hkpId: h.id, ...(card ? { card } : {}), ...(weg.length ? { verworfen: weg.map((x) => x.id) } : {}),
+    ...mitUndo("hkp", { id: h.id, label: `den ${hkpTitel(h)} für ${patient.anredeLabel}`, alt: weg.map((x) => x.id) }),
     message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR.${d.vorgelesen ? "" : ` Geplant: ${versorgungSatz(r.zusammenfassung)}.`} ${summenSatz(summen)}.${wegSatz}${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen)}`,
   };
 }
@@ -903,7 +905,7 @@ router.post("/tools/hkp-position-change", async (req, res) => {
         felder: { planJson: JSON.stringify(e.plan), summen, zusammenfassung: e.nachher, offeneAenderung: null },
         wer: "Clara", was: `per Sprache: ${e.beschreibung}`,
       });
-      return res.json({ ok: true, geaendert: true, message: `Erledigt: ${e.beschreibung}. Eigenanteil jetzt ${euroSprech(summen.eigenanteil)}, Gesamtkosten ${euroSprech(summen.gesamt)}.${e.warnungen.length ? ` Hinweis: ${e.warnungen[0]}` : ""}` });
+      return res.json({ ok: true, geaendert: true, ...mitUndo("hkp_aenderung", { id: h.id }), message: `Erledigt: ${e.beschreibung}. Eigenanteil jetzt ${euroSprech(summen.eigenanteil)}, Gesamtkosten ${euroSprech(summen.gesamt)}.${e.warnungen.length ? ` Hinweis: ${e.warnungen[0]}` : ""}` });
     }
 
     const aktion = AKTIONEN[String(b.aktion || "").toLowerCase().replace(/ä/g, "ae").replace(/ü/g, "ue").replace(/ö/g, "oe")];
