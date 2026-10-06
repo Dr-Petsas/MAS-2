@@ -135,11 +135,11 @@ export function jahrgangWahl(text, kandidaten) {
 }
 
 /** Vorlese-Frage vor der Anlage */
-export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgung, summen = "", doppelt = "" }) {
+export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgung, ausfuehrung = "", summen = "", doppelt = "" }) {
   const anrede = patient.anredeLabel?.startsWith("Herrn ") ? "Herrn " : patient.anredeLabel?.startsWith("Frau ") ? "Frau " : "";
   const name = `${anrede}${patient.firstName || ""} ${patient.lastName || ""}`.replace(/\s+/g, " ").trim();
   const befund = befundSatz(zaehne || {}, kiefer);
   return `Bevor ich anlege, bitte prüfen: ${versorgungText} für ${name}, ${geburtSprech(patient.birthDate)}.`
-    + `${befund ? ` Befund ${befund}` : ""}${versorgung ? ` Geplant: ${versorgung}.` : ""}`
+    + `${befund ? ` Befund ${befund}` : ""}${versorgung ? ` Geplant: ${versorgung}.` : ""}${ausfuehrung ? ` Ausführung: ${ausfuehrung}.` : ""}`
     + `${summen ? ` Voraussichtlich ${summen}.` : ""}${doppelt ? ` ${doppelt}` : ""} Soll ich den Entwurf so anlegen?`;
 }

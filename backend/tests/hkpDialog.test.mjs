@@ -133,4 +133,64 @@ t("offener Entwurf verdraengt den verlangten echten HKP nicht", () => {
   delete process.env.MAS_HKP_VORSCHAU_VORRANG;
 });
 
+const { ausfuehrungFehlt, ausfuehrungFrage, ausfuehrungRueckfrage, implantatStandard, annahmenSatz } = await import("../src/routes/hkp.js");
+const { detailSatz } = await import("../src/hkp/sprech.js");
+const E = await import("../src/vendor/hkp-engine.mjs");
+const BRUECKE = "Brücke von 14 auf 17 mit 15 und 16 als Brückenglied";
+const entwurf = (text, befund = { 15: "f", 16: "f" }) => E.hkpEntwurf(text, befund, { implantatSystem: "medentis-icx" });
+
+t("Ausfuehrung: fehlende Angaben je Versorgung (Chef 06.10.2026 20:15)", () => {
+  const b = entwurf(BRUECKE);
+  assert.deepEqual(ausfuehrungFehlt(E.auftragVerstehen(BRUECKE), b.zusammenfassung), ["werkstoff", "abformung", "labor"]);
+  const voll = `${BRUECKE}. Zirkon, Intraoralscan, Eigenlabor`;
+  assert.deepEqual(ausfuehrungFehlt(E.auftragVerstehen(voll), entwurf(voll).zusammenfassung), []);
+  const impl = "Implantatkronen auf 14 und 15";
+  assert.deepEqual(ausfuehrungFehlt(E.auftragVerstehen(impl), entwurf(impl, { 14: "f", 15: "f" }).zusammenfassung),
+    ["werkstoff", "abformung", "labor", "implantatSystem"]);
+  const total = "Totalprothese im Oberkiefer";
+  assert.deepEqual(ausfuehrungFehlt(E.auftragVerstehen(total), entwurf(total, {}).zusammenfassung), ["labor"]);
+});
+t("Ausfuehrung: eine Frage mit allen offenen Punkten, Implantat-Standard medentis ICX", () => {
+  assert.equal(implantatStandard({}), "medentis-icx");
+  assert.equal(implantatStandard({ einstellungen: { implantatSystem: "camlog" } }), "camlog");
+  const f = ausfuehrungFrage(["werkstoff", "abformung", "labor", "implantatSystem"], { system: "medentis-icx" });
+  assert.equal(f, "Noch zur Ausführung: Welches Material – Nichtedelmetall, Zirkon, Presskeramik oder Gold? Intraoralscan oder konventioneller Abdruck? Eigenlabor oder Fremdlabor? Implantatsystem wie üblich medentis ICX oder ein anderes?");
+  assert.match(ausfuehrungFrage(["werkstoff"], { nurTeleskope: true }), /Teleskope in Nichtedelmetall oder Gold\?/);
+});
+t("Ausfuehrung: je Patient nur EINMAL gefragt, 'wie immer' fragt nicht", () => {
+  const p = { id: "ausf-1", label: "Test" };
+  const b = entwurf(BRUECKE);
+  const a = E.auftragVerstehen(BRUECKE);
+  assert.equal(ausfuehrungRueckfrage("c1", p, BRUECKE, a, b, "medentis-icx")?.rueckfrage, "ausfuehrung");
+  assert.equal(ausfuehrungRueckfrage("c1", p, `${BRUECKE}. Zirkon`, a, b, "medentis-icx"), null);
+  assert.equal(ausfuehrungRueckfrage("c1", { id: "ausf-2" }, `${BRUECKE}, wie immer`, a, b, "medentis-icx"), null);
+  process.env.MAS_HKP_AUSFUEHRUNG_FRAGE = "0";
+  assert.equal(ausfuehrungRueckfrage("c1", { id: "ausf-3" }, BRUECKE, a, b, "medentis-icx"), null);
+  delete process.env.MAS_HKP_AUSFUEHRUNG_FRAGE;
+});
+t("Ausfuehrung steht in Vorschau und Vorlesen; Annahmen nicht doppelt", () => {
+  const s = vorleseSatz({ patient: abel, versorgungText: "Brücken-HKP", kiefer: ["OK"], zaehne: {}, versorgung: "Kronen auf 14",
+    ausfuehrung: "Zirkon, Intraoralscan, Eigenlabor", summen: "Gesamtkosten eins Euro" });
+  assert.match(s, /Geplant: Kronen auf 14\. Ausführung: Zirkon, Intraoralscan, Eigenlabor\. Voraussichtlich/);
+  const b = entwurf(BRUECKE);
+  assert.match(annahmenSatz(b.hinweise, b.zusammenfassung.warnungen), /konventioneller Abdruck/);
+  assert.doesNotMatch(annahmenSatz(b.hinweise, b.zusammenfassung.warnungen, { ausfuehrungGesagt: true }), /Abdruck|Nichtedelmetall/);
+  const d = detailSatz({ versorgungText: "Brücken-HKP", kiefer: "OK", patient: { label: "Herrn Tzannis" }, status: "wartet_auf_freigabe",
+    erstellt: "2026-10-06T18:00:00Z", zusammenfassung: { kronen: ["14", "17"], glieder: ["15", "16"], ersetzt: ["15", "16"] } }, "Zirkon, Abdruck");
+  assert.match(d, /Geplant: [^.]+\. Ausführung: Zirkon, Abdruck\./);
+});
+t("Ja auf die Vorschau gilt nicht, wenn sich die Ausfuehrung unterscheidet", () => {
+  assert.equal(vorschauPasst(vs(`${BRUECKE}. Eigenlabor`), { auftrag: `${BRUECKE}. Fremdlabor` }), false);
+  assert.equal(vorschauPasst(vs(`${BRUECKE}. Zirkon statt NEM`), { auftrag: `${BRUECKE}, nicht NEM, Zirkon` }), true);
+  assert.equal(vorschauPasst(vs("Implantatkronen auf 14 und 15, Straumann"), { auftrag: "Implantatkronen auf 14 und 15, Camlog" }), false);
+});
+t("Ausfuehrung eines gespeicherten Plans aendern: Vorschlag mit neuen Summen", () => {
+  const b = entwurf(BRUECKE);
+  const e = E.ausfuehrungAendern(b.plan, E.ausfuehrungIn("Ich möchte bitte, dass du Zirkon nimmst"));
+  assert.equal(e.ok, true);
+  assert.equal(e.beschreibung, "Zirkon statt Nichtedelmetall");
+  assert.notEqual(e.nachher.gesamt, e.vorher.gesamt);
+  assert.equal(E.ausfuehrungAendern(b.plan, E.ausfuehrungIn("Wie spät ist es?")).grund, "nichts");
+});
+
 console.log(`hkpDialog: ${ok} Tests ok`);

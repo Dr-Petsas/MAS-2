@@ -115,15 +115,77 @@ function planAus(h) {
 
 const praxisListen = (p) => ({ preislisten: p.preislisten, eigen: p.eigen });
 
-/** Kurzfassung der Annahmen fuer den gesprochenen Satz */
-export function annahmenSatz(hinweise = [], warnungen = []) {
+/** Kurzfassung der Annahmen fuer den gesprochenen Satz (Abformung/Material nicht, wenn die Ausfuehrung schon gesagt wurde) */
+export function annahmenSatz(hinweise = [], warnungen = [], { ausfuehrungGesagt = false } = {}) {
   const a = [];
   if (hinweise.some((h) => h.startsWith("Bonus nicht bekannt"))) a.push("Bonus sechzig Prozent");
-  if (hinweise.some((h) => h.startsWith("Abformung nicht genannt"))) a.push("konventioneller Abdruck");
+  if (!ausfuehrungGesagt && hinweise.some((h) => h.startsWith("Abformung nicht genannt"))) a.push("konventioneller Abdruck");
   const mat = warnungen.find((w) => w.startsWith("Kronenmaterial nicht gewählt"));
-  if (mat) a.push("Nichtedelmetall als Kronenmaterial");
+  if (mat && !ausfuehrungGesagt) a.push("Nichtedelmetall als Kronenmaterial");
   return a.length ? ` Angenommen habe ich ${liste(a)} – das können Sie in PlanR anpassen.` : "";
 }
+
+// Ausfuehrung klaeren wie eine Helferin, die PlanR bedient (Chef 06.10.2026: "sie sagte NEM, ich wollte
+// Zirkonkeramik", kein Scan/Abdruck, kein Eigen-/Fremdlabor, bei Implantaten das System). Gefragt wird
+// EINMAL je Patient; was danach noch fehlt, gilt als Standard und steht in der Vorschau.
+// Notaus MAS_HKP_AUSFUEHRUNG_FRAGE=0.
+const AUSFUEHRUNG_MS = 15 * 60 * 1000;
+const ausfuehrungGefragt = new Map();
+const ausfuehrungFrageAus = () => process.env.MAS_HKP_AUSFUEHRUNG_FRAGE === "0";
+const STANDARD_RE = /\b(?:standard|wie (?:immer|(?:ü|ue)blich|sonst)|egal)\b/i;
+
+/** Implantatsystem der Praxis, wenn der Auftrag keins nennt (meddent: medentis ICX) */
+export const implantatStandard = (praxis) =>
+  String(praxis?.einstellungen?.implantatSystem || process.env.MAS_HKP_IMPLANTATSYSTEM || "medentis-icx");
+
+/** Was zur Ausfuehrung nicht gesagt wurde: werkstoff, abformung, labor, implantatSystem */
+export function ausfuehrungFehlt(auftrag, z) {
+  const teile = auftrag?.teile?.length ? auftrag.teile : [];
+  const gesagt = (k) => [auftrag, ...teile].some((x) => x && x[k] !== undefined && x[k] !== "");
+  const festsitzend = [z?.kronen, z?.glieder, z?.implantatkronen, z?.teleskope].some((x) => x?.length);
+  const fehlt = [];
+  if (festsitzend && !gesagt("werkstoff")) fehlt.push("werkstoff");
+  if (festsitzend && !gesagt("abformung")) fehlt.push("abformung");
+  if (!gesagt("labor")) fehlt.push("labor");
+  if (z?.implantatkronen?.length && !gesagt("implantatSystem")) fehlt.push("implantatSystem");
+  return fehlt;
+}
+
+export function ausfuehrungFrage(fehlt, { nurTeleskope = false, system = "medentis-icx" } = {}) {
+  const teile = [];
+  if (fehlt.includes("werkstoff")) {
+    teile.push(nurTeleskope ? "Teleskope in Nichtedelmetall oder Gold?" : "Welches Material – Nichtedelmetall, Zirkon, Presskeramik oder Gold?");
+  }
+  if (fehlt.includes("abformung")) teile.push("Intraoralscan oder konventioneller Abdruck?");
+  if (fehlt.includes("labor")) teile.push("Eigenlabor oder Fremdlabor?");
+  if (fehlt.includes("implantatSystem")) teile.push(`Implantatsystem wie üblich ${E.systemSprech(system)} oder ein anderes?`);
+  return `Noch zur Ausführung: ${teile.join(" ")}`;
+}
+
+const ausfuehrungSchluessel = (clientId, patient) => `${clientId}|${patient?.id || patient?.label || ""}`;
+
+export function ausfuehrungSchonGefragt(clientId, patient, jetzt = Date.now()) {
+  const at = ausfuehrungGefragt.get(ausfuehrungSchluessel(clientId, patient));
+  return at !== undefined && jetzt - at <= AUSFUEHRUNG_MS;
+}
+
+function ausfuehrungMerken(clientId, patient, jetzt = Date.now()) {
+  for (const [k, at] of ausfuehrungGefragt) if (jetzt - at > AUSFUEHRUNG_MS) ausfuehrungGefragt.delete(k);
+  ausfuehrungGefragt.set(ausfuehrungSchluessel(clientId, patient), jetzt);
+}
+
+/** Rueckfrage zur Ausfuehrung vor der Vorschau – oder null (alles gesagt, schon gefragt, "wie immer") */
+export function ausfuehrungRueckfrage(clientId, patient, auftragText, auftrag, entwurf, system) {
+  if (ausfuehrungFrageAus() || STANDARD_RE.test(String(auftragText || ""))) return null;
+  const fehlt = ausfuehrungFehlt(auftrag, entwurf.zusammenfassung);
+  if (!fehlt.length || ausfuehrungSchonGefragt(clientId, patient)) return null;
+  ausfuehrungMerken(clientId, patient);
+  const z = entwurf.zusammenfassung;
+  const nurTeleskope = z.teleskope.length > 0 && !z.kronen.length && !z.implantatkronen.length;
+  return { ok: true, rueckfrage: "ausfuehrung", fehlt, message: ausfuehrungFrage(fehlt, { nurTeleskope, system }) };
+}
+
+const ausfuehrungText = (plan) => (plan?.positionen?.length ? E.ausfuehrungSatz(E.ausfuehrungVon(plan)) : "");
 
 // ---------------------------------------------------------------------------
 // PlanR (Praxis-Schluessel)
@@ -646,6 +708,7 @@ function auftragKern(text) {
     versorgung: x.versorgung || "", kiefer: x.kiefer || "", pfeiler: [...(x.pfeiler || [])].sort(), glieder: [...(x.glieder || [])].sort(),
     entfernen: [...(x.entfernen || [])].sort(), erhalten: [...(x.erhalten || [])].sort(), coverDenture: !!x.coverDenture,
     mitAchtern: !!x.mitAchtern, werkstoff: x.werkstoff || "", abformung: x.abformung || "", bonus: x.bonus || "", haertefall: !!x.haertefall,
+    labor: x.labor || "", implantatSystem: x.implantatSystem || "", privatStufe: x.privatStufe ?? "",
   });
   const teile = a.teile?.length ? a.teile : [a];
   return JSON.stringify({ teile: teile.map(kern), befund: E.befundVerstehen(E.befundAusAuftrag(String(text || "")), a.kiefer) });
@@ -710,6 +773,8 @@ async function entwurfAnlegen(clientId, d) {
   }, "Clara");
   log.info?.(`[hkp] Entwurf ${h.id} angelegt (${versorgungText}, Befund ${befund.quelle?.art}, Patient ${patient.id})`);
   letzterMerken(clientId, h);
+  ausfuehrungGefragt.delete(ausfuehrungSchluessel(clientId, patient));
+  const ausfuehrung = d.vorgelesen ? "" : ausfuehrungText(r.plan);
   const quelle = befund.quelle?.art?.includes("lena01") ? ` Befund aus der Lena-Erstuntersuchung vom ${datumDe(befund.quelle.datum)}.` : "";
   const weg = d.alteVerwerfen && doppelt?.length ? await alteVerwerfen(clientId, doppelt, h) : [];
   const wegSatz = weg.length ? ` Der alte ${hkpTitel(weg[0])}${weg.length > 1 ? " und weitere" : ""} ist verworfen.` : "";
@@ -717,7 +782,7 @@ async function entwurfAnlegen(clientId, d) {
   return {
     ok: true, hkpId: h.id, ...(card ? { card } : {}), ...(weg.length ? { verworfen: weg.map((x) => x.id) } : {}),
     ...mitUndo("hkp", { id: h.id, label: `den ${hkpTitel(h)} für ${patient.anredeLabel}`, alt: weg.map((x) => x.id) }),
-    message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR.${d.vorgelesen ? "" : ` Geplant: ${versorgungSatz(r.zusammenfassung)}.`} ${summenSatz(summen)}.${wegSatz}${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen)}`,
+    message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR.${d.vorgelesen ? "" : ` Geplant: ${versorgungSatz(r.zusammenfassung)}.`}${ausfuehrung ? ` Ausführung: ${ausfuehrung}.` : ""} ${summenSatz(summen)}.${wegSatz}${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen, { ausfuehrungGesagt: true })}`,
   };
 }
 
@@ -785,11 +850,14 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (!befund.ok) return res.json({ ok: true, rueckfrage: befund.grund, message: befund.frage });
 
     const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [], einstellungen: {} }));
+    const system = implantatStandard(praxis);
     const r = E.hkpEntwurf(auftragText, befund.befund, {
       patient: { name: patient.lastName, vorname: patient.firstName, geburtsdatum: patient.birthDate },
-      einstellungen: praxis.einstellungen,
+      einstellungen: praxis.einstellungen, implantatSystem: system,
     }, praxisListen(praxis));
     if (r.status !== "ok") return res.json({ ok: true, rueckfrage: r.grund, message: r.frage });
+    const frage = ausfuehrungRueckfrage(clientId, patient, auftragText, auftrag, r, system);
+    if (frage) return res.json(frage);
 
     const summen = summenAus(r.ergebnis);
     const versorgungText = auftrag.teile?.length > 1
@@ -805,7 +873,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       ok: true, rueckfrage: "vorlesen", ...(doppelt.length ? { doppelung: doppelt.map((h) => h.id) } : {}),
       message: vorleseSatz({
         patient, versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
-        versorgung: versorgungSatz(r.zusammenfassung), summen: summenSatz(summen),
+        versorgung: versorgungSatz(r.zusammenfassung), ausfuehrung: ausfuehrungText(r.plan), summen: summenSatz(summen),
         doppelt: doppelt.length ? doppelungHinweis(doppelt, alteWeg) : "",
       }),
     });
@@ -867,7 +935,7 @@ router.post("/tools/hkp-details", async (req, res) => {
     letzterMerken(clientId, r.hkp);
     const card = hkpKarte(r.hkp, clientId);
     const h = { ...r.hkp, patient: { ...r.hkp.patient, label: r.patient.anredeLabel } };
-    return res.json({ ok: true, hkpId: r.hkp.id, ...(card ? { card } : {}), message: nurSummenFrage(b.frage) ? summenAntwort(h) : detailSatz(h) });
+    return res.json({ ok: true, hkpId: r.hkp.id, ...(card ? { card } : {}), message: nurSummenFrage(b.frage) ? summenAntwort(h) : detailSatz(h, ausfuehrungText(planAus(r.hkp))) });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -932,6 +1000,11 @@ router.post("/tools/hkp-position-change", async (req, res) => {
 
     if (wahr(b.bestaetigt)) {
       const offen = h.offeneAenderung;
+      if (offen?.art === "ausfuehrung") {
+        const plan = planAus(h);
+        if (!plan) return res.json({ ok: false, message: "Den Plan dieses HKP kann ich nicht lesen. Bitte in PlanR öffnen." });
+        return res.json(await ausfuehrungBestaetigen(clientId, h, plan, praxis, b.aenderung_id));
+      }
       if (!offen || Date.parse(offen.ablauf) < Date.now()) return res.json({ ok: false, message: "Ich habe keine offene Änderung mehr dazu. Bitte sagen Sie mir die Änderung noch einmal." });
       if (b.aenderung_id && b.aenderung_id !== offen.id) return res.json({ ok: false, message: "Die Änderung passt nicht mehr zum Vorschlag. Bitte noch einmal von vorn." });
       if (Number(offen.version) !== Number(h.version)) return res.json({ ok: false, message: "Der HKP wurde inzwischen in PlanR geändert. Bitte sagen Sie mir die Änderung noch einmal." });
@@ -971,6 +1044,104 @@ router.post("/tools/hkp-position-change", async (req, res) => {
     });
   } catch (e) {
     if (e instanceof KonfliktFehler) return res.json({ ok: false, message: "Der HKP wurde gerade in PlanR geändert. Bitte noch einmal versuchen." });
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Ausfuehrung aendern (Material, Abformung, Labor, Implantatsystem, Eigenlabor-Stufe) – wie die Helferin
+// in PlanR: Vorschlag mit neuen Summen, geaendert erst auf Ja. Gerechnet wird auf dem gespeicherten Plan,
+// manuelle Positionen bleiben. Eine noch nicht angelegte Vorschau wird stattdessen neu vorgelesen.
+const kurzeWarnung = (ws) => ws.find((w) => w.length <= 120) || "";
+
+async function ausfuehrungBestaetigen(clientId, h, plan, praxis, aenderungId) {
+  const offen = h.offeneAenderung;
+  if (!offen || offen.art !== "ausfuehrung" || Date.parse(offen.ablauf) < Date.now()) {
+    return { ok: false, message: "Ich habe keine offene Änderung mehr dazu. Bitte sagen Sie mir die Änderung noch einmal." };
+  }
+  if (aenderungId && aenderungId !== offen.id) return { ok: false, message: "Die Änderung passt nicht mehr zum Vorschlag. Bitte noch einmal von vorn." };
+  if (Number(offen.version) !== Number(h.version)) return { ok: false, message: "Der HKP wurde inzwischen in PlanR geändert. Bitte sagen Sie mir die Änderung noch einmal." };
+  const e = E.ausfuehrungAendern(plan, offen.ausfuehrung || {}, praxisListen(praxis));
+  if (!e.ok) return { ok: false, message: e.meldung };
+  const summen = summenAus(e.ergebnis);
+  const neu = await hkpAktualisieren(clientId, h.id, {
+    version: h.version,
+    felder: { planJson: JSON.stringify(e.plan), summen, zusammenfassung: e.nachher, offeneAenderung: null },
+    wer: "Clara", was: `per Sprache: Ausführung ${e.beschreibung}`,
+  });
+  log.info?.(`[hkp] ${h.id} Ausfuehrung geaendert: ${e.beschreibung}`);
+  const card = hkpKarte(neu || h, clientId);
+  return {
+    ok: true, geaendert: true, ...(card ? { card } : {}), ...mitUndo("hkp_aenderung", { id: h.id }),
+    message: `Erledigt: ${e.beschreibung}. Gesamtkosten jetzt ${euroSprech(summen.gesamt)}, Eigenanteil ${euroSprech(summen.eigenanteil)}.`,
+  };
+}
+
+/** Offene Vorschau, die eine Ausfuehrungs-Aenderung meint – neuer als der zuletzt besprochene HKP */
+function vorschauFuerAenderung(clientId, b) {
+  const name = String(b?.name || "").trim();
+  const liste = vorschauen(clientId);
+  const vs = name ? liste.find((v) => namePasst(name, v.patient) > 0 || nurVornamePasst(name, v.patient)) : liste[0];
+  if (!vs) return null;
+  const l = letzterHkp.get(clientId);
+  return !name && l && l.at > vs.at ? null : vs;
+}
+
+function vorschauKorrigieren(clientId, vs, text, praxis) {
+  const auftragText = `${String(vs.auftragText || "").replace(/[\s.]+$/, "")}. ${text}`.trim();
+  const auftrag = E.auftragVerstehen(auftragText);
+  const r = E.hkpEntwurf(auftragText, vs.befund.befund, {
+    patient: vs.r.plan.patient, einstellungen: praxis.einstellungen, implantatSystem: implantatStandard(praxis),
+  }, praxisListen(praxis));
+  if (r.status !== "ok") return { ok: true, rueckfrage: r.grund, message: r.frage };
+  const summen = summenAus(r.ergebnis);
+  vorschauWeg(clientId, vs);
+  vorschauMerken(clientId, { ...vs, auftrag, auftragText, r, summen, at: Date.now() });
+  return {
+    ok: true, rueckfrage: "vorlesen",
+    message: vorleseSatz({
+      patient: vs.patient, versorgungText: vs.versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
+      versorgung: versorgungSatz(r.zusammenfassung), ausfuehrung: ausfuehrungText(r.plan), summen: summenSatz(summen),
+      doppelt: vs.doppelt?.length ? doppelungHinweis(vs.doppelt, vs.alteVerwerfen) : "",
+    }),
+  };
+}
+
+router.post("/tools/hkp-ausfuehrung-aendern", async (req, res) => {
+  try {
+    const clientId = await claraVorspann(req, res);
+    if (!clientId) return;
+    const b = req.body || {};
+    const text = String(b.aenderung || "").trim();
+    const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [], einstellungen: {} }));
+    if (!wahr(b.bestaetigt)) {
+      const vs = vorschauFuerAenderung(clientId, b);
+      if (vs) return res.json(vorschauKorrigieren(clientId, vs, text, praxis));
+    }
+    const r = await hkpAufloesen(clientId, b, "In welchem HKP soll ich die Ausführung ändern – für welchen Patienten?");
+    if (r.antwort) return res.json(r.antwort);
+    const h = r.hkp;
+    if (h.status !== "wartet_auf_freigabe") {
+      return res.json({ ok: false, message: `Der ${hkpTitel(h)} ist ${STATUS_TEXT[h.status]} – ändern kann ich nur HKPs, die auf Freigabe warten. Für Änderungen bitte einen Änderungs-HKP in PlanR anlegen.` });
+    }
+    const plan = planAus(h);
+    if (!plan) return res.json({ ok: false, message: "Den Plan dieses HKP kann ich nicht lesen. Bitte in PlanR öffnen." });
+    if (wahr(b.bestaetigt)) return res.json(await ausfuehrungBestaetigen(clientId, h, plan, praxis, b.aenderung_id));
+
+    const a = E.ausfuehrungIn(text);
+    const e = E.ausfuehrungAendern(plan, a, praxisListen(praxis));
+    if (!e.ok) return res.json({ ok: true, message: e.meldung });
+    const id = randomUUID().slice(0, 8);
+    await hkpFeldSetzen(clientId, h.id, {
+      offeneAenderung: { id, art: "ausfuehrung", ausfuehrung: a, version: h.version, ablauf: new Date(Date.now() + AENDERUNG_GUELTIG_MS).toISOString() },
+    });
+    const warnung = kurzeWarnung(e.warnungen);
+    return res.json({
+      ok: true, needsConfirm: true, aenderungId: id,
+      message: `Beim ${hkpTitel(h)} für ${r.patient.anredeLabel} würde ich ändern: ${e.beschreibung}. Gesamtkosten dann ${euroSprech(e.nachher.gesamt)} statt ${euroSprech(e.vorher.gesamt)}, Eigenanteil ${euroSprech(e.nachher.eigenanteil)}.${warnung ? ` ${warnung}` : ""} Soll ich die Ausführung so ändern?`,
+    });
+  } catch (e) {
+    if (e instanceof KonfliktFehler) return res.json({ ok: false, message: "Der HKP wurde gerade in PlanR geändert. Bitte noch einmal versuchen." });
+    log.error?.(`[hkp] ausfuehrung-aendern: ${e?.stack || e}`);
     res.status(400).json({ error: String(e?.message || e) });
   }
 });

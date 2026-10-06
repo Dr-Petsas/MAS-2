@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 eb650a5e549f)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 846dfca28536)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -23783,7 +23783,7 @@ function pos$3(ebene, nr, zahn, anzahl = 1) {
 	};
 }
 var befundKuerzel = (z) => (z?.B ?? "").trim().toLowerCase();
-var zahnListe = (zahn) => zahn.split(/[,\s]+/).filter(Boolean);
+var zahnListe$1 = (zahn) => zahn.split(/[,\s]+/).filter(Boolean);
 var spanne = (zaehne) => zaehne.length === 1 ? zaehne[0] : `${zaehne[0]}-${zaehne[zaehne.length - 1]}`;
 /** Versorgungsform eines Kürzels für die Abgrenzung gleich-/andersartig */
 function kuerzelArt(k) {
@@ -23961,7 +23961,7 @@ function therapieplanAnwenden(regel, zaehne) {
 		});
 		if (regelProthese && (prothese === "andersartig" || prothese === "entfaellt")) {
 			entfernen((p) => p.zahn === kiefer && (p.ebene === "BEMA" && PROTHESE_BEMA.test(p.nr) || p.ebene === "BEL" && PROTHESE_BEL.has(p.nr)));
-			entfernen((p) => p.ebene === "BEL" && p.nr === "2031" && zahnListe(p.zahn).some((z) => kieferVon(z) === kiefer));
+			entfernen((p) => p.ebene === "BEL" && p.nr === "2031" && zahnListe$1(p.zahn).some((z) => kieferVon(z) === kiefer));
 		} else if (prothese === "regel") {
 			const n = prothesenZaehne.length;
 			positionen = positionen.map((p) => p.zahn !== kiefer ? p : p.ebene === "BEMA" && /^96[abc]$/.test(p.nr) ? {
@@ -23972,9 +23972,9 @@ function therapieplanAnwenden(regel, zaehne) {
 				anzahl: n
 			} : p);
 			const halte = sitz.filter((z) => /H$/.test(plan(z)));
-			const hatte = positionen.some((p) => p.ebene === "BEL" && p.nr === "2031" && zahnListe(p.zahn).some((z) => kieferVon(z) === kiefer));
+			const hatte = positionen.some((p) => p.ebene === "BEL" && p.nr === "2031" && zahnListe$1(p.zahn).some((z) => kieferVon(z) === kiefer));
 			positionen = positionen.flatMap((p) => {
-				if (p.ebene === "BEL" && p.nr === "2031" && zahnListe(p.zahn).some((z) => kieferVon(z) === kiefer)) return halte.length ? [{
+				if (p.ebene === "BEL" && p.nr === "2031" && zahnListe$1(p.zahn).some((z) => kieferVon(z) === kiefer)) return halte.length ? [{
 					...p,
 					zahn: halte.join(","),
 					anzahl: halte.length
@@ -24095,7 +24095,7 @@ function therapieplanAnwenden(regel, zaehne) {
 			ebene: "BEB",
 			nr: "0402"
 		}];
-		const k = zahnListe(p.zahn).filter((x) => bebKiefer.has(x));
+		const k = zahnListe$1(p.zahn).filter((x) => bebKiefer.has(x));
 		return k.length ? [{
 			...p,
 			ebene: "BEB",
@@ -24623,7 +24623,7 @@ var KRONE = (p) => /^\d\d$/.test(p.zahn) && (p.ebene === "BEMA" && /^(20[abc]|91
 /** Gips-Arbeitsmodell (Sägemodell) und Gegenkiefermodell des festsitzenden Zahnersatzes */
 var GIPSMODELL = (p) => p.ebene === "BEL" && p.nr === "0051" || p.ebene === "BEB" && p.nr === "0021" || p.zahn === "" && (p.ebene === "BEL" && p.nr === "0010" || p.ebene === "BEB" && p.nr === "0002");
 /** Herausnehmbarer Zahnersatz je Kiefer (Prothese, Kombinationsversorgung) */
-var PROTHESE = (p) => (p.zahn === "OK" || p.zahn === "UK") && (p.ebene === "BEMA" && /^(9[67][abcd]|98[b-h])$/.test(p.nr) || p.ebene === "GOZ" && /^(5180|5190|52[0-3]0)$/.test(p.nr));
+var PROTHESE$1 = (p) => (p.zahn === "OK" || p.zahn === "UK") && (p.ebene === "BEMA" && /^(9[67][abcd]|98[b-h])$/.test(p.nr) || p.ebene === "GOZ" && /^(5180|5190|52[0-3]0)$/.test(p.nr));
 /** Funktionsabformung mit individuellem Löffel ist schon enthalten (zahnloser Kiefer) */
 var FUNKTIONSABFORMUNG = (p) => p.ebene === "BEMA" && /^98[bc]$/.test(p.nr) || p.ebene === "GOZ" && /^(5180|5190)$/.test(p.nr);
 var KIEFER_BEREICHE = {
@@ -24645,7 +24645,7 @@ var KIEFER_BEREICHE = {
 * Kiefer mit Funktionsabformung (zahnlos, BEMA 98b/c bzw. GOZ 5180/5190) bleiben konventionell.
 */
 function protheseAbformen(positionen, art, erste) {
-	const kiefer = ["OK", "UK"].filter((k) => positionen.some((p) => p.zahn === k && PROTHESE(p)));
+	const kiefer = ["OK", "UK"].filter((k) => positionen.some((p) => p.zahn === k && PROTHESE$1(p)));
 	if (!kiefer.length) return {
 		positionen,
 		hinweise: []
@@ -24669,7 +24669,7 @@ function protheseAbformen(positionen, art, erste) {
 			neu.push(pos$1("BEB", "0009", k, { text: `Modell aus Kunststoff ${k} (herausnehmbarer Teil)` }));
 			continue;
 		}
-		const [honorar, labor] = imKiefer.some((p) => p.ebene === "BEMA" && PROTHESE(p)) ? [pos$1("BEMA", "98a", k), pos$1("BEL", "0211", k)] : [pos$1("GOZ", "5170", k), pos$1("BEB", "1006", k)];
+		const [honorar, labor] = imKiefer.some((p) => p.ebene === "BEMA" && PROTHESE$1(p)) ? [pos$1("BEMA", "98a", k), pos$1("BEL", "0211", k)] : [pos$1("GOZ", "5170", k), pos$1("BEB", "1006", k)];
 		const laborVon = imKiefer.find((p) => p.ebene === labor.ebene && p.labor)?.labor;
 		if (!imKiefer.some((p) => p.ebene === honorar.ebene && p.nr === honorar.nr)) neu.push(honorar);
 		if (!imKiefer.some((p) => p.ebene === labor.ebene && p.nr === labor.nr)) neu.push(laborVon ? {
@@ -26123,6 +26123,618 @@ function regelUebernehmen(p, regel, zaehne = p.zaehne, laborFuer = () => void 0)
 		positionen: [...neu, ...p.positionen.filter((x) => !x.auto)]
 	};
 }
+/** Stufen des Eigenlabor-Reglers „Kasse → Privat“ */
+var PRIVAT_STUFEN = [
+	{
+		titel: "Kasse",
+		text: "Regelversorgung, Abrechnung nach BEL II"
+	},
+	{
+		titel: "Teilverblendung",
+		text: "Keramik-Teilverblendung auch außerhalb des Verblendbereichs (KV, BV, PKV, SKV, SBV)"
+	},
+	{
+		titel: "Vollkeramik",
+		text: "Vollkeramik, keramisch geschichtet (KM, BM, PKM, TM, SKM, SBM) + Keramikstufe"
+	},
+	{
+		titel: "Ästhetik",
+		text: "+ Charakterisierung, Papillen, individuelles Abutment, Sägemodell, Fräsmodell, Aufstellung am Patienten, Farbbestimmung, Gesichtsbogen"
+	},
+	{
+		titel: "Premium",
+		text: "+ Wax-up/Mock-up, Wurzelpontic, Keramik-Aufbau/-Primärteleskop, Zahnfleischmaske, Sonderkunststoff, Farbbestimmung in der Praxis, Fotodokumentation"
+	}
+];
+var PRIVAT_STUFE_MAX = PRIVAT_STUFEN.length - 1;
+var STUFE_1 = {
+	K: "KV",
+	KH: "KVH",
+	B: "BV",
+	PK: "PKV",
+	SK: "SKV",
+	SB: "SBV",
+	ST: "STV"
+};
+var STUFE_2 = {
+	K: "KM",
+	KV: "KM",
+	KH: "KMH",
+	KVH: "KMH",
+	B: "BM",
+	BV: "BM",
+	PK: "PKM",
+	PKV: "PKM",
+	T: "TM",
+	TV: "TM",
+	SK: "SKM",
+	SKV: "SKM",
+	SB: "SBM",
+	SBV: "SBM",
+	ST: "STM",
+	STV: "STM"
+};
+var PROTHESE = /^S?EO?$/;
+function zielTp(r, stufe) {
+	const tp = stufe >= 2 ? STUFE_2[r] : stufe >= 1 ? STUFE_1[r] : void 0;
+	return tp && tp !== r ? tp : void 0;
+}
+var zahnListe = (zahn) => zahn.split(/[,\s]+/).filter(Boolean);
+var freiOderEigen = (plan, z) => !plan.zaehne[z].TP || plan.zaehne[z].TP === (plan.einstellungen.eigenPrivatTp ?? {})[z];
+function eigeneLaborGebiete(plan) {
+	return new Set(plan.positionen.filter((x) => (x.ebene === "BEL" || x.ebene === "BEB") && laborVon(x, plan) === "eigen").flatMap((x) => zahnListe(x.zahn)));
+}
+/** Zähne mit festsitzender Regelversorgung aus dem Eigenlabor, die sich privat aufwerten lassen. */
+function privatKandidaten(plan) {
+	const eigen = eigeneLaborGebiete(plan);
+	return Object.entries(plan.zaehne).filter(([z, v]) => eigen.has(z) && STUFE_2[v.R] && freiOderEigen(plan, z)).map(([z]) => z).sort();
+}
+/**
+* Ersetzte Zähne der Regelprothese je Kiefer, wenn sie aus dem Eigenlabor kommt. Die Prothese muss
+* noch geplant sein (BEMA 96/97): ersetzen Implantate oder Brücken einen Teil der E-Zähne,
+* gelten nur die in Zeile TP mit E markierten Zähne.
+*/
+function privatProthesen(plan) {
+	const out = {
+		OK: [],
+		UK: []
+	};
+	for (const k of ["OK", "UK"]) {
+		const eigen = plan.positionen.some((x) => (x.ebene === "BEL" || x.ebene === "BEB") && x.zahn === k && laborVon(x, plan) === "eigen");
+		const regelProthese = plan.positionen.some((x) => x.ebene === "BEMA" && x.zahn === k && /^9[67][abc]$/.test(x.nr));
+		if (!eigen || !regelProthese) continue;
+		const zaehne = Object.entries(plan.zaehne).filter(([z, v]) => kieferVon(z) === k && PROTHESE.test(v.R));
+		const tp = (v) => v.TP.trim().toUpperCase();
+		const teilweise = zaehne.some(([, v]) => tp(v) && !PROTHESE.test(tp(v)));
+		out[k] = zaehne.filter(([, v]) => teilweise ? PROTHESE.test(tp(v)) : !tp(v) || tp(v) === v.R).map(([z]) => z).sort();
+	}
+	return out;
+}
+function zahnInfo(zahn, kuerzel) {
+	const art = PROTHESE.test(kuerzel) ? "prothese" : /^(S?B|AB)/.test(kuerzel) ? "glied" : /^S?T/.test(kuerzel) ? "teleskop" : "krone";
+	return {
+		zahn,
+		kuerzel,
+		art,
+		implantat: kuerzel.startsWith("S"),
+		keramik: art !== "prothese" && /[VM]/.test(kuerzel),
+		front: istFrontzahn(zahn)
+	};
+}
+var festsitzend = (i) => i.art !== "prothese";
+var keramischFest = (i) => i.keramik;
+/**
+* Privatleistungen, die zur jeweiligen Ausführung passen. Reihenfolge = Anzeige.
+* Alle Nummern aus der BEB-Liste; je Zahn, je Kiefer, je Kieferhälfte oder einmal je Fall.
+*/
+var PRIVAT_EXTRAS = [
+	{
+		nr: "0029",
+		ab: 2,
+		je: "zahn",
+		wenn: (i) => i.art === "krone" && /M/.test(i.kuerzel)
+	},
+	{
+		nr: "2951",
+		ab: 3,
+		je: "zahn",
+		wenn: keramischFest
+	},
+	{
+		nr: "2676",
+		ab: 3,
+		je: "zahn",
+		wenn: (i) => i.art === "glied" && i.keramik
+	},
+	{
+		nr: "2678",
+		ab: 4,
+		je: "zahn",
+		wenn: (i) => i.art === "glied" && i.keramik && i.front
+	},
+	{
+		nr: "2033",
+		ab: 3,
+		bis: 3,
+		je: "zahn",
+		wenn: (i) => i.implantat && i.art === "krone"
+	},
+	{
+		nr: "6906",
+		ab: 4,
+		je: "zahn",
+		wenn: (i) => i.implantat && i.art === "krone"
+	},
+	{
+		nr: "6905",
+		ab: 4,
+		je: "zahn",
+		wenn: (i) => i.art === "teleskop"
+	},
+	{
+		nr: "0833",
+		ab: 4,
+		je: "zahn",
+		wenn: (i) => i.art === "krone" || i.art === "glied"
+	},
+	{
+		nr: "2909",
+		ab: 3,
+		je: "zahn",
+		wenn: (i) => i.art === "prothese"
+	},
+	{
+		nr: "0021",
+		ab: 3,
+		je: "kiefer",
+		wenn: (i) => i.art === "krone" || i.art === "glied",
+		ohneBel: "0051",
+		ohneBeb: "0009"
+	},
+	{
+		nr: "0019",
+		ab: 3,
+		je: "kiefer",
+		wenn: (i) => i.art === "teleskop",
+		ohneBel: "0055"
+	},
+	{
+		nr: "0302",
+		ab: 3,
+		je: "kiefer",
+		wenn: (i) => i.art === "teleskop"
+	},
+	{
+		nr: "6121",
+		ab: 3,
+		je: "kiefer",
+		wenn: (i) => i.art === "prothese"
+	},
+	{
+		nr: "6412",
+		ab: 4,
+		je: "kiefer",
+		wenn: (i) => i.art === "prothese"
+	},
+	{
+		nr: "0731",
+		ab: 4,
+		je: "kiefer",
+		wenn: (i) => i.art === "prothese"
+	},
+	{
+		nr: "0223",
+		ab: 3,
+		je: "haelfte",
+		wenn: (i) => i.implantat && festsitzend(i)
+	},
+	{
+		nr: "0223",
+		ab: 4,
+		je: "haelfte",
+		wenn: (i) => festsitzend(i)
+	},
+	{
+		nr: "0723",
+		ab: 3,
+		bis: 3,
+		je: "fall",
+		wenn: (i) => i.keramik || i.art === "prothese"
+	},
+	{
+		nr: "0724",
+		ab: 4,
+		je: "fall",
+		wenn: (i) => i.keramik || i.art === "prothese"
+	},
+	{
+		nr: "0404",
+		ab: 3,
+		je: "fall",
+		wenn: () => true
+	},
+	{
+		nr: "0522",
+		ab: 4,
+		je: "fall",
+		wenn: (i) => i.front
+	},
+	{
+		nr: "0706",
+		ab: 4,
+		je: "fall",
+		wenn: () => true
+	}
+];
+/** Abutment-Leistungen der Implantatprothetik (konfektioniert bearbeiten, individuell, Keramik) */
+var ABUTMENT_BEB = [
+	"4421",
+	"2033",
+	"6906"
+];
+function beb(nr, zahn) {
+	return {
+		id: `aufw-${nr}-${zahn || "fall"}`,
+		ebene: "BEB",
+		nr,
+		zahn,
+		anzahl: 1,
+		auto: true,
+		labor: "eigen"
+	};
+}
+/** Zur Ausführung passende Privatleistungen des Eigenlabors */
+function privatExtras(plan, infos, stufe) {
+	const belVorhanden = new Set(plan.positionen.filter((x) => x.ebene === "BEL").map((x) => `${x.nr}|${x.zahn}`));
+	const bebVorhanden = new Set(plan.positionen.filter((x) => x.ebene === "BEB" && !x.id.startsWith("aufw-")).map((x) => `${x.nr}|${x.zahn}`));
+	const out = /* @__PURE__ */ new Map();
+	for (const e of PRIVAT_EXTRAS) {
+		if (stufe < e.ab || e.bis !== void 0 && stufe > e.bis) continue;
+		for (const i of infos.filter(e.wenn)) {
+			const gebiet = e.je === "zahn" ? i.zahn : e.je === "kiefer" ? kieferVon(i.zahn) : e.je === "haelfte" ? bereich(i.zahn) : "";
+			if (e.ohneBel && belVorhanden.has(`${e.ohneBel}|${gebiet}`) || e.ohneBeb && bebVorhanden.has(`${e.ohneBeb}|${gebiet}`) || bebVorhanden.has(`${e.nr}|${gebiet}`)) continue;
+			if (i.implantat && ABUTMENT_BEB.some((nr) => bebVorhanden.has(`${nr}|${gebiet}`)) && ABUTMENT_BEB.includes(e.nr)) continue;
+			const p = beb(e.nr, gebiet);
+			out.set(p.id, p);
+		}
+	}
+	return [...out.values()];
+}
+/**
+* Setzt die Stufe „Kasse → Privat“ des Eigenlabors. Das Zahnschema (B, R, TP) bleibt unverändert:
+* Nur Zähne, die laut Planung im Eigenlabor als Kassenleistung (BEL) gefertigt werden, erhalten die
+* höherwertige Ausführung der Stufe als Positionen – BEB statt BEL und, wie bei gleichartiger
+* Versorgung vorgeschrieben, GOZ statt BEMA für die Krone/den Anker; der Festzuschuss bleibt.
+* Dazu kommen die zur Ausführung passenden Privatleistungen, auch für Zähne mit eigener Planung.
+*/
+function privatStufeAnwenden(plan, stufe) {
+	const alt = plan.einstellungen.eigenPrivatTp ?? {};
+	const zaehne = Object.fromEntries(Object.entries(plan.zaehne).map(([z, v]) => [z, alt[z] && v.TP === alt[z] ? {
+		...v,
+		TP: ""
+	} : v]));
+	const p0 = {
+		...plan,
+		zaehne,
+		einstellungen: {
+			...plan.einstellungen,
+			eigenPrivatTp: {}
+		}
+	};
+	const rang = [
+		"standard",
+		"individuell",
+		"keramik"
+	];
+	const abutment = rang[Math.max(rang.indexOf(plan.implantat.abutment), stufe >= 4 ? 2 : stufe >= 3 ? 1 : 0)];
+	const rechnen = {
+		...plan,
+		implantat: {
+			...plan.implantat,
+			abutment
+		}
+	};
+	const regel = regelversorgungErmitteln(zaehne, regelOptionen(plan));
+	const kasse = regelUebernehmen(p0, therapieAnwenden(regel, zaehne, rechnen), zaehne);
+	const kandidaten = privatKandidaten(kasse);
+	const ziel = {};
+	for (const z of kandidaten) {
+		const t = zielTp(kasse.zaehne[z].R, stufe);
+		if (t) ziel[z] = t;
+	}
+	const virtuell = Object.fromEntries(Object.entries(zaehne).map(([z, v]) => [z, ziel[z] ? {
+		...v,
+		TP: ziel[z]
+	} : v]));
+	const eigen = new Set(Object.keys(ziel));
+	const basis = eigen.size ? regelUebernehmen(p0, therapieAnwenden(regel, virtuell, rechnen), zaehne, (x) => zahnListe(x.zahn).some((z) => eigen.has(z)) ? "eigen" : void 0) : kasse;
+	const eigeneZaehne = eigeneLaborGebiete(basis);
+	const geplant = Object.entries(basis.zaehne).filter(([z, v]) => v.TP.trim() && v.TP.trim().toUpperCase() !== v.R && eigeneZaehne.has(z) && !/^(S?EO?|SO|H)$/.test(v.TP.trim().toUpperCase())).map(([z, v]) => zahnInfo(z, v.TP.trim().toUpperCase()));
+	const prothesen = privatProthesen(basis);
+	const infos = [
+		...kandidaten.map((z) => zahnInfo(z, ziel[z] ?? basis.zaehne[z].R)),
+		...geplant,
+		...[...prothesen.OK, ...prothesen.UK].map((z) => zahnInfo(z, basis.zaehne[z].R))
+	];
+	const aus = new Set(plan.einstellungen.eigenPrivatAus ?? []);
+	const extras = privatExtras(basis, infos, stufe).filter((x) => !aus.has(x.id));
+	const hinweise = [];
+	const prothesenKiefer = ["OK", "UK"].filter((k) => prothesen[k].length);
+	if (eigen.size || extras.length) {
+		const teile = [...eigen.size ? [`Zahn ${[...eigen].sort().join(", ")} als ${[...new Set(Object.values(ziel))].join("/")} (BEB statt BEL, GOZ statt BEMA)`] : [], ...extras.length ? [`${extras.length} passende Privatleistungen (BEB ${[...new Set(extras.map((x) => x.nr))].join(", ")})`] : []];
+		hinweise.push(`Eigenlabor privat (${PRIVAT_STUFEN[stufe].titel}): ${teile.join("; ")} – Zahnschema unverändert, gleichartige Versorgung, Festzuschuss unverändert; Patient vorher aufklären (Mehrkostenvereinbarung). Leistungen nur berechnen, wenn sie tatsächlich erbracht werden.`);
+	} else if (stufe > 0 && !kandidaten.length && !geplant.length && !prothesenKiefer.length) hinweise.push("Eigenlabor privat: keine Eigenlabor-Versorgung, die sich aufwerten lässt (Krone, Brückenglied, Teilkrone, Teleskop, Implantatkrone, Prothese).");
+	return {
+		plan: {
+			...basis,
+			positionen: [...basis.positionen.filter((x) => !x.id.startsWith("aufw-")), ...extras],
+			einstellungen: {
+				...basis.einstellungen,
+				eigenPrivatStufe: stufe,
+				eigenPrivatTp: {}
+			}
+		},
+		hinweise
+	};
+}
+//#endregion
+//#region src/engine/ausfuehrung.ts
+var WERKSTOFF_MUSTER = [
+	["hochgold", /hochgold|\bgold(?! ?reduz)/],
+	["goldreduziert", /gold ?reduziert|reduzierte?[snm]? gold|edelmetallreduziert/],
+	["nem", /\bn\.? ?e\.? ?m\b|nichtedel|kobalt|chrom|edelmetallfrei/],
+	["zirkon", /zirkon|\b(?:voll ?)?keramik(?! ?verblend)|\bvollkeramisch/],
+	["presskeramik", /press ?keramik|e\.? ?max press|\bpress\b/],
+	["lithiumdisilikat", /lithium|e\.? ?max(?! press)|cad ?block/]
+];
+var ABFORMUNG_MUSTER = [["scan", /scan|intraoral|gescannt|digital/], ["abdruck", /abdr(?:ü|u|ue)ck|konventionell|herk(?:ö|oe)mmlich|analog/]];
+var ABFORM_ALLGEMEIN = /abform|l(?:ö|oe)ffel/;
+var LABOR_MUSTER = [["praxis", /eigen ?labor|eigene[snm]? labor|praxis ?labor|haus ?labor|labor im haus|\bim haus\b|in ?house|unsere[mns]? labor|bei uns gefertigt/], ["gewerbe", /fremd ?labor|fremde[snm]? labor|gewerbliche[snm]? labor|gewerbe ?labor|externe[snm]? labor|ausw(?:ä|ae)rtige[snm]? labor|\bextern\b|au(?:ß|ss)er haus/]];
+/** Erkennung gesprochener Systemnamen (auch typische Hörfehler) → ID aus IMPLANTATSYSTEME */
+var SYSTEM_MUSTER = [
+	["medentis-icx", /medentis|medendis|\bi ?c ?x\b/],
+	["straumann-bl", /strau ?mann?/],
+	["nobel-active", /nobel/],
+	["astra-ev", /astra/],
+	["ankylos", /ankylos|ankilos/],
+	["xive", /\bxive\b|\bxi ve\b/],
+	["camlog", /camlog|kamlog|conelog|konelog/],
+	["zimmer-tsv", /biomet|zimmer biomet/],
+	["biohorizons", /bio ?horizon/],
+	["bego-semados", /\bbego\b|semados/],
+	["bredent-copasky", /bredent|copa ?sky/],
+	["champions-revolution", /champions?\b/],
+	["mis-c1", /\bmis (?:c ?1|v ?3|implantat|system)/],
+	["neoss-proactive", /neoss/],
+	["osstem-tsiii", /osstem|ostem/],
+	["megagen-anyridge", /mega ?gen|any ?ridge/],
+	["thommen-element", /thommen|thomen/],
+	["sic-invent", /sic ?(?:invent|ace|max)/],
+	["dentaurum-tiologic", /dentaurum|tio ?logic/],
+	["implantdirect-legacy", /implant ?direct/]
+];
+/** so spricht Clara das System aus */
+var SYSTEM_SPRECH = {
+	"medentis-icx": "medentis ICX",
+	"straumann-bl": "Straumann",
+	"nobel-active": "Nobel Biocare",
+	"astra-ev": "Astra Tech",
+	ankylos: "Ankylos",
+	xive: "Xive",
+	camlog: "Camlog",
+	"zimmer-tsv": "Zimmer Biomet",
+	biohorizons: "BioHorizons",
+	"bego-semados": "BEGO Semados",
+	"bredent-copasky": "bredent copaSKY",
+	"champions-revolution": "Champions",
+	"mis-c1": "MIS",
+	"neoss-proactive": "Neoss",
+	"osstem-tsiii": "Osstem",
+	"megagen-anyridge": "MegaGen",
+	"thommen-element": "Thommen",
+	"sic-invent": "SIC invent",
+	"dentaurum-tiologic": "Dentaurum tioLogic",
+	"implantdirect-legacy": "Implant Direct",
+	durchschnitt: "noch nicht gewählt"
+};
+var STUFE_MUSTER = [
+	[PRIVAT_STUFE_MAX, /premium|maximal teuer|m(?:ö|oe)glichst teuer|so teuer wie m(?:ö|oe)glich|h(?:ö|oe)chste[nr]? stufe|maximale[nr]? stufe|stufe maximal|alles privat|voll privat|komplett privat|stufe (?:vier|4)\b/],
+	[3, /(?:ä|ae)sthetik|stufe (?:drei|3)\b/],
+	[2, /stufe vollkeramik|vollkeramik ?stufe|stufe (?:zwei|2)\b/],
+	[1, /teilverblend|stufe (?:eins|1)\b/],
+	[0, /stufe kasse|kassenstufe|nur kasse|zur(?:ü|ue)ck auf kasse|ohne privat|keine privat|stufe (?:null|0)\b/]
+];
+var VERNEINT_DAVOR = /(?:\bstatt|\banstatt|\banstelle|\bnicht|\bkein\w*|\bohne|\bweg von)\s+(?:(?:dem|der|den|das|des|mit|im|in|von|vom|einem|einer|einen|eine)\s+)?$/;
+var VERNEINT_DANACH = /^\s+(?:bitte\s+|doch\s+|lieber\s+)?(?:nicht\b|war falsch|ist falsch|stimmt nicht)/;
+/**
+* Letzte nicht verneinte Nennung gewinnt („Zirkon statt NEM“, „NEM – nein, doch Zirkon“).
+* Ein Treffer innerhalb eines längeren Treffers anderer Art zählt nicht („reduziertes Gold“).
+*/
+function letzteNennung(t, muster) {
+	const treffer = [];
+	for (const [wert, re] of muster) for (const m of t.matchAll(new RegExp(re.source, "g"))) {
+		const von = m.index ?? 0;
+		treffer.push({
+			wert,
+			von,
+			bis: von + m[0].length
+		});
+	}
+	return treffer.filter((x) => !treffer.some((y) => y.wert !== x.wert && y.von <= x.von && y.bis >= x.bis && y.bis - y.von > x.bis - x.von)).filter((x) => !VERNEINT_DAVOR.test(t.slice(Math.max(0, x.von - 30), x.von)) && !VERNEINT_DANACH.test(t.slice(x.bis, x.bis + 30))).sort((a, b) => b.von - a.von)[0]?.wert;
+}
+/** Ausführung aus gesprochenem Text; nicht Genanntes bleibt weg */
+function ausfuehrungIn(text) {
+	const t = ` ${text.toLowerCase().replace(/[‐–—-]/g, " ").replace(/\s+/g, " ")} `;
+	const a = {};
+	const werkstoff = letzteNennung(t, WERKSTOFF_MUSTER);
+	if (werkstoff) a.werkstoff = werkstoff;
+	const abformung = letzteNennung(t, ABFORMUNG_MUSTER) ?? (ABFORM_ALLGEMEIN.test(t) ? "abdruck" : void 0);
+	if (abformung) a.abformung = abformung;
+	const labor = letzteNennung(t, LABOR_MUSTER);
+	if (labor) a.labor = labor;
+	const system = letzteNennung(t, SYSTEM_MUSTER);
+	if (system) a.implantatSystem = system;
+	const stufe = letzteNennung(t, STUFE_MUSTER);
+	if (stufe !== void 0) a.privatStufe = stufe;
+	return a;
+}
+/** Vollkeramische Ausführung je Therapiekürzel (Teleskope bleiben Metall) */
+var KERAMIK_TP = {
+	K: "KM",
+	KV: "KM",
+	KH: "KMH",
+	KVH: "KMH",
+	B: "BM",
+	BV: "BM",
+	PK: "PKM",
+	PKV: "PKM",
+	SK: "SKM",
+	SKV: "SKM",
+	SB: "SBM",
+	SBV: "SBM"
+};
+var METALL_TP = {
+	KM: "K",
+	KMH: "KH",
+	BM: "B",
+	PKM: "PK",
+	SKM: "SK",
+	SBM: "SB"
+};
+var KERAMIK = new Set(WERKSTOFFE_FUER.keramik);
+/** Therapiezeile passend zum Werkstoff: Keramik → KM/BM/SKM …, Metall → zurück zur Regel bzw. K/B/SK */
+function zaehneFuerWerkstoff(plan, w) {
+	const keramik = KERAMIK.has(w);
+	const teleskope = [];
+	return {
+		zaehne: Object.fromEntries(Object.entries(plan.zaehne).map(([z, v]) => {
+			const tp = v.TP.trim().toUpperCase();
+			const wirk = tp || v.R.trim().toUpperCase();
+			if (keramik) {
+				if (/^S?T/.test(wirk)) teleskope.push(z);
+				return [z, KERAMIK_TP[wirk] ? {
+					...v,
+					TP: KERAMIK_TP[wirk]
+				} : v];
+			}
+			if (!METALL_TP[tp]) return [z, v];
+			return [z, {
+				...v,
+				TP: KERAMIK_TP[v.R.trim().toUpperCase()] === tp ? "" : METALL_TP[tp]
+			}];
+		})),
+		teleskope
+	};
+}
+var implantateIn = (plan) => Object.values(plan.zaehne).some((z) => IMPLANTAT_TP.test((z.TP.trim() || z.R.trim()).toUpperCase()));
+/**
+* Wendet eine Ausführung auf einen bestehenden Plan an und rechnet die Regelengine neu – wie in PlanR:
+* manuelle Positionen und bewusst entfernte Positionen bleiben erhalten.
+*/
+function ausfuehrungAnwenden(plan, a) {
+	const hinweise = [];
+	let p = {
+		...plan,
+		einstellungen: { ...plan.einstellungen },
+		implantat: { ...plan.implantat }
+	};
+	if (a.werkstoff) {
+		const r = zaehneFuerWerkstoff(p, a.werkstoff);
+		p.zaehne = r.zaehne;
+		if (r.teleskope.length) hinweise.push(`Teleskope ${r.teleskope.join(", ")} bleiben aus Metall.`);
+	}
+	if (a.abformung) {
+		p.abformung = a.abformung;
+		if (p.abformungProthese) p.abformungProthese = a.abformung;
+	}
+	if (a.labor && a.labor !== p.einstellungen.labor) {
+		p.einstellungen.labor = a.labor;
+		p.positionen = p.positionen.map((x) => {
+			if (!(x.auto && (x.ebene === "BEL" || x.ebene === "BEB") && x.labor)) return x;
+			const { labor: _, ...ohne } = x;
+			return ohne;
+		});
+	}
+	if (a.implantatSystem) {
+		if (implantateIn(p)) p.implantat.system = a.implantatSystem;
+		else hinweise.push("In diesem HKP sind keine Implantate geplant.");
+	}
+	let stufe = a.privatStufe ?? p.einstellungen.eigenPrivatStufe ?? 0;
+	if (stufe > 0 && p.einstellungen.labor !== "praxis") {
+		hinweise.push(a.privatStufe ? "Die Stufe „Kasse → Privat“ gibt es nur im Eigenlabor." : "Im Fremdlabor entfällt die Eigenlabor-Stufe – zurück auf Kasse.");
+		stufe = 0;
+	}
+	const r = privatStufeAnwenden(p, stufe);
+	p = r.plan;
+	hinweise.push(...r.hinweise);
+	if (a.werkstoff) {
+		const w = a.werkstoff;
+		const passend = kronenEinheiten(p.positionen).filter((e) => WERKSTOFFE_FUER[e.art].includes(w));
+		p.werkstoffe = {
+			...p.werkstoffe ?? {},
+			...Object.fromEntries(passend.map((e) => [e.zahn, w]))
+		};
+	}
+	return {
+		plan: p,
+		hinweise
+	};
+}
+function ausfuehrungVon(plan) {
+	return {
+		werkstoffe: [...new Set(kronenEinheiten(plan.positionen).map((e) => werkstoffVon(e, plan.werkstoffe ?? {}).werkstoff))],
+		abformung: plan.abformung,
+		labor: plan.einstellungen.labor,
+		...implantateIn(plan) ? { implantatSystem: plan.implantat.system } : {},
+		privatStufe: plan.einstellungen.eigenPrivatStufe ?? 0
+	};
+}
+var WERKSTOFF_SPRECH = {
+	nem: "Nichtedelmetall",
+	goldreduziert: "goldreduzierte Legierung",
+	hochgold: "Hochgold",
+	zirkon: "Zirkon",
+	presskeramik: "Presskeramik",
+	lithiumdisilikat: "Lithiumdisilikat"
+};
+var ABFORMUNG_SPRECH = {
+	scan: "Intraoralscan",
+	abdruck: "konventioneller Abdruck",
+	"": "Abformung offen"
+};
+var ABFORMUNG_KURZ = {
+	scan: "Intraoralscan",
+	abdruck: "Abdruck",
+	"": "offen"
+};
+var LABOR_SPRECH = {
+	praxis: "Eigenlabor",
+	gewerbe: "Fremdlabor"
+};
+var systemSprech = (id) => SYSTEM_SPRECH[id] ?? IMPLANTATSYSTEME.find((s) => s.id === id)?.hersteller ?? id;
+var und = (xs) => xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} und ${xs[xs.length - 1]}`;
+/** „Zirkon, Intraoralscan, Eigenlabor, Implantatsystem medentis ICX“ */
+function ausfuehrungSatz(s) {
+	return [
+		...s.werkstoffe.length ? [und(s.werkstoffe.map((w) => WERKSTOFF_SPRECH[w]))] : [],
+		ABFORMUNG_SPRECH[s.abformung],
+		LABOR_SPRECH[s.labor],
+		...s.implantatSystem ? [`Implantatsystem ${systemSprech(s.implantatSystem)}`] : [],
+		...s.privatStufe > 0 ? [`Eigenlabor-Stufe ${PRIVAT_STUFEN[s.privatStufe].titel}`] : []
+	].join(", ");
+}
+/** Was sich geändert hat: „Zirkon statt Nichtedelmetall, Intraoralscan statt Abdruck“ ('' = nichts) */
+function ausfuehrungUnterschied(vorher, nachher) {
+	const teile = [];
+	const wv = und(vorher.werkstoffe.map((w) => WERKSTOFF_SPRECH[w]));
+	const wn = und(nachher.werkstoffe.map((w) => WERKSTOFF_SPRECH[w]));
+	if (wn && wv !== wn) teile.push(wv ? `${wn} statt ${wv}` : wn);
+	if (vorher.abformung !== nachher.abformung) teile.push(`${ABFORMUNG_KURZ[nachher.abformung]} statt ${ABFORMUNG_KURZ[vorher.abformung]}`);
+	if (vorher.labor !== nachher.labor) teile.push(`${LABOR_SPRECH[nachher.labor]} statt ${LABOR_SPRECH[vorher.labor]}`);
+	if (nachher.implantatSystem && vorher.implantatSystem !== nachher.implantatSystem) teile.push(`Implantatsystem ${systemSprech(nachher.implantatSystem)}${vorher.implantatSystem ? ` statt ${systemSprech(vorher.implantatSystem)}` : ""}`);
+	if (vorher.privatStufe !== nachher.privatStufe) teile.push(`Eigenlabor-Stufe ${PRIVAT_STUFEN[nachher.privatStufe].titel} statt ${PRIVAT_STUFEN[vorher.privatStufe].titel}`);
+	return teile.join(", ");
+}
 //#endregion
 //#region src/engine/auftrag.ts
 var ZAHL_WORT = {
@@ -26287,15 +26899,7 @@ function einzelAuftrag(text) {
 	auftrag.kiefer = kieferIn(t);
 	const nummern = [...t.matchAll(FDI)].map((m) => kieferVon(m[1]));
 	if (!auftrag.kiefer && nummern.length && nummern.every((k) => k === nummern[0])) auftrag.kiefer = nummern[0];
-	if (/scan|intraoral|gescannt|digital/.test(t)) auftrag.abformung = "scan";
-	else if (/abdruck|konventionell|abform/.test(t)) auftrag.abformung = "abdruck";
-	if (/hochgold/.test(t)) auftrag.werkstoff = "hochgold";
-	else if (/gold ?reduziert|reduzierte?s? gold|edelmetallreduziert/.test(t)) auftrag.werkstoff = "goldreduziert";
-	else if (/\bgold/.test(t)) auftrag.werkstoff = "hochgold";
-	else if (/\bnem\b|nichtedel|kobalt|chrom/.test(t)) auftrag.werkstoff = "nem";
-	else if (/zirkon/.test(t)) auftrag.werkstoff = "zirkon";
-	else if (/press(keramik)?|e\.?max press/.test(t)) auftrag.werkstoff = "presskeramik";
-	else if (/lithium|e\.?max|cad-?block/.test(t)) auftrag.werkstoff = "lithiumdisilikat";
+	Object.assign(auftrag, ausfuehrungIn(text));
 	if (/h(ä|ae)rtefall/.test(t)) auftrag.haertefall = true;
 	if (/(kein|ohne)(en)? bonus/.test(t)) auftrag.bonus = "60";
 	else if (/\b(75|fünfundsiebzig|fuenfundsiebzig) ?(%|prozent)|\b(30|dreißig|dreissig) ?(%|prozent) bonus|bonus (von )?(30|dreißig|dreissig)\b|zehn jahre bonus|bonus (über |ueber )?zehn jahre/.test(t)) auftrag.bonus = "75";
@@ -26533,9 +27137,10 @@ function implantatPlanen(auftrag, befund, tp) {
 		zaehne: stehen,
 		frage: `Laut Befund ${stehen.length > 1 ? "sind" : "ist"} ${liste(stehen)} noch vorhanden. ${stehen.length > 1 ? "Werden sie" : "Wird er"} vorher entfernt? Dann sagen Sie zum Beispiel: ${stehen[0]} wird entfernt.`
 	};
+	const keramik = auftrag.werkstoff && WERKSTOFFE[auftrag.werkstoff].art === "keramik";
 	for (const z of sitze) {
 		if (!(z in befund)) befund[z] = "f";
-		tp[z] = "SK";
+		tp[z] = keramik ? "SKM" : "SK";
 	}
 }
 function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
@@ -26619,16 +27224,28 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 		haertefall: !!(auftrag.haertefall ?? optionen.haertefall)
 	};
 	if (!bonus) hinweise.push("Bonus nicht bekannt – 60 % angenommen.");
+	const labor = auftrag.labor ?? optionen.labor;
 	plan.einstellungen = {
 		...plan.einstellungen,
 		...optionen.einstellungen,
-		...optionen.labor ? { labor: optionen.labor } : {},
+		...labor ? { labor } : {},
 		...optionen.kzv ? { kzv: optionen.kzv } : {},
 		...optionen.praxisPlz ? { praxisPlz: optionen.praxisPlz } : {}
 	};
+	const system = auftrag.implantatSystem ?? optionen.implantatSystem;
+	if (system) plan.implantat = {
+		...plan.implantat,
+		system
+	};
 	const regel = therapieAnwenden(regelversorgungErmitteln(plan.zaehne, regelOptionen(plan)), plan.zaehne, plan);
-	const fertig = regelUebernehmen(plan, regel);
+	let fertig = regelUebernehmen(plan, regel);
 	hinweise.push(...regel.hinweise);
+	const stufe = auftrag.privatStufe ?? optionen.privatStufe ?? 0;
+	if (stufe > 0 && fertig.einstellungen.labor === "praxis") {
+		const r = privatStufeAnwenden(fertig, stufe);
+		fertig = r.plan;
+		hinweise.push(...r.hinweise);
+	} else if (stufe > 0) hinweise.push("Die Stufe „Kasse → Privat“ gibt es nur im Eigenlabor – im Fremdlabor nicht angewendet.");
 	if (auftrag.werkstoff) {
 		const art = WERKSTOFFE[auftrag.werkstoff].art;
 		const einheiten = kronenEinheiten(fertig.positionen);
@@ -26646,7 +27263,7 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-06 20:33";
+var ENGINE_STAND = "2026-10-06 20:48";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
@@ -26896,6 +27513,38 @@ function positionAendern(planRoh, a, praxis = {}) {
 		warnungen
 	};
 }
+/** Ändert Kronenmaterial, Abformung, Labor, Implantatsystem bzw. Eigenlabor-Stufe eines Plans und rechnet neu. */
+function ausfuehrungAendern(planRoh, a, praxis = {}) {
+	if (!Object.keys(a).length) return {
+		ok: false,
+		grund: "nichts",
+		meldung: "Was soll ich an der Ausführung ändern – Material, Abformung, Labor oder Implantatsystem?"
+	};
+	const plan = planNormalisieren(planRoh);
+	const vorher = zusammenfassen(plan, rechnen(plan, praxis));
+	const stand = ausfuehrungVon(plan);
+	const r = ausfuehrungAnwenden(plan, a);
+	const ergebnis = rechnen(r.plan, praxis);
+	const nachher = zusammenfassen(r.plan, ergebnis);
+	const neu = ausfuehrungVon(r.plan);
+	const beschreibung = ausfuehrungUnterschied(stand, neu);
+	if (!beschreibung) return {
+		ok: false,
+		grund: "unveraendert",
+		meldung: r.hinweise.length ? r.hinweise.join(" ") : `Das ist schon so geplant: ${ausfuehrungSatz(neu)}.`
+	};
+	const warnungen = [...r.hinweise, ...nachher.warnungen.filter((w) => !vorher.warnungen.includes(w))];
+	return {
+		ok: true,
+		plan: r.plan,
+		ergebnis,
+		beschreibung,
+		vorher,
+		nachher,
+		ausfuehrung: neu,
+		warnungen
+	};
+}
 /** Leistungstext sprechbar kürzen: ohne Klammerzusätze, höchstens ~80 Zeichen an einer Wortgrenze. */
 function kurzText(text) {
 	let t = text.replace(/\s*\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
@@ -26943,4 +27592,4 @@ function positionPruefen(e, listen, frage) {
 	};
 }
 //#endregion
-export { ENGINE_STAND, STANDARD_LISTEN, auftragVerstehen, befundAusAuftrag, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, rechnen, zahlwort, zusammenfassen };
+export { ENGINE_STAND, LABOR_SPRECH, STANDARD_LISTEN, WERKSTOFF_SPRECH, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, rechnen, systemSprech, zahlwort, zusammenfassen };

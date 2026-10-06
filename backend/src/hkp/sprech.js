@@ -61,13 +61,14 @@ export function hkpKurz(h) {
   return `${hkpTitel(h)} vom ${datumDe(h.erstellt)}, ${STATUS_TEXT[h.status] || h.status}`;
 }
 
-export function detailSatz(h) {
+export function detailSatz(h, ausfuehrung = "") {
   const teile = [
     `Der ${hkpTitel(h)} für ${h.patient?.label || "den Patienten"} wurde am ${datumDe(h.erstellt)} erstellt${h.erstelltVon === "clara" ? " – von mir per Sprache" : " in PlanR"}.`,
     `Status: ${STATUS_TEXT[h.status] || h.status}.`,
   ];
   const v = versorgungSatz(h.zusammenfassung);
   if (v) teile.push(`Geplant: ${v}.`);
+  if (ausfuehrung) teile.push(`Ausführung: ${ausfuehrung}.`);
   // Live 06.10.2026: der vorgelesene Auftrags-Wortlaut machte die Antwort 40 s lang.
   if (h.auftragText && !v) teile.push(`Eingesprochen war: „${String(h.auftragText).trim().replace(/[.!?]+$/, "")}“.`);
   if (h.summen) teile.push(`${summenSatz(h.summen)}.`);
