@@ -117,12 +117,21 @@ export function entryCodes(firstName, lastName) {
   return out;
 }
 
+const schreibForm = (s) => s.replace(/tz/g, "ts").replace(/z/g, "s").replace(/ck/g, "k")
+  .replace(/ph/g, "f").replace(/th/g, "t").replace(/y/g, "i");
+
 /**
  * Gleicher Anfangsbuchstabe und hoechstens 1 (ab 7 Buchstaben: 2)
  * Buchstaben Abstand — "petzers" ~ "petzas", nicht "psarris".
  */
 export function schreibNah(a, b) {
   if (!a || !b || a === b || a[0] !== b[0]) return false;
+  // Live 06.10.2026: "Petzers" fuer "Petsas" – z/tz/s hoert Parakeet nicht auseinander.
+  if (process.env.MAS_CATALOG_SCHREIBFORM !== "0") {
+    a = schreibForm(a);
+    b = schreibForm(b);
+    if (a === b) return true;
+  }
   if (a.length < 5 || b.length < 5) return false;
   const max = Math.min(a.length, b.length) >= 6 && Math.max(a.length, b.length) >= 7 ? 2 : 1;
   if (Math.abs(a.length - b.length) > max) return false;
@@ -555,6 +564,19 @@ export async function findPrefixInCatalog(clientId, typed, opts = {}) {
   }
 }
 
+// Geloeschte Akten bleiben bis zum naechsten Vollaufbau im Katalog und verdeckten
+// den echten Patienten (Dublette "Petzas" vor "Petsas", 06.10.2026).
+function geloeschteEntfernen(key, ids) {
+  const held = memory.get(key);
+  if (!held || process.env.CLARA_PATIENT_CATALOG_GELOESCHT === "0") return;
+  const raus = new Set(ids);
+  const vorher = held.entries.length;
+  held.entries = held.entries.filter((e) => !raus.has(e.i));
+  if (held.entries.length === vorher) return;
+  held.index = buildIndex(held.entries);
+  held.count = held.entries.length;
+}
+
 /**
  * Stammdaten zu Katalog-Treffern nachladen (gezielte Einzelabrufe, keine Suche).
  * Gleiche Felder wie die Plattform-Suche, damit nachgelagerte Logik
@@ -577,6 +599,8 @@ export async function fetchPatientsByIds(clientId, ids) {
   const refs = list.slice(0, 20).map((id) => col.doc(id));
   const docs = await admin.firestore().getAll(...refs);
 
+  const weg = docs.filter((d) => !d.exists).map((d) => d.id);
+  if (weg.length) geloeschteEntfernen(`${cid}/${lid}`, weg);
   const out = [];
   for (const doc of docs) {
     if (!doc.exists) continue;

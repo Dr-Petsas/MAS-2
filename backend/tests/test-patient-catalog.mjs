@@ -11,7 +11,7 @@
 
 import {
   nameTokens, isMeaningful, entryCodes, buildIndex, catalogMatch, PARTICLES,
-  spokenLooksLikeNewPerson,
+  spokenLooksLikeNewPerson, schreibNah,
 } from "../src/clara/patientCatalog.js";
 
 let ok = 0;
@@ -172,6 +172,9 @@ check("fremder Name Schmidt bleibt ohne Treffer",
   treffer("Schmidt").length === 0, JSON.stringify(treffer("Schmidt")));
 
 console.log("11) Bausteine");
+check("Petzers liegt schreibnah an Petsas (06.10. z/s)", schreibNah("petzers", "petsas"));
+check("Petzers liegt nicht an Psarris", !schreibNah("petzers", "psarris"));
+check("Schmitz ~ Schmids, Philipp ~ Filip bleibt fremd", schreibNah("schmitz", "schmids") && !schreibNah("philipp", "filip"));
 check("Zerlegung mit Bindestrich", JSON.stringify(nameTokens("El-Hajjami")) === '["el","hajjami"]',
   JSON.stringify(nameTokens("El-Hajjami")));
 check("Umlaute werden umgeschrieben", nameTokens("Müller Groß")[0] === "mueller",

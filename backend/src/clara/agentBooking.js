@@ -253,33 +253,34 @@ export async function searchPatient(clientId, name, opts = {}) {
   // Patienten, die der Katalog noch nicht kennt, finden wir weiter ueber die
   // Function (Notnagel). Notaus: MAS_SEARCH_CF_FIRST=1 stellt die alte Reihenfolge
   // wieder her (Plattform zuerst).
-  let catalogHits = [];
-  try {
-    catalogHits = await findInCatalog(searchClientId, name, { limit: 6 });
-  } catch {
-    catalogHits = [];
-  }
-  const strong = catalogHits.filter((h) => (h.score || 0) >= 10);
-  const eindeutig = katalogtrefferIstEindeutig(catalogHits);
-  melde("katalog", {
-    treffer: catalogHits.map((h) => ({
-      name: `${h?.f || ""} ${h?.l || ""}`.trim(), punkte: h?.score || 0, sicher: (h?.score || 0) >= 10,
-    })),
-    eindeutig,
-  });
-
   const plattformZuerst = process.env.MAS_SEARCH_CF_FIRST === "1" || opts.forcePlatform === true;
-  if (!plattformZuerst && katalogReichtOhnePlattform(catalogHits)) {
+  let catalogHits = [];
+  let strong = [];
+  let eindeutig = false;
+  // Zweiter Durchgang nur, wenn ein Treffer eine geloeschte Akte war (fliegt dabei aus dem Katalog).
+  for (let durchgang = 0; durchgang < 2; durchgang++) {
     try {
-      const auswahl = eindeutig ? strong : catalogHits.slice(0, 4);
-      const rows = await ladeKatalogzeilen(searchClientId, auswahl);
-      if (rows.length) {
-        if (rows.length === 1 && eindeutig) return { ok: true, patients: rows };
-        return { ok: true, patients: rows };
-      }
+      catalogHits = await findInCatalog(searchClientId, name, { limit: 6 });
     } catch {
-      // Katalog-Nachladen ist Zugabe — dann Plattform wie bisher.
+      catalogHits = [];
     }
+    strong = catalogHits.filter((h) => (h.score || 0) >= 10);
+    eindeutig = katalogtrefferIstEindeutig(catalogHits);
+    melde("katalog", {
+      treffer: catalogHits.map((h) => ({
+        name: `${h?.f || ""} ${h?.l || ""}`.trim(), punkte: h?.score || 0, sicher: (h?.score || 0) >= 10,
+      })),
+      eindeutig,
+    });
+    if (plattformZuerst || !katalogReichtOhnePlattform(catalogHits)) break;
+    let rows = [];
+    const auswahl = eindeutig ? strong : catalogHits.slice(0, 4);
+    try {
+      rows = await ladeKatalogzeilen(searchClientId, auswahl);
+    } catch {
+      break; // Katalog-Nachladen ist Zugabe — dann Plattform wie bisher.
+    }
+    if (rows.length) return { ok: true, patients: rows };
   }
 
   let contextPatientIds = [];
