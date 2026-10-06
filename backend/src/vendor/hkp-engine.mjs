@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 9f6bbe2db6c8)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 eb650a5e549f)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26646,7 +26646,7 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-06 15:53";
+var ENGINE_STAND = "2026-10-06 20:33";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
@@ -26659,7 +26659,9 @@ function listenFuer(plan, praxis = {}) {
 var rechnen = (plan, praxis = {}) => berechnen(plan, listenFuer(plan, praxis));
 var sortiert = (zs) => [...zs].sort((a, b) => ALLE_ZAEHNE.indexOf(a) - ALLE_ZAEHNE.indexOf(b));
 function zusammenfassen(plan, e) {
-	const mit = (re) => sortiert(Object.entries(plan.zaehne).filter(([, z]) => re.test(z.TP ?? "")).map(([n]) => n));
+	const ohneTp = Object.values(plan.zaehne).every((z) => !z.TP?.trim());
+	const versorgung = (z) => ((ohneTp ? z.R : z.TP) ?? "").trim().toUpperCase();
+	const mit = (re) => sortiert(Object.entries(plan.zaehne).filter(([, z]) => re.test(versorgung(z))).map(([n]) => n));
 	return {
 		teleskope: mit(/^T2?V?$/),
 		kronen: mit(/^(K|KV|KH|KVH|KM|PK|PKM|PKV)$/),
