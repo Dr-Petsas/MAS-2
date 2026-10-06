@@ -2556,6 +2556,25 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
 ## Aenderungslog
 
+- 06.10.2026 (Chef: "die hkp duerfen nur auf existierende Patienten
+  geschrieben werden ... totale Sicherheit bei der Anlage"): **HKP-Sicherheit.**
+  Ein HKP lag auf der Kartei-Dublette "Michael Petzas" (ohne Geburtsdatum)
+  statt auf Michael Petsas - der Name kam NICHT ungeprueft von Clara, MAS
+  hatte gegen die Kartei gesucht, aber der 24-h-Katalog kannte den neuen
+  Datensatz nicht und die Klangsuche nahm die Dublette. HKP auf den richtigen
+  Patienten umgehaengt, Befund 24-28 korrigiert, neu gerechnet. Seitdem:
+  Katalog laedt neue Patienten nach; Namensvetter-Frage mit Jahrgang; Anlage
+  erst nach Vorlesen (Patient + Geburtsdatum + voller Befund + Versorgung)
+  und reinem Ja; fehlt jeder Befund, nimmt Clara ihn komplett auf. Engine:
+  Korrektur "26 ist doch vorhanden" kippte die ganze Fehlliste, "25 fehlt
+  nicht" wurde ignoriert, "28 und es sollen Teleskope auf 13 und 23" machte
+  28 zum Pfeiler - behoben. PlanR-Labor-XML: Zeichensatz aus dem Prolog
+  (ISO-8859-1), KVA ohne Lieferdatum/Rechnungsnummer wird uebernommen.
+  Nebenbei: Mail-Waechter (vk-10 kippte im Voll-Gate). Commits MAS 1d80d34,
+  5c648e9; Clara 3d7a2ea. Notaus: MAS_HKP_VORLESEN, MAS_HKP_NAMENSVETTER,
+  CLARA_PATIENT_CATALOG_NEU, CLARA_HKP_JA_GUARD, CLARA_MAIL_GUARD (=0).
+  Offen beim Chef: Dublette "Michael Petzas" in der Plattform zusammenfuehren.
+
 - 16.08.2026 (Live 15:01-15:04, "warum halluziniert sie und findet den
   Patientennamen nicht"): **Clara erfand vier Zuege lang Patienten, die es
   nicht gibt — und ueberhoerte, dass der Chef den Namen zweimal
