@@ -33,12 +33,16 @@ export function euroSprech(betrag) {
 export const liste = (xs) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} und ${xs[xs.length - 1]}`);
 const zahn = (zs) => (zs.length === 1 ? `Zahn ${zs[0]}` : `den Zähnen ${liste(zs)}`);
 
+const aufsteigend = (zs) => [...(zs || [])].sort((a, b) => Number(a) - Number(b));
+
 export function versorgungSatz(z) {
   if (!z) return "";
   const teile = [];
-  const glieder = z.glieder || [];
-  if (z.teleskope?.length) teile.push(`Teleskope auf ${liste(z.teleskope)}`);
-  if (z.kronen?.length) teile.push(`${glieder.length ? "Brückenanker-Kronen" : "Kronen"} auf ${liste(z.kronen)}`);
+  const glieder = aufsteigend(z.glieder);
+  const impl = aufsteigend(z.implantatkronen);
+  if (impl.length) teile.push(`${impl.length === 1 ? "Implantatkrone" : "Implantatkronen"} auf ${liste(impl)}`);
+  if (z.teleskope?.length) teile.push(`Teleskope auf ${liste(aufsteigend(z.teleskope))}`);
+  if (z.kronen?.length) teile.push(`${glieder.length ? "Brückenanker-Kronen" : "Kronen"} auf ${liste(aufsteigend(z.kronen))}`);
   if (glieder.length) teile.push(`${glieder.length === 1 ? "Brückenglied" : "Brückenglieder"} ${liste(glieder)}`);
   const ersetzt = (z.ersetzt || []).filter((x) => !glieder.includes(x));
   if (ersetzt.length) teile.push(`${ersetzt.length === 1 ? "ein ersetzter Zahn" : `${ersetzt.length} ersetzte Zähne`}`);
@@ -64,9 +68,21 @@ export function detailSatz(h) {
   ];
   const v = versorgungSatz(h.zusammenfassung);
   if (v) teile.push(`Geplant: ${v}.`);
-  if (h.auftragText) teile.push(`Eingesprochen war: „${String(h.auftragText).trim().replace(/[.!?]+$/, "")}“.`);
+  // Live 06.10.2026: der vorgelesene Auftrags-Wortlaut machte die Antwort 40 s lang.
+  if (h.auftragText && !v) teile.push(`Eingesprochen war: „${String(h.auftragText).trim().replace(/[.!?]+$/, "")}“.`);
   if (h.summen) teile.push(`${summenSatz(h.summen)}.`);
   return teile.join(" ");
+}
+
+const SUMMEN_FRAGE = /festzuschuss|eigenanteil|gesamtkosten|kosten|kostet|summe|betrag|preis|teuer|zahlen/i;
+const ANDERE_FRAGE = /status|wann|erstellt|angelegt|geplant|befund|lies|vorles|details?|position/i;
+
+/** Fragt der Satz nur nach Betraegen ("Wie hoch ist der Festzuschuss?")? */
+export const nurSummenFrage = (frage) => SUMMEN_FRAGE.test(String(frage || "")) && !ANDERE_FRAGE.test(String(frage || ""));
+
+export function summenAntwort(h) {
+  if (!h?.summen) return detailSatz(h);
+  return `Beim ${hkpTitel(h)} für ${h.patient?.label || "den Patienten"}: ${summenSatz(h.summen)}.`;
 }
 
 export function uebersichtSatz(alle, { patientLabel } = {}) {

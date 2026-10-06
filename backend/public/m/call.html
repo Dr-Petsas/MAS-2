@@ -416,8 +416,8 @@
     }
     .hkp-sheet-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hkp-sheet-bar button {
-      border: 0; border-radius: 16px; background: rgba(255,255,255,.18); color: #fff;
-      font-size: 14px; font-weight: 600; padding: 6px 14px; cursor: pointer;
+      flex: none; border: 0; border-radius: 18px; background: rgba(255,255,255,.28); color: #fff;
+      font-size: 15px; font-weight: 700; padding: 9px 16px; cursor: pointer;
     }
     .hkp-sheet iframe { flex: 1; width: 100%; border: 0; background: #fdf4f8; }
     .card[data-kind="hkp"] { cursor: pointer; }
@@ -526,8 +526,8 @@
 
   <div class="hkp-sheet hidden" id="hkpSheet" role="dialog" aria-label="Heil- und Kostenplan">
     <div class="hkp-sheet-bar">
+      <button type="button" id="hkpSheetZu">‹ Zurück zu Clara</button>
       <span id="hkpSheetTitel">HKP</span>
-      <button type="button" id="hkpSheetZu">Zu den Karten</button>
     </div>
     <iframe id="hkpSheetFrame" title="HKP mit Reglern" referrerpolicy="no-referrer"></iframe>
   </div>
@@ -830,6 +830,7 @@
       // (Kehrt die Badge-nur-Sonderregel fuer recall_kandidaten vom 28.07. um.)
       setFlipped(true);
       if (card?.kind === "hkp") hkpOeffnen(card);
+      else hkpSchliessen(false);
       if (card?.kind === "lisa_live" || card?.kind === "lisa_sms") lisaLive.start(card);
       if (typeof noteCrew === "function") noteCrew({ card });
     }
@@ -860,11 +861,17 @@
       hkpSheet.titel.textContent = [card.title, card.subtitle].filter(Boolean).join(" · ") || "HKP";
       hkpSheet.el.classList.remove("hidden");
     }
-    document.getElementById("hkpSheetZu")?.addEventListener("click", () => hkpSheet.el.classList.add("hidden"));
+    // Zurück geht immer ohne Freigabe (Chef 06.10.2026: sonst Sackgasse beim Themenwechsel).
+    function hkpSchliessen(zuClara) {
+      hkpSheet.el?.classList.add("hidden");
+      if (zuClara) setFlipped(false);
+    }
+    document.getElementById("hkpSheetZu")?.addEventListener("click", () => hkpSchliessen(true));
     document.addEventListener("clara-hkp", (ev) => hkpOeffnen(ev.detail));
     window.addEventListener("message", (ev) => {
       if (ev.source !== hkpSheet.frame?.contentWindow) return;
       const m = ev.data || {};
+      if (m.type === "planr-hkp" && m.aktion === "zurueck") return hkpSchliessen(true);
       if (m.type !== "planr-hkp" || m.status !== "freigegeben") return;
       const euro = (x) => `${(Number(x) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
       deck = deck.map((e) => {

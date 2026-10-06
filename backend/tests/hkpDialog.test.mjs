@@ -1,9 +1,9 @@
 // HKP-Dialog per Sprache: Ja auf die Vorschau, Zahlen und Doppelung im Vorlesen, Bruecken (Gespraeche 06.10.2026).
 // Start: node backend/tests/hkpDialog.test.mjs
 import assert from "node:assert/strict";
-const { vorschauPasst, doppelungHinweis, vetterAntwort } = await import("../src/routes/hkp.js");
+const { vorschauPasst, vorschauFinden, doppelungHinweis, vetterAntwort } = await import("../src/routes/hkp.js");
 const { vorleseSatz } = await import("../src/hkp/vorlesen.js");
-const { versorgungSatz } = await import("../src/hkp/sprech.js");
+const { versorgungSatz, nurSummenFrage, summenAntwort } = await import("../src/hkp/sprech.js");
 
 let ok = 0;
 function t(name, fn) { fn(); ok += 1; console.log("  ok -", name); }
@@ -23,6 +23,24 @@ t("anderer Patient gilt nicht, leerer Auftrag gilt", () => {
   assert.equal(vorschauPasst(vs("Totalprothese OK"), { name: "Michael Petsas" }), false);
   assert.equal(vorschauPasst(vs("Totalprothese OK"), {}), true);
 });
+t("mehrere offene Vorschauen: das Ja trifft die mit passendem Auftrag bzw. Namen", () => {
+  const greisinger = { id: "p2", firstName: "Isabella", lastName: "Greisinger", anredeLabel: "Frau Isabella Greisinger" };
+  const a = vs("Totalprothese OK");
+  const g = { patient: greisinger, auftragText: "Implantatkronen auf 14 und 15", at: Date.now() };
+  const liste = [g, a];
+  assert.equal(vorschauFinden(liste, { auftrag: "Totalprothese OK", bestaetigt: true }), a);
+  assert.equal(vorschauFinden(liste, { name: "Isabella Greisinger" }), g);
+  assert.equal(vorschauFinden(liste, { name: "Holger Abel" }), a);
+  assert.equal(vorschauFinden(liste, {}), g);
+  assert.equal(vorschauFinden(liste, { auftrag: "Brücke von 34 auf 37" }), null);
+});
+t("Summenfrage bekommt nur die Summen (06.10. 15:40, vorher 40 s Vorlesen)", () => {
+  assert.equal(nurSummenFrage("Wie hoch ist der Festzuschuss?"), true);
+  assert.equal(nurSummenFrage("Was ist der Status vom HKP?"), false);
+  const s = summenAntwort({ versorgungText: "Implantat-HKP", kiefer: "OK", patient: { label: "Frau Greisinger" },
+    summen: { gesamt: 1429.99, festzuschuss: 869.48, eigenanteil: 560.51 } });
+  assert.match(s, /^Beim Implantat-HKP im Oberkiefer für Frau Greisinger: Gesamtkosten eintausendvierhundertneunundzwanzig Euro neunundneunzig/);
+});
 
 const alt = { id: "h1", status: "wartet_auf_freigabe", versorgungText: "Teleskop-HKP", kiefer: "OK", erstellt: "2026-10-06T10:00:00Z" };
 t("Doppelung steht als Hinweis in der Vorschau, mit Angebot zum Verwerfen", () => {
@@ -40,8 +58,11 @@ t("Vorschau nennt die Zahlen und die Doppelung vor der Frage", () => {
   assert.match(s, /Voraussichtlich Gesamtkosten eins Euro\. Achtung, es gibt schon einen\. Soll ich den Entwurf so anlegen\?$/);
 });
 t("Bruecke wird als Bruecke vorgelesen", () => {
-  assert.equal(versorgungSatz({ kronen: ["16", "14"], ersetzt: ["15"], glieder: ["15"] }), "Brückenanker-Kronen auf 16 und 14, Brückenglied 15");
+  assert.equal(versorgungSatz({ kronen: ["16", "14"], ersetzt: ["15"], glieder: ["15"] }), "Brückenanker-Kronen auf 14 und 16, Brückenglied 15");
   assert.equal(versorgungSatz({ teleskope: ["14", "24"], ersetzt: ["17"] }), "Teleskope auf 14 und 24, ein ersetzter Zahn");
+});
+t("Implantatkronen werden als Implantatkronen vorgelesen (06.10. Greisinger)", () => {
+  assert.equal(versorgungSatz({ implantatkronen: ["15", "14"], kronen: [], ersetzt: [] }), "Implantatkronen auf 14 und 15");
 });
 
 t("Namensvetter: genaue Schreibweise in der Antwort waehlt, der Auftragsname nicht", () => {

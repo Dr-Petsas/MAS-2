@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 03626d107bcb)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 9f6bbe2db6c8)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26228,6 +26228,7 @@ function versorgungIn(t, coverDenture) {
 	if (/teleskop|konus|doppelkrone/.test(t) || coverDenture) return "teleskopprothese";
 	if (/totalprothese|vollprothese|totale/.test(t)) return "totalprothese";
 	if (/br(ü|ue)cke/.test(t)) return "bruecke";
+	if (/implantat/.test(t)) return "implantatkronen";
 	if (/krone/.test(t)) return "kronen";
 }
 function auftragVerstehen(text) {
@@ -26252,7 +26253,7 @@ function auftragVerstehen(text) {
 			pfeiler: []
 		});
 	}
-	const teile = roh.filter((x) => x.versorgung && x.versorgung !== "kronen").filter((x, i, alle) => alle.findIndex((y) => y.kiefer === x.kiefer) === i);
+	const teile = roh.filter((x) => x.versorgung && x.versorgung !== "kronen" && x.versorgung !== "implantatkronen").filter((x, i, alle) => alle.findIndex((y) => y.kiefer === x.kiefer) === i);
 	const kiefer = new Set(teile.map((x) => x.kiefer));
 	if (!teile.length) return auftrag;
 	for (const x of teile) x.pfeiler = x.pfeiler.filter((z) => kieferVon(z) === x.kiefer);
@@ -26418,7 +26419,7 @@ var NUR_ZAEHNE = /^(?:(?:die|der|den|und|sowie|auch|noch|[1-4][1-8]|\d(?:er|ern)
 function befundAusAuftrag(text) {
 	const satz = befundSaetze(text);
 	const a = auftragVerstehen(text);
-	const luecke = (a.teile?.length ? a.teile : [a]).flatMap((x) => x.versorgung === "bruecke" ? x.glieder ?? [] : []).filter((z) => !(satz && zaehneIn(satz).includes(z)));
+	const luecke = (a.teile?.length ? a.teile : [a]).flatMap((x) => x.versorgung === "bruecke" ? x.glieder ?? [] : x.versorgung === "implantatkronen" ? x.pfeiler.filter((z) => !x.entfernen.includes(z)) : []).filter((z) => !(satz && zaehneIn(satz).includes(z)));
 	if (!luecke.length) return satz;
 	return [satz, `${liste(luecke)} ${luecke.length > 1 ? "fehlen" : "fehlt"}`].filter(Boolean).join(", ");
 }
@@ -26466,7 +26467,11 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 			grund: "versorgung",
 			frage: "Welche Versorgung soll ich planen – zum Beispiel Teleskopprothese, Totalprothese oder Kronen?"
 		};
-		if (!teil.kiefer && teil.versorgung !== "kronen" && teil.versorgung !== "bruecke") return {
+		if (!teil.kiefer && ![
+			"kronen",
+			"bruecke",
+			"implantatkronen"
+		].includes(teil.versorgung)) return {
 			status: "rueckfrage",
 			grund: "kiefer",
 			frage: "Für welchen Kiefer – Oberkiefer oder Unterkiefer?"
@@ -26480,7 +26485,7 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 	};
 	const tp = {};
 	for (const teil of teile) {
-		const r = teil.versorgung === "kronen" ? kronenPlanen(teil, befund, tp) : teil.versorgung === "bruecke" ? brueckePlanen(teil, befund, tp) : kieferPlanen(teil, teil.kiefer, befund, tp, hinweise);
+		const r = teil.versorgung === "kronen" ? kronenPlanen(teil, befund, tp) : teil.versorgung === "bruecke" ? brueckePlanen(teil, befund, tp) : teil.versorgung === "implantatkronen" ? implantatPlanen(teil, befund, tp) : kieferPlanen(teil, teil.kiefer, befund, tp, hinweise);
 		if (r) return r;
 	}
 	return planRechnen(auftrag, teile, befund, tp, hinweise, optionen);
@@ -26511,6 +26516,26 @@ function brueckePlanen(auftrag, befund, tp) {
 	if (auftrag.werkstoff && WERKSTOFFE[auftrag.werkstoff].art === "keramik") {
 		for (const z of anker) tp[z] = "KM";
 		for (const z of glieder) tp[z] = "BM";
+	}
+}
+/** Implantatkronen (TP SK) auf fehlenden Zähnen; ein laut Befund stehender Zahn muss erst als „wird entfernt“ genannt sein */
+function implantatPlanen(auftrag, befund, tp) {
+	const sitze = auftrag.pfeiler;
+	if (!sitze.length) return {
+		status: "rueckfrage",
+		grund: "pfeiler",
+		frage: "Auf welche Zähne sollen die Implantatkronen – zum Beispiel auf 14 und 15?"
+	};
+	const stehen = sitze.filter((z) => z in befund && !fehlt(befund, z));
+	if (stehen.length) return {
+		status: "rueckfrage",
+		grund: "zahn_vorhanden",
+		zaehne: stehen,
+		frage: `Laut Befund ${stehen.length > 1 ? "sind" : "ist"} ${liste(stehen)} noch vorhanden. ${stehen.length > 1 ? "Werden sie" : "Wird er"} vorher entfernt? Dann sagen Sie zum Beispiel: ${stehen[0]} wird entfernt.`
+	};
+	for (const z of sitze) {
+		if (!(z in befund)) befund[z] = "f";
+		tp[z] = "SK";
 	}
 }
 function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
@@ -26621,7 +26646,7 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-06 15:12";
+var ENGINE_STAND = "2026-10-06 15:53";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
@@ -26640,6 +26665,7 @@ function zusammenfassen(plan, e) {
 		kronen: mit(/^(K|KV|KH|KVH|KM|PK|PKM|PKV)$/),
 		ersetzt: mit(/^(E|B|BV|BM|BH|BVH)$/),
 		glieder: mit(/^(B|BV|BM|BH|BVH)$/),
+		implantatkronen: mit(/^SK/),
 		befunde: [...new Set(e.befunde.map((b) => b.nr))],
 		festzuschuss: e.summen.festzuschuss,
 		gesamt: e.summen.gesamt,
