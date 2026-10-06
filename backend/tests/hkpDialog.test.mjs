@@ -2,7 +2,7 @@
 // Start: node backend/tests/hkpDialog.test.mjs
 import assert from "node:assert/strict";
 const { vorschauPasst, vorschauFinden, doppelungHinweis, vetterAntwort } = await import("../src/routes/hkp.js");
-const { vorleseSatz } = await import("../src/hkp/vorlesen.js");
+const { vorleseSatz, befundSatz } = await import("../src/hkp/vorlesen.js");
 const { versorgungSatz, nurSummenFrage, summenAntwort } = await import("../src/hkp/sprech.js");
 
 let ok = 0;
@@ -63,6 +63,11 @@ t("Bruecke wird als Bruecke vorgelesen", () => {
 });
 t("Implantatkronen werden als Implantatkronen vorgelesen (06.10. Greisinger)", () => {
   assert.equal(versorgungSatz({ implantatkronen: ["15", "14"], kronen: [], ersetzt: [] }), "Implantatkronen auf 14 und 15");
+});
+
+t("Befund: zwei Zaehne im selben Quadranten aufsteigend", () => {
+  assert.match(befundSatz({ 14: "f", 15: "f" }, ["OK"]), /es fehlen 14 und 15;/);
+  assert.match(befundSatz({ 11: "f", 21: "f" }, ["OK"]), /es fehlen 11 und 21;/);
 });
 
 t("Namensvetter: genaue Schreibweise in der Antwort waehlt, der Auftragsname nicht", () => {

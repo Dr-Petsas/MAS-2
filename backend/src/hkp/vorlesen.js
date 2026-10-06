@@ -39,7 +39,7 @@ export function zahnBereiche(zaehne, kiefer) {
   const teile = [];
   for (const l of laeufe) {
     const zs = l.map((i) => ordnung[i]);
-    if (zs.length < 3) { teile.push(...zs); continue; }
+    if (zs.length < 3) { teile.push(...(zs[0][0] === zs[zs.length - 1][0] ? [...zs].sort() : zs)); continue; }
     const a = zs[0], b = zs[zs.length - 1];
     teile.push(a[0] === b[0] ? `${Math.min(a, b)} bis ${Math.max(a, b)}` : `${a} bis ${b}`);
   }
