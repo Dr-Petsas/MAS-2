@@ -199,11 +199,14 @@ export async function clearPendingRecording(clientId) {
 // pendingLisaCall: Anruf vorgemerkt, noch NICHT gewählt. Super-GAU 14.08.2026:
 // Lisa wählt erst nach ausdrücklichem "Ja" und NUR die Nummer aus dem Datensatz.
 export async function setPendingLisaCall(clientId, pending) {
+  // merge:true mischt die Map feldweise: dryRun immer setzen, sonst erbt eine
+  // echte Vorschau das dryRun einer Testlauf-Vorschau.
+  const value = pending ? { ...pending, dryRun: pending.dryRun === true } : null;
   await voiceStateRef(clientId).set(
-    { updatedAt: FieldValue.serverTimestamp(), pendingLisaCall: pending || null },
+    { updatedAt: FieldValue.serverTimestamp(), pendingLisaCall: value },
     { merge: true }
   );
-  await mirrorToSession(clientId, { pendingLisaCall: pending || null });
+  await mirrorToSession(clientId, { pendingLisaCall: value });
   return { ok: true };
 }
 

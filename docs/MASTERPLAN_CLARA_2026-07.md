@@ -2441,10 +2441,17 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   (6) Jeder Live-Fehler wird ein Testfall (naechtliche Schleife aus dem
   Turn-Protokoll).
   (7) Kleinkram: Persona-Ausrutscher "Ich bin Lisa", Latenz, Rueckgaengig.
-- 06.10.2026: `delegate_call` (L3b-Regel 29.07.) haelt "Sag Dr. Petsas, er
-  muss morgen nicht in die Praxis kommen" fuer eine Einbestellung ohne
-  Botschaft und ruft nicht an - Verneinung/Absage als Inhalt werten
-  (Volltest reg-05, nur ausserhalb SAFE sichtbar).
+- 06.10.2026: ERLEDIGT 06.10.: `delegate_call` (L3b-Regel 29.07.) hielt "Sag
+  Dr. Petsas, er muss morgen nicht in die Praxis kommen" fuer eine
+  Einbestellung ohne Botschaft (Volltest reg-05, nur ausserhalb SAFE
+  sichtbar). Regel nach `clara/lisaBotschaft.js`: Absage/Verschiebung ist
+  eine Botschaft, blosses "kommen Sie in die Praxis" weiter nicht. Dahinter
+  zwei weitere Loecher: (a) auf "Ja, bitte genau so" zur Vorschau rief das
+  Modell kein `confirm=true` - Clara-Folgeaktion "anruf" bestaetigt ein
+  reines Ja fest; (b) Testlaeufe (dryRun) legten einen ECHTEN Anruf-
+  Vormerker an, den ein echtes Ja (auch `dictate` channel=call) 10 min lang
+  gewaehlt haette - Vormerker traegt jetzt `dryRun`, nur ein Testlauf
+  bestaetigt ihn, ein Testlauf ueberschreibt keine frische echte Vorschau.
 - 05.10.2026: HKP per Sprache (PlanR-Register, `routes/hkp.js`, Tools
   `hkp_*`) – Folgen: (1) echter PVS-Befundleser statt Stub
   `befundQuelle.pvsBefund()`; (2) Privat-HKP-App (`ZE\Privat-HKP`) ans

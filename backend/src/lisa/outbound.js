@@ -148,9 +148,11 @@ export function decideDelegationDial({
   return chooseDialPhone({ recordPhone, claimedPhone, allowClaimed });
 }
 
-/** Bestätigung gilt nur, wenn derselbe Auftrag schon einmal vorgelesen wurde. */
-export function canConfirmLisaCall(pending, now = Date.now()) {
+/** Bestätigung gilt nur, wenn derselbe Auftrag schon einmal vorgelesen wurde.
+ *  Eine Vorschau aus einem Testlauf (dryRun) bestätigt nur ein Testlauf. */
+export function canConfirmLisaCall(pending, now = Date.now(), { dryRun = false } = {}) {
   if (!pending || typeof pending !== "object") return false;
+  if (pending.dryRun && !dryRun) return false;
   if (!normalizePhoneE164(pending.phone)) return false;
   if (!String(pending.instruction || "").trim()) return false;
   const at = Number(pending.at) || 0;

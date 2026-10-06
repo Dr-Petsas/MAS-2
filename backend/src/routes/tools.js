@@ -49,6 +49,7 @@ import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandid
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
 import { disambiguationQuestion, nichtGefundenFrage, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isContinuityPhrase, isPureRelativeRef, stripRelativeRef, collapseSamePerson } from "../clara/patientDisambig.js";
+import { botschaftFehlt } from "../clara/lisaBotschaft.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
@@ -4860,6 +4861,7 @@ router.post("/tools/delegate-call", async (req, res) => {
     }
     const op = await getOperator(clientId);
     const confirm = req.body?.confirm === true || req.body?.confirm === "true";
+    const dryRun = !!req.body?.dryRun;
     const instrText = String(req.body?.instruction || req.body?.message || req.body?.text || "").trim();
     const pending = await getPendingLisaCall(clientId).catch(() => null);
 
@@ -4870,11 +4872,11 @@ router.post("/tools/delegate-call", async (req, res) => {
     const confirmName = String(req.body?.contactName || req.body?.recipientName || "").trim();
     const confirmMatchesPending = !confirmName || !pending?.name
       || nameTokensOverlap(confirmName, pending.name);
-    if (confirm && canConfirmLisaCall(pending) && confirmMatchesPending) {
+    if (confirm && canConfirmLisaCall(pending, Date.now(), { dryRun }) && confirmMatchesPending) {
       const dialPhone = pending.phone;
       const dialName = pending.name || "";
       const dialInstr = String(pending.instruction || instrText).trim();
-      if (req.body?.dryRun) {
+      if (dryRun) {
         return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${dialName || dialPhone} angerufen.` });
       }
       const out = await lisaStartCall(clientId, {
@@ -4916,15 +4918,8 @@ router.post("/tools/delegate-call", async (req, res) => {
           : "Ich habe keine Telefonnummer im Datensatz. Sage zuerst den Namen — ich suche den Kontakt.",
       });
     }
-    // L3b (Chef 29.07.2026, Live 23:17): Aus "du sollst morgen frueh Termine
-    // machen" wurde ein naechtlicher Anruf mit leerer Botschaft ("Bitte
-    // kommen Sie morgen frueh in die Praxis" — auf "Wieso?" mauerte Lisa).
-    // Ein delegierter Anruf braucht eine INHALTLICHE Botschaft: Ein blosses
-    // "Komm in die Praxis" ohne jeden Grund wird nicht gewaehlt — Clara
-    // fragt stattdessen nach der Botschaft.
-    const nurEinbestellung = /\b(?:komm\w*|vorbei\s?kommen|erschein\w*|in\s+die\s+praxis|zu\s+uns)\b/i.test(instrText)
-      && !/\b(?:weil|wegen|grund|da\s|termin\w*|kontroll\w*|schmerz\w*|befund\w*|labor\w*|abhol\w*|besprech\w*|ergebnis\w*|unterlagen|rezept\w*|krank\w*|dringend\w*|nachricht|ausricht\w*|mitteil\w*|zahn\w*|behandl\w*|implant\w*|prothes\w*|krone\w*|fuellung\w*|füllung\w*|reinigung\w*|blutung\w*|op\b|operation\w*)\b/i.test(instrText);
-    if (instrText.replace(/\s+/g, " ").length < 15 || nurEinbestellung) {
+    // L3b: delegierter Anruf nur mit inhaltlicher Botschaft (clara/lisaBotschaft.js).
+    if (botschaftFehlt(instrText)) {
       return res.json({
         ok: false,
         needsMessage: true,
@@ -4932,14 +4927,18 @@ router.post("/tools/delegate-call", async (req, res) => {
       });
     }
 
-    await setPendingLisaCall(clientId, {
-      phone: target.phone,
-      name: target.name,
-      instruction: instrText,
-      patientId: target.record?.id || null,
-      at: Date.now(),
-    });
-    if (req.body?.dryRun) {
+    // Ein Testlauf ueberschreibt keine frische echte Vorschau (der Chef wartet evtl. darauf).
+    if (!dryRun || !canConfirmLisaCall(pending)) {
+      await setPendingLisaCall(clientId, {
+        phone: target.phone,
+        name: target.name,
+        instruction: instrText,
+        patientId: target.record?.id || null,
+        at: Date.now(),
+        dryRun,
+      });
+    }
+    if (dryRun) {
       return res.json({
         ...lisaCallConfirmPayload({ name: target.name, phone: target.phone, instruction: instrText }),
         dryRun: true,

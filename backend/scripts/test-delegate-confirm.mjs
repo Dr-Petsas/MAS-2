@@ -71,6 +71,18 @@ test("confirm gilt nur nach frischer Vorschau mit Datensatz-Nummer", () => {
   }), true);
 });
 
+test("Testlauf-Vorschau waehlt nie bei echtem Ja", () => {
+  const vorschau = {
+    phone: "017612345678",
+    instruction: "Sie muessen morgen nicht kommen.",
+    at: Date.now() - 20 * 1000,
+    dryRun: true,
+  };
+  assert.equal(canConfirmLisaCall(vorschau), false);
+  assert.equal(canConfirmLisaCall(vorschau, Date.now(), { dryRun: true }), true);
+  assert.equal(canConfirmLisaCall({ ...vorschau, dryRun: false }), true);
+});
+
 test("El-Otmani trifft Haila El Otmani, nicht einen Fremdkontakt", () => {
   assert.equal(nameTokensOverlap("El-Otmani", "Haila El Otmani"), true);
   assert.equal(nameTokensOverlap("Haila El-Otmani", "Haila El Otmani"), true);
