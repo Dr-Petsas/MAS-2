@@ -23,6 +23,7 @@ import { identifyByDevice, callOperator, consumePendingCallContext } from "../cl
 import { getGreetingContext } from "../clara/greetingContext.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { korrekturenLaden, korrekturMerken } from "../clara/sttKorrekturen.js";
+import { leseNachtlauf, prueflisteLaden, prueflisteVerwerfen, runNachtlauf, testfallUebernehmen } from "../clara/nachtlauf.js";
 import { runClaraHealth, statusPageHtml } from "../clara/health.js";
 import { runMorgenlauf } from "../clara/morgenlauf.js";
 import { recordToolError, recentToolErrors } from "../clara/toolErrors.js";
@@ -352,6 +353,35 @@ router.get("/clara/stt-patient-names", async (req, res) => {
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
+});
+
+// Nachtlauf-Pruefliste (/m/clara-pruefliste.html): Stellen aus den Gespraechen
+// des Vortags; ein Klick macht daraus einen dauerhaften Testfall.
+// WICHTIG: Routen stehen VOR den /clara/:clientId-Catch-alls.
+router.get("/clara/pruefliste", (req, res) => {
+  res.json({ ok: true, nacht: leseNachtlauf({ maxAlterMs: 8 * 24 * 3600_000 }), tage: prueflisteLaden() });
+});
+
+router.post("/clara/pruefliste/testfall", (req, res) => {
+  const out = testfallUebernehmen({ tag: req.body?.tag, id: req.body?.id, dialog: req.body?.dialog });
+  console.log(`[pruefliste] testfall ${String(req.body?.id || "")}: ${out.ok ? "uebernommen" : out.error}`);
+  res.status(out.ok ? 200 : 400).json(out);
+});
+
+router.post("/clara/pruefliste/verwerfen", (req, res) => {
+  const out = prueflisteVerwerfen({ tag: req.body?.tag, id: req.body?.id });
+  res.status(out.ok ? 200 : 400).json(out);
+});
+
+// Nachtlauf von Hand (ohneVolltest=1: nur die Pruefliste, Sekunden statt ~15 min).
+router.post("/clara/nachtlauf/start", async (req, res) => {
+  const ohneVolltest = String(req.query?.ohneVolltest || req.body?.ohneVolltest || "") === "1";
+  const tag = String(req.query?.tag || req.body?.tag || "");
+  if (!ohneVolltest) {
+    runNachtlauf({ tag }).catch(() => {});
+    return res.json({ ok: true, gestartet: true, hinweis: "Volltest laeuft im Hintergrund (~15 min)." });
+  }
+  res.json(await runNachtlauf({ ohneVolltest, tag }));
 });
 
 // Voice-Worker: gelernter Namens-Verhoerer ("Ich meinte Petsas").

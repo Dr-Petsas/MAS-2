@@ -2437,10 +2437,16 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   Unterscheidungsfrage; Befund 06.10.: `find_case` verliert Firmen-Vorgaenge
   an phonetische Patiententreffer ("Tibber" -> Deborah Boden), Doppelanlagen
   ("Yvonne Thrandorf" zweimal, "Nicole Trandorf") werden nicht zusammengefasst.
+  ERLEDIGT 06.10. abends (4): gelernte Verhoerer je Praxis ("Ich meinte
+  Petsas"), Merkmal-Frage statt Namensliste ab vier Treffern; Klangsuche
+  ueber die ganze Kartei gab es schon (18.08.). Firmen-Vorgaenge/Doppelanlagen
+  bleiben offen.
   (5) Kleineres Tool-Angebot in Folgezuegen.
   (6) Jeder Live-Fehler wird ein Testfall (naechtliche Schleife aus dem
-  Turn-Protokoll).
+  Turn-Protokoll). ERLEDIGT 06.10.: Nachtlauf 02:30 (Pruefliste + Voll-Gate),
+  Ein-Klick-Testfall in /m/clara-pruefliste.html, Ergebnis im Morgen-Push.
   (7) Kleinkram: Persona-Ausrutscher "Ich bin Lisa", Latenz, Rueckgaengig.
+  ERLEDIGT 06.10.: Rueckgaengig, Schnellweg fuer Tagesfragen (Latenz).
 - 06.10.2026: ERLEDIGT 06.10.: `delegate_call` (L3b-Regel 29.07.) hielt "Sag
   Dr. Petsas, er muss morgen nicht in die Praxis kommen" fuer eine
   Einbestellung ohne Botschaft (Volltest reg-05, nur ausserhalb SAFE
@@ -2524,6 +2530,7 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   menschlicher Gesprächszug, existiert bei Clara gar nicht. Strategisch
   interessant: je verlaesslicher das Rueckgaengig, desto WENIGER
   Bestaetigungsfragen braucht man. Aus W-DIALOG ausgeklammert.
+  ERLEDIGT 06.10.2026 (siehe Aenderungslog).
 - 27.07.2026: **Freigewordenen Slot proaktiv anbieten** — nach einer Absage
   "der Platz um 14 Uhr ist frei, Frau Yildiz wartet auf so einen - soll ich
   fragen?". Daten liegen vor (Recall-Kandidaten, Luecken-Briefing). Erst nach
@@ -2555,6 +2562,24 @@ das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
   ElevenLabs statt Cache. Rueckbau: fester Satz / Cache ohne Uhrzeit.
 
 ## Aenderungslog
+
+- 06.10.2026 abends (Chef: "nix warteliste", Liste von mittags): **HKP mit
+  einer Bestaetigung, Schnellweg, Rueckgaengig, Namen, Nachtlauf.**
+  HKP: nur noch eine Bestaetigung je Plan, auch bei zwei HKPs parallel;
+  Namensvetter-Wahl ("erstens") geht nicht mehr verloren (Clara 8b4f7a1,
+  3fa2e91; MAS 9594783, bc359f5). Schnellweg: 17 von 27 Tagesfragen liefen
+  vorher ueber das Modell, jetzt 43 von 45 ohne Umweg (Clara e49b698).
+  Rueckgaengig: "Nee, doch nicht" nimmt die letzte Schreib-Aktion zurueck
+  (Termin absagen, HKP-Entwurf verwerfen, Vorgang wieder oeffnen, Aufgabe
+  streichen; SMS/Mail/Lisa/Recall ehrlich "schon raus") (Clara fd673a7, MAS
+  6e30a2a). Namen: "Ich meinte Petsas" wird zum dauerhaften Verhoerer-Paar je
+  Praxis (gegen die Kartei geprueft), ab vier Treffern Merkmal-Frage statt
+  Namensliste (Clara ab5019d, MAS 45d1697). Nachtlauf: 02:30 Pruefliste aus
+  dem Gespraechsprotokoll + Voll-Gate (SAFE), Ein-Klick-Testfall in
+  /m/clara-pruefliste.html (-> testsuite/dialogs_aus_gespraechen.json),
+  Ergebnis im Morgen-Push; roter Nachttest macht den Morgenlauf rot.
+  Notaus: CLARA_RUECKGAENGIG/MAS_RUECKGAENGIG, CLARA_NAMEN_LERNEN,
+  MAS_STT_KORREKTUR, MAS_MERKMAL_FRAGE, CLARA_NACHTLAUF (=0).
 
 - 06.10.2026 (Chef: "die hkp duerfen nur auf existierende Patienten
   geschrieben werden ... totale Sicherheit bei der Anlage"): **HKP-Sicherheit.**

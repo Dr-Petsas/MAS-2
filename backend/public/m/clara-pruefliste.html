@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Clara Prüfliste</title>
+<link rel="apple-touch-icon" href="/img/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1020">
+<style>
+  :root{
+    --bg:#0b1020; --card:#151c33; --line:#26304f; --txt:#eaf0ff; --mut:#93a0c4;
+    --ok:#34d399; --warn:#f59e0b; --bad:#ef4444; --blue:#4d9bff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{
+    margin:0; background:var(--bg); color:var(--txt);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:max(18px,env(safe-area-inset-top)) 16px max(28px,env(safe-area-inset-bottom));
+    max-width:720px; margin-inline:auto;
+  }
+  h1{font-size:20px; margin:0 0 4px}
+  h2{font-size:15px; color:var(--mut); margin:22px 0 8px; font-weight:600}
+  .sub{color:var(--mut); font-size:13px; margin:0 0 14px}
+  .nacht{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px}
+  .nacht b.ok{color:var(--ok)} .nacht b.rot{color:var(--bad)}
+  .item{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin:10px 0}
+  .item.fertig{opacity:.55}
+  .kopf{display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:13px; color:var(--mut)}
+  .tag{border:1px solid var(--line); border-radius:999px; padding:1px 8px; font-size:12px; color:var(--txt)}
+  .tag.korrektur{border-color:var(--warn)} .tag.schleife,.tag.stoerung{border-color:var(--bad)}
+  .zug{margin:8px 0 0; padding-left:10px; border-left:3px solid var(--line); font-size:14px}
+  .zug.stelle{border-left-color:var(--warn)}
+  .zug .n{color:var(--txt)} .zug .c{color:var(--mut)}
+  .zug .t{font-size:12px; color:var(--blue)}
+  details{margin-top:8px} summary{cursor:pointer; color:var(--mut); font-size:13px}
+  textarea{width:100%; min-height:180px; background:#0d1428; color:var(--txt); border:1px solid var(--line);
+    border-radius:10px; font:12px/1.4 ui-monospace,Consolas,monospace; padding:8px; margin-top:6px}
+  .knoepfe{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap}
+  button{border:0; border-radius:10px; padding:9px 14px; font-weight:600; cursor:pointer; font-size:14px}
+  button.ja{background:var(--ok); color:#06281c} button.nein{background:#2a3352; color:var(--txt)}
+  button:disabled{opacity:.5; cursor:default}
+  .hinweis{font-size:12px; color:var(--warn); margin-top:6px}
+  .meldung{font-size:13px; margin-top:6px}
+  .leer{color:var(--mut); font-size:14px}
+</style>
+</head>
+<body>
+<h1>Prüfliste</h1>
+<p class="sub">Stellen aus Claras Gesprächen, an denen etwas schief lief. „Als Testfall übernehmen“ macht daraus einen dauerhaften Fall im Voll-Gate.</p>
+<div id="nacht" class="nacht">Lade …</div>
+<div id="liste"></div>
+
+<script>
+const ART = {
+  korrektur: "Chef korrigiert", waechter: "Wächter griff ein", schleife: "im Kreis gedreht",
+  verhaspelt: "verhaspelt", nicht_verstanden: "nicht verstanden", waechter_satz: "Wächter-Satz",
+  stoerung: "Werkzeug gescheitert",
+};
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const uhr = (ts) => String(ts || "").slice(11, 16);
+const tagText = (t) => `${t.slice(6, 8)}.${t.slice(4, 6)}.${t.slice(0, 4)}`;
+
+function nachtHtml(n) {
+  if (!n) return "Noch kein Nachtlauf.";
+  const v = n.volltest;
+  const test = !v ? "Volltest nicht gelaufen"
+    : `<b class="${v.ok ? "ok" : "rot"}">Volltest ${v.ok ? "grün" : "ROT"}</b>`
+      + (v.gesamt != null ? ` – ${v.bestanden} von ${v.gesamt} Fällen` : "")
+      + (v.register ? `, Kernfälle ${esc(v.register)}` : "")
+      + (v.rot?.length ? `<br><span class="c">rot: ${esc(v.rot.join(", "))}</span>` : "")
+      + (v.schritte_rot?.length ? `<br><span class="c">Schritte: ${esc(v.schritte_rot.join(", "))}</span>` : "");
+  return `Nachtlauf ${esc(String(n.beendet || "").replace("T", " ").slice(0, 16))}: ${test}`
+    + `<br><span class="c">Prüfliste ${esc(tagText(n.tag || "00000000"))}: ${n.pruefliste?.anzahl ?? 0} Stellen, ${n.pruefliste?.offen ?? 0} offen</span>`;
+}
+
+function itemHtml(tag, e) {
+  const fertig = e.status !== "offen";
+  const verlauf = (e.verlauf || []).map((z) => `
+    <div class="zug${z.stelle ? " stelle" : ""}">
+      <div class="n">🗣 ${esc(z.nutzer)}</div>
+      ${z.tools?.length ? `<div class="t">⚙ ${esc(z.tools.join(", "))}${z.waechter?.length ? " · 🛡 " + esc(z.waechter.join(", ")) : ""}</div>`
+        : (z.waechter?.length ? `<div class="t">🛡 ${esc(z.waechter.join(", "))}</div>` : "")}
+      <div class="c">Clara: ${esc(z.gesprochen)}</div>
+    </div>`).join("");
+  return `
+  <div class="item${fertig ? " fertig" : ""}" data-tag="${esc(tag)}" data-id="${esc(e.id)}">
+    <div class="kopf">${esc(uhr(e.ts))} ${(e.arten || []).map((a) => `<span class="tag ${esc(a)}">${esc(ART[a] || a)}</span>`).join("")}
+      ${fertig ? `<span class="tag">${e.status === "uebernommen" ? "✓ Testfall" : "verworfen"}</span>` : ""}</div>
+    ${verlauf}
+    ${fertig ? "" : `
+    <details><summary>Testfall-Vorschlag ansehen / anpassen</summary>
+      <textarea spellcheck="false">${esc(JSON.stringify(e.vorschlag, null, 1))}</textarea>
+    </details>
+    ${e.vorschlag_pruefbar ? "" : `<div class="hinweis">Noch ohne Erwartung: im Vorschlag ein Ziel-Werkzeug (dialog_expect.final_executed) oder einen verbotenen Satz (say_not_contains) eintragen.</div>`}
+    <div class="knoepfe">
+      <button class="ja">Als Testfall übernehmen</button>
+      <button class="nein">Verwerfen</button>
+    </div>
+    <div class="meldung"></div>`}
+  </div>`;
+}
+
+async function laden() {
+  const r = await fetch("/clara/pruefliste");
+  const d = await r.json();
+  document.getElementById("nacht").innerHTML = nachtHtml(d.nacht);
+  const tage = d.tage || [];
+  document.getElementById("liste").innerHTML = tage.length ? tage.map((t) => `
+    <h2>${esc(tagText(t.tag))} – ${t.eintraege.length} Stellen</h2>
+    ${t.eintraege.length ? t.eintraege.map((e) => itemHtml(t.tag, e)).join("") : `<p class="leer">Keine Auffälligkeiten.</p>`}`).join("")
+    : `<p class="leer">Noch keine Prüfliste.</p>`;
+}
+
+document.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("button");
+  const item = btn && btn.closest(".item");
+  if (!item) return;
+  const meldung = item.querySelector(".meldung");
+  const body = { tag: item.dataset.tag, id: item.dataset.id };
+  let url = "/clara/pruefliste/verwerfen";
+  if (btn.classList.contains("ja")) {
+    url = "/clara/pruefliste/testfall";
+    try { body.dialog = JSON.parse(item.querySelector("textarea").value); }
+    catch { meldung.textContent = "Der Vorschlag ist kein gültiges JSON."; return; }
+  }
+  item.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (d.ok) return laden();
+  meldung.textContent = d.error || "Das hat nicht geklappt.";
+  item.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+});
+
+laden().catch(() => { document.getElementById("nacht").textContent = "Prüfliste nicht erreichbar."; });
+</script>
+</body>
+</html>

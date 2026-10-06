@@ -7,6 +7,7 @@ import express from "express";
 import { todayBerlin } from "./clara/daySchedule.js";
 import { dokuAbendlauf } from "./clara/dokuWaechter.js";
 import { runMorgenlauf } from "./clara/morgenlauf.js";
+import { runNachtlauf } from "./clara/nachtlauf.js";
 import { runProaktivSweep } from "./clara/interruptPolicy.js";
 import { sweepRecallOutcomes, dailyInitiativeScan } from "./clara/recallCoach.js";
 import { sweepAbsenceRebookings } from "./clara/absencePlanner.js";
@@ -582,6 +583,26 @@ server.listen(PORT, () => {
       });
     }, 5 * 60_000);
     log.info("morgenlauf scheduler enabled", { zeit: `${String(zH).padStart(2, "0")}:${String(zM).padStart(2, "0")}` });
+  }
+
+  // Nachtlauf (06.10.2026): Pruefliste aus dem Gespraechsprotokoll des Vortags
+  // + Voll-Gate (SAFE). Einmal pro Nacht, Fenster bis 05:00, damit der
+  // Morgenlauf um 06:30 das Ergebnis melden kann. Not-Aus: CLARA_NACHTLAUF=0.
+  if (process.env.CLARA_NACHTLAUF !== "0") {
+    const zeit = /^(\d{1,2}):(\d{2})$/.exec((process.env.CLARA_NACHTLAUF_ZEIT || "02:30").trim());
+    const nH = zeit ? Number(zeit[1]) : 2;
+    const nM = zeit ? Number(zeit[2]) : 30;
+    let letzterNachtlauf = "";
+    setInterval(() => {
+      const berlinHM = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+      const [hh, mm] = berlinHM.split(":").map(Number);
+      const today = todayBerlin();
+      if (!((hh > nH || (hh === nH && mm >= nM)) && hh < 5) || letzterNachtlauf === today) return;
+      letzterNachtlauf = today;
+      runNachtlauf().then((out) => log.info("nachtlauf.scheduled_run", { ok: out.ok, code: out.code ?? null }))
+        .catch((e) => log.warn?.("nachtlauf.failed", { error: String(e?.message || e) }));
+    }, 5 * 60_000);
+    log.info("nachtlauf scheduler enabled", { zeit: `${String(nH).padStart(2, "0")}:${String(nM).padStart(2, "0")}` });
   }
 
   // QM (Julia): wiederkehrende Erinnerungen zu fälligen Jobs materialisieren und

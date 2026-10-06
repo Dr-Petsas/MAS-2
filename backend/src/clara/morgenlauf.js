@@ -7,13 +7,16 @@
 // Anruf, keine SMS - Tools werden simuliert). Das Ergebnis kommt als EIN
 // Push aufs Handy: "Morgenlauf: GRUEN" oder "ROT: <was>", Link auf die
 // Status-Seite. So faellt ein kaputter Stand VOR dem ersten Patienten auf,
-// nicht mittendrin.
+// nicht mittendrin. Seit 06.10.2026 steht das Ergebnis des Nachtlaufs mit
+// darin (Voll-Gate + offene Pruefliste, clara/nachtlauf.js); ein roter
+// Nachttest macht den Morgenlauf rot.
 //
 // Not-Aus: CLARA_MORGENLAUF=0. Zeit: CLARA_MORGENLAUF_ZEIT (Default "06:30").
 // ============================================================================
 import { spawn } from "node:child_process";
 import { runClaraHealth } from "./health.js";
 import { notifyAllDevices } from "./devices.js";
+import { leseNachtlauf, nachtlaufZeile } from "./nachtlauf.js";
 import { log } from "../log.js";
 
 const CLARA_DIR = (process.env.CLARA_VOICE_DIR || "F:/Clara-Voice").trim();
@@ -86,13 +89,18 @@ export async function runMorgenlauf(clientId, { publicBaseUrl = "", push = true 
       ? `Register ${register.gruen}/${register.gesamt}`
       : `Register nicht messbar (${register.error || "Abbruch"})`;
 
-    const ok = pingOk && register.ok;
+    const nacht = leseNachtlauf();
+    const nachtRot = nacht?.volltest ? !nacht.volltest.ok : false;
+    const ok = pingOk && register.ok && !nachtRot;
     const title = ok ? "Morgenlauf: GRUEN" : "Morgenlauf: ROT";
-    const body = [pingTxt, regTxt,
+    const body = [pingTxt, regTxt, nachtlaufZeile(nacht),
       register.fails?.length ? `rot: ${register.fails.join(", ")}` : ""]
       .filter(Boolean).join(" | ").slice(0, 178);
     const base = (publicBaseUrl || process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
-    const url = base ? `${base}/clara/${encodeURIComponent(clientId)}/status` : "";
+    const zurListe = ok && Number(nacht?.pruefliste?.offen || 0) > 0;
+    const url = !base ? ""
+      : zurListe ? `${base}/m/clara-pruefliste.html`
+        : `${base}/clara/${encodeURIComponent(clientId)}/status`;
 
     let pushed = { ok: false, reason: "push_deaktiviert" };
     if (push) {
@@ -102,7 +110,7 @@ export async function runMorgenlauf(clientId, { publicBaseUrl = "", push = true 
         pushed = { ok: false, reason: String(e?.message || e) };
       }
     }
-    const result = { ok, startedAt, ping: { ok: pingOk, rot }, register, pushed, title, body };
+    const result = { ok, startedAt, ping: { ok: pingOk, rot }, register, nacht, pushed, title, body };
     log.info("morgenlauf.done", { ok, ping: pingOk, register: regTxt, pushed: pushed.ok });
     return result;
   } finally {
