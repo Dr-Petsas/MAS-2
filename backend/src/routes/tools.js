@@ -49,7 +49,7 @@ import { spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
-import { disambiguationQuestion, nichtGefundenFrage, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isContinuityPhrase, isPureRelativeRef, stripRelativeRef, collapseSamePerson } from "../clara/patientDisambig.js";
+import { disambiguationQuestion, nichtGefundenFrage, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isContinuityPhrase, isPureRelativeRef, stripRelativeRef, collapseSamePerson, merkmalEingrenzen } from "../clara/patientDisambig.js";
 import { botschaftFehlt } from "../clara/lisaBotschaft.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
@@ -4465,6 +4465,10 @@ router.post("/tools/find-contact", async (req, res) => {
         directive: "Auf 'ja' + Auftrag JETZT send_sms / compose_email / delegate_call (phone leer lassen, Kontakt ist gemerkt) — NICHT erneut find_contact. Auf 'nein' weiter suchen. Bei Anruf NUR delegate_call, keine Kontaktkarte.",
       });
     }
+    if (relFind.many) {
+      await setPatientCandidates(clientId, relFind.many, null);
+      return res.json({ ok: true, message: `Das trifft noch auf mehrere zu. ${disambiguationQuestion(relFind.many)}` });
+    }
     if (relFind.pure) {
       return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
     }
@@ -5185,6 +5189,9 @@ async function pickRelativePatient(clientId, rawName, hint) {
   const remembered = await getPatientCandidates(clientId);
   const byOrd = remembered.length > 1 ? ordinalPick(spoken.toLowerCase(), remembered) : null;
   if (byOrd) return { hit: byOrd, leftover: "", pure: true, how: "ordinal" };
+  const byMerkmal = merkmalEingrenzen(spoken, remembered);
+  if (byMerkmal.length === 1) return { hit: byMerkmal[0], leftover: "", pure: true, how: "merkmal" };
+  if (byMerkmal.length > 1) return { hit: null, many: byMerkmal, leftover: "", pure: true, how: "merkmal" };
 
   const leftover = stripRelativeRef(spoken);
   if (isPureRelativeRef(spoken)) {
@@ -5238,6 +5245,10 @@ router.post("/tools/search-patient", async (req, res) => {
         ok: true,
         message: `${anschluss} Fuehre den urspruenglichen Auftrag JETZT direkt aus: book_for_patient fuers Buchen, delegate_call fuer einen Anruf, send_sms fuer eine SMS, hkp_create_draft fuer einen Heil- und Kostenplan — NICHT search_patient oder find_contact aufrufen, der Patient ist schon gefunden.`,
       });
+    }
+    if (relSearch.many) {
+      await setPatientCandidates(clientId, relSearch.many, null);
+      return res.json({ ok: true, message: `Das trifft noch auf mehrere zu. ${disambiguationQuestion(relSearch.many)}` });
     }
     if (relSearch.pure) {
       return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
@@ -5409,6 +5420,9 @@ router.post("/tools/contact-card", async (req, res) => {
     if (rel.hit) {
       patients = [rel.hit];
       pickedByOrdinal = true;
+    } else if (rel.many) {
+      await setPatientCandidates(clientId, rel.many, null);
+      return res.json({ ok: true, message: `Das trifft noch auf mehrere zu. ${disambiguationQuestion(rel.many)}` });
     } else if (rel.pure) {
       return res.json({ ok: false, message: "Welchen Eintrag meinen Sie? Bitte den Namen nennen." });
     }

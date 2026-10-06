@@ -22,6 +22,7 @@ import { identifyByPin, listOperators, saveOperators, OPERATOR_ROLES, roleLabel 
 import { identifyByDevice, callOperator, consumePendingCallContext } from "../clara/devices.js";
 import { getGreetingContext } from "../clara/greetingContext.js";
 import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
+import { korrekturenLaden, korrekturMerken } from "../clara/sttKorrekturen.js";
 import { runClaraHealth, statusPageHtml } from "../clara/health.js";
 import { runMorgenlauf } from "../clara/morgenlauf.js";
 import { recordToolError, recentToolErrors } from "../clara/toolErrors.js";
@@ -320,6 +321,10 @@ router.get("/clara/stt-patient-names", async (req, res) => {
     const spec = resolveSpec(specialty);
     let knowledge = { verhoerungen: [], begriffe: [] };
     try { knowledge = await loadOverlay(spec); } catch { /* Overlay optional */ }
+    let korrekturen = [];
+    try {
+      korrekturen = (await korrekturenLaden(clientId)).map((p) => ({ falsch: p.falsch, richtig: p.richtig }));
+    } catch { /* optional */ }
     res.json({
       ok: true,
       clientId,
@@ -341,8 +346,25 @@ router.get("/clara/stt-patient-names", async (req, res) => {
       // set_profile — der Name faehrt additiv mit (WP-NAME-3 nutzt ihn fuer
       // Platzhalter/Wake-Woerter; alte Worker ignorieren das Feld einfach).
       assistantName: await getAssistantName(clientId),
+      korrekturen,
       names: out.names,
     });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Voice-Worker: gelernter Namens-Verhoerer ("Ich meinte Petsas").
+// WICHTIG: Route steht VOR den /clara/:clientId-Catch-alls.
+router.post("/clara/stt-korrektur", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await korrekturMerken(clientId, { falsch: req.body?.falsch, richtig: req.body?.richtig });
+    console.log(`[stt-korrektur] ${clientId}: ${String(req.body?.falsch || "")} -> ${String(req.body?.richtig || "")} ${out.ok ? "gemerkt" : `abgelehnt (${out.grund})`}`);
+    res.json(out);
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

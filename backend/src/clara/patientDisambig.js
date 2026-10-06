@@ -85,6 +85,7 @@ export function distinctPatientLabels(patients = []) {
  * unterscheidbaren Labels und dem Hinweis auf die Ordinal-Antwort.
  */
 export function disambiguationQuestion(patients = [], { max = 5 } = {}) {
+  if (patients.length > 3 && merkmalFrageAn()) return merkmalFrage(patients);
   const pool = patients.slice(0, max);
   const labels = distinctPatientLabels(pool);
   const numbered = labels.map((l, i) => `${ORDINAL_WORDS[i] ? ORDINAL_WORDS[i].replace("der ", "") : i + 1}: ${l}`);
@@ -97,6 +98,75 @@ export function disambiguationQuestion(patients = [], { max = 5 } = {}) {
     ? "Welchen meinen Sie — den ersten oder den zweiten?"
     : "Welchen meinen Sie?";
   return `Es gibt ${pool.length === 2 ? "zwei" : "mehrere"} Treffer — ${numbered.join("; ")}.${more} ${ask}`;
+}
+
+// Ab vier Treffern (06.10.2026, "Michael Böhl; Michael Braun; Michael Bulitz.
+// Und 17 weitere."): fuenf Namen vorlesen hilft niemandem. Clara nennt die Zahl
+// und fragt nach dem Merkmal, das die Treffer wirklich trennt; die Antwort
+// (Vorname, Nachname, Jahrgang) grenzt merkmalEingrenzen gegen die gemerkten
+// Kandidaten ein.
+// Notaus: MAS_MERKMAL_FRAGE=0 => wieder die nummerierte Liste.
+export function merkmalFrageAn() {
+  return !/^(0|false|no|off)$/i.test(String(process.env.MAS_MERKMAL_FRAGE ?? "1").trim());
+}
+
+const ZAHL_WORT = ["", "einen", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf"];
+
+export function merkmalFrage(patients = []) {
+  const n = patients.length;
+  const zahl = ZAHL_WORT[n] || String(n);
+  const nach = new Set(patients.map((p) => s(p.lastName).toLowerCase()).filter(Boolean));
+  const vor = new Set(patients.map((p) => s(p.firstName).toLowerCase()).filter(Boolean));
+  const jahre = new Set(patients.map((p) => birthYear(p.birthDate)).filter(Boolean));
+  const jahrgang = jahre.size >= Math.min(n, 2) ? " oder den Jahrgang" : "";
+  if (nach.size === 1) {
+    const ln = s(patients[0].lastName);
+    return vor.size > 1
+      ? `Zu ${ln} finde ich ${zahl} Patienten. Nennen Sie mir bitte den Vornamen${jahrgang}.`
+      : `Zu ${ln} finde ich ${zahl} Patienten mit gleichem Vornamen. Welcher Jahrgang ist es?`;
+  }
+  if (vor.size === 1) {
+    const fn = s(patients[0].firstName);
+    return `Ich finde ${zahl} Patienten mit dem Vornamen ${fn}. Wie lautet der Nachname — gern auch buchstabiert?`;
+  }
+  return `Dazu passen ${zahl} Patienten. Nennen Sie mir bitte Vor- und Nachnamen${jahrgang}.`;
+}
+
+const MERKMAL_FUELL = new Set([
+  "jahrgang", "jahrgangs", "geboren", "jg", "der", "die", "das", "den", "dem", "mit", "vorname", "vornamen",
+  "nachname", "nachnamen", "heisst", "heißt", "ist", "es", "er", "sie", "herr", "herrn", "frau", "bitte",
+  "ja", "genau", "von", "vom", "aus", "und", "also", "äh", "ähm", "der", "name", "namen", "patient", "patientin",
+]);
+
+function jahrPasst(token, p) {
+  const y = birthYear(p.birthDate);
+  if (!y) return false;
+  if (/^\d{4}$/.test(token)) return token === y;
+  if (/^\d{2}(?:er)?$/.test(token)) return y.slice(2) === token.slice(0, 2);
+  return false;
+}
+
+/**
+ * Antwort auf die Merkmal-Frage gegen die gemerkten Kandidaten: Vorname,
+ * Nachname (auch knapp verhoert) und Jahrgang ("Jahrgang 65", "1965", "65er").
+ * Ein Wort, das zu keinem Kandidaten passt, meint eine andere Person — dann
+ * leer, und die normale Namenssuche laeuft.
+ */
+export function merkmalEingrenzen(spoken, candidates = []) {
+  if (!merkmalFrageAn() || candidates.length < 2) return [];
+  const toks = s(spoken).toLowerCase().replace(/[.,;:!?()]/g, " ").split(/[\s-]+/)
+    .filter((t) => t && !MERKMAL_FUELL.has(t) && !NAME_PARTICLES.has(t));
+  if (!toks.length || toks.length > 4) return [];
+  let pool = candidates;
+  for (const t of toks) {
+    const istJahr = /^\d{2}(?:er)?$|^\d{4}$/.test(t);
+    const passt = pool.filter((p) => (istJahr
+      ? jahrPasst(t, p)
+      : t.length >= 3 && nameTokens(fullName(p)).some((n) => n === t || tokenClose(n, t))));
+    if (!passt.length) return [];
+    pool = passt;
+  }
+  return pool.length < candidates.length ? pool : [];
 }
 
 /**

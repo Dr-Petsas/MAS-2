@@ -22,7 +22,7 @@ import { DEFAULT_CLIENT_ID, resolveClientId } from "./_shared.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
 import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js";
 import { soundsSame } from "../clara/phonetics.js";
-import { disambiguationQuestion, ordinalPick } from "../clara/patientDisambig.js";
+import { disambiguationQuestion, merkmalEingrenzen, ordinalPick } from "../clara/patientDisambig.js";
 import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
 import { jahrgangWahl, vetternFrage, vorleseSatz } from "../hkp/vorlesen.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
@@ -519,6 +519,13 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
     if (gemerkt.length === 1 && process.env.MAS_HKP_VORNAME_ANKER !== "0" && nurVornamePasst(rawName, gemerkt[0])) {
       log.info?.("[hkp] nur Vorname genannt -> gemerkter Patient bleibt");
       return { patient: patientVon(gemerkt[0]), sel: gemerkt[0] };
+    }
+  }
+  if (rawName || hint) {
+    const eng = merkmalEingrenzen(`${hint} ${rawName}`, await getPatientCandidates(clientId));
+    if (eng.length === 1) {
+      await setPatientCandidates(clientId, eng, eng[0]);
+      return { patient: patientVon(eng[0]), sel: eng[0] };
     }
   }
   const r = await resolveSpokenPatientForRead(clientId, { rawName, hint, askWho });
