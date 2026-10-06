@@ -2425,6 +2425,26 @@ Arbeitspakete (je eines FERTIG vor dem naechsten, je ein Gate + Neustart):
 Regel: Neue Idee/Wunsch -> Eintrag mit Datum + 1 Satz. Bewertung erst, wenn
 das laufende Arbeitspaket fertig ist. Kein Eintrag = wird nicht gebaut.
 
+- 06.10.2026: "Perfekte Assistenz" (Chef; Auswertung Testlauf 05.10. +
+  Anrufe Jul-Okt) - sieben Punkte, (1) und (2) per Chef sofort begonnen:
+  (1) GESTARTET 06.10.: offene Folgeaktion merken (Freigabe, Vorgang,
+  Slot-Wahl, Diktat-Ende) - `services/folgeaktion.py` in Clara-Voice.
+  (2) GESTARTET 06.10.: jede Erledigt-Meldung gegen ihr Werkzeug pruefen
+  (Vollzugs-Guard, `response_guard.vollzug_claim`).
+  (3) Relative Daten ("naechsten Dienstag", "in zwei Wochen") rechnet der
+  Code, nie das Modell.
+  (4) Namenserkennung: Korrekturen merken, phonetische Suche mit
+  Unterscheidungsfrage; Befund 06.10.: `find_case` verliert Firmen-Vorgaenge
+  an phonetische Patiententreffer ("Tibber" -> Deborah Boden), Doppelanlagen
+  ("Yvonne Thrandorf" zweimal, "Nicole Trandorf") werden nicht zusammengefasst.
+  (5) Kleineres Tool-Angebot in Folgezuegen.
+  (6) Jeder Live-Fehler wird ein Testfall (naechtliche Schleife aus dem
+  Turn-Protokoll).
+  (7) Kleinkram: Persona-Ausrutscher "Ich bin Lisa", Latenz, Rueckgaengig.
+- 06.10.2026: `delegate_call` (L3b-Regel 29.07.) haelt "Sag Dr. Petsas, er
+  muss morgen nicht in die Praxis kommen" fuer eine Einbestellung ohne
+  Botschaft und ruft nicht an - Verneinung/Absage als Inhalt werten
+  (Volltest reg-05, nur ausserhalb SAFE sichtbar).
 - 05.10.2026: HKP per Sprache (PlanR-Register, `routes/hkp.js`, Tools
   `hkp_*`) – Folgen: (1) echter PVS-Befundleser statt Stub
   `befundQuelle.pvsBefund()`; (2) Privat-HKP-App (`ZE\Privat-HKP`) ans

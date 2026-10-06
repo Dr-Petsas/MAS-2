@@ -3528,7 +3528,8 @@ router.post("/tools/find-case", async (req, res) => {
     let cases = [];
     let displayName = name;
     const found = await searchPatientSpoken(clientId, name);
-    const patients = found.ok ? found.patients || [] : [];
+    let patients = found.ok ? found.patients || [] : [];
+    if (patients.length > 1) patients = tightenNameHits(name, patients);
     if (patients.length > 1) {
       const list = patients.slice(0, 4).map((p) => `${p.firstName} ${p.lastName}`).join(", ");
       return res.json({ ok: true, message: `Mehrere Patienten: ${list}. Welcher genau?` });
