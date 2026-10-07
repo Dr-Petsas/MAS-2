@@ -812,7 +812,9 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       log.warn?.(`[hkp] Namensvetter zu ${patient.id}: ${vettern.map((v) => v.id).join(", ")} - Rueckfrage`);
       return res.json({ ok: true, rueckfrage: "namensvetter", message: vetternFrage(kandidaten) });
     }
-    if (!auftragText) return res.json({ ok: true, message: `Was soll ich für ${patient.anredeLabel} planen – zum Beispiel eine Teleskopprothese, eine Totalprothese oder Kronen?` });
+    // Ohne Aufzaehlung (Chef 07.10.2026: "das nervt"). Clara erkennt die Rueckfrage
+    // am Kern "Was soll ich fuer ... planen" (Diktat-Fenster, offener Auftrag).
+    if (!auftragText) return res.json({ ok: true, message: `Gut, ich bin bereit. Was soll ich für ${patient.anredeLabel} planen?` });
 
     const auftrag = E.auftragVerstehen(auftragText);
     const vergessen = vergessenerKiefer(auftragText, auftrag);
@@ -827,7 +829,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (!(auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung)) {
       return res.json({
         ok: true, rueckfrage: "versorgung",
-        message: `Was soll ich für ${patient.anredeLabel} planen – zum Beispiel eine Teleskopprothese, eine Totalprothese, Kronen oder eine Brücke?`,
+        message: `Welche Versorgung soll ich für ${patient.anredeLabel} planen?`,
       });
     }
     const alteWeg = wahr(b.alte_verwerfen);
