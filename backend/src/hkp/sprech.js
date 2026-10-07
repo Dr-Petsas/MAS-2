@@ -100,7 +100,43 @@ export function uebersichtSatz(alle, { patientLabel } = {}) {
     : warten.length === 1
       ? `Ein HKP wartet auf Freigabe: ${warten[0].patient?.label || ""}, ${hkpTitel(warten[0])}.`
       : `${zahlWort(warten.length).replace(/^eins$/, "ein")} HKPs warten auf Freigabe: ${liste(warten.slice(0, 5).map((h) => h.patient?.label || "unbekannt"))}${warten.length > 5 ? " und weitere" : ""}.`;
-  return `${wartetSatz} Insgesamt ${aktiv.length === 1 ? "ist ein HKP" : `sind ${zahlWort(aktiv.length).replace(/^eins$/, "ein")} HKPs`} in Bearbeitung.`;
+  // Live 07.10.2026: "Insgesamt ist ein HKP in Bearbeitung" fuer einen freigegebenen
+  // HKP ohne Namen -- die Nachfrage "von wem?" beantwortete das Modell aus dem Kopf.
+  const rest = aktiv.filter((h) => h.status !== "wartet_auf_freigabe");
+  if (!rest.length) return wartetSatz;
+  const genannt = rest.slice(0, 4).map((h) => `${h.patient?.label || "unbekannt"}, ${hkpTitel(h)}, ${STATUS_TEXT[h.status] || h.status}`);
+  const kopf = rest.length === 1 ? "Außerdem im Register:" : `Außerdem ${zahlWort(rest.length)} weitere im Register${rest.length > 4 ? ", die neuesten" : ""}:`;
+  return `${wartetSatz} ${kopf} ${genannt.join("; ")}.`;
+}
+
+const ORDNUNG = ["erstens", "zweitens", "drittens", "viertens", "fünftens", "sechstens"];
+const VERB = { erstellt: "erstellt", freigegeben: "freigegeben", verworfen: "verworfen" };
+
+/**
+ * "Heute wurden zwei HKPs erstellt: erstens der Brücken-HKP im Unterkiefer für
+ * Herrn Tzannis, freigegeben; zweitens ..." -- mit Patient, Art und Status.
+ * Verworfene Entwuerfe zaehlen bei "erstellt" nur als Nachsatz.
+ */
+export function zeitraumSatz(treffer, { vorsatz, ereignis = "erstellt" }) {
+  const verb = VERB[ereignis] || "erstellt";
+  const haupt = ereignis === "erstellt" ? treffer.filter((h) => h.status !== "verworfen") : treffer;
+  const verworfen = treffer.length - haupt.length;
+  const nachsatz = verworfen
+    ? ` Dazu ${verworfen === 1 ? "ein verworfener Entwurf" : `${zahlWort(verworfen)} verworfene Entwürfe`}.`
+    : "";
+  if (!haupt.length && verworfen) {
+    return verworfen === 1
+      ? `${vorsatz} wurde ein HKP-Entwurf erstellt, er ist inzwischen verworfen.`
+      : `${vorsatz} wurden ${zahlWort(verworfen)} HKP-Entwürfe erstellt, ${verworfen === 2 ? "beide" : "alle"} sind inzwischen verworfen.`;
+  }
+  if (!haupt.length) return `${vorsatz} wurde kein HKP ${verb}.`;
+  const eintrag = (h) => `der ${hkpTitel(h)} für ${h.patient?.label || "einen unbekannten Patienten"}`
+    + (ereignis === "erstellt" ? `, ${STATUS_TEXT[h.status] || h.status}` : "");
+  if (haupt.length === 1) return `${vorsatz} wurde ein HKP ${verb}: ${eintrag(haupt[0])}.${nachsatz}`;
+  const genannt = haupt.slice(0, ORDNUNG.length).map((h, i) => `${ORDNUNG[i]} ${eintrag(h)}`);
+  const uebrig = haupt.length - ORDNUNG.length;
+  const mehr = uebrig > 0 ? `; und ${uebrig === 1 ? "ein weiterer" : `${zahlWort(uebrig)} weitere`}` : "";
+  return `${vorsatz} wurden ${zahlWort(haupt.length)} HKPs ${verb}: ${genannt.join("; ")}${mehr}.${nachsatz}`;
 }
 
 export { zahn as zahnText };

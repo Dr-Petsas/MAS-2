@@ -30,7 +30,8 @@ import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpFeldSetzen, hkpLesen, hkpListe, kopf, praxisLaden, praxisSpeichern,
 } from "../hkp/store.js";
 import { befundErmitteln, datumDe } from "../hkp/befundQuelle.js";
-import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort } from "../hkp/sprech.js";
+import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
+import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 
 const router = express.Router();
 
@@ -891,13 +892,28 @@ router.post("/tools/hkp-overview", async (req, res) => {
     if (!clientId) return;
     const b = req.body || {};
     const alle = await hkpListe(clientId);
+    // "Welche HKPs haben wir heute geschrieben?" (live 07.10.2026: nur Zaehlung, kein
+    // Patient). Notaus MAS_HKP_ZEITRAUM=0.
+    const frage = process.env.MAS_HKP_ZEITRAUM === "0" ? "" : String(b.frage || "").trim();
+    const zr = frage ? zeitraumAus(frage) : null;
+    const ereignis = zr ? ereignisAus(frage) : null;
+    const imZr = (liste) => {
+      const treffer = imZeitraum(liste, zr, ereignis);
+      if (treffer.length === 1) letzterMerken(clientId, treffer[0]);
+      return res.json({
+        ok: true, anzahl: treffer.length, zeitraum: { von: zr.von, bis: zr.bis, ereignis },
+        message: zeitraumSatz(treffer, { vorsatz: zr.vorsatz, ereignis }),
+      });
+    };
     if (String(b.name || "").trim()) {
       const p = await patientAufloesen(clientId, b, "Für welchen Patienten?");
       if (p.antwort) return res.json(p.antwort);
       const eigene = await hkpsVonPatient(clientId, p.patient, { liste: alle });
+      if (zr && ereignis) return imZr(eigene);
       if (eigene.length === 1) letzterMerken(clientId, eigene[0]);
       return res.json({ ok: true, anzahl: eigene.length, message: uebersichtSatz(eigene, { patientLabel: p.patient.anredeLabel }) });
     }
+    if (zr && ereignis) return imZr(alle);
     const warten = alle.filter((h) => h.status === "wartet_auf_freigabe").length;
     return res.json({ ok: true, wartenAufFreigabe: warten, message: uebersichtSatz(alle) });
   } catch (e) {
