@@ -7,6 +7,7 @@ const {
   hkpFreigabeToken, hkpFreigabeOk, hkpMobilLink, hkpKarte,
 } = await import("../src/routes/hkp.js");
 const E = await import("../src/vendor/hkp-engine.mjs");
+const { DEFAULT_CLIENT_ID } = await import("../src/routes/_shared.js");
 
 let ok = 0;
 function t(name, fn) { fn(); ok += 1; console.log("  ok -", name); }
@@ -52,6 +53,11 @@ t("Anderer Mandant: Schluessel gilt nur mit seinem clientId", () => {
   assert.ok(!hkpLinkOk("abc", tok));
   assert.ok(hkpMobilLink("abc", "praxis2").includes("&c=praxis2"));
   assert.ok(!hkpMobilLink("abc").includes("&c="));
+});
+
+t("Uebersicht-Link (Standard-Mandant ausdruecklich): gilt ohne c=", () => {
+  const tok = hkpLinkToken("abc", Date.now(), DEFAULT_CLIENT_ID);
+  assert.ok(hkpLinkOk("abc", tok, Date.now(), DEFAULT_CLIENT_ID));
 });
 
 t("HKP-Karte fuers Handy (Notaus MAS_HKP_KARTE=0)", () => {

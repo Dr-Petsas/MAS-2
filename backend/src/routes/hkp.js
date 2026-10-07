@@ -364,7 +364,14 @@ router.get("/planr/status", planrGuard, async (req, res) => {
 router.get("/planr/hkp", planrGuard, async (req, res) => {
   try {
     const alle = await hkpListe(req.planrClientId);
-    res.json({ ok: true, hkps: alle.map(kopf), engineStand: E.ENGINE_STAND });
+    // ?link=1 (PlanR-Uebersicht): Lese-Link je HKP, damit der Planer ihn auch ueber den Tunnel ohne Schluessel oeffnet
+    const mitLink = req.query?.link === "1";
+    const c = req.planrClientId !== standardClient() ? req.planrClientId : undefined;
+    res.json({
+      ok: true,
+      hkps: alle.map((h) => (mitLink ? { ...kopf(h), link: { t: hkpLinkToken(h.id, Date.now(), req.planrClientId), ...(c ? { c } : {}) } } : kopf(h))),
+      engineStand: E.ENGINE_STAND,
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
