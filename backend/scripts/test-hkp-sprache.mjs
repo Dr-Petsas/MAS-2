@@ -6,7 +6,9 @@ import * as E from "../src/vendor/hkp-engine.mjs";
 import { befundAusLena01, befundErmitteln } from "../src/hkp/befundQuelle.js";
 import { euroSprech, uebersichtSatz, zahlWort } from "../src/hkp/sprech.js";
 import { annahmenSatz, doppelungen, namePasst, waehleHkp } from "../src/routes/hkp.js";
-import { KonfliktFehler, hkpAktualisieren, hkpAnlegen, hkpFeldSetzen, hkpListe, hkpLesen, hkpLoeschenFuerTest, praxisLaden, praxisSpeichern } from "../src/hkp/store.js";
+import {
+  KonfliktFehler, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpListe, hkpLesen, hkpLoeschenFuerTest, praxisLaden, praxisSpeichern,
+} from "../src/hkp/store.js";
 
 let fehler = 0;
 function check(name, ok, info = "") {
@@ -96,6 +98,11 @@ try {
   check("Register: Vorschlag ohne Versionssprung", g.version === 2 && g.offeneAenderung?.id === "v1");
   const alle = await hkpListe(CID, { patientId: "p1" });
   check("Register: Liste je Patient", alle.length === 1 && alle[0].id === id);
+  await hkpDateiAnhaengen(CID, id, { id: "befund", name: "Befund_Meier_Hans.json", art: "befund", inhalt: '{"format":"planr-zahnbefund"}' });
+  const mitDatei = await hkpLesen(CID, id);
+  const datei = await hkpDateiLesen(CID, id, "befund");
+  check("Register: Befund-Datei am HKP, Kopf in der Liste, Version unveraendert",
+    mitDatei.version === 2 && mitDatei.dateien?.[0]?.name === "Befund_Meier_Hans.json" && JSON.parse(datei.inhalt).format === "planr-zahnbefund");
   await praxisSpeichern(CID, { preislisten: [{ id: "eigene-bel", typ: "bel2", name: "Test", gueltigAb: "2026-01-01", eintraege: [] }], eigen: [{ nr: "0001" }], einstellungen: { praxisPlz: "80331" } });
   const p = await praxisLaden(CID);
   check("Praxis: Listen und Einstellungen", p.preislisten.length === 1 && p.eigen.length === 1 && p.einstellungen.praxisPlz === "80331");

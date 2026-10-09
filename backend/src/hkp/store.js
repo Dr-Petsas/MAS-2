@@ -99,7 +99,25 @@ export async function hkpFeldSetzen(clientId, id, felder) {
   await col(clientId).doc(String(id)).update(felder);
 }
 
+// Dateien am HKP (z. B. diktierter Befund): Inhalt in hkp/{id}/dateien/{dateiId},
+// Kopf im HKP-Feld `dateien`, damit die Liste ohne Inhalt auskommt.
+const dateiCol = (clientId, id) => col(clientId).doc(String(id)).collection("dateien");
+
+export async function hkpDateiAnhaengen(clientId, id, { id: dateiId, name, art, typ = "application/json", inhalt }) {
+  const meta = { id: String(dateiId), name: String(name), art: String(art), erstellt: jetzt() };
+  await dateiCol(clientId, id).doc(meta.id).set({ ...meta, typ, inhalt: String(inhalt) });
+  await col(clientId).doc(String(id)).update({ dateien: admin.firestore.FieldValue.arrayUnion(meta) });
+  return meta;
+}
+
+export async function hkpDateiLesen(clientId, id, dateiId) {
+  const d = await dateiCol(clientId, id).doc(String(dateiId)).get();
+  return d.exists ? d.data() : null;
+}
+
 export async function hkpLoeschenFuerTest(clientId, id) {
+  const dateien = await dateiCol(clientId, id).get();
+  await Promise.all(dateien.docs.map((d) => d.ref.delete()));
   await col(clientId).doc(String(id)).delete();
 }
 

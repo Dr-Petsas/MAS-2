@@ -193,4 +193,27 @@ t("Ausfuehrung eines gespeicherten Plans aendern: Vorschlag mit neuen Summen", (
   assert.equal(E.ausfuehrungAendern(b.plan, E.ausfuehrungIn("Wie spät ist es?")).grund, "nichts");
 });
 
+const { befundDateiBauen } = await import("../src/routes/hkp.js");
+t("diktierter Befund wird Datei mit KZBV-Kuerzeln (Chef 09.10.2026)", () => {
+  const befundDiktat = "15 und 16 fehlen, 17 ist erneuerungsbedürftig";
+  const r = entwurf(BRUECKE, { 15: "f", 16: "f", 17: "kw" });
+  const d = { befund: { quelle: { art: "gesprochen" } }, befundDiktat, auftrag: { kiefer: "OK" }, r };
+  const datei = befundDateiBauen("h1", d);
+  assert.equal(datei.id, "befund");
+  assert.equal(datei.typ, "application/json");
+  const j = JSON.parse(datei.inhalt);
+  assert.equal(j.format, "planr-zahnbefund");
+  assert.equal(j.quelle.diktat, befundDiktat);
+  assert.deepEqual(j.zaehne.filter((z) => z.diktiert).map((z) => `${z.zahn}:${z.kuerzel}`), ["17:kw", "16:f", "15:f"]);
+  assert.equal(j.legende.kw, "erneuerungsbedürftige Krone");
+});
+t("keine Befund-Datei ohne Diktat, bei Lena-Befund oder mit Notaus", () => {
+  const r = entwurf(BRUECKE);
+  assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "lena01" } }, befundDiktat: "15 fehlt", r }), null);
+  assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "gesprochen" } }, befundDiktat: "", r }), null);
+  process.env.MAS_HKP_BEFUND_DATEI = "0";
+  assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "gesprochen" } }, befundDiktat: "15 fehlt", r }), null);
+  delete process.env.MAS_HKP_BEFUND_DATEI;
+});
+
 console.log(`hkpDialog: ${ok} Tests ok`);

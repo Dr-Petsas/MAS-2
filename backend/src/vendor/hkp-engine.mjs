@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 597e67f224f4)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 0df6b46779fc)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -17809,7 +17809,7 @@ var fz_2026_default = {
 	]
 };
 //#endregion
-//#region ../../../PlanR/ZE/HKP/node_modules/react/cjs/react.production.js
+//#region node_modules/react/cjs/react.production.js
 /**
 * @license React
 * react.production.js
@@ -18196,7 +18196,7 @@ var require_react_production = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.version = "19.3.0";
 }));
 //#endregion
-//#region ../../../PlanR/ZE/HKP/node_modules/react/cjs/react.development.js
+//#region node_modules/react/cjs/react.development.js
 /**
 * @license React
 * react.development.js
@@ -22673,6 +22673,41 @@ var istFrontzahn = (zahn) => [
 	"3"
 ].includes(zahn[1]);
 var kieferVon = (zahn) => zahn[0] === "1" || zahn[0] === "2" ? "OK" : "UK";
+var BEFUND_KUERZEL = {
+	a: "Adhäsivbrücke (Anker)",
+	ab: "Adhäsivbrücke (Brückenglied)",
+	abw: "erneuerungsbedürftige Adhäsivbrücke (Brückenglied)",
+	aw: "erneuerungsbedürftige Adhäsivbrücke (Anker)",
+	b: "Brückenglied",
+	bw: "erneuerungsbedürftiges Brückenglied",
+	e: "ersetzter Zahn",
+	ew: "ersetzter, aber erneuerungsbedürftiger Zahn",
+	f: "fehlender Zahn",
+	ix: "zu entfernendes Implantat",
+	k: "klinisch intakte Krone",
+	kw: "erneuerungsbedürftige Krone",
+	pkw: "erneuerungsbedürftige Teilkrone",
+	pw: "erhaltungswürdiger Zahn mit partiellen Substanzdefekten",
+	r: "Wurzelstiftkappe mit ersetztem Zahn",
+	rw: "erneuerungsbedürftige Wurzelstiftkappe",
+	sb: "implantatgetragenes Brückenglied",
+	sbw: "erneuerungsbedürftiges implantatgetragenes Brückenglied",
+	se: "ersetzter Zahn einer implantatgetragenen (Teil-)Prothese",
+	sew: "erneuerungsbedürftiger ersetzter Zahn einer implantatgetragenen Prothese",
+	sk: "implantatgetragene intakte Krone",
+	skw: "erneuerungsbedürftige implantatgetragene Krone",
+	so: "implantatgetragenes Verbindungselement mit ersetztem Zahn",
+	sow: "erneuerungsbedürftiges implantatgetragenes Verbindungselement",
+	st: "implantatgetragene Teleskopkrone",
+	stw: "erneuerungsbedürftige implantatgetragene Teleskopkrone",
+	t: "Teleskopkrone",
+	t2w: "erneuerungsbedürftiges Sekundärteil einer Teleskopkrone",
+	tw: "erneuerungsbedürftige Teleskopkrone",
+	ur: "unzureichende Retention",
+	ww: "erhaltungswürdiger Zahn mit weitgehender Zerstörung",
+	x: "nicht erhaltungswürdiger Zahn",
+	")(": "Lückenschluss"
+};
 /** Befundkürzel, die einen fehlenden oder zu ersetzenden Zahn bedeuten */
 var FEHLEND = /* @__PURE__ */ new Set([
 	"f",
@@ -24407,7 +24442,7 @@ var implantatsystem = (id) => IMPLANTATSYSTEME.find((s) => s.id === id) ?? IMPLA
 //#region src/engine/implantat.ts
 /** Kürzel (TP, sonst R) einer implantatgetragenen Krone, eines Implantat-Teleskops oder -Verbindungselements (Steg, Locator) */
 var IMPLANTAT_TP = /^S[KTO]/;
-var kuerzelVon = (v) => (v?.TP.trim() || v?.R || "").toUpperCase();
+var kuerzelVon$1 = (v) => (v?.TP.trim() || v?.R || "").toUpperCase();
 var GEGENUEBER = {
 	"OK rechts": "UK rechts",
 	"OK-Front": "UK-Front",
@@ -24417,7 +24452,7 @@ var GEGENUEBER = {
 	"UK links": "OK links"
 };
 function implantatZaehne(zaehne) {
-	return ALLE_ZAEHNE.filter((z) => IMPLANTAT_TP.test(kuerzelVon(zaehne[z])));
+	return ALLE_ZAEHNE.filter((z) => IMPLANTAT_TP.test(kuerzelVon$1(zaehne[z])));
 }
 var zaehler$2 = 0;
 function pos$2(ebene, nr, zahn, anzahl = 1, extra = {}) {
@@ -24465,7 +24500,7 @@ function implantatPositionen(zaehne, a, teileLabor) {
 		for (const z of imp) positionen.push(pos$2("BEB", "0225", z), mat("abdruckpfosten", z), mat("laboranalog", z));
 	} else hinweise.push(`Implantatkrone ${imp.join(", ")}: Abformung (Intraoralscan oder offener/geschlossener Löffel) noch nicht festgelegt – Abformleistungen und Abformteile fehlen.`);
 	for (const h of haelften) positionen.push(pos$2("BEB", "0223", h));
-	for (const z of imp) if (a.abutment === "standard" || kuerzelVon(zaehne[z]) === "SO") positionen.push(pos$2("BEB", "4421", z), mat("abutmentStandard", z));
+	for (const z of imp) if (a.abutment === "standard" || kuerzelVon$1(zaehne[z]) === "SO") positionen.push(pos$2("BEB", "4421", z), mat("abutmentStandard", z));
 	else positionen.push(pos$2("BEB", a.abutment === "keramik" ? "6906" : "2033", z), mat("tiBase", z), mat("schraube", z));
 	if (sys.genau !== "ja") hinweise.push(`Implantatteile ${sys.hersteller} ${sys.system}: Preise ${sys.genau === "teilweise" ? "teilweise " : ""}geschätzt (${sys.stand}) – mit der aktuellen Preisliste bzw. Laborrechnung abgleichen.`);
 	hinweise.push("Chirurgische Implantatleistungen (GOZ 9000–9040, Augmentation) gehören nicht in den HKP und sind gesondert zu planen.");
@@ -27481,8 +27516,60 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 	};
 }
 //#endregion
+//#region src/clara/befundDatei.ts
+var kuerzelVon = (plan, z) => (plan.zaehne[z]?.B ?? "").trim().toLowerCase();
+function befundDatei(plan, a) {
+	const diktiert = new Set(a.diktiert);
+	const zeile = (reihe) => ({
+		zaehne: reihe,
+		kuerzel: reihe.map((z) => kuerzelVon(plan, z))
+	});
+	const zaehne = ALLE_ZAEHNE.map((zahn) => ({
+		zahn,
+		kuerzel: kuerzelVon(plan, zahn)
+	})).filter((x) => x.kuerzel).map((x) => ({
+		...x,
+		bedeutung: BEFUND_KUERZEL[x.kuerzel] ?? "unbekanntes Kürzel",
+		diktiert: diktiert.has(x.zahn)
+	}));
+	return {
+		format: "planr-zahnbefund",
+		version: 1,
+		kuerzelliste: "KZBV – eHKP Zahnersatz, Liste zulässiger Befundkürzel",
+		zahnschema: "FDI",
+		erstellt: a.erstellt ?? (/* @__PURE__ */ new Date()).toISOString(),
+		erstelltVon: a.erstelltVon ?? "Clara (Sprachdiktat)",
+		hkpId: a.hkpId,
+		patient: {
+			name: plan.patient.name ?? "",
+			vorname: plan.patient.vorname ?? "",
+			geburtsdatum: plan.patient.geburtsdatum ?? ""
+		},
+		quelle: {
+			...a.quelle,
+			diktat: a.diktat
+		},
+		befundzeile: {
+			oberkiefer: zeile(OBERKIEFER),
+			unterkiefer: zeile(UNTERKIEFER)
+		},
+		zaehne,
+		legende: Object.fromEntries([...new Set(zaehne.map((z) => z.kuerzel))].sort().map((k) => [k, BEFUND_KUERZEL[k] ?? "unbekanntes Kürzel"]))
+	};
+}
+var teil = (s) => s.trim().replace(/[^\p{L}\p{N}-]+/gu, "_").replace(/^_+|_+$/g, "");
+/** „Befund_Meier_Hans_2026-10-09.json“ */
+function befundDateiName(d) {
+	return `${[
+		"Befund",
+		d.patient.name,
+		d.patient.vorname,
+		d.erstellt.slice(0, 10)
+	].map(teil).filter(Boolean).join("_")}.json`;
+}
+//#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-08 00:13";
+var ENGINE_STAND = "2026-10-09 08:24";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
@@ -27811,4 +27898,4 @@ function positionPruefen(e, listen, frage) {
 	};
 }
 //#endregion
-export { ENGINE_STAND, LABOR_SPRECH, STANDARD_LISTEN, WERKSTOFF_SPRECH, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, rechnen, systemSprech, zahlwort, zusammenfassen };
+export { ENGINE_STAND, LABOR_SPRECH, STANDARD_LISTEN, WERKSTOFF_SPRECH, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundDatei, befundDateiName, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, rechnen, systemSprech, zahlwort, zusammenfassen };

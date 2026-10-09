@@ -27,7 +27,8 @@ import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
 import { jahrgangWahl, vetternFrage, vorleseSatz } from "../hkp/vorlesen.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
 import {
-  AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpFeldSetzen, hkpLesen, hkpListe, kopf, praxisLaden, praxisSpeichern,
+  AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
+  praxisLaden, praxisSpeichern,
 } from "../hkp/store.js";
 import { befundErmitteln, datumDe } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
@@ -382,6 +383,16 @@ router.get("/planr/hkp/:id", planrGuard, async (req, res) => {
     const h = await hkpLesen(req.planrClientId, req.params.id);
     if (!h) return res.status(404).json({ ok: false, error: "nicht_gefunden" });
     res.json({ ok: true, hkp: h });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.get("/planr/hkp/:id/datei/:dateiId", planrGuard, async (req, res) => {
+  try {
+    const d = await hkpDateiLesen(req.planrClientId, req.params.id, req.params.dateiId);
+    if (!d) return res.status(404).json({ ok: false, error: "nicht_gefunden", message: "Die Datei gibt es an diesem HKP nicht." });
+    res.json({ ok: true, datei: { name: d.name, typ: d.typ, inhalt: d.inhalt } });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -769,6 +780,31 @@ async function alteVerwerfen(clientId, doppelt, neu) {
   return weg;
 }
 
+// Diktierter Befund als eigene Datei am HKP, KZBV-Befundkuerzel (Chef 09.10.2026).
+// Nur wenn der Befund (auch) gesprochen wurde. Notaus MAS_HKP_BEFUND_DATEI=0.
+export function befundDateiBauen(hkpId, { befund, befundDiktat, auftrag, r }) {
+  if (process.env.MAS_HKP_BEFUND_DATEI === "0") return null;
+  const diktat = String(befundDiktat || "").trim();
+  if (!diktat || !String(befund?.quelle?.art || "").startsWith("gesprochen") || !r?.plan) return null;
+  const datei = E.befundDatei(r.plan, {
+    hkpId, diktat, diktiert: Object.keys(E.befundVerstehen(diktat, auftrag?.kiefer)), quelle: { ...befund.quelle },
+  });
+  return { id: "befund", name: E.befundDateiName(datei), art: "befund", typ: "application/json", inhalt: JSON.stringify(datei, null, 2) };
+}
+
+async function befundDateiAnhaengen(clientId, h, d) {
+  try {
+    const datei = befundDateiBauen(h.id, d);
+    if (!datei) return null;
+    const meta = await hkpDateiAnhaengen(clientId, h.id, datei);
+    log.info?.(`[hkp] ${h.id}: Befund-Datei ${meta.name} angehaengt`);
+    return meta;
+  } catch (e) {
+    log.warn?.(`[hkp] ${h.id}: Befund-Datei nicht angehaengt: ${e?.message || e}`);
+    return null;
+  }
+}
+
 async function entwurfAnlegen(clientId, d) {
   const { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt } = d;
   const h = await hkpAnlegen(clientId, {
@@ -780,6 +816,7 @@ async function entwurfAnlegen(clientId, d) {
     verlaufText: `von Clara per Sprache angelegt${d.vorgelesen ? " (vorgelesen und bestätigt)" : ""}${zusaetzlich && doppelt.length ? " (bewusst zusätzlich zu einem bestehenden HKP)" : ""}`,
   }, "Clara");
   log.info?.(`[hkp] Entwurf ${h.id} angelegt (${versorgungText}, Befund ${befund.quelle?.art}, Patient ${patient.id})`);
+  await befundDateiAnhaengen(clientId, h, d);
   letzterMerken(clientId, h);
   ausfuehrungGefragt.delete(ausfuehrungSchluessel(clientId, patient));
   const ausfuehrung = d.vorgelesen ? "" : ausfuehrungText(r.plan);
@@ -852,8 +889,9 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     }
 
     // Befund steckt oft im Auftrag selbst ("... die Sechser und Siebener fehlen").
+    const befundDiktat = String(b.befund || "").trim() || E.befundAusAuftrag(auftragText);
     const befund = await befundErmitteln(clientId, patient, {
-      gesprochen: String(b.befund || "").trim() || E.befundAusAuftrag(auftragText),
+      gesprochen: befundDiktat,
       kiefer: auftrag.kiefer, bestaetigt: wahr(b.befund_bestaetigt),
       ohneBefundOk: (auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung === "totalprothese"),
     });
@@ -873,7 +911,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const versorgungText = auftrag.teile?.length > 1
       ? `HKP mit ${liste(auftrag.teile.map((t) => `${VERSORGUNG_NAME[t.versorgung] || t.versorgung} im ${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}`))}`
       : VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
-    const daten = { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt, alteVerwerfen: alteWeg };
+    const daten = { patient, auftrag, auftragText, befund, befundDiktat, r, summen, versorgungText, zusaetzlich, doppelt, alteVerwerfen: alteWeg };
     if (vorlesenAus()) {
       vetterWahl.delete(clientId);
       return res.json(await entwurfAnlegen(clientId, daten));
