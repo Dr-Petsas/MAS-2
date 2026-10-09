@@ -33,6 +33,7 @@ import {
 import { befundErmitteln, datumDe } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
+import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
 
 const router = express.Router();
 
@@ -402,6 +403,11 @@ router.put("/planr/hkp-link/:id/plan", async (req, res) => {
   }
 });
 
+router.get("/planr/live", planrGuard, (req, res) => {
+  if (liveAus()) return res.status(404).json({ ok: false, error: "live_aus" });
+  liveAbonnieren(req.planrClientId, req, res);
+});
+
 router.get("/planr/status", planrGuard, async (req, res) => {
   try {
     const p = await praxisLaden(req.planrClientId);
@@ -435,6 +441,21 @@ router.get("/planr/hkp/:id", planrGuard, async (req, res) => {
     const h = await hkpLesen(req.planrClientId, req.params.id);
     if (!h) return res.status(404).json({ ok: false, error: "nicht_gefunden" });
     res.json({ ok: true, hkp: h });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// PVS-Export aus der PlanR-Uebersicht: Plan plus Ergebnis, gerechnet mit den Praxis-Listen wie beim Speichern
+router.get("/planr/hkp/:id/rechnung", planrGuard, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const h = await hkpLesen(req.planrClientId, req.params.id);
+    if (!h) return res.status(404).json({ ok: false, error: "nicht_gefunden" });
+    const plan = planAus(h);
+    if (!plan) return res.status(422).json({ ok: false, error: "plan_defekt", message: "Der gespeicherte Plan ist nicht lesbar." });
+    const praxis = await praxisLaden(req.planrClientId).catch(() => ({ preislisten: [], eigen: [] }));
+    res.json({ ok: true, status: h.status, plan, ergebnis: E.rechnen(plan, praxisListen(praxis)) });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -886,6 +907,7 @@ async function entwurfAnlegen(clientId, d) {
     verlaufText: `von Clara per Sprache angelegt${d.vorgelesen ? " (vorgelesen und bestätigt)" : ""}${zusaetzlich && doppelt.length ? " (bewusst zusätzlich zu einem bestehenden HKP)" : ""}`,
   }, "Clara");
   log.info?.(`[hkp] Entwurf ${h.id} angelegt (${versorgungText}, Befund ${befund.quelle?.art}, Patient ${patient.id})`);
+  liveMelden(clientId, { phase: "angelegt", patient: livePatient(patient), befund: befund.befund, plan: r.plan, hkpId: h.id, meldung: `${versorgungText} angelegt – wartet auf Ihre Freigabe.` });
   await befundDateiAnhaengen(clientId, h, d);
   letzterMerken(clientId, h);
   ausfuehrungGefragt.delete(ausfuehrungSchluessel(clientId, patient));
@@ -927,22 +949,27 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       log.warn?.(`[hkp] Namensvetter zu ${patient.id}: ${vettern.map((v) => v.id).join(", ")} - Rueckfrage`);
       return res.json({ ok: true, rueckfrage: "namensvetter", message: vetternFrage(kandidaten) });
     }
+    liveMelden(clientId, { patient: livePatient(patient), auftragText, meldung: "" });
+    const raus = (x) => {
+      liveMelden(clientId, { meldung: String(x?.message || "") });
+      return res.json(x);
+    };
     // Ohne Aufzaehlung (Chef 07.10.2026: "das nervt"). Clara erkennt die Rueckfrage
     // am Kern "Was soll ich fuer ... planen" (Diktat-Fenster, offener Auftrag).
-    if (!auftragText) return res.json({ ok: true, message: `Gut, ich bin bereit. Was soll ich für ${patient.anredeLabel} planen?` });
+    if (!auftragText) return raus({ ok: true, message: `Gut, ich bin bereit. Was soll ich für ${patient.anredeLabel} planen?` });
 
     const auftrag = E.auftragVerstehen(auftragText);
     const vergessen = vergessenerKiefer(auftragText, auftrag);
     if (vergessen) {
       log.warn?.(`[hkp] Kiefer-Waechter: ${vergessen} genannt, aber nicht geplant – nichts angelegt`);
       const name = vergessen === "OK" ? "Oberkiefer" : "Unterkiefer";
-      return res.json({
+      return raus({
         ok: true, rueckfrage: "kiefer_fehlt",
         message: `Ich habe noch nichts angelegt: Sie haben auch den ${name} genannt, aber ich habe dafür keine Versorgung verstanden. Was soll ich im ${name} planen?`,
       });
     }
     if (!(auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung)) {
-      return res.json({
+      return raus({
         ok: true, rueckfrage: "versorgung",
         message: `Welche Versorgung soll ich für ${patient.anredeLabel} planen?`,
       });
@@ -952,7 +979,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const doppelt = doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
     // Mit Vorlesen steht die Doppelung als Hinweis in der Vorschau – eine Frage weniger.
     if (doppelt.length && !zusaetzlich && vorlesenAus()) {
-      return res.json({
+      return raus({
         ok: true, doppelung: doppelt.map((h) => h.id),
         message: `Für ${patient.anredeLabel} gibt es schon ${doppelt.length === 1 ? "einen" : doppelt.length} ${hkpKurz(doppelt[0])}${doppelt.length > 1 ? " und weitere" : ""}. Soll ich trotzdem einen weiteren HKP anlegen?`,
       });
@@ -965,7 +992,8 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       kiefer: auftrag.kiefer, bestaetigt: wahr(b.befund_bestaetigt),
       ohneBefundOk: (auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung === "totalprothese"),
     });
-    if (!befund.ok) return res.json({ ok: true, rueckfrage: befund.grund, message: befund.frage });
+    if (!befund.ok) return raus({ ok: true, rueckfrage: befund.grund, message: befund.frage });
+    liveMelden(clientId, { phase: "befund", befund: befund.befund, plan: null, meldung: "" });
 
     const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [], einstellungen: {} }));
     const system = implantatStandard(praxis);
@@ -973,9 +1001,10 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       patient: { name: patient.lastName, vorname: patient.firstName, geburtsdatum: patient.birthDate },
       einstellungen: praxis.einstellungen, implantatSystem: system,
     }, praxisListen(praxis));
-    if (r.status !== "ok") return res.json({ ok: true, rueckfrage: r.grund, message: r.frage });
+    if (r.status !== "ok") return raus({ ok: true, rueckfrage: r.grund, message: r.frage });
+    liveMelden(clientId, { phase: "plan", plan: r.plan, meldung: "" });
     const frage = ausfuehrungRueckfrage(clientId, patient, auftragText, auftrag, r, system);
-    if (frage) return res.json(frage);
+    if (frage) return raus(frage);
 
     const summen = summenAus(r.ergebnis);
     const versorgungText = auftrag.teile?.length > 1
@@ -987,7 +1016,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       return res.json(await entwurfAnlegen(clientId, daten));
     }
     vorschauMerken(clientId, { ...daten, namenGesagt: [String(b.name || "").trim()], at: Date.now() });
-    return res.json({
+    return raus({
       ok: true, rueckfrage: "vorlesen", ...(doppelt.length ? { doppelung: doppelt.map((h) => h.id) } : {}),
       message: vorleseSatz({
         patient, versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
