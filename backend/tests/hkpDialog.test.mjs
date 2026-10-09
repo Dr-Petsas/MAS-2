@@ -207,10 +207,17 @@ t("diktierter Befund wird Datei mit KZBV-Kuerzeln (Chef 09.10.2026)", () => {
   assert.deepEqual(j.zaehne.filter((z) => z.diktiert).map((z) => `${z.zahn}:${z.kuerzel}`), ["17:kw", "16:f", "15:f"]);
   assert.equal(j.legende.kw, "erneuerungsbedürftige Krone");
 });
-t("keine Befund-Datei ohne Diktat, bei Lena-Befund oder mit Notaus", () => {
+t("Befund nur aus Lena-01 wird genauso Datei, ohne Diktat", () => {
+  const r = entwurf(BRUECKE, { 15: "f", 16: "f", 17: "kw" });
+  const quelle = { art: "lena01", datum: "2026-09-01T10:00:00.000Z", appointmentId: "a1" };
+  const j = JSON.parse(befundDateiBauen("h1", { befund: { quelle }, befundDiktat: "15 fehlt", auftrag: { kiefer: "OK" }, r }).inhalt);
+  assert.deepEqual(j.quelle, { ...quelle, diktat: "" });
+  assert.deepEqual(j.zaehne.map((z) => `${z.zahn}:${z.kuerzel}`).filter((x) => /^1[5-7]/.test(x)), ["17:kw", "16:f", "15:f"]);
+  assert.equal(j.zaehne.some((z) => z.diktiert), false);
+});
+t("keine Befund-Datei ohne jeden Befund (Totalprothese) oder mit Notaus", () => {
   const r = entwurf(BRUECKE);
-  assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "lena01" } }, befundDiktat: "15 fehlt", r }), null);
-  assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "gesprochen" } }, befundDiktat: "", r }), null);
+  assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "keiner" } }, befundDiktat: "", r }), null);
   process.env.MAS_HKP_BEFUND_DATEI = "0";
   assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "gesprochen" } }, befundDiktat: "15 fehlt", r }), null);
   delete process.env.MAS_HKP_BEFUND_DATEI;

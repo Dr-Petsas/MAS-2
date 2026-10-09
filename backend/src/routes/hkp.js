@@ -780,12 +780,14 @@ async function alteVerwerfen(clientId, doppelt, neu) {
   return weg;
 }
 
-// Diktierter Befund als eigene Datei am HKP, KZBV-Befundkuerzel (Chef 09.10.2026).
-// Nur wenn der Befund (auch) gesprochen wurde. Notaus MAS_HKP_BEFUND_DATEI=0.
+// Befund des HKP als eigene Datei, KZBV-Befundkuerzel (Chef 09.10.2026): diktiert,
+// aus Lena-01 oder beides. Ohne jeden Befund (Quelle "keiner") keine Datei.
+// Notaus MAS_HKP_BEFUND_DATEI=0.
 export function befundDateiBauen(hkpId, { befund, befundDiktat, auftrag, r }) {
   if (process.env.MAS_HKP_BEFUND_DATEI === "0") return null;
-  const diktat = String(befundDiktat || "").trim();
-  if (!diktat || !String(befund?.quelle?.art || "").startsWith("gesprochen") || !r?.plan) return null;
+  const art = String(befund?.quelle?.art || "");
+  if (!art || art === "keiner" || !r?.plan) return null;
+  const diktat = art.startsWith("gesprochen") ? String(befundDiktat || "").trim() : "";
   const datei = E.befundDatei(r.plan, {
     hkpId, diktat, diktiert: Object.keys(E.befundVerstehen(diktat, auftrag?.kiefer)), quelle: { ...befund.quelle },
   });

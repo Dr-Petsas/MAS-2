@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 0df6b46779fc)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 6faae9d36c1e)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -27538,7 +27538,7 @@ function befundDatei(plan, a) {
 		kuerzelliste: "KZBV – eHKP Zahnersatz, Liste zulässiger Befundkürzel",
 		zahnschema: "FDI",
 		erstellt: a.erstellt ?? (/* @__PURE__ */ new Date()).toISOString(),
-		erstelltVon: a.erstelltVon ?? "Clara (Sprachdiktat)",
+		erstelltVon: a.erstelltVon ?? "Clara",
 		hkpId: a.hkpId,
 		patient: {
 			name: plan.patient.name ?? "",
@@ -27569,7 +27569,7 @@ function befundDateiName(d) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-09 08:24";
+var ENGINE_STAND = "2026-10-09 08:32";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
