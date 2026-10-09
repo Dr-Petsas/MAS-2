@@ -700,8 +700,11 @@ function vorschauen(clientId, jetzt = Date.now()) {
 }
 
 function vorschauMerken(clientId, v) {
-  const rest = vorschauen(clientId).filter((x) => x.patient?.id !== v.patient?.id);
-  vorschauOffen.set(clientId, [v, ...rest].slice(0, VORSCHAU_MAX));
+  const alle = vorschauen(clientId);
+  const vorher = alle.find((x) => x.patient?.id === v.patient?.id);
+  const namen = [...new Set([...(vorher?.namenGesagt || []), ...(v.namenGesagt || [])].filter(Boolean))].slice(-4);
+  const rest = alle.filter((x) => x !== vorher);
+  vorschauOffen.set(clientId, [{ ...v, namenGesagt: namen }, ...rest].slice(0, VORSCHAU_MAX));
 }
 
 const vorschauWeg = (clientId, v) => vorschauOffen.set(clientId, vorschauen(clientId).filter((x) => x !== v));
@@ -737,7 +740,9 @@ function auftragKern(text) {
 export function vorschauPasst(vs, b, jetzt = Date.now()) {
   if (!vs || jetzt - vs.at > VORSCHAU_MS) return false;
   const name = String(b?.name || "").trim();
-  if (name && namePasst(name, vs.patient) === 0 && !nurVornamePasst(name, vs.patient)) return false;
+  // Live 09.10.2026 (Petsas): gehoert "Petzers" – die Vorschau kam unter diesem Namen, das Ja auch.
+  const gesagt = (vs.namenGesagt || []).some((n) => textNorm(n) === textNorm(name));
+  if (name && !gesagt && namePasst(name, vs.patient) === 0 && !nurVornamePasst(name, vs.patient)) return false;
   const auftrag = textNorm(b?.auftrag);
   if (!auftrag || textNorm(vs.auftragText).includes(auftrag)) return true;
   // Live 06.10.2026: Ja kam mit dem STT-Wortlaut ("Oberkäfertotalprothese"), vorgelesen war die Umschreibung
@@ -917,7 +922,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       vetterWahl.delete(clientId);
       return res.json(await entwurfAnlegen(clientId, daten));
     }
-    vorschauMerken(clientId, { ...daten, at: Date.now() });
+    vorschauMerken(clientId, { ...daten, namenGesagt: [String(b.name || "").trim()], at: Date.now() });
     return res.json({
       ok: true, rueckfrage: "vorlesen", ...(doppelt.length ? { doppelung: doppelt.map((h) => h.id) } : {}),
       message: vorleseSatz({

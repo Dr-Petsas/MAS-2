@@ -24,6 +24,15 @@ t("anderer Patient gilt nicht, leerer Auftrag gilt", () => {
   assert.equal(vorschauPasst(vs("Totalprothese OK"), { name: "Michael Petsas" }), false);
   assert.equal(vorschauPasst(vs("Totalprothese OK"), {}), true);
 });
+t("Ja unter dem verhoerten Namen der Vorschau gilt (Petzers/Petsas 09.10.2026)", () => {
+  const petsas = { id: "p3", firstName: "Michael", lastName: "Petsas", anredeLabel: "Herrn Michael Petsas" };
+  const auftrag = "Brücke von 13 auf 15 in Zirkon. Alle anderen Zähne sind vorhanden. Intraoralscan und Eigenlabor.";
+  const v = { patient: petsas, auftragText: auftrag, namenGesagt: ["Michael Petzers"], at: Date.now() };
+  assert.equal(vorschauPasst(v, { name: "Michael Petzers", auftrag, bestaetigt: true }), true);
+  assert.equal(vorschauPasst(v, { name: "Michael Petsas", auftrag }), true);
+  assert.equal(vorschauPasst(v, { name: "Holger Abel", auftrag }), false);
+  assert.equal(vorschauPasst({ ...v, namenGesagt: [] }, { name: "Michael Petzers", auftrag }), false);
+});
 t("mehrere offene Vorschauen: das Ja trifft die mit passendem Auftrag bzw. Namen", () => {
   const greisinger = { id: "p2", firstName: "Isabella", lastName: "Greisinger", anredeLabel: "Frau Isabella Greisinger" };
   const a = vs("Totalprothese OK");
