@@ -241,6 +241,12 @@ export const hkpLinkToken = (id, jetztMs = Date.now(), clientId = "") => tokenFu
 export const hkpLinkOk = (id, token, jetztMs = Date.now(), clientId = "") => tokenOk("hkp-link", id, token, clientId, jetztMs);
 export const hkpFreigabeToken = (id, jetztMs = Date.now(), clientId = "") => tokenFuer("hkp-freigabe", FREIGABE_TAGE, id, clientId, jetztMs);
 export const hkpFreigabeOk = (id, token, jetztMs = Date.now(), clientId = "") => tokenOk("hkp-freigabe", id, token, clientId, jetztMs);
+// Bearbeiten-Schluessel (zweck "hkp-bearbeiten"): nur in der PlanR-Uebersicht (Liste mit
+// Praxis-Schluessel), damit der Planer ueber den Tunnel Aenderungen ins Register speichert.
+// Nie in SMS oder Clara-Karte.
+const BEARBEITEN_TAGE = 1;
+export const hkpBearbeitenToken = (id, jetztMs = Date.now(), clientId = "") => tokenFuer("hkp-bearbeiten", BEARBEITEN_TAGE, id, clientId, jetztMs);
+export const hkpBearbeitenOk = (id, token, jetztMs = Date.now(), clientId = "") => tokenOk("hkp-bearbeiten", id, token, clientId, jetztMs);
 
 const planrBasis = () => String(process.env.PLANR_PUBLIC_URL || "https://hkp.pickadoc-tunnel.com").replace(/\/+$/, "");
 const clientParam = (clientId) => (clientId && clientId !== standardClient() ? `&c=${encodeURIComponent(clientId)}` : "");
@@ -353,6 +359,49 @@ router.put("/planr/hkp-link/:id", async (req, res) => {
   }
 });
 
+// Planer aus der PlanR-Uebersicht ueber den Tunnel (ohne Praxis-Schluessel im Browser): Plan speichern
+// wie in PlanR, Summen rechnet MAS mit den Praxis-Listen. Status bleibt. Notaus MAS_HKP_LINK_SPEICHERN=0.
+const LINK_GESPERRT = ["verworfen", "abgerechnet"];
+router.put("/planr/hkp-link/:id/plan", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  if (process.env.MAS_HKP_LINK_SPEICHERN === "0") {
+    return res.status(403).json({ ok: false, error: "abgeschaltet", message: "Speichern über den Link ist abgeschaltet – am Praxis-PC speichern." });
+  }
+  const id = req.params.id;
+  const clientId = linkClient(req);
+  if (!hkpLinkOk(id, req.header("X-PlanR-Link"), Date.now(), clientId) || !hkpBearbeitenOk(id, req.header("X-PlanR-Bearbeiten"), Date.now(), clientId)) {
+    return res.status(401).json({ ok: false, error: "bearbeiten_ungueltig", message: "Der Link ist abgelaufen oder nur zum Ansehen – den HKP in der PlanR-Übersicht neu öffnen." });
+  }
+  const b = req.body || {};
+  if (!b.plan || typeof b.plan !== "object") return res.status(400).json({ ok: false, error: "plan_fehlt" });
+  if (b.version === undefined || b.version === null) return res.status(400).json({ ok: false, error: "version_fehlt" });
+  try {
+    const plan = E.planNormalisieren(b.plan);
+    const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [] }));
+    const ergebnis = E.rechnen(plan, praxisListen(praxis));
+    const felder = { planJson: JSON.stringify(plan), summen: summenAus(ergebnis), zusammenfassung: E.zusammenfassen(plan, ergebnis), offeneAenderung: null };
+    const label = `${plan.patient.vorname || ""} ${plan.patient.name || ""}`.trim();
+    if (label) Object.assign(felder, { "patient.label": label, "patient.firstName": plan.patient.vorname || "", "patient.lastName": plan.patient.name || "" });
+    const h = await hkpAktualisieren(clientId, id, {
+      version: b.version, felder, wer: "PlanR", was: "in PlanR bearbeitet (Link)",
+      pruefen: (a) => {
+        if (!LINK_GESPERRT.includes(a.status)) return;
+        const e = new Error("status");
+        e.code = "status";
+        e.status = a.status;
+        throw e;
+      },
+    });
+    log.info?.(`[hkp] ${id} in PlanR über den Link gespeichert`);
+    res.json({ ok: true, hkp: kopf(h) });
+  } catch (e) {
+    if (e instanceof KonfliktFehler) return res.status(409).json({ ok: false, error: "version_konflikt", message: "Der HKP wurde inzwischen geändert – bitte neu laden.", aktuell: e.aktuell });
+    if (e?.code === "status") return res.status(409).json({ ok: false, error: "gesperrt", message: `Der HKP ist ${STATUS_TEXT[e.status] || e.status} und wird nicht mehr geändert.` });
+    if (e?.code === "nicht_gefunden") return res.status(404).json({ ok: false, error: "nicht_gefunden" });
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 router.get("/planr/status", planrGuard, async (req, res) => {
   try {
     const p = await praxisLaden(req.planrClientId);
@@ -370,7 +419,10 @@ router.get("/planr/hkp", planrGuard, async (req, res) => {
     const c = req.planrClientId !== standardClient() ? req.planrClientId : undefined;
     res.json({
       ok: true,
-      hkps: alle.map((h) => (mitLink ? { ...kopf(h), link: { t: hkpLinkToken(h.id, Date.now(), req.planrClientId), ...(c ? { c } : {}) } } : kopf(h))),
+      hkps: alle.map((h) => (mitLink ? {
+        ...kopf(h),
+        link: { t: hkpLinkToken(h.id, Date.now(), req.planrClientId), b: hkpBearbeitenToken(h.id, Date.now(), req.planrClientId), ...(c ? { c } : {}) },
+      } : kopf(h))),
       engineStand: E.ENGINE_STAND,
     });
   } catch (e) {

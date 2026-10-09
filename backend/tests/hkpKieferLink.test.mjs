@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 process.env.PLANR_HKP_KEY = "test-schluessel";
 const {
   vergessenerKiefer, hkpLinkToken, hkpLinkOk, hkpLink, nurVornamePasst, namePasst,
-  hkpFreigabeToken, hkpFreigabeOk, hkpMobilLink, hkpKarte,
+  hkpFreigabeToken, hkpFreigabeOk, hkpMobilLink, hkpKarte, hkpBearbeitenToken, hkpBearbeitenOk,
 } = await import("../src/routes/hkp.js");
 const E = await import("../src/vendor/hkp-engine.mjs");
 const { DEFAULT_CLIENT_ID } = await import("../src/routes/_shared.js");
@@ -45,6 +45,18 @@ t("Freigabe-Schluessel: eigener Zweck, kurze Frist, Lese-Link reicht nicht", () 
   assert.ok(!hkpFreigabeOk("abc", f, Date.now() + 4 * 86400e3));
   assert.ok(!hkpLink("abc").includes("&f="));
   assert.ok(hkpMobilLink("abc").includes("&f=") && hkpMobilLink("abc").includes("ansicht=mobil"));
+});
+
+t("Bearbeiten-Schluessel (Uebersicht): eigener Zweck, ein Tag, nie in SMS- oder Handy-Link", () => {
+  const b = hkpBearbeitenToken("abc");
+  assert.ok(hkpBearbeitenOk("abc", b));
+  assert.ok(!hkpBearbeitenOk("andere", b));
+  assert.ok(!hkpBearbeitenOk("abc", hkpLinkToken("abc")));
+  assert.ok(!hkpBearbeitenOk("abc", hkpFreigabeToken("abc")));
+  assert.ok(!hkpFreigabeOk("abc", b) && !hkpLinkOk("abc", b));
+  assert.ok(!hkpBearbeitenOk("abc", b, Date.now() + 2 * 86400e3));
+  assert.ok(!hkpBearbeitenOk("abc", hkpBearbeitenToken("abc", Date.now(), "praxis2")));
+  assert.ok(!hkpLink("abc").includes("&b=") && !hkpMobilLink("abc").includes("&b="));
 });
 
 t("Anderer Mandant: Schluessel gilt nur mit seinem clientId", () => {

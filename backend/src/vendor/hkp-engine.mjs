@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 372c5bfddfa6)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 10d00df24db6)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -24891,7 +24891,7 @@ var KIEFER_BEREICHE = {
 * Zweite Abformung für den herausnehmbaren Teil (z. B. über die eingesetzten Primärkronen):
 * Scan → GOZ 0065 für die drei Bereiche des Kiefers und gedrucktes Modell;
 * Abdruck → individueller Löffel (BEMA 98a/BEL 0211 bei Kassenprothese, sonst GOZ 5170/BEB 1006).
-* Kiefer mit Funktionsabformung (zahnlos, BEMA 98b/c bzw. GOZ 5180/5190) bleiben konventionell.
+* Kiefer mit Funktionsabformung (zahnlos, BEMA 98b/c bzw. GOZ 5180/5190) bekommen keine zweite Abformung (Scan dort: zahnlosScannen).
 */
 function protheseAbformen(positionen, art, erste) {
 	const kiefer = ["OK", "UK"].filter((k) => positionen.some((p) => p.zahn === k && PROTHESE$1(p)));
@@ -24899,10 +24899,13 @@ function protheseAbformen(positionen, art, erste) {
 		positionen,
 		hinweise: []
 	};
-	if (!art) return {
-		positionen,
-		hinweise: erste === "scan" ? [`Herausnehmbarer Teil ${kiefer.join(", ")}: zweite Abformung (Scan oder Überabdruck) noch offen.`] : []
-	};
+	if (!art) {
+		const offen = kiefer.filter((k) => !positionen.some((p) => p.zahn === k && FUNKTIONSABFORMUNG(p)));
+		return {
+			positionen,
+			hinweise: erste === "scan" && offen.length ? [`Herausnehmbarer Teil ${offen.join(", ")}: zweite Abformung (Scan oder Überabdruck) noch offen.`] : []
+		};
+	}
 	const neu = [];
 	const funktion = [];
 	const bearbeitet = [];
@@ -24928,10 +24931,44 @@ function protheseAbformen(positionen, art, erste) {
 	}
 	const hinweise = [];
 	if (bearbeitet.length) hinweise.push(art === "scan" ? `Herausnehmbarer Teil ${bearbeitet.join(", ")}: zweiter Intraoralscan – GOZ 0065 je Bereich des Kiefers und gedrucktes Modell (BEB 0009); Gipsmodelle der Prothese ggf. streichen.` : `Herausnehmbarer Teil ${bearbeitet.join(", ")}: Überabdruck mit individuellem Löffel${neu.length ? ` (${neu.map((p) => `${p.ebene} ${p.nr}`).join(", ")})` : ""}, Meistermodell aus Gips.`);
-	if (funktion.length) hinweise.push(`${funktion.join(", ")}: Funktionsabformung mit individuellem Löffel ist schon enthalten – bleibt konventionell.`);
+	if (funktion.length && art !== "scan") hinweise.push(`${funktion.join(", ")}: Funktionsabformung mit individuellem Löffel ist schon enthalten – bleibt konventionell.`);
 	return {
 		positionen: [...positionen, ...neu],
 		hinweise
+	};
+}
+/** Situationsmodell eines Prothesenkiefers: BEL 0010 bzw. BEB 0002 mit Kieferangabe */
+var SITUATIONSMODELL = (k) => (p) => p.zahn === k && (p.ebene === "BEL" && p.nr === "0010" || p.ebene === "BEB" && p.nr === "0002");
+/**
+* Zahnloser Kiefer (Funktionsabformung, BEMA 98b/c bzw. GOZ 5180/5190) mit Intraoralscan (Chef 09.10.2026):
+* der Scan ersetzt die anatomische Erstabformung – GOZ 0065 für die drei Bereiche des Kiefers und ein
+* gedrucktes Modell (BEB 0009) statt des Situationsmodells. Individueller Löffel und Funktionsabformung bleiben.
+*/
+function zahnlosScannen(positionen) {
+	const kiefer = ["OK", "UK"].filter((k) => positionen.some((p) => p.zahn === k && PROTHESE$1(p) && FUNKTIONSABFORMUNG(p)));
+	if (!kiefer.length) return {
+		positionen,
+		hinweise: []
+	};
+	let out = positionen;
+	const neu = [];
+	for (const k of kiefer) {
+		const gescannt = new Set(out.filter((p) => p.ebene === "GOZ" && p.nr === "0065").map((p) => p.zahn));
+		neu.push(...KIEFER_BEREICHE[k].filter((b) => !gescannt.has(b)).map((b) => pos$1("GOZ", "0065", b, { text: `Optisch-elektronische Abformung ${k} (zahnloser Kiefer)` })));
+		if (out.some((p) => p.ebene === "BEB" && p.nr === "0009" && p.zahn === k)) continue;
+		const modell = out.find(SITUATIONSMODELL(k));
+		if (modell) out = out.flatMap((p) => p !== modell ? [p] : (p.anzahl ?? 1) > 1 ? [{
+			...p,
+			anzahl: (p.anzahl ?? 1) - 1
+		}] : []);
+		neu.push(pos$1("BEB", "0009", k, {
+			text: `Modell aus Kunststoff ${k} (gedruckt)`,
+			...modell?.labor ? { labor: modell.labor } : {}
+		}));
+	}
+	return {
+		positionen: [...out, ...neu],
+		hinweise: [`${kiefer.join(", ")} zahnlos: Intraoralscan statt anatomischer Erstabformung – GOZ 0065 je Bereich des Kiefers, gedrucktes Modell (BEB 0009) statt Situationsmodell; individueller Löffel und Funktionsabformung bleiben.`]
 	};
 }
 /**
@@ -24949,12 +24986,17 @@ function abformungAnwenden(positionen, zaehne, abformung, prothese = "", eigenla
 		hinweise: []
 	};
 	const zweite = protheseAbformen(digital.positionen, prothese, abformung);
-	return {
+	const zahnlos = abformung === "scan" || prothese === "scan" ? zahnlosScannen(zweite.positionen) : {
 		positionen: zweite.positionen,
+		hinweise: []
+	};
+	return {
+		positionen: zahnlos.positionen,
 		hinweise: [
 			...erste.hinweise,
 			...digital.hinweise,
-			...zweite.hinweise
+			...zweite.hinweise,
+			...zahnlos.hinweise
 		]
 	};
 }
@@ -27569,7 +27611,7 @@ function befundDateiName(d) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-09 08:34";
+var ENGINE_STAND = "2026-10-09 11:20";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
