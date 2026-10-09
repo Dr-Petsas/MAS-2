@@ -1,7 +1,7 @@
 // HKP-Dialog per Sprache: Ja auf die Vorschau, Zahlen und Doppelung im Vorlesen, Bruecken (Gespraeche 06.10.2026).
 // Start: node backend/tests/hkpDialog.test.mjs
 import assert from "node:assert/strict";
-const { vorschauPasst, vorschauFinden, doppelungHinweis, vetterAntwort, sindVettern, waehleHkp, vorschauGemeint } = await import("../src/routes/hkp.js");
+const { vorschauPasst, vorschauFinden, doppelungHinweis, vetterAntwort, sindVettern, waehleHkp, vorschauGemeint, teilNamePasst } = await import("../src/routes/hkp.js");
 const { nameAusHinweis, spokenLooksLikeNewPerson } = await import("../src/clara/patientCatalog.js");
 const { vorleseSatz, befundSatz } = await import("../src/hkp/vorlesen.js");
 const { versorgungSatz, nurSummenFrage, summenAntwort } = await import("../src/hkp/sprech.js");
@@ -32,6 +32,18 @@ t("Ja unter dem verhoerten Namen der Vorschau gilt (Petzers/Petsas 09.10.2026)",
   assert.equal(vorschauPasst(v, { name: "Michael Petsas", auftrag }), true);
   assert.equal(vorschauPasst(v, { name: "Holger Abel", auftrag }), false);
   assert.equal(vorschauPasst({ ...v, namenGesagt: [] }, { name: "Michael Petzers", auftrag }), false);
+});
+t("Teilname trifft den gerade besprochenen HKP (Papagrigoriou 09.10.2026)", () => {
+  const p = { firstName: "Nektarios", lastName: "Papagrigoriou" };
+  assert.equal(teilNamePasst("Nektarios Papa", p), true);
+  assert.equal(teilNamePasst("Papagrigoriou", p), true);
+  assert.equal(teilNamePasst("Nektarios Müller", p), false);
+  assert.equal(teilNamePasst("Pa", p), false);
+  assert.equal(teilNamePasst("", p), false);
+});
+t("Summenfrage mit 'freigegeben' bekommt den Status mit", () => {
+  assert.equal(nurSummenFrage("Ich habe den gerade freigegeben, sag mir den Eigenanteil."), false);
+  assert.equal(nurSummenFrage("Wie hoch ist der Eigenanteil?"), true);
 });
 t("mehrere offene Vorschauen: das Ja trifft die mit passendem Auftrag bzw. Namen", () => {
   const greisinger = { id: "p2", firstName: "Isabella", lastName: "Greisinger", anredeLabel: "Frau Isabella Greisinger" };

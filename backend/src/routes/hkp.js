@@ -649,12 +649,24 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
   return { antwort: r.payload };
 }
 
+/**
+ * Ist jedes Wort des gesagten Namens der Anfang von Vor- oder Nachname? ("Nektarios Papa" ->
+ * Nektarios Papagrigoriou). Live 09.10.2026: so gefragt, fand die Kartei 21 Patienten.
+ */
+export function teilNamePasst(name, patient) {
+  const falten = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+  const namen = [patient?.firstName, patient?.lastName].map(falten).filter(Boolean);
+  const woerter = String(name || "").split(/[\s-]+/).map(falten).filter(Boolean);
+  return !!woerter.length && woerter.every((w) => w.length >= 3 && namen.some((n) => n.startsWith(w)));
+}
+
 /** HKP eines Patienten bestimmen (mit Rueckfrage bei mehreren) */
 async function hkpAufloesen(clientId, body, askWho) {
-  if (!String(body?.name || "").trim() && !String(body?.hint || "").trim() && !String(body?.auswahl || "").trim()) {
+  const name = String(body?.name || "").trim();
+  if (!String(body?.hint || "").trim() && !String(body?.auswahl || "").trim()) {
     const l = letzterHkp.get(clientId);
     const h = l && Date.now() - l.at < LETZTER_MS ? await hkpLesen(clientId, l.id).catch(() => null) : null;
-    if (h) {
+    if (h && (!name || teilNamePasst(name, h.patient))) {
       letzterMerken(clientId, h);
       return { patient: { ...h.patient, anredeLabel: h.patient?.anredeLabel || h.patient?.label }, hkp: h };
     }

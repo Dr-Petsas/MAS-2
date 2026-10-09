@@ -76,7 +76,7 @@ export function detailSatz(h, ausfuehrung = "") {
 }
 
 const SUMMEN_FRAGE = /festzuschuss|eigenanteil|gesamtkosten|kosten|kostet|summe|betrag|preis|teuer|zahlen/i;
-const ANDERE_FRAGE = /status|wann|erstellt|angelegt|geplant|befund|lies|vorles|details?|position/i;
+const ANDERE_FRAGE = /status|wann|erstellt|angelegt|geplant|befund|lies|vorles|details?|position|freigegeben|freigabe/i;
 
 /** Fragt der Satz nur nach Betraegen ("Wie hoch ist der Festzuschuss?")? */
 export const nurSummenFrage = (frage) => SUMMEN_FRAGE.test(String(frage || "")) && !ANDERE_FRAGE.test(String(frage || ""));
