@@ -780,16 +780,15 @@ async function alteVerwerfen(clientId, doppelt, neu) {
   return weg;
 }
 
-// Befund des HKP als eigene Datei, KZBV-Befundkuerzel (Chef 09.10.2026): diktiert,
-// aus Lena-01 oder beides. Ohne jeden Befund (Quelle "keiner") keine Datei.
-// Notaus MAS_HKP_BEFUND_DATEI=0.
+// Befund jedes Clara-HKP als eigene Datei, KZBV-Befundkuerzel (Chef 09.10.2026): diktiert,
+// aus Lena-01, beides oder aus dem Auftrag (Totalprothese: Kiefer zahnlos). Inhalt ist
+// immer die Befundzeile des Plans. Notaus MAS_HKP_BEFUND_DATEI=0.
 export function befundDateiBauen(hkpId, { befund, befundDiktat, auftrag, r }) {
-  if (process.env.MAS_HKP_BEFUND_DATEI === "0") return null;
-  const art = String(befund?.quelle?.art || "");
-  if (!art || art === "keiner" || !r?.plan) return null;
+  if (process.env.MAS_HKP_BEFUND_DATEI === "0" || !r?.plan) return null;
+  const art = String(befund?.quelle?.art || "auftrag");
   const diktat = art.startsWith("gesprochen") ? String(befundDiktat || "").trim() : "";
   const datei = E.befundDatei(r.plan, {
-    hkpId, diktat, diktiert: Object.keys(E.befundVerstehen(diktat, auftrag?.kiefer)), quelle: { ...befund.quelle },
+    hkpId, diktat, diktiert: Object.keys(E.befundVerstehen(diktat, auftrag?.kiefer)), quelle: { ...befund?.quelle, art },
   });
   return { id: "befund", name: E.befundDateiName(datei), art: "befund", typ: "application/json", inhalt: JSON.stringify(datei, null, 2) };
 }

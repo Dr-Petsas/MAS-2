@@ -215,9 +215,15 @@ t("Befund nur aus Lena-01 wird genauso Datei, ohne Diktat", () => {
   assert.deepEqual(j.zaehne.map((z) => `${z.zahn}:${z.kuerzel}`).filter((x) => /^1[5-7]/.test(x)), ["17:kw", "16:f", "15:f"]);
   assert.equal(j.zaehne.some((z) => z.diktiert), false);
 });
-t("keine Befund-Datei ohne jeden Befund (Totalprothese) oder mit Notaus", () => {
+t("Totalprothese: Befund aus dem Auftrag (Kiefer zahnlos) steht in der Datei", () => {
+  const r = E.hkpEntwurf("Totalprothese im Oberkiefer", {}, {});
+  const j = JSON.parse(befundDateiBauen("h1", { befund: { quelle: { art: "auftrag" } }, befundDiktat: "", auftrag: { kiefer: "OK" }, r }).inhalt);
+  assert.equal(j.quelle.art, "auftrag");
+  assert.deepEqual(j.befundzeile.oberkiefer.kuerzel, Array(16).fill("f"));
+  assert.deepEqual(j.legende, { f: "fehlender Zahn" });
+});
+t("keine Befund-Datei mit Notaus", () => {
   const r = entwurf(BRUECKE);
-  assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "keiner" } }, befundDiktat: "", r }), null);
   process.env.MAS_HKP_BEFUND_DATEI = "0";
   assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "gesprochen" } }, befundDiktat: "15 fehlt", r }), null);
   delete process.env.MAS_HKP_BEFUND_DATEI;

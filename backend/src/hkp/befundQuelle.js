@@ -127,7 +127,7 @@ export async function befundErmitteln(clientId, patient, { gesprochen = "", kief
   }
   if (basis) return { ok: true, befund: basis, quelle, hinweise };
   // Reine Totalprothese: die Engine plant zahnlos und vermerkt die Annahme.
-  if (ohneBefundOk) return { ok: true, befund: {}, quelle: { art: "keiner" }, hinweise };
+  if (ohneBefundOk) return { ok: true, befund: {}, quelle: { art: "auftrag", datum: new Date().toISOString() }, hinweise };
   return {
     ok: false, grund: "befund_fehlt",
     frage: `Für ${patient.label} habe ich keinen Befund – weder aus der Lena-Erstuntersuchung noch aus dem Praxisprogramm. `
