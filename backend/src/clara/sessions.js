@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
+import { nurVorhandene } from "./patientCatalog.js";
 
 const FieldValue = admin.firestore.FieldValue;
 
@@ -125,7 +126,7 @@ export async function getPatientCandidates(clientId) {
   // (16.08.2026) — einmalig als veraltet behandeln statt ewig weiterzuschleppen.
   const setAt = Number(data.patientCandidatesAt || 0);
   if (!setAt || Date.now() - setAt > PATIENT_CANDIDATES_MAX_AGE_MS) return [];
-  return list;
+  return nurVorhandene(clientId, list);
 }
 
 export async function clearSelectedPatient(clientId) {

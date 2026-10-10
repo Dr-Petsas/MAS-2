@@ -595,6 +595,37 @@ function geloeschteEntfernen(key, ids) {
 }
 
 /**
+ * Gemerkte Kandidaten ohne inzwischen geloeschte Akten. Die Merkliste einer
+ * Rueckfrage ueberlebte das Loeschen der Dublette, Clara fragte weiter "welchen
+ * der beiden" (Mustermann, 10.10.2026). Best-effort: faellt die Pruefung aus,
+ * bleibt die Liste, wie sie ist. Notaus CLARA_KANDIDATEN_PRUEFEN=0.
+ * @param {string} clientId
+ * @param {Array<{id?:string}>} kandidaten
+ */
+export async function nurVorhandene(clientId, kandidaten) {
+  const list = Array.isArray(kandidaten) ? kandidaten : [];
+  const ids = [...new Set(list.map((p) => String(p?.id || "").trim()).filter(Boolean))].slice(0, 20);
+  const cid = String(clientId || "").trim();
+  if (!cid || !ids.length || process.env.CLARA_KANDIDATEN_PRUEFEN === "0") return list;
+  try {
+    const booking = await loadBooking(cid);
+    const lid = String(booking?.locationId || "").trim();
+    if (!lid) return list;
+    const col = admin.firestore()
+      .collection("clients").doc(cid)
+      .collection("locations").doc(lid)
+      .collection("patients");
+    const docs = await admin.firestore().getAll(...ids.map((id) => col.doc(id)));
+    const weg = new Set(docs.filter((d) => !d.exists).map((d) => d.id));
+    if (!weg.size) return list;
+    geloeschteEntfernen(`${cid}/${lid}`, [...weg]);
+    return list.filter((p) => !weg.has(String(p?.id || "").trim()));
+  } catch {
+    return list;
+  }
+}
+
+/**
  * Stammdaten zu Katalog-Treffern nachladen (gezielte Einzelabrufe, keine Suche).
  * Gleiche Felder wie die Plattform-Suche, damit nachgelagerte Logik
  * (Doppelgaenger-Klaerung, Buchung) unveraendert weiterarbeitet.
