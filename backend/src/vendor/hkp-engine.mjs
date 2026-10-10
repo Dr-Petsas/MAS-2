@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 8fcd4665d988)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 7369ebf12b45)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -24973,7 +24973,8 @@ function zahnlosScannen(positionen) {
 }
 /**
 * Erste Abformung (präparierte Zähne): Scan → GOZ 0065 je Bereich (mit Gegenkiefer) und gedruckte Modelle
-* statt Gipsmodellen; der Abdruck ändert nichts. Implantatkronen regelt implantatPositionen.
+* statt Gipsmodellen (auch bei reinen Implantatkronen: nie Gips- und gedrucktes Modell zugleich); der Abdruck
+* ändert nichts. Implantatspezifische Leistungen regelt implantatPositionen.
 * Danach die zweite Abformung für den herausnehmbaren Teil.
 */
 function abformungAnwenden(positionen, zaehne, abformung, prothese = "", eigenlabor = false) {
@@ -25105,19 +25106,20 @@ function digitalerWorkflow(positionen, zaehne, eigenlabor) {
 function scanAnwenden(positionen, zaehne) {
 	const implantat = (z) => /^S/i.test((zaehne[z]?.TP.trim() || zaehne[z]?.R || "").toUpperCase());
 	const praepariert = [...new Set(positionen.filter(KRONE).map((p) => p.zahn))].filter((z) => !implantat(z));
+	const implantatKronen = [...new Set(positionen.filter((p) => /^\d\d$/.test(p.zahn) && implantat(p.zahn)).map((p) => p.zahn))];
 	const hinweise = [];
-	if (!praepariert.length) return {
+	if (!praepariert.length && !implantatKronen.length) return {
 		positionen,
 		hinweise
 	};
-	const bereiche = [...new Set(praepariert.map(bereich))];
+	const bereiche = [...new Set([...praepariert, ...implantatKronen].map(bereich))];
 	const gescannt = new Set(positionen.filter((p) => p.ebene === "GOZ" && p.nr === "0065").map((p) => p.zahn));
 	const regionen = [.../* @__PURE__ */ new Set([...bereiche, ...bereiche.map((b) => GEGENUEBER[b])])].filter((r) => !gescannt.has(r));
 	const labor = positionen.find(GIPSMODELL)?.labor;
 	const gedruckt = new Set(positionen.filter((p) => p.ebene === "BEB" && p.nr === "0009").map((p) => p.zahn));
 	const kiefer = ["OK", "UK"].filter((k) => !gedruckt.has(k));
 	const neu = [...regionen.map((r) => pos$1("GOZ", "0065", r)), ...kiefer.map((k) => pos$1("BEB", "0009", k, labor ? { labor } : {}))];
-	const arbeitsKiefer = [...new Set(praepariert.map(kieferVon))];
+	const arbeitsKiefer = [...new Set([...praepariert, ...implantatKronen].map(kieferVon))];
 	hinweise.push(`Intraoralscan (${regionen.length ? regionen.join(", ") : "bereits erfasst"}): GOZ 0065 statt konventioneller Abformung, gedruckte Modelle ${arbeitsKiefer.join("/")} mit Gegenkiefer (BEB 0009) statt Gips-/Sägemodell.`);
 	return {
 		positionen: [...positionen.filter((p) => !GIPSMODELL(p)), ...neu],
@@ -25384,7 +25386,8 @@ function berechnen(plan, listen) {
 	const fremdNetto = runden(fremdBel + fremdBeb + fremdMat);
 	const eigenMwst = runden(eigenNetto * satz);
 	const fremdMwst = runden(fremdNetto * satz);
-	const laborMwst = runden(eigenMwst + fremdMwst);
+	const materialMwst = runden(material * satz);
+	const laborMwst = runden(eigenMwst + fremdMwst + materialMwst);
 	const materialUndLabor = runden(eigenNetto + fremdNetto + laborMwst + material);
 	const gesamt = runden(bemaHonorar + gozHonorar + materialUndLabor);
 	const bemaPunkte = positionen.filter((p) => p.ebene === "BEMA").reduce((s, p) => s + (p.punkte ?? 0) * p.anzahl, 0);
@@ -25516,6 +25519,10 @@ function berechnen(plan, listen) {
 		stufe: "info",
 		text: "Härtefall bei gleich-/andersartiger Versorgung: Zuschuss ist auf den Festzuschuss in Höhe von 100 % begrenzt."
 	});
+	if (positionen.some(GIPSMODELL) && positionen.some((p) => p.ebene === "BEB" && p.nr === "0009")) hinweise.push({
+		stufe: "fehler",
+		text: "Gipsmodell und gedrucktes Modell (BEB 0009) zugleich – entweder klassische Abformung oder Intraoralscan, nie beide Modelle."
+	});
 	if (!plan.verwaltung.herstellungsort.trim()) hinweise.push({
 		stufe: "warnung",
 		text: "Herstellungsort bzw. -land des Zahnersatzes fehlt."
@@ -25533,6 +25540,7 @@ function berechnen(plan, listen) {
 			bebNetto,
 			laborMwst,
 			material,
+			materialMwst,
 			materialUndLabor,
 			eigenBel,
 			eigenBeb,
@@ -26369,11 +26377,13 @@ function therapieAnwenden(regel, zaehne, plan) {
 			R
 		}]))
 	};
+	const implantatAbf = implantatAbformung(plan);
 	const imp = implantatPositionen(mitR, {
 		...plan.implantat,
-		abformung: implantatAbformung(plan)
+		abformung: implantatAbf
 	}, plan.einstellungen.labor === "gewerbe" ? "fremd" : void 0);
-	const abf = abformungAnwenden([...r.positionen, ...imp.positionen], mitR, plan.abformung ?? "", plan.abformungProthese ?? "", plan.einstellungen.labor === "praxis");
+	const abformung = plan.abformung || (implantatAbf === "scan" && imp.positionen.length ? "scan" : "");
+	const abf = abformungAnwenden([...r.positionen, ...imp.positionen], mitR, abformung, plan.abformungProthese ?? "", plan.einstellungen.labor === "praxis");
 	return {
 		...r,
 		positionen: abf.positionen,
@@ -27613,7 +27623,7 @@ function befundDateiName(d) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-10 00:53";
+var ENGINE_STAND = "2026-10-10 04:08";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
