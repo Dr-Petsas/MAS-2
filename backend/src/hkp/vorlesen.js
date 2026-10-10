@@ -134,12 +134,17 @@ export function jahrgangWahl(text, kandidaten) {
   return null;
 }
 
-/** Vorlese-Frage vor der Anlage */
-export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgung, ausfuehrung = "", summen = "", doppelt = "" }) {
+/**
+ * Vorlese-Frage vor der Anlage. Mit `spanne` statt der Summen nur das billigste und teuerste Ende –
+ * die Summen nennt Clara erst beim Anlegen (Chef 10.10.2026: "Preise nicht zweimal").
+ */
+export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgung, ausfuehrung = "", summen = "", spanne = "", doppelt = "" }) {
   const anrede = patient.anredeLabel?.startsWith("Herrn ") ? "Herrn " : patient.anredeLabel?.startsWith("Frau ") ? "Frau " : "";
   const name = `${anrede}${patient.firstName || ""} ${patient.lastName || ""}`.replace(/\s+/g, " ").trim();
   const befund = befundSatz(zaehne || {}, kiefer);
+  const preis = spanne ? ` ${spanne}` : summen ? ` Voraussichtlich ${summen}.` : "";
+  const frage = spanne ? " Wo soll der Eigenanteil ungefähr landen – oder soll ich den Entwurf so anlegen?" : " Soll ich den Entwurf so anlegen?";
   return `Bevor ich anlege, bitte prüfen: ${versorgungText} für ${name}, ${geburtSprech(patient.birthDate)}.`
     + `${befund ? ` Befund ${befund}` : ""}${versorgung ? ` Geplant: ${versorgung}.` : ""}${ausfuehrung ? ` Ausführung: ${ausfuehrung}.` : ""}`
-    + `${summen ? ` Voraussichtlich ${summen}.` : ""}${doppelt ? ` ${doppelt}` : ""} Soll ich den Entwurf so anlegen?`;
+    + `${preis}${doppelt ? ` ${doppelt}` : ""}${frage}`;
 }

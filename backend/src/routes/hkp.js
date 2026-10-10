@@ -25,6 +25,7 @@ import { soundsSame } from "../clara/phonetics.js";
 import { disambiguationQuestion, merkmalEingrenzen, ordinalPick } from "../clara/patientDisambig.js";
 import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
 import { jahrgangWahl, vetternFrage, vorleseSatz } from "../hkp/vorlesen.js";
+import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
@@ -117,6 +118,29 @@ function planAus(h) {
 }
 
 const praxisListen = (p) => ({ preislisten: p.preislisten, eigen: p.eigen });
+
+// Vorlesen nennt nur die Spanne des Eigenanteils, auf den Wunsch werden die Regler gestellt
+// (Chef 10.10.2026). Notaus MAS_HKP_ZIELPREIS=0: Summen wie bisher beim Vorlesen.
+const zielpreisAn = () => process.env.MAS_HKP_ZIELPREIS !== "0";
+
+function spanneVon(plan, praxis) {
+  if (!zielpreisAn()) return "";
+  try {
+    const s = E.preisSpanne(plan, praxisListen(praxis));
+    return s.max - s.min >= 1 ? spanneSatz(s) : "";
+  } catch (e) {
+    log.warn?.(`[hkp] Preisspanne: ${e?.message || e}`);
+    return "";
+  }
+}
+
+/** Vorschau mit Reglern auf den Wunsch-Eigenanteil */
+function aufZielpreis(vs, ziel, praxis) {
+  const z = E.aufZielpreis(vs.r.plan, ziel, praxisListen(praxis));
+  const r = { ...vs.r, plan: z.plan, ergebnis: z.ergebnis, zusammenfassung: E.zusammenfassen(z.plan, z.ergebnis), hinweise: [...vs.r.hinweise, ...z.hinweise] };
+  log.info?.(`[hkp] Zielpreis ${ziel}: Eigenanteil ${z.eigenanteil.toFixed(2)} (Spanne ${z.min.toFixed(0)}-${z.max.toFixed(0)}) ${JSON.stringify(z.stand)}`);
+  return { ...vs, r, summen: summenAus(z.ergebnis), zielpreis: z };
+}
 
 /** Kurzfassung der Annahmen fuer den gesprochenen Satz (Abformung/Material nicht, wenn die Ausfuehrung schon gesagt wurde) */
 export function annahmenSatz(hinweise = [], warnungen = [], { ausfuehrungGesagt = false } = {}) {
@@ -919,7 +943,7 @@ async function entwurfAnlegen(clientId, d) {
   return {
     ok: true, hkpId: h.id, ...(card ? { card } : {}), ...(weg.length ? { verworfen: weg.map((x) => x.id) } : {}),
     ...mitUndo("hkp", { id: h.id, label: `den ${hkpTitel(h)} für ${patient.anredeLabel}`, alt: weg.map((x) => x.id) }),
-    message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR.${d.vorgelesen ? "" : ` Geplant: ${versorgungSatz(r.zusammenfassung)}.`}${ausfuehrung ? ` Ausführung: ${ausfuehrung}.` : ""} ${summenSatz(summen)}.${wegSatz}${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen, { ausfuehrungGesagt: true })}`,
+    message: `Der ${hkpTitel(h)} für ${patient.anredeLabel} ist angelegt und wartet auf Ihre Freigabe in PlanR.${d.vorgelesen ? "" : ` Geplant: ${versorgungSatz(r.zusammenfassung)}.`}${ausfuehrung ? ` Ausführung: ${ausfuehrung}.` : ""}${d.zielpreis ? ` ${reglerSatz(d.zielpreis)}` : ""} ${summenSatz(summen)}.${wegSatz}${quelle}${annahmenSatz(r.hinweise, r.zusammenfassung.warnungen, { ausfuehrungGesagt: true })}`,
   };
 }
 
@@ -929,12 +953,14 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (!clientId) return;
     const b = req.body || {};
     const auftragText = String(b.auftrag || "").trim();
-    const vs = wahr(b.bestaetigt) ? vorschauFinden(vorschauen(clientId), b) : null;
+    const ziel = zielpreisAn() ? zielpreisAus(b.zielpreis) : null;
+    const vs = wahr(b.bestaetigt) || ziel ? vorschauFinden(vorschauen(clientId), b) : null;
     if (vs) {
       vorschauWeg(clientId, vs);
       vetterWahl.delete(clientId);
+      const praxis = ziel ? await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [], einstellungen: {} })) : null;
       return res.json(await entwurfAnlegen(clientId, {
-        ...vs, vorgelesen: true, zusaetzlich: true, alteVerwerfen: vs.alteVerwerfen || wahr(b.alte_verwerfen),
+        ...(ziel ? aufZielpreis(vs, ziel, praxis) : vs), vorgelesen: true, zusaetzlich: true, alteVerwerfen: vs.alteVerwerfen || wahr(b.alte_verwerfen),
       }));
     }
     const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den HKP erstellen?", { vettern: true });
@@ -1020,7 +1046,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       ok: true, rueckfrage: "vorlesen", ...(doppelt.length ? { doppelung: doppelt.map((h) => h.id) } : {}),
       message: vorleseSatz({
         patient, versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
-        versorgung: versorgungSatz(r.zusammenfassung), ausfuehrung: ausfuehrungText(r.plan), summen: summenSatz(summen),
+        versorgung: versorgungSatz(r.zusammenfassung), ausfuehrung: ausfuehrungText(r.plan), summen: summenSatz(summen), spanne: spanneVon(r.plan, praxis),
         doppelt: doppelt.length ? doppelungHinweis(doppelt, alteWeg) : "",
       }),
     });
@@ -1262,7 +1288,7 @@ function vorschauKorrigieren(clientId, vs, text, praxis) {
     ok: true, rueckfrage: "vorlesen",
     message: vorleseSatz({
       patient: vs.patient, versorgungText: vs.versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
-      versorgung: versorgungSatz(r.zusammenfassung), ausfuehrung: ausfuehrungText(r.plan), summen: summenSatz(summen),
+      versorgung: versorgungSatz(r.zusammenfassung), ausfuehrung: ausfuehrungText(r.plan), summen: summenSatz(summen), spanne: spanneVon(r.plan, praxis),
       doppelt: vs.doppelt?.length ? doppelungHinweis(vs.doppelt, vs.alteVerwerfen) : "",
     }),
   };

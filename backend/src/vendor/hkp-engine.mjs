@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 7369ebf12b45)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 d17a126509e6)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -23710,6 +23710,37 @@ function kombinationenPruefen(befunde) {
 }
 //#endregion
 //#region src/engine/zusatzleistungen.ts
+/**
+* Zusätzliche GOZ-Leistungen neben dem Zahnersatz (Mehrleistungen, machen die Versorgung gleichartig).
+* Jede Stufe nimmt nur Leistungen auf, für die der Plan eine Grundlage enthält, und hält die
+* Abrechnungsbestimmungen der GOZ ein (Bereiche, Höchstzahlen je Sitzung).
+*/
+var ZUSATZ_STUFEN = [
+	{
+		titel: "keine",
+		leistungen: ""
+	},
+	{
+		titel: "Präparation",
+		leistungen: "GOZ 2030 je Kieferhälfte/Frontzahnbereich"
+	},
+	{
+		titel: "Adhäsive Befestigung",
+		leistungen: "+ GOZ 2197 je Keramikkrone, 2040 Kofferdam"
+	},
+	{
+		titel: "Digitale Abformung",
+		leistungen: "+ GOZ 0065 je Kieferhälfte/Frontzahnbereich (nicht bei Abdruck)"
+	},
+	{
+		titel: "Funktionsdiagnostik",
+		leistungen: "+ GOZ 8000, 8010, 8020"
+	},
+	{
+		titel: "Instrumentelle Planung",
+		leistungen: "+ GOZ 8050, 8080, 8090"
+	}
+];
 /** Kieferhälfte bzw. Frontzahnbereich im Sinne der GOZ (13–23 und 33–43 = Frontzahnbereich) */
 function bereich(zahn) {
 	const q = zahn[0];
@@ -24775,7 +24806,7 @@ function werkstoffVon(e, wahl) {
 		gewaehlt: false
 	};
 }
-var runden$1 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var runden$2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var zahl = (n, s = 2) => n.toLocaleString("de-DE", {
 	minimumFractionDigits: s,
 	maximumFractionDigits: s
@@ -24790,7 +24821,7 @@ function materialSchaetzung(e, w) {
 	const menge = Math.round(GRAMM[e.einheit] * (info.dichte ?? 1) * 10 + 1e-9) / 10;
 	return {
 		menge,
-		betrag: runden$1(menge * info.preis)
+		betrag: runden$2(menge * info.preis)
 	};
 }
 function materialErmitteln(positionen, wahl) {
@@ -25135,7 +25166,8 @@ function laborVon(p, plan) {
 }
 /** § 5 Abs. 1 GOZ: Gebührenrahmen 1,0- bis 3,5-fach; darüber nur mit Vereinbarung nach § 2 */
 var GOZ_HOECHSTSATZ = 3.5;
-var runden = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var GOZ_SCHWELLENWERT = 2.3;
+var runden$1 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var belNrNorm = (nr) => nr.replace(/\s/g, "");
 var belNrAnzeige = (nr) => {
 	const n = belNrNorm(nr);
@@ -25213,14 +25245,14 @@ function positionBerechnen(p, listen, plan) {
 				...basis,
 				fehler: `BEMA-Nr. ${p.nr} nicht in der Liste`
 			};
-			const einzel = p.preis ?? runden((e?.punkte ?? 0) * pw);
+			const einzel = p.preis ?? runden$1((e?.punkte ?? 0) * pw);
 			return {
 				...basis,
 				bezeichnung: p.text || e?.text || "",
 				punkte: e?.punkte,
 				punktwert: p.preis === void 0 ? pw : void 0,
 				einzelpreis: einzel,
-				betrag: runden(einzel * anzahl)
+				betrag: runden$1(einzel * anzahl)
 			};
 		}
 		case "GOZ": {
@@ -25233,7 +25265,7 @@ function positionBerechnen(p, listen, plan) {
 			const eigen = p.faktor ?? plan.einstellungen.gozFaktor;
 			const regler = Math.min(plan.einstellungen.honorarFaktor || 0, GOZ_HOECHSTSATZ);
 			const faktor = Math.max(eigen, regler);
-			const einzel = p.preis ?? runden((e?.punkte ?? 0) * pw * faktor);
+			const einzel = p.preis ?? runden$1((e?.punkte ?? 0) * pw * faktor);
 			const faktorBegruendung = faktor > 2.3 ? p.faktorBegruendung?.trim() || standardBegruendung(p.nr) : void 0;
 			return {
 				...basis,
@@ -25242,7 +25274,7 @@ function positionBerechnen(p, listen, plan) {
 				bezeichnung: p.text || e?.text || "",
 				punkte: e?.punkte,
 				einzelpreis: einzel,
-				betrag: runden(einzel * anzahl)
+				betrag: runden$1(einzel * anzahl)
 			};
 		}
 		case "BEL": {
@@ -25255,7 +25287,7 @@ function positionBerechnen(p, listen, plan) {
 			};
 			const hoechst = e ? labor === "eigen" ? e.praxis : e.gewerbe : void 0;
 			const anteil = Math.min(Math.max(0, plan.einstellungen.eigenKasseProzent ?? 100), 100) / 100;
-			const einzel = p.preis ?? (labor === "eigen" ? runden(hoechst * anteil) : hoechst);
+			const einzel = p.preis ?? (labor === "eigen" ? runden$1(hoechst * anteil) : hoechst);
 			const fehler = hoechst !== void 0 && einzel > hoechst + .004 ? `BEL ${belNrAnzeige(p.nr)} (${labor === "eigen" ? "Eigenlabor" : "Fremdlabor"}): ${einzel.toFixed(2)} € über dem Höchstpreis ${hoechst.toFixed(2)} € der KZV-Liste` : void 0;
 			return {
 				...basis,
@@ -25263,7 +25295,7 @@ function positionBerechnen(p, listen, plan) {
 				bezeichnung: p.text || e?.text || "",
 				listenpreis: hoechst,
 				einzelpreis: einzel,
-				betrag: runden(einzel * anzahl),
+				betrag: runden$1(einzel * anzahl),
 				fehler
 			};
 		}
@@ -25280,7 +25312,7 @@ function positionBerechnen(p, listen, plan) {
 					bezeichnung: p.text || eigen.text,
 					listenpreis: eigen.preis,
 					einzelpreis: einzel,
-					betrag: runden(einzel * anzahl)
+					betrag: runden$1(einzel * anzahl)
 				};
 			}
 			if (!e && p.preis === void 0) return {
@@ -25289,7 +25321,7 @@ function positionBerechnen(p, listen, plan) {
 				fehler: `BEB-Nr. ${p.nr} nicht in der Liste`
 			};
 			const aufschlag = labor === "eigen" ? Math.min(Math.max(0, plan.einstellungen.eigenPrivatAufschlag || 0), 100) : 0;
-			const einzel = p.preis ?? runden(e.preis * (1 + aufschlag / 100));
+			const einzel = p.preis ?? runden$1(e.preis * (1 + aufschlag / 100));
 			const richtpreis = p.preis === void 0 && e?.richtpreis ? { richtpreis: true } : {};
 			return {
 				...basis,
@@ -25297,7 +25329,7 @@ function positionBerechnen(p, listen, plan) {
 				bezeichnung: p.text || e?.text || "",
 				listenpreis: e?.preis,
 				einzelpreis: einzel,
-				betrag: runden(einzel * anzahl),
+				betrag: runden$1(einzel * anzahl),
 				...richtpreis
 			};
 		}
@@ -25308,7 +25340,7 @@ function positionBerechnen(p, listen, plan) {
 				labor: p.labor,
 				bezeichnung: p.text || "Material",
 				einzelpreis: einzel,
-				betrag: runden(einzel * anzahl)
+				betrag: runden$1(einzel * anzahl)
 			};
 		}
 	}
@@ -25369,7 +25401,7 @@ function berechnen(plan, listen) {
 		positionen: allePositionen
 	});
 	const positionen = allePositionen.map((p) => positionBerechnen(p, listen, plan));
-	const summe = (f) => runden(positionen.filter(f).reduce((s, p) => s + p.betrag, 0));
+	const summe = (f) => runden$1(positionen.filter(f).reduce((s, p) => s + p.betrag, 0));
 	const bemaHonorar = summe((p) => p.ebene === "BEMA");
 	const gozHonorar = summe((p) => p.ebene === "GOZ");
 	const belNetto = summe((p) => p.ebene === "BEL");
@@ -25382,14 +25414,14 @@ function berechnen(plan, listen) {
 	const fremdMat = summe((p) => p.ebene === "MAT" && p.labor === "fremd");
 	const material = summe((p) => p.ebene === "MAT" && !p.labor);
 	const satz = plan.einstellungen.mwstLabor / 100;
-	const eigenNetto = runden(eigenBel + eigenBeb + eigenMat);
-	const fremdNetto = runden(fremdBel + fremdBeb + fremdMat);
-	const eigenMwst = runden(eigenNetto * satz);
-	const fremdMwst = runden(fremdNetto * satz);
-	const materialMwst = runden(material * satz);
-	const laborMwst = runden(eigenMwst + fremdMwst + materialMwst);
-	const materialUndLabor = runden(eigenNetto + fremdNetto + laborMwst + material);
-	const gesamt = runden(bemaHonorar + gozHonorar + materialUndLabor);
+	const eigenNetto = runden$1(eigenBel + eigenBeb + eigenMat);
+	const fremdNetto = runden$1(fremdBel + fremdBeb + fremdMat);
+	const eigenMwst = runden$1(eigenNetto * satz);
+	const fremdMwst = runden$1(fremdNetto * satz);
+	const materialMwst = runden$1(material * satz);
+	const laborMwst = runden$1(eigenMwst + fremdMwst + materialMwst);
+	const materialUndLabor = runden$1(eigenNetto + fremdNetto + laborMwst + material);
+	const gesamt = runden$1(bemaHonorar + gozHonorar + materialUndLabor);
 	const bemaPunkte = positionen.filter((p) => p.ebene === "BEMA").reduce((s, p) => s + (p.punkte ?? 0) * p.anzahl, 0);
 	const stufe = plan.zuschuss.haertefall ? "100" : plan.zuschuss.bonus;
 	const befunde = plan.befunde.map((b) => {
@@ -25406,23 +25438,23 @@ function berechnen(plan, listen) {
 			...b,
 			text: e.text,
 			einzelbetrag: e.betraege[stufe],
-			betrag: runden(e.betraege[stufe] * b.anzahl),
-			betrag100: runden(e.betraege["100"] * b.anzahl)
+			betrag: runden$1(e.betraege[stufe] * b.anzahl),
+			betrag100: runden$1(e.betraege["100"] * b.anzahl)
 		};
 	});
-	const festzuschuss = runden(befunde.reduce((s, b) => s + b.betrag, 0));
-	const festzuschuss100 = runden(befunde.reduce((s, b) => s + b.betrag100, 0));
-	const festzuschussRegel = runden(befunde.reduce((s, b) => s + (finden(listen.fz, b.nr)?.betraege[plan.zuschuss.bonus] ?? 0) * b.anzahl, 0));
+	const festzuschuss = runden$1(befunde.reduce((s, b) => s + b.betrag, 0));
+	const festzuschuss100 = runden$1(befunde.reduce((s, b) => s + b.betrag100, 0));
+	const festzuschussRegel = runden$1(befunde.reduce((s, b) => s + (finden(listen.fz, b.nr)?.betraege[plan.zuschuss.bonus] ?? 0) * b.anzahl, 0));
 	let kassenanteil;
 	if (plan.zuschuss.haertefall && versorgungsart === "regel") {
-		kassenanteil = runden(gesamt - summe((p) => !!p.material && mat.edelmetallKasse.has(p.zahn)) * (1 + satz));
+		kassenanteil = runden$1(gesamt - summe((p) => !!p.material && mat.edelmetallKasse.has(p.zahn)) * (1 + satz));
 		hinweise.push({
 			stufe: "info",
 			text: "Härtefall mit Regelversorgung: Die Krankenkasse übernimmt die tatsächlichen Kosten (nur NEM-Legierung)."
 		});
 	} else kassenanteil = Math.min(festzuschuss, gesamt);
-	const eigenanteil = runden(gesamt - kassenanteil);
-	const eigenanteilRegel = plan.zuschuss.haertefall ? 0 : runden(festzuschuss100 - festzuschussRegel);
+	const eigenanteil = runden$1(gesamt - kassenanteil);
+	const eigenanteilRegel = plan.zuschuss.haertefall ? 0 : runden$1(festzuschuss100 - festzuschussRegel);
 	hinweise.push(...listen.hinweise ?? []);
 	for (const text of mat.hinweise) hinweise.push({
 		stufe: text.startsWith("Kronenmaterial nicht") || text.startsWith("Lithium") ? "warnung" : "info",
@@ -27622,8 +27654,122 @@ function befundDateiName(d) {
 	].map(teil).filter(Boolean).join("_")}.json`;
 }
 //#endregion
+//#region src/clara/zielpreis.ts
+var EIGEN_KASSE_MIN = 50;
+var runden = (n) => Math.round(n * 10) / 10;
+function pfad(plan, mitBel) {
+	const e = plan.einstellungen;
+	const fMin = Math.min(e.gozFaktor, GOZ_SCHWELLENWERT);
+	const kasseMin = mitBel ? 50 : 100;
+	const s = {
+		gozZusatzStufe: 0,
+		honorarFaktor: 0,
+		eigenKasseProzent: kasseMin,
+		eigenPrivatStufe: 0,
+		eigenPrivatAufschlag: 0
+	};
+	const out = [{ ...s }];
+	for (let z = 1; z < ZUSATZ_STUFEN.length; z++) out.push({
+		...s,
+		gozZusatzStufe: s.gozZusatzStufe = z
+	});
+	for (let f = runden(fMin + .1); f <= GOZ_HOECHSTSATZ + 1e-9; f = runden(f + .1)) out.push({
+		...s,
+		honorarFaktor: s.honorarFaktor = f
+	});
+	for (let k = kasseMin + 1; k <= 100; k++) out.push({
+		...s,
+		eigenKasseProzent: s.eigenKasseProzent = k
+	});
+	for (let p = 1; p <= PRIVAT_STUFE_MAX; p++) out.push({
+		...s,
+		eigenPrivatStufe: s.eigenPrivatStufe = p
+	});
+	for (let a = 1; a <= 100; a++) out.push({
+		...s,
+		eigenPrivatAufschlag: s.eigenPrivatAufschlag = a
+	});
+	return out;
+}
+function rechner(planRoh, praxis) {
+	const plan = planNormalisieren(planRoh);
+	const listen = listenFuer(plan, praxis);
+	const ohnePrivat = (plan.einstellungen.eigenPrivatStufe ?? 0) > 0 ? privatStufeAnwenden(plan, 0).plan : plan;
+	const privat = /* @__PURE__ */ new Map();
+	const stufenPlan = (stufe) => {
+		if (stufe === 0) return {
+			plan: ohnePrivat,
+			hinweise: []
+		};
+		if (!privat.has(stufe)) privat.set(stufe, privatStufeAnwenden(ohnePrivat, stufe));
+		return privat.get(stufe);
+	};
+	return (s) => {
+		const b = stufenPlan(s.eigenPrivatStufe);
+		const p = {
+			...b.plan,
+			einstellungen: {
+				...b.plan.einstellungen,
+				...s
+			}
+		};
+		return {
+			plan: p,
+			ergebnis: berechnen(p, listen),
+			hinweise: b.hinweise
+		};
+	};
+}
+/** BEL unter 100 % nur, wenn das Eigenlabor überhaupt BEL-Positionen fertigt (sonst bliebe der Regler sinnlos verstellt) */
+function stufenUndRechner(planRoh, praxis) {
+	const plan = planNormalisieren(planRoh);
+	const r = rechner(plan, praxis);
+	return {
+		stufen: pfad(plan, r(pfad(plan, false)[0]).ergebnis.positionen.some((p) => p.ebene === "BEL" && p.labor === "eigen")),
+		r
+	};
+}
+/** Billigstes und teuerstes Ende des Eigenanteils */
+function preisSpanne(plan, praxis = {}) {
+	const { stufen, r } = stufenUndRechner(plan, praxis);
+	const preise = [stufen[0], stufen[stufen.length - 1]].map((s) => r(s).ergebnis.summen.eigenanteil);
+	return {
+		min: Math.min(...preise),
+		max: Math.max(...preise)
+	};
+}
+/** Regler so stellen, dass der Eigenanteil dem Wunsch am nächsten kommt (bei Gleichstand der niedrigere Reglerstand) */
+function aufZielpreis(plan, ziel, praxis = {}) {
+	const { stufen, r } = stufenUndRechner(plan, praxis);
+	let beste;
+	let min = Infinity, max = -Infinity;
+	for (const s of stufen) {
+		const x = r(s);
+		const preis = x.ergebnis.summen.eigenanteil;
+		min = Math.min(min, preis);
+		max = Math.max(max, preis);
+		if (!beste || Math.abs(preis - ziel) < Math.abs(beste.ergebnis.summen.eigenanteil - ziel) - .005) beste = {
+			...x,
+			stand: s
+		};
+	}
+	const b = beste;
+	return {
+		plan: b.plan,
+		ergebnis: b.ergebnis,
+		stand: b.stand,
+		eigenanteil: b.ergebnis.summen.eigenanteil,
+		min,
+		max,
+		ziel,
+		unterMin: ziel < min - .005,
+		ueberMax: ziel > max + .005,
+		hinweise: b.hinweise
+	};
+}
+//#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-10 04:08";
+var ENGINE_STAND = "2026-10-10 12:44";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
@@ -27952,4 +28098,4 @@ function positionPruefen(e, listen, frage) {
 	};
 }
 //#endregion
-export { ENGINE_STAND, LABOR_SPRECH, STANDARD_LISTEN, WERKSTOFF_SPRECH, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundDatei, befundDateiName, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, rechnen, systemSprech, zahlwort, zusammenfassen };
+export { EIGEN_KASSE_MIN, ENGINE_STAND, LABOR_SPRECH, PRIVAT_STUFEN, STANDARD_LISTEN, WERKSTOFF_SPRECH, ZUSATZ_STUFEN, aufZielpreis, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundDatei, befundDateiName, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, preisSpanne, rechnen, systemSprech, zahlwort, zusammenfassen };
