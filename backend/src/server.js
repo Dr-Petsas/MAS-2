@@ -54,6 +54,7 @@ import { voiceEnhanceProxy } from "./routes/voiceEnhanceProxy.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
 import { fuerAlleMandanten } from "./tenants.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
+import { planrClaraSperre } from "./hkp/planrClara.js";
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -216,6 +217,8 @@ app.use(miscRouter);
 // aktiv, dann Positivliste — alles Unbekannte wird verweigert statt ausgefuehrt
 // (Vorfall 27.07.2026, siehe clara/testRedirect.js).
 app.use(testRedirectMiddleware(resolveClientId));
+// PlanR-Standalone: nur Patientensuche + HKP + Rueckgaengig (hkp/planrClara.js).
+app.use(planrClaraSperre(resolveClientId));
 app.use(toolsRouter);
 app.use(qmRouter);
 app.use(brainRouter);

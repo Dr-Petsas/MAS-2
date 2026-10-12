@@ -32,6 +32,7 @@ import { narrateChapter, chatGuide, synthClaraVoice, ttsConfigured } from "../cl
 import { getAssistantName } from "../shared/rufname.js";
 import { CLARA_PROFILE_ID, DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, qmRoute, resolveClientId } from "./_shared.js";
 import { loadBooking } from "../clara/booking.js";
+import { sitzungsProfil } from "../hkp/planrClara.js";
 
 const router = express.Router();
 // __dirname zeigt wie vor dem Split auf src/ (routes/ liegt eine Ebene tiefer).
@@ -436,6 +437,10 @@ router.post("/clara/session", async (req, res) => {
       const booking = await loadBooking(clientId).catch(() => null);
       profileId = String(booking?.claraProfileId || "").trim() || CLARA_PROFILE_ID;
     }
+    // PlanR-Standalone: immer die HKP-Clara, ohne Sprachsteuerung gar keine.
+    const planr = await sitzungsProfil(clientId, profileId);
+    if (planr.gesperrt) return res.status(403).json({ error: "clara_nicht_gebucht", message: planr.message, clientId });
+    profileId = planr.profileId;
     const pipelineRaw = String(req.body?.pipeline || "").trim().toLowerCase();
     const pipeline = pipelineRaw === "text" ? "text" : "";
     const session = await createClaraSession({ clientId, profileId, pipeline });

@@ -18,8 +18,14 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import * as E from "../vendor/hkp-engine.mjs";
 import { assertAppEnabled, getBilling } from "../entitlements.js";
 import { planrAusBilling } from "../hkp/planrBerechtigung.js";
+import { claraZugang, rufnameSaeubern } from "../hkp/planrClara.js";
+import QRCode from "qrcode";
+import { clientRef } from "../tenant.js";
+import { createPairingToken } from "../clara/devices.js";
+import { normalizeRole } from "../clara/operators.js";
+import { DEFAULT_ASSISTANT_NAME, getAssistantName, invalidateAssistantName } from "../shared/rufname.js";
 import { log } from "../log.js";
-import { DEFAULT_CLIENT_ID, resolveClientId } from "./_shared.js";
+import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
 import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js";
 import { soundsSame } from "../clara/phonetics.js";
@@ -580,6 +586,55 @@ router.post("/planr/praxis", planrGuard, async (req, res) => {
       preislisten: Array.isArray(b.preislisten) ? b.preislisten : [], eigen: Array.isArray(b.eigen) ? b.eigen : [], einstellungen,
     });
     res.json({ ok: true, ...r });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// HKP-Clara fuer PlanR-Standalone (hkp/planrClara.js): Stufe, Ruf-Name, Handy-Kopplung.
+// Umbenennen nur fuer Zugang "planr" — MAS-Praxen pflegen den Namen in der Plattform.
+async function claraStand(clientId) {
+  const billing = await getBilling(clientId);
+  return { stufe: planrAusBilling(billing).clara, zugang: claraZugang(billing) };
+}
+
+router.get("/planr/clara", planrGuard, async (req, res) => {
+  try {
+    const { stufe, zugang } = await claraStand(req.planrClientId);
+    res.json({ ok: true, stufe, zugang, umbenennbar: zugang === "planr", assistantName: await getAssistantName(req.planrClientId), standardName: DEFAULT_ASSISTANT_NAME });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.put("/planr/clara", planrGuard, async (req, res) => {
+  try {
+    const { zugang } = await claraStand(req.planrClientId);
+    if (zugang !== "planr") return res.status(403).json({ ok: false, error: "nicht_umbenennbar" });
+    const r = rufnameSaeubern(req.body?.assistantName);
+    if (!r.ok) return res.status(400).json(r);
+    await clientRef(req.planrClientId).set({ assistantName: r.name }, { merge: true });
+    invalidateAssistantName(req.planrClientId);
+    log.info("planr.clara.name", { clientId: req.planrClientId, name: r.name || DEFAULT_ASSISTANT_NAME });
+    res.json({ ok: true, assistantName: r.name || DEFAULT_ASSISTANT_NAME });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.post("/planr/clara/kopplung", planrGuard, async (req, res) => {
+  try {
+    const { zugang } = await claraStand(req.planrClientId);
+    if (zugang !== "planr") return res.status(403).json({ ok: false, error: "nicht_gebucht" });
+    const name = String(req.body?.name || "").trim().slice(0, 80);
+    const nutzer = String(req.body?.nutzer || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24);
+    if (!name || !nutzer) return res.status(400).json({ ok: false, error: "name_fehlt" });
+    const t = await createPairingToken(req.planrClientId, { id: `planr_${nutzer}`, name, role: normalizeRole(req.body?.role) }, { createdBy: "planr", deviceType: "phone", apps: ["clara"] });
+    const enc = encodeURIComponent;
+    const url = `${PUBLIC_BASE_URL}/m/pair.html?c=${enc(req.planrClientId)}&t=${enc(t.token)}`;
+    let qrDataUrl = "";
+    try { qrDataUrl = await QRCode.toDataURL(url, { width: 280, margin: 1 }); } catch { qrDataUrl = ""; }
+    res.json({ ok: true, url, qrDataUrl, code: t.code, expiresAtMs: t.expiresAtMs });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
