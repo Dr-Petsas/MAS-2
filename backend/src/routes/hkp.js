@@ -16,7 +16,8 @@
 import express from "express";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import * as E from "../vendor/hkp-engine.mjs";
-import { assertAppEnabled } from "../entitlements.js";
+import { assertAppEnabled, getBilling } from "../entitlements.js";
+import { planrAusBilling } from "../hkp/planrBerechtigung.js";
 import { log } from "../log.js";
 import { DEFAULT_CLIENT_ID, resolveClientId } from "./_shared.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
@@ -432,6 +433,15 @@ router.get("/planr/live", planrGuard, (req, res) => {
   liveAbonnieren(req.planrClientId, req, res);
 });
 
+// PlanR-Anmeldung: darf diese Pickadoc-Praxis PlanR nutzen (MAS oder PlanR-Abo)?
+router.get("/planr/berechtigung", planrGuard, async (req, res) => {
+  try {
+    res.json({ ok: true, clientId: req.planrClientId, ...planrAusBilling(await getBilling(req.planrClientId)) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 router.get("/planr/status", planrGuard, async (req, res) => {
   try {
     const p = await praxisLaden(req.planrClientId);
@@ -495,6 +505,12 @@ router.get("/planr/hkp/:id/datei/:dateiId", planrGuard, async (req, res) => {
   }
 });
 
+/** Angemeldeter PlanR-Benutzer für den Verlauf (PlanR schickt Name bzw. E-Mail mit) */
+const werVon = (req) => {
+  const wer = String(req.body?.wer || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 80);
+  return wer ? `PlanR · ${wer}` : "PlanR";
+};
+
 function ausPlanR(body) {
   const plan = E.planNormalisieren(body.plan || {});
   const ergebnis = E.rechnen(plan, {});
@@ -509,12 +525,15 @@ router.post("/planr/hkp", planrGuard, async (req, res) => {
     if (!label) return res.status(400).json({ ok: false, error: "patient_fehlt", message: "Bitte zuerst Name und Vorname des Patienten eintragen." });
     const status = STATUS.includes(req.body?.status) ? req.body.status : "wartet_auf_freigabe";
     const kiefer = ["OK", "UK"].includes(req.body?.kiefer) ? req.body.kiefer : "";
+    // Praxisgemeinschaft: PlanR stempelt die DS-Win-Praxis des Angemeldeten, damit andere Praxen den HKP nicht sehen
+    const praxis = Number.isInteger(req.body?.praxis) && req.body.praxis >= 1 && req.body.praxis <= 9 ? req.body.praxis : undefined;
     const h = await hkpAnlegen(req.planrClientId, {
+      ...(praxis ? { praxis } : {}),
       patient: { id: String(req.body?.patientId || ""), firstName: plan.patient.vorname || "", lastName: plan.patient.name || "", birthDate: plan.patient.geburtsdatum || "", label },
       art: "kasse", status, kiefer, versorgung: "", versorgungText: String(req.body?.versorgungText || "HKP").slice(0, 80),
       auftragText: "", befundQuelle: { art: "planr" }, planJson: JSON.stringify(plan), summen, zusammenfassung,
       hinweise: [], engineStand: E.ENGINE_STAND, erstelltVon: "planr", verlaufText: "in PlanR angelegt",
-    }, "PlanR");
+    }, werVon(req));
     res.json({ ok: true, hkp: kopf(h) });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
@@ -543,7 +562,7 @@ router.put("/planr/hkp/:id", planrGuard, async (req, res) => {
     if (["OK", "UK", ""].includes(b.kiefer)) felder.kiefer = b.kiefer;
     if (!Object.keys(felder).length) return res.status(400).json({ ok: false, error: "nichts_zu_tun" });
     const h = await hkpAktualisieren(req.planrClientId, req.params.id, {
-      version: b.version, felder, wer: "PlanR", was: was.join(", ") || "in PlanR geändert",
+      version: b.version, felder, wer: werVon(req), was: was.join(", ") || "in PlanR geändert",
     });
     res.json({ ok: true, hkp: kopf(h) });
   } catch (e) {
