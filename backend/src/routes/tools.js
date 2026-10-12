@@ -46,6 +46,7 @@ import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { mitUndo, rueckgaengigAn, zuruecknehmen } from "../clara/rueckgaengig.js";
 import { nameAusHinweis, spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
+import { pvsKennungAufloesen } from "../hkp/planrPvs.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
@@ -5228,6 +5229,23 @@ router.post("/tools/search-patient", async (req, res) => {
     const hint = String(req.body?.hint || "").trim();
     const hintLower = hint.toLowerCase();
 
+    // PlanR-Praxis: Patientennummer oder Geburtsdatum aus dem PVS, wenn der Name nicht klappt
+    const kennung = await pvsKennungAufloesen(clientId, req.body, { mehrfach: (l) => disambiguationQuestion(l) });
+    if (kennung?.patient) {
+      const p = kennung.patient;
+      await setPatientCandidates(clientId, [p], p);
+      await emitCommand(clientId, { type: "patient_selected", patient: { firstName: p.firstName, lastName: p.lastName, birthDate: p.birthDate }, hasPhone: false });
+      const geb = p.birthDate ? `, geboren am ${p.birthDate.split("-").reverse().join(".")}` : "";
+      return res.json({
+        ok: true,
+        message: `${patientLabel(p)}${geb}, Patientennummer ${p.id}, ist eindeutig gemerkt. Fuehre den urspruenglichen Auftrag JETZT aus und gib dabei patient_nummer ${p.id} mit (z. B. hkp_create_draft) — NICHT erneut search_patient aufrufen.`,
+      });
+    }
+    if (kennung) {
+      if (kennung.kandidaten) await setPatientCandidates(clientId, kennung.kandidaten, null);
+      return res.json({ ok: !!kennung.kandidaten, message: kennung.message });
+    }
+
     // Relative Bezuege ("der erste", "von eben", "dieser Jens von eben")
     // gegen die gemerkte Liste — nie als frische Namenssuche.
     const relSearch = await pickRelativePatient(clientId, rawName, hint);
@@ -5268,6 +5286,13 @@ router.post("/tools/search-patient", async (req, res) => {
         return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${result.error}` });
       }
       patients = result.patients || [];
+      if (patients.length === 0 && result.quelle === "pvs") {
+        await setPatientCandidates(clientId, [], null);
+        return res.json({
+          ok: true,
+          message: `${name} finde ich in der Praxissoftware nicht. Haben Sie die Patientennummer oder das Geburtsdatum? Dann rufe search_patient mit patient_nummer bzw. geburtsdatum auf.`,
+        });
+      }
       if (patients.length === 0) {
         await setPatientCandidates(clientId, [], null);
         // W-DIALOG WP6: Herkunft nennen + Adressbuch mitpruefen (kein Neustart).

@@ -31,7 +31,7 @@ import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js
 import { soundsSame } from "../clara/phonetics.js";
 import { disambiguationQuestion, merkmalEingrenzen, ordinalPick } from "../clara/patientDisambig.js";
 import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
-import { sucheImPvs } from "../hkp/planrPvs.js";
+import { pvsKennungAufloesen, sucheImPvs } from "../hkp/planrPvs.js";
 import { jahrgangWahl, vetternFrage, vorleseSatz } from "../hkp/vorlesen.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
@@ -770,6 +770,16 @@ export function vetterAntwort(offen, text, antwort = text) {
 async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}) {
   const rawName = String(body?.name || "").trim();
   const hint = String(body?.hint || "").trim();
+  // PlanR-Praxis: Patientennummer bzw. Geburtsdatum (aus dem PVS) entscheidet vor dem Namen
+  const kennung = await pvsKennungAufloesen(clientId, body, { mehrfach: (l) => disambiguationQuestion(l, { max: 3 }) });
+  if (kennung?.patient) {
+    await setPatientCandidates(clientId, [kennung.patient], kennung.patient);
+    return { patient: patientVon(kennung.patient), sel: kennung.patient };
+  }
+  if (kennung) {
+    if (kennung.kandidaten) await setPatientCandidates(clientId, kennung.kandidaten, null);
+    return { antwort: { ok: true, message: kennung.message } };
+  }
   const offen = vettern ? vetternOffen.get(clientId) : null;
   if (offen && Date.now() - offen.at < VETTERN_MS) {
     const a = vetterAntwort(offen, `${hint} ${rawName}`, hint);

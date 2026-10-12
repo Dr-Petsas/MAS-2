@@ -1,6 +1,56 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { _setHolen, alsPatient, bewerten, isoGeburt, sucheImPvs } from "../src/hkp/planrPvs.js";
+import { _setHolen, alsPatient, bewerten, isoGeburt, pvsKennungAufloesen, sucheImPvs } from "../src/hkp/planrPvs.js";
+import { _setBillingLaden } from "../src/hkp/planrClara.js";
+
+_setBillingLaden(async (id) => (id === "planrPraxis"
+  ? { subscriptions: { planr: { enabled: true, sprachsteuerung: true } } }
+  : { subscriptions: { crew: { tier: "premium" }, planr: { enabled: true, sprachsteuerung: true } } }));
+
+test("Geburtsdatum in den gesprochenen Formen", () => {
+  const heute = new Date("2026-10-12T12:00:00Z");
+  assert.equal(isoGeburt("1972-03-05", heute), "1972-03-05");
+  assert.equal(isoGeburt("5.3.1972", heute), "1972-03-05");
+  assert.equal(isoGeburt("05.03.72", heute), "1972-03-05");
+  assert.equal(isoGeburt("1.2.15", heute), "2015-02-01");
+  assert.equal(isoGeburt("5. März 1972", heute), "1972-03-05");
+  assert.equal(isoGeburt("12 mai 1980", heute), "1980-05-12");
+  assert.equal(isoGeburt("31.02.1972", heute), null);
+  assert.equal(isoGeburt("1.1.2030", heute), null);
+  assert.equal(isoGeburt("1972", heute), null);
+});
+
+test("pvsKennungAufloesen: Nummer genau, Datum mit Name, nur fuer PlanR-Praxen", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  const gefragt = [];
+  _setHolen(async (url) => {
+    const u = new URL(url);
+    gefragt.push(Object.fromEntries(u.searchParams));
+    const nr = u.searchParams.get("nummer"), geb = u.searchParams.get("geburt");
+    let patienten = [];
+    if (nr === "4711") patienten = [P("04711", "Anna", "Müller")];
+    if (geb === "1972-03-05") patienten = [P("1", "Anna", "Müller"), P("2", "Hans", "Berg")];
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  const a = await pvsKennungAufloesen("planrPraxis", { patient_nummer: "47 11", name: "Anna Myller" });
+  assert.equal(a.patient.id, "04711");
+  assert.equal(a.patient.identifiziert, "nummer");
+  assert.equal(gefragt.at(-1).nummer, "4711");
+
+  const b = await pvsKennungAufloesen("planrPraxis", { geburtsdatum: "5.3.72", name: "Anna" });
+  assert.equal(b.patient.id, "1");
+  const c = await pvsKennungAufloesen("planrPraxis", { geburtsdatum: "1972-03-05" }, { mehrfach: (l) => `${l.length} Kandidaten` });
+  assert.equal(c.kandidaten.length, 2);
+  assert.match(c.message, /mehrere\. 2 Kandidaten/);
+  const d = await pvsKennungAufloesen("planrPraxis", { patient_nummer: "999" });
+  assert.deepEqual(d.kandidaten, []);
+  assert.match(d.message, /Patientennummer 999/);
+
+  // ohne Merkmal oder MAS-Praxis: nicht zustaendig, Namenssuche wie bisher
+  assert.equal(await pvsKennungAufloesen("planrPraxis", { name: "Anna" }), null);
+  assert.equal(await pvsKennungAufloesen("masPraxis", { patient_nummer: "4711" }), null);
+  _setHolen(null);
+});
 
 const P = (id, vorname, name, geburtsdatum = "1972-03-05") => ({ id, vorname, name, geburtsdatum, ort: "" });
 
