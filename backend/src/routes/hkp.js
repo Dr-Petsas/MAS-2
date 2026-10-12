@@ -31,6 +31,7 @@ import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js
 import { soundsSame } from "../clara/phonetics.js";
 import { disambiguationQuestion, merkmalEingrenzen, ordinalPick } from "../clara/patientDisambig.js";
 import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
+import { sucheImPvs } from "../hkp/planrPvs.js";
 import { jahrgangWahl, vetternFrage, vorleseSatz } from "../hkp/vorlesen.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
@@ -741,6 +742,10 @@ export function sindVettern(p, q) {
 }
 
 async function namensvettern(clientId, patient) {
+  if (patient?.quelle === "pvs") {
+    const r = await sucheImPvs(clientId, `${patient.firstName} ${patient.lastName}`);
+    return (r.patients || []).filter((p) => p.id !== patient.id && sindVettern(patient, p));
+  }
   const treffer = await findInCatalog(clientId, `${patient.firstName} ${patient.lastName}`, { limit: 8 });
   const ids = treffer.filter((e) => sindVettern(patient, { id: e.i, firstName: e.f, lastName: e.l })).map((e) => e.i);
   return ids.length ? fetchPatientsByIds(clientId, ids) : [];

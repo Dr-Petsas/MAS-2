@@ -1,6 +1,7 @@
 import { loadBooking, ensureBerlinTz } from "./booking.js";
 import { listContextPatientIds } from "./sttPatientNames.js";
 import { findInCatalog, fetchPatientsByIds } from "./patientCatalog.js";
+import { patientenAusPvs, sucheImPvs } from "../hkp/planrPvs.js";
 
 // Internal-team booking flow (Clara on behalf of the practice staff).
 //
@@ -237,6 +238,11 @@ export async function searchPatient(clientId, name, opts = {}) {
       if (typeof opts?.onStage === "function") opts.onStage(stufe, { ...daten, ms: Date.now() - t0 });
     } catch { /* Beobachter darf die Suche nie kosten */ }
   };
+  if (await patientenAusPvs(clientId)) {
+    const r = await sucheImPvs(clientId, name);
+    melde("pvs", { name, treffer: (r.patients || []).length, fehler: r.error || "" });
+    return r;
+  }
   let booking = {};
   try { booking = await loadBooking(clientId); } catch { booking = {}; }
   const searchClientId = norm(booking.clientId) || clientId;

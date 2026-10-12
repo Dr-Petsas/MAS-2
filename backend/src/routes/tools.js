@@ -254,6 +254,8 @@ async function searchPatientSpoken(clientId, name) {
   const first = await searchPatient(clientId, name);
   if (!first.ok) return first;
   if ((first.patients || []).length) return collapseResultPatients(first);
+  // PVS der PlanR-Praxis: sucht Einzelwoerter und Klang schon selbst - keine 12 Varianten an die Bridge.
+  if (first.quelle === "pvs") return first;
 
   const tokens = String(name).split(/\s+/).filter(Boolean);
   const variants = [];

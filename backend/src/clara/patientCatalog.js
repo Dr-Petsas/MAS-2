@@ -607,6 +607,7 @@ export async function nurVorhandene(clientId, kandidaten) {
   const ids = [...new Set(list.map((p) => String(p?.id || "").trim()).filter(Boolean))].slice(0, 20);
   const cid = String(clientId || "").trim();
   if (!cid || !ids.length || process.env.CLARA_KANDIDATEN_PRUEFEN === "0") return list;
+  if (list.some((p) => p?.quelle === "pvs")) return list; // PVS-Patienten (PlanR-Praxis) gibt es in der Pickadoc-Kartei nicht
   try {
     const booking = await loadBooking(cid);
     const lid = String(booking?.locationId || "").trim();
