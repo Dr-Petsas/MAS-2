@@ -32,6 +32,7 @@ import { soundsSame } from "../clara/phonetics.js";
 import { disambiguationQuestion, merkmalEingrenzen, ordinalPick } from "../clara/patientDisambig.js";
 import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
 import { pvsKennungAufloesen, sucheImPvs } from "../hkp/planrPvs.js";
+import { praxisRegistrieren, RegistrierungFehler } from "../hkp/planrRegistrierung.js";
 import { jahrgangWahl, vetternFrage, vorleseSatz } from "../hkp/vorlesen.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
@@ -446,6 +447,19 @@ router.get("/planr/berechtigung", planrGuard, async (req, res) => {
     res.json({ ok: true, clientId: req.planrClientId, ...planrAusBilling(await getBilling(req.planrClientId)) });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// PlanR-Buchung (Standalone): Praxis + Admin-Konto anlegen, Abo setzen – Anmeldung sofort möglich
+router.post("/planr/registrieren", planrGuard, async (req, res) => {
+  try {
+    const r = await praxisRegistrieren(req.body || {});
+    log.info?.(`[planr] Praxis ${r.clientId} aus PlanR-Buchung angelegt`);
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    if (e instanceof RegistrierungFehler) return res.status(e.status).json({ ok: false, error: e.code, message: e.message });
+    log.error?.(`[planr] Registrierung fehlgeschlagen: ${e?.message || e}`);
+    res.status(500).json({ ok: false, error: "fehler", message: String(e?.message || e) });
   }
 });
 
