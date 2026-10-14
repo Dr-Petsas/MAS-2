@@ -50,29 +50,29 @@
   <div class="card">
     <div class="brand"><img src="/m/logo-mark.png" alt="" /><span class="word">pickadoc</span></div>
     <img class="ava" src="/m/icon-192.png" alt="Clara" />
-    <h1 id="title">Clara</h1>
+    <h1 id="title"><span class="aname">Clara</span></h1>
     <p class="sub" id="subtitle">Dein Handy wird mit deiner Praxis-Assistentin verbunden.</p>
 
     <!-- iOS first: install to home screen so push works -->
     <div id="viewInstall" class="hidden">
       <div class="step"><div class="n">1</div><p>Tippe unten auf das <b>Teilen-Symbol</b> <span class="sharehint">⬆️</span> in Safari.</p></div>
       <div class="step"><div class="n">2</div><p>Wähle <b>„Zum Home-Bildschirm“</b> und dann <b>„Hinzufügen“</b>.</p></div>
-      <div class="step"><div class="n">3</div><p>Öffne die neue <b>Clara-App</b> auf deinem Home-Bildschirm – die Einrichtung läuft dort automatisch weiter.</p></div>
-      <p class="note">Ohne diesen Schritt kann das iPhone keine Anrufe von Clara empfangen (Apple erlaubt Mitteilungen nur für installierte Apps).</p>
+      <div class="step"><div class="n">3</div><p>Öffne die neue App <b>„<span class="aname">Clara</span>“</b> auf deinem Home-Bildschirm. Fragt sie nach einem Code: Er steht am PC neben dem QR-Code.</p></div>
+      <p class="note">Ohne diesen Schritt kann das iPhone keine Anrufe von <span class="aname">Clara</span> empfangen (Apple erlaubt Mitteilungen nur für installierte Apps).</p>
     </div>
 
     <!-- Code-Eingabe: iOS-sicher, ganz ohne Link/Manifest/Speicher -->
     <div id="viewCode" class="hidden">
-      <div class="step"><div class="n">1</div><p>Tippe den <b>6-stelligen Code</b> aus den Praxis-Einstellungen ein.</p></div>
+      <div class="step"><div class="n">1</div><p>Tippe den <b>6-stelligen Code</b> ein. Er steht am PC neben dem QR-Code (in PlanR bzw. in den Pickadoc-Einstellungen).</p></div>
       <input id="codeInput" type="text" inputmode="latin" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="one-time-code" maxlength="8" placeholder="z. B. K7P2QW"
         style="width:100%;padding:16px;border-radius:14px;border:1px solid #293a5c;background:#0e1830;color:#e6edf6;font-size:24px;letter-spacing:4px;text-align:center;text-transform:uppercase;margin-top:6px;" />
       <button class="primary" id="btnCode">Koppeln</button>
-      <p class="note">Beim Tippen fragt dein Handy einmalig nach der Erlaubnis für Mitteilungen – bitte <b>„Erlauben“</b> wählen.</p>
+      <p class="note">Am Handy fragt die App einmalig nach Mitteilungen – bitte <b>„Erlauben“</b>, damit deine Assistentin dich anrufen kann. Am PC reicht der Code.</p>
     </div>
 
     <!-- Pairing: one tap -->
     <div id="viewPair" class="hidden">
-      <div class="step"><div class="n">📞</div><p>Clara kann dich künftig <b>direkt auf diesem Handy anrufen</b> – z.&nbsp;B. fürs Morgen-Briefing oder wenn etwas Wichtiges anliegt.</p></div>
+      <div class="step"><div class="n">📞</div><p><span class="aname">Clara</span> kann dich künftig <b>direkt auf diesem Handy anrufen</b> – z.&nbsp;B. fürs Morgen-Briefing oder wenn etwas Wichtiges anliegt.</p></div>
       <button class="primary" id="btnPair">Jetzt aktivieren</button>
       <p class="note">Beim Tippen fragt dein Handy einmalig nach der Erlaubnis für Mitteilungen – bitte <b>„Erlauben“</b> wählen.</p>
     </div>
@@ -81,7 +81,7 @@
     <div id="viewHome" class="hidden">
       <div class="ok-badge" id="homeBadge">✅</div>
       <p class="sub" id="homeText">Verbunden.</p>
-      <a class="btn primary" id="btnTalk" href="#">🎙️ Mit Clara sprechen</a>
+      <a class="btn primary" id="btnTalk" href="#">🎙️ Mit <span class="aname">Clara</span> sprechen</a>
       <button class="danger-link" id="btnUnpair">Verbindung von diesem Handy entfernen</button>
     </div>
 
@@ -143,7 +143,29 @@
     function saveDevice(d) { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {} }
     function clearDevice() { try { localStorage.removeItem(STORE_KEY); } catch {} }
 
+    // Ruf-Name der Praxis (in PlanR frei wählbar). Kommt beim Koppeln mit;
+    // das Manifest der Praxis liefert ihn auch vorher schon.
+    const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+    let aName = "Clara";
+    function nameZeigen(n) {
+      const vorher = aName;
+      aName = String(n || "").trim() || "Clara";
+      if (els.title.textContent === vorher) els.title.textContent = aName;
+      document.querySelectorAll(".aname").forEach((el) => { el.textContent = aName; });
+      document.title = `${aName} – Handy verbinden`;
+      document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute("content", aName);
+      document.querySelector("img.ava")?.setAttribute("alt", aName);
+    }
+    async function nameLaden(clientId) {
+      if (!clientId) return;
+      try {
+        const m = await fetch(`/m/manifest.webmanifest?c=${encodeURIComponent(clientId)}`, { cache: "no-store" }).then((r) => r.json());
+        if (m?.short_name) nameZeigen(m.short_name);
+      } catch {}
+    }
+
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isMobile = isIOS || /android/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
     const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
@@ -183,11 +205,18 @@
       els.btnCode.disabled = true;
       els.btnCode.textContent = "Wird verbunden …";
       try {
-        const sub = await getPushSubscription();
+        // Handys fragen nach Mitteilungen (sonst kann die Assistentin nicht
+        // anrufen); abgelehnt koppelt das Handy trotzdem, nur ohne Anrufe. Am PC
+        // nur mit schon erteilter Erlaubnis: die Nachfrage blockiert dort sonst
+        // die Kopplung, bevor der Code den Server erreicht.
+        let subscription = null;
+        if (pushSupported && (isMobile || Notification.permission === "granted")) {
+          try { subscription = (await getPushSubscription()).toJSON(); } catch { subscription = null; }
+        }
         const resp = await fetch("/clara/devices/register-code", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, subscription: sub.toJSON() }),
+          body: JSON.stringify({ code, subscription, label: isMobile ? "" : "PC" }),
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
@@ -206,7 +235,9 @@
           deviceKey: data.deviceKey,
           operatorName: data.operator?.name || "",
           role: data.operator?.role || "",
+          assistantName: data.assistantName || "",
         });
+        nameZeigen(data.assistantName);
         renderHome(true);
       } catch (e) {
         setErr(String(e.message || e));
@@ -239,7 +270,9 @@
           deviceKey: data.deviceKey,
           operatorName: data.operator?.name || "",
           role: data.operator?.role || "",
+          assistantName: data.assistantName || "",
         });
+        nameZeigen(data.assistantName);
         renderHome(true);
       } catch (e) {
         setErr(String(e.message || e));
@@ -274,11 +307,11 @@
         location.replace(`/m/call.html?c=${encodeURIComponent(d.clientId)}`);
         return;
       }
-      els.title.textContent = "Clara";
+      els.title.textContent = aName;
       els.subtitle.textContent = "";
       els.homeText.innerHTML = (justPaired ? "<b>Geschafft!</b> " : "") +
         `Dieses Handy ist verbunden als <span class="who">${d.operatorName || "Team"}</span>.<br/>` +
-        "Clara kann dich jetzt hier anrufen.";
+        `${esc(aName)} kann dich jetzt hier anrufen.`;
       els.btnTalk.href = `/m/call.html?c=${encodeURIComponent(d.clientId)}`;
       show("viewHome");
       refreshSubscription(d);
@@ -293,7 +326,7 @@
         // im iOS-Safari-Tab erst "Zum Home-Bildschirm", dann in der App den Code.
         if (pushSupported) {
           els.title.textContent = "Handy verbinden";
-          els.subtitle.textContent = "Gib den 6-stelligen Code aus den Praxis-Einstellungen ein.";
+          els.subtitle.textContent = "Gib den 6-stelligen Code ein, der am PC neben dem QR-Code steht.";
           show("viewCode");
           return;
         }
@@ -354,6 +387,9 @@
     // wieder auf "Jetzt aktivieren" (Token längst verbraucht). Deshalb: ist
     // dieses Gerät bereits gekoppelt, geht es zu Clara; der eingebackene Token
     // wird nur genutzt, solange noch KEIN Gerät gekoppelt ist.
+    const bekannt = loadDevice();
+    nameZeigen(bekannt?.assistantName);
+    nameLaden(pairClientId || bekannt?.clientId);
     const hasToken = !!(pairToken && pairClientId);
     const freshSafariScan = hasToken && !isStandalone;
     if (freshSafariScan) renderEntry();

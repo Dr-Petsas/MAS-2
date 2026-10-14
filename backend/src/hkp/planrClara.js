@@ -94,5 +94,7 @@ export function rufnameSaeubern(roh) {
   const n = String(roh ?? "").trim();
   if (!n) return { ok: true, name: "" };
   if (!NAME_RE.test(n)) return { ok: false, error: "name_ungueltig" };
-  return { ok: true, name: n.charAt(0).toUpperCase() + n.slice(1) };
+  // "EVA" -> "Eva": in Grossbuchstaben buchstabiert die Stimme den Namen.
+  const name = n.split("-").map((t) => (t.length > 1 && t === t.toUpperCase() ? t[0] + t.slice(1).toLowerCase() : t)).join("-");
+  return { ok: true, name: name.charAt(0).toUpperCase() + name.slice(1) };
 }

@@ -453,7 +453,7 @@
         <div class="flip-face flip-face--voice" data-clara-face-voice>
           <div class="top">
             <div class="calling" id="calling">ruft an …</div>
-            <div class="name">Clara</div>
+            <div class="name" data-aname>Clara</div>
             <div class="reason" id="reason"></div>
           </div>
 
@@ -480,7 +480,7 @@
         <div class="flip-face flip-face--cards" data-clara-face-cards>
           <div id="lisaLiveHost"></div>
           <div class="cards-face-head">
-            <b>Clara</b>
+            <b data-aname>Clara</b>
             <small>VOLLINFORMIERT IN 10 SEKUNDEN</small>
             <div class="cards-face-state"><i></i><span id="cardsStateLabel">Bereit</span></div>
           </div>
@@ -550,7 +550,7 @@
   <script type="module">
     import { Room, RoomEvent, Track } from "https://cdn.jsdelivr.net/npm/livekit-client@2.7.5/dist/livekit-client.esm.mjs";
     // ?v= bustet den HTTP-Cache installierter PWAs beim Modul-Update.
-    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-4";
+    import { mountClaraChat, renderOverviewCard } from "/m/clara-chat.js?v=karten-5";
     import { mountLisaLive } from "/m/lisa-live.js?v=8";
     import { bindCrewChips } from "/m/crew.js?v=1";
 
@@ -566,6 +566,10 @@
       location.replace("/m/pair.html?manage=1");
       throw new Error("no clientId");
     }
+
+    // Ruf-Name der Praxis (in PlanR frei wählbar): beim Koppeln gemerkt,
+    // aus dem Manifest der Praxis aufgefrischt (nameLaden unten).
+    let aName = (device?.clientId === clientId && device?.assistantName) || "Clara";
 
     // "Clara verbessern": Die Seite hat keine eigene Anmeldung, deshalb reisen
     // Praxis und Person hier mit. Ohne den Namen stuende in der Meldung nur
@@ -910,17 +914,47 @@
     // listening/user als eigener gelber Ruhezustand, bis "Clara start" kommt.
     const ALL_ST = ["st-idle","st-ringing","st-connecting","st-listening","st-user","st-thinking","st-clara","st-standby","st-ended"];
 
-    const LABELS = {
+    const labels = () => ({
       idle:       ["", "Tippen zum Sprechen"],
-      ringing:    ["Clara ruft an", "Tippen zum Annehmen"],
+      ringing:    [`${aName} ruft an`, "Tippen zum Annehmen"],
       connecting: ["Verbinde …", ""],
       listening:  ["Ich höre zu", "Tippen zum Auflegen"],
       user:       ["Du sprichst", ""],
-      thinking:   ["Clara denkt nach …", ""],
-      clara:      ["Clara spricht", ""],
-      standby:    ["Pausiert", "Sag „Clara Start“"],
+      thinking:   [`${aName} denkt nach …`, ""],
+      clara:      [`${aName} spricht`, ""],
+      standby:    ["Pausiert", `Sag „${aName} Start“`],
       ended:      ["Anruf beendet", "Tippen für neue Verbindung"],
-    };
+    });
+
+    function nameZeigen() {
+      document.title = aName;
+      document.querySelectorAll("[data-aname]").forEach((el) => { el.textContent = aName; });
+      els.orb.setAttribute("aria-label", aName);
+      document.querySelector(".kopfknopf.links")?.setAttribute("title", `${aName}-Tour – was ich alles kann`);
+      const improve = document.getElementById("improveLink");
+      improve?.setAttribute("aria-label", `${aName} verbessern`);
+      improve?.setAttribute("title", `${aName} verbessern – Problem melden`);
+      const eingabe = document.querySelector("[data-clara-chat-input]");
+      if (eingabe) eingabe.placeholder = `Nachricht an ${aName} …`;
+      const zurueck = document.getElementById("hkpSheetZu");
+      if (zurueck) zurueck.textContent = `‹ Zurück zu ${aName}`;
+      chatUi.setAssistantName?.(aName);
+    }
+
+    async function nameLaden() {
+      try {
+        const m = await fetch(`/m/manifest.webmanifest?c=${encodeURIComponent(clientId)}`, { cache: "no-store" }).then((r) => r.json());
+        const n = String(m?.short_name || "").trim();
+        if (!n || n === aName) return;
+        aName = n;
+        if (device && device.clientId === clientId) {
+          device.assistantName = n;
+          try { localStorage.setItem(STORE_KEY, JSON.stringify(device)); } catch {}
+        }
+        nameZeigen();
+        render();
+      } catch {}
+    }
 
     function syncChatVisual() {
       if (chatUi.getMode() !== "chat") return;
@@ -952,7 +986,7 @@
       document.body.classList.remove(...ALL_ST);
       document.body.classList.add("st-" + st);
       const key = st;
-      const [label, hint] = LABELS[key] || ["", ""];
+      const [label, hint] = labels()[key] || ["", ""];
       els.stateLabel.textContent = label;
       els.hint.textContent = hint;
       els.btnDecline.classList.toggle("hidden", phase !== "ringing");
@@ -972,7 +1006,9 @@
     if (!incoming) {
       els.calling.textContent = device?.operatorName ? `Hallo ${device.operatorName}` : "Deine Praxis-Assistentin";
     }
+    nameZeigen();
     render();
+    nameLaden();
 
     // ── Ringtone (best effort): WebAudio dual-tone like a classic phone ring.
     let ringCtx = null;
@@ -1145,6 +1181,14 @@
           throw new Error(err.error || `HTTP ${resp.status}`);
         }
         const cfg = await resp.json();
+        // In den Einstellungen entfernt, lokal aber noch gespeichert: die App
+        // würde sonst weiter „gekoppelt“ zeigen, obwohl der Server das Gerät
+        // nicht mehr kennt.
+        if (cfg.pinError === "device_invalid") {
+          try { localStorage.removeItem(STORE_KEY); } catch {}
+          location.replace("/m/pair.html");
+          return;
+        }
         if (cfg.operator?.name) els.calling.textContent = `Verbunden · ${cfg.operator.name}`;
 
         room = new Room({
@@ -1215,7 +1259,7 @@
           voice = "listening";
           setStatus("verbunden – tippe deine Nachricht");
         } else {
-          setStatus("Clara meldet sich gleich …");
+          setStatus(`${aName} meldet sich gleich …`);
         }
         render();
         if (!forChat) {

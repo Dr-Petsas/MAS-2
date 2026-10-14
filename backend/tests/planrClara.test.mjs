@@ -92,6 +92,9 @@ await t("Ruf-Name: ein Wort, 3-20 Buchstaben", () => {
   assert.deepEqual(P.rufnameSaeubern("Anna-Lena"), { ok: true, name: "Anna-Lena" });
   assert.deepEqual(P.rufnameSaeubern("Jürgen"), { ok: true, name: "Jürgen" });
   assert.deepEqual(P.rufnameSaeubern(""), { ok: true, name: "" });
+  assert.deepEqual(P.rufnameSaeubern("EVA"), { ok: true, name: "Eva" });
+  assert.deepEqual(P.rufnameSaeubern("ANNA-LENA"), { ok: true, name: "Anna-Lena" });
+  assert.deepEqual(P.rufnameSaeubern("McKenzie"), { ok: true, name: "McKenzie" });
   for (const schlecht of ["Al", "Frau Holle", "R2D2", "<script>", "x".repeat(21)]) {
     assert.equal(P.rufnameSaeubern(schlecht).ok, false, schlecht);
   }

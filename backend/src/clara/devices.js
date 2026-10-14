@@ -267,14 +267,12 @@ export async function redeemPairingToken(clientId, token, { subscription, userAg
   const db = admin.firestore();
   const tokenRef = tokensCol(clientId).doc(s(token));
 
-  // Peek at the token to learn the device type. Console devices (iPad launcher)
-  // may pair WITHOUT a web-push subscription — they are a display, not something
-  // Clara rings. Phones (and any device that DOES send a subscription) keep the
-  // strict validation, so the "Clara ruft aufs Handy"-path is byte-identical.
-  const peek = await tokenRef.get().catch(() => null);
-  const isConsole = peek?.exists && normalizeDeviceType(peek.data()?.deviceType) === "ipad";
+  // Eine mitgeschickte Push-Subscription muss gültig sein (Handy, das Clara
+  // anrufen soll). Fehlt sie, koppelt das Gerät trotzdem: der PC-Browser will
+  // sprechen, nicht angerufen werden. Kaputte Subscriptions verbrennen den
+  // Token nicht.
   let sub = null;
-  if (subscription || !isConsole) {
+  if (subscription) {
     const v = validateSubscription(subscription);
     if (!v.ok) return { ok: false, reason: v.reason };
     sub = v.subscription;

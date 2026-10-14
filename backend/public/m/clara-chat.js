@@ -202,6 +202,16 @@ export function mountClaraChat(root, { onSend, onModeChange, onConnect, onCard }
     if (showOrb) els.connectBtn?.classList.add("hidden");
   }
 
+  /** Ruf-Name der Praxis in den Chat-Zuständen (Standard "Clara"). */
+  function setAssistantName(n) {
+    const name = String(n || "").trim() || "Clara";
+    CHAT_LABELS.thinking = `${name} denkt nach …`;
+    CHAT_LABELS.writing = `${name} schreibt …`;
+    if (els.chatStateLabel && !els.chatStateLabel.dataset.holdStatus) {
+      els.chatStateLabel.textContent = CHAT_LABELS[chatVisual] || "";
+    }
+  }
+
   /** Status-/Fehlertext im Chat sichtbar (unten unter dem Orb). */
   function setStatusLine(text) {
     if (!els.chatStateLabel) return;
@@ -344,6 +354,7 @@ export function mountClaraChat(root, { onSend, onModeChange, onConnect, onCard }
     setConnectVisible,
     setChatVisual,
     setStatusLine,
+    setAssistantName,
     addBubble,
     addCard,
     showProof,
