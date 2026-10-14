@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 b6089d70978d)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 f308c0342045)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -22401,6 +22401,8 @@ function zusaetzliche(ordner, mitgeliefert) {
 //#endregion
 //#region src/store/preislisten.ts
 var SPEICHER_KEY = mk("hkp.preislisten.v1");
+/** GOZ 2012 plus Kürzel, Faktoren und eigene Positionen aus dem PVS (store/praxiskatalog); gilt statt goz-2012 */
+var PRAXIS_GOZ_ID = "goz-praxis";
 /** Mitgelieferte Listen unter ihrem Dateinamen beim Datendienst (Start/public/daten) */
 var MITGELIEFERT = [
 	...Object.entries(/* @__PURE__ */ Object.assign({
@@ -22585,7 +22587,7 @@ function listenFuerPlan(alle, plan) {
 		stichtag: stichtag(plan)
 	};
 	const bema = listeWaehlen(alle, "bema", e.bemaListe, ort);
-	const goz = listeWaehlen(alle, "goz", e.gozListe, ort);
+	const goz = listeWaehlen(alle, "goz", e.gozListe === "goz-2012" && alle.some((l) => l.id === "goz-praxis") ? PRAXIS_GOZ_ID : e.gozListe, ort);
 	const bel = listeWaehlen(alle, "bel2", e.belListe, ort);
 	const beb = listeWaehlen(alle, "beb", e.bebListe, ort);
 	const fz = listeWaehlen(alle, "festzuschuss", e.fzListe, ort);
@@ -25173,6 +25175,17 @@ var belNrAnzeige = (nr) => {
 	const n = belNrNorm(nr);
 	return n.length === 4 ? `${n.slice(0, 3)} ${n[3]}` : n;
 };
+/**
+* Kassen-BEL im Praxislabor. Ohne Praxispreis: Höchstpreis × Regleranteil. Mit Praxispreis (aus dem PVS)
+* spannt der Regler von diesem Preis (50 %) bis zum KZV-Höchstpreis (100 %) – nie darüber.
+*/
+function belEigen(hoechst, praxis, anteil) {
+	if (praxis === void 0 || !(praxis > 0)) return runden$1(hoechst * anteil);
+	if (hoechst === void 0) return praxis;
+	const unten = Math.min(praxis, hoechst);
+	const t = Math.min(Math.max((anteil - .5) / .5, 0), 1);
+	return runden$1(unten + (hoechst - unten) * t);
+}
 function finden(liste, nr, norm = (s) => s.trim().toLowerCase()) {
 	const n = norm(nr);
 	return liste?.eintraege.find((e) => norm(e.nr) === n);
@@ -25262,7 +25275,16 @@ function positionBerechnen(p, listen, plan) {
 				...basis,
 				fehler: `GOZ-Nr. ${p.nr} nicht in der Liste`
 			};
-			const eigen = p.faktor ?? plan.einstellungen.gozFaktor;
+			if (e?.betrag !== void 0 && !e.punkte) {
+				const einzel = p.preis ?? e.betrag;
+				return {
+					...basis,
+					bezeichnung: p.text || e.text,
+					einzelpreis: einzel,
+					betrag: runden$1(einzel * anzahl)
+				};
+			}
+			const eigen = p.faktor ?? (e?.faktor || plan.einstellungen.gozFaktor);
 			const regler = Math.min(plan.einstellungen.honorarFaktor || 0, GOZ_HOECHSTSATZ);
 			const faktor = Math.max(eigen, regler);
 			const einzel = p.preis ?? runden$1((e?.punkte ?? 0) * pw * faktor);
@@ -25287,7 +25309,7 @@ function positionBerechnen(p, listen, plan) {
 			};
 			const hoechst = e ? labor === "eigen" ? e.praxis : e.gewerbe : void 0;
 			const anteil = Math.min(Math.max(0, plan.einstellungen.eigenKasseProzent ?? 100), 100) / 100;
-			const einzel = p.preis ?? (labor === "eigen" ? runden$1(hoechst * anteil) : hoechst);
+			const einzel = p.preis ?? (labor === "eigen" ? belEigen(hoechst, listen.belPraxis?.[belNrNorm(p.nr)], anteil) : hoechst);
 			const fehler = hoechst !== void 0 && einzel > hoechst + .004 ? `BEL ${belNrAnzeige(p.nr)} (${labor === "eigen" ? "Eigenlabor" : "Fremdlabor"}): ${einzel.toFixed(2)} € über dem Höchstpreis ${hoechst.toFixed(2)} € der KZV-Liste` : void 0;
 			return {
 				...basis,
@@ -25303,8 +25325,9 @@ function positionBerechnen(p, listen, plan) {
 			const labor = laborVon(p, plan);
 			const e = finden(listen.beb, p.nr, (s) => s.trim().padStart(4, "0"));
 			const eigen = labor === "eigen" || !e ? eigenFinden(mitDigital(listen.eigen), p.nr) : void 0;
+			const aufschlag = labor === "eigen" ? Math.min(Math.max(0, plan.einstellungen.eigenPrivatAufschlag || 0), 100) : 0;
 			if (eigen) {
-				const einzel = p.preis ?? eigen.preis;
+				const einzel = p.preis ?? runden$1(eigen.preis * (1 + aufschlag / 100));
 				return {
 					...basis,
 					labor,
@@ -25320,7 +25343,6 @@ function positionBerechnen(p, listen, plan) {
 				labor,
 				fehler: `BEB-Nr. ${p.nr} nicht in der Liste`
 			};
-			const aufschlag = labor === "eigen" ? Math.min(Math.max(0, plan.einstellungen.eigenPrivatAufschlag || 0), 100) : 0;
 			const einzel = p.preis ?? runden$1(e.preis * (1 + aufschlag / 100));
 			const richtpreis = p.preis === void 0 && e?.richtpreis ? { richtpreis: true } : {};
 			return {
@@ -27194,7 +27216,7 @@ function auftragVerstehen(text) {
 	}));
 	roh.forEach((x, i) => {
 		const t = norm(abschnitte[i].text);
-		if (x.versorgung || /nichts|kein/.test(t) || BEFUND_WORTE.some(([re]) => re.test(t))) return;
+		if (x.versorgung || /nichts|kein/.test(t) || befundWort(t, true)) return;
 		const nachbar = roh.slice(0, i).reverse().find((y) => y.versorgung) ?? roh.slice(i + 1).find((y) => y.versorgung);
 		if (nachbar?.versorgung) x.versorgung = nachbar.versorgung;
 	});
@@ -27253,7 +27275,7 @@ function einzelAuftrag(text) {
 		if (!zs.length) return;
 		if (NUR_ZAEHNE.test(teil)) {
 			const weiter = alleTeile.slice(i + 1).find((u) => !NUR_ZAEHNE.test(u));
-			if (pfeilerDavor && !(weiter && BEFUND_WORTE.some(([re]) => re.test(weiter)))) auftrag.pfeiler.push(...zs.filter((z) => !auftrag.pfeiler.includes(z)));
+			if (pfeilerDavor && !(weiter && befundWort(weiter, true))) auftrag.pfeiler.push(...zs.filter((z) => !auftrag.pfeiler.includes(z)));
 			return;
 		}
 		pfeilerDavor = false;
@@ -27304,27 +27326,214 @@ function brueckeVerstehen(t, a) {
 var BEFUND_BEGINN = /\b(?:ersetz\w*|(?:es )?fehl\w*|vorhanden|extrah\w*|entfern\w*)\b/;
 /** „… und die Zähne 14 bis 17 ersetzen“: ab hier stehen Befund-Zähne, das Verb folgt erst am Ende */
 var ZAEHNE_NACHGESTELLT = / und (?:die |der )?z(?:ä|ae)hne? (?=[1-4][1-8]\b)/;
-var BEFUND_WORTE = [
-	[/nicht erhaltungsw(ü|ue)rdig|zerst(ö|oe)rt|extrah|entfern|ziehen/, "x"],
-	[/erneuerungsbed(ü|ue)rftig|krone (ist )?(kaputt|defekt|insuffizient)|\b(?:k ?w|ka ?weh)\b/, "kw"],
-	[/(ü|ue)berkronungsbed(ü|ue)rftig|krone n(ö|oe)tig|braucht? (eine )?krone|kariös|karies|\b(?:w ?w ?w?|weh ?weh)\b/, "ww"],
-	[/fehl|ohne zahn|l(ü|ue)cke|ersetz/, "f"],
-	[/vorhanden|gesund|intakt|da\b|steh|bleib|erhalt/, ""]
+/**
+* Befundwörter → eHKP-Kürzel, das erste passende gilt. Die Grundart (Krone, Brückenglied, Teleskop …) bekommt
+* bei „erneuerungsbedürftig“ ihr w (b → bw). `versorgung`: das Wort nennt auch eine Versorgung – im Auftrag
+* („15 ist ein Brückenglied“) ist es Therapie, kein Befund.
+*/
+var BEFUND_ARTEN = [
+	{
+		re: /l(?:ü|ue)ckenschluss|l(?:ü|ue)cke (?:ist )?geschlossen/,
+		code: ")("
+	},
+	{
+		re: /implantat\w*[- ]?(?:(?:regio |zahn )?[1-4][1-8] )?(?:ist |sind |wird |werden |soll |muss )?(?:nicht erhaltungsw|entfern|explant|raus)|zu entfernende\w* implantat|explantier/,
+		code: "ix"
+	},
+	{
+		re: /implantat\w*[- ]?teleskop|teleskop\w* auf (?:dem |den |einem )?implantat/,
+		code: "st",
+		versorgung: true
+	},
+	{
+		re: /implantat\w*[- ]?br(?:ü|ue)cken[- ]?glied|br(?:ü|ue)cken[- ]?glied\w* auf implantat/,
+		code: "sb",
+		versorgung: true
+	},
+	{
+		re: /implantat\w*[- ]?(?:steg|verbindungselement)/,
+		code: "so",
+		versorgung: true
+	},
+	{
+		re: /implantat\w*[- ]?prothese|implantatgetragene\w* prothese/,
+		code: "se",
+		versorgung: true
+	},
+	{
+		re: /implantat[- ]?kron|implantatgetragene\w* kron|kronen? auf (?:dem |einem )?implantat/,
+		code: "sk",
+		versorgung: true
+	},
+	{
+		re: /\b(?:ist|sind|hat|haben|mit|tr(?:ä|ae)gt) (?:ein(?:em)? )?implantat\b|implantat\w* (?:ist |sind )?(?:vorhanden|intakt|drin|versorgt|in ordnung)|\b(?:ist|sind|bereits|schon) implantiert/,
+		code: "i",
+		versorgung: true
+	},
+	{
+		re: /(?:adh(?:ä|ae)siv|klebe)[- ]?br(?:ü|ue)cken[- ]?glied/,
+		code: "ab",
+		versorgung: true
+	},
+	{
+		re: /adh(?:ä|ae)siv|klebebr(?:ü|ue)cke|maryland/,
+		code: "a",
+		versorgung: true
+	},
+	{
+		re: /sekund(?:ä|ae)r[- ]?teil/,
+		code: "t2w",
+		versorgung: true
+	},
+	{
+		re: /teleskop|doppelkrone|konuskrone/,
+		code: "t",
+		versorgung: true
+	},
+	{
+		re: /br(?:ü|ue)cken[- ]?glied|zwischenglied|\bglied\b/,
+		code: "b",
+		versorgung: true
+	},
+	{
+		re: /wurzelstift[- ]?kappe|stiftkappe/,
+		code: "r",
+		versorgung: true
+	},
+	{
+		re: /teilkrone/,
+		code: "pk",
+		versorgung: true
+	},
+	{
+		re: /teil[- ]?defekt|partielle\w* (?:substanz)?defekt/,
+		code: "pw"
+	},
+	{
+		re: /unzureichende\w* retention|retention (?:ist )?unzureichend/,
+		code: "ur"
+	},
+	{
+		re: /(?:durch|mit) (?:eine\w* |die |der )?prothese ersetzt|ersetzt durch (?:eine |die )?prothese|prothesenzahn|ersetzter zahn/,
+		code: "e"
+	},
+	{
+		re: /nicht erhaltungsw(?:ü|ue)rdig|hoffnungslos|extrah|entfern|ziehen/,
+		code: "x"
+	},
+	{
+		re: /weitgehend zerst|(?:ü|ue)berkronungsbed(?:ü|ue)rftig|krone n(?:ö|oe)tig|braucht? (?:eine )?krone|kari(?:ö|oe)s|karies|\b(?:w ?w ?w?|weh ?weh)\b/,
+		code: "ww"
+	},
+	{
+		re: /zerst(?:ö|oe)rt/,
+		code: "x"
+	},
+	{
+		re: /erneuerungsbed(?:ü|ue)rftig|krone (?:ist )?(?:kaputt|defekt|insuffizient)|\b(?:k ?w|ka ?weh)\b/,
+		code: "kw"
+	},
+	{
+		re: /(?:ü|ue)berkront|krone (?:ist )?(?:intakt|in ordnung|gut)|intakte krone|\b(?:hat|haben|mit|tr(?:ä|ae)gt|tragen) (?:eine )?kronen?\b/,
+		code: "k"
+	},
+	{
+		re: /fehl|ohne zahn|l(?:ü|ue)cke|ersetz/,
+		code: "f"
+	},
+	{
+		re: /vorhanden|gesund|intakt|da\b|steh|bleib|erhalt/,
+		code: ""
+	}
 ];
+var MIT_W = {
+	a: "aw",
+	ab: "abw",
+	b: "bw",
+	e: "ew",
+	k: "kw",
+	r: "rw",
+	sb: "sbw",
+	se: "sew",
+	sk: "skw",
+	so: "sow",
+	st: "stw",
+	t: "tw"
+};
+var ERNEUERN = /erneuer|kaputt|\bdefekt|insuffizient|undicht|gebrochen|locker/;
+/** „15 sk“, „16 ist k w“: das Kürzel selbst am Ende des Satzteils */
+var KUERZEL_AM_ENDE = new RegExp(`(?:^|\\s)(${[...Object.keys(BEFUND_KUERZEL), "i"].sort((a, b) => b.length - a.length).map((k) => k.replace(/[()]/g, "\\$&")).join("|")})$`);
+/** Befund eines Satzteils → Kürzel und Fundstelle; `imAuftrag` überspringt Kürzel und Wörter, die auch eine Versorgung nennen */
+function befundWort(teil, imAuftrag = false) {
+	if (!imAuftrag) {
+		const k = KUERZEL_AM_ENDE.exec(teil.trimEnd().replace(/(?:\s[a-z2])+$/, (m) => ` ${m.replace(/\s/g, "")}`));
+		if (k) return {
+			code: k[1],
+			index: k.index
+		};
+	}
+	for (const art of BEFUND_ARTEN) {
+		if (imAuftrag && art.versorgung) continue;
+		const m = art.re.exec(teil);
+		if (!m) continue;
+		const w = ERNEUERN.test(teil);
+		if (art.code === "pk") return {
+			code: w ? "pkw" : /n(?:ö|oe)tig|braucht|bed(?:ü|ue)rftig/.test(teil) ? "pw" : "k",
+			index: m.index
+		};
+		return {
+			code: w && MIT_W[art.code] || art.code,
+			index: m.index
+		};
+	}
+}
+var ZAHN_WORT = "(?:[1-4][1-8]|(?:einser|zweier|dreier|vierer|f(?:ü|ue)nfer|sechser|siebe?ner|achter)n?|eckz(?:ah|äh|aeh)ne?n?|front\\w*)";
+var ZAHN_ANFANG = new RegExp(`^(?:(?:die|der|den|zahn|z(?:ä|ae)hne)\\s+)?(${ZAHN_WORT}(?:\\s*(?:bis|-|,)\\s*${ZAHN_WORT})*)\\s*(.*)$`);
+var NUR_ZAHN = new RegExp(`^(?:(?:die|der|den|zahn|z(?:ä|ae)hne)\\s+)?${ZAHN_WORT}(?:\\s*(?:bis|-)\\s*${ZAHN_WORT})?$`);
+var VERB_EINZAHL = /^(?:ist|hat|tr(?:ä|ae)gt|wird|fehlt|steht|bleibt)\b/;
+var VERB_MEHRZAHL = /^(?:sind|haben|tragen|werden|fehlen|stehen|bleiben)\b/;
+/**
+* „es fehlen 16 und 17 und 15 ist überkront“: ein zweiter Befund mit eigenen Zähnen beginnt einen neuen Satzteil.
+* Die Zähne dazwischen gehören nach Einzahl/Mehrzahl des Verbs zum zweiten; steht das erste Verb vorn
+* („es fehlen …“), setzt die Aufzählung es so weit wie möglich fort.
+*/
+function befundTeilen(teil) {
+	const st = teil.split(/\s+und\s+/);
+	const out = [];
+	let s = 0;
+	for (let j = 1; j < st.length; j++) {
+		const m = ZAHN_ANFANG.exec(st[j]);
+		if (!m || NUR_ZAHN.test(st[j]) || !befundWort(st[j])) continue;
+		let b = j - 1;
+		while (b >= s && !befundWort(st[b])) b--;
+		if (b < s) continue;
+		const zahnVorn = st[b].search(new RegExp(`\\b${ZAHN_WORT}\\b`));
+		const verbVorn = zahnVorn < 0 || befundWort(st[b]).index < zahnVorn;
+		const passt = (i) => {
+			if (!st.slice(i, j).every((x) => NUR_ZAHN.test(x))) return false;
+			const mehrere = j > i || !/^[1-4][1-8]$/.test(m[1]);
+			return !(VERB_EINZAHL.test(m[2]) && mehrere) && !(VERB_MEHRZAHL.test(m[2]) && !mehrere);
+		};
+		const moeglich = Array.from({ length: j - b }, (_, k) => b + 1 + k).filter(passt);
+		if (!moeglich.length) continue;
+		const i = verbVorn ? moeglich[moeglich.length - 1] : moeglich[0];
+		out.push(st.slice(s, i).join(" und "));
+		s = i;
+	}
+	out.push(st.slice(s).join(" und "));
+	return out;
+}
 /** Gesprochener Befund („es fehlen 15 bis 18 und 25 bis 28, 13 bis 23 vorhanden“) → eHKP-Kürzel je Zahn */
 function befundVerstehen(text, kiefer) {
 	const befund = {};
 	const nurKiefer = /* @__PURE__ */ new Set();
-	const roh = satzteile(text);
+	const roh = satzteile(text).flatMap(befundTeilen);
 	const genannt = roh.map((teil) => kieferIn(norm(teil)));
 	/** Satzteil ohne Kiefer („die Sechser fehlen“) erbt ihn vom Nachbarn – erst davor, sonst danach */
 	const kieferFuer = (i) => genannt[i] ?? kiefer ?? genannt.slice(0, i).reverse().find(Boolean) ?? genannt.slice(i + 1).find(Boolean);
 	const teile = roh.map((teil, i) => {
 		const k = kieferFuer(i);
-		const treffer = BEFUND_WORTE.map(([re, code]) => ({
-			m: re.exec(teil),
-			code
-		})).find((x) => x.m);
+		const treffer = befundWort(teil);
 		const ersterZahn = teil.search(/\b[1-4][1-8]\b|er(n|s)?\b|front|eckz/);
 		return {
 			teil,
@@ -27332,7 +27541,7 @@ function befundVerstehen(text, kiefer) {
 			zs: zaehneIn(teil, k),
 			code: treffer?.code,
 			/** Verb am Ende („…, die Sechser und Siebener fehlen“) gilt auch für die Satzteile davor */
-			nachgestellt: !!treffer?.m && ersterZahn >= 0 && treffer.m.index > ersterZahn
+			nachgestellt: !!treffer && ersterZahn >= 0 && treffer.index > ersterZahn
 		};
 	});
 	let letztes;
@@ -27399,7 +27608,7 @@ function befundSaetze(text) {
 			const ab = z && !VERSORGUNGS_TEIL.test(t.slice(z.index, m.index)) ? z.index : m.index;
 			return [t.slice(0, ab).trim(), t.slice(ab).replace(/^ und /, "").trim()];
 		});
-		const istBefund = (t) => !VERSORGUNGS_TEIL.test(t) && BEFUND_WORTE.some(([re]) => re.test(t));
+		const istBefund = (t) => !VERSORGUNGS_TEIL.test(t) && !!befundWort(t, true);
 		return teile.filter((t, i) => {
 			if (istBefund(t)) return true;
 			if (!NUR_ZAEHNE.test(t)) return false;
@@ -27795,7 +28004,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-14 12:58";
+var ENGINE_STAND = "2026-10-14 14:32";
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
 	const eigene = praxis.preislisten ?? [];
@@ -28124,4 +28333,4 @@ function positionPruefen(e, listen, frage) {
 	};
 }
 //#endregion
-export { EIGEN_KASSE_MIN, ENGINE_STAND, LABOR_SPRECH, PRIVAT_STUFEN, STANDARD_LISTEN, WERKSTOFF_SPRECH, ZUSATZ_STUFEN, aufZielpreis, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundDatei, befundDateiName, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, preisSpanne, rechnen, systemSprech, zahlwort, zusammenfassen };
+export { BEFUND_KUERZEL, EIGEN_KASSE_MIN, ENGINE_STAND, LABOR_SPRECH, PRIVAT_STUFEN, STANDARD_LISTEN, WERKSTOFF_SPRECH, ZUSATZ_STUFEN, aufZielpreis, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundDatei, befundDateiName, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, preisSpanne, rechnen, systemSprech, zahlwort, zusammenfassen };

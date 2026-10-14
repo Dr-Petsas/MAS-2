@@ -45,13 +45,15 @@ const lenaFrisch = async () => ({ teeth: lenaTeeth, datum: tageZurueck(10), appo
 const lenaAlt = async () => ({ teeth: lenaTeeth, datum: tageZurueck(400), appointmentId: "a0" });
 const nichts = async () => null;
 let b = await befundErmitteln("x", PATIENT, { lena: lenaFrisch, pvs: nichts });
-check("Kaskade: Lena-01 frisch", b.ok && b.quelle.art === "lena01" && b.befund["16"] === "f");
-b = await befundErmitteln("x", PATIENT, { lena: lenaAlt, pvs: nichts });
-check("Kaskade: Lena-01 alt -> Rueckfrage", !b.ok && b.grund === "befund_alt" && /Gilt der noch/.test(b.frage), b.frage);
-b = await befundErmitteln("x", PATIENT, { lena: lenaAlt, pvs: nichts, bestaetigt: true });
-check("Kaskade: alt, aber bestaetigt", b.ok && b.hinweise.some((h) => /weiterhin gültig/.test(h)));
-b = await befundErmitteln("x", PATIENT, { lena: lenaFrisch, pvs: nichts, gesprochen: "14 fehlt", kiefer: "OK" });
-check("Kaskade: gesprochen ueberschreibt Lena", b.ok && b.befund["14"] === "f" && b.befund["16"] === "f" && b.quelle.art === "gesprochen+lena01");
+check("Befundwahl: Lena vorhanden -> Clara fragt nach der Quelle", !b.ok && b.grund === "befund_quelle" && /Lenas Erstuntersuchung/.test(b.frage), b.frage);
+b = await befundErmitteln("x", PATIENT, { lena: lenaFrisch, pvs: nichts, quelle: "lena" });
+check("Befundwahl: Lena-01 frisch", b.ok && b.quelle.art === "lena01" && b.befund["16"] === "f");
+b = await befundErmitteln("x", PATIENT, { lena: lenaAlt, pvs: nichts, quelle: "lena" });
+check("Befundwahl: Lena-01 alt -> Rueckfrage", !b.ok && b.grund === "befund_alt" && /Gilt der noch/.test(b.frage), b.frage);
+b = await befundErmitteln("x", PATIENT, { lena: lenaAlt, pvs: nichts, quelle: "lena", bestaetigt: true });
+check("Befundwahl: alt, aber bestaetigt", b.ok && b.hinweise.some((h) => /weiterhin gültig/.test(h)));
+b = await befundErmitteln("x", PATIENT, { lena: lenaFrisch, pvs: nichts, quelle: "lena", gesprochen: "14 fehlt", kiefer: "OK" });
+check("Befundwahl: gesprochen ueberschreibt Lena", b.ok && b.befund["14"] === "f" && b.befund["16"] === "f" && b.quelle.art === "gesprochen+lena01");
 b = await befundErmitteln("x", PATIENT, { lena: nichts, pvs: nichts });
 check("Kaskade: nichts -> fragen", !b.ok && b.grund === "befund_fehlt");
 b = await befundErmitteln("x", PATIENT, { lena: nichts, pvs: nichts, ohneBefundOk: true });
@@ -63,7 +65,7 @@ check("Name: 'Michael Petzers' trifft Michael Petzas",
   && namePasst("Michael Petzers", { firstName: "Rozana", lastName: "Psarris" }) === 0);
 
 // --- Entwurf aus Lena-Befund ---
-const lb = await befundErmitteln("x", PATIENT, { lena: lenaFrisch, pvs: nichts });
+const lb = await befundErmitteln("x", PATIENT, { lena: lenaFrisch, pvs: nichts, quelle: "lena" });
 const r = E.hkpEntwurf(SATZ, lb.befund, { bonus: "70" });
 check("Entwurf: Teleskope 14/24", r.status === "ok" && r.zusammenfassung.teleskope.join() === "14,24", r.status === "ok" ? "" : r.frage);
 check("Entwurf: Annahmen gesprochen", /konventioneller Abdruck/.test(annahmenSatz(r.hinweise, r.zusammenfassung.warnungen)));

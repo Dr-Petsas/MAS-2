@@ -7,24 +7,44 @@ const UK = ["48", "47", "46", "45", "44", "43", "42", "41", "31", "32", "33", "3
 export const KIEFER_ZAEHNE = { OK, UK };
 const KIEFER_NAME = { OK: "Oberkiefer", UK: "Unterkiefer" };
 
-// eHKP-Befundkuerzel -> gesprochene Gruppe (Reihenfolge = Vorlese-Reihenfolge)
+// eHKP-Befundkuerzel -> gesprochene Gruppe (Reihenfolge = Vorlese-Reihenfolge). Die Woerter versteht
+// befundVerstehen wieder (Korrektur nach der Befund-Freigabe), deshalb ohne Kommas.
 const BEFUND_WORT = [
   ["x", "nicht erhaltungswürdig"],
   ["ww", "weitgehend zerstört"],
   ["pw", "mit Teildefekt"],
+  ["pkw", "Teilkrone erneuerungsbedürftig"],
   ["ur", "unzureichende Retention"],
   ["k", "überkront"],
   ["kw", "Krone erneuerungsbedürftig"],
   ["t", "Teleskop vorhanden"],
   ["tw", "Teleskop erneuerungsbedürftig"],
-  ["e", "ersetzt"],
-  ["ew", "ersetzt und erneuerungsbedürftig"],
+  ["t2w", "Teleskop-Sekundärteil erneuerungsbedürftig"],
+  ["e", "durch Prothese ersetzt"],
+  ["ew", "durch Prothese ersetzt und erneuerungsbedürftig"],
   ["b", "Brückenglied"],
   ["bw", "Brückenglied erneuerungsbedürftig"],
-  ["i", "Implantat"],
+  ["a", "Adhäsivbrückenanker"],
+  ["aw", "Adhäsivbrückenanker erneuerungsbedürftig"],
+  ["ab", "Adhäsivbrückenglied"],
+  ["abw", "Adhäsivbrückenglied erneuerungsbedürftig"],
+  ["r", "Wurzelstiftkappe"],
+  ["rw", "Wurzelstiftkappe erneuerungsbedürftig"],
+  ["i", "Implantat vorhanden"],
   ["ix", "Implantat nicht erhaltungswürdig"],
+  ["sk", "Implantatkrone"],
+  ["skw", "Implantatkrone erneuerungsbedürftig"],
+  ["sb", "Implantatbrückenglied"],
+  ["sbw", "Implantatbrückenglied erneuerungsbedürftig"],
+  ["st", "Implantatteleskop"],
+  ["stw", "Implantatteleskop erneuerungsbedürftig"],
+  ["se", "ersetzt durch Implantatprothese"],
+  ["sew", "ersetzt durch Implantatprothese und erneuerungsbedürftig"],
+  ["so", "Implantatverbindungselement"],
+  ["sow", "Implantatverbindungselement erneuerungsbedürftig"],
   [")(", "Lückenschluss"],
 ];
+const WORT = new Map(BEFUND_WORT);
 
 /** Zusammenhaengende Zaehne in Kieferreihenfolge zu "14 bis 18" bzw. "13 bis 23" */
 export function zahnBereiche(zaehne, kiefer) {
@@ -74,6 +94,18 @@ export function befundSatz(zaehne, kiefer) {
     saetze.push(`${KIEFER_NAME[k]}: ${teile.join("; ")}.`);
   }
   return saetze.join(" ");
+}
+
+/** Nur die genannten Zaehne (Aenderungen gegenueber dem Praxisprogramm): "es fehlt 15; überkront: 16" */
+export function zahnBefundSatz(zaehne) {
+  const nachCode = new Map();
+  for (const [z, c] of Object.entries(zaehne || {})) nachCode.set(String(c ?? "").trim(), [...(nachCode.get(String(c ?? "").trim()) || []), z]);
+  const bereiche = (zs) => liste(["OK", "UK"].flatMap((k) => zahnBereiche(zs.filter((z) => KIEFER_ZAEHNE[k].includes(z)), k)));
+  const rang = (c) => (c === "f" ? -1 : c === "" ? 999 : BEFUND_WORT.findIndex(([k]) => k === c) + 1 || 500);
+  return [...nachCode].sort(([a], [b]) => rang(a) - rang(b)).map(([code, zs]) => {
+    if (code === "f") return `es ${zs.length === 1 ? "fehlt" : "fehlen"} ${bereiche(zs)}`;
+    return `${code ? WORT.get(code) || `Befund ${code}` : "vorhanden"}: ${bereiche(zs)}`;
+  }).join("; ");
 }
 
 const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
@@ -138,10 +170,10 @@ export function jahrgangWahl(text, kandidaten) {
  * Vorlese-Frage vor der Anlage. Mit `spanne` statt der Summen nur das billigste und teuerste Ende –
  * die Summen nennt Clara erst beim Anlegen (Chef 10.10.2026: "Preise nicht zweimal").
  */
-export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgung, ausfuehrung = "", summen = "", spanne = "", doppelt = "" }) {
+export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgung, ausfuehrung = "", summen = "", spanne = "", doppelt = "", befundFreigegeben = false }) {
   const anrede = patient.anredeLabel?.startsWith("Herrn ") ? "Herrn " : patient.anredeLabel?.startsWith("Frau ") ? "Frau " : "";
   const name = `${anrede}${patient.firstName || ""} ${patient.lastName || ""}`.replace(/\s+/g, " ").trim();
-  const befund = befundSatz(zaehne || {}, kiefer);
+  const befund = befundFreigegeben ? "" : befundSatz(zaehne || {}, kiefer);
   const preis = spanne ? ` ${spanne}` : summen ? ` Voraussichtlich ${summen}.` : "";
   const frage = spanne ? " Wo soll der Eigenanteil ungefähr landen – oder soll ich den Entwurf so anlegen?" : " Soll ich den Entwurf so anlegen?";
   return `Bevor ich anlege, bitte prüfen: ${versorgungText} für ${name}, ${geburtSprech(patient.birthDate)}.`
