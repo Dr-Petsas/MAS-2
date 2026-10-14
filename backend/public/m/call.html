@@ -87,6 +87,16 @@
     .kopfknopf.links { left: -6px; }
     .kopfknopf.rechts { right: -6px; }
 
+    /* Umschalter, wenn mehrere Assistentinnen auf dem Handy gekoppelt sind */
+    .wechsel { display: flex; justify-content: center; gap: 8px; margin: 8px auto 0; flex: none; }
+    .wechsel[hidden] { display: none; }
+    .wechsel button {
+      background: transparent; color: var(--ink-soft); border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 700; letter-spacing: .02em;
+      touch-action: manipulation; cursor: pointer;
+    }
+    .wechsel button[aria-pressed="true"] { background: var(--turq); color: #08121f; border-color: var(--turq); }
+
     /* ── Audio / Chat Umschalter (dezent oben, wie cp-mode im Hero) ─────── */
     .mode-bar {
       display: flex; justify-content: center; margin: 10px auto 0; gap: 4px;
@@ -439,6 +449,8 @@
     <a class="kopfknopf rechts" id="improveLink" href="/m/improve.html" aria-label="Clara verbessern" title="Clara verbessern – Problem melden">IMPROVE</a>
   </header>
 
+  <nav class="wechsel" id="wechsel" hidden aria-label="Assistentin wählen"></nav>
+
   <div class="mode-bar" data-clara-mode-bar>
     <button type="button" class="active" data-clara-mode-audio aria-pressed="true">🎙 Audio</button>
     <button type="button" data-clara-mode-chat aria-pressed="false">💬 Chat</button>
@@ -555,10 +567,28 @@
     import { bindCrewChips } from "/m/crew.js?v=1";
 
     const qs = new URLSearchParams(location.search);
+    // STORE_KEY = zuletzt benutzte Kopplung, DEVICES_KEY = alle Kopplungen dieses
+    // Handys (je Praxis eine, z. B. Clara der Praxis und Eva aus PlanR).
     const STORE_KEY = "clara.device.v1";
+    const DEVICES_KEY = "clara.devices.v2";
     let device = null;
+    let devices = [];
     try { device = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch {}
+    try { devices = JSON.parse(localStorage.getItem(DEVICES_KEY) || "[]"); } catch {}
+    if (!Array.isArray(devices)) devices = [];
+    if (device?.clientId && !devices.some((g) => g.clientId === device.clientId)) devices.unshift(device);
+    devices = devices.filter((g) => g && g.clientId);
     const clientId = (qs.get("c") || device?.clientId || "").trim();
+    function geraetMerken(d) {
+      devices = devices.map((g) => (g.clientId === d.clientId ? d : g));
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(d));
+        localStorage.setItem(DEVICES_KEY, JSON.stringify(devices));
+      } catch {}
+    }
+    // Angerufen oder umgeschaltet: die Kopplung DIESER Praxis nehmen und als zuletzt benutzte merken
+    const passend = devices.find((g) => g.clientId === clientId);
+    if (passend && passend.clientId !== device?.clientId) { device = passend; geraetMerken(device); }
     const reasonText = (qs.get("reason") || "").trim();
     const incoming = !!reasonText; // opened from a push -> behave like a ringing call
 
@@ -949,9 +979,10 @@
         aName = n;
         if (device && device.clientId === clientId) {
           device.assistantName = n;
-          try { localStorage.setItem(STORE_KEY, JSON.stringify(device)); } catch {}
+          geraetMerken(device);
         }
         nameZeigen();
+        wechselZeigen();
         render();
       } catch {}
     }
@@ -1006,7 +1037,33 @@
     if (!incoming) {
       els.calling.textContent = device?.operatorName ? `Hallo ${device.operatorName}` : "Deine Praxis-Assistentin";
     }
+    // Mehrere Assistentinnen auf diesem Handy: oben umschalten, jede behält ihre Kopplung
+    function wechselZeigen() {
+      const nav = document.getElementById("wechsel");
+      if (!nav || devices.length < 2) return;
+      nav.innerHTML = "";
+      for (const g of devices) {
+        const hier = g.clientId === clientId;
+        const n = hier ? aName : (g.assistantName || "Clara");
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = n;
+        b.setAttribute("aria-pressed", String(hier));
+        b.addEventListener("click", async () => {
+          if (hier) return;
+          if (connected || connecting) {
+            if (!confirm(`Gespräch mit ${aName} beenden und zu ${n} wechseln?`)) return;
+            await hangup();
+          }
+          location.href = `/m/call.html?c=${encodeURIComponent(g.clientId)}`;
+        });
+        nav.append(b);
+      }
+      nav.hidden = false;
+    }
+
     nameZeigen();
+    wechselZeigen();
     render();
     nameLaden();
 
@@ -1185,8 +1242,13 @@
         // würde sonst weiter „gekoppelt“ zeigen, obwohl der Server das Gerät
         // nicht mehr kennt.
         if (cfg.pinError === "device_invalid") {
-          try { localStorage.removeItem(STORE_KEY); } catch {}
-          location.replace("/m/pair.html");
+          devices = devices.filter((g) => g.clientId !== clientId);
+          try {
+            localStorage.setItem(DEVICES_KEY, JSON.stringify(devices));
+            if (devices.length) localStorage.setItem(STORE_KEY, JSON.stringify(devices[0]));
+            else localStorage.removeItem(STORE_KEY);
+          } catch {}
+          location.replace(devices.length ? "/m/pair.html?manage=1" : "/m/pair.html");
           return;
         }
         if (cfg.operator?.name) els.calling.textContent = `Verbunden · ${cfg.operator.name}`;

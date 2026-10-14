@@ -44,6 +44,11 @@
     .note { color:#5e7390; font-size:12px; margin-top:16px; }
     .hidden { display:none !important; }
     .sharehint { display:inline-block; background:#0b1424; border-radius:8px; padding:2px 8px; }
+    .geraet { background:#13203a; border-radius:14px; padding:14px; margin:12px 0; text-align:left; }
+    .geraet .g-name { font-size:18px; font-weight:700; }
+    .geraet .g-wer { color:var(--ink-soft); font-size:13px; margin-top:2px; line-height:1.45; }
+    .geraet .primary { margin-top:12px; }
+    .geraet .danger-link { margin-top:6px; }
   </style>
 </head>
 <body>
@@ -67,6 +72,7 @@
       <input id="codeInput" type="text" inputmode="latin" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="one-time-code" maxlength="8" placeholder="z. B. K7P2QW"
         style="width:100%;padding:16px;border-radius:14px;border:1px solid #293a5c;background:#0e1830;color:#e6edf6;font-size:24px;letter-spacing:4px;text-align:center;text-transform:uppercase;margin-top:6px;" />
       <button class="primary" id="btnCode">Koppeln</button>
+      <a class="btn ghost hidden" id="btnZurueck" href="/m/pair.html?manage=1">Zurück</a>
       <p class="note">Am Handy fragt die App einmalig nach Mitteilungen – bitte <b>„Erlauben“</b>, damit deine Assistentin dich anrufen kann. Am PC reicht der Code.</p>
     </div>
 
@@ -78,11 +84,13 @@
     </div>
 
     <!-- Paired home screen -->
+    <!-- Mehrere Assistentinnen auf einem Handy (z. B. Clara der Praxis und Eva aus PlanR):
+         jede Kopplung gilt ihrer Praxis, keine überschreibt die andere. -->
     <div id="viewHome" class="hidden">
       <div class="ok-badge" id="homeBadge">✅</div>
       <p class="sub" id="homeText">Verbunden.</p>
-      <a class="btn primary" id="btnTalk" href="#">🎙️ Mit <span class="aname">Clara</span> sprechen</a>
-      <button class="danger-link" id="btnUnpair">Verbindung von diesem Handy entfernen</button>
+      <div id="homeList"></div>
+      <a class="btn ghost" id="btnAdd" href="/m/pair.html?add=1">＋ Weitere Assistentin koppeln</a>
     </div>
 
     <!-- Token problems -->
@@ -101,7 +109,11 @@
     const urlClientId = (qs.get("c") || "").trim();
     const urlToken = (qs.get("t") || "").trim();
     const manage = qs.get("manage") === "1"; // Zahnrad auf der Anrufseite
+    const addMode = qs.get("add") === "1";   // weitere Assistentin koppeln
+    // STORE_KEY = zuletzt benutzte Kopplung (App-Start, Tour lesen nur diese);
+    // DEVICES_KEY = alle Kopplungen dieses Handys, je Praxis eine.
     const STORE_KEY = "clara.device.v1";
+    const DEVICES_KEY = "clara.devices.v2";
     const PENDING_KEY = "clara.pendingPair.v1";
 
     // iOS-Umweg: Beim "Zum Home-Bildschirm" startet die App auf der Anrufseite
@@ -135,13 +147,35 @@
     }
 
     const els = Object.fromEntries(["title","subtitle","viewInstall","viewPair","viewHome","viewDead","viewCode",
-      "btnPair","btnTalk","btnUnpair","btnCode","codeInput","homeText","err","diag"].map(id => [id, document.getElementById(id)]));
+      "btnPair","btnCode","btnZurueck","codeInput","homeText","homeList","btnAdd","err","diag"].map(id => [id, document.getElementById(id)]));
 
     function loadDevice() {
       try { return JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { return null; }
     }
-    function saveDevice(d) { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {} }
-    function clearDevice() { try { localStorage.removeItem(STORE_KEY); } catch {} }
+    function loadDevices() {
+      let liste = [];
+      try { liste = JSON.parse(localStorage.getItem(DEVICES_KEY) || "[]"); } catch {}
+      if (!Array.isArray(liste)) liste = [];
+      const aktiv = loadDevice();
+      if (aktiv?.clientId && !liste.some((g) => g.clientId === aktiv.clientId)) liste.unshift(aktiv);
+      return liste.filter((g) => g && g.clientId);
+    }
+    function saveDevice(d) {
+      const liste = loadDevices().filter((g) => g.clientId !== d.clientId).concat(d);
+      try {
+        localStorage.setItem(DEVICES_KEY, JSON.stringify(liste));
+        localStorage.setItem(STORE_KEY, JSON.stringify(d));
+      } catch {}
+    }
+    function forgetDevice(clientId) {
+      const rest = loadDevices().filter((g) => g.clientId !== clientId);
+      try {
+        localStorage.setItem(DEVICES_KEY, JSON.stringify(rest));
+        if (rest.length) localStorage.setItem(STORE_KEY, JSON.stringify(rest[0]));
+        else localStorage.removeItem(STORE_KEY);
+      } catch {}
+      return rest;
+    }
 
     // Ruf-Name der Praxis (in PlanR frei wählbar). Kommt beim Koppeln mit;
     // das Manifest der Praxis liefert ihn auch vorher schon.
@@ -300,21 +334,36 @@
     function renderHome(justPaired) {
       const d = loadDevice();
       if (!d) { renderEntry(); return; }
+      const liste = loadDevices();
       // Gekoppelt -> direkt zur Anrufseite (App-Start landet sofort bei Clara).
       // Nur ?manage=1 (Zahnrad) zeigt die Verwaltungsansicht.
       if (!manage && !justPaired) {
-        refreshSubscription(d);
+        liste.forEach(refreshSubscription);
         location.replace(`/m/call.html?c=${encodeURIComponent(d.clientId)}`);
         return;
       }
-      els.title.textContent = aName;
+      els.title.textContent = liste.length > 1 ? "Deine Assistentinnen" : aName;
       els.subtitle.textContent = "";
-      els.homeText.innerHTML = (justPaired ? "<b>Geschafft!</b> " : "") +
-        `Dieses Handy ist verbunden als <span class="who">${d.operatorName || "Team"}</span>.<br/>` +
-        `${esc(aName)} kann dich jetzt hier anrufen.`;
-      els.btnTalk.href = `/m/call.html?c=${encodeURIComponent(d.clientId)}`;
+      els.homeText.innerHTML = justPaired ? `<b>Geschafft!</b> ${esc(aName)} ist auf diesem Handy eingerichtet.` : "";
+      els.homeList.innerHTML = liste.map((g) => {
+        const n = esc(g.assistantName || "Clara");
+        return `<div class="geraet">
+          <div class="g-name">${n}</div>
+          <div class="g-wer">Verbunden als <span class="who">${esc(g.operatorName || "Team")}</span> · ${n} kann dich hier anrufen.</div>
+          <a class="btn primary" href="/m/call.html?c=${encodeURIComponent(g.clientId)}">🎙️ Mit ${n} sprechen</a>
+          <button class="danger-link" data-entfernen="${esc(g.clientId)}">${n} von diesem Handy entfernen</button>
+        </div>`;
+      }).join("");
+      els.homeList.querySelectorAll("[data-entfernen]").forEach((b) => b.addEventListener("click", () => entfernen(b.dataset.entfernen, b)));
       show("viewHome");
-      refreshSubscription(d);
+      liste.forEach(refreshSubscription);
+    }
+
+    function renderAdd() {
+      els.title.textContent = "Weitere Assistentin";
+      els.subtitle.textContent = "Gib den 6-stelligen Code ein, der am PC neben dem QR-Code steht (in PlanR bzw. in den Pickadoc-Einstellungen).";
+      els.btnZurueck.classList.toggle("hidden", !loadDevice());
+      show("viewCode");
     }
 
     function renderEntry() {
@@ -348,12 +397,12 @@
     els.btnPair.addEventListener("click", pairNow);
     els.btnCode.addEventListener("click", pairWithCode);
 
-    els.btnUnpair.addEventListener("click", async () => {
-      els.btnUnpair.disabled = true;
-      els.btnUnpair.textContent = "Wird entfernt …";
-      const d = loadDevice();
+    async function entfernen(clientId, btn) {
+      btn.disabled = true;
+      btn.textContent = "Wird entfernt …";
+      const d = loadDevices().find((g) => g.clientId === clientId);
       // 1) Serverseitige Registrierung löschen (deviceKey-gesichert), damit
-      //    Clara dieses Handy nicht mehr anruft.
+      //    diese Assistentin dieses Handy nicht mehr anruft.
       try {
         if (d?.clientId && d?.deviceId && d?.deviceKey) {
           await fetch("/clara/devices/unpair", {
@@ -363,19 +412,23 @@
           });
         }
       } catch {}
-      // 2) Push-Subscription im Browser wirklich kündigen — sonst blieben
+      // 2) Lokale Kopplung vergessen.
+      const rest = forgetDevice(clientId);
+      // 3) Push-Subscription im Browser wirklich kündigen — sonst blieben
       //    Mitteilungen möglich, sobald das Gerät je wieder registriert würde.
-      try {
-        if ("serviceWorker" in navigator && "PushManager" in window) {
-          const reg = await navigator.serviceWorker.getRegistration();
-          const sub = reg && await reg.pushManager.getSubscription();
-          if (sub) await sub.unsubscribe();
-        }
-      } catch {}
-      // 3) Lokale Kopplung vergessen.
-      clearDevice();
+      //    Alle Assistentinnen des Handys teilen sich diese eine Subscription:
+      //    erst kündigen, wenn keine mehr gekoppelt ist.
+      if (!rest.length) {
+        try {
+          if ("serviceWorker" in navigator && "PushManager" in window) {
+            const reg = await navigator.serviceWorker.getRegistration();
+            const sub = reg && await reg.pushManager.getSubscription();
+            if (sub) await sub.unsubscribe();
+          }
+        } catch {}
+      }
       location.reload();
-    });
+    }
 
     // ── Boot ─────────────────────────────────────────────────────────────────
     // Ein frischer QR-Token in SAFARI (nicht standalone) hat IMMER Vorrang: wer
@@ -388,11 +441,12 @@
     // dieses Gerät bereits gekoppelt, geht es zu Clara; der eingebackene Token
     // wird nur genutzt, solange noch KEIN Gerät gekoppelt ist.
     const bekannt = loadDevice();
-    nameZeigen(bekannt?.assistantName);
-    nameLaden(pairClientId || bekannt?.clientId);
     const hasToken = !!(pairToken && pairClientId);
+    nameZeigen(addMode && !hasToken ? "" : bekannt?.assistantName);
+    nameLaden(pairClientId || (addMode ? "" : bekannt?.clientId));
     const freshSafariScan = hasToken && !isStandalone;
     if (freshSafariScan) renderEntry();
+    else if (addMode) renderAdd();
     else if (loadDevice()) renderHome(false);
     else renderEntry();
   </script>
