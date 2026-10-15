@@ -20,6 +20,7 @@ import * as E from "../vendor/hkp-engine.mjs";
 import * as P from "../vendor/privat-ze-engine.mjs";
 import * as M from "../vendor/mkv-engine.mjs";
 import * as K from "../vendor/kons-engine.mjs";
+import * as I from "../vendor/impl-engine.mjs";
 import { assertAppEnabled, getBilling } from "../entitlements.js";
 import { planrAusBilling } from "../hkp/planrBerechtigung.js";
 import { claraZugang, rufnameSaeubern } from "../hkp/planrClara.js";
@@ -47,7 +48,7 @@ import {
 import {
   auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, pvsKennung, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
-import { detailSatz, euroSprech, hkpKurz, hkpTitel, konsSummenSatz, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
+import { detailSatz, euroSprech, hkpKurz, hkpTitel, implSummenSatz, konsSummenSatz, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
@@ -1196,10 +1197,10 @@ async function privatAnlegen(clientId, d) {
   };
 }
 
-// Fuellungs-MKV und private Kons per Sprache (Chef 15.10.2026): Engines der Kons-Planer (src/vendor/mkv-engine.mjs,
-// src/vendor/kons-engine.mjs). Den Befund lesen sie nur zur Pruefung aus dem Praxisprogramm (keine Quellen-Frage);
+// Fuellungs-MKV, private Kons und Implantologie per Sprache (Chef 15.10.2026): Engines der Planer (src/vendor/mkv-engine.mjs,
+// kons-engine.mjs, impl-engine.mjs). Den Befund lesen sie nur zur Pruefung aus dem Praxisprogramm (keine Quellen-Frage);
 // der Entwurf wartet wie der private Zahnersatz in planrEntwuerfe und kommt ohne Regler an, damit der Planer mit den
-// Einstellungen der Praxis rechnet. Notaus MAS_MKV=0 bzw. MAS_KONS=0.
+// Einstellungen der Praxis rechnet. Notaus MAS_MKV=0, MAS_KONS=0 bzw. MAS_IMPL=0.
 const MKV_WORT = /mehrkosten|\bm\.? ?k\.? ?v\b/i;
 const FUELLUNG_WORT = /f(?:ü|ue)llung|komposit|kunststoff|inlay|einlagef|goldh(?:ä|ae)mmer|\baufbau/i;
 const ZE_WORT = /krone|br(?:ü|ue)cke|prothese|teleskop|implantat|zahnersatz|\bhkp\b|heil- ?und kostenplan/i;
@@ -1207,6 +1208,10 @@ const KONS_WORT = /f(?:ü|ue)llung|komposit|kunststoff|inlay|einlagef|goldh(?:ä
 const KONS_PRIVAT_WORT = /privat|kosten\s?voranschlag|\bkons\b|konservier|\bgoz\b/i;
 export const mkvGesagt = (t) => MKV_WORT.test(t) || (FUELLUNG_WORT.test(t) && !ZE_WORT.test(t));
 export const konsGesagt = (t) => !MKV_WORT.test(t) && !ZE_WORT.test(t) && KONS_WORT.test(t) && KONS_PRIVAT_WORT.test(t);
+// Implantat ohne Prothetik-Wort ist die Chirurgie; "Implantatkrone", "Brücke auf Implantaten" bleiben Zahnersatz
+const IMPL_WORT = /implantat(?!\w*(?:kron|getragen|br(?:ü|ue)cke|prothes|versorg|suprakon|abutment))|implantation|implantolog|sinuslift|sinusboden|knochenaufbau|augmentation/i;
+const PROTHETIK_WORT = /krone|br(?:ü|ue)cke|prothese|teleskop|\bsteg\b|zahnersatz|abutment|suprakonstruktion|\bhkp\b|heil- ?und kostenplan/i;
+export const implGesagt = (t) => IMPL_WORT.test(t) && !PROTHETIK_WORT.test(t) && !MKV_WORT.test(t);
 
 const engineAus = (name) => String(process.env[name] || "").trim() === "0";
 const patientFuerEngine = (patient) => ({ name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" });
@@ -1241,16 +1246,30 @@ const SPRACH_PLAENE = {
     nachsatz: "Faktor und Zusatzleistungen rechnet der Planer dort nach Ihren Einstellungen",
     stand: () => K.ENGINE_STAND,
   },
+  impl: {
+    modul: "privat-impl", text: "Kostenvoranschlag Implantologie", planer: "Implantologie", art: "der", akk: "den",
+    aus: () => engineAus("MAS_IMPL"),
+    ausSatz: "Einen Kostenvoranschlag Implantologie kann ich gerade nicht per Sprache anlegen. Bitte im Implantologie-Planer in PlanR erstellen.",
+    voll: IMPL_WORT, extra: /kosten\s?voranschlag|privat/i,
+    tp: (l) => String(l.TP || ""),
+    entwurf: (text, befund, patient, praxis) => I.implEntwurf(text, befund, { patient: patientFuerEngine(patient), implantatSystem: implantatStandard(praxis) }),
+    versorgung: (z) => I.implVersorgungSatz(z),
+    summen: (z) => ({ summe: zahl(z.summe), honorar: zahl(z.honorar), materialLabor: zahl(z.materialLabor) }),
+    summenSatz: implSummenSatz, betrag: (s) => s.summe, hinweise: () => [],
+    nachsatz: "Faktoren, Material und Zusatzleistungen rechnet der Planer dort nach Ihren Einstellungen",
+    stand: () => I.ENGINE_STAND,
+  },
 };
 const grossAnfang = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const sprachPlanZeilen = (cfg, plan) => Object.fromEntries(Object.entries(plan?.zaehne || {})
-  .map(([z, l]) => [z, { TP: `${cfg.kuerzel[l.therapie] || ""}${l.flaechen || l.kanaele || ""}`, R: "" }]));
+  .map(([z, l]) => [z, { TP: cfg.tp ? cfg.tp(l) : `${cfg.kuerzel[l.therapie] || ""}${l.flaechen || l.kanaele || ""}`, R: "" }]));
 
 /** Welche Sprach-Planart der Kons-Familie meint der Auftrag? planart des Werkzeugs vor dem Wortlaut. */
 function sprachPlanAus(b, auftragText) {
   const art = String(b.planart || "").trim().toLowerCase();
   if (SPRACH_PLAENE[art]) return art;
   const t = auftragText;
+  if (implGesagt(t)) return "impl";
   if (!MKV_WORT.test(t) && !ZE_WORT.test(t) && KONS_WORT.test(t) && (wahr(b.privat) || KONS_PRIVAT_WORT.test(t))) return "kons";
   if (!wahr(b.privat) && mkvGesagt(t)) return "mkv";
   return null;
@@ -1388,7 +1407,8 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const zeLaeuft = lauf.privat || (!laufPlan && !!(lauf.quelle || lauf.text))
       || vorschauen(clientId).some((v) => v.patient?.id === patient.id && !v.sprachPlan);
     if (nurFuellungswort && zeLaeuft) sp = null;
-    const laufWeiter = laufPlan === "kons" ? !ZE_WORT.test(auftragText) && !MKV_WORT.test(auftragText)
+    const laufWeiter = laufPlan === "impl" ? !PROTHETIK_WORT.test(auftragText) && !MKV_WORT.test(auftragText) && !konsGesagt(auftragText)
+      : laufPlan === "kons" ? !ZE_WORT.test(auftragText) && !MKV_WORT.test(auftragText)
       : laufPlan === "mkv" ? !privat && !kasseGesagt(auftragText) && !privatGesagt(auftragText) && !ZE_WORT.test(auftragText) : false;
     if (!sp && laufWeiter) sp = laufPlan;
     if (sp) privat = false;

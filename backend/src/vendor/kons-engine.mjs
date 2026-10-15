@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\KONS\Privat-Kons (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\KONS\Privat-Kons && npm run build:engine   (sha256 0de74bdbd8a8)
+// Neu bauen: cd F:\PlanR\KONS\Privat-Kons && npm run build:engine   (sha256 5a4bfd8084c8)
 //#region src/befund01.ts
 var OBERKIEFER$1 = [
 	"18",
@@ -4862,7 +4862,7 @@ function neuerPlan(nummer, einst) {
 * dieses Planers. `npm run build:engine` baut daraus MAS-2/backend/src/vendor/kons-engine.mjs.
 * Zahn- und Flächenerkennung wie im Füllungs-MKV-Planer (KONS/MKV/src/clara).
 */
-var ENGINE_STAND = "2026-10-15 22:25";
+var ENGINE_STAND = "2026-10-15 22:44";
 var GUELTIG = new Set(ALLE_ZAEHNE);
 var ZAHL = {
 	ein: 1,
@@ -5142,7 +5142,9 @@ var sortiert = (zs) => [...zs].sort((a, b) => ALLE_ZAEHNE.indexOf(a) - ALLE_ZAEH
 var befundArt = (th) => th === "endo" || th === "revision" ? "endo" : th === "aufbau" ? "aufbau" : "fuellung";
 var befundName = (code) => {
 	const n = BEFUND_KUERZEL[code];
-	return n ? `ein${/zahn$/i.test(n) ? "" : "e"} ${n}` : code;
+	if (!n) return code;
+	const kopf = n.match(/\p{Lu}[\p{L}-]*/u)?.[0] ?? "";
+	return `ein${/(?:zahn|implantat|glied|element|teil|schluss)$/i.test(kopf) ? "" : "e"} ${n}`;
 };
 /** Gesprochener Auftrag + 01 → gerechneter Kons-Kostenvoranschlag (ohne Nummer) oder Rückfrage */
 function konsEntwurf(auftragText, befund = {}, optionen = {}) {
