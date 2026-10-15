@@ -129,6 +129,20 @@ test("Vorgang: PlanR erfaehrt Befund, Planung und Anlegen; das Handy zeigt das Z
   assert.deepEqual([vorgaenge.at(-1).phase, vorgaenge.at(-1).hkpId], ["angelegt", fertig.hkpId]);
 });
 
+test("Befund zuerst: schon die Rueckfrage nach der Versorgung zeigt das Zahnschema und meldet PlanR den Befund", async () => {
+  vorgaenge.length = 0;
+  const auftrag = "ich möchte gern einen HKP erstellen";
+  const frage = await rufe({ auftrag });
+  assert.equal(frage.rueckfrage, "versorgung", frage.message);
+  assert.equal(frage.card?.kind, "befund", JSON.stringify(frage));
+  assert.equal(new URL(frage.card.url).searchParams.get("befund"), "4711");
+  await kurz();
+  assert.deepEqual(vorgaenge.at(-1), { patient: "4711", modul: "hkp", phase: "befund", auftrag });
+  const bereit = await rufe({});
+  assert.match(bereit.message, /Was soll ich für/);
+  assert.equal(bereit.card?.kind, "befund");
+});
+
 test("neu: vorlesen, Korrektur, erst nach ja nach Dampsoft – nur der Oberkiefer", async () => {
   const auftrag = "Brücke von 24 auf 26";
   const frage = await rufe({ auftrag, befund_quelle: "neu" });

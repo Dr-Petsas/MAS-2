@@ -42,7 +42,7 @@ import {
   praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
 } from "../hkp/store.js";
 import {
-  auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, quelleAus, vorgangMelden,
+  auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
@@ -1162,9 +1162,25 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       liveMelden(clientId, { meldung: String(x?.message || "") });
       return res.json(x);
     };
+    // Befund zuerst (live 15.10.2026: "Welche Versorgung ...?" kam ohne Zahnschema, PlanR ohne Eintrag): steht der
+    // Patient, zeigen schon die Rueckfragen den Befund aus dem Praxisprogramm. Ein langsames Praxisprogramm haelt sie nicht auf.
+    const befundVorab = async () => {
+      let nr = wahlLesen(clientId, patient).pvsNummer || "";
+      if (!nr) {
+        const pb = await Promise.race([pvsBefund(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
+        nr = pb?.ok ? String(pb.nummer || "") : "";
+        if (nr) wahlMerken(clientId, patient, { pvsNummer: nr });
+      }
+      if (!nr) return;
+      vorgangMelden(clientId, nr, { modul: "hkp", phase: "befund", auftrag: auftragText });
+      flipKarte = befundKarte(clientId, nr, patient);
+    };
     // Ohne Aufzaehlung (Chef 07.10.2026: "das nervt"). Clara erkennt die Rueckfrage
     // am Kern "Was soll ich fuer ... planen" (Diktat-Fenster, offener Auftrag).
-    if (!auftragText) return raus({ ok: true, message: `Gut, ich bin bereit. Was soll ich für ${patient.anredeLabel} planen?` });
+    if (!auftragText) {
+      await befundVorab();
+      return raus({ ok: true, message: `Gut, ich bin bereit. Was soll ich für ${patient.anredeLabel} planen?` });
+    }
 
     const auftrag = E.auftragVerstehen(auftragText);
     const vergessen = vergessenerKiefer(auftragText, auftrag);
@@ -1177,6 +1193,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       });
     }
     if (!(auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung)) {
+      await befundVorab();
       return raus({
         ok: true, rueckfrage: "versorgung",
         message: `Welche Versorgung soll ich für ${patient.anredeLabel} planen?`,
