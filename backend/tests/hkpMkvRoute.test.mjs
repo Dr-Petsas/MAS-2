@@ -42,7 +42,7 @@ process.env.PLANR_URL = `http://127.0.0.1:${planr.address().port}`;
 
 const { _setBillingLaden } = await import("../src/hkp/planrClara.js");
 _setBillingLaden(async () => ({ subscriptions: { planr: { enabled: true, sprachsteuerung: true } } }));
-const { default: router, mkvGesagt, mkvFolgeText } = await import("../src/routes/hkp.js");
+const { default: router, mkvGesagt, sprachFolgeText } = await import("../src/routes/hkp.js");
 const { hkpListe } = await import("../src/hkp/store.js");
 const { entwurfLesen, entwurfLoeschenFuerTest } = await import("../src/hkp/planrEntwuerfe.js");
 const { zuruecknehmen } = await import("../src/clara/rueckgaengig.js");
@@ -122,13 +122,13 @@ test("Rueckfrage Flaechen: die Antwort ohne Fuellungswort ergaenzt den Auftrag; 
   assert.match(inlay.message, /Abdruck angenommen/);
 });
 
-test("mkvFolgeText: Teilantwort ergaenzt, Konfliktzahn wird ersetzt, neuer vollstaendiger Auftrag gilt allein", () => {
-  assert.equal(mkvFolgeText({}, "Komposit 36 mo"), "Komposit 36 mo");
-  assert.equal(mkvFolgeText({ mkvAuftrag: "Komposit an 36 und 37." }, "beide mod"), "Komposit an 36 und 37. beide mod");
-  assert.equal(mkvFolgeText({ mkvAuftrag: "Komposit an 46 mo", mkvKonflikt: "46" }, "47"), "Komposit an 47 mo");
-  assert.equal(mkvFolgeText({ mkvAuftrag: "Komposit an 46 mo", mkvKonflikt: "46" }, "nein, 47 mod"), "Komposit an 47 mo. 47 mod");
-  assert.equal(mkvFolgeText({ mkvAuftrag: "Komposit an 46 mo" }, "Inlay 47 mod"), "Inlay 47 mod");
-  assert.equal(mkvFolgeText({ mkvAuftrag: "Komposit an 36" }, "Komposit an 36 mod"), "Komposit an 36 mod");
+test("sprachFolgeText: Teilantwort ergaenzt, Konfliktzahn wird ersetzt, neuer vollstaendiger Auftrag gilt allein", () => {
+  assert.equal(sprachFolgeText({}, "Komposit 36 mo"), "Komposit 36 mo");
+  assert.equal(sprachFolgeText({ teilAuftrag: "Komposit an 36 und 37." }, "beide mod"), "Komposit an 36 und 37. beide mod");
+  assert.equal(sprachFolgeText({ teilAuftrag: "Komposit an 46 mo", teilKonflikt: "46" }, "47"), "Komposit an 47 mo");
+  assert.equal(sprachFolgeText({ teilAuftrag: "Komposit an 46 mo", teilKonflikt: "46" }, "nein, 47 mod"), "Komposit an 47 mo. 47 mod");
+  assert.equal(sprachFolgeText({ teilAuftrag: "Komposit an 46 mo" }, "Inlay 47 mod"), "Inlay 47 mod");
+  assert.equal(sprachFolgeText({ teilAuftrag: "Komposit an 36" }, "Komposit an 36 mod"), "Komposit an 36 mod");
 });
 
 test("PlanR holt den MKV-Entwurf ab; Rueckgaengig vorher verwirft", async () => {

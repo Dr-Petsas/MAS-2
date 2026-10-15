@@ -19,6 +19,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import * as E from "../vendor/hkp-engine.mjs";
 import * as P from "../vendor/privat-ze-engine.mjs";
 import * as M from "../vendor/mkv-engine.mjs";
+import * as K from "../vendor/kons-engine.mjs";
 import { assertAppEnabled, getBilling } from "../entitlements.js";
 import { planrAusBilling } from "../hkp/planrBerechtigung.js";
 import { claraZugang, rufnameSaeubern } from "../hkp/planrClara.js";
@@ -46,7 +47,7 @@ import {
 import {
   auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, pvsKennung, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
-import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
+import { detailSatz, euroSprech, hkpKurz, hkpTitel, konsSummenSatz, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
@@ -1195,63 +1196,111 @@ async function privatAnlegen(clientId, d) {
   };
 }
 
-// Fuellungs-Mehrkostenvereinbarung per Sprache (Chef 15.10.2026): Engine des MKV-Planers (src/vendor/mkv-engine.mjs).
-// Den Befund liest sie nur zur Pruefung aus dem Praxisprogramm (keine Quellen-Frage); der Entwurf wartet wie der private
-// Zahnersatz in planrEntwuerfe und kommt ohne Regler an, damit der Planer mit dem Mehrkosten-Modell der Praxis rechnet.
-// Notaus MAS_MKV=0.
-const mkvAus = () => String(process.env.MAS_MKV || "").trim() === "0";
-const MKV_TEXT = "Füllungs-Mehrkostenvereinbarung";
-const MKV_AUS_SATZ = "Eine Füllungs-Mehrkostenvereinbarung kann ich gerade nicht per Sprache anlegen. Bitte im Planer Füllungs-MKV in PlanR erstellen.";
+// Fuellungs-MKV und private Kons per Sprache (Chef 15.10.2026): Engines der Kons-Planer (src/vendor/mkv-engine.mjs,
+// src/vendor/kons-engine.mjs). Den Befund lesen sie nur zur Pruefung aus dem Praxisprogramm (keine Quellen-Frage);
+// der Entwurf wartet wie der private Zahnersatz in planrEntwuerfe und kommt ohne Regler an, damit der Planer mit den
+// Einstellungen der Praxis rechnet. Notaus MAS_MKV=0 bzw. MAS_KONS=0.
 const MKV_WORT = /mehrkosten|\bm\.? ?k\.? ?v\b/i;
 const FUELLUNG_WORT = /f(?:ü|ue)llung|komposit|kunststoff|inlay|einlagef|goldh(?:ä|ae)mmer|\baufbau/i;
 const ZE_WORT = /krone|br(?:ü|ue)cke|prothese|teleskop|implantat|zahnersatz|\bhkp\b|heil- ?und kostenplan/i;
+const KONS_WORT = /f(?:ü|ue)llung|komposit|kunststoff|inlay|einlagef|goldh(?:ä|ae)mmer|\baufbau|wurzel|\bwkb\b|\bendo|revision|(?:ü|ue)berkapp|pulpotomie|versiegel|infiltration|\bicon\b|veneer|bleach|bleich|\bkons\b|konservier/i;
+const KONS_PRIVAT_WORT = /privat|kosten\s?voranschlag|\bkons\b|konservier|\bgoz\b/i;
 export const mkvGesagt = (t) => MKV_WORT.test(t) || (FUELLUNG_WORT.test(t) && !ZE_WORT.test(t));
-const MKV_KUERZEL = { komposit: "K", mehrfarben: "M", inlay: "I", goldhaemmer: "G", aufbau: "A" };
-const mkvPlanZeilen = (plan) => Object.fromEntries(Object.entries(plan?.zaehne || {}).map(([z, l]) => [z, { TP: `${MKV_KUERZEL[l.therapie] || ""}${l.flaechen || ""}`, R: "" }]));
+export const konsGesagt = (t) => !MKV_WORT.test(t) && !ZE_WORT.test(t) && KONS_WORT.test(t) && KONS_PRIVAT_WORT.test(t);
 
-function mkvOptionen(patient, praxis) {
-  const e = praxis?.einstellungen || {};
-  return {
-    patient: { name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" },
-    praxis: { plz: String(e.praxisPlz || ""), kzvNr: String(e.kzv || "") },
-  };
+const engineAus = (name) => String(process.env[name] || "").trim() === "0";
+const patientFuerEngine = (patient) => ({ name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" });
+const SPRACH_PLAENE = {
+  mkv: {
+    modul: "kons-mkv", text: "Füllungs-Mehrkostenvereinbarung", planer: "Füllungs-MKV", art: "die", akk: "die",
+    aus: () => engineAus("MAS_MKV"),
+    ausSatz: "Eine Füllungs-Mehrkostenvereinbarung kann ich gerade nicht per Sprache anlegen. Bitte im Planer Füllungs-MKV in PlanR erstellen.",
+    voll: FUELLUNG_WORT, extra: MKV_WORT,
+    kuerzel: { komposit: "K", mehrfarben: "M", inlay: "I", goldhaemmer: "G", aufbau: "A" },
+    entwurf: (text, befund, patient, praxis) => M.mkvEntwurf(text, befund, {
+      patient: patientFuerEngine(patient),
+      praxis: { plz: String(praxis?.einstellungen?.praxisPlz || ""), kzvNr: String(praxis?.einstellungen?.kzv || "") },
+    }),
+    versorgung: (z) => M.mkvVersorgungSatz(z),
+    summen: (z) => ({ mehrkosten: zahl(z.mehrkosten), kassenanteil: zahl(z.kassenanteil), privat: zahl(z.privat), privat7: zahl(z.privat7) }),
+    summenSatz: mkvSummenSatz, betrag: (s) => s.mehrkosten, hinweise: () => [],
+    nachsatz: "die Mehrkosten rechnet der Planer dort nach Ihrem Praxismodell",
+    stand: () => M.ENGINE_STAND,
+  },
+  kons: {
+    modul: "privat-kons", text: "Kostenvoranschlag Kons", planer: "Privat-Kons", art: "der", akk: "den",
+    aus: () => engineAus("MAS_KONS"),
+    ausSatz: "Einen Kostenvoranschlag Kons kann ich gerade nicht per Sprache anlegen. Bitte im Planer Privat-Kons in PlanR erstellen.",
+    voll: KONS_WORT, extra: KONS_PRIVAT_WORT,
+    kuerzel: { komposit: "F", inlay: "I", goldhaemmer: "G", endo: "W", revision: "R", vital: "U", versiegelung: "V", aufbau: "A", infiltration: "K", veneer: "D", bleaching: "B" },
+    entwurf: (text, befund, patient) => K.konsEntwurf(text, befund, { patient: patientFuerEngine(patient) }),
+    versorgung: (z) => K.konsVersorgungSatz(z),
+    summen: (z) => ({ summe: zahl(z.summe), vereinbarung: z.vereinbarung }),
+    summenSatz: konsSummenSatz, betrag: (s) => s.summe,
+    hinweise: (r) => (r.zusammenfassung.vereinbarung !== "pkv" ? [`Vereinbarung: ${K.VEREINBARUNG_TEXT[r.zusammenfassung.vereinbarung]}.`] : []),
+    nachsatz: "Faktor und Zusatzleistungen rechnet der Planer dort nach Ihren Einstellungen",
+    stand: () => K.ENGINE_STAND,
+  },
+};
+const grossAnfang = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const sprachPlanZeilen = (cfg, plan) => Object.fromEntries(Object.entries(plan?.zaehne || {})
+  .map(([z, l]) => [z, { TP: `${cfg.kuerzel[l.therapie] || ""}${l.flaechen || l.kanaele || ""}`, R: "" }]));
+
+/** Welche Sprach-Planart der Kons-Familie meint der Auftrag? planart des Werkzeugs vor dem Wortlaut. */
+function sprachPlanAus(b, auftragText) {
+  const art = String(b.planart || "").trim().toLowerCase();
+  if (SPRACH_PLAENE[art]) return art;
+  const t = auftragText;
+  if (!MKV_WORT.test(t) && !ZE_WORT.test(t) && KONS_WORT.test(t) && (wahr(b.privat) || KONS_PRIVAT_WORT.test(t))) return "kons";
+  if (!wahr(b.privat) && mkvGesagt(t)) return "mkv";
+  return null;
 }
 
-/** Rechnen und vorlesen bzw. zurueckfragen; d: { patient, auftragText, befundZaehne, optionen, namenGesagt, pvsNr, befundQuelle } */
-function mkvRechnen(clientId, d) {
-  const r = M.mkvEntwurf(d.auftragText, d.befundZaehne || {}, d.optionen);
+/** Rechnen und vorlesen bzw. zurueckfragen; d: { sprachPlan, patient, auftragText, befundZaehne, praxis, namenGesagt, pvsNr, befundQuelle } */
+function sprachPlanRechnen(clientId, d) {
+  const cfg = SPRACH_PLAENE[d.sprachPlan];
+  const r = cfg.entwurf(d.auftragText, d.befundZaehne || {}, d.patient, d.praxis);
   if (r.status !== "ok") {
-    wahlMerken(clientId, d.patient, { planart: "mkv", mkvAuftrag: d.auftragText, mkvKonflikt: r.zahn || "" });
+    wahlMerken(clientId, d.patient, { planart: d.sprachPlan, teilAuftrag: d.auftragText, teilKonflikt: r.zahn || "", teilGrund: r.grund });
     return { ok: true, rueckfrage: r.grund, message: r.frage };
   }
   const z = r.zusammenfassung;
-  const summen = { mehrkosten: zahl(z.mehrkosten), kassenanteil: zahl(z.kassenanteil), privat: zahl(z.privat), privat7: zahl(z.privat7) };
-  const hinweise = [...r.hinweise, ...(d.befundQuelle ? [] : ["Einen Befund aus dem Praxisprogramm hatte ich nicht, die Zähne habe ich deshalb nicht geprüft."])];
+  const summen = cfg.summen(z);
+  const hinweise = [...cfg.hinweise(r), ...r.hinweise,
+    ...(d.befundQuelle ? [] : ["Einen Befund aus dem Praxisprogramm hatte ich nicht, die Zähne habe ich deshalb nicht geprüft."])];
   // vollstaendig vorgelesen: ein neuer Auftrag beginnt von vorn (Korrekturen laufen ueber hkp-ausfuehrung-aendern)
-  wahlMerken(clientId, d.patient, { planart: "mkv", mkvAuftrag: "", mkvKonflikt: "" });
-  vorgangMelden(clientId, d.pvsNr, { modul: "kons-mkv", phase: "planung", plan: mkvPlanZeilen(r.plan), meldung: "" });
-  vorschauMerken(clientId, { ...d, mkv: true, r, summen, hinweise, versorgungText: MKV_TEXT, at: Date.now() });
+  wahlMerken(clientId, d.patient, { planart: d.sprachPlan, teilAuftrag: "", teilKonflikt: "", teilGrund: "" });
+  vorgangMelden(clientId, d.pvsNr, { modul: cfg.modul, phase: "planung", plan: sprachPlanZeilen(cfg, r.plan), meldung: "" });
+  vorschauMerken(clientId, { ...d, r, summen, hinweise, versorgungText: cfg.text, at: Date.now() });
   return {
     ok: true, rueckfrage: "vorlesen",
     message: vorleseSatz({
-      patient: d.patient, versorgungText: MKV_TEXT, versorgung: M.mkvVersorgungSatz(z), summen: mkvSummenSatz(summen),
+      patient: d.patient, versorgungText: cfg.text, versorgung: cfg.versorgung(z), summen: cfg.summenSatz(summen),
       hinweis: hinweise.slice(0, 3).join(" "), befundFreigegeben: true,
     }),
   };
 }
 
 const ZAHN_IM_TEXT = /(?<!\d)[1-4]\s?[,.]?\s?[1-8](?!\d)/g;
+const ANZAHL_WORT = /\b(?:ein|eine|einen|zwei|drei|vier|f(?:ü|ue)nf|[1-5])\b/i;
+const EINHEIT = {
+  kanaele: [/kan(?:a|ä|ae)l/i, " Kanäle"],
+  flaechen: [/fl(?:ä|ae)ch|\b[modblpvi]{2,5}\b|okklusal|mesial|distal|bukkal|lingual|palatinal|inzisal/i, " Flächen"],
+};
 /**
- * Antwort auf eine Rueckfrage: eine Teilantwort ("beide mod", "47") ergaenzt den bisherigen Auftrag, beim
- * Befund-Konflikt ersetzt der genannte Zahn den unmoeglichen. Ein vollstaendiger neuer Auftrag (Fuellungsart und Zahn)
+ * Antwort auf eine Rueckfrage: eine Teilantwort ("beide mod", "47", "drei") ergaenzt den bisherigen Auftrag, beim
+ * Befund-Konflikt ersetzt der genannte Zahn den unmoeglichen. Ein vollstaendiger neuer Auftrag (Leistung und Zahn)
  * oder einer, der den alten schon enthaelt, gilt allein.
  */
-export function mkvFolgeText(w, auftragText) {
-  const vorher = String(w?.mkvAuftrag || "").replace(/[\s.]+$/, "");
+export function sprachFolgeText(w, auftragText, sprachPlan = "mkv") {
+  const cfg = SPRACH_PLAENE[sprachPlan];
+  const vorher = String(w?.teilAuftrag || "").replace(/[\s.]+$/, "");
   if (!vorher || textNorm(auftragText).includes(textNorm(vorher))) return auftragText;
+  const einheit = EINHEIT[w.teilGrund];
+  if (einheit && !einheit[0].test(auftragText) && ANZAHL_WORT.test(auftragText)) auftragText = `${String(auftragText).replace(/[\s.!]+$/, "")}${einheit[1]}`;
   const zaehne = String(auftragText).match(ZAHN_IM_TEXT) || [];
-  if (zaehne.length && (FUELLUNG_WORT.test(auftragText) || MKV_WORT.test(auftragText))) return auftragText;
-  const konflikt = String(w.mkvKonflikt || "");
+  if (zaehne.length && (cfg.voll.test(auftragText) || cfg.extra.test(auftragText))) return auftragText;
+  const konflikt = String(w.teilKonflikt || "");
   if (konflikt && zaehne.length === 1) {
     const neu = zaehne[0].replace(/\D/g, "");
     const ersetzt = vorher.replace(new RegExp(`(?<!\\d)${konflikt[0]}\\s?[,.]?\\s?${konflikt[1]}(?!\\d)`, "g"), neu);
@@ -1261,37 +1310,39 @@ export function mkvFolgeText(w, auftragText) {
   return `${vorher}. ${auftragText}`;
 }
 
-async function mkvZweig(clientId, b, patient, auftragText) {
+async function sprachPlanZweig(clientId, sprachPlan, b, patient, auftragText) {
+  const cfg = SPRACH_PLAENE[sprachPlan];
   const w = wahlLesen(clientId, patient);
-  const text = mkvFolgeText(w, auftragText);
+  const text = sprachFolgeText(w, auftragText, sprachPlan);
   const pb = await Promise.race([pvsBefund(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
   const pvsNr = pb?.ok ? String(pb.nummer || "") : String(w.pvsNummer || "");
   if (pvsNr && w.pvsNummer !== pvsNr) wahlMerken(clientId, patient, { pvsNummer: pvsNr });
-  if (pvsNr) vorgangMelden(clientId, pvsNr, { modul: "kons-mkv", phase: "befund", auftrag: text });
+  if (pvsNr) vorgangMelden(clientId, pvsNr, { modul: cfg.modul, phase: "befund", auftrag: text });
   const praxis = await praxisLaden(clientId).catch(() => ({ einstellungen: {} }));
-  const x = mkvRechnen(clientId, {
-    patient, auftragText: text, befundZaehne: pb?.ok ? pb.befund : {}, optionen: mkvOptionen(patient, praxis),
+  const x = sprachPlanRechnen(clientId, {
+    sprachPlan, patient, auftragText: text, befundZaehne: pb?.ok ? pb.befund : {}, praxis: { einstellungen: praxis?.einstellungen || {} },
     namenGesagt: [String(b.name || "").trim()], pvsNr, befundQuelle: pb?.ok ? { art: "pvs", pvs: pb.pvs, datum: pb.datum } : null,
   });
   return pvsNr ? { ...x, card: befundKarte(clientId, pvsNr, patient) } : x;
 }
 
-async function mkvAnlegen(clientId, d) {
+async function sprachPlanAnlegen(clientId, d) {
+  const cfg = SPRACH_PLAENE[d.sprachPlan];
   const { patient, auftragText, r, summen } = d;
   const e = await entwurfAblegen(clientId, {
-    modul: "kons-mkv",
+    modul: cfg.modul,
     patient: { id: patient.id, label: patient.anredeLabel || "", name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" },
-    anzeige: [patient.firstName, patient.lastName].filter(Boolean).join(" "), betrag: summen.mehrkosten, planJson: JSON.stringify(r.ablagePlan),
-    auftragText, befundQuelle: d.befundQuelle || null, hinweise: d.hinweise || r.hinweise, engineStand: M.ENGINE_STAND,
+    anzeige: [patient.firstName, patient.lastName].filter(Boolean).join(" "), betrag: cfg.betrag(summen), planJson: JSON.stringify(r.ablagePlan),
+    auftragText, befundQuelle: d.befundQuelle || null, hinweise: d.hinweise || r.hinweise, engineStand: cfg.stand(),
   });
-  log.info?.(`[hkp] MKV-Entwurf ${e.id} abgelegt (Patient ${patient.id})`);
-  vorgangMelden(clientId, d.pvsNr, { modul: "kons-mkv", phase: "angelegt", plan: mkvPlanZeilen(r.plan), meldung: "" });
+  log.info?.(`[hkp] ${cfg.modul}-Entwurf ${e.id} abgelegt (Patient ${patient.id})`);
+  vorgangMelden(clientId, d.pvsNr, { modul: cfg.modul, phase: "angelegt", plan: sprachPlanZeilen(cfg, r.plan), meldung: "" });
   befundWahl.delete(wahlSchluessel(clientId, patient));
   return {
     ok: true, entwurfId: e.id,
-    ...mitUndo("planr_entwurf", { id: e.id, label: `die Füllungs-Mehrkostenvereinbarung für ${patient.anredeLabel}` }),
-    message: `Die Füllungs-Mehrkostenvereinbarung für ${patient.anredeLabel} ist angelegt. Sie steht in PlanR im Planer Füllungs-MKV als Entwurf; `
-      + `die Mehrkosten rechnet der Planer dort nach Ihrem Praxismodell. Vorläufig ${mkvSummenSatz(summen)}.`,
+    ...mitUndo("planr_entwurf", { id: e.id, label: `${cfg.akk} ${cfg.text} für ${patient.anredeLabel}` }),
+    message: `${grossAnfang(cfg.art)} ${cfg.text} für ${patient.anredeLabel} ist angelegt. ${cfg.art === "die" ? "Sie" : "Er"} steht in PlanR im Planer ${cfg.planer} als Entwurf; `
+      + `${cfg.nachsatz}. Vorläufig ${cfg.summenSatz(summen)}.`,
   };
 }
 
@@ -1302,16 +1353,16 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const b = req.body || {};
     const auftragText = String(b.auftrag || "").trim();
     let privat = wahr(b.privat) || privatGesagt(auftragText);
-    let mkv = !wahr(b.privat) && (String(b.planart || "").trim().toLowerCase() === "mkv" || mkvGesagt(auftragText));
-    if (mkv) privat = false;
+    let sp = sprachPlanAus(b, auftragText);
+    if (sp) privat = false;
     if (privat && privatAus()) return res.json({ ok: true, message: PRIVAT_AUS_SATZ });
-    if (mkv && mkvAus()) return res.json({ ok: true, message: MKV_AUS_SATZ });
-    const ziel = zielpreisAn() && !privat && !mkv ? zielpreisAus(b.zielpreis) : null;
+    if (sp && SPRACH_PLAENE[sp].aus()) return res.json({ ok: true, message: SPRACH_PLAENE[sp].ausSatz });
+    const ziel = zielpreisAn() && !privat && !sp ? zielpreisAus(b.zielpreis) : null;
     const vs = wahr(b.bestaetigt) || ziel ? vorschauFinden(vorschauen(clientId), b) : null;
-    if (vs?.mkv) {
+    if (vs?.sprachPlan) {
       vorschauWeg(clientId, vs);
       vetterWahl.delete(clientId);
-      return res.json(await mkvAnlegen(clientId, vs));
+      return res.json(await sprachPlanAnlegen(clientId, vs));
     }
     if (vs?.privat) {
       vorschauWeg(clientId, vs);
@@ -1326,23 +1377,27 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         ...(ziel ? aufZielpreis(vs, ziel, praxis) : vs), vorgelesen: true, zusaetzlich: true, alteVerwerfen: vs.alteVerwerfen || wahr(b.alte_verwerfen),
       }));
     }
-    const p = await patientAufloesen(clientId, b, `Für welchen Patienten soll ich ${privat ? "den Privatplan" : mkv ? "die Füllungs-Mehrkostenvereinbarung" : "den HKP"} erstellen?`, { vettern: true });
+    const p = await patientAufloesen(clientId, b, `Für welchen Patienten soll ich ${privat ? "den Privatplan" : sp ? `${SPRACH_PLAENE[sp].akk} ${SPRACH_PLAENE[sp].text}` : "den HKP"} erstellen?`, { vettern: true });
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
-    // Folgezuege (Befundquelle, Ausfuehrung, Flaechen) kommen oft ohne privat=true bzw. planart: der laufende
-    // Privatplan oder die laufende MKV gilt weiter, bis der Chef ausdruecklich eine andere Planart nennt.
+    // Folgezuege (Befundquelle, Ausfuehrung, Flaechen, Kanaele) kommen oft ohne privat=true bzw. planart: der laufende
+    // Privatplan, die laufende MKV oder Kons gilt weiter, bis der Chef ausdruecklich eine andere Planart nennt.
     const lauf = wahlLesen(clientId, patient);
-    const nurFuellungswort = mkv && !MKV_WORT.test(auftragText) && String(b.planart || "").trim().toLowerCase() !== "mkv";
-    const zeLaeuft = lauf.privat || (lauf.planart !== "mkv" && !!(lauf.quelle || lauf.text))
-      || vorschauen(clientId).some((v) => v.patient?.id === patient.id && !v.mkv);
-    if (nurFuellungswort && zeLaeuft) mkv = false;
-    if (!privat && !mkv && lauf.planart === "mkv" && !kasseGesagt(auftragText) && !privatGesagt(auftragText) && !ZE_WORT.test(auftragText)) mkv = true;
-    if (!privat && !mkv && !kasseGesagt(auftragText) && lauf.privat) privat = true;
+    const laufPlan = SPRACH_PLAENE[lauf.planart] ? lauf.planart : null;
+    const nurFuellungswort = sp === "mkv" && !MKV_WORT.test(auftragText) && String(b.planart || "").trim().toLowerCase() !== "mkv";
+    const zeLaeuft = lauf.privat || (!laufPlan && !!(lauf.quelle || lauf.text))
+      || vorschauen(clientId).some((v) => v.patient?.id === patient.id && !v.sprachPlan);
+    if (nurFuellungswort && zeLaeuft) sp = null;
+    const laufWeiter = laufPlan === "kons" ? !ZE_WORT.test(auftragText) && !MKV_WORT.test(auftragText)
+      : laufPlan === "mkv" ? !privat && !kasseGesagt(auftragText) && !privatGesagt(auftragText) && !ZE_WORT.test(auftragText) : false;
+    if (!sp && laufWeiter) sp = laufPlan;
+    if (sp) privat = false;
+    if (!privat && !sp && !kasseGesagt(auftragText) && lauf.privat) privat = true;
     if (privat && privatAus()) return res.json({ ok: true, message: PRIVAT_AUS_SATZ });
-    if (mkv && mkvAus()) return res.json({ ok: true, message: MKV_AUS_SATZ });
+    if (sp && SPRACH_PLAENE[sp].aus()) return res.json({ ok: true, message: SPRACH_PLAENE[sp].ausSatz });
     if (privat || lauf.privat) wahlMerken(clientId, patient, { privat });
-    if (mkv || lauf.planart === "mkv") wahlMerken(clientId, patient, { planart: mkv ? "mkv" : "", ...(mkv ? {} : { mkvAuftrag: "" }) });
-    const modul = privat ? "privat-kv" : mkv ? "kons-mkv" : "hkp";
+    if (sp || laufPlan) wahlMerken(clientId, patient, { planart: sp || "", ...(sp !== laufPlan ? { teilAuftrag: "", teilKonflikt: "" } : {}) });
+    const modul = privat ? "privat-kv" : sp ? SPRACH_PLAENE[sp].modul : "hkp";
     const gewaehlt = p.gewaehlt || vetterSchonGewaehlt(vetterWahl.get(clientId), p.sel || patient);
     const vettern = vetternAus() || gewaehlt ? [] : await namensvettern(clientId, patient).catch(() => []);
     if (vettern.length) {
@@ -1382,7 +1437,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       await befundVorab();
       return raus({ ok: true, message: `Gut, ich bin bereit. Was soll ich für ${patient.anredeLabel} planen?` });
     }
-    if (mkv) return raus(await mkvZweig(clientId, b, patient, auftragText));
+    if (sp) return raus(await sprachPlanZweig(clientId, sp, b, patient, auftragText));
 
     const auftrag = E.auftragVerstehen(auftragText);
     const vergessen = vergessenerKiefer(auftragText, auftrag);
@@ -1606,7 +1661,7 @@ router.post("/tools/hkp-details", async (req, res) => {
       if (vs && vorschauGemeint(vs, b.auswahl, letzterHkp.get(clientId))) {
         return res.json({
           ok: true, rueckfrage: "vorlesen",
-          message: `${vs.mkv ? "Die" : "Der"} ${vs.versorgungText || "HKP"} für ${vs.patient.anredeLabel} ist noch nicht angelegt. Voraussichtlich ${vs.mkv ? mkvSummenSatz(vs.summen) : vs.privat ? privatSummenSatz(vs.summen) : summenSatz(vs.summen)}. Soll ich den Entwurf so anlegen?`,
+          message: `${vs.sprachPlan ? grossAnfang(SPRACH_PLAENE[vs.sprachPlan].art) : "Der"} ${vs.versorgungText || "HKP"} für ${vs.patient.anredeLabel} ist noch nicht angelegt. Voraussichtlich ${vs.sprachPlan ? SPRACH_PLAENE[vs.sprachPlan].summenSatz(vs.summen) : vs.privat ? privatSummenSatz(vs.summen) : summenSatz(vs.summen)}. Soll ich den Entwurf so anlegen?`,
         });
       }
     }
@@ -1768,9 +1823,9 @@ function vorschauFuerAenderung(clientId, b) {
 
 function vorschauKorrigieren(clientId, vs, text, praxis) {
   const auftragText = `${String(vs.auftragText || "").replace(/[\s.]+$/, "")}. ${text}`.trim();
-  if (vs.mkv) {
+  if (vs.sprachPlan) {
     vorschauWeg(clientId, vs);
-    return mkvRechnen(clientId, { ...vs, auftragText });
+    return sprachPlanRechnen(clientId, { ...vs, auftragText });
   }
   const auftrag = E.auftragVerstehen(auftragText);
   const r = vs.privat

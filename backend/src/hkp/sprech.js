@@ -62,6 +62,10 @@ export function privatSummenSatz(s) {
 const zahlRund = (x) => Math.round((Number(x) || 0) * 100) / 100;
 
 /** Füllungs-MKV: was der Patient zahlt, was die Kasse traegt, dazu die Privatvereinbarung nach § 8 Abs. 7 */
+export function konsSummenSatz(s) {
+  return s ? `insgesamt ${euroSprech(s.summe)} nach GOZ` : "";
+}
+
 export function mkvSummenSatz(s) {
   if (!s) return "";
   return `Mehrkosten für den Patienten ${euroSprech(s.mehrkosten)}, die Kasse trägt ${euroSprech(s.kassenanteil)}`
