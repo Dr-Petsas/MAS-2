@@ -15,6 +15,7 @@ const dampsoft = Object.fromEntries(ZAEHNE.map((z) => [z, ""]));
 Object.assign(dampsoft, { 18: "f", 16: "k" });
 let offen = {};
 const geschrieben = [];
+const vorgaenge = [];
 
 const planr = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://planr");
@@ -24,6 +25,10 @@ const planr = http.createServer(async (req, res) => {
   if (req.headers["x-planr-key"] !== "k" || u.searchParams.get("clientId") !== CID) return senden(401, { ok: false });
   if (u.pathname === "/api/intern/pvs/patienten") {
     return senden(200, { ok: true, patienten: [{ id: "4711", vorname: "Anna", name: "Werkzeugtest", geburtsdatum: "1972-03-05" }] });
+  }
+  if (u.pathname === "/api/intern/befund/vorgang") {
+    vorgaenge.push(JSON.parse(roh));
+    return senden(200, { ok: true, vorgang: {} });
   }
   if (u.pathname === "/api/intern/befund/aenderung") {
     const b = JSON.parse(roh);
@@ -71,6 +76,12 @@ test("vorlesen, aendern, nach ja nach Dampsoft – nur der geaenderte Kiefer", a
   const lesen = await rufe({});
   assert.match(lesen.message, /Befund von .*Anna Werkzeugtest aus Dampsoft vom 12\.10\.2026/);
   assert.equal(lesen.rueckfrage, undefined);
+  // Zahnschema auf dem Handy und Eintrag "Befund · noch nichts geplant" in PlanR
+  assert.equal(lesen.card?.kind, "befund");
+  assert.equal(new URL(lesen.card.url).searchParams.get("befund"), "4711");
+  assert.equal(lesen.nummer, undefined);
+  await new Promise((r) => setTimeout(r, 80));
+  assert.deepEqual(vorgaenge.at(-1), { patient: "4711", phase: "befund" });
 
   const aendern = await rufe({ aenderung: "36 fehlt" });
   assert.equal(aendern.rueckfrage, "befund_uebernehmen", aendern.message);

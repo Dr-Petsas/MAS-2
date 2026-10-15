@@ -17,6 +17,9 @@ const DAMPSOFT = Object.fromEntries([...OK, ...UK].map((z) => [z, ""]));
 Object.assign(DAMPSOFT, { 18: "f", 28: "f", 15: "f", 16: "k", 36: "sk" });
 const geschrieben = [];
 const gelesen = [];
+const vorgaenge = [];
+const aenderungen = [];
+const kurz = () => new Promise((r) => setTimeout(r, 80));
 
 const planr = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://planr");
@@ -26,6 +29,14 @@ const planr = http.createServer(async (req, res) => {
   if (req.headers["x-planr-key"] !== "k" || u.searchParams.get("clientId") !== CID) return senden(401, { ok: false });
   if (u.pathname === "/api/intern/pvs/patienten") {
     return senden(200, { ok: true, patienten: [{ id: "4711", vorname: "Anna", name: "Befundtest", geburtsdatum: "1972-03-05" }] });
+  }
+  if (u.pathname === "/api/intern/befund/vorgang") {
+    vorgaenge.push(JSON.parse(roh));
+    return senden(200, { ok: true, vorgang: {} });
+  }
+  if (u.pathname === "/api/intern/befund/aenderung") {
+    aenderungen.push(JSON.parse(roh));
+    return senden(200, { ok: true, befund: {} });
   }
   if (u.pathname === "/api/intern/pvs/befund" && req.method === "POST") {
     const b = JSON.parse(roh);
@@ -88,16 +99,51 @@ test("aus Dampsoft: Clara fragt, uebernimmt den Befund unveraendert und schreibt
   assert.equal(geschrieben.length, 0);
 });
 
+test("Vorgang: PlanR erfaehrt Befund, Planung und Anlegen; das Handy zeigt das Zahnschema", async () => {
+  vorgaenge.length = 0;
+  const auftrag = "Brücke von 14 auf 16";
+  const frage = await rufe({ auftrag });
+  assert.equal(frage.card?.kind, "befund", JSON.stringify(frage.card));
+  const url = new URL(frage.card.url);
+  assert.equal(url.pathname, "/planer/hkp/");
+  assert.deepEqual([url.searchParams.get("befund"), url.searchParams.get("c"), url.searchParams.get("ansicht")], ["4711", CID, "mobil"]);
+  const [exp, sig] = url.searchParams.get("bt").split(".");
+  const { createHmac } = await import("node:crypto");
+  assert.equal(sig, createHmac("sha256", "k").update(`befund-flip:${CID}/4711:${exp}`).digest("base64url").slice(0, 24));
+  assert.equal(frage.nummer, undefined);
+  await kurz();
+  assert.deepEqual(vorgaenge.at(-1), { patient: "4711", modul: "hkp", phase: "befund", auftrag });
+
+  const vorschau = await rufe({ auftrag, befund: "aus Dampsoft" });
+  assert.equal(vorschau.card?.kind, "befund");
+  await kurz();
+  const planung = vorgaenge.find((v) => v.phase === "planung");
+  assert.ok(planung, JSON.stringify(vorgaenge));
+  assert.deepEqual([planung.plan["14"]?.R, planung.plan["15"]?.R, planung.plan["16"]?.R], ["KV", "BV", "K"], JSON.stringify(planung.plan));
+  assert.equal(planung.meldung, "");
+
+  const fertig = await rufe({ auftrag, bestaetigt: true });
+  angelegt.push(fertig.hkpId);
+  assert.equal(fertig.card?.kind, "hkp");
+  await kurz();
+  assert.deepEqual([vorgaenge.at(-1).phase, vorgaenge.at(-1).hkpId], ["angelegt", fertig.hkpId]);
+});
+
 test("neu: vorlesen, Korrektur, erst nach ja nach Dampsoft – nur der Oberkiefer", async () => {
   const auftrag = "Brücke von 24 auf 26";
   const frage = await rufe({ auftrag, befund_quelle: "neu" });
   assert.equal(frage.rueckfrage, "befund_fehlt", frage.message);
   assert.match(frage.message, /im Oberkiefer/);
   assert.match(frage.message, /zur Freigabe vor/);
+  aenderungen.length = 0;
   const pruefen = await rufe({ auftrag, befund: "es fehlen 25 und 17 und 24 ist überkront" });
   assert.equal(pruefen.rueckfrage, "befund_freigabe", pruefen.message);
   assert.match(pruefen.message, /überkront: 24/);
   assert.equal(geschrieben.length, 0);
+  await kurz();
+  // Gesagtes steht sofort offen in PlanR (rosa im Zahnschema), geschrieben wird erst nach dem Ja
+  assert.equal(aenderungen.length, 1);
+  assert.deepEqual([aenderungen[0].patient, aenderungen[0].zaehne[25], aenderungen[0].zaehne[24]], ["4711", "f", "k"]);
   const korrigiert = await rufe({ auftrag, befund: "17 ist vorhanden" });
   assert.equal(korrigiert.rueckfrage, "befund_freigabe", korrigiert.message);
   assert.doesNotMatch(korrigiert.message, /es fehlen 17/);

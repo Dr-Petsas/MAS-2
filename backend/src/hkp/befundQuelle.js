@@ -150,6 +150,30 @@ export async function befundVerwerfenPvs(clientId, nummer) {
   return d?.ok ? { ok: true } : { ok: false, meldung: d?.meldung || "PlanR antwortet gerade nicht." };
 }
 
+// Vom Befund zum Plan (Chef 15.10.2026): PlanR fuehrt je Patient den Vorgang (Befund -> Planung -> angelegt), zeigt
+// ihn in der Planliste und auf der Flip-Seite. Meldungen je Praxis nacheinander, nie blockierend. Notaus MAS_HKP_VORGANG=0.
+const vorgangKette = new Map();
+
+/** teil: { modul, phase: "befund"|"planung"|"angelegt", auftrag, plan: { "14": { TP, R } }, hkpId, meldung } */
+export function vorgangMelden(clientId, nummer, teil) {
+  if (process.env.MAS_HKP_VORGANG === "0" || !clientId || !/^\d{1,9}$/.test(String(nummer || ""))) return Promise.resolve(null);
+  const lauf = (vorgangKette.get(clientId) || Promise.resolve())
+    .then(() => planrBefund(clientId, null, { body: { patient: String(nummer), ...teil }, ms: 8000, pfad: "/api/intern/befund/vorgang" }))
+    .catch(() => null);
+  vorgangKette.set(clientId, lauf);
+  return lauf;
+}
+
+/** Planungszeilen fuer die Anzeige (TP, R je Zahn) aus dem Plan der Engine */
+export function planZeilen(plan) {
+  const aus = {};
+  for (const [z, v] of Object.entries(obj(plan?.zaehne))) {
+    const TP = String(v?.TP || "").trim(), R = String(v?.R || "").trim();
+    if (TP || R) aus[z] = { TP, R };
+  }
+  return aus;
+}
+
 /** Freigegebenen Befund ins Praxisprogramm (nur die Zaehne der genannten Kiefer): { ok, pvs, geschrieben } | { ok:false, pvs, meldung } */
 export async function befundInsPvs(clientId, patient, { kiefer, zaehne, nummer = "" }) {
   const kennung = /^\d{1,9}$/.test(String(nummer)) ? { patient: String(nummer) } : pvsKennung(patient);
@@ -257,7 +281,7 @@ export async function befundErmitteln(clientId, patient, {
   const holePvs = () => pvs(clientId, patient).catch(() => null);
   const holeLena = () => (lenaErlaubt ? lena(clientId, patient).catch(() => null) : Promise.resolve(null));
   const stand = { gesagt, abgeleitet, genannt };
-  const fragen = (grund, frage, p) => ({ ok: false, grund, frage, pvsName: p?.pvs || pvsName || "", ...stand });
+  const fragen = (grund, frage, p) => ({ ok: false, grund, frage, pvsName: p?.pvs || pvsName || "", pvsNummer: p?.ok ? p.nummer : "", ...stand });
 
   const ausLena = (l) => {
     const alter = tage(l.datum);
@@ -356,7 +380,6 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
   if (!p) return { ok: true, message: "Für diese Praxis ist kein Praxisprogramm angebunden – den Befund nehme ich deshalb nur im Heil- und Kostenplan auf." };
   if (!p.ok) return { ok: true, message: `Den Befund aus ${p.pvs || "dem Praxisprogramm"} kann ich gerade nicht lesen: ${p.meldung}` };
   const wen = patient.anredeLabel || patient.label;
-
   if (verwerfen) {
     if (!hat(p.offen)) return { ok: true, message: `Für ${wen} gibt es keine offenen Änderungen, es gilt der Befund aus ${p.pvs}.` };
     const v = await weg(clientId, p.nummer);
@@ -396,4 +419,14 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
     ok: true, ...(offen ? { rueckfrage: "befund_uebernehmen" } : {}),
     message: `Befund von ${wen} aus ${p.pvs}${datum}: ${befundSatz({ ...p.befund, ...p.offen }, ["OK", "UK"])}${offen}`,
   };
+}
+
+/** Wie befundWerkzeug, dazu die Nummer im Praxisprogramm (Flip-Karte, Vorgang) – Clara bekommt davon nur message */
+export async function befundWerkzeugMitNummer(clientId, patient, optionen, deps = {}) {
+  let nummer = "";
+  const pvs = deps.pvs || pvsBefund;
+  const r = await befundWerkzeug(clientId, patient, optionen, {
+    ...deps, pvs: async (...a) => { const p = await pvs(...a); if (p?.ok) nummer = p.nummer; return p; },
+  });
+  return { ...r, nummer };
 }

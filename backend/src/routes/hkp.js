@@ -41,7 +41,9 @@ import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
   praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
 } from "../hkp/store.js";
-import { auftragsKiefer, befundErmitteln, befundInsPvs, befundWerkzeug, datumDe, lenaFreigeschaltet, quelleAus } from "../hkp/befundQuelle.js";
+import {
+  auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, quelleAus, vorgangMelden,
+} from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
@@ -320,6 +322,29 @@ export function hkpKarte(h, clientId = "") {
       { icon: "person", level: "warn", text: `Eigenanteil ${euro(s.eigenanteil)}` },
     ],
     footer: wartet ? "Regler und Freigabe: Karte antippen" : "Regler ansehen: Karte antippen",
+  };
+}
+
+// Flip-Seite "Befund" (Chef 15.10.2026): nur das Zahnschema des Patienten, live aus PlanR (Strato), mit Freigabe-Knopf.
+// Schluessel nur fuer diesen Patienten, 12 Stunden; geht nur ueber die Karte an die angemeldete Clara-App.
+const BEFUND_FLIP_STUNDEN = 12;
+const planrServer = () => String(process.env.PLANR_URL || "https://planr.pickadoc.de").trim().replace(/\/+$/, "");
+
+export function befundFlipToken(clientId, nummer, jetztMs = Date.now()) {
+  if (!String(process.env.PLANR_HKP_KEY || "").trim() || !clientId || !/^\d{1,9}$/.test(String(nummer || ""))) return "";
+  const exp = Math.floor(jetztMs / 1000) + BEFUND_FLIP_STUNDEN * 3600;
+  return `${exp}.${signatur("befund-flip", `${clientId}/${nummer}`, exp)}`;
+}
+
+/** Karte "Befund": Clara flippt auf das Zahnschema, solange Befund und Planung laufen. Notaus MAS_HKP_BEFUND_KARTE=0. */
+export function befundKarte(clientId, nummer, patient) {
+  if (process.env.MAS_HKP_BEFUND_KARTE === "0") return null;
+  const bt = befundFlipToken(clientId, nummer);
+  if (!bt) return null;
+  return {
+    kind: "befund", url: `${planrServer()}/planer/hkp/?${new URLSearchParams({ befund: String(nummer), bt, c: clientId, ansicht: "mobil" })}`,
+    tag: "Befund (01) · live", title: patient?.label || "Befund", subtitle: "Zahnschema",
+    footer: "Zahnschema und Freigabe: Karte antippen",
   };
 }
 
@@ -1082,6 +1107,7 @@ async function entwurfAnlegen(clientId, d) {
   }, "Clara");
   log.info?.(`[hkp] Entwurf ${h.id} angelegt (${versorgungText}, Befund ${befund.quelle?.art}, Patient ${patient.id})`);
   liveMelden(clientId, { phase: "angelegt", patient: livePatient(patient), befund: befund.befund, plan: r.plan, hkpId: h.id, meldung: `${versorgungText} angelegt – wartet auf Ihre Freigabe.` });
+  vorgangMelden(clientId, befund.pvs?.nummer, { modul: "hkp", phase: "angelegt", hkpId: h.id, plan: planZeilen(r.plan), meldung: "" });
   await befundDateiAnhaengen(clientId, h, d);
   letzterMerken(clientId, h);
   ausfuehrungGefragt.delete(ausfuehrungSchluessel(clientId, patient));
@@ -1129,8 +1155,10 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     }
     liveMelden(clientId, { patient: livePatient(patient), auftragText, meldung: "" });
     let vorab = "";
+    let flipKarte = null;
     const raus = (x) => {
       if (vorab && x?.message) x = { ...x, message: `${vorab}${x.message}` };
+      if (flipKarte && !x?.card) x = { ...x, card: flipKarte };
       liveMelden(clientId, { meldung: String(x?.message || "") });
       return res.json(x);
     };
@@ -1184,6 +1212,13 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     });
     const befundDiktat = text || ausAuftrag;
     const stand = { gesagt: befund.gesagt, abgeleitet: befund.abgeleitet, genannt: befund.genannt, text };
+    // Vom Befund zum Plan: PlanR fuehrt den Vorgang (Planliste), das Handy zeigt das Zahnschema live
+    const pvsNr = befund.pvs?.nummer || befund.pvsNummer || wahl.pvsNummer || "";
+    if (pvsNr && wahl.pvsNummer !== pvsNr) wahlMerken(clientId, patient, { pvsNummer: pvsNr });
+    if (pvsNr) {
+      vorgangMelden(clientId, pvsNr, { modul: "hkp", phase: "befund", auftrag: auftragText });
+      flipKarte = befundKarte(clientId, pvsNr, patient);
+    }
     if (!befund.ok) {
       wahlMerken(clientId, patient, {
         quelle: befund.grund === "befund_fehlt" ? "neu" : befund.grund === "befund_alt" ? "lena" : "",
@@ -1203,6 +1238,11 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         wahlMerken(clientId, patient, merken);
         vorschauOffen.set(clientId, vorschauen(clientId).filter((v) => v.patient?.id !== patient.id));
         liveMelden(clientId, { phase: "befund", befund: befund.befund, plan: null, meldung: "" });
+        // Gesagte Aenderungen stehen sofort rosa im Zahnschema (Handy, PlanR) und lassen sich dort auch freigeben
+        if (pvsNr && wahl.offen !== zaehne) {
+          const wer = await getAssistantName(clientId).catch(() => DEFAULT_ASSISTANT_NAME);
+          befundAendernPvs(clientId, pvsNr, befund.neu.zaehne, wer).catch(() => null);
+        }
         return raus({ ok: true, rueckfrage: "befund_freigabe", message: befundFreigabeSatz(patient, befund) });
       } else {
         const w = await befundInsPvs(clientId, patient, { kiefer: befund.neu.kiefer, zaehne: befund.neu.zaehne, nummer: befund.pvs.nummer });
@@ -1228,6 +1268,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     }, praxisListen(praxis));
     if (r.status !== "ok") return raus({ ok: true, rueckfrage: r.grund, message: r.frage });
     liveMelden(clientId, { phase: "plan", plan: r.plan, meldung: "" });
+    vorgangMelden(clientId, pvsNr, { modul: "hkp", phase: "planung", plan: planZeilen(r.plan), meldung: befund.quelle?.uebertragen || !befund.neu ? "" : vorab.trim() });
     const frage = ausfuehrungRueckfrage(clientId, patient, auftragText, auftrag, r, system);
     if (frage) return raus(frage);
 
@@ -1265,12 +1306,15 @@ router.post("/tools/hkp-befund", async (req, res) => {
     const b = req.body || {};
     const p = await patientAufloesen(clientId, b, "Von welchem Patienten soll ich den Befund nehmen?");
     if (p.antwort) return res.json(p.antwort);
-    const r = await befundWerkzeug(clientId, p.patient, {
+    const { nummer, ...r } = await befundWerkzeugMitNummer(clientId, p.patient, {
       aenderung: String(b.aenderung || "").trim(), uebernehmen: wahr(b.uebernehmen), verwerfen: wahr(b.verwerfen),
       wer: await getAssistantName(clientId).catch(() => DEFAULT_ASSISTANT_NAME),
     });
     log.info?.(`[hkp] befund ${b.verwerfen ? "verwerfen" : b.uebernehmen ? "uebernehmen" : b.aenderung ? "aendern" : "lesen"}: Patient ${p.patient.id}${r.uebertragen === false ? " (nicht uebertragen)" : ""}`);
-    return res.json(r);
+    // Der Befund steht: Eintrag in der PlanR-Liste (noch nichts geplant) und Zahnschema auf dem Handy
+    if (nummer) vorgangMelden(clientId, nummer, { phase: "befund" });
+    const card = nummer ? befundKarte(clientId, nummer, p.patient) : null;
+    return res.json(card ? { ...r, card } : r);
   } catch (e) {
     log.error?.(`[hkp] befund: ${e?.stack || e}`);
     res.status(400).json({ error: String(e?.message || e) });

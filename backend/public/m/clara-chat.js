@@ -97,8 +97,8 @@ export function renderOverviewCard(card, { when = "", onRemoveKandidat = null } 
     </div>` : ""}
   `;
 
-  // HKP-Karte: Antippen oeffnet die Regler-Ansicht (call.html hoert auf "clara-hkp").
-  if (String(card?.kind) === "hkp" && card?.url) {
+  // HKP-Karte: Antippen oeffnet die Regler-Ansicht, Befund-Karte das Zahnschema (call.html hoert auf "clara-hkp").
+  if ((String(card?.kind) === "hkp" || String(card?.kind) === "befund") && card?.url) {
     el.addEventListener("click", () => {
       el.dispatchEvent(new CustomEvent("clara-hkp", { bubbles: true, detail: card }));
     });

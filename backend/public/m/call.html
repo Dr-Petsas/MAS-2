@@ -863,7 +863,7 @@
       // schadet aber nicht; im Audio-Modus wird sofort umgeblaettert.
       // (Kehrt die Badge-nur-Sonderregel fuer recall_kandidaten vom 28.07. um.)
       setFlipped(true);
-      if (card?.kind === "hkp") hkpOeffnen(card);
+      if (card?.kind === "hkp" || card?.kind === "befund") hkpOeffnen(card);
       else hkpSchliessen(false);
       if (card?.kind === "lisa_live" || card?.kind === "lisa_sms") lisaLive.start(card);
       if (typeof noteCrew === "function") noteCrew({ card });
@@ -871,8 +871,8 @@
 
     renderDeck();
 
-    // HKP-Karte -> PlanR-Handyansicht (Regler, Summen, Freigeben) als Vollbild.
-    // Der iframe bleibt beim Schließen geladen, damit der Regler-Stand nicht verloren geht.
+    // HKP-Karte -> PlanR-Handyansicht (Regler, Summen, Freigeben) als Vollbild; Befund-Karte -> Zahnschema
+    // live mit Freigabe (Chef 15.10.2026). Der iframe bleibt beim Schließen geladen, damit der Regler-Stand nicht verloren geht.
     const hkpSheet = {
       el: document.getElementById("hkpSheet"),
       frame: document.getElementById("hkpSheetFrame"),
@@ -882,7 +882,7 @@
     function hkpUrl(u) {
       try {
         const x = new URL(String(u || ""));
-        return x.protocol === "https:" && x.searchParams.get("hkp") ? x.href : "";
+        return x.protocol === "https:" && (x.searchParams.get("hkp") || x.searchParams.get("befund")) ? x.href : "";
       } catch { return ""; }
     }
     function hkpOeffnen(card) {
