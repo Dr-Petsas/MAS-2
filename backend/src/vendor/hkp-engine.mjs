@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 9b0e26df28f7)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 c108023cb675)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -27787,12 +27787,59 @@ var FDI = /\b([1-4][1-8])\b/g;
 * STT-Hörfehler „Oberkäfer“, „Ober- und Unterkiefer“ → beide Kiefer ausgeschrieben.
 */
 var kieferWorte = (t) => t.replace(/\bober-?\s+(und|oder|sowie)\s+unter/g, "oberkiefer $1 unter").replace(/\bunter-?\s+(und|oder|sowie)\s+ober/g, "unterkiefer $1 ober").replace(/\b(ober|unter)-?\s?k(?:ie|ä|ae|i|e)ff?er(s)?\b-?/g, " $1kiefer ").replace(/\b(ober|unter)k(?:ie|ä|ae|i|e)ff?er(?=[a-zäöüß])/g, " $1kiefer ");
-var norm = (t) => ` ${kieferWorte(t.toLowerCase().replace(/[‐–—]/g, "-")).replace(/\s+/g, " ")} `;
+/**
+* Gesprochene Stellen (Live 15.10.2026): „die Zähne vier, fünf, sechs, sieben“ → „die vierer, fünfer, sechser und siebener“,
+* „Zähne vier bis sieben“ ebenso; „Weisheitszähne“ → „achter“. Nur direkt nach „Zähne“ – „zwei Teleskopprothesen“ bleibt.
+*/
+var STELLE = {
+	eins: 1,
+	zwei: 2,
+	drei: 3,
+	vier: 4,
+	fünf: 5,
+	fuenf: 5,
+	sechs: 6,
+	sieben: 7,
+	acht: 8
+};
+var STELLE_NAME = [
+	"",
+	"einser",
+	"zweier",
+	"dreier",
+	"vierer",
+	"fünfer",
+	"sechser",
+	"siebener",
+	"achter"
+];
+var STELLE_WORT = "(?:eins|zwei|drei|vier|f(?:ü|ue)nf|sechs|sieben|acht|[1-8])";
+var STELLEN_LISTE = new RegExp(`\\bz(?:ä|ae)hne?\\s+(${STELLE_WORT}(?:\\s*(?:,|und|bis|-)\\s*${STELLE_WORT})*)\\b`, "g");
+var stellenWorte = (t) => t.replace(/\bweisheitsz(?:ä|ae)hnen?\b(?!\s*\d)/g, "achter").replace(STELLEN_LISTE, (_, liste) => {
+	const stellen = [];
+	let bis = false;
+	for (const w of liste.match(new RegExp(`${STELLE_WORT}|bis|-`, "g")) ?? []) {
+		if (w === "bis" || w === "-") {
+			bis = true;
+			continue;
+		}
+		const n = STELLE[w] ?? Number(w);
+		const von = stellen[stellen.length - 1];
+		if (bis && von && n > von) for (let i = von + 1; i < n; i++) stellen.push(i);
+		if (!stellen.includes(n)) stellen.push(n);
+		bis = false;
+	}
+	const namen = stellen.map((n) => STELLE_NAME[n]);
+	return namen.length > 1 ? `${namen.slice(0, -1).join(", ")} und ${namen[namen.length - 1]}` : namen.join("");
+});
+var norm = (t) => ` ${stellenWorte(kieferWorte(t.toLowerCase().replace(/[‐–—]/g, "-"))).replace(/\s+/g, " ")} `;
 function kieferIn(t) {
 	const ok = /\b(ok|o\.k\.|oberkiefer|oben)\b/.test(t);
 	const uk = /\b(uk|u\.k\.|unterkiefer|unten)\b/.test(t);
 	return ok && !uk ? "OK" : uk && !ok ? "UK" : void 0;
 }
+/** „Teleskopprothese im Ober- und Unterkiefer …“, „sowohl im Oberkiefer als auch im Unterkiefer“: eine Angabe für beide */
+var KIEFER_GEMEINSAM = /\b(?:oberkiefer|ok)\s+(?:und|sowie|als auch)\s+(?:(?:im|in|den|dem)\s+)?(?:unterkiefer|uk)\b|\b(?:unterkiefer|uk)\s+(?:und|sowie|als auch)\s+(?:(?:im|in|den|dem)\s+)?(?:oberkiefer|ok)\b/;
 /** Zähne von a bis b entlang der Zahnreihe (auch über die Mitte, z. B. 13 bis 23) */
 function zahnSpanne(a, b) {
 	if (kieferVon(a) !== kieferVon(b)) return [a, b];
@@ -27867,12 +27914,13 @@ function auftragVerstehen(text) {
 	const auftrag = einzelAuftrag(text);
 	const abschnitte = kieferAbschnitte(text);
 	const beide = BEIDE_KIEFER.test(norm(text));
-	if (abschnitte.length < 2 && !(beide && auftrag.versorgung === "totalprothese")) return auftrag;
-	const roh = abschnitte.map((a) => ({
+	const gemeinsam = KIEFER_GEMEINSAM.test(norm(text)) && (auftrag.versorgung === "teleskopprothese" || auftrag.versorgung === "totalprothese") && new Set(abschnitte.map((a) => einzelAuftrag(a.text).versorgung).filter(Boolean)).size <= 1;
+	if (abschnitte.length < 2 && !(beide && auftrag.versorgung === "totalprothese") && !gemeinsam) return auftrag;
+	const roh = gemeinsam ? ["OK", "UK"].map((k) => einzelAuftrag(text, k)) : abschnitte.map((a) => ({
 		...einzelAuftrag(a.text),
 		kiefer: a.kiefer
 	}));
-	roh.forEach((x, i) => {
+	if (!gemeinsam) roh.forEach((x, i) => {
 		const t = norm(abschnitte[i].text);
 		if (x.versorgung || /nichts|kein/.test(t) || befundWort(t, true)) return;
 		const nachbar = roh.slice(0, i).reverse().find((y) => y.versorgung) ?? roh.slice(i + 1).find((y) => y.versorgung);
@@ -27906,7 +27954,7 @@ function auftragVerstehen(text) {
 		coverDenture: teile.some((x) => x.coverDenture)
 	};
 }
-function einzelAuftrag(text) {
+function einzelAuftrag(text, kiefer) {
 	const t = norm(text);
 	const auftrag = {
 		text,
@@ -27917,7 +27965,7 @@ function einzelAuftrag(text) {
 		mitAchtern: /(mit|inklusive|inkl\.?|samt) (den )?achter/.test(t)
 	};
 	auftrag.versorgung = versorgungIn(t, auftrag.coverDenture);
-	auftrag.kiefer = kieferIn(t);
+	auftrag.kiefer = kiefer ?? kieferIn(t);
 	const nummern = [...t.matchAll(FDI)].map((m) => kieferVon(m[1]));
 	if (!auftrag.kiefer && nummern.length && nummern.every((k) => k === nummern[0])) auftrag.kiefer = nummern[0];
 	Object.assign(auftrag, ausfuehrungIn(text));
@@ -28199,6 +28247,8 @@ function befundVerstehen(text, kiefer) {
 	const genannt = roh.map((teil) => kieferIn(norm(teil)));
 	/** Satzteil ohne Kiefer („die Sechser fehlen“) erbt ihn vom Nachbarn – erst davor, sonst danach */
 	const kieferFuer = (i) => genannt[i] ?? kiefer ?? genannt.slice(0, i).reverse().find(Boolean) ?? genannt.slice(i + 1).find(Boolean);
+	const beide = !kiefer && !genannt.some(Boolean) && (KIEFER_GEMEINSAM.test(norm(text)) || BEIDE_KIEFER.test(norm(text)));
+	const zaehneFuer = (teil, k) => k || !beide ? zaehneIn(teil, k) : [.../* @__PURE__ */ new Set([...zaehneIn(teil, "OK"), ...zaehneIn(teil, "UK")])];
 	const teile = roh.map((teil, i) => {
 		const k = kieferFuer(i);
 		const treffer = befundWort(teil);
@@ -28206,7 +28256,7 @@ function befundVerstehen(text, kiefer) {
 		return {
 			teil,
 			k,
-			zs: zaehneIn(teil, k),
+			zs: zaehneFuer(teil, k),
 			code: treffer?.code,
 			/** Verb am Ende („…, die Sechser und Siebener fehlen“) gilt auch für die Satzteile davor */
 			nachgestellt: !!treffer && ersterZahn >= 0 && treffer.index > ersterZahn
@@ -28288,6 +28338,10 @@ function befundSaetze(text) {
 	};
 	const abschnitte = kieferAbschnitte(text);
 	if (abschnitte.length < 2) return ausTeil(text).join(", ");
+	if (KIEFER_GEMEINSAM.test(norm(text))) {
+		const teile = ausTeil(text);
+		return teile.length && !teile.some((t) => kieferIn(norm(t))) ? [...teile, "im oberkiefer und im unterkiefer"].join(", ") : teile.join(", ");
+	}
 	const ersteTeile = satzteile(abschnitte[0].text);
 	const k = ersteTeile.findIndex((t) => new RegExp(KIEFER_WORT.source).test(norm(t)));
 	const vorspann = k > 0 ? ersteTeile.slice(0, k).join(", ") : "";
@@ -28672,7 +28726,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-15 10:39";
+var ENGINE_STAND = "2026-10-15 14:53";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {

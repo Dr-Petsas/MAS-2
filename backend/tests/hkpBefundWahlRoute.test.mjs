@@ -28,7 +28,13 @@ const planr = http.createServer(async (req, res) => {
   const senden = (status, d) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(d)); };
   if (req.headers["x-planr-key"] !== "k" || u.searchParams.get("clientId") !== CID) return senden(401, { ok: false });
   if (u.pathname === "/api/intern/pvs/patienten") {
-    return senden(200, { ok: true, patienten: [{ id: "4711", vorname: "Anna", name: "Befundtest", geburtsdatum: "1972-03-05" }] });
+    const ohne = [...u.searchParams.values()].join(" ").includes("Ohnebridge");
+    return senden(200, { ok: true, patienten: [ohne
+      ? { id: "815", vorname: "Bert", name: "Ohnebridge", geburtsdatum: "1950-01-02" }
+      : { id: "4711", vorname: "Anna", name: "Befundtest", geburtsdatum: "1972-03-05" }] });
+  }
+  if (u.pathname === "/api/intern/pvs/befund" && u.searchParams.get("patient") === "815") {
+    return senden(502, { ok: false, pvs: "DS-Win", meldung: "Die PlanR-Bridge in der Praxis braucht ein Update." });
   }
   if (u.pathname === "/api/intern/befund/vorgang") {
     vorgaenge.push(JSON.parse(roh));
@@ -141,6 +147,22 @@ test("Befund zuerst: schon die Rueckfrage nach der Versorgung zeigt das Zahnsche
   const bereit = await rufe({});
   assert.match(bereit.message, /Was soll ich für/);
   assert.equal(bereit.card?.kind, "befund");
+});
+
+test("Praxisprogramm nicht lesbar: PlanR legt den Befund aus dem Gespraech an, das Handy zeigt ihn trotzdem", async () => {
+  vorgaenge.length = 0;
+  const auftrag = "ich möchte gern einen HKP erstellen";
+  const frage = await rufe({ name: "Bert Ohnebridge", auftrag });
+  assert.equal(frage.rueckfrage, "versorgung", frage.message);
+  assert.equal(new URL(frage.card?.url || "http://x").searchParams.get("befund"), "815", JSON.stringify(frage));
+  await kurz();
+  assert.deepEqual(vorgaenge.at(-1), {
+    patient: "815", modul: "hkp", phase: "befund", auftrag, label: "Ohnebridge, Bert", geburt: "1950-01-02", pvs: "DS-Win",
+    meldung: "Befund aus DS-Win nicht lesbar – Befund aus dem Gespräch",
+  });
+  const neu = await rufe({ name: "Bert Ohnebridge", auftrag: "Teleskopprothese im Oberkiefer auf 13 und 23" });
+  assert.match(neu.message, /braucht ein Update/);
+  assert.equal(neu.card?.kind, "befund");
 });
 
 test("neu: vorlesen, Korrektur, erst nach ja nach Dampsoft – nur der Oberkiefer", async () => {

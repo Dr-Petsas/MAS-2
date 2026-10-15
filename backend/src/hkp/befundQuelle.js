@@ -424,9 +424,10 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
 /** Wie befundWerkzeug, dazu die Nummer im Praxisprogramm (Flip-Karte, Vorgang) – Clara bekommt davon nur message */
 export async function befundWerkzeugMitNummer(clientId, patient, optionen, deps = {}) {
   let nummer = "";
+  let pvsOhne = "";
   const pvs = deps.pvs || pvsBefund;
   const r = await befundWerkzeug(clientId, patient, optionen, {
-    ...deps, pvs: async (...a) => { const p = await pvs(...a); if (p?.ok) nummer = p.nummer; return p; },
+    ...deps, pvs: async (...a) => { const p = await pvs(...a); if (p?.ok) nummer = p.nummer; else if (p?.pvs) pvsOhne = p.pvs; return p; },
   });
-  return { ...r, nummer };
+  return { ...r, nummer, pvsOhne };
 }

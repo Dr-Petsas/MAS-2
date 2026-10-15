@@ -24,7 +24,13 @@ const planr = http.createServer(async (req, res) => {
   const senden = (status, d) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(d)); };
   if (req.headers["x-planr-key"] !== "k" || u.searchParams.get("clientId") !== CID) return senden(401, { ok: false });
   if (u.pathname === "/api/intern/pvs/patienten") {
-    return senden(200, { ok: true, patienten: [{ id: "4711", vorname: "Anna", name: "Werkzeugtest", geburtsdatum: "1972-03-05" }] });
+    const ohne = [...u.searchParams.values()].join(" ").includes("Ohnebridge");
+    return senden(200, { ok: true, patienten: [ohne
+      ? { id: "815", vorname: "Bert", name: "Ohnebridge", geburtsdatum: "1950-01-02" }
+      : { id: "4711", vorname: "Anna", name: "Werkzeugtest", geburtsdatum: "1972-03-05" }] });
+  }
+  if (u.pathname === "/api/intern/pvs/befund" && u.searchParams.get("patient") === "815") {
+    return senden(502, { ok: false, pvs: "DS-Win", meldung: "Die PlanR-Bridge in der Praxis braucht ein Update." });
   }
   if (u.pathname === "/api/intern/befund/vorgang") {
     vorgaenge.push(JSON.parse(roh));
@@ -70,6 +76,15 @@ test.after(() => {
   _setBillingLaden(null);
   mas.close();
   planr.close();
+});
+
+test("Praxisprogramm nicht lesbar: ehrliche Ansage, leeres Zahnschema auf dem Handy, Eintrag in PlanR", async () => {
+  const r = await rufe({ name: "Bert Ohnebridge" });
+  assert.match(r.message, /^Den Befund aus DS-Win kann ich gerade nicht lesen: Die PlanR-Bridge in der Praxis braucht ein Update\. Das Zahnschema zeige ich Ihnen trotzdem/);
+  assert.equal(new URL(r.card?.url || "http://x").searchParams.get("befund"), "815");
+  await new Promise((ok) => setTimeout(ok, 80));
+  assert.equal(vorgaenge.at(-1).label, "Ohnebridge, Bert");
+  assert.equal(r.pvsOhne, undefined);
 });
 
 test("vorlesen, aendern, nach ja nach Dampsoft – nur der geaenderte Kiefer", async () => {

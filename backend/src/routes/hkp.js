@@ -42,7 +42,7 @@ import {
   praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
 } from "../hkp/store.js";
 import {
-  auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, quelleAus, vorgangMelden,
+  auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, pvsKennung, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
@@ -337,6 +337,13 @@ export function befundFlipToken(clientId, nummer, jetztMs = Date.now()) {
 }
 
 /** Karte "Befund": Clara flippt auf das Zahnschema, solange Befund und Planung laufen. Notaus MAS_HKP_BEFUND_KARTE=0. */
+/** Praxisprogramm nicht lesbar (z. B. aeltere Bridge): PlanR legt den Befund aus dem Gespraech trotzdem an */
+export const ohnePvs = (patient, pvs) => ({
+  label: [patient?.lastName, patient?.firstName].filter(Boolean).join(", ") || patient?.label || "",
+  geburt: String(patient?.birthDate || "").slice(0, 10), pvs,
+  meldung: `Befund aus ${pvs} nicht lesbar – Befund aus dem Gespräch`,
+});
+
 export function befundKarte(clientId, nummer, patient) {
   if (process.env.MAS_HKP_BEFUND_KARTE === "0") return null;
   const bt = befundFlipToken(clientId, nummer);
@@ -1166,13 +1173,15 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     // Patient, zeigen schon die Rueckfragen den Befund aus dem Praxisprogramm. Ein langsames Praxisprogramm haelt sie nicht auf.
     const befundVorab = async () => {
       let nr = wahlLesen(clientId, patient).pvsNummer || "";
+      let ohne = null;
       if (!nr) {
         const pb = await Promise.race([pvsBefund(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
         nr = pb?.ok ? String(pb.nummer || "") : "";
         if (nr) wahlMerken(clientId, patient, { pvsNummer: nr });
+        else if (pb?.pvs) [nr, ohne] = [pvsKennung(patient).patient || "", ohnePvs(patient, pb.pvs)];
       }
       if (!nr) return;
-      vorgangMelden(clientId, nr, { modul: "hkp", phase: "befund", auftrag: auftragText });
+      vorgangMelden(clientId, nr, { modul: "hkp", phase: "befund", auftrag: auftragText, ...ohne });
       flipKarte = befundKarte(clientId, nr, patient);
     };
     // Ohne Aufzaehlung (Chef 07.10.2026: "das nervt"). Clara erkennt die Rueckfrage
@@ -1230,10 +1239,13 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const befundDiktat = text || ausAuftrag;
     const stand = { gesagt: befund.gesagt, abgeleitet: befund.abgeleitet, genannt: befund.genannt, text };
     // Vom Befund zum Plan: PlanR fuehrt den Vorgang (Planliste), das Handy zeigt das Zahnschema live
-    const pvsNr = befund.pvs?.nummer || befund.pvsNummer || wahl.pvsNummer || "";
-    if (pvsNr && wahl.pvsNummer !== pvsNr) wahlMerken(clientId, patient, { pvsNummer: pvsNr });
+    const gelesenNr = befund.pvs?.nummer || befund.pvsNummer || wahl.pvsNummer || "";
+    if (gelesenNr && wahl.pvsNummer !== gelesenNr) wahlMerken(clientId, patient, { pvsNummer: gelesenNr });
+    const pvsName = befund.pvs?.name || befund.pvsName || "";
+    const ohne = !gelesenNr && pvsName ? ohnePvs(patient, pvsName) : null;
+    const pvsNr = gelesenNr || (ohne ? pvsKennung(patient).patient || "" : "");
     if (pvsNr) {
-      vorgangMelden(clientId, pvsNr, { modul: "hkp", phase: "befund", auftrag: auftragText });
+      vorgangMelden(clientId, pvsNr, { modul: "hkp", phase: "befund", auftrag: auftragText, ...ohne });
       flipKarte = befundKarte(clientId, pvsNr, patient);
     }
     if (!befund.ok) {
@@ -1323,14 +1335,17 @@ router.post("/tools/hkp-befund", async (req, res) => {
     const b = req.body || {};
     const p = await patientAufloesen(clientId, b, "Von welchem Patienten soll ich den Befund nehmen?");
     if (p.antwort) return res.json(p.antwort);
-    const { nummer, ...r } = await befundWerkzeugMitNummer(clientId, p.patient, {
+    const { nummer, pvsOhne, ...r } = await befundWerkzeugMitNummer(clientId, p.patient, {
       aenderung: String(b.aenderung || "").trim(), uebernehmen: wahr(b.uebernehmen), verwerfen: wahr(b.verwerfen),
       wer: await getAssistantName(clientId).catch(() => DEFAULT_ASSISTANT_NAME),
     });
     log.info?.(`[hkp] befund ${b.verwerfen ? "verwerfen" : b.uebernehmen ? "uebernehmen" : b.aenderung ? "aendern" : "lesen"}: Patient ${p.patient.id}${r.uebertragen === false ? " (nicht uebertragen)" : ""}`);
-    // Der Befund steht: Eintrag in der PlanR-Liste (noch nichts geplant) und Zahnschema auf dem Handy
-    if (nummer) vorgangMelden(clientId, nummer, { phase: "befund" });
-    const card = nummer ? befundKarte(clientId, nummer, p.patient) : null;
+    // Der Befund steht: Eintrag in der PlanR-Liste (noch nichts geplant) und Zahnschema auf dem Handy –
+    // ist das Praxisprogramm nicht lesbar, ein leeres Zahnschema zum Eintragen
+    const nr = nummer || (pvsOhne ? pvsKennung(p.patient).patient || "" : "");
+    if (nr) vorgangMelden(clientId, nr, { phase: "befund", ...(nummer ? {} : ohnePvs(p.patient, pvsOhne)) });
+    const card = nr ? befundKarte(clientId, nr, p.patient) : null;
+    if (card && !nummer) r.message = `${r.message} Das Zahnschema zeige ich Ihnen trotzdem, dort können Sie die Zähne eintragen.`;
     return res.json(card ? { ...r, card } : r);
   } catch (e) {
     log.error?.(`[hkp] befund: ${e?.stack || e}`);
