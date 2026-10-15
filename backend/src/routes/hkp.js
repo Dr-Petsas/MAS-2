@@ -17,6 +17,7 @@
 import express from "express";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import * as E from "../vendor/hkp-engine.mjs";
+import * as P from "../vendor/privat-ze-engine.mjs";
 import { assertAppEnabled, getBilling } from "../entitlements.js";
 import { planrAusBilling } from "../hkp/planrBerechtigung.js";
 import { claraZugang, rufnameSaeubern } from "../hkp/planrClara.js";
@@ -44,7 +45,8 @@ import {
 import {
   auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, pvsKennung, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
-import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
+import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
+import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
 
@@ -528,6 +530,33 @@ router.get("/planr/hkp", planrGuard, async (req, res) => {
       } : kopf(h))),
       engineStand: E.ENGINE_STAND,
     });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Private Sprach-Entwuerfe: die PlanR-Uebersicht holt sie in den Eingang des Planers und meldet sie mit ihrer Nummer abgeholt
+router.get("/planr/entwuerfe", planrGuard, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const offen = await entwuerfeOffen(req.planrClientId);
+    res.json({
+      ok: true,
+      entwuerfe: offen.filter((e) => ENTWURF_MODULE.has(e.modul)).map((e) => ({
+        id: e.id, modul: e.modul, patient: e.anzeige, betrag: e.betrag, erstellt: e.erstellt, plan: JSON.parse(e.planJson),
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.post("/planr/entwuerfe/:id/abgeholt", planrGuard, async (req, res) => {
+  try {
+    const nummer = String(req.body?.nummer || "").trim();
+    if (!nummer || nummer.length > 80) return res.status(400).json({ ok: false, error: "nummer_fehlt" });
+    const r = await entwurfAbgeholt(req.planrClientId, req.params.id, nummer);
+    res.status(r.ok ? 200 : 409).json(r);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -1132,14 +1161,51 @@ async function entwurfAnlegen(clientId, d) {
   };
 }
 
+// Privater Zahnersatz per Sprache (Chef 15.10.2026): gleiche Gespraechsfuehrung wie der HKP, gerechnet mit der
+// Engine des Privat-Planers (src/vendor/privat-ze-engine.mjs). Der Entwurf wartet in planrEntwuerfe, bis die
+// PlanR-Uebersicht ihn mit eigener Nummer in den Planer holt. Notaus MAS_PRIVAT_ZE=0.
+const privatAus = () => String(process.env.MAS_PRIVAT_ZE || "").trim() === "0";
+const PRIVAT_TEXT = "Privatplan Zahnersatz";
+
+async function privatAnlegen(clientId, d) {
+  const { patient, auftragText, befund, r, summen } = d;
+  const e = await entwurfAblegen(clientId, {
+    modul: "privat-kv",
+    patient: { id: patient.id, label: patient.anredeLabel || "", name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" },
+    anzeige: [patient.firstName, patient.lastName].filter(Boolean).join(" "), betrag: summen.gesamt, planJson: JSON.stringify(r.plan),
+    auftragText, befundQuelle: befund.quelle || null, hinweise: [...befund.hinweise, ...r.hinweise], engineStand: P.ENGINE_STAND,
+  });
+  log.info?.(`[hkp] Privat-Entwurf ${e.id} abgelegt (Befund ${befund.quelle?.art}, Patient ${patient.id})`);
+  vorgangMelden(clientId, befund.pvs?.nummer, { modul: "privat-kv", phase: "angelegt", plan: planZeilen(r.plan), meldung: "" });
+  befundWahl.delete(wahlSchluessel(clientId, patient));
+  const quelle = befund.quelle?.art?.includes("lena01") ? ` Befund aus der Lena-Erstuntersuchung vom ${datumDe(befund.quelle.datum)}.`
+    : befund.quelle?.art === "pvs" ? ` Befund aus ${befund.quelle.pvs}${befund.quelle.datum ? ` vom ${datumDe(befund.quelle.datum)}` : ""}.` : "";
+  return {
+    ok: true, entwurfId: e.id,
+    ...mitUndo("planr_entwurf", { id: e.id, label: `den Privatplan Zahnersatz für ${patient.anredeLabel}` }),
+    message: `Der Privatplan Zahnersatz für ${patient.anredeLabel} ist angelegt. Er steht in PlanR im Planer Zahnersatz privat als Entwurf; gerechnet wird dort mit Ihren Praxispreisen.`
+      + `${d.vorgelesen ? "" : ` Geplant: ${versorgungSatz(r.zusammenfassung)}.`} Vorläufig ${privatSummenSatz(summen)}.${quelle}${annahmenSatz(r.hinweise, r.hinweise)}`,
+  };
+}
+
 router.post("/tools/hkp-create-draft", async (req, res) => {
   try {
     const clientId = await claraVorspann(req, res);
     if (!clientId) return;
     const b = req.body || {};
+    const privat = wahr(b.privat);
+    if (privat && privatAus()) {
+      return res.json({ ok: true, message: "Einen privaten Zahnersatz-Plan kann ich gerade nicht per Sprache anlegen. Bitte im Planer Zahnersatz privat in PlanR erstellen." });
+    }
+    const modul = privat ? "privat-kv" : "hkp";
     const auftragText = String(b.auftrag || "").trim();
-    const ziel = zielpreisAn() ? zielpreisAus(b.zielpreis) : null;
+    const ziel = zielpreisAn() && !privat ? zielpreisAus(b.zielpreis) : null;
     const vs = wahr(b.bestaetigt) || ziel ? vorschauFinden(vorschauen(clientId), b) : null;
+    if (vs?.privat) {
+      vorschauWeg(clientId, vs);
+      vetterWahl.delete(clientId);
+      return res.json(await privatAnlegen(clientId, { ...vs, vorgelesen: true }));
+    }
     if (vs) {
       vorschauWeg(clientId, vs);
       vetterWahl.delete(clientId);
@@ -1148,7 +1214,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         ...(ziel ? aufZielpreis(vs, ziel, praxis) : vs), vorgelesen: true, zusaetzlich: true, alteVerwerfen: vs.alteVerwerfen || wahr(b.alte_verwerfen),
       }));
     }
-    const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den HKP erstellen?", { vettern: true });
+    const p = await patientAufloesen(clientId, b, `Für welchen Patienten soll ich den ${privat ? "Privatplan" : "HKP"} erstellen?`, { vettern: true });
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
     const gewaehlt = p.gewaehlt || vetterSchonGewaehlt(vetterWahl.get(clientId), p.sel || patient);
@@ -1181,7 +1247,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         else if (pb?.pvs) [nr, ohne] = [pvsKennung(patient).patient || "", ohnePvs(patient, pb.pvs)];
       }
       if (!nr) return;
-      vorgangMelden(clientId, nr, { modul: "hkp", phase: "befund", auftrag: auftragText, ...ohne });
+      vorgangMelden(clientId, nr, { modul, phase: "befund", auftrag: auftragText, ...ohne });
       flipKarte = befundKarte(clientId, nr, patient);
     };
     // Ohne Aufzaehlung (Chef 07.10.2026: "das nervt"). Clara erkennt die Rueckfrage
@@ -1210,7 +1276,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     }
     const alteWeg = wahr(b.alte_verwerfen);
     const zusaetzlich = wahr(b.zusaetzlich) || alteWeg;
-    const doppelt = doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
+    const doppelt = privat ? [] : doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
     // Mit Vorlesen steht die Doppelung als Hinweis in der Vorschau – eine Frage weniger.
     if (doppelt.length && !zusaetzlich && vorlesenAus()) {
       return raus({
@@ -1245,7 +1311,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const ohne = !gelesenNr && pvsName ? ohnePvs(patient, pvsName) : null;
     const pvsNr = gelesenNr || (ohne ? pvsKennung(patient).patient || "" : "");
     if (pvsNr) {
-      vorgangMelden(clientId, pvsNr, { modul: "hkp", phase: "befund", auftrag: auftragText, ...ohne });
+      vorgangMelden(clientId, pvsNr, { modul, phase: "befund", auftrag: auftragText, ...ohne });
       flipKarte = befundKarte(clientId, pvsNr, patient);
     }
     if (!befund.ok) {
@@ -1291,32 +1357,34 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
 
     const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [], einstellungen: {} }));
     const system = implantatStandard(praxis);
-    const r = E.hkpEntwurf(auftragText, befund.befund, {
-      patient: { name: patient.lastName, vorname: patient.firstName, geburtsdatum: patient.birthDate },
-      einstellungen: praxis.einstellungen, implantatSystem: system,
-    }, praxisListen(praxis));
+    const patientDaten = { name: patient.lastName, vorname: patient.firstName, geburtsdatum: patient.birthDate };
+    const r = privat
+      ? P.privatZeEntwurf(auftragText, befund.befund, { patient: patientDaten, implantatSystem: system })
+      : E.hkpEntwurf(auftragText, befund.befund, { patient: patientDaten, einstellungen: praxis.einstellungen, implantatSystem: system }, praxisListen(praxis));
     if (r.status !== "ok") return raus({ ok: true, rueckfrage: r.grund, message: r.frage });
-    liveMelden(clientId, { phase: "plan", plan: r.plan, meldung: "" });
-    vorgangMelden(clientId, pvsNr, { modul: "hkp", phase: "planung", plan: planZeilen(r.plan), meldung: befund.quelle?.uebertragen || !befund.neu ? "" : vorab.trim() });
-    const frage = ausfuehrungRueckfrage(clientId, patient, auftragText, auftrag, r, system);
+    if (!privat) liveMelden(clientId, { phase: "plan", plan: r.plan, meldung: "" });
+    vorgangMelden(clientId, pvsNr, { modul, phase: "planung", plan: planZeilen(r.plan), meldung: befund.quelle?.uebertragen || !befund.neu ? "" : vorab.trim() });
+    const frage = privat ? null : ausfuehrungRueckfrage(clientId, patient, auftragText, auftrag, r, system);
     if (frage) return raus(frage);
 
-    const summen = summenAus(r.ergebnis);
-    const versorgungText = auftrag.teile?.length > 1
+    const z = r.zusammenfassung;
+    const summen = privat ? { gesamt: zahl(z.gesamt), honorar: zahl(z.honorar), labor: zahl(z.labor), material: zahl(z.material) } : summenAus(r.ergebnis);
+    const versorgungText = privat ? PRIVAT_TEXT : auftrag.teile?.length > 1
       ? `HKP mit ${liste(auftrag.teile.map((t) => `${VERSORGUNG_NAME[t.versorgung] || t.versorgung} im ${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}`))}`
       : VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
-    const daten = { patient, auftrag, auftragText, befund, befundDiktat, r, summen, versorgungText, zusaetzlich, doppelt, alteVerwerfen: alteWeg };
+    const daten = { patient, auftrag, auftragText, befund, befundDiktat, r, summen, versorgungText, zusaetzlich, doppelt, alteVerwerfen: alteWeg, privat };
     if (vorlesenAus()) {
       vetterWahl.delete(clientId);
-      const e = await entwurfAnlegen(clientId, daten);
+      const e = await (privat ? privatAnlegen : entwurfAnlegen)(clientId, daten);
       return res.json(vorab && e.message ? { ...e, message: `${vorab}${e.message}` } : e);
     }
     vorschauMerken(clientId, { ...daten, namenGesagt: [String(b.name || "").trim()], at: Date.now() });
     return raus({
       ok: true, rueckfrage: "vorlesen", ...(doppelt.length ? { doppelung: doppelt.map((h) => h.id) } : {}),
       message: vorleseSatz({
-        patient, versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
-        versorgung: versorgungSatz(r.zusammenfassung), ausfuehrung: ausfuehrungText(r.plan), summen: summenSatz(summen), spanne: spanneVon(r.plan, praxis),
+        patient, versorgungText, kiefer: geplanteKiefer(auftrag, z), zaehne: r.plan.zaehne, versorgung: versorgungSatz(z),
+        ausfuehrung: privat ? "" : ausfuehrungText(r.plan), summen: privat ? privatSummenSatz(summen) : summenSatz(summen),
+        spanne: privat ? "" : spanneVon(r.plan, praxis),
         doppelt: doppelt.length ? doppelungHinweis(doppelt, alteWeg) : "", befundFreigegeben: befundFrei,
       }),
     });
@@ -1411,7 +1479,7 @@ router.post("/tools/hkp-details", async (req, res) => {
       if (vs && vorschauGemeint(vs, b.auswahl, letzterHkp.get(clientId))) {
         return res.json({
           ok: true, rueckfrage: "vorlesen",
-          message: `Der ${vs.versorgungText || "HKP"} für ${vs.patient.anredeLabel} ist noch nicht angelegt. Voraussichtlich ${summenSatz(vs.summen)}. Soll ich den Entwurf so anlegen?`,
+          message: `Der ${vs.versorgungText || "HKP"} für ${vs.patient.anredeLabel} ist noch nicht angelegt. Voraussichtlich ${vs.privat ? privatSummenSatz(vs.summen) : summenSatz(vs.summen)}. Soll ich den Entwurf so anlegen?`,
         });
       }
     }
@@ -1574,18 +1642,22 @@ function vorschauFuerAenderung(clientId, b) {
 function vorschauKorrigieren(clientId, vs, text, praxis) {
   const auftragText = `${String(vs.auftragText || "").replace(/[\s.]+$/, "")}. ${text}`.trim();
   const auftrag = E.auftragVerstehen(auftragText);
-  const r = E.hkpEntwurf(auftragText, vs.befund.befund, {
-    patient: vs.r.plan.patient, einstellungen: praxis.einstellungen, implantatSystem: implantatStandard(praxis),
-  }, praxisListen(praxis));
+  const r = vs.privat
+    ? P.privatZeEntwurf(auftragText, vs.befund.befund, { patient: vs.r.plan.patient, implantatSystem: implantatStandard(praxis) })
+    : E.hkpEntwurf(auftragText, vs.befund.befund, {
+      patient: vs.r.plan.patient, einstellungen: praxis.einstellungen, implantatSystem: implantatStandard(praxis),
+    }, praxisListen(praxis));
   if (r.status !== "ok") return { ok: true, rueckfrage: r.grund, message: r.frage };
-  const summen = summenAus(r.ergebnis);
+  const z = r.zusammenfassung;
+  const summen = vs.privat ? { gesamt: zahl(z.gesamt), honorar: zahl(z.honorar), labor: zahl(z.labor), material: zahl(z.material) } : summenAus(r.ergebnis);
   vorschauWeg(clientId, vs);
   vorschauMerken(clientId, { ...vs, auftrag, auftragText, r, summen, at: Date.now() });
   return {
     ok: true, rueckfrage: "vorlesen",
     message: vorleseSatz({
-      patient: vs.patient, versorgungText: vs.versorgungText, kiefer: geplanteKiefer(auftrag, r.zusammenfassung), zaehne: r.plan.zaehne,
-      versorgung: versorgungSatz(r.zusammenfassung), ausfuehrung: ausfuehrungText(r.plan), summen: summenSatz(summen), spanne: spanneVon(r.plan, praxis),
+      patient: vs.patient, versorgungText: vs.versorgungText, kiefer: geplanteKiefer(auftrag, z), zaehne: r.plan.zaehne, versorgung: versorgungSatz(z),
+      ausfuehrung: vs.privat ? "" : ausfuehrungText(r.plan), summen: vs.privat ? privatSummenSatz(summen) : summenSatz(summen),
+      spanne: vs.privat ? "" : spanneVon(r.plan, praxis),
       doppelt: vs.doppelt?.length ? doppelungHinweis(vs.doppelt, vs.alteVerwerfen) : "",
     }),
   };

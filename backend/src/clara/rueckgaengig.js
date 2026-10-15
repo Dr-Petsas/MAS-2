@@ -11,7 +11,7 @@
 
 export const RUECKGAENGIG_MS = 15 * 60 * 1000;
 
-const ARTEN = new Set(["termin", "hkp", "hkp_aenderung", "vorgang", "aufgabe", "endgueltig"]);
+const ARTEN = new Set(["termin", "hkp", "hkp_aenderung", "planr_entwurf", "vorgang", "aufgabe", "endgueltig"]);
 
 export function rueckgaengigAn() {
   return !/^(0|false|no|off)$/i.test(String(process.env.MAS_RUECKGAENGIG ?? "1").trim());
@@ -28,8 +28,8 @@ export function mitUndo(art, { id = "", label = "", vorher = "", alt = [] } = {}
 }
 
 async function standardDeps() {
-  const [{ cancelBookingById }, store, cases] = await Promise.all([
-    import("./agentBooking.js"), import("../hkp/store.js"), import("../brain/caseStore.js"),
+  const [{ cancelBookingById }, store, cases, entwuerfe] = await Promise.all([
+    import("./agentBooking.js"), import("../hkp/store.js"), import("../brain/caseStore.js"), import("../hkp/planrEntwuerfe.js"),
   ]);
   return {
     terminAbsagen: cancelBookingById,
@@ -37,6 +37,7 @@ async function standardDeps() {
     hkpAktualisieren: store.hkpAktualisieren,
     statusText: store.STATUS_TEXT,
     vorgangStatus: cases.setStatus,
+    entwurfVerwerfen: entwuerfe.entwurfVerwerfen,
   };
 }
 
@@ -94,6 +95,15 @@ export async function zuruecknehmen(clientId, undo, deps) {
     }
     const altSatz = wieder ? ` Der vorige HKP wartet wieder auf Ihre Freigabe.` : "";
     return { ok: true, undoErledigt: true, message: `Gut, ich habe ${label} wieder verworfen.${altSatz}` };
+  }
+
+  if (u.art === "planr_entwurf") {
+    const r = await d.entwurfVerwerfen(clientId, u.id);
+    if (r.ok) return { ok: true, undoErledigt: true, message: `Gut, ich habe ${label} wieder verworfen.` };
+    if (r.grund === "abgeholt") {
+      return { ok: false, undoErledigt: true, message: `${gross(label)} liegt schon als Entwurf${r.nummer ? ` ${r.nummer}` : ""} in PlanR – bitte dort löschen.` };
+    }
+    return { ok: false, undoErledigt: true, message: r.grund === "fehlt" ? `${gross(label)} finde ich nicht mehr.` : `${gross(label)} ist schon verworfen.` };
   }
 
   if (u.art === "vorgang" || u.art === "aufgabe") {

@@ -54,6 +54,13 @@ export function summenSatz(s) {
   return `Gesamtkosten ${euroSprech(s.gesamt)}, Festzuschuss ${euroSprech(s.festzuschuss)}, Eigenanteil ${euroSprech(s.eigenanteil)}`;
 }
 
+/** Privater Plan: kein Festzuschuss, dafuer Honorar und Labor/Material */
+export function privatSummenSatz(s) {
+  if (!s) return "";
+  return `Gesamtkosten ${euroSprech(s.gesamt)}, davon Honorar ${euroSprech(s.honorar)} und Labor und Material ${euroSprech(zahlRund(s.labor + s.material))}`;
+}
+const zahlRund = (x) => Math.round((Number(x) || 0) * 100) / 100;
+
 export const hkpTitel = (h) => `${h.versorgungText || "HKP"}${h.kiefer ? ` im ${h.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}` : ""}`;
 
 /** Kurzbeschreibung eines HKP fuer Listen und Doppelungs-Rueckfragen */
