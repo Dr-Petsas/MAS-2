@@ -3,6 +3,7 @@
 // Der Plan liegt als JSON-String (planJson) — Firestore lehnt undefined in
 // verschachtelten Objekten ab, und der Plan wird nie feldweise abgefragt.
 import admin from "../firebase.js";
+import { praxisKatalog } from "./planrKatalog.js";
 
 export const STATUS = [
   "wartet_auf_freigabe", "freigegeben", "eingereicht", "genehmigt", "abgelehnt", "abgerechnet", "verworfen",
@@ -125,7 +126,7 @@ export async function hkpLoeschenFuerTest(clientId, id) {
 
 const praxisCache = new Map();
 
-export async function praxisSpeichern(clientId, { preislisten = [], eigen = [], einstellungen = {} }) {
+export async function praxisSpeichern(clientId, { preislisten = [], eigen = [], fremd = [], einstellungen = {} }) {
   const ref = praxisRef(clientId);
   const alt = await ref.collection("listen").get();
   const batch = admin.firestore().batch();
@@ -134,13 +135,25 @@ export async function praxisSpeichern(clientId, { preislisten = [], eigen = [], 
     if (!l?.id) continue;
     batch.set(ref.collection("listen").doc(String(l.id).replace(/\//g, "_")), { json: JSON.stringify(l) });
   }
-  batch.set(ref, { eigenJson: JSON.stringify(eigen), einstellungenJson: JSON.stringify(einstellungen), aktualisiert: jetzt() });
+  batch.set(ref, { eigenJson: JSON.stringify(eigen), fremdJson: JSON.stringify(fremd), einstellungenJson: JSON.stringify(einstellungen), aktualisiert: jetzt() });
   await batch.commit();
   praxisCache.delete(clientId);
-  return { preislisten: preislisten.length, eigen: eigen.length };
+  return { preislisten: preislisten.length, eigen: eigen.length, fremd: fremd.length };
+}
+
+/** Nur Eigenlabor-Katalog und Fremdlabor-Liste (nach jeder Aenderung in PlanR); Preislisten und Einstellungen bleiben. */
+export async function praxisKatalogeSpeichern(clientId, { eigen = [], fremd = [] }) {
+  await praxisRef(clientId).set({ eigenJson: JSON.stringify(eigen), fremdJson: JSON.stringify(fremd), katalogeAktualisiert: jetzt() }, { merge: true });
+  praxisCache.delete(clientId);
+  return { eigen: eigen.length, fremd: fremd.length };
 }
 
 export async function praxisLaden(clientId) {
+  const [daten, katalog] = await Promise.all([praxisDaten(clientId), praxisKatalog(clientId)]);
+  return { ...daten, katalog };
+}
+
+async function praxisDaten(clientId) {
   const hit = praxisCache.get(clientId);
   if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.daten;
   const ref = praxisRef(clientId);
@@ -150,6 +163,7 @@ export async function praxisLaden(clientId) {
   const daten = {
     preislisten: listen.docs.map((l) => parse(l.data().json, null)).filter(Boolean),
     eigen: parse(x.eigenJson, []),
+    fremd: parse(x.fremdJson, []),
     einstellungen: parse(x.einstellungenJson, {}),
     aktualisiert: x.aktualisiert || "",
   };

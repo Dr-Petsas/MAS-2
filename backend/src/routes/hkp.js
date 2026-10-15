@@ -39,7 +39,7 @@ import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
-  praxisLaden, praxisSpeichern,
+  praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
 } from "../hkp/store.js";
 import { auftragsKiefer, befundErmitteln, befundInsPvs, datumDe, lenaFreigeschaltet, quelleAus } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
@@ -58,7 +58,7 @@ const VERSORGUNG_NAME = {
 };
 const AENDERUNG_GUELTIG_MS = 5 * 60 * 1000;
 const PRAXIS_FELDER = ["labor", "praxisPlz", "kzv", "gozFaktor", "mwstLabor", "eigenKasseProzent", "eigenPrivatAufschlag",
-  "bemaListe", "gozListe", "belListe", "bebListe", "fzListe"];
+  "bemaListe", "gozListe", "belListe", "bebListe", "fzListe", "protheseDigital"];
 
 const toolsAus = () => String(process.env.MAS_HKP_TOOLS || "").trim() === "0";
 
@@ -128,7 +128,8 @@ function planAus(h) {
   try { return E.planNormalisieren(JSON.parse(h.planJson || "{}")); } catch { return null; }
 }
 
-const praxisListen = (p) => ({ preislisten: p.preislisten, eigen: p.eigen });
+const praxisListen = (p) => ({ preislisten: p.preislisten, eigen: p.eigen, fremd: p.fremd, katalog: p.katalog });
+const alsListe = (x) => (Array.isArray(x) ? x.slice(0, 5000) : []);
 
 // Vorlesen nennt nur die Spanne des Eigenanteils, auf den Wunsch werden die Regler gestellt
 // (Chef 10.10.2026). Notaus MAS_HKP_ZIELPREIS=0: Summen wie bisher beim Vorlesen.
@@ -468,7 +469,14 @@ router.post("/planr/registrieren", planrGuard, async (req, res) => {
 router.get("/planr/status", planrGuard, async (req, res) => {
   try {
     const p = await praxisLaden(req.planrClientId);
-    res.json({ ok: true, engineStand: E.ENGINE_STAND, clientId: req.planrClientId, praxis: { aktualisiert: p.aktualisiert, preislisten: p.preislisten.length, eigen: p.eigen.length } });
+    const k = p.katalog;
+    res.json({
+      ok: true, engineStand: E.ENGINE_STAND, clientId: req.planrClientId,
+      praxis: {
+        aktualisiert: p.aktualisiert, preislisten: p.preislisten.length, eigen: p.eigen.length, fremd: (p.fremd || []).length,
+        katalog: k ? { pvs: String(k.pvs || ""), stand: String(k.stand || ""), eigenlabor: (k.eigenlabor || []).length } : null,
+      },
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -600,9 +608,20 @@ router.post("/planr/praxis", planrGuard, async (req, res) => {
     const b = req.body || {};
     const einstellungen = Object.fromEntries(Object.entries(b.einstellungen || {}).filter(([k]) => PRAXIS_FELDER.includes(k)));
     const r = await praxisSpeichern(req.planrClientId, {
-      preislisten: Array.isArray(b.preislisten) ? b.preislisten : [], eigen: Array.isArray(b.eigen) ? b.eigen : [], einstellungen,
+      preislisten: alsListe(b.preislisten), eigen: alsListe(b.eigen), fremd: alsListe(b.fremd), einstellungen,
     });
     res.json({ ok: true, ...r });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Nach jeder Aenderung in PlanR: nur Eigenlabor-Katalog und Fremdlabor-Liste mit ihren Zuordnungen.
+// Eigener Pfad, damit ein PlanR-Stand vor diesem MAS keine Freigabe ohne Preislisten ausloest.
+router.post("/planr/praxis/kataloge", planrGuard, async (req, res) => {
+  try {
+    const b = req.body || {};
+    res.json({ ok: true, ...(await praxisKatalogeSpeichern(req.planrClientId, { eigen: alsListe(b.eigen), fremd: alsListe(b.fremd) })) });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

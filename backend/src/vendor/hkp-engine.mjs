@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 f308c0342045)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 4b75cca936b5)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -22607,6 +22607,59 @@ function listenFuerPlan(alle, plan) {
 	};
 }
 //#endregion
+//#region src/store/praxiskatalogDaten.ts
+function belPreise(k) {
+	const bel = {};
+	for (const z of k.bel ?? []) if (z.preis > 0) bel[z.nr] = z.preis;
+	return bel;
+}
+/** Mitgelieferte GOZ plus Kürzel/Faktoren der Praxis, ergänzt um ihre eigenen und analogen Positionen */
+function praxisGozListe(basis, k) {
+	const ausPvs = new Map(k.goz.map((g) => [g.nr, g]));
+	const eintraege = basis.eintraege.map((e) => {
+		const g = ausPvs.get(e.nr);
+		return g ? {
+			...e,
+			...g.kuerzel ? { kuerzel: g.kuerzel } : {},
+			...g.faktor ? { faktor: g.faktor } : {}
+		} : e;
+	});
+	const bekannt = new Set(basis.eintraege.map((e) => e.nr));
+	for (const g of k.goz) if (!bekannt.has(g.nr)) eintraege.push(g);
+	return {
+		...basis,
+		id: PRAXIS_GOZ_ID,
+		name: `GOZ mit Praxispositionen (${k.pvs})`,
+		standard: false,
+		quelle: `${basis.name} · Kürzel, Faktoren und eigene Positionen aus ${k.pvs} (Stand ${k.stand.slice(0, 10)})`,
+		eintraege
+	};
+}
+/**
+* Eigenlabor-Katalog: Einträge aus dem PVS ersetzen die vorigen aus dem PVS und gleichnamige von Hand.
+* Eine von Hand festgelegte Zuordnung („Einsatz in der Planung“) bleibt bei gleicher Nummer erhalten.
+*/
+function eigenlaborMischen(bisher, k) {
+	const hand = new Map(bisher.filter((e) => e.quelle === "pvs" && e.zuordnung === "hand").map((e) => [e.nr, e]));
+	const neu = k.eigenlabor.map((e) => {
+		const h = hand.get(e.nr);
+		return {
+			nr: e.nr,
+			text: e.text,
+			preis: e.preis,
+			...e.ersetzt ? { ersetzt: e.ersetzt } : {},
+			quelle: "pvs",
+			...h ? {
+				fuer: h.fuer ?? "",
+				...h.wenn ? { wenn: h.wenn } : {},
+				zuordnung: "hand"
+			} : {}
+		};
+	});
+	const nummern = new Set(neu.map((e) => e.nr));
+	return [...bisher.filter((e) => e.quelle !== "pvs" && !nummern.has(e.nr)), ...neu];
+}
+//#endregion
 //#region src/engine/zahnschema.ts
 /** Zahnreihenfolge, wie sie im HKP-Formular von links nach rechts erscheint. */
 var OBERKIEFER = [
@@ -24519,6 +24572,7 @@ function implantatPositionen(zaehne, a, teileLabor) {
 	const mat = (k, zahn) => pos$2("MAT", "", zahn, 1, {
 		text: `${sys.hersteller} ${sys.system}: ${KOMPONENTEN[k]}`,
 		preis: sys.preise[k],
+		rolle: `implantat-${k}`,
 		...teileLabor ? { labor: teileLabor } : {}
 	});
 	for (const z of imp) positionen.push(pos$2("GOZ", "9050", z, 2));
@@ -24545,25 +24599,56 @@ function implantatPositionen(zaehne, a, teileLabor) {
 //#endregion
 //#region src/engine/eigenlabor.ts
 var bebNorm = (s) => s.trim().padStart(4, "0");
-/** Eigene Position zu einer Nummer: gleiche Nummer oder als Ersatz einer BEB-Nr. hinterlegt */
-function eigenFinden(katalog, nr) {
+/**
+* Dieselbe Leistung unter mehreren BEB-Nummern: die Planung setzt eine davon (Keramikkrone 2281,
+* Keramik-Brückenglied 2351), Praxis- und Laborlisten führen oft die andere.
+*/
+var GLEICHWERTIG = [[
+	"2281",
+	"2251",
+	"2252"
+], [
+	"2351",
+	"2352",
+	"2361"
+]];
+/**
+* Praxisposition zu einer Nummer. Von Hand gewählt: die Position mit genau dieser Nummer. Von der Planung
+* gesetzt: die dem Leistungsschritt zugeordnete Position (Variante des Ablaufs zuerst); Positionen ohne
+* Zuordnung wie bisher über gleiche Nummer bzw. „statt BEB-Nr.“.
+*/
+function eigenFinden(katalog, nr, k = {}) {
 	if (!katalog?.length || !nr.trim()) return void 0;
 	const t = nr.trim();
-	return katalog.find((e) => e.nr.trim() === t) ?? (/^\d{1,4}$/.test(t) ? katalog.find((e) => e.ersetzt && bebNorm(e.ersetzt) === bebNorm(t)) : void 0);
+	const ziel = /^\d{1,4}$/.test(t) ? bebNorm(t) : t;
+	const gleicheNr = katalog.find((e) => e.nr.trim() === t);
+	if (!k.auto && gleicheNr) return gleicheNr;
+	const ablauf = k.ablauf === "scan" ? "scan" : "abdruck";
+	const gruppe = GLEICHWERTIG.find((g) => g.includes(ziel)) ?? [ziel];
+	const fuerNorm = (e) => e.fuer && /^\d{1,4}$/.test(e.fuer) ? bebNorm(e.fuer) : e.fuer ?? "";
+	const zugeordnet = katalog.filter((e) => e.fuer && gruppe.includes(fuerNorm(e)) && (!e.wenn || e.wenn === ablauf));
+	const rang = (e) => (fuerNorm(e) === ziel ? 0 : 4) + (e.wenn ? 0 : 2) + (e.nr.trim() === t ? 0 : 1);
+	if (zugeordnet.length) return zugeordnet.reduce((a, b) => rang(b) < rang(a) ? b : a);
+	const ohneZuordnung = (e) => e.fuer === void 0;
+	if (gleicheNr && ohneZuordnung(gleicheNr)) return gleicheNr;
+	return /^\d{1,4}$/.test(t) ? katalog.find((e) => ohneZuordnung(e) && e.ersetzt && bebNorm(e.ersetzt) === ziel) : void 0;
 }
 //#endregion
 //#region src/engine/digital.ts
 /**
 * Eigenlabor-Schritte des digitalen Workflows ohne BEB-Entsprechung. Den Ablauf nach Intraoralscan
 * (Oralscan, CAD, Druckstumpf, Sintern …) plant abformung.ts mit den BEB-Standardpositionen;
-* D101–D103 bleiben nur, damit ältere Pläne ihren Preis behalten.
+* D101–D103 bleiben nur, damit ältere Pläne ihren Preis behalten. D106–D108: digitale Totalprothese.
 */
 var DIGITAL = {
 	daten: "D101",
 	stumpf: "D102",
 	artikulation: "D103",
 	scanbody: "D104",
-	anprobe: "D105"
+	anprobe: "D105",
+	aufstellung: "D106",
+	einsetzen: "D107",
+	anprobeProthese: "D108"
 };
 var DIGITAL_KATALOG = [
 	{
@@ -24590,6 +24675,21 @@ var DIGITAL_KATALOG = [
 		nr: DIGITAL.anprobe,
 		text: "Anprobe gedruckt (Try-in aus Kunststoff) zur Passungs- und Ästhetikkontrolle (je Einheit)",
 		preis: 9.5
+	},
+	{
+		nr: DIGITAL.aufstellung,
+		text: "CAD: Prothesenzähne virtuell aufstellen, Okklusion und Basis konstruieren (je Kiefer)",
+		preis: 65
+	},
+	{
+		nr: DIGITAL.einsetzen,
+		text: "Prothesenzähne in die gefräste bzw. gedruckte Basis einsetzen, ausarbeiten und polieren (je Kiefer)",
+		preis: 55
+	},
+	{
+		nr: DIGITAL.anprobeProthese,
+		text: "Anprobeprothese gedruckt (Try-in der CAD-Aufstellung, je Kiefer)",
+		preis: 45
 	}
 ];
 DIGITAL.daten, DIGITAL.stumpf, DIGITAL.artikulation;
@@ -24901,6 +25001,7 @@ var pos$1 = (ebene, nr, zahn, extra = {}) => ({
 	auto: true,
 	...extra
 });
+/** Präparierter Zahn (Krone, Teilkrone, Teleskop) */
 var KRONE = (p) => /^\d\d$/.test(p.zahn) && (p.ebene === "BEMA" && /^(20[abc]|91[abcd])$/.test(p.nr) || p.ebene === "GOZ" && /^(22[012]0|50[0-4]0)$/.test(p.nr));
 /** Gips-Arbeitsmodell (Sägemodell) und Gegenkiefermodell des festsitzenden Zahnersatzes */
 var GIPSMODELL = (p) => p.ebene === "BEL" && p.nr === "0051" || p.ebene === "BEB" && p.nr === "0021" || p.zahn === "" && (p.ebene === "BEL" && p.nr === "0010" || p.ebene === "BEB" && p.nr === "0002");
@@ -24972,12 +25073,34 @@ function protheseAbformen(positionen, art, erste) {
 }
 /** Situationsmodell eines Prothesenkiefers: BEL 0010 bzw. BEB 0002 mit Kieferangabe */
 var SITUATIONSMODELL = (k) => (p) => p.zahn === k && (p.ebene === "BEL" && p.nr === "0010" || p.ebene === "BEB" && p.nr === "0002");
+/** Schritte der analogen Totalprothese, die der digitale Ablauf ersetzt: Gipsmodelle, Mittelwertartikulator, Wachsaufstellung, Fertigstellung */
+var ANALOG_PROTHESE = {
+	BEL: /* @__PURE__ */ new Set([
+		"0010",
+		"0120",
+		"3010",
+		"3020",
+		"3610",
+		"3620"
+	]),
+	BEB: /* @__PURE__ */ new Set([
+		"0002",
+		"0402",
+		"6001",
+		"6002",
+		"6301",
+		"6302"
+	])
+};
 /**
 * Zahnloser Kiefer (Funktionsabformung, BEMA 98b/c bzw. GOZ 5180/5190) mit Intraoralscan (Chef 09.10.2026):
 * der Scan ersetzt die anatomische Erstabformung – GOZ 0065 für die drei Bereiche des Kiefers und ein
 * gedrucktes Modell (BEB 0009) statt des Situationsmodells. Individueller Löffel und Funktionsabformung bleiben.
+* Voll digital (Chef 15.10.2026, reine Totalprothese ohne Anker im Kiefer): statt Meistermodell,
+* Mittelwertartikulator, Wachsaufstellung und Fertigstellung je Auftrag Oralscan aufbereiten, CAD-Auftragsdaten und
+* digitale Registrierung, je Kiefer CAD-Aufstellung, gedruckte Anprobe, gefräste Basis (BEB 0037) und Einsetzen der Zähne.
 */
-function zahnlosScannen(positionen) {
+function zahnlosScannen(positionen, digital) {
 	const kiefer = ["OK", "UK"].filter((k) => positionen.some((p) => p.zahn === k && PROTHESE$1(p) && FUNKTIONSABFORMUNG(p)));
 	if (!kiefer.length) return {
 		positionen,
@@ -24999,18 +25122,45 @@ function zahnlosScannen(positionen) {
 			...modell?.labor ? { labor: modell.labor } : {}
 		}));
 	}
+	const hinweise = [`${kiefer.join(", ")} zahnlos: Intraoralscan statt anatomischer Erstabformung – GOZ 0065 je Bereich des Kiefers, gedrucktes Modell (BEB 0009) statt Situationsmodell; individueller Löffel und Funktionsabformung bleiben.`];
+	const alle = [...out, ...neu];
+	if (digital !== "voll") return {
+		positionen: alle,
+		hinweise
+	};
+	const ohneAnker = kiefer.filter((k) => !alle.some((p) => /^\d\d$/.test(p.zahn) && kieferVon(p.zahn) === k));
+	if (!ohneAnker.length) return {
+		positionen: alle,
+		hinweise
+	};
+	const analog = (k) => (p) => p.zahn === k && (p.ebene === "BEL" || p.ebene === "BEB") && ANALOG_PROTHESE[p.ebene].has(p.nr);
+	const laborVon = (k) => alle.find((p) => p.zahn === k && (p.ebene === "BEL" || p.ebene === "BEB") && p.labor)?.labor;
+	const auftragLabor = laborVon(ohneAnker[0]);
+	const digitalNeu = [];
+	const beb = (nr, zahn, text, l = auftragLabor) => alle.some((p) => p.ebene === "BEB" && p.nr === nr && p.zahn === zahn) ? [] : [pos$1("BEB", nr, zahn, {
+		text,
+		...l ? { labor: l } : {}
+	})];
+	digitalNeu.push(...beb(DIGITAL_BEB.oralscan, "", "Oralscan aufbereiten"), ...beb(DIGITAL_BEB.auftragsdaten, "", "CAD: Anlage Auftragsdaten"), ...beb(DIGITAL_BEB.registrierung, "", "CAD: optisch digitale Registrierung (Kieferrelation)"));
+	for (const k of ohneAnker) {
+		const l = laborVon(k);
+		digitalNeu.push(...beb(DIGITAL.aufstellung, k, `CAD: Prothesenzähne virtuell aufstellen ${k}`, l), ...beb(DIGITAL.anprobeProthese, k, `Anprobeprothese gedruckt ${k} (Try-in der CAD-Aufstellung)`, l), ...beb(PROTHESE_BASIS_GEFRAEST, k, `Konstruieren und Fräsen einer Basis aus Kunststoff ${k}`, l), ...beb(DIGITAL.einsetzen, k, `Zähne in die gefräste Basis ${k} einsetzen, ausarbeiten und polieren`, l));
+	}
+	const raus = (p) => ohneAnker.some((k) => analog(k)(p));
 	return {
-		positionen: [...out, ...neu],
-		hinweise: [`${kiefer.join(", ")} zahnlos: Intraoralscan statt anatomischer Erstabformung – GOZ 0065 je Bereich des Kiefers, gedrucktes Modell (BEB 0009) statt Situationsmodell; individueller Löffel und Funktionsabformung bleiben.`]
+		positionen: [...alle.filter((p) => !raus(p)), ...digitalNeu],
+		hinweise: [...hinweise, `Totalprothese ${ohneAnker.join(", ")} voll digital: Oralscan aufbereiten, CAD-Auftragsdaten und digitale Kieferrelation; je Kiefer CAD-Aufstellung, gedruckte Anprobe, gefräste Basis (BEB 0037) und Einsetzen der Zähne statt Meistermodell, Mittelwertartikulator, Wachsaufstellung und Fertigstellung. Löffel, Bissschablone und Funktionsabformung bleiben (Einstellung „Totalprothese nach Scan“).`]
 	};
 }
+/** BEB-ITZ 0037: Konstruieren und Fräsen einer Basis aus Kunststoff */
+var PROTHESE_BASIS_GEFRAEST = "0037";
 /**
 * Erste Abformung (präparierte Zähne): Scan → GOZ 0065 je Bereich (mit Gegenkiefer) und gedruckte Modelle
 * statt Gipsmodellen (auch bei reinen Implantatkronen: nie Gips- und gedrucktes Modell zugleich); der Abdruck
 * ändert nichts. Implantatspezifische Leistungen regelt implantatPositionen.
 * Danach die zweite Abformung für den herausnehmbaren Teil.
 */
-function abformungAnwenden(positionen, zaehne, abformung, prothese = "", eigenlabor = false) {
+function abformungAnwenden(positionen, zaehne, abformung, prothese = "", eigenlabor = false, protheseDigital = "voll") {
 	const erste = abformung === "scan" ? scanAnwenden(positionen, zaehne) : {
 		positionen,
 		hinweise: []
@@ -25020,7 +25170,7 @@ function abformungAnwenden(positionen, zaehne, abformung, prothese = "", eigenla
 		hinweise: []
 	};
 	const zweite = protheseAbformen(digital.positionen, prothese, abformung);
-	const zahnlos = abformung === "scan" || prothese === "scan" ? zahnlosScannen(zweite.positionen) : {
+	const zahnlos = abformung === "scan" || prothese === "scan" ? zahnlosScannen(zweite.positionen, protheseDigital) : {
 		positionen: zweite.positionen,
 		hinweise: []
 	};
@@ -25158,6 +25308,383 @@ function scanAnwenden(positionen, zaehne) {
 		positionen: [...positionen.filter((p) => !GIPSMODELL(p)), ...neu],
 		hinweise
 	};
+}
+//#endregion
+//#region src/engine/zuordnung.ts
+/**
+* Zuordnung der Praxis- bzw. Fremdlabor-Positionen zu den Leistungsschritten, die PlanR plant.
+* PlanR plant mit den Nummern der BEB-Standardliste (BEB-ITZ 2024 + Standardpositionen + digitale Schritte).
+* Praxislisten stammen aus anderen BEB-Ausgaben (BEB 97, BEB Zahntechnik, VDZI) oder haben eigene Nummern –
+* gleiche Nummer heißt dort nicht gleiche Leistung (z. B. BEB 97 2955 „Glasieren“, BEB-ITZ 2955 „Fräsen je Glied“).
+* Deshalb wird jede Position über ihren Text einem Schritt zugeordnet; Varianten (gegossen/gefräst) gelten nur
+* für den passenden Ablauf (Abdruck/Intraoralscan). Material ohne BEB-Nummer bekommt eine Rolle (Prothesenzahn,
+* Abformmaterial …), mit der die Planung es dort ansetzt, wo es anfällt. Von Hand festgelegte Zuordnungen bleiben.
+*/
+/** Material und Teile, die die Planung aus der Leistung ableitet (`fuer: 'MAT:<rolle>'`) */
+var ROLLEN = {
+	"zahn-front": {
+		titel: "Konfektionszahn Front",
+		je: "je Prothesenzahn 13–23 / 33–43"
+	},
+	"zahn-seite": {
+		titel: "Konfektionszahn Seitenzahn",
+		je: "je Prothesenzahn im Seitenzahnbereich"
+	},
+	"abform-alginat": {
+		titel: "Alginatabformung",
+		je: "je Kiefer, nur bei Abdruck (Situations- bzw. Gegenkiefermodell)"
+	},
+	"abform-praezision": {
+		titel: "Präzisionsabformung",
+		je: "je präpariertem Kiefer, nur bei Abdruck"
+	},
+	"abform-funktion": {
+		titel: "Funktionsabformung",
+		je: "je Kiefer mit Funktionsabformung"
+	},
+	registrat: {
+		titel: "Bissregistrat",
+		je: "je Auftrag festsitzend, nur bei Abdruck"
+	},
+	"rohling-zirkon": {
+		titel: "Rohling Zirkon",
+		je: "je Zirkon-Einheit (statt Mittelwert)"
+	},
+	"rohling-presskeramik": {
+		titel: "Rohling Presskeramik",
+		je: "je Presskeramik-Einheit (statt Mittelwert)"
+	},
+	"rohling-lithiumdisilikat": {
+		titel: "Block Lithiumdisilikat",
+		je: "je LiSi-Einheit (statt Mittelwert)"
+	},
+	"legierung-nem": {
+		titel: "Legierung NEM",
+		je: "je Gramm (statt Mittelwert)"
+	},
+	"legierung-goldreduziert": {
+		titel: "Legierung goldreduziert",
+		je: "je Gramm (statt Tagespreis-Mittelwert)"
+	},
+	"legierung-hochgold": {
+		titel: "Legierung Hochgold",
+		je: "je Gramm (statt Tagespreis-Mittelwert)"
+	},
+	"implantat-abdruckpfosten": {
+		titel: "Implantat-Abformpfosten",
+		je: "je Implantat bei Abdruck, Hersteller laut Text"
+	},
+	"implantat-scanbody": {
+		titel: "Scanbody",
+		je: "je Implantat bei Intraoralscan, Hersteller laut Text"
+	},
+	"implantat-laboranalog": {
+		titel: "Laboranalog",
+		je: "je Implantat, Hersteller laut Text"
+	},
+	"implantat-abutmentStandard": {
+		titel: "Abutment konfektioniert",
+		je: "je Implantat, Hersteller laut Text"
+	},
+	"implantat-tiBase": {
+		titel: "Klebebasis / Ti-Base",
+		je: "je Implantat, Hersteller laut Text"
+	},
+	"implantat-schraube": {
+		titel: "Prothetikschraube",
+		je: "je Implantat, Hersteller laut Text"
+	}
+};
+var rolleZiel = (r) => `MAT:${r}`;
+var STOPP = /* @__PURE__ */ new Set([
+	"aus",
+	"auf",
+	"fur",
+	"fuer",
+	"der",
+	"die",
+	"das",
+	"des",
+	"dem",
+	"den",
+	"und",
+	"oder",
+	"mit",
+	"ohne",
+	"von",
+	"vom",
+	"zum",
+	"zur",
+	"bei",
+	"nach",
+	"pro",
+	"eines",
+	"einer",
+	"einem",
+	"einen",
+	"eine",
+	"ein",
+	"inkl",
+	"incl",
+	"zzgl",
+	"als",
+	"nur",
+	"auch",
+	"in",
+	"an",
+	"je",
+	"voll"
+]);
+/** Begriffe, die auch in zusammengesetzten oder abgekürzten Wörtern stecken („Kompositverblendung“, „teilverbl.“) */
+var BEGRIFFE = [
+	[/verblendschalen?|veneers?/, "veneer"],
+	[/verblend(ungen|ung|eten|ete|et)?|verbl$/, "verblendung"],
+	[/keramik(en)?/, "keramik"],
+	[/komposit(en|e)?|polymer(en|e)?|polyme$/, "komposit"],
+	[/kunststoff(en|e)?/, "kunststoff"],
+	[/zirkon(dioxid|oxid)?|lithiumdisilikat/, "keramik"],
+	[/monolithisch(en|er|es|e)?|(voll)?anatomisch(en|er|es|e)?/, "vollanatomisch"],
+	[/gefrae?s+t(en|er|es|e)?/, "gefraest"],
+	[/^g?egossen(en|er|es|e)?|^gossen(en|er|es|e)?/, "gegossen"]
+];
+/** Metall ist in der BEB der Normalfall; nennt der Schritt keinen Werkstoff, zählt die Legierung der Praxis nicht */
+var METALL$1 = /^(nem|edelmetall|hochgold|gold|titan|cocr|cocrmo|palladium|metall|legierung)$/;
+var WERKSTOFF = /^(nem|edelmetall|hochgold|gold|titan|metall\w*|legierung|keramik|komposit|kunststoff|pmma)$/;
+/** Alternativen im Text des Schritts („gegossen/gefräst“, „Keramik/Kompositverblendung“) */
+var ALTERNATIVEN = [["gegossen", "gefraest"], ["keramik", "komposit"]];
+var klein = (s) => s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+/** Kleinbuchstaben ohne Umlaute, Wörter ohne Füllwörter; Komposita mit einem Begriff werden zerlegt */
+function woerter(s) {
+	const roh = klein(s).split(/[^a-z0-9]+/).filter((w) => (w.length >= 3 || w === "nem") && !STOPP.has(w) && !/^\d+$/.test(w));
+	const aus = [];
+	for (const w of roh) {
+		let teile = [w];
+		for (const [re, begriff] of BEGRIFFE) teile = teile.flatMap((t) => {
+			const m = re.exec(t);
+			if (!m) return [t];
+			aus.push(begriff);
+			return [t.slice(0, m.index), t.slice(m.index + m[0].length)];
+		});
+		if (teile.length === 1 && teile[0] === w) aus.push(w);
+		else aus.push(...teile.filter((t) => t.length >= 4 && !STOPP.has(t)));
+	}
+	return [...new Set(aus)];
+}
+/**
+* Gleiches Wort: Beugung oder abgeschnittenes Wort („individuellen/-er“, „Artikulat.“) und das Grundwort eines
+* Kompositums („Spezialmodell“ – „Modell“). Locker (bei gleicher Nummer) zählt auch ein gemeinsamer Wortanfang.
+*/
+function wortTreffer(a, b, locker) {
+	if (a === b) return "gleich";
+	let i = 0;
+	while (i < a.length && i < b.length && a[i] === b[i]) i++;
+	const kurz = Math.min(a.length, b.length);
+	const lang = Math.max(a.length, b.length);
+	if (i >= 5 && kurz - i <= 2 && lang - i <= 4) return "gleich";
+	if (locker && (i >= 5 ? kurz - i <= 2 : i >= 4 && i === kurz)) return "teil";
+	const [k, l] = a.length <= b.length ? [a, b] : [b, a];
+	return k.length >= 5 && l.endsWith(k) ? "teil" : void 0;
+}
+var gleichesWort = (a, b) => wortTreffer(a, b, false) === "gleich";
+var VOKABULAR = (() => {
+	const basis = bebErgaenzen({ eintraege: beb_itz_2024_default.eintraege }).eintraege;
+	const alle = /* @__PURE__ */ new Map();
+	const dazu = (nr, text) => {
+		const t = alle.get(nr) ?? [];
+		if (!t.includes(text)) t.push(text);
+		alle.set(nr, t);
+	};
+	for (const e of basis) dazu(bebNorm(e.nr), e.text);
+	for (const e of BEB_STANDARD) dazu(bebNorm(e.nr), e.text);
+	for (const d of DIGITAL_KATALOG) dazu(d.nr, d.text);
+	return [...alle].map(([nr, t]) => ({
+		nr,
+		text: t[0],
+		texte: t.map(woerter)
+	}));
+})();
+var NACH_NR = new Map(VOKABULAR.map((e) => [e.nr, e]));
+var DF = (() => {
+	const df = /* @__PURE__ */ new Map();
+	for (const e of VOKABULAR) for (const w of new Set(e.texte.flat())) df.set(w, (df.get(w) ?? 0) + 1);
+	return df;
+})();
+var gewicht = (w) => 1 + Math.log((VOKABULAR.length + 1) / ((DF.get(w) ?? 0) + 1));
+/**
+* Anteil eines Worts, der in der anderen Wortliste wiederkommt. Teiltreffer zählen mit dem kleineren Gewicht,
+* über Nummern hinweg nur halb („Dreiviertelkrone“ ist keine „Krone“).
+*/
+function anteil(x, andere, locker) {
+	let best = 0;
+	for (const y of andere) {
+		const t = wortTreffer(x, y, locker);
+		if (t === "gleich") return gewicht(x);
+		if (t === "teil") best = Math.max(best, Math.min(gewicht(x), gewicht(y)) * (locker ? 1 : .5));
+	}
+	return best;
+}
+function aehnlichWorte(p, standard, locker) {
+	let a = p.w;
+	let b = standard;
+	if (!a.length || !b.length) return 0;
+	const letztes = a[a.length - 1];
+	if (p.gekuerzt && !b.some((x) => wortTreffer(letztes, x, true))) a = a.slice(0, -1);
+	for (const [x, y] of ALTERNATIVEN) {
+		if (!b.includes(x) || !b.includes(y)) continue;
+		if (a.includes(x) !== a.includes(y)) b = b.filter((w) => w !== (a.includes(x) ? y : x));
+		else if (!a.includes(x)) b = b.filter((w) => w !== x && w !== y);
+	}
+	if (!b.some((w) => WERKSTOFF.test(w))) a = a.filter((w) => !METALL$1.test(w));
+	if (!a.length) return 0;
+	let treffer = 0;
+	let summe = 0;
+	for (const x of a) {
+		summe += gewicht(x);
+		treffer += anteil(x, b, locker);
+	}
+	for (const y of b) {
+		summe += gewicht(y);
+		treffer += anteil(y, a, locker);
+	}
+	return summe ? treffer / summe : 0;
+}
+var aehnlichsterText = (p, e, locker = false) => Math.max(...e.texte.map((t) => aehnlichWorte(p, t, locker)));
+/** Variante nur für einen Ablauf: der Schritt nennt beide Fertigungsarten („gegossen/gefräst“), die Praxisposition eine */
+function ablaufVon(praxis, e) {
+	if (!e.texte.some((t) => t.includes("gegossen") && t.includes("gefraest"))) return void 0;
+	const p = woerter(praxis);
+	if (p.includes("gegossen") === p.includes("gefraest")) return void 0;
+	return p.includes("gefraest") ? "scan" : "abdruck";
+}
+var OHNE_ZAHN = /krone|bruecke|provisor|verblend|stift|charakteris|reparatur|instandsetz|erweiter/;
+/** Material und Teile ohne BEB-Nummer: Rolle aus dem Text */
+var ROLLEN_REGELN = [
+	[
+		"zahn-front",
+		/front ?zahn|frontz(ae|a)hn/,
+		OHNE_ZAHN
+	],
+	[
+		"zahn-seite",
+		/seiten ?zahn|seitenz(ae|a)hn/,
+		OHNE_ZAHN
+	],
+	["abform-alginat", /alginat.*(kiefer|abdruck|abformung)|(kiefer|abdruck|abformung).*alginat/],
+	["abform-praezision", /doppelmisch|korrekturabform|praezisionsabform|praezisionsabdruck/],
+	["abform-funktion", /funktionsabform|funktionsabdruck/],
+	["registrat", /registrier\w*material|registratmaterial|bissregistrat\b|\bfutar\b|occlufast|regisil|blu ?mousse/],
+	["rohling-zirkon", /zirkon\w*.*(rohling|ronde|multilayer|block|disc)|(rohling|ronde|multilayer|block|disc).*zirkon/],
+	["rohling-lithiumdisilikat", /(lithium|e ?max).*(rohling|block|cad)/],
+	["rohling-presskeramik", /press ?keramik.*rohling|e ?max press/],
+	["legierung-nem", /\b(nem|cocr|kobalt ?chrom)\b.*legierung|legierung.*\b(nem|cocr)\b|wirobond|remanium/],
+	["legierung-hochgold", /hochgold/],
+	["legierung-goldreduziert", /gold ?reduziert|edelmetall ?reduziert/],
+	["implantat-abdruckpfosten", /abformpfosten|abdruckpfosten|abformkappe|abdruckkappe/],
+	["implantat-scanbody", /scan ?body|scanpfosten/],
+	["implantat-laboranalog", /laboranalog|implantatanalog|modellanalog/],
+	["implantat-tiBase", /ti ?base|klebebasis/],
+	["implantat-schraube", /prothetikschraube|abutmentschraube|halteschraube|okklusalschraube/],
+	["implantat-abutmentStandard", /abutment.*(konfektion|titan|standard|gerade)|(konfektion|titan|standard).*abutment/]
+];
+/** gleiche Nummer: der Text muss nur erkennbar dieselbe Leistung meinen */
+var NUMMER_MIN = .35;
+/** andere Nummer: der Text muss klar passen und deutlich besser als der nächstbeste */
+var TEXT_MIN = .72;
+var TEXT_ABSTAND = .06;
+/** gleiche Nummer, aber der Text ist fast wörtlich eine andere Leistung: die gilt */
+var UMZUG_MIN = .85;
+/** Zuordnung, die PlanR einer Position vorschlägt (undefined = keine – nur über die Suche) */
+function zuordnungVorschlagen(e) {
+	const text = e.text ?? "";
+	if (e.ersetzt?.trim() && e.quelle !== "pvs") return {
+		fuer: bebNorm(e.ersetzt),
+		grund: "eingetragen"
+	};
+	const nr = e.ersetzt?.trim() || e.nr.trim();
+	const kandidat = /^\d{1,4}$/.test(nr) ? NACH_NR.get(bebNorm(nr)) : NACH_NR.get(nr.toUpperCase());
+	if (kandidat && /^D\d{3}$/.test(kandidat.nr)) return {
+		fuer: kandidat.nr,
+		grund: "nummer"
+	};
+	const pw = {
+		w: woerter(text),
+		gekuerzt: text.trim().length >= 38
+	};
+	const ueberText = () => {
+		if (!pw.w.length) return void 0;
+		const treffer = VOKABULAR.map((v) => ({
+			v,
+			a: aehnlichsterText(pw, v)
+		})).sort((x, y) => y.a - x.a);
+		const beste = treffer[0];
+		const zweite = treffer.find((x) => x.v.text !== beste?.v.text)?.a ?? 0;
+		return beste && beste.a >= TEXT_MIN && beste.a - zweite >= TEXT_ABSTAND ? {
+			fuer: beste.v.nr,
+			wenn: ablaufVon(text, beste.v),
+			grund: "text",
+			aehnlich: beste.a
+		} : void 0;
+	};
+	if (kandidat) {
+		const a = aehnlichsterText(pw, kandidat, true);
+		if (a >= NUMMER_MIN) {
+			const anders = a < TEXT_MIN ? ueberText() : void 0;
+			if (anders && anders.fuer !== kandidat.nr && (anders.aehnlich ?? 0) >= UMZUG_MIN && (anders.aehnlich ?? 0) - a >= .3) return anders;
+			return {
+				fuer: kandidat.nr,
+				wenn: ablaufVon(text, kandidat),
+				grund: "nummer",
+				aehnlich: a
+			};
+		}
+	}
+	const t = klein(text).replace(/[^a-z0-9]+/g, " ");
+	for (const [rolle, ja, nein] of ROLLEN_REGELN) if (ja.test(t) && !nein?.test(t)) return {
+		fuer: rolleZiel(rolle),
+		grund: "rolle"
+	};
+	return ueberText();
+}
+var zugeordnet$1 = /* @__PURE__ */ new WeakMap();
+/**
+* Katalog mit Zuordnung: von Hand festgelegte bleiben, alle anderen bekommen den Vorschlag (fuer '' = keiner).
+* Das Ergebnis wird je Katalog zwischengespeichert.
+*/
+function katalogZuordnen(katalog) {
+	if (!katalog) return [];
+	const da = zugeordnet$1.get(katalog);
+	if (da) return da;
+	const neu = katalog.map((e) => {
+		if (e.zuordnung === "hand") return e;
+		const v = zuordnungVorschlagen(e);
+		const { wenn: _, ...ohne } = e;
+		return {
+			...ohne,
+			fuer: v?.fuer ?? "",
+			...v?.wenn ? { wenn: v.wenn } : {},
+			zuordnung: "auto"
+		};
+	});
+	zugeordnet$1.set(katalog, neu);
+	return neu;
+}
+var zielNorm = (s) => /^\d{1,4}$/.test(s.trim()) ? bebNorm(s) : s.trim();
+/** Positionen eines Katalogs, die für einen Leistungsschritt bzw. eine Rolle eingesetzt werden */
+function fuerSchritt(katalog, ziel, ablauf) {
+	const z = zielNorm(ziel);
+	const passend = katalog.filter((e) => e.fuer && zielNorm(e.fuer) === z && (!e.wenn || e.wenn === ablauf));
+	return [...passend.filter((e) => e.wenn), ...passend.filter((e) => !e.wenn)];
+}
+var herstellerWort = (h) => woerter(h)[0] ?? "";
+/** Praxisposition für eine Rolle; Implantatteile nur vom Hersteller des geplanten Systems */
+function rolleFinden(katalog, rolle, ablauf = "abdruck", hersteller = "") {
+	if (!katalog?.length) return void 0;
+	let passend = fuerSchritt(katalogZuordnen(katalog), rolleZiel(rolle), ablauf);
+	if (rolle.startsWith("implantat-")) {
+		const h = herstellerWort(hersteller);
+		passend = h ? passend.filter((e) => woerter(e.text).some((w) => gleichesWort(w, h))) : [];
+	}
+	return passend[0];
 }
 //#endregion
 //#region src/engine/berechnung.ts
@@ -25324,7 +25851,21 @@ function positionBerechnen(p, listen, plan) {
 		case "BEB": {
 			const labor = laborVon(p, plan);
 			const e = finden(listen.beb, p.nr, (s) => s.trim().padStart(4, "0"));
-			const eigen = labor === "eigen" || !e ? eigenFinden(mitDigital(listen.eigen), p.nr) : void 0;
+			const k = findenKontext(p, plan);
+			const fremd = labor === "fremd" ? fremdFinden(listen, plan, p.nr, k) : void 0;
+			if (fremd) {
+				const einzel = p.preis ?? fremd.preis;
+				return {
+					...basis,
+					labor,
+					fremd: fremd.nr,
+					bezeichnung: p.text || fremd.text,
+					listenpreis: fremd.preis,
+					einzelpreis: einzel,
+					betrag: runden$1(einzel * anzahl)
+				};
+			}
+			const eigen = labor === "eigen" || !e ? eigenFinden(eigenKatalog(listen.eigen), p.nr, k) : void 0;
 			const aufschlag = labor === "eigen" ? Math.min(Math.max(0, plan.einstellungen.eigenPrivatAufschlag || 0), 100) : 0;
 			if (eigen) {
 				const einzel = p.preis ?? runden$1(eigen.preis * (1 + aufschlag / 100));
@@ -25356,6 +25897,19 @@ function positionBerechnen(p, listen, plan) {
 			};
 		}
 		case "MAT": {
+			const r = p.auto && p.rolle && p.rolle in ROLLEN ? materialFinden(listen, plan, p.rolle, p.labor) : void 0;
+			if (r) {
+				const einzel = r.preis;
+				return {
+					...basis,
+					labor: p.labor,
+					...p.labor === "fremd" ? { fremd: r.nr } : { eigen: r.nr },
+					bezeichnung: r.text,
+					listenpreis: p.preis,
+					einzelpreis: einzel,
+					betrag: runden$1(einzel * anzahl)
+				};
+			}
 			const einzel = p.preis ?? 0;
 			return {
 				...basis,
@@ -25366,6 +25920,34 @@ function positionBerechnen(p, listen, plan) {
 			};
 		}
 	}
+}
+var zugeordnet = /* @__PURE__ */ new WeakMap();
+var KEINE = [];
+/** Praxiskatalog mit den Schritten des digitalen Workflows und der Zuordnung zu den Leistungsschritten */
+function eigenKatalog(katalog) {
+	const k = katalog ?? KEINE;
+	let z = zugeordnet.get(k);
+	if (!z) zugeordnet.set(k, z = katalogZuordnen(mitDigital(k)));
+	return z;
+}
+/** Ablauf des Plans (Intraoralscan / Abdruck) und ob die Planung die Position gesetzt hat */
+function findenKontext(p, plan) {
+	return {
+		ablauf: plan.abformung === "scan" ? "scan" : "abdruck",
+		auto: !!p.auto
+	};
+}
+/** Preisliste des Fremdlabors gilt, solange dessen Rechnung (Labor-XML) nicht eingelesen ist */
+function fremdFinden(listen, plan, nr, k) {
+	if (plan.fremdlabor.import || !listen.fremd?.length) return void 0;
+	return eigenFinden(katalogZuordnen(listen.fremd), nr, k);
+}
+/** Material über seine Rolle: Fremdlabor-Teile aus dessen Liste, sonst aus dem Praxiskatalog */
+function materialFinden(listen, plan, rolle, labor) {
+	if (labor === "fremd" && plan.fremdlabor.import) return void 0;
+	const katalog = labor === "fremd" ? listen.fremd : listen.eigen;
+	const hersteller = rolle.startsWith("implantat-") ? implantatsystem(plan.implantat.system).hersteller : "";
+	return rolleFinden(katalog, rolle, plan.abformung === "scan" ? "scan" : "abdruck", hersteller);
 }
 /**
 * Kronenmaterial als abgeleitete MAT-Positionen (Menge in g bzw. Einheiten). Edelmetall auf BEL-Einheiten
@@ -25403,11 +25985,58 @@ function kronenmaterial(plan) {
 			text: z.text,
 			labor: z.labor,
 			auto: true,
-			material: true
+			material: true,
+			rolle: METALL.has(z.werkstoff) ? `legierung-${z.werkstoff}` : `rohling-${z.werkstoff}`
 		})),
 		hinweise: m.hinweise,
 		edelmetallKasse: new Set(m.edelmetallKasse)
 	};
+}
+var METALL = /* @__PURE__ */ new Set([
+	"nem",
+	"goldreduziert",
+	"hochgold"
+]);
+/**
+* Material aus den Rollen des Katalogs, wo der Ablauf es braucht: Konfektionszähne je Prothesenzahn,
+* Funktionsabformung je Kiefer, Alginat (Situations-/Gegenkiefermodell), Präzisionsabformung und Registrat nur
+* bei Abdruck. Ohne zugeordnete Position im Katalog der Praxis bzw. des Fremdlabors entsteht keine Zeile.
+*/
+function rollenMaterial(plan, positionen, listen) {
+	const out = [];
+	const dazu = (rolle, zahn, anzahl, labor) => {
+		if (anzahl <= 0 || !materialFinden(listen, plan, rolle, labor)) return;
+		out.push({
+			id: `rolle-${rolle}-${zahn}`,
+			ebene: "MAT",
+			nr: "",
+			zahn,
+			anzahl,
+			rolle,
+			auto: true,
+			material: true,
+			...labor ? { labor } : {}
+		});
+	};
+	const prothesenKiefer = ["OK", "UK"].filter((k) => positionen.some((p) => p.zahn === k && PROTHESE$1(p)));
+	for (const k of prothesenKiefer) {
+		const ersetzt = Object.entries(plan.zaehne).filter(([z, v]) => kieferVon(z) === k && (v.TP.trim() || v.R || "").toUpperCase() === "E").map(([z]) => z);
+		const laborPos = positionen.find((p) => p.zahn === k && (p.ebene === "BEL" || p.ebene === "BEB"));
+		const labor = laborPos ? laborVon(laborPos, plan) : plan.einstellungen.labor === "praxis" ? "eigen" : "fremd";
+		dazu("zahn-front", k, ersetzt.filter((z) => /^[1-4][1-3]$/.test(z)).length, labor);
+		dazu("zahn-seite", k, ersetzt.filter((z) => /^[1-4][4-8]$/.test(z)).length, labor);
+		if (positionen.some((p) => p.zahn === k && FUNKTIONSABFORMUNG(p))) dazu("abform-funktion", k, 1);
+	}
+	const abdruck = plan.abformung !== "scan";
+	const kronenKiefer = [...new Set(positionen.filter(KRONE).map((p) => kieferVon(p.zahn)))];
+	const prothesenAbdruck = (plan.abformungProthese || plan.abformung) !== "scan" ? prothesenKiefer : [];
+	if (abdruck) {
+		for (const k of kronenKiefer) dazu("abform-praezision", k, 1);
+		if (kronenKiefer.length) dazu("registrat", "", 1);
+	}
+	const gegenkiefer = abdruck && kronenKiefer.length ? ["OK", "UK"].filter((k) => !kronenKiefer.includes(k)) : [];
+	for (const k of /* @__PURE__ */ new Set([...prothesenAbdruck, ...gegenkiefer])) dazu("abform-alginat", k, 1);
+	return out;
 }
 function berechnen(plan, listen) {
 	const hinweise = [];
@@ -25416,7 +26045,8 @@ function berechnen(plan, listen) {
 	const allePositionen = [
 		...mat.basis,
 		...zusatz.positionen,
-		...mat.positionen
+		...mat.positionen,
+		...rollenMaterial(plan, mat.basis, listen)
 	];
 	const versorgungsart = versorgungsartErmitteln({
 		...plan,
@@ -26437,7 +27067,7 @@ function therapieAnwenden(regel, zaehne, plan) {
 		abformung: implantatAbf
 	}, plan.einstellungen.labor === "gewerbe" ? "fremd" : void 0);
 	const abformung = plan.abformung || (implantatAbf === "scan" && imp.positionen.length ? "scan" : "");
-	const abf = abformungAnwenden([...r.positionen, ...imp.positionen], mitR, abformung, plan.abformungProthese ?? "", plan.einstellungen.labor === "praxis");
+	const abf = abformungAnwenden([...r.positionen, ...imp.positionen], mitR, abformung, plan.abformungProthese ?? "", plan.einstellungen.labor === "praxis", plan.einstellungen.protheseDigital ?? "voll");
 	return {
 		...r,
 		positionen: abf.positionen,
@@ -28004,14 +28634,36 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-14 14:32";
+var ENGINE_STAND = "2026-10-15 03:51";
+var ausKatalog = /* @__PURE__ */ new WeakMap();
+/** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
+function katalogTeile(k, eigen) {
+	const da = ausKatalog.get(k);
+	if (da && da.eigen === eigen) return da;
+	const basis = STANDARD_LISTEN.find((l) => l.typ === "goz");
+	const teile = {
+		eigen,
+		mischung: k.eigenlabor?.length ? eigenlaborMischen(eigen ?? [], k) : eigen ?? [],
+		goz: basis && k.goz?.length ? praxisGozListe(basis, k) : void 0
+	};
+	ausKatalog.set(k, teile);
+	return teile;
+}
 /** Preislisten für einen Plan wählen (KZV, Stichtag) – wie in der App */
 function listenFuer(plan, praxis = {}) {
-	const eigene = praxis.preislisten ?? [];
+	const k = praxis.katalog;
+	const t = k ? katalogTeile(k, praxis.eigen) : void 0;
+	const eigene = [...praxis.preislisten ?? []];
+	if (t?.goz && !eigene.some((l) => l.id === "goz-praxis")) eigene.push(t.goz);
 	const ids = new Set(eigene.map((l) => l.id));
 	return {
 		...listenFuerPlan([...STANDARD_LISTEN.filter((l) => !ids.has(l.id)), ...eigene], plan),
-		eigen: praxis.eigen ?? []
+		eigen: t?.mischung ?? praxis.eigen ?? [],
+		fremd: praxis.fremd ?? [],
+		...k ? {
+			komplexe: k.komplexe,
+			belPraxis: belPreise(k)
+		} : {}
 	};
 }
 var rechnen = (plan, praxis = {}) => berechnen(plan, listenFuer(plan, praxis));
