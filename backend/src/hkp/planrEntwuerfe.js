@@ -2,7 +2,7 @@
 // Eingang des Planers (Entwurf mit eigener Nummer) und meldet sie abgeholt. Kassen-HKPs bleiben im HKP-Register.
 import admin from "../firebase.js";
 
-export const MODULE = new Set(["privat-kv"]);
+export const MODULE = new Set(["privat-kv", "kons-mkv"]);
 const col = (clientId) => admin.firestore().collection("clients").doc(clientId).collection("planrEntwuerfe");
 const jetzt = () => new Date().toISOString();
 

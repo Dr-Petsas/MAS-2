@@ -61,6 +61,13 @@ export function privatSummenSatz(s) {
 }
 const zahlRund = (x) => Math.round((Number(x) || 0) * 100) / 100;
 
+/** Füllungs-MKV: was der Patient zahlt, was die Kasse traegt, dazu die Privatvereinbarung nach § 8 Abs. 7 */
+export function mkvSummenSatz(s) {
+  if (!s) return "";
+  return `Mehrkosten für den Patienten ${euroSprech(s.mehrkosten)}, die Kasse trägt ${euroSprech(s.kassenanteil)}`
+    + `${s.privat7 > 0 ? `, dazu ${euroSprech(s.privat7)} als Privatvereinbarung` : ""}`;
+}
+
 export const hkpTitel = (h) => `${h.versorgungText || "HKP"}${h.kiefer ? ` im ${h.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}` : ""}`;
 
 /** Kurzbeschreibung eines HKP fuer Listen und Doppelungs-Rueckfragen */

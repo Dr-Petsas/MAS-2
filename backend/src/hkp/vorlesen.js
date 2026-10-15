@@ -170,7 +170,7 @@ export function jahrgangWahl(text, kandidaten) {
  * Vorlese-Frage vor der Anlage. Mit `spanne` statt der Summen nur das billigste und teuerste Ende –
  * die Summen nennt Clara erst beim Anlegen (Chef 10.10.2026: "Preise nicht zweimal").
  */
-export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgung, ausfuehrung = "", summen = "", spanne = "", doppelt = "", befundFreigegeben = false }) {
+export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgung, ausfuehrung = "", summen = "", spanne = "", doppelt = "", hinweis = "", befundFreigegeben = false }) {
   const anrede = patient.anredeLabel?.startsWith("Herrn ") ? "Herrn " : patient.anredeLabel?.startsWith("Frau ") ? "Frau " : "";
   const name = `${anrede}${patient.firstName || ""} ${patient.lastName || ""}`.replace(/\s+/g, " ").trim();
   const befund = befundFreigegeben ? "" : befundSatz(zaehne || {}, kiefer);
@@ -178,5 +178,5 @@ export function vorleseSatz({ patient, versorgungText, kiefer, zaehne, versorgun
   const frage = spanne ? " Wo soll der Eigenanteil ungefähr landen – oder soll ich den Entwurf so anlegen?" : " Soll ich den Entwurf so anlegen?";
   return `Bevor ich anlege, bitte prüfen: ${versorgungText} für ${name}, ${geburtSprech(patient.birthDate)}.`
     + `${befund ? ` Befund ${befund}` : ""}${versorgung ? ` Geplant: ${versorgung}.` : ""}${ausfuehrung ? ` Ausführung: ${ausfuehrung}.` : ""}`
-    + `${preis}${doppelt ? ` ${doppelt}` : ""}${frage}`;
+    + `${preis}${hinweis ? ` ${hinweis}` : ""}${doppelt ? ` ${doppelt}` : ""}${frage}`;
 }

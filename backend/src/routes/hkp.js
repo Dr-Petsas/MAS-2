@@ -18,6 +18,7 @@ import express from "express";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import * as E from "../vendor/hkp-engine.mjs";
 import * as P from "../vendor/privat-ze-engine.mjs";
+import * as M from "../vendor/mkv-engine.mjs";
 import { assertAppEnabled, getBilling } from "../entitlements.js";
 import { planrAusBilling } from "../hkp/planrBerechtigung.js";
 import { claraZugang, rufnameSaeubern } from "../hkp/planrClara.js";
@@ -45,7 +46,7 @@ import {
 import {
   auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, pvsKennung, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
-import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
+import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
@@ -1194,6 +1195,106 @@ async function privatAnlegen(clientId, d) {
   };
 }
 
+// Fuellungs-Mehrkostenvereinbarung per Sprache (Chef 15.10.2026): Engine des MKV-Planers (src/vendor/mkv-engine.mjs).
+// Den Befund liest sie nur zur Pruefung aus dem Praxisprogramm (keine Quellen-Frage); der Entwurf wartet wie der private
+// Zahnersatz in planrEntwuerfe und kommt ohne Regler an, damit der Planer mit dem Mehrkosten-Modell der Praxis rechnet.
+// Notaus MAS_MKV=0.
+const mkvAus = () => String(process.env.MAS_MKV || "").trim() === "0";
+const MKV_TEXT = "Füllungs-Mehrkostenvereinbarung";
+const MKV_AUS_SATZ = "Eine Füllungs-Mehrkostenvereinbarung kann ich gerade nicht per Sprache anlegen. Bitte im Planer Füllungs-MKV in PlanR erstellen.";
+const MKV_WORT = /mehrkosten|\bm\.? ?k\.? ?v\b/i;
+const FUELLUNG_WORT = /f(?:ü|ue)llung|komposit|kunststoff|inlay|einlagef|goldh(?:ä|ae)mmer|\baufbau/i;
+const ZE_WORT = /krone|br(?:ü|ue)cke|prothese|teleskop|implantat|zahnersatz|\bhkp\b|heil- ?und kostenplan/i;
+export const mkvGesagt = (t) => MKV_WORT.test(t) || (FUELLUNG_WORT.test(t) && !ZE_WORT.test(t));
+const MKV_KUERZEL = { komposit: "K", mehrfarben: "M", inlay: "I", goldhaemmer: "G", aufbau: "A" };
+const mkvPlanZeilen = (plan) => Object.fromEntries(Object.entries(plan?.zaehne || {}).map(([z, l]) => [z, { TP: `${MKV_KUERZEL[l.therapie] || ""}${l.flaechen || ""}`, R: "" }]));
+
+function mkvOptionen(patient, praxis) {
+  const e = praxis?.einstellungen || {};
+  return {
+    patient: { name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" },
+    praxis: { plz: String(e.praxisPlz || ""), kzvNr: String(e.kzv || "") },
+  };
+}
+
+/** Rechnen und vorlesen bzw. zurueckfragen; d: { patient, auftragText, befundZaehne, optionen, namenGesagt, pvsNr, befundQuelle } */
+function mkvRechnen(clientId, d) {
+  const r = M.mkvEntwurf(d.auftragText, d.befundZaehne || {}, d.optionen);
+  if (r.status !== "ok") {
+    wahlMerken(clientId, d.patient, { planart: "mkv", mkvAuftrag: d.auftragText, mkvKonflikt: r.zahn || "" });
+    return { ok: true, rueckfrage: r.grund, message: r.frage };
+  }
+  const z = r.zusammenfassung;
+  const summen = { mehrkosten: zahl(z.mehrkosten), kassenanteil: zahl(z.kassenanteil), privat: zahl(z.privat), privat7: zahl(z.privat7) };
+  const hinweise = [...r.hinweise, ...(d.befundQuelle ? [] : ["Einen Befund aus dem Praxisprogramm hatte ich nicht, die Zähne habe ich deshalb nicht geprüft."])];
+  // vollstaendig vorgelesen: ein neuer Auftrag beginnt von vorn (Korrekturen laufen ueber hkp-ausfuehrung-aendern)
+  wahlMerken(clientId, d.patient, { planart: "mkv", mkvAuftrag: "", mkvKonflikt: "" });
+  vorgangMelden(clientId, d.pvsNr, { modul: "kons-mkv", phase: "planung", plan: mkvPlanZeilen(r.plan), meldung: "" });
+  vorschauMerken(clientId, { ...d, mkv: true, r, summen, hinweise, versorgungText: MKV_TEXT, at: Date.now() });
+  return {
+    ok: true, rueckfrage: "vorlesen",
+    message: vorleseSatz({
+      patient: d.patient, versorgungText: MKV_TEXT, versorgung: M.mkvVersorgungSatz(z), summen: mkvSummenSatz(summen),
+      hinweis: hinweise.slice(0, 3).join(" "), befundFreigegeben: true,
+    }),
+  };
+}
+
+const ZAHN_IM_TEXT = /(?<!\d)[1-4]\s?[,.]?\s?[1-8](?!\d)/g;
+/**
+ * Antwort auf eine Rueckfrage: eine Teilantwort ("beide mod", "47") ergaenzt den bisherigen Auftrag, beim
+ * Befund-Konflikt ersetzt der genannte Zahn den unmoeglichen. Ein vollstaendiger neuer Auftrag (Fuellungsart und Zahn)
+ * oder einer, der den alten schon enthaelt, gilt allein.
+ */
+export function mkvFolgeText(w, auftragText) {
+  const vorher = String(w?.mkvAuftrag || "").replace(/[\s.]+$/, "");
+  if (!vorher || textNorm(auftragText).includes(textNorm(vorher))) return auftragText;
+  const zaehne = String(auftragText).match(ZAHN_IM_TEXT) || [];
+  if (zaehne.length && (FUELLUNG_WORT.test(auftragText) || MKV_WORT.test(auftragText))) return auftragText;
+  const konflikt = String(w.mkvKonflikt || "");
+  if (konflikt && zaehne.length === 1) {
+    const neu = zaehne[0].replace(/\D/g, "");
+    const ersetzt = vorher.replace(new RegExp(`(?<!\\d)${konflikt[0]}\\s?[,.]?\\s?${konflikt[1]}(?!\\d)`, "g"), neu);
+    const rest = String(auftragText).replace(ZAHN_IM_TEXT, "").replace(/\b(den|der|die|zahn|meine ich|ich meine|natürlich|sorry|nein)\b/gi, "").replace(/[\s.,]+/g, " ").trim();
+    return rest ? `${ersetzt}. ${neu} ${rest}` : ersetzt;
+  }
+  return `${vorher}. ${auftragText}`;
+}
+
+async function mkvZweig(clientId, b, patient, auftragText) {
+  const w = wahlLesen(clientId, patient);
+  const text = mkvFolgeText(w, auftragText);
+  const pb = await Promise.race([pvsBefund(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
+  const pvsNr = pb?.ok ? String(pb.nummer || "") : String(w.pvsNummer || "");
+  if (pvsNr && w.pvsNummer !== pvsNr) wahlMerken(clientId, patient, { pvsNummer: pvsNr });
+  if (pvsNr) vorgangMelden(clientId, pvsNr, { modul: "kons-mkv", phase: "befund", auftrag: text });
+  const praxis = await praxisLaden(clientId).catch(() => ({ einstellungen: {} }));
+  const x = mkvRechnen(clientId, {
+    patient, auftragText: text, befundZaehne: pb?.ok ? pb.befund : {}, optionen: mkvOptionen(patient, praxis),
+    namenGesagt: [String(b.name || "").trim()], pvsNr, befundQuelle: pb?.ok ? { art: "pvs", pvs: pb.pvs, datum: pb.datum } : null,
+  });
+  return pvsNr ? { ...x, card: befundKarte(clientId, pvsNr, patient) } : x;
+}
+
+async function mkvAnlegen(clientId, d) {
+  const { patient, auftragText, r, summen } = d;
+  const e = await entwurfAblegen(clientId, {
+    modul: "kons-mkv",
+    patient: { id: patient.id, label: patient.anredeLabel || "", name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" },
+    anzeige: [patient.firstName, patient.lastName].filter(Boolean).join(" "), betrag: summen.mehrkosten, planJson: JSON.stringify(r.ablagePlan),
+    auftragText, befundQuelle: d.befundQuelle || null, hinweise: d.hinweise || r.hinweise, engineStand: M.ENGINE_STAND,
+  });
+  log.info?.(`[hkp] MKV-Entwurf ${e.id} abgelegt (Patient ${patient.id})`);
+  vorgangMelden(clientId, d.pvsNr, { modul: "kons-mkv", phase: "angelegt", plan: mkvPlanZeilen(r.plan), meldung: "" });
+  befundWahl.delete(wahlSchluessel(clientId, patient));
+  return {
+    ok: true, entwurfId: e.id,
+    ...mitUndo("planr_entwurf", { id: e.id, label: `die Füllungs-Mehrkostenvereinbarung für ${patient.anredeLabel}` }),
+    message: `Die Füllungs-Mehrkostenvereinbarung für ${patient.anredeLabel} ist angelegt. Sie steht in PlanR im Planer Füllungs-MKV als Entwurf; `
+      + `die Mehrkosten rechnet der Planer dort nach Ihrem Praxismodell. Vorläufig ${mkvSummenSatz(summen)}.`,
+  };
+}
+
 router.post("/tools/hkp-create-draft", async (req, res) => {
   try {
     const clientId = await claraVorspann(req, res);
@@ -1201,9 +1302,17 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const b = req.body || {};
     const auftragText = String(b.auftrag || "").trim();
     let privat = wahr(b.privat) || privatGesagt(auftragText);
+    let mkv = !wahr(b.privat) && (String(b.planart || "").trim().toLowerCase() === "mkv" || mkvGesagt(auftragText));
+    if (mkv) privat = false;
     if (privat && privatAus()) return res.json({ ok: true, message: PRIVAT_AUS_SATZ });
-    const ziel = zielpreisAn() && !privat ? zielpreisAus(b.zielpreis) : null;
+    if (mkv && mkvAus()) return res.json({ ok: true, message: MKV_AUS_SATZ });
+    const ziel = zielpreisAn() && !privat && !mkv ? zielpreisAus(b.zielpreis) : null;
     const vs = wahr(b.bestaetigt) || ziel ? vorschauFinden(vorschauen(clientId), b) : null;
+    if (vs?.mkv) {
+      vorschauWeg(clientId, vs);
+      vetterWahl.delete(clientId);
+      return res.json(await mkvAnlegen(clientId, vs));
+    }
     if (vs?.privat) {
       vorschauWeg(clientId, vs);
       vetterWahl.delete(clientId);
@@ -1217,15 +1326,23 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         ...(ziel ? aufZielpreis(vs, ziel, praxis) : vs), vorgelesen: true, zusaetzlich: true, alteVerwerfen: vs.alteVerwerfen || wahr(b.alte_verwerfen),
       }));
     }
-    const p = await patientAufloesen(clientId, b, `Für welchen Patienten soll ich den ${privat ? "Privatplan" : "HKP"} erstellen?`, { vettern: true });
+    const p = await patientAufloesen(clientId, b, `Für welchen Patienten soll ich ${privat ? "den Privatplan" : mkv ? "die Füllungs-Mehrkostenvereinbarung" : "den HKP"} erstellen?`, { vettern: true });
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
-    // Folgezuege (Befundquelle, Ausfuehrung) kommen oft ohne privat=true: der laufende Privatplan gilt weiter,
-    // bis der Chef ausdruecklich Kasse/HKP sagt.
-    if (!privat && !kasseGesagt(auftragText) && wahlLesen(clientId, patient).privat) privat = true;
+    // Folgezuege (Befundquelle, Ausfuehrung, Flaechen) kommen oft ohne privat=true bzw. planart: der laufende
+    // Privatplan oder die laufende MKV gilt weiter, bis der Chef ausdruecklich eine andere Planart nennt.
+    const lauf = wahlLesen(clientId, patient);
+    const nurFuellungswort = mkv && !MKV_WORT.test(auftragText) && String(b.planart || "").trim().toLowerCase() !== "mkv";
+    const zeLaeuft = lauf.privat || (lauf.planart !== "mkv" && !!(lauf.quelle || lauf.text))
+      || vorschauen(clientId).some((v) => v.patient?.id === patient.id && !v.mkv);
+    if (nurFuellungswort && zeLaeuft) mkv = false;
+    if (!privat && !mkv && lauf.planart === "mkv" && !kasseGesagt(auftragText) && !privatGesagt(auftragText) && !ZE_WORT.test(auftragText)) mkv = true;
+    if (!privat && !mkv && !kasseGesagt(auftragText) && lauf.privat) privat = true;
     if (privat && privatAus()) return res.json({ ok: true, message: PRIVAT_AUS_SATZ });
-    if (privat || wahlLesen(clientId, patient).privat) wahlMerken(clientId, patient, { privat });
-    const modul = privat ? "privat-kv" : "hkp";
+    if (mkv && mkvAus()) return res.json({ ok: true, message: MKV_AUS_SATZ });
+    if (privat || lauf.privat) wahlMerken(clientId, patient, { privat });
+    if (mkv || lauf.planart === "mkv") wahlMerken(clientId, patient, { planart: mkv ? "mkv" : "", ...(mkv ? {} : { mkvAuftrag: "" }) });
+    const modul = privat ? "privat-kv" : mkv ? "kons-mkv" : "hkp";
     const gewaehlt = p.gewaehlt || vetterSchonGewaehlt(vetterWahl.get(clientId), p.sel || patient);
     const vettern = vetternAus() || gewaehlt ? [] : await namensvettern(clientId, patient).catch(() => []);
     if (vettern.length) {
@@ -1265,6 +1382,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       await befundVorab();
       return raus({ ok: true, message: `Gut, ich bin bereit. Was soll ich für ${patient.anredeLabel} planen?` });
     }
+    if (mkv) return raus(await mkvZweig(clientId, b, patient, auftragText));
 
     const auftrag = E.auftragVerstehen(auftragText);
     const vergessen = vergessenerKiefer(auftragText, auftrag);
@@ -1488,7 +1606,7 @@ router.post("/tools/hkp-details", async (req, res) => {
       if (vs && vorschauGemeint(vs, b.auswahl, letzterHkp.get(clientId))) {
         return res.json({
           ok: true, rueckfrage: "vorlesen",
-          message: `Der ${vs.versorgungText || "HKP"} für ${vs.patient.anredeLabel} ist noch nicht angelegt. Voraussichtlich ${vs.privat ? privatSummenSatz(vs.summen) : summenSatz(vs.summen)}. Soll ich den Entwurf so anlegen?`,
+          message: `${vs.mkv ? "Die" : "Der"} ${vs.versorgungText || "HKP"} für ${vs.patient.anredeLabel} ist noch nicht angelegt. Voraussichtlich ${vs.mkv ? mkvSummenSatz(vs.summen) : vs.privat ? privatSummenSatz(vs.summen) : summenSatz(vs.summen)}. Soll ich den Entwurf so anlegen?`,
         });
       }
     }
@@ -1650,6 +1768,10 @@ function vorschauFuerAenderung(clientId, b) {
 
 function vorschauKorrigieren(clientId, vs, text, praxis) {
   const auftragText = `${String(vs.auftragText || "").replace(/[\s.]+$/, "")}. ${text}`.trim();
+  if (vs.mkv) {
+    vorschauWeg(clientId, vs);
+    return mkvRechnen(clientId, { ...vs, auftragText });
+  }
   const auftrag = E.auftragVerstehen(auftragText);
   const r = vs.privat
     ? P.privatZeEntwurf(auftragText, vs.befund.befund, { patient: vs.r.plan.patient, implantatSystem: implantatStandard(praxis) })
