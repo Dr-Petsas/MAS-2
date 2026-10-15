@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 4b75cca936b5)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 d4f28f34d0ea)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -25445,11 +25445,23 @@ var BEGRIFFE = [
 	[/zirkon(dioxid|oxid)?|lithiumdisilikat/, "keramik"],
 	[/monolithisch(en|er|es|e)?|(voll)?anatomisch(en|er|es|e)?/, "vollanatomisch"],
 	[/gefrae?s+t(en|er|es|e)?/, "gefraest"],
-	[/^g?egossen(en|er|es|e)?|^gossen(en|er|es|e)?/, "gegossen"]
+	[/^g?egossen(en|er|es|e)?|^gossen(en|er|es|e)?|^guss(?!s)/, "gegossen"]
 ];
 /** Metall ist in der BEB der Normalfall; nennt der Schritt keinen Werkstoff, zählt die Legierung der Praxis nicht */
 var METALL$1 = /^(nem|edelmetall|hochgold|gold|titan|cocr|cocrmo|palladium|metall|legierung)$/;
-var WERKSTOFF = /^(nem|edelmetall|hochgold|gold|titan|metall\w*|legierung|keramik|komposit|kunststoff|pmma)$/;
+var WERKSTOFF = /^(nem|edelmetall|hochgold|gold|titan|metall\w*|legierung|keramik|komposit|kunststoff|pmma|wachs)$/;
+var NICHT_METALL = /* @__PURE__ */ new Set([
+	"keramik",
+	"komposit",
+	"kunststoff"
+]);
+var RESTAURATION = /(krone|inlay|onlay|glied)$/;
+var VERFAHREN = /* @__PURE__ */ new Set([
+	"gegossen",
+	"gefraest",
+	"gebogen",
+	"gepresst"
+]);
 /** Alternativen im Text des Schritts („gegossen/gefräst“, „Keramik/Kompositverblendung“) */
 var ALTERNATIVEN = [["gegossen", "gefraest"], ["keramik", "komposit"]];
 var klein = (s) => s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
@@ -25510,16 +25522,27 @@ var DF = (() => {
 	return df;
 })();
 var gewicht = (w) => 1 + Math.log((VOKABULAR.length + 1) / ((DF.get(w) ?? 0) + 1));
+/** Bauteile, deren Arten eigene Leistungen sind (Dreiviertel-, Teil-, Teleskop-, Doppelkrone) */
+var KOPF = /* @__PURE__ */ new Set([
+	"krone",
+	"glied",
+	"brueckenglied",
+	"inlay"
+]);
 /**
 * Anteil eines Worts, der in der anderen Wortliste wiederkommt. Teiltreffer zählen mit dem kleineren Gewicht,
-* über Nummern hinweg nur halb („Dreiviertelkrone“ ist keine „Krone“).
+* über Nummern hinweg nur zu einem Viertel („Doppelkrone“ ist keine „Krone“); bei gleicher Nummer voll, außer
+* das Bauteil der Praxis ist allgemeiner als das des Schritts („Krone“ bestätigt nicht „Dreiviertelkrone“).
 */
-function anteil(x, andere, locker) {
+function anteil(x, andere, locker, xVonPraxis) {
 	let best = 0;
 	for (const y of andere) {
 		const t = wortTreffer(x, y, locker);
 		if (t === "gleich") return gewicht(x);
-		if (t === "teil") best = Math.max(best, Math.min(gewicht(x), gewicht(y)) * (locker ? 1 : .5));
+		if (t !== "teil") continue;
+		const [praxisWort, schrittWort] = xVonPraxis ? [x, y] : [y, x];
+		const schrittSpezieller = schrittWort.length > praxisWort.length && KOPF.has(praxisWort);
+		best = Math.max(best, Math.min(gewicht(x), gewicht(y)) * (!locker ? .25 : schrittSpezieller ? .5 : 1));
 	}
 	return best;
 }
@@ -25534,17 +25557,21 @@ function aehnlichWorte(p, standard, locker) {
 		if (a.includes(x) !== a.includes(y)) b = b.filter((w) => w !== (a.includes(x) ? y : x));
 		else if (!a.includes(x)) b = b.filter((w) => w !== x && w !== y);
 	}
-	if (!b.some((w) => WERKSTOFF.test(w))) a = a.filter((w) => !METALL$1.test(w));
-	if (!a.length) return 0;
+	const neutral = /* @__PURE__ */ new Set();
+	if (!b.some((w) => WERKSTOFF.test(w))) {
+		for (const w of a) if (METALL$1.test(w)) neutral.add(w);
+	}
+	if (!b.some((w) => VERFAHREN.has(w) || NICHT_METALL.has(w))) neutral.add("gegossen");
+	if (a.every((w) => neutral.has(w))) return 0;
 	let treffer = 0;
 	let summe = 0;
 	for (const x of a) {
-		summe += gewicht(x);
-		treffer += anteil(x, b, locker);
+		summe += gewicht(x) * (neutral.has(x) ? .3 : 1);
+		treffer += anteil(x, b, locker, true);
 	}
 	for (const y of b) {
 		summe += gewicht(y);
-		treffer += anteil(y, a, locker);
+		treffer += anteil(y, a, locker, false);
 	}
 	return summe ? treffer / summe : 0;
 }
@@ -25556,17 +25583,17 @@ function ablaufVon(praxis, e) {
 	if (p.includes("gegossen") === p.includes("gefraest")) return void 0;
 	return p.includes("gefraest") ? "scan" : "abdruck";
 }
-var OHNE_ZAHN = /krone|bruecke|provisor|verblend|stift|charakteris|reparatur|instandsetz|erweiter/;
+var OHNE_ZAHN = /krone|bruecke|provisor|verblend|stift|charakteris|reparatur|instandsetz|erweiter|gnatholog|aufstell|modell|wachs/;
 /** Material und Teile ohne BEB-Nummer: Rolle aus dem Text */
 var ROLLEN_REGELN = [
 	[
 		"zahn-front",
-		/front ?zahn|frontz(ae|a)hn/,
+		/\bfront ?z(ae|a)hne?\b/,
 		OHNE_ZAHN
 	],
 	[
 		"zahn-seite",
-		/seiten ?zahn|seitenz(ae|a)hn/,
+		/\bseiten ?z(ae|a)hne?\b/,
 		OHNE_ZAHN
 	],
 	["abform-alginat", /alginat.*(kiefer|abdruck|abformung)|(kiefer|abdruck|abformung).*alginat/],
@@ -25612,7 +25639,8 @@ function zuordnungVorschlagen(e) {
 	};
 	const ueberText = () => {
 		if (!pw.w.length) return void 0;
-		const treffer = VOKABULAR.map((v) => ({
+		const nichtMetall = pw.w.some((w) => NICHT_METALL.has(w)) && pw.w.some((w) => RESTAURATION.test(w)) && !pw.w.includes("verblendung") && !/\bfuer (keramik|kunststoff|komposit|polymer|kst)/.test(klein(text));
+		const treffer = VOKABULAR.filter((v) => !nichtMetall || v.texte.some((t) => t.some((w) => WERKSTOFF.test(w)))).map((v) => ({
 			v,
 			a: aehnlichsterText(pw, v)
 		})).sort((x, y) => y.a - x.a);
@@ -28634,7 +28662,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-15 03:51";
+var ENGINE_STAND = "2026-10-15 04:03";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
