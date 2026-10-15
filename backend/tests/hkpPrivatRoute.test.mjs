@@ -140,11 +140,15 @@ test("Rueckgaengig vor dem Abholen verwirft; PlanR bekommt ihn nicht mehr", asyn
 });
 
 test("Wortlaut 'privat'/'Kostenvoranschlag' reicht; 'HKP' schaltet zurueck auf die Kasse", async () => {
-  const { privatGesagt } = await import("../src/routes/hkp.js");
+  const { privatGesagt, kasseGesagt } = await import("../src/routes/hkp.js");
   assert.equal(privatGesagt("Privater Zahnersatz, Brücke 14 bis 16"), true);
   assert.equal(privatGesagt("Kostenvoranschlag Brücke 14 bis 16"), true);
   assert.equal(privatGesagt("HKP Brücke 14 bis 16 mit Privatstufe zwei"), false);
   assert.equal(privatGesagt("Kasse oder privat? Kasse."), false);
+  assert.equal(privatGesagt("Einen privaten HKP für Frau Muster"), true);
+  assert.equal(kasseGesagt("Einen privaten HKP für Frau Muster"), false);
+  assert.equal(kasseGesagt("HKP Brücke 14 bis 16"), true);
+  assert.equal(kasseGesagt("Brücke 14 bis 16"), false);
   const frage = await rufe({ auftrag: "Kostenvoranschlag Brücke von 14 auf 16 Vollkeramik" });
   assert.equal(frage.rueckfrage, "befund_quelle", frage.message);
   const vorschau = await rufe({ auftrag: "Kostenvoranschlag Brücke von 14 auf 16 Vollkeramik", befund: "aus Dampsoft" });

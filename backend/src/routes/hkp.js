@@ -1167,9 +1167,11 @@ async function entwurfAnlegen(clientId, d) {
 const privatAus = () => String(process.env.MAS_PRIVAT_ZE || "").trim() === "0";
 const PRIVAT_TEXT = "Privatplan Zahnersatz";
 const PRIVAT_AUS_SATZ = "Einen privaten Zahnersatz-Plan kann ich gerade nicht per Sprache anlegen. Bitte im Planer Zahnersatz privat in PlanR erstellen.";
-const KASSE_WORT = /\bkasse|\bhkp\b|heil- ?und kostenplan|gesetzlich/i;
-// "Privatstufe"/"Privatanteil" gehoeren zum Kassen-HKP
-export const privatGesagt = (t) => /\bprivat(?!stufe|anteil)|kostenvoranschlag/i.test(t) && !KASSE_WORT.test(t);
+// "Privatstufe"/"Privatanteil" gehoeren zum Kassen-HKP; "HKP" sagt die Praxis auch zum Privatplan
+const PRIVAT_WORT = /\bprivat(?!stufe|anteil)|kostenvoranschlag/i;
+const KASSE_WORT = /\bkasse|gesetzlich/i;
+export const privatGesagt = (t) => PRIVAT_WORT.test(t) && !KASSE_WORT.test(t);
+export const kasseGesagt = (t) => KASSE_WORT.test(t) || (/\bhkp\b|heil- ?und kostenplan/i.test(t) && !PRIVAT_WORT.test(t));
 
 async function privatAnlegen(clientId, d) {
   const { patient, auftragText, befund, r, summen } = d;
@@ -1220,8 +1222,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const patient = p.patient;
     // Folgezuege (Befundquelle, Ausfuehrung) kommen oft ohne privat=true: der laufende Privatplan gilt weiter,
     // bis der Chef ausdruecklich Kasse/HKP sagt.
-    const kasseGesagt = KASSE_WORT.test(auftragText);
-    if (!privat && !kasseGesagt && wahlLesen(clientId, patient).privat) privat = true;
+    if (!privat && !kasseGesagt(auftragText) && wahlLesen(clientId, patient).privat) privat = true;
     if (privat && privatAus()) return res.json({ ok: true, message: PRIVAT_AUS_SATZ });
     if (privat || wahlLesen(clientId, patient).privat) wahlMerken(clientId, patient, { privat });
     const modul = privat ? "privat-kv" : "hkp";
