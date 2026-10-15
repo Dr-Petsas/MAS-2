@@ -41,7 +41,7 @@ import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
   praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
 } from "../hkp/store.js";
-import { auftragsKiefer, befundErmitteln, befundInsPvs, datumDe, lenaFreigeschaltet, quelleAus } from "../hkp/befundQuelle.js";
+import { auftragsKiefer, befundErmitteln, befundInsPvs, befundWerkzeug, datumDe, lenaFreigeschaltet, quelleAus } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, liste, nurSummenFrage, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
@@ -1252,6 +1252,27 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     });
   } catch (e) {
     log.error?.(`[hkp] create-draft: ${e?.stack || e}`);
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Befund (01) eines Patienten vorlesen, Zaehne aendern, nach dem Ja ins Praxisprogramm uebernehmen (Chef 15.10.2026).
+// Der aktuelle Befund liegt in PlanR und steht dort live auf der Befundseite und im Planer.
+router.post("/tools/hkp-befund", async (req, res) => {
+  try {
+    const clientId = await claraVorspann(req, res);
+    if (!clientId) return;
+    const b = req.body || {};
+    const p = await patientAufloesen(clientId, b, "Von welchem Patienten soll ich den Befund nehmen?");
+    if (p.antwort) return res.json(p.antwort);
+    const r = await befundWerkzeug(clientId, p.patient, {
+      aenderung: String(b.aenderung || "").trim(), uebernehmen: wahr(b.uebernehmen), verwerfen: wahr(b.verwerfen),
+      wer: await getAssistantName(clientId).catch(() => DEFAULT_ASSISTANT_NAME),
+    });
+    log.info?.(`[hkp] befund ${b.verwerfen ? "verwerfen" : b.uebernehmen ? "uebernehmen" : b.aenderung ? "aendern" : "lesen"}: Patient ${p.patient.id}${r.uebertragen === false ? " (nicht uebertragen)" : ""}`);
+    return res.json(r);
+  } catch (e) {
+    log.error?.(`[hkp] befund: ${e?.stack || e}`);
     res.status(400).json({ error: String(e?.message || e) });
   }
 });

@@ -13,6 +13,7 @@ import { fromTeethRaw } from "../pvs/befundMap.js";
 import { getPatientAppointments } from "../clara/daySchedule.js";
 import { loadBooking } from "../clara/booking.js";
 import { claraZugangFuer } from "./planrClara.js";
+import { befundSatz, zahnBefundSatz } from "./vorlesen.js";
 
 export const BEFUND_MAX_ALTER_TAGE = 183;
 
@@ -101,9 +102,9 @@ export function pvsKennung(patient) {
 }
 
 /** -> Antwort von PlanR | { ok:false, pvs, meldung } | null (fuer die Praxis ist kein Praxisprogramm angebunden) */
-async function planrBefund(clientId, patient, { body = null, ms }) {
+async function planrBefund(clientId, patient, { body = null, ms, pfad = "/api/intern/pvs/befund" }) {
   if (process.env.MAS_HKP_PVS_BEFUND === "0" || !planrSchluessel()) return null;
-  const url = `${planrBasis()}/api/intern/pvs/befund?${new URLSearchParams({ clientId, ...(body ? {} : pvsKennung(patient)) })}`;
+  const url = `${planrBasis()}${pfad}?${new URLSearchParams({ clientId, ...(body ? {} : pvsKennung(patient)) })}`;
   try {
     const r = await holen(url, {
       method: body ? "POST" : "GET",
@@ -120,14 +121,33 @@ async function planrBefund(clientId, patient, { body = null, ms }) {
   }
 }
 
-/** Aktueller Befund im Praxisprogramm: { ok:true, pvs, datum, befund, nummer } | { ok:false, pvs, meldung } | null */
+const obj = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
+
+/**
+ * Aktueller Befund im Praxisprogramm: { ok:true, pvs, datum, befund, nummer, offen, geschrieben } | { ok:false, pvs, meldung } | null.
+ * offen: im Gespraech (oder in PlanR) geaenderte Zaehne, die noch nicht im Praxisprogramm stehen – PlanR merkt sie
+ * sich je Patient und zeigt sie live.
+ */
 export async function pvsBefund(clientId, patient) {
   const d = await planrBefund(clientId, patient, { ms: 35000 });
   if (!d?.ok) return d;
   return {
     ok: true, pvs: String(d.pvs || "dem Praxisprogramm"), datum: String(d.datum || ""),
-    befund: d.zaehne && typeof d.zaehne === "object" ? d.zaehne : {}, nummer: String(d.patient || ""),
+    befund: obj(d.zaehne), nummer: String(d.patient || ""), offen: obj(d.offen), geschrieben: String(d.geschrieben || ""),
   };
+}
+
+/** Einzelne Zaehne im aktuellen Befund aendern (noch nicht im Praxisprogramm): { ok, befund } | { ok:false, meldung } */
+export async function befundAendernPvs(clientId, nummer, zaehne, wer) {
+  const d = await planrBefund(clientId, null, { body: { patient: nummer, zaehne, wer }, ms: 45000, pfad: "/api/intern/befund/aenderung" });
+  if (!d) return { ok: false, meldung: "Für diese Praxis ist kein Praxisprogramm angebunden." };
+  return d.ok ? { ok: true, befund: obj(d.befund) } : { ok: false, meldung: d.meldung };
+}
+
+/** Offene Aenderungen verwerfen – es gilt wieder der Befund im Praxisprogramm */
+export async function befundVerwerfenPvs(clientId, nummer) {
+  const d = await planrBefund(clientId, null, { body: { patient: nummer }, ms: 15000, pfad: "/api/intern/befund/verwerfen" });
+  return d?.ok ? { ok: true } : { ok: false, meldung: d?.meldung || "PlanR antwortet gerade nicht." };
 }
 
 /** Freigegebenen Befund ins Praxisprogramm (nur die Zaehne der genannten Kiefer): { ok, pvs, geschrieben } | { ok:false, pvs, meldung } */
@@ -205,6 +225,11 @@ export function quelleFrage(patient, { p, l, gesagt = false }) {
 
 const wahlAus = () => process.env.MAS_HKP_BEFUND_WAHL === "0";
 const hat = (o) => Object.keys(o || {}).length > 0;
+/** So lange gilt ein im Gespraech uebernommener Befund ohne Rueckfrage fuer den naechsten Plan */
+const IM_GESPRAECH_MS = 60 * 60_000;
+/** Offene Aenderungen oder eben erst ins Praxisprogramm geschrieben. Notaus MAS_HKP_BEFUND_AKTUELL=0. */
+export const imGespraechAktuell = (p) => process.env.MAS_HKP_BEFUND_AKTUELL !== "0"
+  && (hat(p?.offen) || (!!p?.geschrieben && Date.now() - Date.parse(p.geschrieben) < IM_GESPRAECH_MS));
 
 /**
  * Liefert { ok:true, befund, quelle, quelleWahl, hinweise, gesagt, abgeleitet, pvs?, neu? } oder
@@ -262,9 +287,26 @@ export async function befundErmitteln(clientId, patient, {
     };
   };
 
+  /** Befund aus dem Praxisprogramm samt offener Aenderungen aus dem Gespraech; Abweichungen gehen nach der Freigabe dorthin */
+  const ausPvs = (p) => {
+    const roh = { ...(p.offen || {}), ...gesagt };
+    const geaendert = Object.keys(roh).filter((z) => String(p.befund[z] ?? "") !== roh[z]);
+    const befund = { ...p.befund, ...roh };
+    hinweise.push(...fremdeKuerzel(befund, p.pvs));
+    const basis = { ok: true, befund, quelleWahl: "pvs", ...stand, hinweise, pvs: { name: p.pvs, nummer: p.nummer } };
+    if (!geaendert.length) return { ...basis, quelle: { art: "pvs", pvs: p.pvs, datum: p.datum } };
+    const k = [...new Set(geaendert.map(kieferVon))];
+    return {
+      ...basis, quelle: { art: "gesprochen+pvs", pvs: p.pvs, datum: jetzt, pvsDatum: p.datum },
+      neu: { kiefer: k, zaehne: nurKiefer(befund, k), geaendert: Object.fromEntries(geaendert.map((z) => [z, roh[z]])) },
+    };
+  };
+
   if (!quelle) {
     const [p, l] = wahlAus() ? [null, await holeLena()] : await Promise.all([holePvs(), holeLena()]);
     if (wahlAus() && l) return ausLena(l);
+    // Gerade im Gespraech geaendert oder uebernommen (Chef 15.10.2026): der gilt fuer den anstehenden Plan, ohne Rueckfrage.
+    if (p?.ok && imGespraechAktuell(p)) return ausPvs(p);
     if (p?.ok || l) return fragen("befund_quelle", quelleFrage(patient, { p, l, gesagt: hat(gesagt) }), p);
     if (hat(gesagt)) return ausGesagt({ ...abgeleitet, ...gesagt }, p);
     if (hat(abgeleitet)) return { ok: true, befund: abgeleitet, quelleWahl: "", ...stand, gesagt: {}, hinweise, quelle: { art: "gesprochen", datum: jetzt } };
@@ -281,16 +323,7 @@ export async function befundErmitteln(clientId, patient, {
       if (l) return fragen("befund_quelle", `${warum}Soll ich den Befund aus Lenas Erstuntersuchung vom ${datumDe(l.datum)} nehmen, oder nehmen wir einen neuen auf?`, p);
       return fragen("befund_fehlt", neuFrage(jaws, p?.pvs, warum), p);
     }
-    const geaendert = Object.keys(gesagt).filter((z) => String(p.befund[z] ?? "") !== gesagt[z]);
-    const befund = { ...p.befund, ...gesagt };
-    hinweise.push(...fremdeKuerzel(befund, p.pvs));
-    const basis = { ok: true, befund, quelleWahl: "pvs", ...stand, hinweise, pvs: { name: p.pvs, nummer: p.nummer } };
-    if (!geaendert.length) return { ...basis, quelle: { art: "pvs", pvs: p.pvs, datum: p.datum } };
-    const k = [...new Set(geaendert.map(kieferVon))];
-    return {
-      ...basis, quelle: { art: "gesprochen+pvs", pvs: p.pvs, datum: jetzt, pvsDatum: p.datum },
-      neu: { kiefer: k, zaehne: nurKiefer(befund, k), geaendert: Object.fromEntries(geaendert.map((z) => [z, gesagt[z]])) },
-    };
+    return ausPvs(p);
   }
 
   if (quelle === "lena") {
@@ -307,4 +340,60 @@ export async function befundErmitteln(clientId, patient, {
   const p = pvsName === undefined ? await holePvs() : null;
   if (!hat(roh)) return fragen("befund_fehlt", neuFrage(jaws, p?.pvs ?? pvsName, "Gut. "), p);
   return ausGesagt(roh, p);
+}
+
+const offeneKiefer = (offen) => ["OK", "UK"].filter((k) => Object.keys(offen || {}).some((z) => kieferVon(z) === k));
+
+/**
+ * Werkzeug "Befund (01)" (Chef 15.10.2026): den aktuellen Befund vorlesen, einzelne Zaehne aendern (offen, gilt sofort
+ * fuer den naechsten Plan und steht live in PlanR), nach dem Ja ins Praxisprogramm uebernehmen oder verwerfen.
+ * Ins Praxisprogramm geht nur, was vorher vorgelesen und freigegeben wurde. Notaus MAS_HKP_BEFUND_WERKZEUG=0.
+ */
+export async function befundWerkzeug(clientId, patient, { aenderung = "", uebernehmen = false, verwerfen = false, wer = "Clara" } = {}, deps = {}) {
+  const { pvs = pvsBefund, aendern = befundAendernPvs, weg = befundVerwerfenPvs, schreiben = befundInsPvs } = deps;
+  if (process.env.MAS_HKP_BEFUND_WERKZEUG === "0") return { ok: true, message: "Den Befund kann ich gerade nur im Heil- und Kostenplan aufnehmen." };
+  const p = await pvs(clientId, patient).catch(() => null);
+  if (!p) return { ok: true, message: "Für diese Praxis ist kein Praxisprogramm angebunden – den Befund nehme ich deshalb nur im Heil- und Kostenplan auf." };
+  if (!p.ok) return { ok: true, message: `Den Befund aus ${p.pvs || "dem Praxisprogramm"} kann ich gerade nicht lesen: ${p.meldung}` };
+  const wen = patient.anredeLabel || patient.label;
+
+  if (verwerfen) {
+    if (!hat(p.offen)) return { ok: true, message: `Für ${wen} gibt es keine offenen Änderungen, es gilt der Befund aus ${p.pvs}.` };
+    const v = await weg(clientId, p.nummer);
+    return { ok: true, message: v.ok ? `Verworfen. Für ${wen} gilt wieder der Befund aus ${p.pvs}.` : `Das Verwerfen hat nicht geklappt: ${v.meldung}` };
+  }
+
+  if (aenderung) {
+    const zaehne = befundVerstehen(aenderung);
+    if (!hat(zaehne)) {
+      return { ok: true, rueckfrage: "befund_aenderung", message: "Welche Zähne soll ich im Befund ändern? Zum Beispiel: 26 fehlt, 16 ist überkront, 36 ist nicht erhaltungswürdig." };
+    }
+    const a = await aendern(clientId, p.nummer, zaehne, wer);
+    if (!a.ok) return { ok: true, message: `Den Befund konnte ich nicht ändern: ${a.meldung}` };
+    return {
+      ok: true, rueckfrage: "befund_uebernehmen", geaendert: zaehne,
+      message: `Für ${wen} eingetragen: ${zahnBefundSatz(zaehne)}. Das gilt jetzt auch für den nächsten Plan. Soll ich den Befund so in ${p.pvs} übernehmen?`,
+    };
+  }
+
+  if (uebernehmen) {
+    if (!hat(p.offen)) return { ok: true, message: `Der Befund von ${wen} steht schon so in ${p.pvs}.` };
+    const kiefer = offeneKiefer(p.offen);
+    const zaehne = nurKiefer({ ...p.befund, ...p.offen }, kiefer);
+    const w = await schreiben(clientId, patient, { kiefer, zaehne, nummer: p.nummer });
+    const name = w.pvs || p.pvs;
+    return {
+      ok: true, uebertragen: w.ok,
+      message: w.ok
+        ? `Der Befund von ${wen} ist in ${name} gespeichert, der alte bleibt dort als Historie.`
+        : `Den Befund konnte ich nicht nach ${name} übertragen – ${w.meldung} Die Änderung bleibt offen und gilt trotzdem für den nächsten Plan.`,
+    };
+  }
+
+  const datum = p.datum ? ` vom ${datumDe(p.datum)}` : "";
+  const offen = hat(p.offen) ? ` Noch nicht in ${p.pvs} übernommen: ${zahnBefundSatz(p.offen)}. Soll ich das in ${p.pvs} übernehmen?` : "";
+  return {
+    ok: true, ...(offen ? { rueckfrage: "befund_uebernehmen" } : {}),
+    message: `Befund von ${wen} aus ${p.pvs}${datum}: ${befundSatz({ ...p.befund, ...p.offen }, ["OK", "UK"])}${offen}`,
+  };
 }
