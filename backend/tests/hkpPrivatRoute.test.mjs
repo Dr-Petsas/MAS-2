@@ -69,7 +69,8 @@ const planrRuf = (pfad, init = {}) => fetch(`${basis}/planr${pfad}${pfad.include
 async function anlegen(auftrag) {
   const frage = await rufe({ auftrag, privat: true });
   assert.equal(frage.rueckfrage, "befund_quelle", frage.message);
-  const vorschau = await rufe({ auftrag, privat: true, befund: "aus Dampsoft" });
+  // Folgezug ohne privat=true: der laufende Privatplan gilt weiter
+  const vorschau = await rufe({ auftrag, befund: "aus Dampsoft" });
   assert.equal(vorschau.rueckfrage, "vorlesen", vorschau.message);
   const fertig = await rufe({ auftrag, bestaetigt: true });
   assert.ok(fertig.entwurfId, fertig.message);
@@ -136,6 +137,24 @@ test("Rueckgaengig vor dem Abholen verwirft; PlanR bekommt ihn nicht mehr", asyn
   assert.equal((await entwurfLesen(CID, fertig.entwurfId)).status, "verworfen");
   assert.ok(!(await planrRuf("/entwuerfe")).d.entwuerfe.some((x) => x.id === fertig.entwurfId));
   assert.equal((await planrRuf(`/entwuerfe/${fertig.entwurfId}/abgeholt`, { method: "POST", body: JSON.stringify({ nummer: "KV-2026-C009" }) })).status, 409);
+});
+
+test("Wortlaut 'privat'/'Kostenvoranschlag' reicht; 'HKP' schaltet zurueck auf die Kasse", async () => {
+  const { privatGesagt } = await import("../src/routes/hkp.js");
+  assert.equal(privatGesagt("Privater Zahnersatz, Brücke 14 bis 16"), true);
+  assert.equal(privatGesagt("Kostenvoranschlag Brücke 14 bis 16"), true);
+  assert.equal(privatGesagt("HKP Brücke 14 bis 16 mit Privatstufe zwei"), false);
+  assert.equal(privatGesagt("Kasse oder privat? Kasse."), false);
+  const frage = await rufe({ auftrag: "Kostenvoranschlag Brücke von 14 auf 16 Vollkeramik" });
+  assert.equal(frage.rueckfrage, "befund_quelle", frage.message);
+  const vorschau = await rufe({ auftrag: "Kostenvoranschlag Brücke von 14 auf 16 Vollkeramik", befund: "aus Dampsoft" });
+  assert.match(vorschau.message, /Privatplan Zahnersatz/);
+  const kasse = await rufe({ auftrag: "Doch als HKP über die Kasse: Brücke von 14 auf 16", befund: "aus Dampsoft" });
+  assert.equal(kasse.rueckfrage, "vorlesen", kasse.message);
+  assert.match(kasse.message, /Brücken-HKP/);
+  assert.match(kasse.message, /Festzuschuss|Eigenanteil/);
+  const weiter = await rufe({ auftrag: "Brücke von 14 auf 16", befund: "aus Dampsoft" });
+  assert.match(weiter.message, /Brücken-HKP/, "nach 'HKP' bleibt es beim Kassenplan");
 });
 
 test("Rueckfragen wie beim HKP, Notaus MAS_PRIVAT_ZE=0", async () => {

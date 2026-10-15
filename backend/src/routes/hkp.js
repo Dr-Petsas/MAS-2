@@ -1166,6 +1166,10 @@ async function entwurfAnlegen(clientId, d) {
 // PlanR-Uebersicht ihn mit eigener Nummer in den Planer holt. Notaus MAS_PRIVAT_ZE=0.
 const privatAus = () => String(process.env.MAS_PRIVAT_ZE || "").trim() === "0";
 const PRIVAT_TEXT = "Privatplan Zahnersatz";
+const PRIVAT_AUS_SATZ = "Einen privaten Zahnersatz-Plan kann ich gerade nicht per Sprache anlegen. Bitte im Planer Zahnersatz privat in PlanR erstellen.";
+const KASSE_WORT = /\bkasse|\bhkp\b|heil- ?und kostenplan|gesetzlich/i;
+// "Privatstufe"/"Privatanteil" gehoeren zum Kassen-HKP
+export const privatGesagt = (t) => /\bprivat(?!stufe|anteil)|kostenvoranschlag/i.test(t) && !KASSE_WORT.test(t);
 
 async function privatAnlegen(clientId, d) {
   const { patient, auftragText, befund, r, summen } = d;
@@ -1193,12 +1197,9 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const clientId = await claraVorspann(req, res);
     if (!clientId) return;
     const b = req.body || {};
-    const privat = wahr(b.privat);
-    if (privat && privatAus()) {
-      return res.json({ ok: true, message: "Einen privaten Zahnersatz-Plan kann ich gerade nicht per Sprache anlegen. Bitte im Planer Zahnersatz privat in PlanR erstellen." });
-    }
-    const modul = privat ? "privat-kv" : "hkp";
     const auftragText = String(b.auftrag || "").trim();
+    let privat = wahr(b.privat) || privatGesagt(auftragText);
+    if (privat && privatAus()) return res.json({ ok: true, message: PRIVAT_AUS_SATZ });
     const ziel = zielpreisAn() && !privat ? zielpreisAus(b.zielpreis) : null;
     const vs = wahr(b.bestaetigt) || ziel ? vorschauFinden(vorschauen(clientId), b) : null;
     if (vs?.privat) {
@@ -1217,6 +1218,13 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const p = await patientAufloesen(clientId, b, `Für welchen Patienten soll ich den ${privat ? "Privatplan" : "HKP"} erstellen?`, { vettern: true });
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
+    // Folgezuege (Befundquelle, Ausfuehrung) kommen oft ohne privat=true: der laufende Privatplan gilt weiter,
+    // bis der Chef ausdruecklich Kasse/HKP sagt.
+    const kasseGesagt = KASSE_WORT.test(auftragText);
+    if (!privat && !kasseGesagt && wahlLesen(clientId, patient).privat) privat = true;
+    if (privat && privatAus()) return res.json({ ok: true, message: PRIVAT_AUS_SATZ });
+    if (privat || wahlLesen(clientId, patient).privat) wahlMerken(clientId, patient, { privat });
+    const modul = privat ? "privat-kv" : "hkp";
     const gewaehlt = p.gewaehlt || vetterSchonGewaehlt(vetterWahl.get(clientId), p.sel || patient);
     const vettern = vetternAus() || gewaehlt ? [] : await namensvettern(clientId, patient).catch(() => []);
     if (vettern.length) {
