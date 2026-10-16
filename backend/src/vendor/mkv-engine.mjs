@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\KONS\MKV (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\KONS\MKV && npm run build:engine   (sha256 4b9250d8509b)
+// Neu bauen: cd F:\PlanR\KONS\MKV && npm run build:engine   (sha256 3ca362da1f36)
 //#region src/befund01.ts
 var OBERKIEFER$1 = [
 	"18",
@@ -742,6 +742,28 @@ function ermittlePunktwert(a) {
 		hinweis: kzvNr ? `Für ${kzvNachNr(kzvNr)?.name ?? kzvNr} ist kein Wert hinterlegt – Bundesmittel.` : "Keine KZV bestimmbar (Praxis-PLZ fehlt) – Bundesmittel."
 	};
 }
+//#endregion
+//#region src/engine/begruendung.ts
+/**
+* Standardbegründungen für GOZ-Faktoren über dem Schwellenwert 2,3 (§ 10 Abs. 3 GOZ).
+* Sie müssen sich auf Schwierigkeit, Zeitaufwand oder Umstände bei der Ausführung beziehen (§ 5 Abs. 2 GOZ)
+* und sind im Einzelfall patientenbezogen zu prüfen. DENS speichert höchstens 274 Zeichen je Begründung.
+*/
+var GRUPPEN = [
+	[/^(0080|0090|0100)$/, "Erschwerte Anästhesie durch anatomische Besonderheiten und entzündlich verändertes Gewebe; Nachinjektion und verlängerte Einwirkzeit erforderlich."],
+	[/^0065$/, "Erhöhter Zeitaufwand bei der digitalen Abformung durch subgingival liegende Kavitätenränder, Blutungsneigung und mehrfache Teilscans."],
+	[/^2000$/, "Erschwerte Versiegelung durch tief zerklüftete Fissuren, eingeschränkte Zugänglichkeit und schwierige Trockenlegung."],
+	[/^(2030|2040)$/, "Erschwerte Trockenlegung durch eingeschränkte Mundöffnung, starken Speichelfluss und subgingivale Defektränder."],
+	[/^(20[5-9]0|2100|2110|2120)$/, "Erhöhter Zeitaufwand durch subgingival reichende Kavitätenränder, erschwerte Trockenlegung und aufwendige adhäsive Mehrschichttechnik mit anatomischer Gestaltung der Kontaktpunkte."],
+	[/^(21[5-7]0|2200|2210|2220)$/, "Erschwerte Präparation durch subgingival reichende Kavitätenränder; erhöhter Zeitaufwand für Blutstillung, Darstellung der Präparationsgrenze, Anprobe und adhäsive Befestigung."],
+	[/^(2180|2190|2195|2197)$/, "Überdurchschnittlicher Zeitaufwand durch stark zerstörte Zahnhartsubstanz mit tief subgingivalen Defekträndern; aufwendige Trockenlegung und adhäsive Mehrschichttechnik."],
+	[/^(2310|2320)$/, "Erhöhter Aufwand für Reinigung, Anpassung und Kontrolle der Passung vor der Wiederbefestigung."],
+	[/^(2330|2340|2350)$/, "Erschwerte Vitalerhaltung durch tiefe, pulpanahe Karies und Blutungsneigung; erhöhter Zeitaufwand für keimarmes Vorgehen und dichte Abdeckung."],
+	[/^(2360|2380|2390)$/, "Erschwerter Zugang zum Kanalsystem durch eingeschränkte Mundöffnung, Kalzifikationen oder versteckte Kanaleingänge; erhöhter Zeitaufwand."],
+	[/^(2400|2410|2420|2430|2440)$/, "Erschwerte Wurzelkanalbehandlung durch stark gekrümmte, obliterierte oder verzweigte Kanäle; erhöhter Zeitaufwand für Längenbestimmung, Aufbereitung, Desinfektion und dichte Füllung."]
+];
+var ALLGEMEIN = "Überdurchschnittlicher Schwierigkeitsgrad und Zeitaufwand bei der Ausführung aufgrund der individuellen anatomischen und klinischen Verhältnisse.";
+var standardBegruendung = (nr) => GRUPPEN.find(([re]) => re.test(nr.trim()))?.[1] ?? ALLGEMEIN;
 var goz_2012_default = {
 	typ: "goz",
 	name: "GOZ Gebührenverzeichnis (Anlage 1, Stand 2012)",
@@ -4573,6 +4595,23 @@ function rechnen(plan, einst) {
 	const kassenanteil = runden(zaehne.reduce((s, x) => s + x.kassenanteil, 0));
 	const mehrkosten = runden(zaehne.reduce((s, x) => s + x.mehrkosten, 0) + begleitSumme);
 	const vereinbarung2 = [...zaehne.flatMap((z) => z.zeilen), ...begleit].filter((x) => (x.faktor ?? 0) > GOZ_HOECHSTSATZ);
+	const begruendungen = /* @__PURE__ */ new Map();
+	for (const x of [
+		...zaehne.flatMap((z) => z.zeilen),
+		...begleit,
+		...privat7
+	]) {
+		if (x.ebene !== "GOZ" && x.ebene !== "ANALOG" || (x.faktor ?? 0) <= 2.3) continue;
+		const eigen = plan.begruendungen?.[x.nr]?.trim();
+		x.begruendung = eigen || standardBegruendung(x.nr);
+		const b = begruendungen.get(x.nr);
+		begruendungen.set(x.nr, {
+			nr: x.nr,
+			faktor: Math.max(b?.faktor ?? 0, x.faktor),
+			text: x.begruendung,
+			eigen: !!eigen
+		});
+	}
 	const hinweise = [];
 	if (plan.regler.modell !== "gozDifferenz" && zaehne.some((z) => z.ziel !== void 0)) hinweise.push(plan.regler.modell === "proZahn" ? `Mehrkosten je plastischer Füllung ${euro(plan.regler.proZahn)} – der GOZ-Faktor ergibt sich daraus.` : `Mehrkosten je Fläche ${euro(plan.regler.proFlaeche)} – der GOZ-Faktor ergibt sich daraus.`);
 	if (massnahmen.length) hinweise.push("Besondere Maßnahmen (GOZ 2030) und Kofferdam (GOZ 2040) je Kieferhälfte oder Frontzahnbereich gehören nur in die Mehrkosten, wenn erst die Mehrkostenfüllung sie erfordert; wären sie auch bei der Kassenfüllung nötig, BEMA 12 über die KZV.");
@@ -4589,6 +4628,7 @@ function rechnen(plan, einst) {
 		punktwert: pw.wert,
 		punktwertHinweis: pw.hinweis,
 		vereinbarung2,
+		begruendungen: [...begruendungen.values()],
 		hinweise,
 		privat7,
 		privat7Summe
@@ -4662,7 +4702,7 @@ function neuerPlan(nummer, einst) {
 * ("Komposit an 36 mo und 37 okklusal", "zweiflächiges Keramikinlay an 46"), prüft ihn gegen den 01 und rechnet
 * mit der Engine dieses Planers. `npm run build:engine` baut daraus MAS-2/backend/src/vendor/mkv-engine.mjs.
 */
-var ENGINE_STAND = "2026-10-15 22:08";
+var ENGINE_STAND = "2026-10-16 21:28";
 var GUELTIG = new Set(ALLE_ZAEHNE);
 var ZAHL = {
 	ein: 1,
@@ -4810,6 +4850,12 @@ function mkvAuftragVerstehen(roh) {
 		if (i + 1 < zf.length && flaechenVon[i + 1] && NUR_VERBINDUNG.test(t.slice(zf[i].ende, zf[i + 1].pos))) flaechenVon[i] = flaechenVon[i + 1];
 		else if (i > 0 && flaechenVon[i - 1] && NUR_VERBINDUNG.test(t.slice(zf[i - 1].ende, zf[i].pos))) flaechenVon[i] = flaechenVon[i - 1];
 	}
+	const gewaehlt = /\bgew(?:ä|ae)hlt:\s*/gi;
+	let schlussAb = -1;
+	for (let m = gewaehlt.exec(t); m; m = gewaehlt.exec(t)) schlussAb = m.index + m[0].length;
+	const schlussTh = schlussAb < 0 ? [] : tf.filter((f) => f.pos >= schlussAb);
+	const entscheid = new Set(schlussTh.map((f) => f.therapie === "aufbau")).size === 1 ? schlussTh[0] : void 0;
+	const aufbauUndFuellung = [];
 	const therapieVon = zf.map((z, i) => {
 		const eigene = thPrefix ? darin(tf, vor(i)) : darin(tf, nach(i));
 		const letzte = i === zf.length - 1 && thPrefix ? darin(tf, nach(i)) : [];
@@ -4818,7 +4864,11 @@ function mkvAuftragVerstehen(roh) {
 			...eigene,
 			...letzte,
 			...erste
-		];
+		].filter((f) => !schlussTh.includes(f));
+		if (new Set(kandidaten.map((f) => f.therapie === "aufbau")).size > 1) {
+			if (entscheid) return entscheid.therapie === "aufbau" ? entscheid : kandidaten.find((f) => f.therapie !== "aufbau");
+			if (!aufbauUndFuellung.includes(z.zahn)) aufbauUndFuellung.push(z.zahn);
+		}
 		if (kandidaten.length) return kandidaten.sort((a, b) => VORRANG.indexOf(a.therapie) - VORRANG.indexOf(b.therapie))[0];
 		return thPrefix ? tf.filter((f) => f.ende <= z.pos).at(-1) : tf.find((f) => f.pos >= z.ende);
 	});
@@ -4862,6 +4912,7 @@ function mkvAuftragVerstehen(roh) {
 	return {
 		zaehne,
 		ohneFlaechen,
+		aufbauUndFuellung,
 		abformung: /scan|intraoral|digital/.test(klein) ? "scan" : /abdruck|abform/.test(klein) ? "abdruck" : void 0,
 		privat: {
 			.../fluorid/.test(klein) ? { fluorid: true } : {},
@@ -4888,6 +4939,22 @@ function mkvEntwurf(auftragText, befund = {}, optionen = {}) {
 			grund: "befund_konflikt",
 			zahn,
 			frage: `Laut Befund ist ${zahn} ${BEFUND_KUERZEL[code] ? `ein${/zahn$/i.test(BEFUND_KUERZEL[code]) ? "" : "e"} ${BEFUND_KUERZEL[code]}` : code}, dort geht keine ${art === "aufbau" ? "Aufbaufüllung" : "Füllung"}. Welchen Zahn meinen Sie?`
+		};
+	}
+	if (a.aufbauUndFuellung.length) {
+		const z = sortiert(a.aufbauUndFuellung);
+		const fl = z.length === 1 ? a.zaehne[z[0]]?.flaechen : void 0;
+		return {
+			status: "rueckfrage",
+			grund: "aufbau_oder_fuellung",
+			frage: `An ${liste(z)} haben Sie einen Aufbau und eine Füllung genannt; ein Aufbau setzt eine Krone voraus. Soll ich an ${liste(z)} den Aufbau oder die ${fl ? `${[
+				"",
+				"ein",
+				"zwei",
+				"drei",
+				"vier",
+				"fünf"
+			][fl]}flächige ` : ""}Füllung planen?`
 		};
 	}
 	if (a.ohneFlaechen.length) {

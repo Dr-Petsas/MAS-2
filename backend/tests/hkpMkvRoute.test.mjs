@@ -122,6 +122,23 @@ test("Rueckfrage Flaechen: die Antwort ohne Fuellungswort ergaenzt den Auftrag; 
   assert.match(inlay.message, /Abdruck angenommen/);
 });
 
+test("Ja ohne Auftrag (Clara: name, planart, bestaetigt) legt genau die vorgelesene MKV an", async () => {
+  const vorschau = await rufe({ auftrag: "MKV 24 MOD Komposit", planart: "mkv" });
+  assert.equal(vorschau.rueckfrage, "vorlesen", vorschau.message);
+  const fertig = await rufe({ planart: "mkv", bestaetigt: true });
+  assert.ok(fertig.entwurfId, fertig.message);
+  assert.match(fertig.message, /im Planer Füllungs-MKV als Entwurf/);
+  assert.deepEqual(JSON.parse((await entwurfLesen(CID, fertig.entwurfId)).planJson).zaehne["24"], { therapie: "komposit", flaechen: 3 });
+});
+
+test("Aufbau und Fuellung am selben Zahn: Rueckfrage, die Antwort entscheidet", async () => {
+  const frage = await rufe({ auftrag: "MKV für Zahn 24, Stiftaufbau und eine MOD-Füllung", planart: "mkv" });
+  assert.equal(frage.rueckfrage, "aufbau_oder_fuellung", frage.message);
+  const vorschau = await rufe({ auftrag: "Die Füllung." });
+  assert.equal(vorschau.rueckfrage, "vorlesen", vorschau.message);
+  assert.match(vorschau.message, /Kompositfüllung in Adhäsivtechnik, dreiflächig an 24/);
+});
+
 test("sprachFolgeText: Teilantwort ergaenzt, Konfliktzahn wird ersetzt, neuer vollstaendiger Auftrag gilt allein", () => {
   assert.equal(sprachFolgeText({}, "Komposit 36 mo"), "Komposit 36 mo");
   assert.equal(sprachFolgeText({ teilAuftrag: "Komposit an 36 und 37." }, "beide mod"), "Komposit an 36 und 37. beide mod");

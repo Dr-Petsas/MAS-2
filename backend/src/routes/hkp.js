@@ -1315,6 +1315,7 @@ export function sprachFolgeText(w, auftragText, sprachPlan = "mkv") {
   const cfg = SPRACH_PLAENE[sprachPlan];
   const vorher = String(w?.teilAuftrag || "").replace(/[\s.]+$/, "");
   if (!vorher || textNorm(auftragText).includes(textNorm(vorher))) return auftragText;
+  if (w.teilGrund === "aufbau_oder_fuellung" && !(String(auftragText).match(ZAHN_IM_TEXT) || []).length) return `${vorher}. Gewählt: ${auftragText}`;
   const einheit = EINHEIT[w.teilGrund];
   if (einheit && !einheit[0].test(auftragText) && ANZAHL_WORT.test(auftragText)) auftragText = `${String(auftragText).replace(/[\s.!]+$/, "")}${einheit[1]}`;
   const zaehne = String(auftragText).match(ZAHN_IM_TEXT) || [];
