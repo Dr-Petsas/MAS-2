@@ -1548,7 +1548,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         if (w.ok) befund.quelle = { ...befund.quelle, uebertragen: name };
         wahlMerken(clientId, patient, { ...merken, pvsName: name, frei: zaehne, uebertragen: w.ok ? name : "" });
         vorab = w.ok
-          ? `Der Befund ist in ${name} gespeichert, der alte bleibt dort als Historie. `
+          ? `Der Befund ist in ${name} als geänderter Befund gespeichert, ohne 01 und ohne Abrechnung. `
           : `Achtung: Den Befund konnte ich nicht nach ${name} übertragen – ${w.meldung} Er steht nur im HKP. `;
         befundFrei = true;
       }

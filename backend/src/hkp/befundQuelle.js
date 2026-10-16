@@ -408,7 +408,7 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
     return {
       ok: true, uebertragen: w.ok,
       message: w.ok
-        ? `Der Befund von ${wen} ist in ${name} gespeichert, der alte bleibt dort als Historie.`
+        ? `Der Befund von ${wen} ist in ${name} als geänderter Befund gespeichert, ohne 01 und ohne Abrechnung.`
         : `Den Befund konnte ich nicht nach ${name} übertragen – ${w.meldung} Die Änderung bleibt offen und gilt trotzdem für den nächsten Plan.`,
     };
   }
