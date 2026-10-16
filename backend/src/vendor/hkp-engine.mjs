@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 c108023cb675)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 884788f63b5d)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -24692,6 +24692,24 @@ var DIGITAL_KATALOG = [
 		preis: 45
 	}
 ];
+/** BEB-Positionen des digitalen Ablaufs nach Intraoralscan (Standardpositionen jeder BEB-Liste) */
+var DIGITAL_BEB = {
+	oralscan: "0007",
+	praepFreilegen: "0013",
+	druckstumpf: "0017",
+	sintern: "0032",
+	auftragsdaten: "0901",
+	registrierung: "0902",
+	segmentierung: "0903",
+	segment: "0904",
+	praepgrenze: "0905",
+	glanzbrand: "0906",
+	krone: "0907",
+	glied: "0908",
+	kauflaeche: "0909",
+	verbinder: "0910",
+	nacharbeiten: "0911"
+};
 DIGITAL.daten, DIGITAL.stumpf, DIGITAL.artikulation;
 /** Eigener Katalog der Praxis zuerst; fehlende Schritte des digitalen Workflows mit Standardpreis */
 function mitDigital(katalog) {
@@ -24967,24 +24985,6 @@ function materialErmitteln(positionen, wahl) {
 }
 //#endregion
 //#region src/engine/abformung.ts
-/** BEB-Positionen des digitalen Ablaufs nach Intraoralscan (Standardpositionen jeder BEB-Liste) */
-var DIGITAL_BEB = {
-	oralscan: "0007",
-	praepFreilegen: "0013",
-	druckstumpf: "0017",
-	sintern: "0032",
-	auftragsdaten: "0901",
-	registrierung: "0902",
-	segmentierung: "0903",
-	segment: "0904",
-	praepgrenze: "0905",
-	glanzbrand: "0906",
-	krone: "0907",
-	glied: "0908",
-	kauflaeche: "0909",
-	verbinder: "0910",
-	nacharbeiten: "0911"
-};
 /** Abformart für die Implantatkronen aus der Planwahl (ältere Pläne: Angabe aus den Implantatfeldern) */
 function implantatAbformung(plan) {
 	if (plan.abformung === "scan") return "scan";
@@ -28270,7 +28270,9 @@ function befundVerstehen(text, kiefer) {
 			code = naechstes?.nachgestellt ? naechstes.code : letztes;
 		}
 		if (ALLE_FEHLEN.test(x.teil)) {
-			for (const kk of x.k ? [x.k] : ["OK", "UK"]) for (const z of REIHE[kk]) if (!(z in befund)) befund[z] = "f";
+			const ausnahme = AUSSER.exec(x.teil);
+			const bleiben = new Set(ausnahme ? zaehneIn(ausnahme[1], x.k) : []);
+			for (const kk of x.k ? [x.k] : ["OK", "UK"]) for (const z of REIHE[kk]) if (!(z in befund)) befund[z] = bleiben.has(z) ? "" : "f";
 			return;
 		}
 		if (code === void 0 || !x.zs.length) return;
@@ -28300,7 +28302,9 @@ function ohneKieferBefund(text) {
 	const rest = teile.filter((t) => !kieferBefundTeil(t));
 	return rest.length && rest.length < teile.length ? rest.join(", ") : "";
 }
-var ALLE_FEHLEN = /\b(fehlen|fehlt) (ihm |ihr )?(schon )?alle z(ä|ae)hne\b|\balle z(ä|ae)hne (fehlen|sind (weg|raus|gezogen))\b|\bzahnlos\b|\bkeine z(ä|ae)hne mehr\b/;
+var ALLE_FEHLEN = /\b(fehlen|fehlt) (ihm |ihr )?(schon )?alle z(ä|ae)hne\b|\balle z(ä|ae)hne (fehlen|sind (weg|raus|gezogen|fehlend)|(als |auf )?fehlend)\b|\bzahnlos\b|\bkeine z(ä|ae)hne mehr\b/;
+/** „alle Zähne fehlen außer 13 und 23“: was danach kommt, bleibt stehen */
+var AUSSER = /\b(?:au(?:ß|ss)er|bis auf|mit ausnahme (?:von |der |des )?|ausgenommen)\s+(.+)$/;
 var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|co?ver.?dent|kover|bonus|scan|abdruck|abform|gold|zirkon|keramik|\bnem\b|erstell|plan|hkp|kostenpl/;
 /** Befund-Satzteile aus einem gesprochenen Auftrag („… die Sechser und Siebener fehlen …“), sonst '' */
 /** Satzteil, der nur Zähne aufzählt („die Vierer“, „Fünfer“) – sein Verb steht weiter hinten */
@@ -28726,7 +28730,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-10-15 14:53";
+var ENGINE_STAND = "2026-10-16 21:00";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
