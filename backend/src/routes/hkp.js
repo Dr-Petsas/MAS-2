@@ -52,6 +52,7 @@ import { detailSatz, euroSprech, hkpKurz, hkpTitel, implSummenSatz, konsSummenSa
 import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
+import { registerFuer, verbundLesen, verbundLoesen, verbundSetzen } from "../hkp/verbund.js";
 
 const router = express.Router();
 
@@ -740,6 +741,44 @@ router.post("/planr/clara/kopplung", planrGuard, async (req, res) => {
   }
 });
 
+// Praxis-Verbund (PlanR fuehrt, hier der Spiegel fuer Clara/Eva): ?clientId = Gast-Praxis, nie der Standard-Mandant.
+const verbundGast = (req, res) => {
+  const gast = String(req.query?.clientId || "").trim();
+  if (!gast) res.status(400).json({ ok: false, error: "clientId_fehlt", message: "Praxis fehlt." });
+  return gast;
+};
+
+router.get("/planr/verbund", planrGuard, async (req, res) => {
+  try {
+    const gast = verbundGast(req, res);
+    if (gast) res.json({ ok: true, verbund: await verbundLesen(gast) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.post("/planr/verbund", planrGuard, async (req, res) => {
+  try {
+    const gast = verbundGast(req, res);
+    if (!gast) return;
+    const r = await verbundSetzen(gast, { haupt: req.body?.haupt, register: req.body?.register, von: req.body?.von });
+    res.status(r.ok ? 200 : r.status).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.delete("/planr/verbund", planrGuard, async (req, res) => {
+  try {
+    const gast = verbundGast(req, res);
+    if (!gast) return;
+    const r = await verbundLoesen(gast);
+    res.status(r.ok ? 200 : r.status).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Clara-Tools
 // ---------------------------------------------------------------------------
@@ -754,6 +793,7 @@ async function claraVorspann(req, res) {
     res.status(403).json({ error: "clara_not_entitled", clientId });
     return null;
   }
+  await registerFuer(clientId);
   return clientId;
 }
 

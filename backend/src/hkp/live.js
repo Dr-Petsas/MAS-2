@@ -4,6 +4,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { log } from "../log.js";
+import { registerBekannt } from "./verbund.js";
 
 /** Aelter als das zeigt ein frisch geoeffneter Planer nicht mehr an */
 const STAND_MAX_ALTER_MS = 10 * 60_000;
@@ -33,7 +34,9 @@ export function liveStand(clientId) {
 }
 
 /** Neuer Vorgang bei anderem Patienten oder nach dem Anlegen; sonst wird der laufende ergaenzt. */
-export function liveMelden(clientId, teil) {
+export function liveMelden(praxis, teil) {
+  // Im Praxis-Verbund schaut der Planer der Haupt-Praxis zu; claraVorspann hat das Register schon aufgeloest.
+  const clientId = registerBekannt(praxis);
   if (liveAus() || !clientId) return null;
   try {
     const alt = liveStand(clientId);
@@ -59,7 +62,8 @@ function senden(clientId, stand) {
 }
 
 /** Server-Sent Events fuer den Planer; der aktuelle Stand kommt sofort mit. */
-export function liveAbonnieren(clientId, req, res) {
+export function liveAbonnieren(praxis, req, res) {
+  const clientId = registerBekannt(praxis);
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",

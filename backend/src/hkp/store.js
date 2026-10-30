@@ -4,6 +4,7 @@
 // verschachtelten Objekten ab, und der Plan wird nie feldweise abgefragt.
 import admin from "../firebase.js";
 import { praxisKatalog } from "./planrKatalog.js";
+import { registerFuer } from "./verbund.js";
 
 export const STATUS = [
   "wartet_auf_freigabe", "freigegeben", "eingereicht", "genehmigt", "abgelehnt", "abgerechnet", "verworfen",
@@ -20,8 +21,9 @@ export const STATUS_TEXT = {
 /** Status, die einen neuen HKP fuer denselben Kiefer als Doppelung verdaechtig machen */
 export const AKTIV = new Set(["wartet_auf_freigabe", "freigegeben", "eingereicht", "genehmigt"]);
 
-const col = (clientId) => admin.firestore().collection("clients").doc(clientId).collection("hkp");
-const praxisRef = (clientId) => admin.firestore().collection("clients").doc(clientId).collection("hkpPraxis").doc("standard");
+// Im Praxis-Verbund (verbund.js) liegen HKPs und Praxis-Standard bei der Haupt-Praxis.
+const col = async (clientId) => admin.firestore().collection("clients").doc(await registerFuer(clientId)).collection("hkp");
+const praxisRef = async (clientId) => admin.firestore().collection("clients").doc(await registerFuer(clientId)).collection("hkpPraxis").doc("standard");
 
 export class KonfliktFehler extends Error {
   constructor(aktuell) {
@@ -45,7 +47,7 @@ export function kopf(h) {
 }
 
 export async function hkpAnlegen(clientId, daten, wer) {
-  const ref = col(clientId).doc();
+  const ref = (await col(clientId)).doc();
   const doc = {
     ...daten,
     status: daten.status || "wartet_auf_freigabe",
@@ -60,12 +62,12 @@ export async function hkpAnlegen(clientId, daten, wer) {
 }
 
 export async function hkpLesen(clientId, id) {
-  const d = await col(clientId).doc(String(id)).get();
+  const d = await (await col(clientId)).doc(String(id)).get();
   return d.exists ? ausDoc(d) : null;
 }
 
 export async function hkpListe(clientId, { patientId, limit = 300 } = {}) {
-  let q = col(clientId);
+  let q = await col(clientId);
   if (patientId) q = q.where("patient.id", "==", String(patientId));
   const snap = await q.limit(limit).get();
   return snap.docs.map(ausDoc).sort((a, b) => String(b.erstellt).localeCompare(String(a.erstellt)));
@@ -77,7 +79,7 @@ export async function hkpListe(clientId, { patientId, limit = 300 } = {}) {
  * pruefen(aktuell) darf werfen, um z. B. Statusregeln durchzusetzen.
  */
 export async function hkpAktualisieren(clientId, id, { version, felder, wer, was, pruefen }) {
-  const ref = col(clientId).doc(String(id));
+  const ref = (await col(clientId)).doc(String(id));
   return admin.firestore().runTransaction(async (tx) => {
     const d = await tx.get(ref);
     if (!d.exists) {
@@ -97,29 +99,29 @@ export async function hkpAktualisieren(clientId, id, { version, felder, wer, was
 
 /** Hilfsfeld ohne Versionssprung (z. B. offener Aenderungsvorschlag) */
 export async function hkpFeldSetzen(clientId, id, felder) {
-  await col(clientId).doc(String(id)).update(felder);
+  await (await col(clientId)).doc(String(id)).update(felder);
 }
 
 // Dateien am HKP (z. B. diktierter Befund): Inhalt in hkp/{id}/dateien/{dateiId},
 // Kopf im HKP-Feld `dateien`, damit die Liste ohne Inhalt auskommt.
-const dateiCol = (clientId, id) => col(clientId).doc(String(id)).collection("dateien");
+const dateiCol = async (clientId, id) => (await col(clientId)).doc(String(id)).collection("dateien");
 
 export async function hkpDateiAnhaengen(clientId, id, { id: dateiId, name, art, typ = "application/json", inhalt }) {
   const meta = { id: String(dateiId), name: String(name), art: String(art), erstellt: jetzt() };
-  await dateiCol(clientId, id).doc(meta.id).set({ ...meta, typ, inhalt: String(inhalt) });
-  await col(clientId).doc(String(id)).update({ dateien: admin.firestore.FieldValue.arrayUnion(meta) });
+  await (await dateiCol(clientId, id)).doc(meta.id).set({ ...meta, typ, inhalt: String(inhalt) });
+  await (await col(clientId)).doc(String(id)).update({ dateien: admin.firestore.FieldValue.arrayUnion(meta) });
   return meta;
 }
 
 export async function hkpDateiLesen(clientId, id, dateiId) {
-  const d = await dateiCol(clientId, id).doc(String(dateiId)).get();
+  const d = await (await dateiCol(clientId, id)).doc(String(dateiId)).get();
   return d.exists ? d.data() : null;
 }
 
 export async function hkpLoeschenFuerTest(clientId, id) {
-  const dateien = await dateiCol(clientId, id).get();
+  const dateien = await (await dateiCol(clientId, id)).get();
   await Promise.all(dateien.docs.map((d) => d.ref.delete()));
-  await col(clientId).doc(String(id)).delete();
+  await (await col(clientId)).doc(String(id)).delete();
 }
 
 // --- Praxis-Standard aus PlanR: Preislisten, Eigenlabor-Katalog, Einstellungen ---
@@ -127,7 +129,7 @@ export async function hkpLoeschenFuerTest(clientId, id) {
 const praxisCache = new Map();
 
 export async function praxisSpeichern(clientId, { preislisten = [], eigen = [], fremd = [], einstellungen = {} }) {
-  const ref = praxisRef(clientId);
+  const ref = await praxisRef(clientId);
   const alt = await ref.collection("listen").get();
   const batch = admin.firestore().batch();
   alt.docs.forEach((d) => batch.delete(d.ref));
@@ -137,14 +139,14 @@ export async function praxisSpeichern(clientId, { preislisten = [], eigen = [], 
   }
   batch.set(ref, { eigenJson: JSON.stringify(eigen), fremdJson: JSON.stringify(fremd), einstellungenJson: JSON.stringify(einstellungen), aktualisiert: jetzt() });
   await batch.commit();
-  praxisCache.delete(clientId);
+  praxisCache.delete(await registerFuer(clientId));
   return { preislisten: preislisten.length, eigen: eigen.length, fremd: fremd.length };
 }
 
 /** Nur Eigenlabor-Katalog und Fremdlabor-Liste (nach jeder Aenderung in PlanR); Preislisten und Einstellungen bleiben. */
 export async function praxisKatalogeSpeichern(clientId, { eigen = [], fremd = [] }) {
-  await praxisRef(clientId).set({ eigenJson: JSON.stringify(eigen), fremdJson: JSON.stringify(fremd), katalogeAktualisiert: jetzt() }, { merge: true });
-  praxisCache.delete(clientId);
+  await (await praxisRef(clientId)).set({ eigenJson: JSON.stringify(eigen), fremdJson: JSON.stringify(fremd), katalogeAktualisiert: jetzt() }, { merge: true });
+  praxisCache.delete(await registerFuer(clientId));
   return { eigen: eigen.length, fremd: fremd.length };
 }
 
@@ -154,9 +156,10 @@ export async function praxisLaden(clientId) {
 }
 
 async function praxisDaten(clientId) {
-  const hit = praxisCache.get(clientId);
+  const reg = await registerFuer(clientId);
+  const hit = praxisCache.get(reg);
   if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.daten;
-  const ref = praxisRef(clientId);
+  const ref = await praxisRef(clientId);
   const [d, listen] = await Promise.all([ref.get(), ref.collection("listen").get()]);
   const x = d.exists ? d.data() : {};
   const parse = (s, f) => { try { return s ? JSON.parse(s) : f; } catch { return f; } };
@@ -167,6 +170,6 @@ async function praxisDaten(clientId) {
     einstellungen: parse(x.einstellungenJson, {}),
     aktualisiert: x.aktualisiert || "",
   };
-  praxisCache.set(clientId, { at: Date.now(), daten });
+  praxisCache.set(reg, { at: Date.now(), daten });
   return daten;
 }
