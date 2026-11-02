@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
-import { appendEvent } from "../brain/eventStore.js";
+import { appendEvent, queryLatest } from "../brain/eventStore.js";
 import { CHANNELS, EVENT_TYPES, DIRECTIONS } from "../brain/events.js";
 import { upsertSharedContact } from "../brain/addressBook.js";
 import { lisaDisclosurePrefix } from "../brain/aiDisclosure.js";
@@ -11,6 +11,7 @@ import { summarizeForSpeech } from "../clara/summarize.js";
 import { getOperator } from "../clara/sessions.js";
 import { notifyOperator } from "../clara/devices.js";
 import { getAssistantName } from "../shared/rufname.js";
+import { loadBooking } from "../clara/booking.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -18,10 +19,11 @@ import { log } from "../log.js";
 //
 // Clara (local LLM) understands the spoken order and extracts phone + content;
 // this module only EXECUTES deterministically:
-//   - SMS:   Twilio Messages API (alphanumeric sender, outbound-only)
-//   - Call:  ElevenLabs ConvAI outbound call on Lisa's practice number.
-//            The concrete instruction travels as `task_prompt` dynamic
-//            variable into Lisa's agent prompt.
+//   - SMS:   smsflatrate.net (wie die Plattform, smsService.ts); Twilio nur
+//            noch als Rueckfall, wenn kein SMSFLATRATE_KEY gesetzt ist.
+//   - Call:  TelefonKI-Lisa (POST /api/outbound/dial -> Asterisk -> Zaluma),
+//            sobald LISA_OUTBOUND_BASE_URL gesetzt ist; sonst die alte
+//            ElevenLabs-ConvAI-Strecke. Der Auftrag reist als `auftrag` mit.
 //
 // Every delegation is written to the shared brain immediately (lisa_sms /
 // lisa_call, direction out), and finished calls are finalised by a poller that
@@ -225,12 +227,25 @@ async function isDuplicateDelegation(clientId, kind, ...keyParts) {
   }
 }
 
+function smsProvider() {
+  if (env("SMSFLATRATE_KEY")) return "smsflatrate";
+  if (env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN") && env("LISA_SMS_SENDER")) return "twilio";
+  return "";
+}
+
 export function smsConfigured() {
-  return !!(env("TWILIO_ACCOUNT_SID") && env("TWILIO_AUTH_TOKEN") && env("LISA_SMS_SENDER"));
+  return !!smsProvider();
+}
+
+/** "telefonki" (Asterisk/Zaluma), "elevenlabs" (Altstrecke) oder "". */
+export function callProvider() {
+  if (env("LISA_OUTBOUND_BASE_URL")) return "telefonki";
+  if (env("ELEVENLABS_API_KEY") && env("LISA_AGENT_ID") && env("LISA_PHONE_NUMBER_ID")) return "elevenlabs";
+  return "";
 }
 
 export function callConfigured() {
-  return !!(env("ELEVENLABS_API_KEY") && env("LISA_AGENT_ID") && env("LISA_PHONE_NUMBER_ID"));
+  return !!callProvider();
 }
 
 /** Twilio-Call-SID + Lisa-From aus der ElevenLabs-Conversation (auch nachtraeglich). */
@@ -291,7 +306,47 @@ async function twilioSendEinmal({ to, body, from }) {
   return { ok: true, sid: data?.sid || null, from };
 }
 
-async function twilioSendSms({ to, body, from }) {
+const GSM7_RE = /^[@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&'()*+,\-./0-9:;<=>?¡A-ZÄÖÑÜ§¿a-zäöñüà^{}\\[~\]|€]*$/;
+
+/** smsflatrate-Absender: hoechstens 11 Zeichen, nur Buchstaben/Ziffern/Leerzeichen. */
+export function smsflatrateAbsender(roh) {
+  const s = String(roh || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss").replace(/[^A-Za-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  return s.slice(0, 11).trim();
+}
+
+/** Baut die Gateway-URL (rein, testbar). */
+export function smsflatrateUrl({ key, to, body, from }) {
+  const unicode = !GSM7_RE.test(body);
+  const qp = new URLSearchParams({
+    key,
+    from: smsflatrateAbsender(from) || "Praxis",
+    to: String(to || "").replace(/\D/g, ""),
+    text: body,
+    type: unicode ? "auto10or11" : "auto1or2",
+    status: "1",
+    cost: "1",
+  });
+  if (unicode) qp.set("unitext", "1");
+  return `https://www.smsflatrate.net/schnittstelle.php?${qp.toString()}`;
+}
+
+// Antwort "100,<smsId>,<kosten>"; jeder andere Status ist ein Gateway-Fehlercode.
+async function smsflatrateSend({ to, body, from }) {
+  try {
+    const r = await fetch(smsflatrateUrl({ key: env("SMSFLATRATE_KEY"), to, body, from: from || env("LISA_SMS_SENDER") }),
+      { signal: AbortSignal.timeout(20000) });
+    const roh = (await r.text()).trim();
+    const [status, smsId] = roh.split(",");
+    if (r.ok && status === "100") return { ok: true, sid: smsId || null, from };
+    return { ok: false, error: `smsflatrate_${status || r.status}`, from };
+  } catch (e) {
+    return { ok: false, error: `smsflatrate_${String(e?.message || e)}`, from };
+  }
+}
+
+async function smsSenden({ to, body, from }) {
+  if (smsProvider() === "smsflatrate") return smsflatrateSend({ to, body, from });
   const global = env("LISA_SMS_SENDER");
   const wunsch = String(from || "").trim() || global;
   const erst = await twilioSendEinmal({ to, body, from: wunsch });
@@ -358,7 +413,7 @@ export async function lisaSendSms(clientId, { phone, message, recipientName, by,
   // Praxis des Besuchers, bevor es zu ihr einen Mandanten gibt.
   const ident = absender ? null : await ladeLisaIdentitaet(clientId).catch(() => null);
 
-  const send = await twilioSendSms({ to, body, from: absender || ident?.absender });
+  const send = await smsSenden({ to, body, from: absender || ident?.absender });
   if (!send.ok) {
     log.warn("lisa.sms.failed", { clientId, error: send.error });
     return { ok: false, message: "Die SMS konnte nicht gesendet werden. Bitte später erneut versuchen." };
@@ -434,6 +489,76 @@ async function elevenOutboundCall({ to, dynamicVariables }) {
     callSid: data?.callSid || data?.call_sid || data?.twilio_call_sid
       || phone.call_sid || phone.callSid || null,
   };
+}
+
+// Absender-Nummer: LISA_FROM_DID, sonst der Outbound-Agent der Praxis (wie
+// lisaOutboundService.ts der Plattform).
+async function lisaOutboundAgent(clientId) {
+  try {
+    const s = await admin.firestore().collection("agents").where("clientId", "==", clientId).get();
+    const docs = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return docs.find((a) => a.type === "outbound") || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Auftrag an die TelefonKI-Lisa (Asterisk/Zaluma). Rein bis auf fetch. */
+export function telefonkiBundle({ clientId, locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext }) {
+  const [vor, ...rest] = String(name || "").trim().split(/\s+/);
+  return {
+    phoneCallId: taskId,
+    clientId,
+    locationId: locationId || agent?.locationId || "",
+    fromDid,
+    toE164: to,
+    auftrag,
+    prompt: auftrag,
+    agent: agent ? {
+      id: agent.id, name: agent.name || "", phoneNumber: fromDid, clientId,
+      locationId: agent.locationId || locationId || "", mainLanguage: agent.mainLanguage || "de",
+      voiceId: agent.voiceId || "", voiceName: agent.voiceName || "",
+    } : { clientId, locationId: locationId || "", phoneNumber: fromDid },
+    patient: {
+      id: bookingContext?.patientId || "",
+      firstName: rest.length ? vor : "",
+      lastName: rest.length ? rest.join(" ") : (vor || ""),
+      fullName: String(name || "").trim(),
+      phone: to,
+      mobilePhoneNumber: to,
+    },
+    calendarId: bookingContext?.calendarId || "",
+    currentTime: new Intl.DateTimeFormat("sv-SE", {
+      timeZone: TZ_BERLIN, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    }).format(new Date()).replace(" ", "T"),
+  };
+}
+
+async function telefonkiOutboundCall(clientId, { taskId, to, auftrag, name, bookingContext }) {
+  const agent = await lisaOutboundAgent(clientId);
+  const fromDid = normalizePhoneE164(env("LISA_FROM_DID") || agent?.phoneNumber || "");
+  if (!fromDid) return { ok: false, error: "keine Absender-Nummer (LISA_FROM_DID / Outbound-Agent)" };
+  const booking = await loadBooking(clientId).catch(() => null);
+  const body = telefonkiBundle({
+    clientId, locationId: booking?.locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext,
+  });
+  const headers = { "Content-Type": "application/json" };
+  const token = env("LISA_OUTBOUND_API_TOKEN");
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    headers["x-api-key"] = token;
+  }
+  try {
+    const r = await fetch(`${env("LISA_OUTBOUND_BASE_URL").replace(/\/+$/, "")}/api/outbound/dial`, {
+      method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(45000),
+    });
+    const data = await r.json().catch(() => ({}));
+    const uuid = String(data?.uuid || "").trim();
+    if (!r.ok || !uuid) return { ok: false, error: data?.detail || `telefonki_http_${r.status}` };
+    return { ok: true, outboundUuid: uuid, fromDid };
+  } catch (e) {
+    return { ok: false, error: `telefonki_${String(e?.message || e)}` };
+  }
 }
 
 async function elevenGetConversation(conversationId) {
@@ -634,12 +759,23 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     call_language: (callLanguage || "de").toLowerCase(),
   };
 
-  const call = await elevenOutboundCall({ to, dynamicVariables });
+  const provider = callProvider();
+  const call = provider === "telefonki"
+    ? await telefonkiOutboundCall(clientId, {
+      taskId: taskRef.id, to, auftrag: dynamicVariables.task_prompt, name, bookingContext,
+    })
+    : await elevenOutboundCall({ to, dynamicVariables });
+  // ElevenLabs meldet einen sofort gescheiterten Anruf mit HTTP 200, aber ohne
+  // Gespraechs-Id — das ist kein gestarteter Anruf.
+  if (call.ok && provider !== "telefonki" && !call.conversationId) {
+    call.ok = false;
+    call.error = "elevenlabs_ohne_conversation_id";
+  }
   if (!call.ok) {
-    log.warn("lisa.call.failed", { clientId, error: String(call.error) });
+    log.warn("lisa.call.failed", { clientId, provider, error: String(call.error) });
     return { ok: false, message: "Der Anruf konnte nicht gestartet werden. Bitte später erneut versuchen." };
   }
-  const voiceFrom = await lisaVoiceFrom();
+  const voiceFrom = provider === "telefonki" ? call.fromDid : await lisaVoiceFrom();
 
   await taskRef.set({
     id: taskRef.id,
@@ -648,7 +784,9 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     phone: to,
     contactName: name || null,
     prompt,
-    conversationId: call.conversationId,
+    provider: provider || null,
+    outboundUuid: call.outboundUuid || null,
+    conversationId: call.conversationId || null,
     callSid: call.callSid || null,
     voiceFrom: voiceFrom || null,
     assignedBy: by || "Team",
@@ -793,6 +931,58 @@ async function meldeErgebnis(clientId, { who, outcome, summary, taskId, transcri
   }
 }
 
+// Kommt binnen dieser Zeit kein Gespraechs-Report der TelefonKI-Lisa, ist der
+// Anruf nicht zustande gekommen (nicht abgenommen, besetzt, leer aufgelegt).
+const TELEFONKI_REPORT_WARTE_MS = 15 * 60_000;
+
+/** Gespraechs-Report der TelefonKI-Lisa zu einem Auftrag finden (rein). */
+export function telefonkiReportFuer(task, events) {
+  const ziel = String(task?.phone || "").replace(/\D/g, "").slice(-9);
+  if (!ziel) return null;
+  return (events || []).find((e) =>
+    e?.channel === CHANNELS.LISA_CALL
+    && e?.type === EVENT_TYPES.INTERACTION
+    && String(e?.extractor || "").startsWith("telefonki")
+    && Number(e?.ts || 0) >= Number(task.ts || 0) - 60_000
+    && String(e?.counterparty?.ref || "").replace(/\D/g, "").endsWith(ziel)) || null;
+}
+
+async function telefonkiAbschliessen(clientId, doc, task) {
+  const events = await queryLatest(clientId, Number(task.ts || 0) - 60_000, 300);
+  const report = telefonkiReportFuer(task, events);
+  if (!report && Date.now() - Number(task.ts || 0) < TELEFONKI_REPORT_WARTE_MS) return false;
+  const who = task.contactName || task.phone;
+  const outcome = report ? "reached" : "no_answer";
+  const dialogSummary = report
+    ? String(report.summary || "").trim()
+    : "Es ist kein Gespräch zustande gekommen (nicht abgenommen, besetzt oder sofort aufgelegt).";
+  await doc.ref.update({
+    status: report ? "done" : "failed",
+    outcome,
+    resultSummary: clip(dialogSummary, 320) || null,
+    dialogSummary: clip(dialogSummary, 700) || null,
+    reportEventId: report?.id || null,
+    endedAt: FieldValue.serverTimestamp(),
+  });
+  await appendEvent(clientId, {
+    id: `lisa-result-${task.id}`,
+    channel: CHANNELS.LISA_CALL,
+    direction: DIRECTIONS.OUT,
+    type: EVENT_TYPES.OBSERVATION,
+    counterparty: { kind: "unknown", name: who, ref: task.phone || null },
+    subject: { name: task.contactName || "" },
+    summary: `Lisas Anruf bei ${who} ist beendet: ${OUTCOME_SPOKEN[outcome]}.`
+      + (report ? ` Aus dem Gespräch: ${clip(dialogSummary, 400)}` : ""),
+    signals: report ? {} : { unresolvedByAI: true },
+    payloadRef: { kind: "lisa_task", id: task.id },
+    extractor: "lisa@outbound",
+    tags: ["lisa", "call", "result"],
+  });
+  const push = await meldeErgebnis(clientId, { who, outcome, summary: dialogSummary, taskId: task.id, transcriptText: "" });
+  log.info("lisa.call.finalized", { clientId, taskId: task.id, provider: "telefonki", outcome, gemeldet: !!push.ok });
+  return true;
+}
+
 let finalizeBusy = false;
 
 /**
@@ -809,6 +999,14 @@ export async function finalizeLisaCalls(clientId) {
 
     for (const doc of snap.docs) {
       const task = doc.data();
+      if (task.provider === "telefonki") {
+        try {
+          if (await telefonkiAbschliessen(clientId, doc, task)) finalized += 1;
+        } catch (e) {
+          log.warn("lisa.call.finalize_error", { clientId, taskId: task.id, error: String(e?.message || e) });
+        }
+        continue;
+      }
       if (!task.conversationId) continue;
       try {
         // Chef hat übernommen: EL-Conversation stirbt oft beim Umlegen in
