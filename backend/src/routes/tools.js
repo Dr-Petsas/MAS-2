@@ -46,7 +46,7 @@ import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { mitUndo, rueckgaengigAn, zuruecknehmen } from "../clara/rueckgaengig.js";
 import { nameAusHinweis, spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
-import { pvsKennungAufloesen } from "../hkp/planrPvs.js";
+import { pvsKennungAufloesen, sucheFuerPlan } from "../hkp/planrPvs.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
@@ -251,7 +251,11 @@ function collapseResultPatients(res) {
   }
   return res;
 }
-async function searchPatientSpoken(clientId, name) {
+async function searchPatientSpoken(clientId, name, { plan = false } = {}) {
+  if (plan) {
+    const pvs = await sucheFuerPlan(clientId, name);
+    if (pvs) return collapseResultPatients(pvs);
+  }
   const first = await searchPatient(clientId, name);
   if (!first.ok) return first;
   if ((first.patients || []).length) return collapseResultPatients(first);
@@ -1197,7 +1201,8 @@ router.post("/tools/next-free-slot", async (req, res) => {
 // Mehrdeutigkeit Rueckfrage. Liefert entweder {done:true, payload} fuer eine
 // fertige (Frage-)Antwort oder {done:false, sel} mit dem eindeutigen Patienten.
 // Bricht NIE auf ein Geburtsdatum zu (am Telefon selten bekannt).
-export async function resolveSpokenPatientForRead(clientId, { rawName, hint, askWho }) {
+// plan: Plan-/Befund-Werkzeuge – bei MAS-Praxen mit PlanR-Bridge zuerst im PVS suchen.
+export async function resolveSpokenPatientForRead(clientId, { rawName, hint, askWho, plan = false }) {
   const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
   if (ordinalSource) {
     const remembered = await getPatientCandidates(clientId);
@@ -1211,7 +1216,7 @@ export async function resolveSpokenPatientForRead(clientId, { rawName, hint, ask
   let candidates = [];
   if (rawName) {
     const name = cleanSpokenPersonName(rawName) || rawName;
-    const found = await searchPatientSpoken(clientId, name);
+    const found = await searchPatientSpoken(clientId, name, { plan });
     if (!found.ok) return { done: true, payload: { ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` } };
     candidates = found.patients || [];
     if (candidates.length > 1) {
@@ -5278,6 +5283,7 @@ router.post("/tools/search-patient", async (req, res) => {
     // ("der, der gestern da war") OHNE neuen Namen gegen die gemerkten
     // Kandidaten der letzten Suche disambiguieren — auch vor Terminbuchung.
     let patients = [];
+    let nurImPvs = false;
     const nameToSearch = relSearch.leftover || rawName;
     if (nameToSearch) {
       const name = cleanSpokenPersonName(nameToSearch) || nameToSearch;
@@ -5286,6 +5292,14 @@ router.post("/tools/search-patient", async (req, res) => {
         return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${result.error}` });
       }
       patients = result.patients || [];
+      // Nicht in der Kartei: MAS-Praxis mit PlanR-Bridge sucht im PVS (fuer Plaene und Befunde reicht das)
+      if (patients.length === 0 && result.quelle !== "pvs") {
+        const pvs = await sucheFuerPlan(clientId, name);
+        if (pvs) {
+          patients = pvs.patients;
+          nurImPvs = true;
+        }
+      }
       if (patients.length === 0 && result.quelle === "pvs") {
         await setPatientCandidates(clientId, [], null);
         return res.json({
@@ -5371,7 +5385,9 @@ router.post("/tools/search-patient", async (req, res) => {
         patient: { firstName: sel.firstName, lastName: sel.lastName, birthDate: sel.birthDate },
         hasPhone: !!sel.hasPhone,
       });
-      const warn = sel.hasPhone ? "" : " Achtung: keine Telefonnummer hinterlegt.";
+      const warn = nurImPvs
+        ? " Der Patient steht nur in der Praxissoftware, nicht in Pickadoc: Plaene und Befund gehen, fuer Termine oder SMS muss er erst in Pickadoc angelegt werden."
+        : sel.hasPhone ? "" : " Achtung: keine Telefonnummer hinterlegt.";
       // Keine Buchungsfrage anhaengen: das Tool wird auch fuer reine
       // Nachschlage-Fragen genutzt und drueckte Clara sonst bei jeder
       // Patientensuche in den Termin-Modus (2026-06-10). AUSNAHME: war dies

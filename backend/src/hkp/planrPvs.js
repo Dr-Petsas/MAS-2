@@ -130,14 +130,21 @@ export async function identifizieren(clientId, { nummer = "", geburt = "", name 
  * entscheidet das statt des Namens. null = nicht zustaendig (kein Merkmal oder keine PlanR-Praxis).
  * -> { patient } | { kandidaten, message } | { message }
  */
-export async function pvsKennungAufloesen(clientId, body, { mehrfach } = {}) {
+export async function pvsKennungAufloesen(clientId, body, { mehrfach, plan = false } = {}) {
   const nummer = String(body?.patient_nummer ?? "").replace(/\D/g, "").slice(0, 9);
   const geburt = isoGeburt(body?.geburtsdatum);
   if (!nummer && !geburt) return null;
-  if (!(await patientenAusPvs(clientId))) return null;
+  const planr = await patientenAusPvs(clientId);
+  // plan: auch MAS-Praxen mit PlanR-Bridge (Plaene und Befunde: PVS zuerst)
+  if (!planr && !(plan && pvsGerade(clientId))) return null;
   const name = String(body?.name || "").trim();
   const r = await identifizieren(clientId, { nummer, geburt, name });
+  if (!r.ok && !planr) {
+    ohnePvs.set(clientId, Date.now());
+    return null;
+  }
   if (!r.ok) return { message: `Die Suche in der Praxissoftware ist fehlgeschlagen: ${r.error}` };
+  if (!planr && !r.patients.length) return null;
   const wie = nummer ? `der Patientennummer ${nummer}` : `dem Geburtsdatum ${deutsch(geburt)}`;
   let liste = r.patients;
   const hint = String(body?.hint || "").trim();
@@ -150,6 +157,30 @@ export async function pvsKennungAufloesen(clientId, body, { mehrfach } = {}) {
   }
   if (liste.length === 1) return { patient: liste[0] };
   return { kandidaten: liste, message: `Unter ${wie} gibt es mehrere. ${mehrfach ? mehrfach(liste) : ""}`.trim() };
+}
+
+// MAS-Praxen mit PlanR-Bridge (Chef 02.11.2026): fuer Plaene und Befunde zuerst das PVS, sonst die Pickadoc-Kartei.
+// Termine, SMS & Co. bleiben bei der Kartei. Ohne erreichbares PVS ein paar Minuten nicht mehr fragen.
+// Notaus MAS_PLAN_PVS_ZUERST=0.
+const OHNE_PVS_MS = 3 * 60_000;
+const ohnePvs = new Map();
+const pvsZuerstAus = () => process.env.MAS_PLAN_PVS_ZUERST === "0" || String(process.env.MAS_PLANR_PVS || "").trim() === "0";
+const pvsGerade = (clientId) => !pvsZuerstAus() && Date.now() - (ohnePvs.get(clientId) || 0) >= OHNE_PVS_MS;
+/** Nur fuer Tests. */
+export function _ohnePvsVergessen() { ohnePvs.clear(); }
+
+/**
+ * Patient fuer Plan/Befund einer MAS-Praxis aus dem PVS: { ok, patients, quelle:"pvs" } mit Treffern, sonst null
+ * (dann sucht der Aufrufer in der Kartei). PlanR-Praxen ohne MAS: null – dort sucht searchPatient ohnehin im PVS.
+ */
+export async function sucheFuerPlan(clientId, name) {
+  if (!String(name || "").trim() || !pvsGerade(clientId) || (await patientenAusPvs(clientId))) return null;
+  const r = await sucheImPvs(clientId, name);
+  if (!r.ok) {
+    ohnePvs.set(clientId, Date.now());
+    return null;
+  }
+  return r.patients.length ? r : null;
 }
 
 /** Wie searchPatient: { ok, patients } bzw. { ok:false, error } */

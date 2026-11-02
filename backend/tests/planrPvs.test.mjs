@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { _setHolen, alsPatient, bewerten, isoGeburt, pvsKennungAufloesen, sucheImPvs } from "../src/hkp/planrPvs.js";
+import { _ohnePvsVergessen, _setHolen, alsPatient, bewerten, isoGeburt, pvsKennungAufloesen, sucheFuerPlan, sucheImPvs } from "../src/hkp/planrPvs.js";
 import { _setBillingLaden } from "../src/hkp/planrClara.js";
 
 _setBillingLaden(async (id) => (id === "planrPraxis"
@@ -49,6 +49,43 @@ test("pvsKennungAufloesen: Nummer genau, Datum mit Name, nur fuer PlanR-Praxen",
   // ohne Merkmal oder MAS-Praxis: nicht zustaendig, Namenssuche wie bisher
   assert.equal(await pvsKennungAufloesen("planrPraxis", { name: "Anna" }), null);
   assert.equal(await pvsKennungAufloesen("masPraxis", { patient_nummer: "4711" }), null);
+  // Plaene/Befunde: auch die MAS-Praxis fragt das PVS; ohne Treffer weiter zur Kartei
+  _ohnePvsVergessen();
+  assert.equal((await pvsKennungAufloesen("masPraxis", { patient_nummer: "4711" }, { plan: true })).patient.id, "04711");
+  assert.equal(await pvsKennungAufloesen("masPraxis", { patient_nummer: "999" }, { plan: true }), null);
+  _setHolen(null);
+});
+
+test("sucheFuerPlan: MAS-Praxis mit Bridge zuerst im PVS, sonst Kartei (null)", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  _ohnePvsVergessen();
+  let fragen = 0;
+  _setHolen(async (url) => {
+    fragen += 1;
+    const q = new URL(url).searchParams.get("q");
+    const patienten = q === "Prodromos Fanelas" ? [P("812", "Prodromos", "Fanelas")] : [];
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  const r = await sucheFuerPlan("masPraxis", "Prodromos Fanelas");
+  assert.equal(r.patients[0].id, "812");
+  assert.equal(r.patients[0].quelle, "pvs");
+  assert.equal(await sucheFuerPlan("masPraxis", "Niemand Da"), null);
+  // PlanR-Praxis ohne MAS: searchPatient sucht dort ohnehin im PVS
+  const vorher = fragen;
+  assert.equal(await sucheFuerPlan("planrPraxis", "Prodromos Fanelas"), null);
+  assert.equal(fragen, vorher);
+
+  // Keine Bridge/kein PVS: ein paar Minuten nicht mehr fragen (keine Wartezeit vor jeder Kartei-Suche)
+  _setHolen(async () => { fragen += 1; return { ok: false, json: async () => ({ ok: false, meldung: "Praxis unbekannt." }) }; });
+  assert.equal(await sucheFuerPlan("ohneBridge", "Anna"), null);
+  const danach = fragen;
+  assert.equal(await sucheFuerPlan("ohneBridge", "Anna"), null);
+  assert.equal(fragen, danach);
+
+  process.env.MAS_PLAN_PVS_ZUERST = "0";
+  _ohnePvsVergessen();
+  assert.equal(await sucheFuerPlan("masPraxis", "Prodromos Fanelas"), null);
+  delete process.env.MAS_PLAN_PVS_ZUERST;
   _setHolen(null);
 });
 

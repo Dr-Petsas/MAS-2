@@ -909,8 +909,8 @@ export function vetterAntwort(offen, text, antwort = text) {
 async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}) {
   const rawName = String(body?.name || "").trim();
   const hint = String(body?.hint || "").trim();
-  // PlanR-Praxis: Patientennummer bzw. Geburtsdatum (aus dem PVS) entscheidet vor dem Namen
-  const kennung = await pvsKennungAufloesen(clientId, body, { mehrfach: (l) => disambiguationQuestion(l, { max: 3 }) });
+  // Patientennummer bzw. Geburtsdatum aus dem PVS entscheidet vor dem Namen (auch MAS-Praxen mit PlanR-Bridge)
+  const kennung = await pvsKennungAufloesen(clientId, body, { mehrfach: (l) => disambiguationQuestion(l, { max: 3 }), plan: true });
   if (kennung?.patient) {
     await setPatientCandidates(clientId, [kennung.patient], kennung.patient);
     return { patient: patientVon(kennung.patient), sel: kennung.patient };
@@ -954,7 +954,7 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
       return { patient: patientVon(eng[0]), sel: eng[0] };
     }
   }
-  const r = await resolveSpokenPatientForRead(clientId, { rawName, hint, askWho });
+  const r = await resolveSpokenPatientForRead(clientId, { rawName, hint, askWho, plan: true });
   if (!r.done) return { patient: patientVon(r.sel), sel: r.sel };
   const kandidaten = rawName ? await getPatientCandidates(clientId) : [];
   if (kandidaten.length > 1) {
