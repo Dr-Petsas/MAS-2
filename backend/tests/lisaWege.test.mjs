@@ -72,5 +72,8 @@ test("Gespraechs-Report der TelefonKI wird dem Auftrag ueber die Nummer zugeordn
   ];
   assert.equal(telefonkiReportFuer(task, events), passend);
   assert.equal(telefonkiReportFuer(task, events.slice(0, 4)), null);
+  const alsBianca = { ...passend, channel: "bianca_call" };
+  assert.equal(telefonkiReportFuer(task, [{ ...passend, type: "note" }, alsBianca]), alsBianca);
+  assert.equal(telefonkiReportFuer(task, [{ ...passend, channel: "email" }]), null);
   assert.equal(telefonkiReportFuer({ phone: "" }, events), null);
 });

@@ -939,8 +939,10 @@ const TELEFONKI_REPORT_WARTE_MS = 15 * 60_000;
 export function telefonkiReportFuer(task, events) {
   const ziel = String(task?.phone || "").replace(/\D/g, "").slice(-9);
   if (!ziel) return null;
+  // Die TelefonKI meldet das Gespraechsergebnis ueber den mit Bianca geteilten
+  // Dienst als bianca_call, nur die Notiz beim Waehlen kommt als lisa_call.
   return (events || []).find((e) =>
-    e?.channel === CHANNELS.LISA_CALL
+    (e?.channel === CHANNELS.LISA_CALL || e?.channel === CHANNELS.BIANCA_CALL)
     && e?.type === EVENT_TYPES.INTERACTION
     && String(e?.extractor || "").startsWith("telefonki")
     && Number(e?.ts || 0) >= Number(task.ts || 0) - 60_000
