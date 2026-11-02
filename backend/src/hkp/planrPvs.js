@@ -180,7 +180,16 @@ export async function sucheFuerPlan(clientId, name) {
     ohnePvs.set(clientId, Date.now());
     return null;
   }
-  return r.patients.length ? r : null;
+  // Nur Treffer zum ganzen Namen: ein Teiltreffer (nur der Vorname) verdraengt nie den Patienten aus der Kartei
+  const ganz = r.patients.filter((p) => passtGanz(name, p));
+  return ganz.length ? { ...r, patients: ganz } : null;
+}
+
+/** Passt JEDES gesprochene Wort zu Vor- oder Nachname (gleich, Anfang, Klang)? Patient in Kartei-Form. */
+export function passtGanz(gesprochen, p) {
+  const ws = woerter(gesprochen);
+  const teile = woerter(`${p?.firstName || ""} ${p?.lastName || ""}`);
+  return !!ws.length && ws.every((w) => teile.some((t) => t === w || (w.length >= 3 && t.startsWith(w)) || soundsSame(t, w)));
 }
 
 /** Wie searchPatient: { ok, patients } bzw. { ok:false, error } */

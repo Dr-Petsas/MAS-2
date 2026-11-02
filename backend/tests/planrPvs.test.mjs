@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { _ohnePvsVergessen, _setHolen, alsPatient, bewerten, isoGeburt, pvsKennungAufloesen, sucheFuerPlan, sucheImPvs } from "../src/hkp/planrPvs.js";
+import { _ohnePvsVergessen, _setHolen, alsPatient, bewerten, isoGeburt, passtGanz, pvsKennungAufloesen, sucheFuerPlan, sucheImPvs } from "../src/hkp/planrPvs.js";
 import { _setBillingLaden } from "../src/hkp/planrClara.js";
 
 _setBillingLaden(async (id) => (id === "planrPraxis"
@@ -63,13 +63,19 @@ test("sucheFuerPlan: MAS-Praxis mit Bridge zuerst im PVS, sonst Kartei (null)", 
   _setHolen(async (url) => {
     fragen += 1;
     const q = new URL(url).searchParams.get("q");
-    const patienten = q === "Prodromos Fanelas" ? [P("812", "Prodromos", "Fanelas")] : [];
+    const patienten = q === "Prodromos Fanelas" ? [P("812", "Prodromos", "Fanelas")]
+      : q === "Prodromos Kartei" ? [] : q === "prodromos" ? [P("813", "Prodromos", "Anders")] : [];
     return { ok: true, json: async () => ({ ok: true, patienten }) };
   });
   const r = await sucheFuerPlan("masPraxis", "Prodromos Fanelas");
   assert.equal(r.patients[0].id, "812");
   assert.equal(r.patients[0].quelle, "pvs");
   assert.equal(await sucheFuerPlan("masPraxis", "Niemand Da"), null);
+  // im PVS nur ein anderer Prodromos: Teiltreffer zaehlt nicht, die Kartei sucht
+  assert.equal(await sucheFuerPlan("masPraxis", "Prodromos Kartei"), null);
+  assert.equal(passtGanz("Prodromos Fanelas", { firstName: "Prodromos", lastName: "Fanelas" }), true);
+  assert.equal(passtGanz("Prodromos Fanelas", { firstName: "Prodromos", lastName: "Lagos" }), false);
+  assert.equal(passtGanz("Prodromos Phanelas", { firstName: "Prodromos", lastName: "Fanelas" }), true);
   // PlanR-Praxis ohne MAS: searchPatient sucht dort ohnehin im PVS
   const vorher = fragen;
   assert.equal(await sucheFuerPlan("planrPraxis", "Prodromos Fanelas"), null);

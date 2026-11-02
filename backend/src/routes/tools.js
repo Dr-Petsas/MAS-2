@@ -46,7 +46,7 @@ import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { mitUndo, rueckgaengigAn, zuruecknehmen } from "../clara/rueckgaengig.js";
 import { nameAusHinweis, spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
-import { pvsKennungAufloesen, sucheFuerPlan } from "../hkp/planrPvs.js";
+import { passtGanz, pvsKennungAufloesen, sucheFuerPlan } from "../hkp/planrPvs.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
@@ -5292,11 +5292,13 @@ router.post("/tools/search-patient", async (req, res) => {
         return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${result.error}` });
       }
       patients = result.patients || [];
-      // Nicht in der Kartei: MAS-Praxis mit PlanR-Bridge sucht im PVS (fuer Plaene und Befunde reicht das)
-      if (patients.length === 0 && result.quelle !== "pvs") {
+      // Niemand in der Kartei passt zum ganzen Namen (z. B. nur Vorname): MAS-Praxis mit PlanR-Bridge fragt das PVS
+      // (fuer Plaene und Befunde reicht das)
+      if (result.quelle !== "pvs" && !patients.some((p) => passtGanz(name, p))) {
         const pvs = await sucheFuerPlan(clientId, name);
-        if (pvs) {
-          patients = pvs.patients;
+        const ganz = (pvs?.patients || []).filter((p) => passtGanz(name, p));
+        if (ganz.length) {
+          patients = ganz;
           nurImPvs = true;
         }
       }
