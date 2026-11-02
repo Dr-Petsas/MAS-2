@@ -27,7 +27,7 @@ ul{margin:6px 0 0 18px;padding:0}
 <li><b>Nicht live ausgelöst</b>: Werkzeuge, die echt schreiben (Kartei, iPad-Aufnahme, Vorgänge, E-Mail-Versand). Die Sprach-Erkennung ist im Sprachtest geprüft, die Ausführung nicht (28).</li>
 <li><b>Sprachbefehle ohne Werkzeug</b> (Aufwecken, Pause, Rückgängig, Namen lernen, Plaudern): die Erkennung direkt im Sprach-Stack geprüft (26 grün). Lena-iPad-Befehle laufen im iPad-Browser und sind hier nicht getestet.</li>
 <li><b>Sprachtest x/y</b>: Clara-Testsuite (220 gesprochene Sätze, Sprachmodell wählt das Werkzeug) – gesamt 205/220 = 93 %.</li>
-<li style="color:#9b1c1c"><b>Echte SMS / echter Lisa-Anruf (02.11., an 0177 6004600): beide GESCHEITERT.</b> Das Twilio-Konto ist nicht mehr aktiv (Status 8) – damit gehen aktuell keine Lisa-SMS, keine Lisa-Anrufe, kein Recall und keine Absage-SMS raus. Letzter erfolgreicher Lisa-Anruf: 26.08.</li>
+<li style="color:#9b1c1c"><b>Echte SMS / echter Lisa-Anruf (02.11., an 0177 6004600): beide GESCHEITERT.</b> Ursache: Lisas Versand in MAS hängt noch am alten, stillgelegten Twilio-Konto – SMS müssen über smsflatrate.de (wie die Plattform), Anrufe über Zaluma laufen. Bis zur Umstellung gehen keine Lisa-SMS, keine Lisa-Anrufe, kein Recall und keine Absage-SMS raus. Termin-SMS der Plattform (Bestätigung/Erinnerung) laufen unabhängig davon über smsflatrate.</li>
 <li><span class="eva">auch Eva</span> = steht auch der Standalone-Clara (Eva, PlanR) zur Verfügung; alles andere nur Clara im MAS.</li>
 </ul></div>
 <div class="box"><input id="f" placeholder="Suchen – z. B. SMS, Befund, Recall, HKP …" oninput="filt()"></div>
