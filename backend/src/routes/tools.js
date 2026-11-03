@@ -41,6 +41,7 @@ import { lookupCaller, normalizePhone } from "../clara/callerLookup.js";
 import { spokenCallLog } from "../clara/callLog.js";
 import { summarizeForSpeech } from "../clara/summarize.js";
 import { dayInboundComms, buildSpokenComms, cardInboundComms } from "../clara/commsDigest.js";
+import { pruefeKontakt } from "../clara/kontaktPruefung.js";
 import { spokenRatings } from "../clara/ratings.js";
 import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
@@ -3338,6 +3339,30 @@ router.post("/tools/call-log", async (req, res) => {
     }
     const message = await spokenCallLog(clientId, { date: req.body?.date });
     res.json({ ok: true, message });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Voice: "Hat Herr X angerufen?" / "Hat Firma Y gemailt?" — gezielte Pruefung
+// EINER Person/Firma (call_log/comms_digest lesen nur den ganzen Tag vor).
+router.post("/tools/contact-check", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const name = String(req.body?.name || req.body?.query || "").trim();
+    if (!name) {
+      return res.json({ ok: false, message: "Nach wem soll ich schauen? Sagen Sie mir bitte den Namen oder die Firma." });
+    }
+    const kanal = ["anruf", "mail", "alle"].includes(String(req.body?.kanal || "").toLowerCase())
+      ? String(req.body.kanal).toLowerCase() : "alle";
+    const out = await pruefeKontakt(clientId, {
+      name, kanal, date: req.body?.date, tage: req.body?.tage,
+    });
+    res.json({ ok: true, ...out });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
