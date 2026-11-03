@@ -68,6 +68,17 @@ export function imAnrufFenster(ms = Date.now()) {
   return h >= CALL_WINDOW_START && h < CALL_WINDOW_END;
 }
 
+/** Anruf-Rueckfrage vor dem Waehlen. Ausserhalb des Fensters bietet sie das Einplanen UND den Anruf
+ *  jetzt an: der Chef entscheidet (Live 03.11.2026 07:31 "Nein, soll jetzt direkt anrufen" ging ins Leere). */
+export function anrufRueckfrage(wer, ms = Date.now()) {
+  const name = wer || "diese Person";
+  if (imAnrufFenster(ms)) return `Ist das ${name}? Soll Lisa jetzt anrufen?`;
+  const wannTxt = new Intl.DateTimeFormat("de-DE", {
+    timeZone: TZ_BERLIN, weekday: "long", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(naechsterFensterStartMs(ms)));
+  return `Ist das ${name}? Es ist gerade außerhalb der Anrufzeiten — soll Lisa den Anruf für ${wannTxt} Uhr einplanen, oder trotzdem jetzt anrufen?`;
+}
+
 /** Naechster Fensterstart (ms) ab `ms` — heute frueh oder morgen frueh. */
 export function naechsterFensterStartMs(ms = Date.now()) {
   const fmtTag = (t) => new Intl.DateTimeFormat("en-CA", {

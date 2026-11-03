@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  callProvider, smsConfigured, smsflatrateAbsender, smsflatrateUrl, telefonkiBundle, telefonkiReportFuer,
+  anrufRueckfrage, callProvider, smsConfigured, smsflatrateAbsender, smsflatrateUrl, telefonkiBundle, telefonkiReportFuer,
 } from "../src/lisa/outbound.js";
 
 function mitEnv(werte, fn) {
@@ -76,4 +76,14 @@ test("Gespraechs-Report der TelefonKI wird dem Auftrag ueber die Nummer zugeordn
   assert.equal(telefonkiReportFuer(task, [{ ...passend, type: "note" }, alsBianca]), alsBianca);
   assert.equal(telefonkiReportFuer(task, [{ ...passend, channel: "email" }]), null);
   assert.equal(telefonkiReportFuer({ phone: "" }, events), null);
+});
+
+test("Anruf-Rueckfrage: ausserhalb der Anrufzeiten einplanen ODER trotzdem jetzt", () => {
+  const frueh = Date.parse("2026-11-03T07:31:00+01:00");
+  const mittag = Date.parse("2026-11-03T11:00:00+01:00");
+  const f = anrufRueckfrage("Michael Petsas", frueh);
+  assert.match(f, /außerhalb der Anrufzeiten/);
+  assert.match(f, /einplanen, oder trotzdem jetzt anrufen\?$/);
+  assert.match(f, /soll Lisa\b.*\banruf/i);
+  assert.equal(anrufRueckfrage("Michael Petsas", mittag), "Ist das Michael Petsas? Soll Lisa jetzt anrufen?");
 });

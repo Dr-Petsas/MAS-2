@@ -56,7 +56,7 @@ import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
-import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, decideDelegationDial, canConfirmLisaCall, nameTokensOverlap, imAnrufFenster, naechsterFensterStartMs } from "../lisa/outbound.js";
+import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, decideDelegationDial, canConfirmLisaCall, nameTokensOverlap, anrufRueckfrage } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -4800,19 +4800,13 @@ function lisaCallConfirmPayload({ name, phone, instruction }) {
   // genau diese Ansage schnitt der Lisa-Flip ab. Die Vorschau sagt das jetzt
   // VOR der Bestaetigung. Wortlaut muss "soll Lisa ... anruf..." enthalten,
   // damit der Worker-Waechter das folgende Ja als confirm=true erkennt.
-  let frage = `Ist das ${wer}? Soll Lisa jetzt anrufen?`;
-  if (!imAnrufFenster()) {
-    const wannTxt = new Intl.DateTimeFormat("de-DE", {
-      timeZone: "Europe/Berlin", weekday: "long", hour: "2-digit", minute: "2-digit",
-    }).format(new Date(naechsterFensterStartMs()));
-    frage = `Ist das ${wer}? Es ist gerade außerhalb der Anrufzeiten — soll Lisa den Anruf für ${wannTxt} Uhr einplanen?`;
-  }
+  const frage = anrufRueckfrage(wer);
   return {
     ok: true,
     needsConfirm: true,
     prepared: true,
     message: frage,
-    directive: "Lies die Rueckfrage woertlich vor und WARTE. NUR auf ausdrueckliches 'Ja' rufst du delegate_call ERNEUT auf mit confirm=true, derselben instruction und OHNE phone. Auf 'Nein' oder eine Korrektur ('nicht die, sondern Frau Y') rufst du delegate_call ERNEUT mit dem korrigierten contactName auf - OHNE confirm; die Karte wird ersetzt. Nennt der Chef keinen neuen Namen, frage: Wen genau soll Lisa anrufen? Erfinde KEINE Telefonnummer.",
+    directive: "Lies die Rueckfrage woertlich vor und WARTE. NUR auf ausdrueckliches 'Ja' rufst du delegate_call ERNEUT auf mit confirm=true, derselben instruction und OHNE phone. Will der Chef ausserhalb der Anrufzeiten trotzdem JETZT anrufen lassen ('jetzt', 'sofort', 'trotzdem'), zusaetzlich sofort=true. Auf 'Nein' oder eine Korrektur ('nicht die, sondern Frau Y') rufst du delegate_call ERNEUT mit dem korrigierten contactName auf - OHNE confirm; die Karte wird ersetzt. Nennt der Chef keinen neuen Namen, frage: Wen genau soll Lisa anrufen? Erfinde KEINE Telefonnummer.",
     card: karteLisaLive({
       taskId: "",
       contactName: name,
@@ -4896,8 +4890,10 @@ router.post("/tools/delegate-call", async (req, res) => {
       const dialPhone = pending.phone;
       const dialName = pending.name || "";
       const dialInstr = String(pending.instruction || instrText).trim();
+      // Ausdruecklicher Wunsch des Chefs, ausserhalb der Anrufzeiten trotzdem jetzt zu waehlen.
+      const sofort = req.body?.sofort === true || req.body?.sofort === "true";
       if (dryRun) {
-        return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${dialName || dialPhone} angerufen.` });
+        return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${dialName || dialPhone} angerufen${sofort ? " (trotz Anrufzeiten)" : ""}.` });
       }
       const out = await lisaStartCall(clientId, {
         phone: dialPhone,
@@ -4905,6 +4901,7 @@ router.post("/tools/delegate-call", async (req, res) => {
         contactName: dialName,
         callLanguage: req.body?.callLanguage,
         by: op?.name || "Team",
+        sofort,
       });
       await clearPendingLisaCall(clientId).catch(() => {});
       if (out?.taskId) {
