@@ -12,6 +12,7 @@ import { getOperator } from "../clara/sessions.js";
 import { notifyOperator } from "../clara/devices.js";
 import { getAssistantName } from "../shared/rufname.js";
 import { loadBooking } from "../clara/booking.js";
+import { termineFuerAuftrag, termineRegie, terminSprech } from "./auftragTermine.js";
 import { log } from "../log.js";
 
 // ============================================================================
@@ -519,9 +520,13 @@ async function lisaOutboundAgent(clientId) {
 }
 
 /** Auftrag an die TelefonKI-Lisa (Asterisk/Zaluma). Rein bis auf fetch. */
-export function telefonkiBundle({ clientId, locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext }) {
+export function telefonkiBundle({ clientId, locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext, vorab }) {
   const [vor, ...rest] = String(name || "").trim().split(/\s+/);
+  const extra = vorab?.slots?.length
+    ? { freeTimeSlots: vorab.slots.map((iso) => ({ iso, spoken: terminSprech(iso) })) }
+    : {};
   return {
+    ...extra,
     phoneCallId: taskId,
     clientId,
     locationId: locationId || agent?.locationId || "",
@@ -542,20 +547,20 @@ export function telefonkiBundle({ clientId, locationId, taskId, to, fromDid, auf
       phone: to,
       mobilePhoneNumber: to,
     },
-    calendarId: bookingContext?.calendarId || "",
+    calendarId: bookingContext?.calendarId || vorab?.calendarId || "",
     currentTime: new Intl.DateTimeFormat("sv-SE", {
       timeZone: TZ_BERLIN, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
     }).format(new Date()).replace(" ", "T"),
   };
 }
 
-async function telefonkiOutboundCall(clientId, { taskId, to, auftrag, name, bookingContext }) {
+async function telefonkiOutboundCall(clientId, { taskId, to, auftrag, name, bookingContext, vorab }) {
   const agent = await lisaOutboundAgent(clientId);
   const fromDid = normalizePhoneE164(env("LISA_FROM_DID") || agent?.phoneNumber || "");
   if (!fromDid) return { ok: false, error: "keine Absender-Nummer (LISA_FROM_DID / Outbound-Agent)" };
   const booking = await loadBooking(clientId).catch(() => null);
   const body = telefonkiBundle({
-    clientId, locationId: booking?.locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext,
+    clientId, locationId: booking?.locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext, vorab,
   });
   const headers = { "Content-Type": "application/json" };
   const token = env("LISA_OUTBOUND_API_TOKEN");
@@ -754,6 +759,20 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     calendarName: bookingContext?.calendarName,
   }).catch(() => null);
 
+  // Termin-Auftrag ohne Kalender-Kontext: passende freie Termine jetzt pruefen
+  // und mitgeben, statt Lisa unter einem geratenen Besuchsgrund suchen zu lassen.
+  const vorab = !bookingContext
+    ? await termineFuerAuftrag(clientId, prompt).catch((e) => {
+      log.warn("lisa.call.vorab_termine_failed", { clientId, error: String(e?.message || e) });
+      return null;
+    })
+    : null;
+  if (vorab) {
+    log.info("lisa.call.vorab_termine", {
+      clientId, n: vorab.slots.length, wishMatched: vorab.wishMatched, motiv: vorab.visitMotiveName,
+    });
+  }
+
   // Same dynamic-variable contract as Lisa's agent prompt expects.
   // client_id geht mit, damit die Kalender-Webhook-Tools (offer_slots/
   // book_slot) den Mandanten sicher auflösen — NIE vom LLM erfunden, sondern
@@ -766,6 +785,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
     contact_name: name || to,
     phone_number: to,
     task_prompt: rahmeAuftrag(disclosure ? `${disclosure}${prompt}` : prompt)
+      + termineRegie(vorab)
       + identitaetsRahmen(ident),
     patient_name: name || "",
     doctor: by || "",
@@ -777,7 +797,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   const provider = callProvider();
   const call = provider === "telefonki"
     ? await telefonkiOutboundCall(clientId, {
-      taskId: taskRef.id, to, auftrag: dynamicVariables.task_prompt, name, bookingContext,
+      taskId: taskRef.id, to, auftrag: dynamicVariables.task_prompt, name, bookingContext, vorab,
     })
     : await elevenOutboundCall({ to, dynamicVariables });
   // ElevenLabs meldet einen sofort gescheiterten Anruf mit HTTP 200, aber ohne
