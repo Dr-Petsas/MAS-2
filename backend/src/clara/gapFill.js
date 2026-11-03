@@ -1507,13 +1507,18 @@ export function buildSpokenGapBriefing(run, { operatorName, themaLabel, bucketKe
 }
 
 /** "seit 245 Tagen" klingt technisch — ab zwei Monaten in Monaten sprechen. */
-function faelligSeit(overdueDays) {
+export function faelligSeit(overdueDays, source = "recall") {
   const d = Number(overdueDays) || 0;
   if (d <= 0) return "";
-  if (d < 60) return `seit ${d} Tagen fällig`;
   const monate = Math.round(d / 30);
-  return `seit etwa ${monate} Monaten fällig`;
+  const jahre = Math.round(d / 365);
+  const dauer = d < 60 ? `${d} Tagen` : monate < 24 ? `etwa ${monate} Monaten` : `etwa ${jahre} Jahren`;
+  // Kampagnen-Kandidaten tragen in overdueDays die Zeit seit dem letzten Besuch
+  // (outreachTemplates.recallKontrollFokus), keine Ueberfaelligkeit.
+  return source === "recall" ? `seit ${dauer} fällig` : `zuletzt vor ${dauer} da`;
 }
+
+const quelleVon = (c) => c.source || (c.campaignId ? "campaign" : "recall");
 
 /**
  * Themen-Schluessel eines Kandidaten: Kampagnen-Bucket oder faelliger Recall,
@@ -1580,7 +1585,7 @@ export async function buildSpokenGapCandidates(clientId, { date } = {}) {
     const saetze = [];
     for (const [thema, gruppe] of gruppen) {
       const namen = gruppe.map((c) => {
-        const st = [faelligSeit(c.overdueDays), zaehlerSatz(c.stats).replace(/^, /, "")]
+        const st = [faelligSeit(c.overdueDays, quelleVon(c)), zaehlerSatz(c.stats).replace(/^, /, "")]
           .filter(Boolean).join(", ");
         return `${s(c.name) || "Unbekannt"}${st ? ` (${st})` : ""}`;
       }).join("; ");
@@ -1622,7 +1627,7 @@ export async function gapCandidateCardData(clientId, { date } = {}) {
       anzeigeName: nameMitZaehler(c.name, c.stats),
       name: s(c.name) || "Unbekannt",
       thema: c.campaignName ? `Kampagne »${s(c.campaignName)}«` : (s(c.visitMotiveName) || "Recall"),
-      faellig: faelligSeit(c.overdueDays),
+      faellig: faelligSeit(c.overdueDays, quelleVon(c)),
       // Kanalwort wie channelFor (recallCoach): nur-SMS-Consent -> SMS.
       viaWort: c.consent?.sms === true && c.consent?.reminder !== true ? "SMS" : "Anruf",
       stats: c.stats || null,

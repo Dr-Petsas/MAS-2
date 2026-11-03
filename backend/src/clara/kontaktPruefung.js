@@ -71,6 +71,9 @@ export function namensTreffer(gefragt, event) {
   const have = tokens(quelle);
   if (!have.length) return 0;
   if (want.every((w) => have.includes(w) || have.some((h) => h.length >= 5 && h.startsWith(w) && w.length >= 4))) return 2;
+  // Firmen schreiben sich mal getrennt, mal zusammen ("SMS-Flatrate" / smsflatrate.net).
+  const wantZus = want.join("");
+  if (wantZus.length >= 6 && have.join("").includes(wantZus)) return 2;
   // Nachname zaehlt am meisten: der LAENGSTE gefragte Teil reicht, wenn er exakt im Namen steht.
   const haupt = [...want].sort((a, b) => b.length - a.length)[0];
   const whoTok = tokens(quelle);

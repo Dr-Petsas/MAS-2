@@ -49,6 +49,10 @@ const READ_PATHS = new Set([
   "/tools/read-ratings", "/tools/read-treatment-dictation",
   "/tools/read-treatment-labels", "/tools/recall-candidates",
   "/tools/recall-status", "/tools/search-patient",
+  // Funktionstest 03.11.2026: lesende Routen, die bisher fehlten (Handler geprueft).
+  "/tools/asap-queue", "/tools/wiedervorlage", "/tools/hkp-overview",
+  "/tools/hkp-details", "/tools/hkp-position-check", "/tools/lisa-call-result",
+  "/tools/recall-instruction-preview", "/tools/patient-documents",
 ]);
 
 /**

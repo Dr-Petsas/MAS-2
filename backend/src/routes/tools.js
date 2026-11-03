@@ -408,12 +408,16 @@ router.post("/tools/read-email", async (req, res) => {
 
     const accountIds = await operatorMailAccountIds(clientId);
     const rows = await listMessages(clientId, { folder: "INBOX", limit: 50, accountIds });
-    const tokens = query.toLowerCase().split(/\s+/).filter((t) => t.length >= 3);
+    // Ohne Satz- und Leerzeichen vergleichen: "SMS-Flatrate" muss smsflatrate.net finden.
+    const kompakt = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9äöüß]+/g, "");
+    const tokens = query.split(/\s+/).map(kompakt).filter((t) => t.length >= 3);
+    const queryZus = kompakt(query);
     const fromText = (f) => (typeof f === "object" && f !== null ? `${f.name || ""} ${f.address || ""}` : String(f || ""));
-    const hay = (r) => `${fromText(r.from)} ${r.subject || ""} ${r.preview || ""}`.toLowerCase();
-    let hits = tokens.length ? rows.filter((r) => tokens.some((t) => hay(r).includes(t))) : [];
+    const hay = (r) => kompakt(`${fromText(r.from)} ${r.subject || ""} ${r.preview || ""}`);
+    const passt = (r, t) => hay(r).includes(t);
+    let hits = tokens.length ? rows.filter((r) => tokens.some((t) => passt(r, t)) || (queryZus.length >= 6 && passt(r, queryZus))) : [];
     // Volltreffer (alle Wörter) schlagen Teiltreffer; Liste ist neueste zuerst.
-    const strong = hits.filter((r) => tokens.every((t) => hay(r).includes(t)));
+    const strong = hits.filter((r) => tokens.every((t) => passt(r, t)) || (queryZus.length >= 6 && passt(r, queryZus)));
     if (strong.length) hits = strong;
     if (!hits.length) {
       return res.json({ ok: false, message: `Ich finde im Posteingang keine E-Mail zu „${query}“. Soll ich stattdessen die neuesten E-Mails nennen?` });

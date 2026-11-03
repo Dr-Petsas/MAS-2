@@ -13,6 +13,7 @@ import { sweepRecallOutcomes, dailyInitiativeScan } from "./clara/recallCoach.js
 import { sweepAbsenceRebookings } from "./clara/absencePlanner.js";
 import { ensureCatalog } from "./clara/patientCatalog.js";
 import { getAssistantName } from "./shared/rufname.js";
+import { sprechbarMiddleware } from "./clara/sprechbar.js";
 import { listContextPatientIds } from "./clara/sttPatientNames.js";
 import { runRetentionSweep } from "./brain/retention.js";
 import { materializeDueJobs as qmMaterializeDueJobs } from "./qm/schedules.js";
@@ -217,6 +218,8 @@ app.use(miscRouter);
 // aktiv, dann Positivliste — alles Unbekannte wird verweigert statt ausgefuehrt
 // (Vorfall 27.07.2026, siehe clara/testRedirect.js).
 app.use(testRedirectMiddleware(resolveClientId));
+// Werkzeug-Antworten ohne Datenbank-Vermerke vorlesen (clara/sprechbar.js).
+app.use(sprechbarMiddleware());
 // PlanR-Standalone: nur Patientensuche + HKP + Rueckgaengig (hkp/planrClara.js).
 app.use(planrClaraSperre(resolveClientId));
 app.use(toolsRouter);
