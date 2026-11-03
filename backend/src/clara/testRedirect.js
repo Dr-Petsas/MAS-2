@@ -38,7 +38,7 @@ export const TEST_MARKER = "[TESTLAUF]";
 /** Werkzeuge ohne bleibende Wirkung. Laufen im Testbetrieb unveraendert. */
 const READ_PATHS = new Set([
   "/tools/open-tasks", "/tools/absence-status", "/tools/anamnesis-flags",
-  "/tools/briefing", "/tools/call-log", "/tools/comms-digest",
+  "/tools/briefing", "/tools/call-log", "/tools/comms-digest", "/tools/contact-check",
   "/tools/day-appointments", "/tools/day-briefing",
   "/tools/doku-anforderungen", "/tools/doku-luecken", "/tools/doku-offen",
   "/tools/evening-briefing", "/tools/find-case", "/tools/find-contact",
