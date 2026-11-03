@@ -191,7 +191,7 @@ test("neu: vorlesen, Korrektur, erst nach ja nach Dampsoft – nur der Oberkiefe
   assert.equal(Object.keys(geschrieben[0].zaehne).length, 16);
   assert.deepEqual([geschrieben[0].zaehne[25], geschrieben[0].zaehne[24], geschrieben[0].zaehne[17], geschrieben[0].zaehne[18]], ["f", "k", "", "f"]);
   assert.equal(frei.rueckfrage, "vorlesen", frei.message);
-  assert.match(frei.message, /^Der Befund ist in Dampsoft gespeichert/);
+  assert.match(frei.message, /^Der Befund ist in Dampsoft als geänderter Befund gespeichert, ohne 01 und ohne Abrechnung\./);
   assert.doesNotMatch(frei.message, /Befund Oberkiefer/);
   const fertig = await rufe({ auftrag, bestaetigt: true });
   assert.ok(fertig.hkpId, fertig.message);

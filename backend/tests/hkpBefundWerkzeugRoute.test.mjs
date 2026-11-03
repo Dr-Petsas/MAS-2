@@ -107,7 +107,7 @@ test("vorlesen, aendern, nach ja nach Dampsoft – nur der geaenderte Kiefer", a
   assert.match(nochmal.message, /Noch nicht in Dampsoft übernommen: es fehlt 36/);
 
   const ja = await rufe({ uebernehmen: true });
-  assert.match(ja.message, /in Dampsoft gespeichert/, ja.message);
+  assert.match(ja.message, /in Dampsoft als geänderter Befund gespeichert, ohne 01 und ohne Abrechnung/, ja.message);
   assert.equal(geschrieben.length, 1);
   assert.deepEqual(geschrieben[0].kiefer, ["UK"]);
   assert.equal(geschrieben[0].zaehne[36], "f");
