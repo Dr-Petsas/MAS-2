@@ -30,7 +30,9 @@ import { createPairingToken } from "../clara/devices.js";
 import { normalizeRole } from "../clara/operators.js";
 import { DEFAULT_ASSISTANT_NAME, getAssistantName, invalidateAssistantName } from "../shared/rufname.js";
 import { log } from "../log.js";
-import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./_shared.js";
+import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, logOutboundMail, resolveClientId } from "./_shared.js";
+import { sendMail } from "../mail/mailbox.js";
+import { listAccounts } from "../mail/accounts.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
 import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js";
 import { soundsSame } from "../clara/phonetics.js";
@@ -501,6 +503,56 @@ router.post("/planr/registrieren", planrGuard, async (req, res) => {
     if (e instanceof RegistrierungFehler) return res.status(e.status).json({ ok: false, error: e.code, message: e.message });
     log.error?.(`[planr] Registrierung fehlgeschlagen: ${e?.message || e}`);
     res.status(500).json({ ok: false, error: "fehler", message: String(e?.message || e) });
+  }
+});
+
+// Kostenvoranschlag per Mail (PlanR, MAS-Praxis): Empfaenger aus der Pickadoc-Kartei –
+// nur bei genau einem Treffer mit passendem Namen (und Geburtsdatum, wenn angegeben).
+router.post("/planr/kva/kontakt", planrGuard, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const vorname = String(b.vorname || "").trim().slice(0, 80);
+    const name = String(b.name || "").trim().slice(0, 80);
+    const geb = /^\d{4}-\d{2}-\d{2}$/.test(String(b.geburtsdatum || "")) ? String(b.geburtsdatum) : "";
+    if (!name) return res.json({ ok: true, email: "" });
+    const gleich = (a, c) => String(a || "").trim().toLowerCase() === String(c || "").trim().toLowerCase();
+    const treffer = await findInCatalog(req.planrClientId, `${vorname} ${name}`.trim(), { limit: 8 });
+    const ids = treffer.filter((e) => gleich(e.l, name) && (!vorname || gleich(e.f, vorname))).map((e) => e.i);
+    const kandidaten = (ids.length ? await fetchPatientsByIds(req.planrClientId, ids) : [])
+      .filter((p) => !geb || !p.birthDate || p.birthDate === geb)
+      .filter((p) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email));
+    res.json({ ok: true, email: kandidaten.length === 1 ? kandidaten[0].email : "", mehrdeutig: kandidaten.length > 1 });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Kostenvoranschlag als PDF ueber das Praxis-Postfach (Nadine) senden; im Gedaechtnis protokolliert.
+router.post("/planr/kva/senden", planrGuard, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const to = String(b.to || "").trim();
+    const subject = String(b.subject || "").trim().slice(0, 300);
+    const text = String(b.text || "").slice(0, 20_000);
+    const pdf = b.pdf || {};
+    const filename = String(pdf.filename || "Kostenvoranschlag.pdf").replace(/[^\w .()-]/g, "_").slice(0, 120);
+    const base64 = String(pdf.base64 || "");
+    if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(to)) return res.status(400).json({ ok: false, error: "empfaenger", message: "Bitte eine gültige E-Mail-Adresse eintragen." });
+    if (!subject || !text.trim()) return res.status(400).json({ ok: false, error: "leer", message: "Betreff und Text dürfen nicht leer sein." });
+    if (!/^[A-Za-z0-9+/=]{100,14000000}$/.test(base64) || !Buffer.from(base64.slice(0, 8), "base64").toString("latin1").startsWith("%PDF")) {
+      return res.status(400).json({ ok: false, error: "pdf", message: "Der Kostenvoranschlag als PDF fehlt." });
+    }
+    const konto = (await listAccounts(req.planrClientId)).find((a) => a.active !== false);
+    if (!konto) return res.status(409).json({ ok: false, error: "kein_konto", message: "In MAS ist kein E-Mail-Konto für Nadine eingerichtet." });
+    const body = { to: [to], subject, text, attachments: [{ filename: filename.endsWith(".pdf") ? filename : `${filename}.pdf`, content: base64 }] };
+    const out = await sendMail(req.planrClientId, konto.id, body);
+    if (!out.ok) return res.status(502).json({ ok: false, error: out.reason || "senden", message: `Nadine konnte nicht senden (${out.reason || "unbekannt"}).` });
+    const wer = String(b.wer || "").trim().slice(0, 80) || "PlanR";
+    const brain = await logOutboundMail(req.planrClientId, { storedId: out.storedId, body, by: wer }).catch(() => null);
+    log.info?.(`[planr] Kostenvoranschlag an ${to} über ${konto.email || konto.id} gesendet${out.dryRun ? " (Testmodus)" : ""}`);
+    res.json({ ok: true, to, von: konto.email || "", dryRun: !!out.dryRun, protokolliert: !!brain?.ok });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
 
