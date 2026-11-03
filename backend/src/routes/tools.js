@@ -3160,6 +3160,7 @@ router.post("/tools/gapfill-call-patient", async (req, res) => {
     }
     const op = await getOperator(clientId);
     const target = await resolveDelegationTarget(clientId, req.body);
+    if (target.nurImPvs) return res.json({ ok: false, message: target.nurImPvs, directive: NUR_PVS_DIREKTIVE });
     if (!target.phone) {
       return res.json({ ok: false, message: "Ich habe noch keinen Patienten. Sage zuerst: Suche den Patienten — und den Namen. Danach lasse ich Lisa anrufen." });
     }
@@ -3849,6 +3850,7 @@ router.post("/tools/dictate", async (req, res) => {
     // SMS / Anruf -> Ziel aufloesen, ausformulieren, vorlesen, erst auf 'ja' senden.
     const isCall = ch === "call";
     const target = await resolveDelegationTarget(clientId, req.body);
+    if (target.nurImPvs) return res.json({ ok: false, message: target.nurImPvs, directive: NUR_PVS_DIREKTIVE });
     if (!target.phone) {
       let missCard = null;
       try {
@@ -4543,6 +4545,11 @@ router.post("/tools/find-contact", async (req, res) => {
       if (!found.ok) return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` });
       candidates = found.patients || [];
       if (candidates.length > 1) candidates = tightenNameHits(name, candidates);
+      const nurPvs = await nurImPvsHinweis(clientId, name, candidates, found.quelle);
+      if (nurPvs) {
+        await setPatientCandidates(clientId, [], null);
+        return res.json({ ok: false, message: nurPvs, directive: NUR_PVS_DIREKTIVE });
+      }
       if (!candidates.length) {
         // Kein Patient -> vielleicht ein Kollege ohne Titel im Satz
         // ("Ruf Patrikis an"), erst danach der externe Kontakt.
@@ -4741,6 +4748,22 @@ async function loadPatientPhonesFromDoc(clientId, patient) {
   };
 }
 
+const NUR_PVS_DIREKTIVE = "Diesen Satz so vorlesen. KEIN send_sms/delegate_call, keine Nummer erfinden, nicht nach dem Nachnamen fragen.";
+
+/**
+ * Patient nur im PVS (DS-Win liefert keine Telefonnummer): ehrlicher Satz statt
+ * "Wie lautet der Nachname?". Leer, wenn die Kartei zum ganzen Namen passt.
+ */
+async function nurImPvsHinweis(clientId, name, kandidaten, quelle) {
+  if (process.env.MAS_KONTAKT_PVS_HINWEIS === "0" || !name || quelle === "pvs") return "";
+  if ((kandidaten || []).some((p) => passtGanz(name, p))) return "";
+  const pvs = await sucheFuerPlan(clientId, name).catch(() => null);
+  const ganz = (pvs?.patients || []).filter((p) => passtGanz(name, p));
+  if (!ganz.length) return "";
+  if (await findDirectoryContact(clientId, name).catch(() => null)) return "";
+  return `${patientLabel(ganz[0])} steht nur in der Praxissoftware, nicht in Pickadoc – dort ist keine Telefonnummer für mich hinterlegt. Für SMS oder Anruf legen Sie ihn bitte einmal in Pickadoc an; Pläne und Befunde gehen schon jetzt.`;
+}
+
 async function resolveDelegationTarget(clientId, body) {
   const claimedPhone = phoneFromRecord({
     phone: body?.phone, phoneNumber: body?.phoneNumber, mobile: body?.mobile,
@@ -4754,6 +4777,11 @@ async function resolveDelegationTarget(clientId, body) {
     const found = await searchPatientSpoken(clientId, q);
     let patients = found?.ok ? (found.patients || []) : [];
     if (patients.length > 1) patients = tightenNameHits(q, patients);
+    const nurPvs = found?.ok ? await nurImPvsHinweis(clientId, cleanSpokenPersonName(q) || q, patients, found.quelle) : "";
+    if (nurPvs) {
+      await setPatientCandidates(clientId, [], null);
+      return { phone: "", name, nurImPvs: nurPvs };
+    }
     if (patients.length === 1) {
       sel = patients[0];
       cands = patients;
@@ -4856,6 +4884,7 @@ router.post("/tools/send-sms", async (req, res) => {
     const op = await getOperator(clientId);
     const target = await resolveDelegationTarget(clientId, req.body);
     const smsText = String(req.body?.message || req.body?.text || "").trim();
+    if (target.nurImPvs) return res.json({ ok: false, message: target.nurImPvs, directive: NUR_PVS_DIREKTIVE });
     if (!target.phone) {
       let missCard = null;
       try {
@@ -4953,6 +4982,7 @@ router.post("/tools/delegate-call", async (req, res) => {
     }
 
     const target = await resolveDelegationTarget(clientId, req.body);
+    if (target.nurImPvs) return res.json({ ok: false, message: target.nurImPvs, directive: NUR_PVS_DIREKTIVE });
     if (target.ambiguous) {
       return res.json({
         ok: true,
