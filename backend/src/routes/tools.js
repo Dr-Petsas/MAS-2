@@ -56,7 +56,7 @@ import { listPatientNamesForStt } from "../clara/sttPatientNames.js";
 import { koelnerPhonetikToken } from "../clara/phonetics.js";
 import { notifyOperator } from "../clara/devices.js";
 import { buildAppointmentProof, publishProof } from "../clara/proofCard.js";
-import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, decideDelegationDial, canConfirmLisaCall, nameTokensOverlap, anrufRueckfrage } from "../lisa/outbound.js";
+import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, phoneFromRecord, displayNameOf, decideDelegationDial, canConfirmLisaCall, nameTokensOverlap, anrufRueckfrage, imAnrufFenster, anrufFensterStartText } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
@@ -4893,7 +4893,11 @@ router.post("/tools/delegate-call", async (req, res) => {
       // Ausdruecklicher Wunsch des Chefs, ausserhalb der Anrufzeiten trotzdem jetzt zu waehlen.
       const sofort = req.body?.sofort === true || req.body?.sofort === "true";
       if (dryRun) {
-        return res.json({ ok: true, dryRun: true, message: `Testlauf: Lisa hätte jetzt ${dialName || dialPhone} angerufen${sofort ? " (trotz Anrufzeiten)" : ""}.` });
+        const wer = dialName || dialPhone;
+        const message = sofort || imAnrufFenster()
+          ? `Testlauf: Lisa hätte jetzt ${wer} angerufen${sofort && !imAnrufFenster() ? " (trotz Anrufzeiten)" : ""}.`
+          : `Testlauf: Lisa hätte den Anruf an ${wer} für ${anrufFensterStartText()} Uhr eingeplant.`;
+        return res.json({ ok: true, dryRun: true, message });
       }
       const out = await lisaStartCall(clientId, {
         phone: dialPhone,

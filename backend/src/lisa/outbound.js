@@ -73,10 +73,14 @@ export function imAnrufFenster(ms = Date.now()) {
 export function anrufRueckfrage(wer, ms = Date.now()) {
   const name = wer || "diese Person";
   if (imAnrufFenster(ms)) return `Ist das ${name}? Soll Lisa jetzt anrufen?`;
-  const wannTxt = new Intl.DateTimeFormat("de-DE", {
+  return `Ist das ${name}? Es ist gerade außerhalb der Anrufzeiten — soll Lisa den Anruf für ${anrufFensterStartText(ms)} Uhr einplanen, oder trotzdem jetzt anrufen?`;
+}
+
+/** "Dienstag, 09:00" — naechster Fensterstart zum Vorlesen. */
+export function anrufFensterStartText(ms = Date.now()) {
+  return new Intl.DateTimeFormat("de-DE", {
     timeZone: TZ_BERLIN, weekday: "long", hour: "2-digit", minute: "2-digit",
   }).format(new Date(naechsterFensterStartMs(ms)));
-  return `Ist das ${name}? Es ist gerade außerhalb der Anrufzeiten — soll Lisa den Anruf für ${wannTxt} Uhr einplanen, oder trotzdem jetzt anrufen?`;
 }
 
 /** Naechster Fensterstart (ms) ab `ms` — heute frueh oder morgen frueh. */
