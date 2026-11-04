@@ -43,12 +43,13 @@ import { praxisRegistrieren, RegistrierungFehler } from "../hkp/planrRegistrieru
 import { befundSatz, jahrgangWahl, vetternFrage, vorleseSatz, zahnBefundSatz } from "../hkp/vorlesen.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
+import { antwortVerstehen } from "../hkp/antwortVerstehen.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
   praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
 } from "../hkp/store.js";
 import {
-  auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, pvsKennung, quelleAntwort, quelleAus, vorgangMelden,
+  auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundVerwerfenPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, pvsKennung, quelleAntwort, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, implSummenSatz, konsSummenSatz, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
@@ -983,7 +984,9 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
   }
   const offen = vettern ? vetternOffen.get(clientId) : null;
   if (offen && Date.now() - offen.at < VETTERN_MS) {
-    const a = vetterAntwort(offen, `${hint} ${rawName}`, hint);
+    // Clara schickt den Satz des Chefs ("Die Erste.") als chef_satz; im name steht weiter der alte Name.
+    const satz = String(body?.chef_satz || "").trim() || hint;
+    const a = vetterAntwort(offen, `${satz} ${rawName}`, satz);
     if (a?.wahl) {
       vetternOffen.delete(clientId);
       vetterWahl.set(clientId, { id: a.wahl.id, at: Date.now() });
@@ -1164,21 +1167,83 @@ function restZusatzMerken(clientId, patient, auftragText, satz) {
  * Antwort auf die eigene letzte Rueckfrage (Live 04.11.2026): Clara gibt den woertlichen Satz des Chefs als
  * chef_satz mit - auf "Ja", "erstens" oder "alle raus" setzt das Modell das passende Feld oft nicht.
  * Fuellt nur leere Felder; gibt den Auftrag samt gemerkter Restzahn-Entscheidung zurueck.
+ * Was der Satz bedeutet, liest das Modell (antwortVerstehen); was daraus folgt, steht hier fest.
  */
-function antwortAufFrage(clientId, patient, b, auftragText) {
+async function antwortAufFrage(clientId, patient, b, auftragText) {
   const offen = wahlLesen(clientId, patient);
   const satz = String(b.chef_satz || "").trim();
-  if (satz && offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = satz;
-  if (satz && offen.frage === "befund_freigabe" && JA_WORT.test(satz)) b.befund_freigegeben = true;
-  if (satz && offen.frage === "befund_alt" && JA_WORT.test(satz)) b.befund_bestaetigt = true;
   const entfernFrage = offen.frage === "glied_vorhanden" || offen.frage === "zahn_vorhanden";
-  if (satz && (offen.frage === "restzaehne" || entfernFrage) && offen.frageZaehne?.length) {
-    // "Soll ich ihn als zu entfernen planen?" - ein Nein laesst sich nicht planen, dann fragt die Engine weiter.
-    const zusatz = entfernFrage && /^\W*nein\b|nicht (entfern|zieh|raus)/i.test(satz) ? "" : restAntwort(satz, offen.frageZaehne);
-    if (zusatz && auftragText) auftragText = restZusatzMerken(clientId, patient, auftragText, zusatz);
+  const restFrageOffen = (offen.frage === "restzaehne" || entfernFrage) && offen.frageZaehne?.length;
+  const v = satz && offen.frage && offen.frageText
+    ? await antwortVerstehen({ frage: offen.frageText, satz, zaehne: offen.frageZaehne || [] }) : null;
+  if (v) {
+    log.info?.(`[hkp] Antwort auf ${offen.frage}: ${v.art}${v.quelle ? ` (${v.quelle})` : ""}${v.angabe ? ` - ${v.angabe}` : ""}`);
+    if (v.art === "abbruch" || v.art === "neustart") {
+      await neuAnfangen(clientId, patient, offen);
+      b._neu = v.art;
+      return auftragText;
+    }
+    const ja = v.art === "zustimmung";
+    if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = v.quelle || satz;
+    if (offen.frage === "befund_freigabe" && ja) b.befund_freigegeben = true;
+    if (offen.frage === "befund_alt" && ja) b.befund_bestaetigt = true;
+    const zusaetze = [];
+    if (restFrageOffen) {
+      const raus = v.entfernen.length || v.erhalten.length ? v.entfernen : ja ? offen.frageZaehne.map(String) : [];
+      if (raus.length) zusaetze.push(restSatz(raus, "entfernen"));
+      if (v.erhalten.length) zusaetze.push(restSatz(v.erhalten, "erhalten"));
+      if (!raus.length && !v.erhalten.length && v.art === "ablehnung" && offen.frage === "restzaehne") {
+        zusaetze.push(restSatz(offen.frageZaehne.map(String), "erhalten"));
+      }
+    }
+    if (v.angabe && !(restFrageOffen && zusaetze.length)) zusaetze.push(v.angabe);
+    for (const z of zusaetze) if (auftragText && !textNorm(auftragText).includes(textNorm(z))) auftragText = restZusatzMerken(clientId, patient, auftragText, z);
+  } else if (satz) {
+    // Ohne Modell: nur die eindeutigen Faelle
+    if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = satz;
+    if (offen.frage === "befund_freigabe" && JA_WORT.test(satz)) b.befund_freigegeben = true;
+    if (offen.frage === "befund_alt" && JA_WORT.test(satz)) b.befund_bestaetigt = true;
+    if (restFrageOffen) {
+      // "Soll ich ihn als zu entfernen planen?" - ein Nein laesst sich nicht planen, dann fragt die Engine weiter.
+      const zusatz = entfernFrage && /^\W*nein\b|nicht (entfern|zieh|raus)/i.test(satz) ? "" : restAntwort(satz, offen.frageZaehne);
+      if (zusatz && auftragText) auftragText = restZusatzMerken(clientId, patient, auftragText, zusatz);
+    }
   }
   const rest = wahlLesen(clientId, patient).restZusatz || "";
   return rest && auftragText && !auftragText.includes(rest) ? `${auftragText}. ${rest}` : auftragText;
+}
+
+/** Antwort auf die eigene Vorschau: "zustimmung" | "angabe" | ... | "" (keine Vorschau offen). Ohne Modell nur ein klares "Ja ..." */
+async function vorschauAntwort(w, satz) {
+  if (!satz || w?.frage !== "vorlesen") return "";
+  const v = w.frageText ? await antwortVerstehen({ frage: w.frageText, satz }) : null;
+  if (v) return v.art;
+  return JA_WORT.test(satz) && !/\b(aber|nicht|statt|sondern)\b/i.test(satz) ? "zustimmung" : "";
+}
+
+// Neues Gespraech = frischer Vorgang (Live 04.11.2026: Befund-Zwischenstand, Vorschau und Ausfuehrung des
+// abgebrochenen Versuchs liefen in den naechsten; 13 und 23 gingen als fehlend nach DS-Win). Clara schickt je
+// Gespraech eine Sitzungskennung. Notaus MAS_HKP_SITZUNG=0.
+async function sitzungPruefen(clientId, patient, b) {
+  const sitzung = String(b.sitzung || "").trim();
+  if (!sitzung || process.env.MAS_HKP_SITZUNG === "0") return;
+  const alt = wahlLesen(clientId, patient);
+  if (alt.sitzung === sitzung) return;
+  if (Object.keys(alt).some((k) => k !== "at" && k !== "pvsNummer")) {
+    log.info?.(`[hkp] neues Gespraech fuer Patient ${patient.id}: alter Zwischenstand verworfen`);
+    await neuAnfangen(clientId, patient, alt);
+  }
+  wahlMerken(clientId, patient, { sitzung, ...(alt.pvsNummer ? { pvsNummer: alt.pvsNummer } : {}) });
+}
+
+/** Angefangenen Vorgang eines Patienten verwerfen: Zwischenstand, Vorschau, Ausfuehrungsfrage, nie freigegebene Zaehne */
+async function neuAnfangen(clientId, patient, alt) {
+  befundWahl.delete(wahlSchluessel(clientId, patient));
+  vorschauOffen.set(clientId, vorschauen(clientId).filter((v) => v.patient?.id !== patient.id));
+  ausfuehrungGefragt.delete(ausfuehrungSchluessel(clientId, patient));
+  // Clara hatte Zaehne vorgeschlagen, aber nie freigegeben: die rosa Aenderungen in PlanR gelten nicht weiter
+  if (alt?.offen && alt.frei !== alt.offen && alt.pvsNummer) await befundVerwerfenPvs(clientId, alt.pvsNummer).catch(() => null);
+  if (alt?.sitzung || alt?.pvsNummer) wahlMerken(clientId, patient, { ...(alt.sitzung ? { sitzung: alt.sitzung } : {}), ...(alt.pvsNummer ? { pvsNummer: alt.pvsNummer } : {}) });
 }
 
 /** Vor dem Schreiben ins Praxisprogramm: neuer Befund ganz, sonst nur die Aenderungen gegenueber dem Praxisprogramm */
@@ -1287,7 +1352,18 @@ async function befundDateiAnhaengen(clientId, h, d) {
   }
 }
 
+// Trockenlauf fuer die Ablauf-Probe (%TEMP%\verbund\hkp_nur.mjs): alles echt bis zum Anlegen, dann nur die Ansage.
+// Nie im Live-Betrieb setzen. MAS_HKP_TROCKEN=1.
+function trockenAngelegt(clientId, patient, was) {
+  if (process.env.MAS_HKP_TROCKEN !== "1") return null;
+  befundWahl.delete(wahlSchluessel(clientId, patient));
+  log.info?.(`[hkp] TROCKENLAUF: ${was} fuer Patient ${patient.id} nicht angelegt`);
+  return { ok: true, entwurfId: "trocken", message: `${was} für ${patient.anredeLabel} ist angelegt (Trockenlauf, nichts gespeichert).` };
+}
+
 async function entwurfAnlegen(clientId, d) {
+  const trocken = trockenAngelegt(clientId, d.patient, d.versorgungText || "Der HKP");
+  if (trocken) return trocken;
   const { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt } = d;
   const h = await hkpAnlegen(clientId, {
     patient, art: "kasse", status: "wartet_auf_freigabe", kiefer: auftrag.kiefer || "", versorgung: auftrag.versorgung || "",
@@ -1330,6 +1406,8 @@ export const privatGesagt = (t) => PRIVAT_WORT.test(t) && !KASSE_WORT.test(t);
 export const kasseGesagt = (t) => KASSE_WORT.test(t) || (/\bhkp\b|heil- ?und kostenplan/i.test(t) && !PRIVAT_WORT.test(t));
 
 async function privatAnlegen(clientId, d) {
+  const trocken = trockenAngelegt(clientId, d.patient, "Der Privatplan");
+  if (trocken) return trocken;
   const { patient, auftragText, befund, r, summen } = d;
   const e = await entwurfAblegen(clientId, {
     modul: "privat-kv",
@@ -1500,6 +1578,8 @@ async function sprachPlanZweig(clientId, sprachPlan, b, patient, auftragText) {
 }
 
 async function sprachPlanAnlegen(clientId, d) {
+  const trocken = trockenAngelegt(clientId, d.patient, "Der Plan");
+  if (trocken) return trocken;
   const cfg = SPRACH_PLAENE[d.sprachPlan];
   const { patient, auftragText, r, summen } = d;
   const e = await entwurfAblegen(clientId, {
@@ -1531,7 +1611,18 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (privat && privatAus()) return res.json({ ok: true, message: PRIVAT_AUS_SATZ });
     if (sp && SPRACH_PLAENE[sp].aus()) return res.json({ ok: true, message: SPRACH_PLAENE[sp].ausSatz });
     const ziel = zielpreisAn() && !privat && !sp ? zielpreisAus(b.zielpreis) : null;
-    const vs = wahr(b.bestaetigt) || ziel ? vorschauFinden(vorschauen(clientId), b) : null;
+    const gleicheSitzung = (v) => !String(b.sitzung || "").trim() || process.env.MAS_HKP_SITZUNG === "0"
+      || wahlLesen(clientId, v.patient).sitzung === String(b.sitzung).trim();
+    // Ja auf die eigene Vorschau, auch wenn Clara bestaetigt nicht setzt oder den Auftrag umschreibt (Demo 04.11.2026)
+    const offeneVs = String(b.chef_satz || "").trim() && !ziel ? vorschauFinden(vorschauen(clientId), { name: b.name }) : null;
+    const vsArt = offeneVs && gleicheSitzung(offeneVs) ? await vorschauAntwort(wahlLesen(clientId, offeneVs.patient), String(b.chef_satz).trim()) : "";
+    const offenBejaht = vsArt === "zustimmung";
+    if (offenBejaht) b.bestaetigt = true;
+    // Kein klares Ja zur Vorschau: nichts anlegen; eine Angabe ergaenzt den Auftrag (antwortAufFrage)
+    if (vsArt && vsArt !== "zustimmung") b.bestaetigt = false;
+    let vs = wahr(b.bestaetigt) || ziel ? vorschauFinden(vorschauen(clientId), b) : null;
+    if (vs && !gleicheSitzung(vs)) vs = null;
+    if (!vs && offenBejaht) vs = offeneVs;
     if (vs?.sprachPlan) {
       vorschauWeg(clientId, vs);
       vetterWahl.delete(clientId);
@@ -1553,7 +1644,11 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     const p = await patientAufloesen(clientId, b, `Für welchen Patienten soll ich ${privat ? "den Privatplan" : sp ? `${SPRACH_PLAENE[sp].akk} ${SPRACH_PLAENE[sp].text}` : "den HKP"} erstellen?`, { vettern: true });
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
-    auftragText = antwortAufFrage(clientId, patient, b, auftragText);
+    await sitzungPruefen(clientId, patient, b);
+    auftragText = await antwortAufFrage(clientId, patient, b, auftragText);
+    if (b._neu === "abbruch") {
+      return res.json({ ok: true, abgebrochen: true, message: `Gut, den angefangenen Plan für ${patient.anredeLabel} lasse ich fallen – angelegt ist nichts.` });
+    }
     // Folgezuege (Befundquelle, Ausfuehrung, Flaechen, Kanaele) kommen oft ohne privat=true bzw. planart: der laufende
     // Privatplan, die laufende MKV oder Kons gilt weiter, bis der Chef ausdruecklich eine andere Planart nennt.
     const lauf = wahlLesen(clientId, patient);
@@ -1586,7 +1681,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     let vorab = "";
     let flipKarte = null;
     const raus = (x) => {
-      wahlMerken(clientId, patient, { frage: x?.rueckfrage || "", frageZaehne: x?.zaehne || [] });
+      wahlMerken(clientId, patient, { frage: x?.rueckfrage || "", frageZaehne: x?.zaehne || [], frageText: String(x?.message || "").slice(0, 800) });
       if (vorab && x?.message) x = { ...x, message: `${vorab}${x.message}` };
       if (flipKarte && !x?.card) x = { ...x, card: flipKarte };
       liveMelden(clientId, { meldung: String(x?.message || "") });
@@ -1658,6 +1753,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       bestaetigt: wahr(b.befund_bestaetigt), lenaErlaubt: await lenaFreigeschaltet(clientId),
       bisher: wahl.gesagt, abgeleitetVorher: wahl.abgeleitet, genanntVorher: wahl.genannt,
       pvsName: wahl.pvsName, neuGefragt: !!wahl.neuGefragt,
+      pfeiler: (auftrag.teile?.length ? auftrag.teile : [auftrag]).flatMap((t) => t.pfeiler || []).map(String),
       ohneBefundOk: (auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung === "totalprothese"),
     });
     const befundDiktat = text || ausAuftrag;

@@ -263,3 +263,70 @@ test("aus Dampsoft mit spaeter genannter Aenderung: nur die Aenderung zur Freiga
   assert.equal(h.befundQuelle.art, "gesprochen+pvs");
   assert.equal(h.befundQuelle.uebertragen, "Dampsoft");
 });
+
+// Demo 04.11.2026: Antworten kommen woertlich als chef_satz, das Modell setzt keine Felder; jedes Gespraech neu.
+// Das Sprachverstehen ist hier ein fester Nachbau, die Route dahinter laeuft echt.
+const { _setFragen, antwortPruefen } = await import("../src/hkp/antwortVerstehen.js");
+const VERSTEHEN = {
+  "den aktuellen": { art: "zustimmung", quelle: "pvs" },
+  "Der Befund stimmt.": { art: "zustimmung" },
+  "Ja, der Befund stimmt.": { art: "zustimmung" },
+  "Legt den erst mal so an.": { art: "zustimmung" },
+  "Ja, aber in Gold bitte.": { art: "angabe", angabe: "in Gold" },
+  "Ich möchte eine Oberkieferprothese mit Teleskop auf 1,3 und 2,3, alle anderen Zähne werden ersetzt.":
+    { art: "angabe", angabe: "Oberkieferprothese mit Teleskop auf 13 und 23, alle anderen Zähne werden ersetzt" },
+};
+_setFragen(async (messages) => {
+  const satz = /Antwort des Zahnarztes: "([^"]*)"/.exec(messages.at(-1).content)?.[1] || "";
+  return { ok: true, text: JSON.stringify({ quelle: "", entfernen: [], erhalten: [], angabe: "", art: "unklar", ...VERSTEHEN[satz] }) };
+});
+test.after(() => _setFragen(null));
+
+test("Demo-Ablauf Teleskop: woertliche Antworten, Pfeiler bleiben stehen, nur der Oberkiefer geht nach Dampsoft", async () => {
+  geschrieben.length = 0;
+  const start = "ich möchte für Herrn Anna Befundtest einen Heil- und Kostenplan erstellen.";
+  const befund = "13, 23 vorhanden, 11, 12, 14, 15, 16, 17, 18, 21, 22, 24, 25, 26, 27, 28 fehlen";
+  const s = { sitzung: "demo-1" };
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "versorgung");
+  const satz = "Ich möchte eine Oberkieferprothese mit Teleskop auf 1,3 und 2,3, alle anderen Zähne werden ersetzt.";
+  const q = await rufe({ auftrag: start, befund, chef_satz: satz, ...s });
+  assert.equal(q.rueckfrage, "befund_quelle", q.message);
+  const pruefen = await rufe({ auftrag: start, befund, chef_satz: "den aktuellen", ...s });
+  assert.equal(pruefen.rueckfrage, "befund_freigabe", pruefen.message);
+  assert.doesNotMatch(pruefen.message, /\b(13|23)\b[^.]*\?|fehl\w* [^.]*\b(13|23)\b/);
+  const frei = await rufe({ auftrag: start, befund, chef_satz: "Der Befund stimmt.", ...s });
+  assert.equal(geschrieben.length, 1, frei.message);
+  assert.deepEqual(geschrieben[0].kiefer, ["OK"]);
+  assert.equal(geschrieben[0].zaehne[13], "");
+  assert.equal(geschrieben[0].zaehne[23], "");
+  assert.ok(!Object.keys(geschrieben[0].zaehne).some((z) => /^[34]/.test(z)));
+  assert.equal(frei.rueckfrage, "vorlesen", frei.message);
+  const gold = await rufe({ auftrag: "Teleskop-HKP für Anna Befundtest", befund, chef_satz: "Ja, aber in Gold bitte.", bestaetigt: true, ...s });
+  assert.ok(!gold.hkpId, "Korrektur zur Vorschau legt nichts an");
+  assert.equal(gold.rueckfrage, "vorlesen", gold.message);
+  assert.match(gold.message, /gold/i);
+  const fertig = await rufe({ auftrag: "Teleskop-HKP für Anna Befundtest, geboren am ...", befund, chef_satz: "Legt den erst mal so an.", ...s });
+  assert.ok(fertig.hkpId, fertig.message);
+  // Neues Gespraech: nichts vom alten Versuch gilt, die Quelle wird wieder gefragt
+  const neu = await rufe({ auftrag: `${start} ${satz}`, befund, sitzung: "demo-2" });
+  assert.equal(neu.rueckfrage, "befund_quelle", neu.message);
+});
+
+test("Oberkiefer-Totalprothese aendert den Unterkiefer nicht; alte Vorschau gilt im neuen Gespraech nicht", async () => {
+  geschrieben.length = 0;
+  const auftrag = "Ich möchte eine Oberkäfertotalprothese planen";
+  const v = await rufe({ auftrag, befund: "es fehlen 31 und 32", befund_quelle: "pvs", sitzung: "tp-1" });
+  assert.notEqual(v.rueckfrage, "befund_freigabe", v.message);
+  assert.doesNotMatch(v.message, /\b3[12]\b/);
+  assert.equal(geschrieben.length, 0);
+  const fremd = await rufe({ auftrag, befund_quelle: "pvs", chef_satz: "Ja, der Befund stimmt.", sitzung: "tp-2" });
+  assert.ok(!fremd.hkpId);
+  assert.ok(geschrieben.every((g) => !Object.keys(g.zaehne).some((z) => /^[34]/.test(z))));
+});
+
+test("Sprachverstehen: nur gueltiges JSON zaehlt, Zaehne nur aus der Frage", () => {
+  assert.equal(antwortPruefen({ art: "vielleicht" }), null);
+  assert.equal(antwortPruefen(null), null);
+  const r = antwortPruefen({ art: "zustimmung", entfernen: ["12", "99", 13, "12"], quelle: "dampsoft", angabe: "x" }, ["12", "13"]);
+  assert.deepEqual(r, { art: "zustimmung", quelle: "", entfernen: ["12", "13"], erhalten: [], angabe: "" });
+});

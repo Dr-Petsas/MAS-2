@@ -283,15 +283,19 @@ export const imGespraechAktuell = (p) => process.env.MAS_HKP_BEFUND_AKTUELL !== 
 export async function befundErmitteln(clientId, patient, {
   gesprochen = "", ausAuftrag = "", kiefer, kieferListe, quelle = "", bestaetigt = false, ohneBefundOk = false,
   lena = letzterLena01, pvs = pvsBefund, lenaErlaubt = true, bisher = null, abgeleitetVorher, genanntVorher,
-  pvsName, neuGefragt = false,
+  pvsName, neuGefragt = false, pfeiler = [],
 } = {}) {
   const jetzt = new Date().toISOString();
   const hinweise = [];
   const seit = (b, vorher) => Object.fromEntries(Object.entries(b).filter(([z, c]) => vorher[z] !== c));
-  const abgeleitet = ausAuftrag ? befundVerstehen(ausAuftrag, kiefer) : {};
-  const genannt = gesprochen ? befundVerstehen(gesprochen, kiefer) : genanntVorher || {};
-  const gesagt = { ...(bisher || {}), ...seit(abgeleitet, abgeleitetVorher ?? abgeleitet), ...seit(genannt, genanntVorher || {}) };
   const jaws = kieferListe?.length ? kieferListe : kiefer === "OK" || kiefer === "UK" ? [kiefer] : ["OK", "UK"];
+  // Live 04.11.2026: "Teleskop auf 13 und 23, alle anderen Zaehne werden ersetzt" - "alle anderen" las die
+  // Engine ohne die Pfeiler, 13 und 23 gingen als fehlend nach DS-Win. Pfeiler des Auftrags stehen.
+  const abgeleitet = ausAuftrag ? nurKiefer(befundVerstehen(ausAuftrag, kiefer), jaws) : {};
+  for (const z of pfeiler) if (abgeleitet[z] === "f") abgeleitet[z] = "";
+  const genannt = gesprochen ? befundVerstehen(gesprochen, kiefer) : genanntVorher || {};
+  // Nur die Kiefer des Auftrags: eine Oberkiefer-Prothese aendert den Unterkiefer nie (live: 23 Zaehne geschrieben).
+  const gesagt = nurKiefer({ ...(bisher || {}), ...seit(abgeleitet, abgeleitetVorher ?? abgeleitet), ...seit(genannt, genanntVorher || {}) }, jaws);
   const holePvs = () => pvs(clientId, patient).catch(() => null);
   const holeLena = () => (lenaErlaubt ? lena(clientId, patient).catch(() => null) : Promise.resolve(null));
   const stand = { gesagt, abgeleitet, genannt };
@@ -327,7 +331,7 @@ export async function befundErmitteln(clientId, patient, {
 
   /** Befund aus dem Praxisprogramm samt offener Aenderungen aus dem Gespraech; Abweichungen gehen nach der Freigabe dorthin */
   const ausPvs = (p) => {
-    const roh = { ...(p.offen || {}), ...gesagt };
+    const roh = nurKiefer({ ...(p.offen || {}), ...gesagt }, jaws);
     const geaendert = Object.keys(roh).filter((z) => String(p.befund[z] ?? "") !== roh[z]);
     const befund = { ...p.befund, ...roh };
     hinweise.push(...fremdeKuerzel(befund, p.pvs));

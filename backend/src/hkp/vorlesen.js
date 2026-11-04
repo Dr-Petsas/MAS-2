@@ -131,9 +131,16 @@ export const jahrgang = (p) => (/^\d{4}/.test(String(p?.birthDate || "")) ? Stri
 
 const ORDINAL = ["erstens", "zweitens", "drittens", "viertens", "fünftens"];
 
-function vetterLabel(p) {
+// Live 04.11.2026: zweimal "Maria Partheni, Jahrgang 1968" vorgelesen, der Chef konnte nicht unterscheiden.
+function vetterLabel(p, pool = [p]) {
   const name = `${p.firstName || ""} ${p.lastName || ""}`.replace(/\s+/g, " ").trim();
   const j = jahrgang(p);
+  const tag = String(p.birthDate || "").slice(0, 10);
+  const nummer = p.quelle === "pvs" && p.id ? `, Patientennummer ${String(p.id).split("").join(" ")}` : ", nur in der Pickadoc-Kartei";
+  if (j && pool.some((q) => q !== p && jahrgang(q) === j)) {
+    const gleicherTag = pool.some((q) => q !== p && String(q.birthDate || "").slice(0, 10) === tag);
+    return `${name}, ${geburtSprech(tag)}${gleicherTag ? nummer : ""}`;
+  }
   if (j) return `${name}, Jahrgang ${jahrWort(j)}`;
   const angelegt = /^(\d{4})-(\d{2})/.exec(String(p.createdAt || ""));
   return `${name}, ohne Geburtsdatum${angelegt ? `, angelegt im ${MONATE[Number(angelegt[2]) - 1]} ${jahrWort(angelegt[1])}` : ""}`;
@@ -142,7 +149,7 @@ function vetterLabel(p) {
 /** Rueckfrage bei gleich klingenden Kartei-Eintraegen (Petsas/Petzas) */
 export function vetternFrage(kandidaten, { erneut = false } = {}) {
   const pool = kandidaten.slice(0, ORDINAL.length);
-  const aufzaehlung = pool.map((p, i) => `${ORDINAL[i]} ${vetterLabel(p)}`).join("; ");
+  const aufzaehlung = pool.map((p, i) => `${ORDINAL[i]} ${vetterLabel(p, pool)}`).join("; ");
   if (erneut) {
     return `Die Namen klingen gleich, deshalb brauche ich den Unterschied: ${aufzaehlung}. Welchen meinen Sie – den ersten oder den zweiten, oder nennen Sie den Jahrgang?`;
   }
