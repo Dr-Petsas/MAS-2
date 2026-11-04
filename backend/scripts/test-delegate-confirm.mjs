@@ -32,6 +32,14 @@ test("gleiche Nummer in anderem Format bleibt Datensatz", () => {
   assert.equal(pick.phone, normalizePhoneE164("017612345678"));
 });
 
+test("Datensatz '+49 (0)176…' wird ohne die 0 gewaehlt (Baysal 04.11.)", () => {
+  assert.equal(normalizePhoneE164("+49 (0)176 1234 5678"), "+4917612345678");
+  assert.equal(normalizePhoneE164("+4901761234 5678"), "+4917612345678");
+  assert.equal(normalizePhoneE164("0049 0176 12345678"), "+4917612345678");
+  assert.equal(normalizePhoneE164("+43 0664 1234567"), "+436641234567");
+  assert.equal(normalizePhoneE164("0211 54244101"), "+4921154244101");
+});
+
 test("ohne Datensatz wird eine LLM-Nummer verworfen", () => {
   const pick = chooseDialPhone({
     recordPhone: "",

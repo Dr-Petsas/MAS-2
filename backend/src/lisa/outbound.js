@@ -122,6 +122,9 @@ export function normalizePhoneE164(raw, defaultCc = "+49") {
     if (v.startsWith("0")) v = defaultCc + v.slice(1);
     else v = defaultCc + v;
   }
+  // "+49 (0)176…" — die Verkehrsausscheidungsziffer 0 darf nach DE/AT/CH-Vorwahl
+  // nie gewählt werden; Zaluma lehnt "+490…" sofort ab (Vorfall 04.11.2026).
+  v = v.replace(/^\+(49|43|41)0+/, "+$1");
   // "+" followed by 8..15 digits (E.164)
   if (!/^\+\d{8,15}$/.test(v)) return null;
   return v;
