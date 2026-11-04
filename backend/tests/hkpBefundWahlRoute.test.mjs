@@ -304,8 +304,21 @@ const VERSTEHEN = {
   "Der Befund ist 1,3 ist vorhanden, 2, 3 ist vorhanden, alle anderen Zähne im Oberkiefer fehlen. Es stehen nur zwei Zähne, 1, 3 und 2, 3.":
     { art: "angabe", befund: { kiefer: "beide", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: "fehlt" } },
 };
+// Live 05.11.2026 00:26-00:28 (Antworten wie das echte Modell sie gab)
+const OK_FEHLEN = Object.fromEntries(OK.filter((z) => z !== "13" && z !== "23").map((z) => [z, "fehlt"]));
+const DIKTAT_ZU_LANGSAM = "Gut, es fehlen die Zähne 1, 8, 1, 7, 1, 6, 1, 5, 1, 4, 1, 2, 1, 1, 2, 1, 2, 2 und 2, 4 bis 2, 8. Die Zähne 1, 3 und 2, 3 sind vorhanden. Im Unterkiefer sind alle Zähne vorhanden, auch die Weisheitszähne.";
+Object.assign(VERSTEHEN, {
+  "Wir müssen erst mal den Befund ändern. Die Zähne 1, 3 und 2, 3 stehen noch.":
+    { art: "angabe", angabe: "Wir müssen erst mal den Befund ändern. Die Zähne 1, 3 und 2, 3 stehen noch.", befund: { kiefer: "beide", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: "" } },
+  "Eine Oberkieferprothese mit Teleskopkrone auf 1,3 und 2,3.": { art: "angabe", angabe: "Oberkieferprothese mit Teleskopkrone auf 13 und 23" },
+  "Es fehlen die Zähne 18, 17, 16, 15, 14, 12, 11, 21, 22 und 24 bis 28, 13 und 23 sind vorhanden. Im Unterkiefer sind alle Zähne vorhanden.":
+    { art: "angabe", quelle: "neu", befund: { kiefer: "beide", zaehne: { 13: "vorhanden", 23: "vorhanden", ...OK_FEHLEN }, rest: "vorhanden" } },
+  "Nein, eins, drei und zwei, drei sind vorhanden, alle anderen Zähne im Oberkiefer fehlen, im Unterkiefer sind alle Zähne erhalten.":
+    { art: "angabe", befund: { kiefer: "beide", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: { OK: "fehlt", UK: "vorhanden" } } },
+});
 _setFragen(async (messages) => {
   const satz = /Antwort des Zahnarztes: "([^"]*)"/.exec(messages.at(-1).content)?.[1] || "";
+  if (satz === DIKTAT_ZU_LANGSAM) return { ok: false, error: "timeout" };
   return { ok: true, text: JSON.stringify({ quelle: "", entfernen: [], erhalten: [], angabe: "", art: "unklar", ...VERSTEHEN[satz] }) };
 });
 test.after(() => _setFragen(null));
@@ -391,6 +404,54 @@ test("Probe 04.11.2026: 'Wir nehmen einen neuen Befund auf' auf die Befundfrage 
   assert.deepEqual([geschrieben[0].zaehne[16], geschrieben[0].zaehne[12], geschrieben[0].zaehne[13]], ["f", "", ""]);
   await kurz();
   assert.ok(!vorgaenge.some((v) => /neuen Befund/.test(v.auftrag || "")), JSON.stringify(vorgaenge.map((v) => v.auftrag)));
+});
+
+test("Live 05.11.2026: Diktat ohne Modell wird nicht geraten, Korrektur ohne Aenderung ist keine Schleife", async () => {
+  geschrieben.length = 0;
+  aenderungen.length = 0;
+  const start = "Können wir für Herrn Anna Befundtest einen Heilung Kostenplan erstellen, bitte?";
+  const s = { sitzung: "live-0526" };
+  const ruf = (chef_satz) => rufe({ auftrag: start, chef_satz, ...s });
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "versorgung");
+  const zuerst = await ruf("Wir müssen erst mal den Befund ändern. Die Zähne 1, 3 und 2, 3 stehen noch.");
+  assert.equal(zuerst.rueckfrage, "versorgung", zuerst.message);
+  assert.match(zuerst.message, /^Den Befund nehmen wir gleich im nächsten Schritt auf\. Zuerst: Welche Versorgung/, "nicht dieselbe Frage noch einmal");
+  assert.equal((await ruf("Eine Oberkieferprothese mit Teleskopkrone auf 1,3 und 2,3.")).rueckfrage, "befund_quelle");
+  assert.equal((await ruf("Wir nehmen einen neuen Befund auf.")).rueckfrage, "befund_fehlt");
+
+  const langsam = await ruf(DIKTAT_ZU_LANGSAM);
+  assert.equal(langsam.rueckfrage, "befund_fehlt", langsam.message);
+  assert.match(langsam.message, /nicht sicher verstanden\. Können Sie ihn mir bitte noch einmal sagen\?$/);
+  await kurz();
+  assert.equal(aenderungen.length, 0, "kein geratener Befund im Zahnschema");
+
+  const pruefen = await ruf("Es fehlen die Zähne 18, 17, 16, 15, 14, 12, 11, 21, 22 und 24 bis 28, 13 und 23 sind vorhanden. Im Unterkiefer sind alle Zähne vorhanden.");
+  assert.equal(pruefen.rueckfrage, "befund_freigabe", pruefen.message);
+  assert.match(pruefen.message, /vorhanden: 13 und 23/, pruefen.message);
+  assert.doesNotMatch(pruefen.message, /Unterkiefer|\b[34][1-8]\b/);
+
+  const gleich = await ruf("Nein, eins, drei und zwei, drei sind vorhanden, alle anderen Zähne im Oberkiefer fehlen, im Unterkiefer sind alle Zähne erhalten.");
+  assert.equal(gleich.rueckfrage, "befund_korrektur", gleich.message);
+  assert.match(gleich.message, /^Das hat am vorgelesenen Befund nichts geändert\. Welche Zähne sind anders\?/);
+  assert.equal(geschrieben.length, 0);
+
+  assert.equal((await ruf("Ja, stimmt so.")).rueckfrage, "befund_freigabe");
+  const frei = await ruf("Ja, stimmt so.");
+  assert.equal(geschrieben.length, 1, frei.message);
+  assert.deepEqual(geschrieben[0].kiefer, ["OK"]);
+  assert.deepEqual([geschrieben[0].zaehne[13], geschrieben[0].zaehne[23], geschrieben[0].zaehne[12], geschrieben[0].zaehne[24]], ["", "", "f", "f"]);
+});
+
+test("Befund mit Rest je Kiefer: oben fehlen die anderen, unten stehen alle", () => {
+  const r = antwortPruefen({ art: "angabe", befund: { kiefer: "beide", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: { OK: "fehlt", UK: "vorhanden" } } });
+  assert.deepEqual(r.befund.rest, { OK: "fehlt", UK: "vorhanden" });
+  assert.deepEqual(antwortPruefen({ art: "angabe", befund: { kiefer: "", zaehne: {}, rest: { OK: "fehlt", UK: "quatsch" } } }).befund,
+    { kiefer: "", zaehne: {}, rest: { OK: "fehlt" } });
+  assert.equal(antwortPruefen({ art: "angabe", befund: { kiefer: "", zaehne: {}, rest: { OK: "weg" } } }).befund, null);
+  return import("../src/hkp/antwortVerstehen.js").then(({ befundSatz }) => {
+    assert.equal(befundSatz(r.befund, ["OK"]), "18, 17, 16, 15, 14, 12, 11, 21, 22, 24, 25, 26, 27 und 28 fehlen, 13 und 23 vorhanden");
+    assert.match(befundSatz(r.befund, ["OK", "UK"]), /fehlen, 13, 23, 48, 47, .* und 38 vorhanden$/);
+  });
 });
 
 test("Vorschlag aus einem frueheren Gespraech gilt nicht: verworfen, die Quelle wird gefragt", async () => {

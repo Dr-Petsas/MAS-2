@@ -82,6 +82,9 @@ befund – sobald er sagt, in welchem Zustand Zaehne SIND (Befund-Diktat, Korrek
   Teleskopkrone", "wird ersetzt") ist kein Befund und gehoert nicht in zaehne.
 - rest: Zustand aller NICHT genannten Zaehne, nur wenn er ihn ausdruecklich sagt ("alle anderen fehlen", "der Rest
   ist entfernt", "sonst stehen alle", "es stehen nur 13 und 23" -> "fehlt"). Sonst "".
+  Sagt er den Rest je Kiefer verschieden, ist rest ein Objekt je Kiefer: "13 und 23 sind vorhanden, alle anderen im
+  Oberkiefer fehlen, im Unterkiefer sind alle Zaehne da" -> "kiefer": "beide", "zaehne": {"13": "vorhanden",
+  "23": "vorhanden"}, "rest": {"OK": "fehlt", "UK": "vorhanden"}.
 - kiefer: der Kiefer, fuer den er spricht. "Im Oberkiefer stehen 13 und 23, alle anderen sind entfernt" -> "OK"
   ("alle anderen" sind dann die anderen im Oberkiefer). "beide" nur, wenn er ausdruecklich beide Kiefer oder den
   ganzen Mund meint; unbekannt "".`;
@@ -101,15 +104,22 @@ function jsonAus(text) {
 const zaehneAus = (x, erlaubt) => [...new Set((Array.isArray(x) ? x : []).map((z) => String(z).trim()))]
   .filter((z) => ZAHN.test(z) && (!erlaubt?.length || erlaubt.includes(z)));
 
+const restZustand = (r) => (r === "fehlt" || r === "vorhanden" ? r : "");
+const restJeKiefer = (rest) => !!rest && typeof rest === "object";
+
 function befundPruefen(b) {
   if (!b || typeof b !== "object") return null;
   const zaehne = {};
   for (const [z, s] of Object.entries(b.zaehne && typeof b.zaehne === "object" ? b.zaehne : {})) {
     if (ZAHN.test(String(z).trim()) && ZUSTAND[s]) zaehne[String(z).trim()] = s;
   }
-  const rest = b.rest === "fehlt" || b.rest === "vorhanden" ? b.rest : "";
+  let rest = restZustand(b.rest);
+  if (restJeKiefer(b.rest)) {
+    const je = Object.fromEntries(["OK", "UK"].map((k) => [k, restZustand(b.rest[k])]).filter(([, r]) => r));
+    rest = Object.keys(je).length ? je : "";
+  }
   const kiefer = ["OK", "UK", "beide"].includes(b.kiefer) ? b.kiefer : "";
-  return Object.keys(zaehne).length || (rest && kiefer) ? { kiefer, zaehne, rest } : null;
+  return Object.keys(zaehne).length || (rest && (kiefer || restJeKiefer(rest))) ? { kiefer, zaehne, rest } : null;
 }
 
 /** Modellantwort -> festes Ergebnis; ungueltig -> null */
@@ -142,10 +152,14 @@ export function befundSatz(befund, planKiefer = []) {
   if (!befund) return "";
   const genannt = Object.keys(befund.zaehne);
   const plan = planKiefer.filter((k) => REIHE[k]);
-  const kiefer = (befund.kiefer === "beide" ? ["OK", "UK"] : befund.kiefer ? [befund.kiefer]
+  const je = restJeKiefer(befund.rest);
+  const kiefer = (je ? Object.keys(befund.rest) : befund.kiefer === "beide" ? ["OK", "UK"] : befund.kiefer ? [befund.kiefer]
     : genannt.length ? [...new Set(genannt.map(kieferVon))] : plan).filter((k) => !plan.length || plan.includes(k));
   const zustand = { ...befund.zaehne };
-  if (befund.rest) for (const k of kiefer) for (const z of REIHE[k]) if (!(z in zustand)) zustand[z] = befund.rest;
+  for (const k of kiefer) {
+    const rest = je ? befund.rest[k] : befund.rest;
+    if (rest) for (const z of REIHE[k]) if (!(z in zustand)) zustand[z] = rest;
+  }
   const gruppen = new Map();
   for (const k of ["OK", "UK"]) {
     for (const z of REIHE[k]) if (z in zustand) gruppen.set(zustand[z], [...(gruppen.get(zustand[z]) || []), z]);
@@ -172,8 +186,9 @@ export async function antwortVerstehen({ frage, satz, zaehne = [] }) {
   if (alt && Date.now() - alt.at < MERK_MS) return alt.r;
   const { base, model } = strongLlm();
   const user = `Rueckfrage der Software: "${f}"${zaehne.length ? `\nIn der Frage genannte Zaehne: ${zaehne.join(", ")}` : ""}\nAntwort des Zahnarztes: "${s}"`;
+  // Ein ganzer Kieferbefund braucht gut 10 s; Clara wartet hoechstens 30 s auf das ganze Werkzeug.
   const res = await fragen([{ role: "system", content: SYSTEM }, { role: "user", content: user }],
-    { temperature: 0, maxTokens: 400, model, baseUrl: base, timeoutMs: Number(process.env.MAS_HKP_ANTWORT_MS || 12000) });
+    { temperature: 0, maxTokens: 900, model, baseUrl: base, timeoutMs: Number(process.env.MAS_HKP_ANTWORT_MS || 20000) });
   const r = res?.ok ? antwortPruefen(jsonAus(res.text), zaehne) : null;
   if (r) {
     for (const [key, v] of merker) if (Date.now() - v.at > MERK_MS) merker.delete(key);

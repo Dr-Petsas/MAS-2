@@ -1204,6 +1204,8 @@ async function antwortAufFrage(clientId, patient, b, auftragText) {
     if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = v.quelle || satz;
     if (offen.frage === "befund_freigabe" && ja) b.befund_freigegeben = true;
     if (offen.frage === "befund_freigabe" && v.art === "ablehnung" && !befundGesagt) b._befundNein = true;
+    if (offen.frage === "befund_freigabe" && v.art === "angabe") b._korrektur = true;
+    if (offen.frage === "versorgung" && v.befund) b._befundZuerst = true;
     // "Wir nehmen einen neuen Befund auf" auf "Stimmt der Befund so?": neu diktieren lassen statt dieselbe Frage
     if (["befund_freigabe", "befund_korrektur", "befund_alt"].includes(offen.frage) && v.quelle === "neu" && !befundGesagt) b._befundNeu = true;
     if (offen.frage === "befund_alt" && ja) b.befund_bestaetigt = true;
@@ -1222,8 +1224,12 @@ async function antwortAufFrage(clientId, patient, b, auftragText) {
     // Ohne Modell: nur die eindeutigen Faelle. Ein Satz mit Zahnnummern auf eine Befundfrage ist der Befund.
     const mitZahlen = satz.replace(/\b([1-4])\s*[,.]\s*([1-8])\b/g, "$1$2");
     if (BEFUND_FRAGEN.has(offen.frage) && offen.frage !== "befund_quelle" && !JA_WORT.test(satz) && /\b[1-4][1-8]\b/.test(mitZahlen)) {
-      b.befund = mitZahlen;
+      // Live 05.11.2026: Modell zu langsam, der Wortparser las "es fehlen die Zaehne 18, 17, ... 24 bis 28" als
+      // "alle vorhanden". Ein diktierter Befund wird nicht geraten - nur ohne Modell (Notaus) gilt die Wortregel.
+      if (process.env.MAS_HKP_ANTWORT_LLM === "0") b.befund = mitZahlen;
+      else b._befundUnklar = true;
     }
+    if (offen.frage === "befund_freigabe" && !JA_WORT.test(satz)) b._korrektur = true;
     if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = satz;
     if (offen.frage === "befund_freigabe" && JA_WORT.test(satz)) b.befund_freigegeben = true;
     if (offen.frage === "befund_alt" && JA_WORT.test(satz)) b.befund_bestaetigt = true;
@@ -1692,6 +1698,13 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       wahlMerken(clientId, patient, { frage: "befund_korrektur", frageZaehne: [], frageText: message });
       return res.json({ ok: true, rueckfrage: "befund_korrektur", message });
     }
+    if (b._befundUnklar) {
+      // Die offene Befundfrage bleibt gemerkt: die Wiederholung versteht das Modell wieder als Antwort darauf.
+      return res.json({
+        ok: true, rueckfrage: wahlLesen(clientId, patient).frage || "befund_fehlt",
+        message: "Den Befund habe ich gerade nicht sicher verstanden. Können Sie ihn mir bitte noch einmal sagen?",
+      });
+    }
     if (b._befundNeu) {
       // Ganz neuer Befund: der vorgelesene gilt nicht mehr, nicht genannte Zaehne nimmt die Aufnahme als vorhanden
       const message = neuFrage(auftragsKiefer(E.auftragVerstehen(auftragText || "")), wahlLesen(clientId, patient).pvsName, "Gut. ");
@@ -1775,7 +1788,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       await befundVorab();
       return raus({
         ok: true, rueckfrage: "versorgung",
-        message: `Welche Versorgung soll ich für ${patient.anredeLabel} planen?`,
+        message: `${b._befundZuerst ? "Den Befund nehmen wir gleich im nächsten Schritt auf. Zuerst: " : ""}Welche Versorgung soll ich für ${patient.anredeLabel} planen?`,
       });
     }
     const alteWeg = wahr(b.alte_verwerfen);
@@ -1835,6 +1848,13 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         befundFrei = true;
         if (wahl.uebertragen) befund.quelle = { ...befund.quelle, uebertragen: wahl.uebertragen };
       } else if (!(ja && wahl.offen === zaehne)) {
+        if (b._korrektur && wahl.offen === zaehne) {
+          // Live 05.11.2026: dieselbe Freigabe-Frage noch einmal vorlesen war eine Schleife
+          return raus({
+            ok: true, rueckfrage: "befund_korrektur",
+            message: "Das hat am vorgelesenen Befund nichts geändert. Welche Zähne sind anders? Zum Beispiel: 13 und 23 stehen, alle anderen im Oberkiefer fehlen.",
+          });
+        }
         wahlMerken(clientId, patient, merken);
         vorschauOffen.set(clientId, vorschauen(clientId).filter((v) => v.patient?.id !== patient.id));
         liveMelden(clientId, { phase: "befund", befund: befund.befund, plan: null, meldung: "" });
