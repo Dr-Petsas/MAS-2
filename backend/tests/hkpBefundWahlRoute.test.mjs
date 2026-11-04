@@ -19,6 +19,13 @@ const geschrieben = [];
 const gelesen = [];
 const vorgaenge = [];
 const aenderungen = [];
+const verworfen = [];
+// Offene Aenderungen in PlanR: 4712 ein nie freigegebener Vorschlag aus einem frueheren HKP-Gespraech,
+// 4713 eine Aenderung aus dem Befund-Werkzeug ("gilt jetzt auch fuer den naechsten Plan")
+const OFFEN = {
+  4712: { offen: { 11: "", 12: "" }, offenWer: "Clara – HKP-Vorschlag", stand: "2026-11-04T20:33:12.406Z" },
+  4713: { offen: { 17: "f" }, offenWer: "Clara", stand: "2026-11-04T20:33:12.406Z" },
+};
 const kurz = () => new Promise((r) => setTimeout(r, 80));
 
 const planr = http.createServer(async (req, res) => {
@@ -28,10 +35,18 @@ const planr = http.createServer(async (req, res) => {
   const senden = (status, d) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(d)); };
   if (req.headers["x-planr-key"] !== "k" || u.searchParams.get("clientId") !== CID) return senden(401, { ok: false });
   if (u.pathname === "/api/intern/pvs/patienten") {
-    const ohne = [...u.searchParams.values()].join(" ").includes("Ohnebridge");
-    return senden(200, { ok: true, patienten: [ohne
+    const q = [...u.searchParams.values()].join(" ");
+    return senden(200, { ok: true, patienten: [q.includes("Ohnebridge")
       ? { id: "815", vorname: "Bert", name: "Ohnebridge", geburtsdatum: "1950-01-02" }
-      : { id: "4711", vorname: "Anna", name: "Befundtest", geburtsdatum: "1972-03-05" }] });
+      : q.includes("Altvorschlag") ? { id: "4712", vorname: "Carla", name: "Altvorschlag", geburtsdatum: "1961-04-07" }
+        : q.includes("Werkzeugrest") ? { id: "4713", vorname: "Dora", name: "Werkzeugrest", geburtsdatum: "1963-05-08" }
+          : { id: "4711", vorname: "Anna", name: "Befundtest", geburtsdatum: "1972-03-05" }] });
+  }
+  if (u.pathname === "/api/intern/befund/verwerfen") {
+    const nr = String(JSON.parse(roh).patient);
+    verworfen.push(nr);
+    delete OFFEN[nr];
+    return senden(200, { ok: true, befund: {} });
   }
   if (u.pathname === "/api/intern/pvs/befund" && u.searchParams.get("patient") === "815") {
     return senden(502, { ok: false, pvs: "DS-Win", meldung: "Die PlanR-Bridge in der Praxis braucht ein Update." });
@@ -51,7 +66,8 @@ const planr = http.createServer(async (req, res) => {
   }
   if (u.pathname === "/api/intern/pvs/befund") {
     gelesen.push(Object.fromEntries(u.searchParams));
-    return senden(200, { ok: true, pvs: "Dampsoft", patient: "4711", datum: "2026-10-12", zaehne: DAMPSOFT });
+    const nr = u.searchParams.get("patient") || "4711";
+    return senden(200, { ok: true, pvs: "Dampsoft", patient: nr, datum: "2026-10-12", zaehne: DAMPSOFT, ...OFFEN[nr] });
   }
   return senden(404, { ok: false });
 });
@@ -61,7 +77,7 @@ process.env.PLANR_URL = `http://127.0.0.1:${planr.address().port}`;
 const { _setBillingLaden } = await import("../src/hkp/planrClara.js");
 _setBillingLaden(async () => ({ subscriptions: { planr: { enabled: true, sprachsteuerung: true } } }));
 const { default: router } = await import("../src/routes/hkp.js");
-const { hkpLesen, hkpLoeschenFuerTest } = await import("../src/hkp/store.js");
+const { hkpDateiLesen, hkpLesen, hkpLoeschenFuerTest } = await import("../src/hkp/store.js");
 
 const app = express();
 app.use(express.json());
@@ -180,6 +196,7 @@ test("neu: vorlesen, Korrektur, erst nach ja nach Dampsoft – nur der Oberkiefe
   // Gesagtes steht sofort offen in PlanR (rosa im Zahnschema), geschrieben wird erst nach dem Ja
   assert.equal(aenderungen.length, 1);
   assert.deepEqual([aenderungen[0].patient, aenderungen[0].zaehne[25], aenderungen[0].zaehne[24]], ["4711", "f", "k"]);
+  assert.match(aenderungen[0].wer, / – HKP-Vorschlag$/, "PlanR erkennt den Vorschlag des Gespraechs");
   const korrigiert = await rufe({ auftrag, befund: "17 ist vorhanden" });
   assert.equal(korrigiert.rueckfrage, "befund_freigabe", korrigiert.message);
   assert.doesNotMatch(korrigiert.message, /es fehlen 17/);
@@ -191,7 +208,7 @@ test("neu: vorlesen, Korrektur, erst nach ja nach Dampsoft – nur der Oberkiefe
   assert.equal(Object.keys(geschrieben[0].zaehne).length, 16);
   assert.deepEqual([geschrieben[0].zaehne[25], geschrieben[0].zaehne[24], geschrieben[0].zaehne[17], geschrieben[0].zaehne[18]], ["f", "k", "", "f"]);
   assert.equal(frei.rueckfrage, "vorlesen", frei.message);
-  assert.match(frei.message, /^Der Befund ist in Dampsoft als geänderter Befund gespeichert, ohne 01 und ohne Abrechnung\./);
+  assert.match(frei.message, /^Der Befund ist in Dampsoft als geänderter Befund gespeichert, ohne Null-Eins und ohne Abrechnung\./);
   assert.doesNotMatch(frei.message, /Befund Oberkiefer/);
   const fertig = await rufe({ auftrag, bestaetigt: true });
   assert.ok(fertig.hkpId, fertig.message);
@@ -275,6 +292,17 @@ const VERSTEHEN = {
   "Ja, aber in Gold bitte.": { art: "angabe", angabe: "in Gold" },
   "Ich möchte eine Oberkieferprothese mit Teleskop auf 1,3 und 2,3, alle anderen Zähne werden ersetzt.":
     { art: "angabe", angabe: "Oberkieferprothese mit Teleskop auf 13 und 23, alle anderen Zähne werden ersetzt" },
+  "Ich möchte bitte eine Oberkiefer-Totalprothese planen mit Teleskop auf den Zähnen 1,3 und 2,3.":
+    { art: "angabe", angabe: "Oberkiefer-Totalprothese mit Teleskop auf den Zähnen 13 und 23" },
+  "Wir nehmen einen neuen Befund auf.": { art: "angabe", quelle: "neu" },
+  "Okay, im Oberkiefer stehen der Zahn 1, 3 und 2, 3, alle anderen Zähne sind entfernt.":
+    { art: "angabe", befund: { kiefer: "OK", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: "fehlt" } },
+  "Nein, der Befund stimmt nicht.": { art: "ablehnung" },
+  "Ja, stimmt so.": { art: "zustimmung" },
+  "16 und 26 fehlen.": { art: "angabe", befund: { kiefer: "OK", zaehne: { 16: "fehlt", 26: "fehlt" }, rest: "" } },
+  // Probe 04.11.2026: "Es stehen nur zwei Zaehne" las das Modell einmal als beide Kiefer
+  "Der Befund ist 1,3 ist vorhanden, 2, 3 ist vorhanden, alle anderen Zähne im Oberkiefer fehlen. Es stehen nur zwei Zähne, 1, 3 und 2, 3.":
+    { art: "angabe", befund: { kiefer: "beide", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: "fehlt" } },
 };
 _setFragen(async (messages) => {
   const satz = /Antwort des Zahnarztes: "([^"]*)"/.exec(messages.at(-1).content)?.[1] || "";
@@ -312,6 +340,91 @@ test("Demo-Ablauf Teleskop: woertliche Antworten, Pfeiler bleiben stehen, nur de
   assert.equal(neu.rueckfrage, "befund_quelle", neu.message);
 });
 
+test("Live 04.11.2026 21:32: diktierter neuer Befund wird der Befund, 'Nein' fragt nach der Korrektur", async () => {
+  geschrieben.length = 0;
+  const start = "Ich möchte einen Heil- und Kostenplan erstellen für den Herrn Anna Befundtest.";
+  const s = { sitzung: "live-2132" };
+  const ruf = (chef_satz) => rufe({ auftrag: start, name: "Anna Befundtest", chef_satz, ...s });
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "versorgung");
+  assert.equal((await ruf("Ich möchte bitte eine Oberkiefer-Totalprothese planen mit Teleskop auf den Zähnen 1,3 und 2,3.")).rueckfrage, "befund_quelle");
+  assert.equal((await ruf("Wir nehmen einen neuen Befund auf.")).rueckfrage, "befund_fehlt");
+  const pruefen = await ruf("Okay, im Oberkiefer stehen der Zahn 1, 3 und 2, 3, alle anderen Zähne sind entfernt.");
+  assert.equal(pruefen.rueckfrage, "befund_freigabe", pruefen.message);
+  assert.doesNotMatch(pruefen.message, /vorhanden: 17 bis 27/, "nicht der Standardbefund");
+  assert.match(pruefen.message, /vorhanden: 13 und 23/, pruefen.message);
+  const nein = await ruf("Nein, der Befund stimmt nicht.");
+  assert.equal(nein.rueckfrage, "befund_korrektur", nein.message);
+  assert.equal(geschrieben.length, 0);
+  const korr = await ruf("Der Befund ist 1,3 ist vorhanden, 2, 3 ist vorhanden, alle anderen Zähne im Oberkiefer fehlen. Es stehen nur zwei Zähne, 1, 3 und 2, 3.");
+  assert.equal(korr.rueckfrage, "befund_freigabe", korr.message);
+  assert.doesNotMatch(korr.message, /Unterkiefer|\b[34][1-8]\b/, "die Oberkiefer-Prothese aendert den Unterkiefer nicht");
+  const frei = await ruf("Ja, stimmt so.");
+  assert.equal(geschrieben.length, 1, frei.message);
+  assert.deepEqual(geschrieben[0].kiefer, ["OK"]);
+  assert.deepEqual([geschrieben[0].zaehne[13], geschrieben[0].zaehne[23], geschrieben[0].zaehne[12], geschrieben[0].zaehne[18]], ["", "", "f", "f"]);
+  const fertig = await ruf("Legt den erst mal so an.");
+  assert.ok(fertig.hkpId, fertig.message);
+  await kurz();
+  const diktat = JSON.parse((await hkpDateiLesen(CID, fertig.hkpId, "befund"))?.inhalt || "{}").quelle?.diktat || "";
+  assert.match(diktat, /13 und 23 vorhanden/, diktat);
+  assert.doesNotMatch(diktat, /\b[34][1-8]\b/, "kein Unterkieferzahn im Diktat");
+});
+
+test("Probe 04.11.2026: 'Wir nehmen einen neuen Befund auf' auf die Befundfrage laesst neu diktieren", async () => {
+  geschrieben.length = 0;
+  vorgaenge.length = 0;
+  const start = "Ich möchte einen Heil- und Kostenplan erstellen für den Herrn Anna Befundtest.";
+  const s = { sitzung: "neu-auf-frage" };
+  const ruf = (chef_satz) => rufe({ auftrag: start, chef_satz, ...s });
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "versorgung");
+  assert.equal((await ruf("Ich möchte bitte eine Oberkiefer-Totalprothese planen mit Teleskop auf den Zähnen 1,3 und 2,3.")).rueckfrage, "befund_quelle");
+  assert.equal((await ruf("Wir nehmen einen neuen Befund auf.")).rueckfrage, "befund_fehlt");
+  assert.equal((await ruf("Okay, im Oberkiefer stehen der Zahn 1, 3 und 2, 3, alle anderen Zähne sind entfernt.")).rueckfrage, "befund_freigabe");
+  const neu = await ruf("Wir nehmen einen neuen Befund auf.");
+  assert.equal(neu.rueckfrage, "befund_fehlt", neu.message);
+  assert.match(neu.message, /^Gut\. Dann nehme ich den Befund jetzt neu auf: Welche Zähne fehlen im Oberkiefer/);
+  const pruefen = await ruf("16 und 26 fehlen.");
+  assert.equal(pruefen.rueckfrage, "befund_freigabe", pruefen.message);
+  assert.match(pruefen.message, /es fehlen 18, 16, 26 und 28; vorhanden: 17, 15 bis 25 und 27\./, "der vorige Befund gilt nicht mehr");
+  const frei = await ruf("Ja, stimmt so.");
+  assert.equal(geschrieben.length, 1, frei.message);
+  assert.deepEqual([geschrieben[0].zaehne[16], geschrieben[0].zaehne[12], geschrieben[0].zaehne[13]], ["f", "", ""]);
+  await kurz();
+  assert.ok(!vorgaenge.some((v) => /neuen Befund/.test(v.auftrag || "")), JSON.stringify(vorgaenge.map((v) => v.auftrag)));
+});
+
+test("Vorschlag aus einem frueheren Gespraech gilt nicht: verworfen, die Quelle wird gefragt", async () => {
+  verworfen.length = 0;
+  const frage = await rufe({ name: "Carla Altvorschlag", auftrag: "Brücke von 14 auf 16", sitzung: "alt-1" });
+  assert.equal(frage.rueckfrage, "befund_quelle", frage.message);
+  assert.deepEqual(verworfen, ["4712"]);
+});
+
+test("Aenderung aus dem Befund-Werkzeug gilt weiter fuer den naechsten Plan", async () => {
+  verworfen.length = 0;
+  const frage = await rufe({ name: "Dora Werkzeugrest", auftrag: "Brücke von 14 auf 16", sitzung: "werkzeug-1" });
+  assert.equal(frage.rueckfrage, "befund_freigabe", frage.message);
+  assert.match(frage.message, /Gegenüber Dampsoft ändere ich: es fehlt 17\./);
+  assert.deepEqual(verworfen, []);
+});
+
+test("Befundsatz aus dem Verstandenen: fester Wortlaut, Rest nur im genannten Kiefer", async () => {
+  const { befundSatz } = await import("../src/hkp/antwortVerstehen.js");
+  assert.equal(befundSatz({ kiefer: "OK", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: "fehlt" }),
+    "18, 17, 16, 15, 14, 12, 11, 21, 22, 24, 25, 26, 27 und 28 fehlen, 13 und 23 vorhanden");
+  // Probe 04.11.2026: das Modell las "im Oberkiefer ... alle anderen entfernt" einmal als beide Kiefer
+  assert.equal(befundSatz({ kiefer: "beide", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: "fehlt" }, ["OK"]),
+    "18, 17, 16, 15, 14, 12, 11, 21, 22, 24, 25, 26, 27 und 28 fehlen, 13 und 23 vorhanden");
+  assert.equal(befundSatz({ kiefer: "", zaehne: { 16: "ueberkront", 36: "nicht_erhaltungswuerdig" }, rest: "" }),
+    "16 überkront, 36 nicht erhaltungswürdig");
+  assert.equal(befundSatz(null), "");
+  const r = antwortPruefen({ art: "zustimmung", befund: { kiefer: "OK", zaehne: { 13: "vorhanden", 99: "fehlt", 23: "kaputt" }, rest: "weg" } });
+  assert.equal(r.art, "angabe", "ein genannter Befund ist nie eine blosse Zustimmung");
+  assert.deepEqual(r.befund, { kiefer: "OK", zaehne: { 13: "vorhanden" }, rest: "" });
+  assert.equal(antwortPruefen({ art: "neustart", quelle: "neu" }).art, "angabe", "neuer Befund ist kein neuer Plan");
+  assert.equal(antwortPruefen({ art: "neustart", quelle: "" }).art, "neustart");
+});
+
 test("Oberkiefer-Totalprothese aendert den Unterkiefer nicht; alte Vorschau gilt im neuen Gespraech nicht", async () => {
   geschrieben.length = 0;
   const auftrag = "Ich möchte eine Oberkäfertotalprothese planen";
@@ -328,5 +441,5 @@ test("Sprachverstehen: nur gueltiges JSON zaehlt, Zaehne nur aus der Frage", () 
   assert.equal(antwortPruefen({ art: "vielleicht" }), null);
   assert.equal(antwortPruefen(null), null);
   const r = antwortPruefen({ art: "zustimmung", entfernen: ["12", "99", 13, "12"], quelle: "dampsoft", angabe: "x" }, ["12", "13"]);
-  assert.deepEqual(r, { art: "zustimmung", quelle: "", entfernen: ["12", "13"], erhalten: [], angabe: "" });
+  assert.deepEqual(r, { art: "zustimmung", quelle: "", entfernen: ["12", "13"], erhalten: [], angabe: "", befund: null });
 });

@@ -124,18 +124,23 @@ async function planrBefund(clientId, patient, { body = null, ms, pfad = "/api/in
 const obj = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
 
 /**
- * Aktueller Befund im Praxisprogramm: { ok:true, pvs, datum, befund, nummer, offen, geschrieben } | { ok:false, pvs, meldung } | null.
+ * Aktueller Befund im Praxisprogramm: { ok:true, pvs, datum, befund, nummer, offen, offenWer, stand, geschrieben } | { ok:false, pvs, meldung } | null.
  * offen: im Gespraech (oder in PlanR) geaenderte Zaehne, die noch nicht im Praxisprogramm stehen – PlanR merkt sie
- * sich je Patient und zeigt sie live.
+ * sich je Patient und zeigt sie live; offenWer: wer sie zuletzt geaendert hat.
  */
 export async function pvsBefund(clientId, patient) {
   const d = await planrBefund(clientId, patient, { ms: 35000 });
   if (!d?.ok) return d;
   return {
     ok: true, pvs: String(d.pvs || "dem Praxisprogramm"), datum: String(d.datum || ""),
-    befund: obj(d.zaehne), nummer: String(d.patient || ""), offen: obj(d.offen), geschrieben: String(d.geschrieben || ""),
+    befund: obj(d.zaehne), nummer: String(d.patient || ""), offen: obj(d.offen), offenWer: String(d.offenWer || ""),
+    stand: String(d.stand || ""), geschrieben: String(d.geschrieben || ""),
   };
 }
+
+/** So steht der Befund-Vorschlag eines HKP-Gespraechs in PlanR (wer): vorgeschlagen, nie freigegeben */
+export const HKP_VORSCHLAG = " – HKP-Vorschlag";
+export const hkpVorschlag = (wer) => String(wer || "").endsWith(HKP_VORSCHLAG);
 
 /** Einzelne Zaehne im aktuellen Befund aendern (noch nicht im Praxisprogramm): { ok, befund } | { ok:false, meldung } */
 export async function befundAendernPvs(clientId, nummer, zaehne, wer) {
@@ -426,7 +431,7 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
     return {
       ok: true, uebertragen: w.ok,
       message: w.ok
-        ? `Der Befund von ${wen} ist in ${name} als geänderter Befund gespeichert, ohne 01 und ohne Abrechnung.`
+        ? `Der Befund von ${wen} ist in ${name} als geänderter Befund gespeichert, ohne Null-Eins und ohne Abrechnung.`
         : `Den Befund konnte ich nicht nach ${name} übertragen – ${w.meldung} Die Änderung bleibt offen und gilt trotzdem für den nächsten Plan.`,
     };
   }

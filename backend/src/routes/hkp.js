@@ -43,13 +43,13 @@ import { praxisRegistrieren, RegistrierungFehler } from "../hkp/planrRegistrieru
 import { befundSatz, jahrgangWahl, vetternFrage, vorleseSatz, zahnBefundSatz } from "../hkp/vorlesen.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
-import { antwortVerstehen } from "../hkp/antwortVerstehen.js";
+import { antwortVerstehen, befundSatz as befundAusAntwort } from "../hkp/antwortVerstehen.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
   praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
 } from "../hkp/store.js";
 import {
-  auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundVerwerfenPvs, befundWerkzeugMitNummer, datumDe, lenaFreigeschaltet, planZeilen, pvsBefund, pvsKennung, quelleAntwort, quelleAus, vorgangMelden,
+  HKP_VORSCHLAG, auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundVerwerfenPvs, befundWerkzeugMitNummer, datumDe, hkpVorschlag, lenaFreigeschaltet, neuFrage, planZeilen, pvsBefund, pvsKennung, quelleAntwort, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, implSummenSatz, konsSummenSatz, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
@@ -1173,6 +1173,8 @@ function restZusatzMerken(clientId, patient, auftragText, satz) {
  * Fuellt nur leere Felder; gibt den Auftrag samt gemerkter Restzahn-Entscheidung zurueck.
  * Was der Satz bedeutet, liest das Modell (antwortVerstehen); was daraus folgt, steht hier fest.
  */
+const BEFUND_FRAGEN = new Set(["befund_fehlt", "befund_freigabe", "befund_korrektur", "befund_alt", "befund_quelle"]);
+
 async function antwortAufFrage(clientId, patient, b, auftragText) {
   const offen = wahlLesen(clientId, patient);
   const satz = String(b.chef_satz || "").trim();
@@ -1188,8 +1190,22 @@ async function antwortAufFrage(clientId, patient, b, auftragText) {
       return auftragText;
     }
     const ja = v.art === "zustimmung";
+    // Live 04.11.2026 21:33: "Im Oberkiefer stehen 13 und 23, alle anderen sind entfernt" landete im Auftrag statt
+    // im Befund, MAS las "18 und 28 fehlen". Der verstandene Befund geht als fester Befundsatz in b.befund.
+    // Kiefer des Plans samt gemerkter Versorgung ("Oberkiefer-Totalprothese ..." steht nur im restZusatz)
+    const mitZusatz = [auftragText, offen.restZusatz].filter(Boolean).join(". ");
+    const befundGesagt = v.befund && BEFUND_FRAGEN.has(offen.frage)
+      ? befundAusAntwort(v.befund, auftragsKiefer(E.auftragVerstehen(mitZusatz))) : "";
+    if (befundGesagt) {
+      log.info?.(`[hkp] Befund aus der Antwort: ${befundGesagt}`);
+      b.befund = befundGesagt;
+      if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = "neu";
+    }
     if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = v.quelle || satz;
     if (offen.frage === "befund_freigabe" && ja) b.befund_freigegeben = true;
+    if (offen.frage === "befund_freigabe" && v.art === "ablehnung" && !befundGesagt) b._befundNein = true;
+    // "Wir nehmen einen neuen Befund auf" auf "Stimmt der Befund so?": neu diktieren lassen statt dieselbe Frage
+    if (["befund_freigabe", "befund_korrektur", "befund_alt"].includes(offen.frage) && v.quelle === "neu" && !befundGesagt) b._befundNeu = true;
     if (offen.frage === "befund_alt" && ja) b.befund_bestaetigt = true;
     const zusaetze = [];
     if (restFrageOffen) {
@@ -1200,10 +1216,14 @@ async function antwortAufFrage(clientId, patient, b, auftragText) {
         zusaetze.push(restSatz(offen.frageZaehne.map(String), "erhalten"));
       }
     }
-    if (v.angabe && !(restFrageOffen && zusaetze.length)) zusaetze.push(v.angabe);
+    if (v.angabe && !befundGesagt && !b._befundNeu && !(restFrageOffen && zusaetze.length)) zusaetze.push(v.angabe);
     for (const z of zusaetze) if (auftragText && !textNorm(auftragText).includes(textNorm(z))) auftragText = restZusatzMerken(clientId, patient, auftragText, z);
   } else if (satz) {
-    // Ohne Modell: nur die eindeutigen Faelle
+    // Ohne Modell: nur die eindeutigen Faelle. Ein Satz mit Zahnnummern auf eine Befundfrage ist der Befund.
+    const mitZahlen = satz.replace(/\b([1-4])\s*[,.]\s*([1-8])\b/g, "$1$2");
+    if (BEFUND_FRAGEN.has(offen.frage) && offen.frage !== "befund_quelle" && !JA_WORT.test(satz) && /\b[1-4][1-8]\b/.test(mitZahlen)) {
+      b.befund = mitZahlen;
+    }
     if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = satz;
     if (offen.frage === "befund_freigabe" && JA_WORT.test(satz)) b.befund_freigegeben = true;
     if (offen.frage === "befund_alt" && JA_WORT.test(satz)) b.befund_bestaetigt = true;
@@ -1249,6 +1269,19 @@ async function neuAnfangen(clientId, patient, alt) {
   if (alt?.offen && alt.frei !== alt.offen && alt.pvsNummer) await befundVerwerfenPvs(clientId, alt.pvsNummer).catch(() => null);
   if (alt?.sitzung || alt?.pvsNummer) wahlMerken(clientId, patient, { ...(alt.sitzung ? { sitzung: alt.sitzung } : {}), ...(alt.pvsNummer ? { pvsNummer: alt.pvsNummer } : {}) });
 }
+
+/**
+ * Befund aus dem Praxisprogramm ohne den Vorschlag eines frueheren Gespraechs. neuAnfangen verwirft ihn nur, solange
+ * MAS das Gespraech noch kennt (BEFUND_WAHL_MS, nicht ueber einen Neustart) - live 04.11.2026 kam der abgelehnte
+ * Standardbefund von 21:33 im naechsten Versuch ungefragt als "gerade geaendert" wieder.
+ */
+const ohneAltenVorschlag = (wahl) => async (clientId, patient) => {
+  const p = await pvsBefund(clientId, patient);
+  if (!p?.ok || wahl.offen || !Object.keys(p.offen).length || !hkpVorschlag(p.offenWer)) return p;
+  log.info?.(`[hkp] alter Befund-Vorschlag (${p.offenWer}, ${p.stand}) fuer Patient ${p.nummer} verworfen`);
+  await befundVerwerfenPvs(clientId, p.nummer).catch(() => null);
+  return { ...p, offen: {} };
+};
 
 /** Vor dem Schreiben ins Praxisprogramm: neuer Befund ganz, sonst nur die Aenderungen gegenueber dem Praxisprogramm */
 export function befundFreigabeSatz(patient, befund) {
@@ -1653,6 +1686,20 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (b._neu === "abbruch") {
       return res.json({ ok: true, abgebrochen: true, message: `Gut, den angefangenen Plan für ${patient.anredeLabel} lasse ich fallen – angelegt ist nichts.` });
     }
+    if (b._befundNein) {
+      // "Nein, der Befund stimmt nicht." - denselben Befund noch einmal vorzulesen hilft nicht (live 04.11.2026)
+      const message = "Was stimmt am Befund nicht? Sagen Sie mir bitte die Zähne, die anders sind – zum Beispiel: 13 und 23 stehen, alle anderen fehlen.";
+      wahlMerken(clientId, patient, { frage: "befund_korrektur", frageZaehne: [], frageText: message });
+      return res.json({ ok: true, rueckfrage: "befund_korrektur", message });
+    }
+    if (b._befundNeu) {
+      // Ganz neuer Befund: der vorgelesene gilt nicht mehr, nicht genannte Zaehne nimmt die Aufnahme als vorhanden
+      const message = neuFrage(auftragsKiefer(E.auftragVerstehen(auftragText || "")), wahlLesen(clientId, patient).pvsName, "Gut. ");
+      wahlMerken(clientId, patient, {
+        quelle: "neu", neuGefragt: false, gesagt: {}, genannt: {}, text: "", frage: "befund_fehlt", frageZaehne: [], frageText: message,
+      });
+      return res.json({ ok: true, rueckfrage: "befund_fehlt", message });
+    }
     // Folgezuege (Befundquelle, Ausfuehrung, Flaechen, Kanaele) kommen oft ohne privat=true bzw. planart: der laufende
     // Privatplan, die laufende MKV oder Kons gilt weiter, bis der Chef ausdruecklich eine andere Planart nennt.
     const lauf = wahlLesen(clientId, patient);
@@ -1756,7 +1803,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       quelle: quelleAntwort(b.befund_quelle) || textQuelle || wahl.quelle || "",
       bestaetigt: wahr(b.befund_bestaetigt), lenaErlaubt: await lenaFreigeschaltet(clientId),
       bisher: wahl.gesagt, abgeleitetVorher: wahl.abgeleitet, genanntVorher: wahl.genannt,
-      pvsName: wahl.pvsName, neuGefragt: !!wahl.neuGefragt,
+      pvsName: wahl.pvsName, neuGefragt: !!wahl.neuGefragt, pvs: ohneAltenVorschlag(wahl),
       pfeiler: (auftrag.teile?.length ? auftrag.teile : [auftrag]).flatMap((t) => t.pfeiler || []).map(String),
       ohneBefundOk: (auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung === "totalprothese"),
     });
@@ -1794,7 +1841,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         // Gesagte Aenderungen stehen sofort rosa im Zahnschema (Handy, PlanR) und lassen sich dort auch freigeben
         if (pvsNr && wahl.offen !== zaehne) {
           const wer = await getAssistantName(clientId).catch(() => DEFAULT_ASSISTANT_NAME);
-          befundAendernPvs(clientId, pvsNr, befund.neu.zaehne, wer).catch(() => null);
+          befundAendernPvs(clientId, pvsNr, befund.neu.zaehne, `${wer}${HKP_VORSCHLAG}`).catch(() => null);
         }
         return raus({ ok: true, rueckfrage: "befund_freigabe", message: befundFreigabeSatz(patient, befund) });
       } else {
@@ -1804,7 +1851,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         if (w.ok) befund.quelle = { ...befund.quelle, uebertragen: name };
         wahlMerken(clientId, patient, { ...merken, pvsName: name, frei: zaehne, uebertragen: w.ok ? name : "" });
         vorab = w.ok
-          ? `Der Befund ist in ${name} als geänderter Befund gespeichert, ohne 01 und ohne Abrechnung. `
+          ? `Der Befund ist in ${name} als geänderter Befund gespeichert, ohne Null-Eins und ohne Abrechnung. `
           : `Achtung: Den Befund konnte ich nicht nach ${name} übertragen – ${w.meldung} Er steht nur im HKP. `;
         befundFrei = true;
       }
