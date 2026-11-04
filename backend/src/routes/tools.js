@@ -75,9 +75,17 @@ import admin from "../firebase.js";
 import { log } from "../log.js";
 import { getAssistantName } from "../shared/rufname.js";
 import { addRemoteMessage } from "../remoteChat.js";
+import { merkeAufruf, pruefeRecallFreigabe } from "../clara/recallFreigabe.js";
 import { PUBLIC_BASE_URL, actorName, buildSpokenPatientTimeline, clockHHMM, operatorMailAccountIds, resolveClientId, spokenClockBerlin } from "./_shared.js";
 
 const router = express.Router();
+
+router.use((req, _res, next) => {
+  if (req.method === "POST") {
+    try { merkeAufruf(resolveClientId(req), req.path); } catch { /* nur Merker */ }
+  }
+  next();
+});
 
 
 // ONE task/ticket system: a delegation "task" is now a Case, so everything the
@@ -2979,6 +2987,11 @@ router.post("/tools/recall-approve", async (req, res) => {
     // Testsuite-Schutz: niemand wird kontaktiert, keine Liste freigegeben.
     if (req.body?.dryRun) {
       return res.json({ ok: true, dryRun: true, message: "Testlauf: Die wartenden Anruflisten wären jetzt freigegeben worden. Es wurde niemand kontaktiert." });
+    }
+    const freigabe = pruefeRecallFreigabe(clientId);
+    if (!freigabe.ok) {
+      console.warn(`[recall-approve] ${clientId}: ohne Recall-Gespraech abgewiesen, Rueckfrage gestellt`);
+      return res.json(freigabe);
     }
     const out = await approveAndExecute(clientId, {
       date: req.body?.date,
