@@ -196,6 +196,31 @@ test("sucheImPvs: verhoerter Name findet den DS-Win-Patienten (live 04.11.2026 '
   _setHolen(null);
 });
 
+test("Planung: verschluckter Anlaut findet den DS-Win-Patienten (live 04.11.2026 'Prodromus Anelas')", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  _ohnePvsVergessen();
+  const kartei = [P("812", "Prodromos", "Fanelas"), P("820", "Prodromos", "Kallidis"),
+    P("821", "Prodromos", "Paschalidis"), P("822", "Prodromos", "Liakos")];
+  _setHolen(async (url) => {
+    const q = String(new URL(url).searchParams.get("q") || "").toLowerCase();
+    const patienten = kartei.filter((p) => `${p.vorname} ${p.name}`.toLowerCase().includes(q));
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  const r = await sucheNurImPvsFuerPlan("masPraxis", "Prodromus Anelas");
+  assert.deepEqual(r.patients.map((p) => p.id), ["812"]);
+  const fanelas = { firstName: "Prodromos", lastName: "Fanelas" };
+  assert.equal(passtGanz("Prodromus Anelas", fanelas), true);
+  for (const lastName of ["Kallidis", "Paschalidis", "Liakos"]) {
+    assert.equal(passtGanz("Prodromus Anelas", { firstName: "Prodromos", lastName }), false, lastName);
+  }
+  // nur genau der erste Buchstabe, nur bei langen Woertern, sonst kein Raten
+  assert.equal(passtGanz("Prodromus Nelas", fanelas), false);
+  assert.equal(passtGanz("Prodromus Anelis", fanelas), false);
+  assert.equal(passtGanz("Anna Eier", { firstName: "Anna", lastName: "Meier" }), false);
+  assert.equal(passtGanz("Anna Bauer", { firstName: "Anna", lastName: "Mauer" }), false);
+  _setHolen(null);
+});
+
 test("sucheImPvs: Bridge aus -> verstaendlicher Fehler statt leerer Liste", async () => {
   process.env.PLANR_HKP_KEY = "k";
   _setHolen(async () => ({ ok: false, json: async () => ({ ok: false, meldung: "" }) }));

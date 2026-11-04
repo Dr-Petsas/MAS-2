@@ -57,12 +57,14 @@ function abstand(a, b) {
 // Gleicher Anfangsbuchstabe Pflicht: "Bauer" ist nicht "Mauer".
 const knapp = (t, w) => w.length >= 5 && t.length >= 5 && t[0] === w[0]
   && abstand(t, w) <= (Math.min(t.length, w.length) >= 8 ? 2 : 1);
+// Am Aeusserungsanfang verschluckt die Erkennung leise Anlaute ("Anelas" fuer "Fanelas"): nur genau der erste Buchstabe darf fehlen.
+const anlautFehlt = (t, w) => w.length >= 5 && t.length === w.length + 1 && t.endsWith(w);
 
-/** 3 gleich, 2 Wortanfang, 1 Klang oder knapp verhoert, 0 passt nicht */
+/** 3 gleich, 2 Wortanfang, 1 Klang, knapp verhoert oder Anlaut verschluckt, 0 passt nicht */
 function wortPunkte(t, w) {
   if (t === w) return 3;
   if (w.length >= 3 && t.startsWith(w)) return 2;
-  return soundsSame(t, w) || knapp(t, w) ? 1 : 0;
+  return soundsSame(t, w) || knapp(t, w) || anlautFehlt(t, w) ? 1 : 0;
 }
 
 const MONATE = ["januar", "februar", "maerz", "april", "mai", "juni", "juli", "august", "september", "oktober", "november", "dezember"];
