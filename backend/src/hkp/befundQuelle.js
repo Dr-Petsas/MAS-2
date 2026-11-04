@@ -197,6 +197,20 @@ export function quelleAus(text) {
   return "";
 }
 
+/**
+ * Feld befund_quelle: Clara reicht die Antwort des Chefs woertlich durch (Live 04.11.2026: "den aktuellen",
+ * "erstens", "Ja"). Die Frage nennt immer zuerst das Praxisprogramm, dann Lena, zuletzt "neu"; fehlt das
+ * Praxisprogramm, fragt befundErmitteln nach. Nur fuer dieses Feld - im Befundtext heisst "ja" etwas anderes.
+ */
+export function quelleAntwort(text) {
+  const q = quelleAus(text);
+  if (q) return q;
+  const t = String(text || "").trim().toLowerCase();
+  if (/\bzweite[nrs]?\b|\bzweitens\b/.test(t)) return "lena";
+  if (/aktuell|\berste[nrs]?\b|\berstens\b|^\W*(ja|genau|passt|okay|ok)\b|den nehm|nimm den/.test(t)) return "pvs";
+  return "";
+}
+
 /** Kiefer, die der Auftrag betrifft (fuer Befundfrage und Schreiben) – ohne Angabe beide */
 export function auftragsKiefer(auftrag) {
   const k = new Set();

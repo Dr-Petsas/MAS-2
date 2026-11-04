@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as E from "../src/vendor/hkp-engine.mjs";
 import {
-  _setHolen, auftragsKiefer, befundErmitteln, befundInsPvs, kieferBefund, lenaFreigeschaltet, pvsBefund, quelleAus,
+  _setHolen, auftragsKiefer, befundErmitteln, befundInsPvs, kieferBefund, lenaFreigeschaltet, pvsBefund, quelleAntwort, quelleAus,
 } from "../src/hkp/befundQuelle.js";
 import { befundSatz, zahnBefundSatz } from "../src/hkp/vorlesen.js";
 import { _setBillingLaden } from "../src/hkp/planrClara.js";
@@ -29,6 +29,16 @@ test("Antwort auf die Quellen-Frage", () => {
   assert.equal(quelleAus("neu"), "neu");
   assert.equal(quelleAus("ja, stimmt"), "");
   assert.equal(quelleAus("Krone erneuerungsbedürftig"), "");
+});
+
+test("Woertlich durchgereichte Antwort im Feld befund_quelle (Live 04.11.2026)", () => {
+  assert.equal(quelleAntwort("den aktuellen"), "pvs");
+  assert.equal(quelleAntwort("Nein, erstens, erstens."), "pvs");
+  assert.equal(quelleAntwort("Ja."), "pvs");
+  assert.equal(quelleAntwort("den zweiten"), "lena");
+  assert.equal(quelleAntwort("nein, nicht den aktuellen, wir nehmen neu auf"), "neu");
+  assert.equal(quelleAntwort("Nein."), "");
+  assert.equal(quelleAntwort("Krone erstellen"), "");
 });
 
 test("Kiefer des Auftrags und neuer Befund ueber den ganzen Kiefer", () => {

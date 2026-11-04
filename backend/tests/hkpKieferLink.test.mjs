@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 process.env.PLANR_HKP_KEY = "test-schluessel";
 const {
-  vergessenerKiefer, hkpLinkToken, hkpLinkOk, hkpLink, nurVornamePasst, namePasst,
+  vergessenerKiefer, hkpLinkToken, hkpLinkOk, hkpLink, nurVornamePasst, namePasst, nachnameGenau, restAntwort, restSatz,
   hkpFreigabeToken, hkpFreigabeOk, hkpMobilLink, hkpKarte, hkpBearbeitenToken, hkpBearbeitenOk,
 } = await import("../src/routes/hkp.js");
 const E = await import("../src/vendor/hkp-engine.mjs");
@@ -13,6 +13,18 @@ let ok = 0;
 function t(name, fn) { fn(); ok += 1; console.log("  ok -", name); }
 const pruef = (s) => vergessenerKiefer(s, E.auftragVerstehen(s));
 
+t("Restzahn-Antwort wird ein Satz, den die Engine versteht (Live 04.11.2026)", () => {
+  const z = ["17", "15", "14", "13", "11", "21", "23", "24", "25", "27"];
+  assert.equal(restAntwort("Ja.", z), restSatz(z, "entfernen"));
+  assert.equal(restAntwort("die kommen alle raus", z), restSatz(z, "entfernen"));
+  assert.equal(restAntwort("Nein, die bleiben", z), restSatz(z, "erhalten"));
+  assert.equal(restAntwort("nicht entfernen", z), restSatz(z, "erhalten"));
+  assert.equal(restAntwort("1,3 und 2,3 bleiben stehen", z), "1,3 und 2,3 bleiben stehen");
+  assert.equal(restAntwort("Moment mal", z), "");
+  const befund = Object.fromEntries(["16", "12", "22", "26"].map((x) => [x, "f"]).concat(z.map((x) => [x, ""])));
+  const satz = `Oberkiefer Totalprothese, alle Zähne fehlen. ${restSatz(z, "entfernen")}`;
+  assert.equal(E.hkpEntwurf(satz, befund, { patient: { name: "X" } }).status, "ok");
+});
 t("beide Kiefer genannt und geplant: kein Eingriff", () => {
   assert.equal(pruef("Es fehlen alle Zähne, ich möchte totale Oberkieferprothese und totale Unterkieferprothese geplant haben"), "");
   assert.equal(pruef("Totalprothese für beide Kiefer"), "");
@@ -92,6 +104,13 @@ t("Nur-Vorname haelt den gemerkten Patienten (Live 05.10.2026 22:45)", () => {
   assert.ok(!nurVornamePasst("Thomas", petzas));
   assert.ok(!nurVornamePasst("Michael Braun", petzas));
   assert.equal(namePasst("Patienten Michael Petzers", petzas), 2);
+});
+
+t("Aehnlich klingend ist nicht genau (Live 04.11.2026 Fanelas/Varelas)", () => {
+  const varelas = { firstName: "Prodromos", lastName: "Varelas" };
+  assert.equal(namePasst("Prodromos Fanelas", varelas), 2);
+  assert.ok(!nachnameGenau("Prodromos Fanelas", varelas));
+  assert.ok(nachnameGenau("Herrn Prodromos Varelas", varelas));
 });
 
 console.log(`${ok} Tests ok`);
