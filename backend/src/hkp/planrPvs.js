@@ -40,6 +40,31 @@ const klein = (s) => String(s || "").toLowerCase()
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const woerter = (s) => klein(s).split(/[^a-z]+/).filter((w) => w.length >= 2);
 
+// Live 04.11.2026: gehoert "Prodomos Phanelas", in DS-Win "Prodromos Fanelas" - ein fehlender Buchstabe
+// klingt fuer die Koelner Phonetik nach einem anderen Namen. Knapp verhoert (1 Buchstabe, ab 8 Zeichen 2) zaehlt.
+function abstand(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  let vor = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const neu = [i];
+    for (let j = 1; j <= b.length; j++) {
+      neu[j] = Math.min(vor[j] + 1, neu[j - 1] + 1, vor[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    vor = neu;
+  }
+  return vor[b.length];
+}
+// Gleicher Anfangsbuchstabe Pflicht: "Bauer" ist nicht "Mauer".
+const knapp = (t, w) => w.length >= 5 && t.length >= 5 && t[0] === w[0]
+  && abstand(t, w) <= (Math.min(t.length, w.length) >= 8 ? 2 : 1);
+
+/** 3 gleich, 2 Wortanfang, 1 Klang oder knapp verhoert, 0 passt nicht */
+function wortPunkte(t, w) {
+  if (t === w) return 3;
+  if (w.length >= 3 && t.startsWith(w)) return 2;
+  return soundsSame(t, w) || knapp(t, w) ? 1 : 0;
+}
+
 const MONATE = ["januar", "februar", "maerz", "april", "mai", "juni", "juli", "august", "september", "oktober", "november", "dezember"];
 
 /** "1972-03-05", "5.3.1972", "05.03.72", "5. März 1972" oder ISO-Zeit -> "1972-03-05" | null */
@@ -92,7 +117,7 @@ export function bewerten(gesprochen, liste) {
     const teile = woerter(`${p?.vorname || ""} ${p?.name || ""}`);
     let punkte = 0, passend = 0;
     for (const w of ws) {
-      const best = Math.max(0, ...teile.map((t) => (t === w ? 3 : w.length >= 3 && t.startsWith(w) ? 2 : soundsSame(t, w) ? 1 : 0)));
+      const best = Math.max(0, ...teile.map((t) => wortPunkte(t, w)));
       if (best) { punkte += best; passend++; }
     }
     return { p, punkte, passend };
@@ -189,7 +214,22 @@ export async function sucheFuerPlan(clientId, name) {
 export function passtGanz(gesprochen, p) {
   const ws = woerter(gesprochen);
   const teile = woerter(`${p?.firstName || ""} ${p?.lastName || ""}`);
-  return !!ws.length && ws.every((w) => teile.some((t) => t === w || (w.length >= 3 && t.startsWith(w)) || soundsSame(t, w)));
+  return !!ws.length && ws.every((w) => teile.some((t) => wortPunkte(t, w) > 0));
+}
+
+const KLANG_VARIANTEN = [[/ph/g, "f"], [/^f/, "ph"], [/th/g, "t"], [/y/g, "i"], [/c/g, "k"], [/^k/, "c"], [/z/g, "s"],
+  [/v/g, "w"], [/w/g, "v"]];
+
+/** Suchbegriffe fuer die zweite Runde: Klangvarianten und die ersten vier Buchstaben jedes Wortes. */
+export function suchVarianten(name, schon = []) {
+  const gefragt = new Set(schon.map((x) => klein(x)));
+  const varianten = [], anfaenge = [];
+  for (const w of [...new Set(woerter(name).filter((x) => x.length >= 4))].slice(0, 3)) {
+    const formen = [w, ...KLANG_VARIANTEN.map(([re, rep]) => w.replace(re, rep)).filter((v) => v !== w)];
+    varianten.push(...formen.slice(1));
+    anfaenge.push(...formen.map((v) => v.slice(0, 4)));
+  }
+  return [...new Set([...varianten, ...anfaenge])].filter((q) => q.length >= 4 && !gefragt.has(q)).slice(0, 10);
 }
 
 /** Wie searchPatient: { ok, patients } bzw. { ok:false, error } */
@@ -197,13 +237,18 @@ export async function sucheImPvs(clientId, name) {
   const ganz = await frage(clientId, String(name || "").trim());
   if (!ganz.ok) return { ok: false, error: ganz.meldung };
   let roh = ganz.patienten;
-  if (!roh.length) {
-    // Falsch verstandener Vor- oder Nachname: jedes Wort einzeln, dann nach Klang ordnen.
-    const einzeln = [...new Set(woerter(name).filter((w) => w.length >= 3))].slice(0, 3);
-    const teil = await Promise.all(einzeln.map((w) => frage(clientId, w)));
-    const ids = new Map();
+  const sammeln = async (begriffe) => {
+    const teil = await Promise.all(begriffe.map((w) => frage(clientId, w)));
+    const ids = new Map(roh.map((p) => [p.id, p]));
     for (const t of teil) for (const p of t.ok ? t.patienten : []) if (p?.id && !ids.has(p.id)) ids.set(p.id, p);
     roh = [...ids.values()];
+  };
+  const einzeln = [...new Set(woerter(name).filter((w) => w.length >= 3))].slice(0, 3);
+  // Falsch verstandener Vor- oder Nachname: jedes Wort einzeln, dann nach Klang ordnen.
+  if (!roh.length) await sammeln(einzeln);
+  const ganzerName = (p) => passtGanz(name, { firstName: p?.vorname, lastName: p?.name });
+  if (!roh.some(ganzerName) && process.env.MAS_PVS_VARIANTEN !== "0") {
+    await sammeln(suchVarianten(name, [name, ...einzeln]));
   }
   return { ok: true, patients: bewerten(name, roh).map(alsPatient), quelle: "pvs" };
 }

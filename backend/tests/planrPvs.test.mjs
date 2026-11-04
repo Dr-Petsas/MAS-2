@@ -141,6 +141,34 @@ test("sucheImPvs: ganzer Name, sonst einzelne Woerter; Schluessel und clientId g
   _setHolen(null);
 });
 
+test("sucheImPvs: verhoerter Name findet den DS-Win-Patienten (live 04.11.2026 'Prodomos Phanelas')", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  _ohnePvsVergessen();
+  const kartei = [P("812", "Prodromos", "Fanelas"), P("813", "Prodromos", "Anders"), P("814", "Fanny", "Lasse")];
+  const gefragt = [];
+  // wie die Bridge: Teilwort-Suche ohne Klang
+  _setHolen(async (url) => {
+    const q = String(new URL(url).searchParams.get("q") || "").toLowerCase();
+    gefragt.push(q);
+    const patienten = kartei.filter((p) => `${p.vorname} ${p.name}`.toLowerCase().includes(q));
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  const r = await sucheFuerPlan("masPraxis", "Prodomos Phanelas");
+  assert.deepEqual(r.patients.map((p) => p.id), ["812"]);
+  assert.ok(gefragt.length <= 13, gefragt.join(","));
+  assert.equal(passtGanz("Prodomos Phanelas", { firstName: "Prodromos", lastName: "Fanelas" }), true);
+  assert.equal(passtGanz("Prodromos Fanela", { firstName: "Prodromos", lastName: "Fanelas" }), true);
+  // kein Raten: ein Wort passt gar nicht -> nicht derselbe Patient
+  assert.equal(passtGanz("Prodomos Lagos", { firstName: "Prodromos", lastName: "Fanelas" }), false);
+  assert.equal(passtGanz("Anna Meier", { firstName: "Anna", lastName: "Maier" }), true);
+  assert.equal(passtGanz("Anna Bauer", { firstName: "Anna", lastName: "Mauer" }), false);
+  // treffsicherer Name: keine zweite Runde
+  gefragt.length = 0;
+  await sucheFuerPlan("masPraxis", "Prodromos Fanelas");
+  assert.deepEqual(gefragt, ["prodromos fanelas"]);
+  _setHolen(null);
+});
+
 test("sucheImPvs: Bridge aus -> verstaendlicher Fehler statt leerer Liste", async () => {
   process.env.PLANR_HKP_KEY = "k";
   _setHolen(async () => ({ ok: false, json: async () => ({ ok: false, meldung: "" }) }));
