@@ -38,7 +38,7 @@ import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js
 import { soundsSame } from "../clara/phonetics.js";
 import { disambiguationQuestion, merkmalEingrenzen, ordinalPick } from "../clara/patientDisambig.js";
 import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
-import { pvsKennungAufloesen, sucheImPvs } from "../hkp/planrPvs.js";
+import { planNurPvs, pvsKennungAufloesen, sucheImPvs } from "../hkp/planrPvs.js";
 import { praxisRegistrieren, RegistrierungFehler } from "../hkp/planrRegistrierung.js";
 import { befundSatz, jahrgangWahl, vetternFrage, vorleseSatz, zahnBefundSatz } from "../hkp/vorlesen.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
@@ -944,7 +944,9 @@ export function sindVettern(p, q) {
 }
 
 async function namensvettern(clientId, patient) {
-  if (patient?.quelle === "pvs") {
+  // patientVon() traegt keine quelle, nur pvsNummer - daran lief die Vetternsuche fuer Partheni in die Kartei
+  if (patient?.quelle === "pvs" || patient?.pvsNummer || planNurPvs()) {
+    if (!patient?.firstName && !patient?.lastName) return [];
     const r = await sucheImPvs(clientId, `${patient.firstName} ${patient.lastName}`);
     return (r.patients || []).filter((p) => p.id !== patient.id && sindVettern(patient, p));
   }
@@ -972,6 +974,8 @@ export function vetterAntwort(offen, text, antwort = text) {
 async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}) {
   const rawName = String(body?.name || "").trim();
   const hint = String(body?.hint || "").trim();
+  // Plaene nur aus dem PVS: ein gemerkter Kartei-Treffer (z. B. aus search_patient) wird hier nie gewaehlt
+  const gemerkteKandidaten = async () => (await getPatientCandidates(clientId)).filter((p) => !planNurPvs() || p?.quelle === "pvs");
   // Patientennummer bzw. Geburtsdatum aus dem PVS entscheidet vor dem Namen (auch MAS-Praxen mit PlanR-Bridge)
   const kennung = await pvsKennungAufloesen(clientId, body, { mehrfach: (l) => disambiguationQuestion(l, { max: 3 }), plan: true });
   if (kennung?.patient) {
@@ -1000,11 +1004,11 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
   // Dann gewinnt der gemerkte Patient, wenn der gesprochene Name aehnlich klingt
   // (Gespraech 05.10.2026: "Petzers" lieferte sonst 21 Kandidaten).
   if (rawName && !hint) {
-    const gemerkt = await getPatientCandidates(clientId);
+    const gemerkt = await gemerkteKandidaten();
     const passend = bestePassung(rawName, gemerkt);
     if (passend.length === 1) {
       // Live 04.11.2026: "Prodromos Fanelas" (nur im Praxisprogramm) wurde zum gemerkten "Prodromos Varelas".
-      // Klingt der Gemerkte nur aehnlich, gewinnt ein Kartei-Treffer mit genau diesem Nachnamen.
+      // Klingt der Gemerkte nur aehnlich, gewinnt ein Treffer (bei Plaenen aus dem PVS) mit genau diesem Nachnamen.
       const genau = nachnameGenau(rawName, passend[0])
         ? null : await karteiGenau(clientId, rawName, askWho).catch(() => null);
       const wahl = genau || passend[0];
@@ -1018,7 +1022,7 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
     }
   }
   if (rawName || hint) {
-    const eng = merkmalEingrenzen(`${hint} ${rawName}`, await getPatientCandidates(clientId));
+    const eng = merkmalEingrenzen(`${hint} ${rawName}`, await gemerkteKandidaten());
     if (eng.length === 1) {
       await setPatientCandidates(clientId, eng, eng[0]);
       return { patient: patientVon(eng[0]), sel: eng[0] };
@@ -1026,7 +1030,7 @@ async function patientAufloesen(clientId, body, askWho, { vettern = false } = {}
   }
   const r = await resolveSpokenPatientForRead(clientId, { rawName, hint, askWho, plan: true });
   if (!r.done) return { patient: patientVon(r.sel), sel: r.sel };
-  const kandidaten = rawName ? await getPatientCandidates(clientId) : [];
+  const kandidaten = rawName ? await gemerkteKandidaten() : [];
   if (kandidaten.length > 1) {
     const passend = bestePassung(rawName, kandidaten);
     if (passend.length === 1) {

@@ -47,7 +47,7 @@ import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
 import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
 import { mitUndo, rueckgaengigAn, zuruecknehmen } from "../clara/rueckgaengig.js";
 import { nameAusHinweis, spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
-import { passtGanz, pvsKennungAufloesen, sucheFuerPlan } from "../hkp/planrPvs.js";
+import { passtGanz, planNurPvs, pvsKennungAufloesen, sucheFuerPlan, sucheNurImPvsFuerPlan } from "../hkp/planrPvs.js";
 import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
@@ -262,8 +262,8 @@ function collapseResultPatients(res) {
 }
 async function searchPatientSpoken(clientId, name, { plan = false } = {}) {
   if (plan) {
-    const pvs = await sucheFuerPlan(clientId, name);
-    if (pvs) return collapseResultPatients(pvs);
+    const pvs = await sucheNurImPvsFuerPlan(clientId, name);
+    if (pvs) return pvs.ok ? collapseResultPatients(pvs) : pvs;
   }
   const first = await searchPatient(clientId, name);
   if (!first.ok) return first;
@@ -1217,8 +1217,11 @@ router.post("/tools/next-free-slot", async (req, res) => {
 // plan: Plan-/Befund-Werkzeuge – bei MAS-Praxen mit PlanR-Bridge zuerst im PVS suchen.
 export async function resolveSpokenPatientForRead(clientId, { rawName, hint, askWho, plan = false }) {
   const ordinalSource = `${hint} ${rawName}`.trim().toLowerCase();
+  // Plaene: gemerkte Kartei-Treffer (z. B. aus search_patient) zaehlen nicht, nur Patienten aus dem PVS
+  const nurPvs = plan && planNurPvs();
+  const gemerkt = async () => (await getPatientCandidates(clientId)).filter((p) => !nurPvs || p?.quelle === "pvs");
   if (ordinalSource) {
-    const remembered = await getPatientCandidates(clientId);
+    const remembered = await gemerkt();
     const byOrd = remembered.length > 1 ? ordinalPick(ordinalSource, remembered) : null;
     if (byOrd) {
       await setPatientCandidates(clientId, [byOrd], byOrd);
@@ -1230,7 +1233,10 @@ export async function resolveSpokenPatientForRead(clientId, { rawName, hint, ask
   if (rawName) {
     const name = cleanSpokenPersonName(rawName) || rawName;
     const found = await searchPatientSpoken(clientId, name, { plan });
-    if (!found.ok) return { done: true, payload: { ok: false, message: `Patientensuche fehlgeschlagen: ${found.error}` } };
+    if (!found.ok) {
+      const msg = found.quelle === "pvs" ? `Ich kann gerade nicht in der Praxissoftware suchen: ${found.error}` : `Patientensuche fehlgeschlagen: ${found.error}`;
+      return { done: true, payload: { ok: false, message: msg } };
+    }
     candidates = found.patients || [];
     if (candidates.length > 1) {
       const exact = narrowByExactName(name.toLowerCase(), candidates);
@@ -1238,10 +1244,10 @@ export async function resolveSpokenPatientForRead(clientId, { rawName, hint, ask
     }
     if (!candidates.length) {
       await setPatientCandidates(clientId, [], null);
-      return { done: true, payload: { ok: false, message: nichtGefundenFrage(name, { quelle: "im Praxisgedächtnis" }) } };
+      return { done: true, payload: { ok: false, message: nichtGefundenFrage(name, { quelle: found.quelle === "pvs" ? "in der Praxissoftware" : "im Praxisgedächtnis" }) } };
     }
   } else {
-    candidates = await getPatientCandidates(clientId);
+    candidates = await gemerkt();
     if (!candidates.length) return { done: true, payload: { ok: false, message: askWho } };
   }
 

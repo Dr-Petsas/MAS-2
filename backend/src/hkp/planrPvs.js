@@ -210,6 +210,20 @@ export async function sucheFuerPlan(clientId, name) {
   return ganz.length ? { ...r, patients: ganz } : null;
 }
 
+// Chef 04.11.2026: "wir suchen bei PLANUNGEN nur IN DAMPSOFT". Fuer Plaene und Befunde kommt der Patient nur aus
+// dem PVS, nie aus der Pickadoc-Kartei - auch nicht, wenn das PVS niemanden findet oder nicht antwortet (Partheni
+// stand einmal in DS-Win und einmal in der Kartei und wurde als zwei Patienten vorgelesen). Notaus MAS_PLAN_PVS_ZUERST=0.
+export const planNurPvs = () => !pvsZuerstAus();
+
+/** Patientensuche fuer Plan/Befund: { ok, patients, quelle:"pvs" } bzw. { ok:false, error }; null = nicht zustaendig. */
+export async function sucheNurImPvsFuerPlan(clientId, name) {
+  if (!String(name || "").trim() || !planNurPvs() || (await patientenAusPvs(clientId))) return null;
+  const r = await sucheImPvs(clientId, name);
+  if (!r.ok) return { ok: false, error: r.error, quelle: "pvs" };
+  // Nur Treffer zum ganzen Namen: ein Teiltreffer (nur der Vorname) wuerde sonst ungefragt gewaehlt
+  return { ...r, patients: r.patients.filter((p) => passtGanz(name, p)) };
+}
+
 /** Passt JEDES gesprochene Wort zu Vor- oder Nachname (gleich, Anfang, Klang)? Patient in Kartei-Form. */
 export function passtGanz(gesprochen, p) {
   const ws = woerter(gesprochen);

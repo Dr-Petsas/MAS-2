@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { _ohnePvsVergessen, _setHolen, alsPatient, bewerten, isoGeburt, passtGanz, pvsKennungAufloesen, sucheFuerPlan, sucheImPvs } from "../src/hkp/planrPvs.js";
+import { _ohnePvsVergessen, _setHolen, alsPatient, bewerten, isoGeburt, passtGanz, pvsKennungAufloesen, sucheFuerPlan, sucheImPvs, sucheNurImPvsFuerPlan } from "../src/hkp/planrPvs.js";
 import { _setBillingLaden } from "../src/hkp/planrClara.js";
 
 _setBillingLaden(async (id) => (id === "planrPraxis"
@@ -91,6 +91,33 @@ test("sucheFuerPlan: MAS-Praxis mit Bridge zuerst im PVS, sonst Kartei (null)", 
   process.env.MAS_PLAN_PVS_ZUERST = "0";
   _ohnePvsVergessen();
   assert.equal(await sucheFuerPlan("masPraxis", "Prodromos Fanelas"), null);
+  delete process.env.MAS_PLAN_PVS_ZUERST;
+  _setHolen(null);
+});
+
+test("Planung sucht nur im PVS (Chef 04.11.2026): kein Treffer bleibt leer, PVS aus ist ein Fehler, nie Kartei", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  _ohnePvsVergessen();
+  _setHolen(async (url) => {
+    const q = new URL(url).searchParams.get("q");
+    const patienten = q === "Maria Partheni" ? [P("8787", "Maria", "Partheni", "1968-07-12")]
+      : q === "maria" ? [P("900", "Maria", "Anders")] : [];
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  const r = await sucheNurImPvsFuerPlan("masPraxis", "Maria Partheni");
+  assert.deepEqual(r.patients.map((p) => [p.id, p.quelle]), [["8787", "pvs"]]);
+  const leer = await sucheNurImPvsFuerPlan("masPraxis", "Maria Niemand");
+  assert.equal(leer.ok, true);
+  assert.deepEqual(leer.patients, []);
+  _setHolen(async () => ({ ok: false, json: async () => ({ ok: false, meldung: "Bridge offline." }) }));
+  const aus = await sucheNurImPvsFuerPlan("masPraxis", "Maria Partheni");
+  assert.equal(aus.ok, false);
+  assert.match(aus.error, /Bridge offline/);
+  // auch direkt danach (frueher 3 Minuten Kartei) wieder das PVS gefragt
+  assert.equal((await sucheNurImPvsFuerPlan("masPraxis", "Maria Partheni")).ok, false);
+  assert.equal(await sucheNurImPvsFuerPlan("planrPraxis", "Maria Partheni"), null);
+  process.env.MAS_PLAN_PVS_ZUERST = "0";
+  assert.equal(await sucheNurImPvsFuerPlan("masPraxis", "Maria Partheni"), null);
   delete process.env.MAS_PLAN_PVS_ZUERST;
   _setHolen(null);
 });
