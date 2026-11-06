@@ -2,6 +2,9 @@
 // Privat-Engine, abgelegt fuer die PlanR-Uebersicht (planrEntwuerfe) statt im HKP-Register. PlanR ist ein
 // lokaler Nachbau; Entwuerfe landen in der Test-Praxis und werden wieder geloescht.
 import "dotenv/config";
+// Die Saetze der Engine werden hier woertlich geprueft; der Modell-Mund hat einen eigenen Test.
+process.env.MAS_HKP_FACH ??= "0";
+process.env.MAS_HKP_MUND ??= "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -60,6 +63,7 @@ async function rufe(body) {
   });
   const d = await r.json();
   if (d.entwurfId) angelegt.push(d.entwurfId);
+  if (d.rueckfrage === "befund_anzeige" && !body.chef_satz) return rufe({ ...body, chef_satz: "Ja, stimmt." });
   return d;
 }
 const planrRuf = (pfad, init = {}) => fetch(`${basis}/planr${pfad}${pfad.includes("?") ? "&" : "?"}clientId=${CID}`, {
@@ -67,8 +71,9 @@ const planrRuf = (pfad, init = {}) => fetch(`${basis}/planr${pfad}${pfad.include
 }).then(async (r) => ({ status: r.status, d: await r.json() }));
 
 async function anlegen(auftrag) {
+  // Befund auf dem Handy bestätigt: keine zweite Frage nach der Quelle
   const frage = await rufe({ auftrag, privat: true });
-  assert.equal(frage.rueckfrage, "befund_quelle", frage.message);
+  assert.equal(frage.rueckfrage, "vorlesen", frage.message);
   // Folgezug ohne privat=true: der laufende Privatplan gilt weiter
   const vorschau = await rufe({ auftrag, befund: "aus Dampsoft" });
   assert.equal(vorschau.rueckfrage, "vorlesen", vorschau.message);
@@ -150,7 +155,7 @@ test("Wortlaut 'privat'/'Kostenvoranschlag' reicht; 'HKP' schaltet zurueck auf d
   assert.equal(kasseGesagt("HKP Brücke 14 bis 16"), true);
   assert.equal(kasseGesagt("Brücke 14 bis 16"), false);
   const frage = await rufe({ auftrag: "Kostenvoranschlag Brücke von 14 auf 16 Vollkeramik" });
-  assert.equal(frage.rueckfrage, "befund_quelle", frage.message);
+  assert.equal(frage.rueckfrage, "vorlesen", frage.message);
   const vorschau = await rufe({ auftrag: "Kostenvoranschlag Brücke von 14 auf 16 Vollkeramik", befund: "aus Dampsoft" });
   assert.match(vorschau.message, /Privatplan Zahnersatz/);
   const kasse = await rufe({ auftrag: "Doch als HKP über die Kasse: Brücke von 14 auf 16", befund: "aus Dampsoft" });

@@ -32,6 +32,7 @@ import { DEFAULT_ASSISTANT_NAME, getAssistantName, invalidateAssistantName } fro
 import { log } from "../log.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, logOutboundMail, resolveClientId } from "./_shared.js";
 import { sendMail } from "../mail/mailbox.js";
+import { kvaEntwurfAblegen } from "../mail/kvaEntwurf.js";
 import { listAccounts } from "../mail/accounts.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
 import { getPatientCandidates, setPatientCandidates } from "../clara/sessions.js";
@@ -41,15 +42,20 @@ import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
 import { planNurPvs, pvsKennungAufloesen, sucheImPvs } from "../hkp/planrPvs.js";
 import { praxisRegistrieren, RegistrierungFehler } from "../hkp/planrRegistrierung.js";
 import { befundSatz, jahrgangWahl, vetternFrage, vorleseSatz, zahnBefundSatz } from "../hkp/vorlesen.js";
+import { befundMerken, entfernenMarken, planartKorrigieren, rueckfrageMerken, zahnListe } from "../hkp/mitdenken.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
-import { antwortVerstehen, befundSatz as befundAusAntwort } from "../hkp/antwortVerstehen.js";
+import { abrechnungAntwort, antwortVerstehen, befundListe, fachEntscheiden, mundSprechen, planIntent, befundSatz as befundAusAntwort } from "../hkp/antwortVerstehen.js";
+import { planPruefen, positionenVon } from "../hkp/ausschluss.js";
+import { fallRechnen } from "../hkp/coach.js";
+import { praxisKatalog, praxisKatalogNeu } from "../hkp/planrKatalog.js";
+import { praxisWissenStand } from "../hkp/praxisWissen.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
   praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
 } from "../hkp/store.js";
 import {
-  HKP_VORSCHLAG, auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundVerwerfenPvs, befundWerkzeugMitNummer, datumDe, hkpVorschlag, lenaFreigeschaltet, neuFrage, planZeilen, pvsBefund, pvsKennung, quelleAntwort, quelleAus, vorgangMelden,
+  HKP_VORSCHLAG, auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundVerwerfenPvs, befundWerkzeugMitNummer, datumDe, fremdeKuerzel, hkpVorschlag, kieferBefund, lenaFreigeschaltet, neuFrage, planZeilen, pvsBefund, pvsKennung, quelleAntwort, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
 import { detailSatz, euroSprech, hkpKurz, hkpTitel, implSummenSatz, konsSummenSatz, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
@@ -61,12 +67,26 @@ const router = express.Router();
 
 const VERSORGUNG_TEXT = {
   teleskopprothese: "Teleskop-HKP", totalprothese: "Totalprothesen-HKP", kronen: "Kronen-HKP", bruecke: "Brücken-HKP",
-  implantatkronen: "Implantat-HKP",
+  implantatkronen: "Implantat-HKP", locator: "Locator-HKP", steg: "Steg-HKP", inlay: "Inlay-HKP",
 };
 const VERSORGUNG_NAME = {
   teleskopprothese: "Teleskopprothese", totalprothese: "Totalprothese", kronen: "Kronen", bruecke: "Brücke",
-  implantatkronen: "Implantatkronen",
+  implantatkronen: "Implantatkronen", locator: "Locator-Prothese", steg: "Stegprothese", inlay: "Inlay",
 };
+/** Gesprochener Name. „allon“ ist nur der Schlüssel – Clara sagt All-on-4 oder All-on-6. */
+export function versorgungName(t) {
+  if (t?.versorgung === "allon") return `All-on-${Number(t.allon) === 6 ? 6 : 4}`;
+  return VERSORGUNG_NAME[t?.versorgung] || "HKP";
+}
+export function versorgungTextVon(auftrag) {
+  const teile = auftrag?.teile?.length ? auftrag.teile : [auftrag || {}];
+  if (teile.length > 1) {
+    return `HKP mit ${liste(teile.map((t) => `${versorgungName(t)} im ${t.kiefer === "UK" ? "Unterkiefer" : "Oberkiefer"}`))}`;
+  }
+  const t = teile[0] || {};
+  if (t.versorgung === "allon") return `${versorgungName(t)}-HKP`;
+  return VERSORGUNG_TEXT[t.versorgung] || "HKP";
+}
 const AENDERUNG_GUELTIG_MS = 5 * 60 * 1000;
 const PRAXIS_FELDER = ["labor", "praxisPlz", "kzv", "gozFaktor", "mwstLabor", "eigenKasseProzent", "eigenPrivatAufschlag",
   "bemaListe", "gozListe", "belListe", "bebListe", "fzListe", "protheseDigital"];
@@ -205,6 +225,7 @@ export function ausfuehrungFrage(fehlt, { nurTeleskope = false, system = "medent
   const teile = [];
   if (fehlt.includes("werkstoff")) {
     teile.push(nurTeleskope ? "Teleskope in Nichtedelmetall oder Gold?" : "Welches Material – Nichtedelmetall, Zirkon, Presskeramik oder Gold?");
+    teile.push("Teilverblendung, vestibuläre Verblendung oder Vollverblendung?");
   }
   if (fehlt.includes("abformung")) teile.push("Intraoralscan oder konventioneller Abdruck?");
   if (fehlt.includes("labor")) teile.push("Eigenlabor oder Fremdlabor?");
@@ -380,8 +401,12 @@ router.get("/planr/hkp-link/:id", async (req, res) => {
     if (!h) return res.status(404).json({ ok: false, error: "nicht_gefunden" });
     const plan = planAus(h);
     const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [] }));
+    const anker = String(h.zusammenfassung?.ankerGesagt || "");
+    const versorgungText = /\ballon\b/i.test(String(h.versorgungText || ""))
+      ? String(h.versorgungText).replace(/\ballon\b/gi, /^All-on-[46]$/.test(anker) ? anker : "All-on-4")
+      : h.versorgungText;
     res.json({
-      ok: true, hkp: h,
+      ok: true, hkp: versorgungText === h.versorgungText ? h : { ...h, versorgungText },
       listen: plan ? E.listenFuer(plan, praxisListen(praxis)) : null,
       freigabe: hkpFreigabeOk(req.params.id, req.header("X-PlanR-Freigabe"), Date.now(), clientId),
     });
@@ -552,6 +577,34 @@ router.post("/planr/kva/senden", planrGuard, async (req, res) => {
     const brain = await logOutboundMail(req.planrClientId, { storedId: out.storedId, body, by: wer }).catch(() => null);
     log.info?.(`[planr] Kostenvoranschlag an ${to} über ${konto.email || konto.id} gesendet${out.dryRun ? " (Testmodus)" : ""}`);
     res.json({ ok: true, to, von: konto.email || "", dryRun: !!out.dryRun, protokolliert: !!brain?.ok });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// Kostenvoranschlag als neue Mail in Nadine öffnen (statt direkt senden): Entwurf ablegen, PlanR springt zu Nadine.
+router.post("/planr/kva/entwurf", planrGuard, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const to = String(b.to || "").trim().slice(0, 200);
+    const subject = String(b.subject || "").trim().slice(0, 300);
+    const text = String(b.text || "").slice(0, 20_000);
+    const pdf = b.pdf || {};
+    const filename = String(pdf.filename || "Kostenvoranschlag.pdf").replace(/[^\w .()-]/g, "_").slice(0, 120);
+    const base64 = String(pdf.base64 || "");
+    if (to && !/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(to)) return res.status(400).json({ ok: false, error: "empfaenger", message: "Die E-Mail-Adresse ist ungültig." });
+    if (!/^[A-Za-z0-9+/=]{100,14000000}$/.test(base64) || !Buffer.from(base64.slice(0, 8), "base64").toString("latin1").startsWith("%PDF")) {
+      return res.status(400).json({ ok: false, error: "pdf", message: "Der Kostenvoranschlag als PDF fehlt." });
+    }
+    const attachment = {
+      filename: filename.endsWith(".pdf") ? filename : `${filename}.pdf`,
+      contentType: "application/pdf",
+      size: Math.floor(base64.length * 3 / 4),
+      content: base64,
+    };
+    const id = kvaEntwurfAblegen(req.planrClientId, { to, subject, text, attachment });
+    const web = (process.env.PLATFORM_WEB_URL || "https://docgenda.web.app").replace(/\/+$/, "");
+    res.json({ ok: true, id, url: `${web}/clara?ki=nadine&entwurf=${id}` });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -743,6 +796,21 @@ router.post("/planr/praxis/kataloge", planrGuard, async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
+});
+
+// Nach einem PVS-Abgleich in PlanR: Analogpositionen, Eigenlabor, BEL und Leistungsketten der Praxis
+// ohne Preise in Claras Wissensbasis schreiben (hkp/praxisWissen.js). GET zeigt den Stand.
+router.post("/planr/praxis-wissen", planrGuard, async (req, res) => {
+  try {
+    const r = await praxisKatalogNeu(req.planrClientId);
+    res.json({ ok: Boolean(r.ok), ...r, stand: praxisWissenStand(req.planrClientId) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.get("/planr/praxis-wissen", planrGuard, (req, res) => {
+  res.json({ ok: true, stand: praxisWissenStand(req.planrClientId) });
 });
 
 // HKP-Clara fuer PlanR-Standalone (hkp/planrClara.js): Stufe, Ruf-Name, Handy-Kopplung.
@@ -948,7 +1016,7 @@ async function namensvettern(clientId, patient) {
   if (patient?.quelle === "pvs" || patient?.pvsNummer || planNurPvs()) {
     if (!patient?.firstName && !patient?.lastName) return [];
     const r = await sucheImPvs(clientId, `${patient.firstName} ${patient.lastName}`);
-    return (r.patients || []).filter((p) => p.id !== patient.id && sindVettern(patient, p));
+    return (r.alle || r.patients || []).filter((p) => p.id !== patient.id && sindVettern(patient, p));
   }
   const treffer = await findInCatalog(clientId, `${patient.firstName} ${patient.lastName}`, { limit: 8 });
   const ids = treffer.filter((e) => sindVettern(patient, { id: e.i, firstName: e.f, lastName: e.l })).map((e) => e.i);
@@ -1178,12 +1246,36 @@ const BEFUND_FRAGEN = new Set(["befund_fehlt", "befund_freigabe", "befund_korrek
 async function antwortAufFrage(clientId, patient, b, auftragText) {
   const offen = wahlLesen(clientId, patient);
   const satz = String(b.chef_satz || "").trim();
+  // Die 01 steht schon auf dem Handy. Das Modell liest die Änderung aus der Wissensbasis,
+  // die Engine schreibt sie. Ohne Modell gilt die Wortregel. Kein zweites Vorlesen.
+  let anzeigeRoh = "";
   const entfernFrage = offen.frage === "glied_vorhanden" || offen.frage === "zahn_vorhanden";
   const restFrageOffen = (offen.frage === "restzaehne" || entfernFrage) && offen.frageZaehne?.length;
   const v = satz && offen.frage && offen.frageText
-    ? await antwortVerstehen({ frage: offen.frageText, satz, zaehne: offen.frageZaehne || [] }) : null;
+    ? await antwortVerstehen({ frage: offen.frageText, satz, zaehne: offen.frageZaehne || [], bisher: offen.planAuftrag || "", praxis: await praxisKatalog(clientId).catch(() => null) }) : null;
+  if (satz && offen.frage && offen.frageText) b._intentGefragt = true;
   if (v) {
-    log.info?.(`[hkp] Antwort auf ${offen.frage}: ${v.art}${v.quelle ? ` (${v.quelle})` : ""}${v.angabe ? ` - ${v.angabe}` : ""}`);
+    log.info?.(`[hkp] Antwort auf ${offen.frage}: ${v.art}${v.quelle ? ` (${v.quelle})` : ""}${v.angabe ? ` - ${v.angabe}` : ""}${v.sagen ? ` | ${v.sagen}` : ""}`);
+    if (v.sagen) b._sagen = v.sagen;
+    if (v.art === "gegenfrage") {
+      b._gegenfrage = true;
+      return auftragText;
+    }
+    if (offen.frage === "befund_anzeige" && v.befund && !v.plan) {
+      const gesagt = befundAusAntwort(v.befund, auftragsKiefer(E.auftragVerstehen([auftragText, offen.planAuftrag, offen.restZusatz].filter(Boolean).join(". "))));
+      if (gesagt) b._handyAenderung = gesagt;
+    } else if (offen.frage === "befund_anzeige" && !v.plan && !v.befund
+      && (v.art === "zustimmung" || (v.art === "ablehnung" && offen.befundZaehneGefragt))) {
+      // "Stimmt er so?" – Ja: der Befund auf dem Handy bleibt, weiter zur Planung. Ein Nein auf
+      // "Welche Zähne soll ich ändern?" heißt ebenso: nichts zu ändern.
+      if (!String(b.befund_quelle || "").trim()) b.befund_quelle = ["pvs", "lena", "neu"].includes(v.quelle) ? v.quelle : "pvs";
+      if (b.befund_quelle !== "neu") wahlMerken(clientId, patient, { quelle: b.befund_quelle });
+    } else if (offen.frage === "befund_anzeige" && v.art === "ablehnung" && !v.plan && !v.befund) {
+      // "Nein" ohne Zähne: einmal nachfragen, welche
+      b._handyFragen = true;
+    } else if (offen.frage === "befund_anzeige" && v.art === "unklar" && !v.plan && !v.befund) {
+      anzeigeRoh = satz;
+    }
     if (v.art === "abbruch" || v.art === "neustart") {
       await neuAnfangen(clientId, patient, offen);
       b._neu = v.art;
@@ -1202,7 +1294,7 @@ async function antwortAufFrage(clientId, patient, b, auftragText) {
       if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = "neu";
     }
     if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = v.quelle || satz;
-    if (offen.frage === "befund_freigabe" && ja) b.befund_freigegeben = true;
+    if (offen.frage === "befund_freigabe" && (ja || /^(?:das|der|die) ist (?:richtig|korrekt)\b/i.test(satz))) b.befund_freigegeben = true;
     if (offen.frage === "befund_freigabe" && v.art === "ablehnung" && !befundGesagt) b._befundNein = true;
     if (offen.frage === "befund_freigabe" && v.art === "angabe") b._korrektur = true;
     if (offen.frage === "versorgung" && v.befund) b._befundZuerst = true;
@@ -1210,17 +1302,41 @@ async function antwortAufFrage(clientId, patient, b, auftragText) {
     if (["befund_freigabe", "befund_korrektur", "befund_alt"].includes(offen.frage) && v.quelle === "neu" && !befundGesagt) b._befundNeu = true;
     if (offen.frage === "befund_alt" && ja) b.befund_bestaetigt = true;
     const zusaetze = [];
-    if (restFrageOffen) {
-      const raus = v.entfernen.length || v.erhalten.length ? v.entfernen : ja ? offen.frageZaehne.map(String) : [];
-      if (raus.length) zusaetze.push(restSatz(raus, "entfernen"));
-      if (v.erhalten.length) zusaetze.push(restSatz(v.erhalten, "erhalten"));
-      if (!raus.length && !v.erhalten.length && v.art === "ablehnung" && offen.frage === "restzaehne") {
+    // „Das sind Implantate, All-on-6“ erklärt die Versorgung. Daraus wird kein Befund
+    // und keine Extraktion, sonst fragt Clara die Änderung ein zweites Mal.
+    const implantatErklaerung = entfernFrage && /\b(?:all[\s-]*on|allon|orlon|olon|ollon|implantat)/i.test(satz) && !v.entfernen.length;
+    if (restFrageOffen && !implantatErklaerung) {
+      // "Alle Teleskop" beantwortet die Restzahn-Frage: die Zähne bleiben und werden Teleskope.
+      if (/teleskop|doppelkrone|konus/i.test(`${satz} ${v.angabe || ""}`) && !v.entfernen.length) {
         zusaetze.push(restSatz(offen.frageZaehne.map(String), "erhalten"));
+        zusaetze.push("Teleskopkronen");
+      } else {
+        const raus = v.entfernen.length || v.erhalten.length ? v.entfernen : ja ? offen.frageZaehne.map(String) : [];
+        if (raus.length) zusaetze.push(restSatz(raus, "entfernen"));
+        if (v.erhalten.length) zusaetze.push(restSatz(v.erhalten, "erhalten"));
+        if (!raus.length && !v.erhalten.length && v.art === "ablehnung" && offen.frage === "restzaehne") {
+          zusaetze.push(restSatz(offen.frageZaehne.map(String), "erhalten"));
+        }
       }
     }
-    if (v.angabe && !befundGesagt && !b._befundNeu && !(restFrageOffen && zusaetze.length)) zusaetze.push(v.angabe);
+    if (v.plan && ["versorgung", "befund_anzeige", "kiefer_fehlt"].includes(offen.frage)) {
+      b._planSatz = v.plan;
+      log.info?.(`[hkp] Intent: ${v.plan}`);
+    } else if (!b._handyAenderung && !b._handyFragen && v.angabe && !befundGesagt && !b._befundNeu && !implantatErklaerung && !(restFrageOffen && zusaetze.length)) zusaetze.push(v.angabe);
     for (const z of zusaetze) if (auftragText && !textNorm(auftragText).includes(textNorm(z))) auftragText = restZusatzMerken(clientId, patient, auftragText, z);
   } else if (satz) {
+    if (offen.frage === "befund_anzeige") {
+      const zahlen = satz.replace(/\b([1-4])\s*[,.]\s*([1-8])\b/g, "$1$2");
+      const stand = /\b(fehl|vorhanden|änder|aender|stehen|steht|gesund|zahnlos)\b/i.test(zahlen);
+      const aenderung = stand && (/\b[1-4][1-8]\b/.test(zahlen) || /\balle\b/i.test(zahlen));
+      const nurNein = /^(nein|nee|nö|no)\b/i.test(satz) && !aenderung;
+      if (aenderung) b._handyAenderung = zahlen;
+      else if (nurNein && !offen.befundZaehneGefragt) b._handyFragen = true;
+      else if (nurNein || /^(ja|jawohl|genau|stimmt|passt|richtig|so lassen|weiter|planen)\b/i.test(satz)) {
+        if (!String(b.befund_quelle || "").trim()) b.befund_quelle = "pvs";
+        wahlMerken(clientId, patient, { quelle: b.befund_quelle });
+      } else anzeigeRoh = satz;
+    }
     // Ohne Modell: nur die eindeutigen Faelle. Ein Satz mit Zahnnummern auf eine Befundfrage ist der Befund.
     const mitZahlen = satz.replace(/\b([1-4])\s*[,.]\s*([1-8])\b/g, "$1$2");
     if (BEFUND_FRAGEN.has(offen.frage) && offen.frage !== "befund_quelle" && !JA_WORT.test(satz) && /\b[1-4][1-8]\b/.test(mitZahlen)) {
@@ -1229,15 +1345,28 @@ async function antwortAufFrage(clientId, patient, b, auftragText) {
       if (process.env.MAS_HKP_ANTWORT_LLM === "0") b.befund = mitZahlen;
       else b._befundUnklar = true;
     }
-    if (offen.frage === "befund_freigabe" && !JA_WORT.test(satz)) b._korrektur = true;
+    const befundJa = JA_WORT.test(satz) || /^(?:das|der|die) ist (?:richtig|korrekt)\b/i.test(satz);
+    if (offen.frage === "befund_freigabe" && !befundJa) b._korrektur = true;
     if (offen.frage === "befund_quelle" && !String(b.befund_quelle || "").trim()) b.befund_quelle = satz;
-    if (offen.frage === "befund_freigabe" && JA_WORT.test(satz)) b.befund_freigegeben = true;
+    if (offen.frage === "befund_freigabe" && befundJa) b.befund_freigegeben = true;
     if (offen.frage === "befund_alt" && JA_WORT.test(satz)) b.befund_bestaetigt = true;
     if (restFrageOffen) {
       // "Soll ich ihn als zu entfernen planen?" - ein Nein laesst sich nicht planen, dann fragt die Engine weiter.
-      const zusatz = entfernFrage && /^\W*nein\b|nicht (entfern|zieh|raus)/i.test(satz) ? "" : restAntwort(satz, offen.frageZaehne);
+      const zusatz = entfernFrage && (/\b(?:all[\s-]*on|allon|orlon|olon|ollon|implantat)/i.test(satz) || /^\W*nein\b|nicht (entfern|zieh|raus)/i.test(satz)) ? "" : restAntwort(satz, offen.frageZaehne);
       if (zusatz && auftragText) auftragText = restZusatzMerken(clientId, patient, auftragText, zusatz);
     }
+  }
+  if (b._handyAenderung || b._handyFragen) {
+    const rest = wahlLesen(clientId, patient).restZusatz || "";
+    return rest && auftragText && !auftragText.includes(rest) ? `${auftragText}. ${rest}` : auftragText;
+  }
+  if (anzeigeRoh && !b._planSatz && (wahlLesen(clientId, patient).restZusatz || "") === (offen.restZusatz || "") && auftragText) {
+    auftragText = restZusatzMerken(clientId, patient, auftragText, anzeigeRoh);
+  }
+  // Live 05.11.2026: „voll verblendet, momentan teilverblendet“ kam in der Vorschau an und änderte nichts,
+  // weil die Umschreibung des Modells die Verblendart verlor. Der Satz selbst bleibt im Auftrag.
+  if (satz && (offen.frage === "vorlesen" || offen.frage === "ausfuehrung") && VOKABEL.test(satz) && auftragText && !textNorm(auftragText).includes(textNorm(satz))) {
+    auftragText = restZusatzMerken(clientId, patient, auftragText, satz);
   }
   const rest = wahlLesen(clientId, patient).restZusatz || "";
   return rest && auftragText && !auftragText.includes(rest) ? `${auftragText}. ${rest}` : auftragText;
@@ -1410,7 +1539,9 @@ async function entwurfAnlegen(clientId, d) {
   const { patient, auftrag, auftragText, befund, r, summen, versorgungText, zusaetzlich, doppelt } = d;
   const h = await hkpAnlegen(clientId, {
     patient, art: "kasse", status: "wartet_auf_freigabe", kiefer: auftrag.kiefer || "", versorgung: auftrag.versorgung || "",
-    versorgungText, auftragText, auftrag: JSON.parse(JSON.stringify(auftrag)), befundQuelle: befund.quelle,
+    versorgungText: d.fallTitel ? `${d.fallTitel} · ${versorgungText}` : versorgungText, auftragText,
+    fallId: d.fallId || "", fallTitel: d.fallTitel || "",
+    auftrag: JSON.parse(JSON.stringify(auftrag)), befundQuelle: befund.quelle,
     befundJson: JSON.stringify(befund.befund), planJson: JSON.stringify(r.plan), summen,
     zusammenfassung: r.zusammenfassung, hinweise: [...befund.hinweise, ...r.hinweise], engineStand: E.ENGINE_STAND,
     erstelltVon: "clara",
@@ -1455,8 +1586,9 @@ async function privatAnlegen(clientId, d) {
   const e = await entwurfAblegen(clientId, {
     modul: "privat-kv",
     patient: { id: patient.id, label: patient.anredeLabel || "", name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" },
-    anzeige: [patient.firstName, patient.lastName].filter(Boolean).join(" "), betrag: summen.gesamt, planJson: JSON.stringify(r.plan),
-    auftragText, befundQuelle: befund.quelle || null, hinweise: [...befund.hinweise, ...r.hinweise], engineStand: P.ENGINE_STAND,
+    anzeige: d.anzeige || [patient.firstName, patient.lastName].filter(Boolean).join(" "), betrag: summen.gesamt, planJson: JSON.stringify(r.plan),
+    auftragText, befundQuelle: befund.quelle || null, hinweise: [...(befund.hinweise || []), ...r.hinweise], engineStand: P.ENGINE_STAND,
+    fallId: d.fallId || "", fallTitel: d.fallTitel || "",
   });
   log.info?.(`[hkp] Privat-Entwurf ${e.id} abgelegt (Befund ${befund.quelle?.art}, Patient ${patient.id})`);
   vorgangMelden(clientId, befund.pvs?.nummer, { modul: "privat-kv", phase: "angelegt", plan: planZeilen(r.plan), meldung: "" });
@@ -1477,15 +1609,24 @@ async function privatAnlegen(clientId, d) {
 // Einstellungen der Praxis rechnet. Notaus MAS_MKV=0, MAS_KONS=0 bzw. MAS_IMPL=0.
 const MKV_WORT = /mehrkosten|\bm\.? ?k\.? ?v\b/i;
 const FUELLUNG_WORT = /f(?:ü|ue)llung|komposit|kunststoff|inlay|einlagef|goldh(?:ä|ae)mmer|\baufbau/i;
-const ZE_WORT = /krone|br(?:ü|ue)cke|prothese|teleskop|implantat|zahnersatz|\bhkp\b|heil- ?und kostenplan/i;
+const ZE_WORT = /krone|br(?:ü|ue)cke|prothese|teleskop|implantat|zahnersatz|\bhkp\b|heil- ?und kostenplan|suprakonstruktion|all[\s-]*on|locator|druckknopf|kugelkopf|novaloc|equator|table[\s-]?top|\bonlay\b|galvano/i;
 const KONS_WORT = /f(?:ü|ue)llung|komposit|kunststoff|inlay|einlagef|goldh(?:ä|ae)mmer|\baufbau|wurzel|\bwkb\b|\bendo|revision|(?:ü|ue)berkapp|pulpotomie|versiegel|infiltration|\bicon\b|veneer|bleach|bleich|\bkons\b|konservier/i;
 const KONS_PRIVAT_WORT = /privat|kosten\s?voranschlag|\bkons\b|konservier|\bgoz\b/i;
 export const mkvGesagt = (t) => MKV_WORT.test(t) || (FUELLUNG_WORT.test(t) && !ZE_WORT.test(t));
 export const konsGesagt = (t) => !MKV_WORT.test(t) && !ZE_WORT.test(t) && KONS_WORT.test(t) && KONS_PRIVAT_WORT.test(t);
 // Implantat ohne Prothetik-Wort ist die Chirurgie; "Implantatkrone", "Brücke auf Implantaten" bleiben Zahnersatz
 const IMPL_WORT = /implantat(?!\w*(?:kron|getragen|br(?:ü|ue)cke|prothes|versorg|suprakon|abutment))|implantation|implantolog|sinuslift|sinusboden|knochenaufbau|augmentation/i;
-const PROTHETIK_WORT = /krone|br(?:ü|ue)cke|prothese|teleskop|\bsteg\b|zahnersatz|abutment|suprakonstruktion|\bhkp\b|heil- ?und kostenplan/i;
+const PROTHETIK_WORT = /krone|br(?:ü|ue)cke|prothese|teleskop|\bsteg\b|zahnersatz|abutment|suprakonstruktion|\bhkp\b|heil- ?und kostenplan|all[\s-]*on|locator|druckknopf|kugelkopf|novaloc|equator|table[\s-]?top|\bonlay\b|galvano|teilkrone/i;
 export const implGesagt = (t) => IMPL_WORT.test(t) && !PROTHETIK_WORT.test(t) && !MKV_WORT.test(t);
+// Live 05.11.2026: das Modell kürzt „verschraubte vollanatomische Zirkonkrone“ auf „Krone“.
+// Der Originalsatz hängt am Werkzeug und wird angehängt, wenn diese Wörter darin fehlen.
+const VOKABEL = /teil\s*verblend|voll\s*verblend|vollverblend|vestibul|verschraub|zementier|abutment|locator|locater|druckknopf|kugel(?:kopf|anker)|novaloc|equator|implantatsteg|\bsteg\b|all[\s-]*on|inlay|onlay|table[\s-]?top|teilkrone|galvano|vollanatom|monolith|zirkonteleskop|prim(?:ä|ae)r\s*teleskop|suprakonstruktion|matrize|patrize|geri?st\w*.{0,20}verblend/i;
+export function vokabelSichern(auftrag, satz) {
+  const s = String(satz || "").trim();
+  if (!s || !VOKABEL.test(s)) return auftrag;
+  if (auftrag && textNorm(auftrag).includes(textNorm(s))) return auftrag;
+  return auftrag ? `${auftrag}. ${s}` : s;
+}
 
 const engineAus = (name) => String(process.env[name] || "").trim() === "0";
 const patientFuerEngine = (patient) => ({ name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" });
@@ -1550,6 +1691,13 @@ function sprachPlanAus(b, auftragText) {
 }
 
 /** Rechnen und vorlesen bzw. zurueckfragen; d: { sprachPlan, patient, auftragText, befundZaehne, praxis, namenGesagt, pvsNr, befundQuelle } */
+/** Ausschluss-Tabelle auf jedem gerechneten Plan: Treffer werden mit Fundstelle vorgelesen, die Tabelle gewinnt */
+function ausschlussHinweise(r, patient) {
+  const treffer = planPruefen(positionenVon(r));
+  if (treffer.length) log.warn?.(`[hkp] Ausschluss im Plan fuer ${patient?.id || "?"}: ${treffer.map((e) => `${e.k} ${e.a}/${e.b} (${e.bei})`).join(", ")}`);
+  return treffer.slice(0, 2).map((e) => e.hinweis);
+}
+
 function sprachPlanRechnen(clientId, d) {
   const cfg = SPRACH_PLAENE[d.sprachPlan];
   const r = cfg.entwurf(d.auftragText, d.befundZaehne || {}, d.patient, d.praxis);
@@ -1559,7 +1707,7 @@ function sprachPlanRechnen(clientId, d) {
   }
   const z = r.zusammenfassung;
   const summen = cfg.summen(z);
-  const hinweise = [...cfg.hinweise(r), ...r.hinweise,
+  const hinweise = [...ausschlussHinweise(r, d.patient), ...cfg.hinweise(r), ...r.hinweise,
     ...(d.befundQuelle ? [] : ["Einen Befund aus dem Praxisprogramm hatte ich nicht, die Zähne habe ich deshalb nicht geprüft."])];
   // vollstaendig vorgelesen: ein neuer Auftrag beginnt von vorn (Korrekturen laufen ueber hkp-ausfuehrung-aendern)
   wahlMerken(clientId, d.patient, { planart: d.sprachPlan, teilAuftrag: "", teilKonflikt: "", teilGrund: "" });
@@ -1614,7 +1762,7 @@ async function sprachPlanZweig(clientId, sprachPlan, b, patient, auftragText) {
   if (pvsNr) vorgangMelden(clientId, pvsNr, { modul: cfg.modul, phase: "befund", auftrag: text });
   const praxis = await praxisLaden(clientId).catch(() => ({ einstellungen: {} }));
   const x = sprachPlanRechnen(clientId, {
-    sprachPlan, patient, auftragText: text, befundZaehne: pb?.ok ? pb.befund : {}, praxis: { einstellungen: praxis?.einstellungen || {} },
+    sprachPlan, patient, auftragText: text, befundZaehne: pb?.ok ? { ...pb.befund, ...pb.offen } : {}, praxis: { einstellungen: praxis?.einstellungen || {} },
     namenGesagt: [String(b.name || "").trim()], pvsNr, befundQuelle: pb?.ok ? { art: "pvs", pvs: pb.pvs, datum: pb.datum } : null,
   });
   return pvsNr ? { ...x, card: befundKarte(clientId, pvsNr, patient) } : x;
@@ -1628,8 +1776,9 @@ async function sprachPlanAnlegen(clientId, d) {
   const e = await entwurfAblegen(clientId, {
     modul: cfg.modul,
     patient: { id: patient.id, label: patient.anredeLabel || "", name: patient.lastName || "", vorname: patient.firstName || "", geburtsdatum: patient.birthDate || "" },
-    anzeige: [patient.firstName, patient.lastName].filter(Boolean).join(" "), betrag: cfg.betrag(summen), planJson: JSON.stringify(r.ablagePlan),
+    anzeige: d.anzeige || [patient.firstName, patient.lastName].filter(Boolean).join(" "), betrag: cfg.betrag(summen), planJson: JSON.stringify(r.ablagePlan),
     auftragText, befundQuelle: d.befundQuelle || null, hinweise: d.hinweise || r.hinweise, engineStand: cfg.stand(),
+    fallId: d.fallId || "", fallTitel: d.fallTitel || "",
   });
   log.info?.(`[hkp] ${cfg.modul}-Entwurf ${e.id} abgelegt (Patient ${patient.id})`);
   vorgangMelden(clientId, d.pvsNr, { modul: cfg.modul, phase: "angelegt", plan: sprachPlanZeilen(cfg, r.plan), meldung: "" });
@@ -1642,11 +1791,219 @@ async function sprachPlanAnlegen(clientId, d) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Fachgespraech Zahnersatz (Chef 05.11.2026: "freies LLM-Gespraech mit Knowledgebase, kein starres Regex mehr").
+// Kein Ablauf aus festen Rueckfragen: in jedem Zug entscheidet das Abrechnungsmodell (fachEntscheiden), was passiert
+// und was es sagt; hier wird nur ausgefuehrt und geprueft. Nach DS-Win geht ein Befund nur, nachdem das Modell die
+// geaenderten Zaehne vorgelesen und gefragt hat. Rechnen und das Vorlesen der Summen bleiben bei der Engine.
+// Notaus MAS_HKP_FACH=0: der bisherige Ablauf.
+// ---------------------------------------------------------------------------
+const fachAn = () => process.env.MAS_HKP_FACH !== "0";
+const FACH_RUNDEN = 3;
+const FACH_STILL = "Das habe ich gerade nicht verarbeiten können. Sagen Sie es mir bitte noch einmal?";
+const zahnKiefer = (z) => (/^[12]/.test(z) ? "OK" : "UK");
+const sortiertJson = (o) => JSON.stringify(Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b)));
+const nurIn = (befund, kiefer) => Object.fromEntries(Object.entries(befund).filter(([z]) => kiefer.includes(zahnKiefer(z))));
+const nenntAlle = (text, zaehne) => zaehne.every((z) => new RegExp(`(^|\\D)${z}(\\D|$)`).test(text));
+
+async function fachPvsLaden(clientId, patient, w) {
+  const pb = await Promise.race([ohneAltenVorschlag(w)(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 10000, null))]);
+  if (pb?.ok) return { ok: true, name: pb.pvs, datum: pb.datum ? datumDe(pb.datum) : "", nummer: pb.nummer, befund: pb.befund || {}, offen: pb.offen || {} };
+  return { ok: false, name: pb?.pvs || "", meldung: pb?.meldung || "", befund: {}, offen: {} };
+}
+
+/** Plan rechnen wie im festen Ablauf. -> { vorschau, doppelt } | { fertig } | { rueck: Rueckmeldung fuer das Modell } */
+async function fachRechnen(clientId, patient, b, st, p, { privat, sagen, nurVorschau = false }) {
+  const auftrag = E.auftragVerstehen(st.plan);
+  const befundMap = p.ok ? { ...p.befund, ...st.offen } : kieferBefund(st.offen, auftragsKiefer(auftrag));
+  const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [], einstellungen: {} }));
+  const system = implantatStandard(praxis);
+  const patientDaten = { name: patient.lastName, vorname: patient.firstName, geburtsdatum: patient.birthDate };
+  const r = privat
+    ? P.privatZeEntwurf(st.plan, befundMap, { patient: patientDaten, implantatSystem: system })
+    : E.hkpEntwurf(st.plan, befundMap, { patient: patientDaten, einstellungen: praxis.einstellungen, implantatSystem: system }, praxisListen(praxis));
+  if (r.status !== "ok") {
+    const frage = r.grund === "restzaehne" && r.zaehne?.length ? restFrage(r.zaehne) : r.frage || "";
+    return { rueck: `Die Engine kann "${st.plan}" mit diesem Befund nicht rechnen: ${frage || r.grund}`, frage, grund: r.grund, zaehne: r.zaehne };
+  }
+  const frage = privat ? null : ausfuehrungRueckfrage(clientId, patient, st.plan, auftrag, r, system);
+  if (frage) return { rueck: `Vor dem Rechnen fehlt die Ausführung (einmal fragen, sonst gilt der Praxis-Standard): ${frage.message}`, frage: frage.message };
+  const jetzt = new Date().toISOString();
+  const name = p.name || "";
+  const befund = {
+    ok: true, befund: befundMap, quelleWahl: p.ok ? "pvs" : "neu", hinweise: name ? fremdeKuerzel(befundMap, name) : [],
+    ...(p.ok ? { pvs: { name, nummer: p.nummer } } : {}),
+    quelle: st.uebertragen ? { art: "gesprochen+pvs", pvs: name, datum: jetzt, uebertragen: st.uebertragen }
+      : Object.keys(st.offen).length || !p.ok ? { art: p.ok ? "gesprochen+pvs" : "gesprochen", pvs: name, datum: jetzt }
+        : { art: "pvs", pvs: name, datum: p.datum },
+  };
+  if (!privat) liveMelden(clientId, { phase: "plan", plan: r.plan, meldung: "" });
+  if (p.nummer) vorgangMelden(clientId, p.nummer, { modul: privat ? "privat-kv" : "hkp", phase: "planung", plan: planZeilen(r.plan), meldung: "" });
+  const z = r.zusammenfassung;
+  const summen = privat ? { gesamt: zahl(z.gesamt), honorar: zahl(z.honorar), labor: zahl(z.labor), material: zahl(z.material) } : summenAus(r.ergebnis);
+  const versorgungText = privat ? PRIVAT_TEXT : versorgungTextVon(auftrag);
+  const alteWeg = wahr(b.alte_verwerfen);
+  const doppelt = privat ? [] : doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
+  const daten = { patient, auftrag, auftragText: st.plan, befund, befundDiktat: "", r, summen, versorgungText, zusaetzlich: wahr(b.zusaetzlich) || alteWeg, doppelt, alteVerwerfen: alteWeg, privat };
+  const vorweg = sagen && !sagen.includes("?") ? `${sagen} ` : "";
+  if (vorlesenAus() && !nurVorschau) {
+    const e = await (privat ? privatAnlegen : entwurfAnlegen)(clientId, daten);
+    return { fertig: e.message ? { ...e, message: `${vorweg}${e.message}` } : e };
+  }
+  vorschauMerken(clientId, { ...daten, namenGesagt: [String(b.name || "").trim()], at: Date.now() });
+  const vorschau = vorleseSatz({
+    patient, versorgungText, kiefer: geplanteKiefer(auftrag, z), zaehne: r.plan.zaehne, versorgung: versorgungSatz(z),
+    ausfuehrung: privat ? "" : ausfuehrungText(r.plan), summen: privat ? privatSummenSatz(summen) : summenSatz(summen),
+    spanne: privat ? "" : spanneVon(r.plan, praxis),
+    doppelt: doppelt.length ? doppelungHinweis(doppelt, alteWeg) : "", befundFreigegeben: !!st.uebertragen,
+    hinweis: ausschlussHinweise(r, patient).join(" "),
+  });
+  return { vorschau: `${vorweg}${vorschau}`, doppelt };
+}
+
+/** Ein Zug im Fachgespraech. -> Antwort fuer Clara ({ message, rueckfrage, stimme, card }) */
+async function fachZug(clientId, patient, b, { privat }) {
+  // Clara wartet 30 s auf das Werkzeug: PVS-Lesen, Modellrunden und Rechnen teilen sich eine Frist
+  const frist = Date.now() + Number(process.env.MAS_HKP_FACH_FRIST_MS || 26000);
+  const w = wahlLesen(clientId, patient);
+  const st = { verlauf: [], offen: {}, plan: "", rueck: "", vorgelegt: "", uebertragen: "", ...(w.fach || {}) };
+  const satz = String(b.chef_satz || b.auftrag || "").trim();
+  let p = st.p;
+  if (!p) {
+    p = await fachPvsLaden(clientId, patient, w);
+    st.offen = { ...p.offen };
+  }
+  const pvsNr = p.nummer || (p.name ? pvsKennung(patient).patient || "" : "");
+  if (!w.fach && pvsNr) vorgangMelden(clientId, pvsNr, { modul: privat ? "privat-kv" : "hkp", phase: "befund", auftrag: satz, ...(p.ok ? {} : ohnePvs(patient, p.name)) });
+  const card = pvsNr ? befundKarte(clientId, pvsNr, patient) : null;
+  const praxisKat = await praxisKatalog(clientId).catch(() => null);
+  const kuerzel = Object.keys(E.BEFUND_KUERZEL || {});
+  const wer = await getAssistantName(clientId).catch(() => DEFAULT_ASSISTANT_NAME);
+
+  let rueck = st.rueck || "";
+  let sagen = "";
+  let ergebnis = null;
+  let engineFrage = "";
+  let fehlerOffen = false;
+  for (let runde = 0; runde < FACH_RUNDEN && !ergebnis; runde++) {
+    const rest = frist - Date.now() - 1500;
+    if (rest < 4000) break;
+    const d = await fachEntscheiden({
+      satz, rueck, praxis: praxisKat, kuerzel, verlauf: st.verlauf, timeoutMs: Math.min(rest, Number(process.env.MAS_HKP_FACH_MS || 20000)),
+      stand: {
+        patient: patient.anredeLabel || patient.label, privat, pvs: p.name, datum: p.datum, meldung: p.meldung,
+        pvsBefund: p.befund, offen: st.offen, uebertragen: st.uebertragen, plan: st.plan,
+      },
+    });
+    if (!d) break;
+    log.info?.(`[hkp] fach ${runde + 1}: ${JSON.stringify({ befund: d.befund, plan: d.plan, rechnen: d.rechnen, uebertragen: d.uebertragen, abbrechen: d.abbrechen })} | ${d.sagen}`);
+    sagen = d.sagen;
+    rueck = "";
+    if (d.abbrechen) {
+      befundWahl.delete(wahlSchluessel(clientId, patient));
+      vorschauOffen.set(clientId, vorschauen(clientId).filter((v) => v.patient?.id !== patient.id));
+      return { ok: true, abgebrochen: true, stimme: "modell", message: sagen || `Gut, für ${patient.anredeLabel} lege ich nichts an.` };
+    }
+    const fehler = [];
+    const erledigt = [];
+    const aenderung = Object.fromEntries(Object.entries(d.befund).filter(([z, c]) => String(st.offen[z] ?? p.befund[z] ?? "") !== c));
+    if (Object.keys(aenderung).length) {
+      for (const [z, c] of Object.entries(aenderung)) {
+        if (p.ok && String(p.befund[z] ?? "") === c) delete st.offen[z];
+        else st.offen[z] = c;
+      }
+      st.vorgelegt = "";
+      vorschauOffen.set(clientId, vorschauen(clientId).filter((v) => v.patient?.id !== patient.id));
+      if (p.ok && pvsNr) befundAendernPvs(clientId, pvsNr, aenderung, `${wer}${HKP_VORSCHLAG}`).catch(() => null);
+      liveMelden(clientId, { phase: "befund", befund: { ...p.befund, ...st.offen }, plan: null, meldung: "" });
+    }
+    if (d.plan && d.plan !== st.plan) {
+      const a = E.auftragVerstehen(d.plan);
+      if ((a.teile?.length ? a.teile : [a]).every((t) => t.versorgung)) {
+        st.plan = d.plan;
+        vorschauOffen.set(clientId, vorschauen(clientId).filter((v) => v.patient?.id !== patient.id));
+      } else fehler.push(`Den Plansatz "${d.plan}" versteht die Engine nicht; nimm eine der Formen aus der Anleitung.`);
+    }
+    if (d.uebertragen) {
+      const zs = Object.keys(st.offen);
+      if (!zs.length) erledigt.push("Es gibt keine geänderten Zähne zum Übertragen.");
+      else if (!p.ok) fehler.push(`Übertragen geht nicht: ${p.meldung || "kein Praxisprogramm angebunden"}. Sag ihm das.`);
+      else if (st.vorgelegt !== sortiertJson(st.offen)) fehler.push(`Nicht übertragen: Lies ihm zuerst die geänderten Zähne vor (${befundListe(st.offen)}) und frag, ob sie nach ${p.name} sollen.`);
+      else {
+        const kiefer = ["OK", "UK"].filter((k) => zs.some((z) => zahnKiefer(z) === k));
+        const ziel = await befundInsPvs(clientId, patient, { kiefer, zaehne: nurIn({ ...p.befund, ...st.offen }, kiefer), nummer: p.nummer });
+        log.info?.(`[hkp] fach: Befund ${ziel.ok ? `nach ${ziel.pvs || p.name} uebertragen (${zs.join(", ")})` : `nicht uebertragen: ${ziel.meldung}`}, Patient ${patient.id}`);
+        if (ziel.ok) {
+          p = { ...p, befund: { ...p.befund, ...st.offen } };
+          st.uebertragen = ziel.pvs || p.name;
+          st.offen = {};
+          st.vorgelegt = "";
+          erledigt.push(`Der Befund steht jetzt in ${st.uebertragen}.`);
+        } else fehler.push(`Übertragen hat nicht geklappt: ${ziel.meldung}`);
+      }
+    }
+    if (d.rechnen && !fehler.length) {
+      if (!st.plan) fehler.push("Rechnen geht noch nicht: es gibt keinen Plan.");
+      else {
+        const r = await fachRechnen(clientId, patient, b, st, p, { privat, sagen });
+        if (r.rueck) { fehler.push(r.rueck); engineFrage = r.frage || engineFrage; }
+        else ergebnis = r;
+      }
+    }
+    if (ergebnis) break;
+    rueck = [...erledigt, ...fehler].join(" ");
+    // Erledigtes kann das Modell im naechsten Zug erwaehnen; nur ein Fehler braucht sofort eine neue Entscheidung
+    fehlerOffen = fehler.length > 0;
+    if (!fehlerOffen) break;
+  }
+  // Konnte das Modell auf einen Fehler nicht mehr antworten, spricht die Rueckfrage der Engine (nie ein Satz,
+  // der von einem Schritt ausgeht, der gar nicht geklappt hat)
+  if (fehlerOffen) sagen = engineFrage;
+
+  if (ergebnis?.fertig) {
+    befundWahl.delete(wahlSchluessel(clientId, patient));
+    return { ...ergebnis.fertig, stimme: "daten", ...(card ? { card } : {}) };
+  }
+  const antwort = ergebnis?.vorschau
+    ? { ok: true, rueckfrage: "vorlesen", message: ergebnis.vorschau, stimme: "daten", ...(ergebnis.doppelt?.length ? { doppelung: ergebnis.doppelt.map((h) => h.id) } : {}) }
+    : { ok: true, rueckfrage: "gespraech", message: sagen || FACH_STILL, stimme: sagen && !fehlerOffen ? "modell" : "daten" };
+  st.p = p;
+  st.rueck = ergebnis ? "" : rueck;
+  const zs = Object.keys(st.offen);
+  if (zs.length && antwort.message.includes("?") && nenntAlle(antwort.message, zs)) st.vorgelegt = sortiertJson(st.offen);
+  st.verlauf = [...st.verlauf, { wer: "Zahnarzt", text: satz }, { wer: "Du", text: antwort.message }].slice(-14);
+  wahlMerken(clientId, patient, { fach: st, frage: antwort.rueckfrage, frageZaehne: [], frageText: antwort.message.slice(0, 800), planAuftrag: st.plan });
+  liveMelden(clientId, { meldung: antwort.message });
+  return card ? { ...antwort, card } : antwort;
+}
+
+/**
+ * Befund und Planung: jede Antwort spricht das Abrechnungsmodell mit Wissensbasis in eigenen Worten (Chef 05.11.2026:
+ * "freies LLM-Gespraech"). Die Engine hat vorher entschieden und geschrieben; message.fakten bleibt ihr Wortlaut.
+ * Ohne Modell, bei Zeitablauf oder verlorenen Zahlen gilt der Text der Engine.
+ */
+function mundVorschalten(res, clientId, satzVon, einordnungVon) {
+  const senden = res.json.bind(res);
+  res.json = (x) => {
+    if (!x || typeof x !== "object" || !x.message || x.stimme || res.statusCode >= 400) return senden(x);
+    const { _fakten, ...raus } = x;
+    const fakten = String(_fakten || x.message);
+    (async () => {
+      const praxis = await praxisKatalog(clientId).catch(() => null);
+      const m = await mundSprechen({ satz: satzVon(), fakten, einordnung: einordnungVon(), praxis });
+      if (m) log.info?.(`[hkp] mund: ${m}`);
+      return m ? { ...raus, message: m, fakten, stimme: "modell" } : { ...raus, fakten, stimme: "daten" };
+    })().catch(() => ({ ...raus, fakten, stimme: "daten" })).then(senden);
+    return res;
+  };
+}
+
 router.post("/tools/hkp-create-draft", async (req, res) => {
   try {
     const clientId = await claraVorspann(req, res);
     if (!clientId) return;
     const b = req.body || {};
+    mundVorschalten(res, clientId, () => String(b.chef_satz || b.auftrag || ""), () => String(b._sagen || ""));
     let auftragText = String(b.auftrag || "").trim();
     let privat = wahr(b.privat) || privatGesagt(auftragText);
     let sp = sprachPlanAus(b, auftragText);
@@ -1688,7 +2045,13 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
     await sitzungPruefen(clientId, patient, b);
-    auftragText = await antwortAufFrage(clientId, patient, b, auftragText);
+    // Zahnersatz laeuft als Fachgespraech: das Modell versteht den Satz selbst, keine Zuordnung zur letzten Frage
+    const fachLauf = wahlLesen(clientId, patient);
+    const fachModus = fachAn() && !sp && (!!fachLauf.fach || !SPRACH_PLAENE[fachLauf.planart]);
+    if (!fachModus) auftragText = await antwortAufFrage(clientId, patient, b, auftragText);
+    // Die Planart steht oft erst in der Antwort auf die Befundfrage („privater Kons“, „UKPS“).
+    privat = wahr(b.privat) || privatGesagt(auftragText);
+    sp = sprachPlanAus(b, auftragText);
     if (b._neu === "abbruch") {
       return res.json({ ok: true, abgebrochen: true, message: `Gut, den angefangenen Plan für ${patient.anredeLabel} lasse ich fallen – angelegt ist nichts.` });
     }
@@ -1704,6 +2067,12 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
         ok: true, rueckfrage: wahlLesen(clientId, patient).frage || "befund_fehlt",
         message: "Den Befund habe ich gerade nicht sicher verstanden. Können Sie ihn mir bitte noch einmal sagen?",
       });
+    }
+    if (b._gegenfrage) {
+      const offen = wahlLesen(clientId, patient);
+      const message = b._sagen || "Was möchten Sie dazu wissen?";
+      wahlMerken(clientId, patient, { frage: offen.frage || "versorgung", frageZaehne: offen.frageZaehne || [], frageText: message });
+      return res.json({ ok: true, rueckfrage: offen.frage || "versorgung", message });
     }
     if (b._befundNeu) {
       // Ganz neuer Befund: der vorgelesene gilt nicht mehr, nicht genannte Zaehne nimmt die Aufnahme als vorhanden
@@ -1742,9 +2111,24 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       return res.json({ ok: true, rueckfrage: "namensvetter", message: vetternFrage(kandidaten) });
     }
     liveMelden(clientId, { patient: livePatient(patient), auftragText, meldung: "" });
+    if (fachModus && !sp) return res.json(await fachZug(clientId, patient, b, { privat }));
     let vorab = "";
     let flipKarte = null;
     const raus = (x) => {
+      const sagen = String(b._sagen || "").trim();
+      const gate = x?.rueckfrage || "";
+      const passt = (sagen.includes("?") && (
+        (gate === "befund_quelle" && /befund|praxis|kartei|diktier|aufnehmen|ds-win/i.test(sagen))
+        || (gate === "restzaehne" && /zahn|entfern|stehen|bleib|teleskop/i.test(sagen))
+        || (gate === "befund_fehlt" && /zahn|befund|fehl|vorhanden/i.test(sagen))
+      ));
+      const modellFragt = sagen.includes("?") && ["befund_quelle", "befund_freigabe", "befund_korrektur", "restzaehne", "befund_fehlt"].includes(gate);
+      if (sagen && !/steht jetzt|ist angelegt/.test(String(x?.message || "")) && (gate === "befund_anzeige" || gate === "versorgung" || gate === "kiefer_fehlt" || passt || modellFragt)) {
+      if (x?.message) x = { ...x, _fakten: x.message };
+        x = { ...x, message: sagen };
+      } else if (sagen && !sagen.includes("?") && ["befund_quelle", "restzaehne", "befund_fehlt", "versorgung", "befund_freigabe"].includes(gate) && x?.message) {
+        x = { ...x, message: `${sagen} ${x.message}` };
+      }
       wahlMerken(clientId, patient, { frage: x?.rueckfrage || "", frageZaehne: x?.zaehne || [], frageText: String(x?.message || "").slice(0, 800) });
       if (vorab && x?.message) x = { ...x, message: `${vorab}${x.message}` };
       if (flipKarte && !x?.card) x = { ...x, card: flipKarte };
@@ -1753,12 +2137,13 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
     };
     // Befund zuerst (live 15.10.2026: "Welche Versorgung ...?" kam ohne Zahnschema, PlanR ohne Eintrag): steht der
     // Patient, zeigen schon die Rueckfragen den Befund aus dem Praxisprogramm. Ein langsames Praxisprogramm haelt sie nicht auf.
-    const befundVorab = async () => {
+    const befundVorab = async (altenVorschlagWeg) => {
       let nr = wahlLesen(clientId, patient).pvsNummer || "";
       let ohne = null;
-      if (!nr) {
-        const pb = await Promise.race([pvsBefund(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
-        nr = pb?.ok ? String(pb.nummer || "") : "";
+      const lesen = altenVorschlagWeg ? ohneAltenVorschlag(wahlLesen(clientId, patient)) : pvsBefund;
+      if (!nr || altenVorschlagWeg) {
+        const pb = await Promise.race([lesen(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
+        nr = pb?.ok ? String(pb.nummer || nr) : nr;
         if (nr) wahlMerken(clientId, patient, { pvsNummer: nr });
         else if (pb?.pvs) [nr, ohne] = [pvsKennung(patient).patient || "", ohnePvs(patient, pb.pvs)];
       }
@@ -1766,6 +2151,97 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       vorgangMelden(clientId, nr, { modul, phase: "befund", auftrag: auftragText, ...ohne });
       flipKarte = befundKarte(clientId, nr, patient);
     };
+    const handyAenderung = async () => {
+      const nr = wahlLesen(clientId, patient).pvsNummer || "";
+      const zaehne = E.befundVerstehen(b._handyAenderung);
+      if (nr && Object.keys(zaehne).length) {
+        const wer = await getAssistantName(clientId).catch(() => DEFAULT_ASSISTANT_NAME);
+        await befundAendernPvs(clientId, nr, zaehne, wer).catch(() => null);
+      }
+      wahlMerken(clientId, patient, { befundZaehneGefragt: !Object.keys(zaehne).length });
+      return raus({
+        ok: true, rueckfrage: "befund_anzeige",
+        message: Object.keys(zaehne).length
+          ? `Auf dem Handy steht jetzt: ${zahnBefundSatz(zaehne)}. Stimmt der Befund so?`
+          : `Welche Zähne soll ich bei ${patient.anredeLabel} auf dem Handy ändern?`,
+      });
+    };
+    // Jede Planart (HKP, Privat, Kons, MKV, Implantologie, KB): erst die 01 aufs Handy, dann die Frage
+    // nach Änderungen, und erst danach der Plan. Einmal je Gespräch.
+    const gezeigt = wahlLesen(clientId, patient);
+    if (!gezeigt.befundGezeigt) {
+      await befundVorab(true);
+      wahlMerken(clientId, patient, { befundGezeigt: true, befundZaehneGefragt: false, planAuftrag: auftragText });
+      return raus({
+        ok: true, rueckfrage: "befund_anzeige",
+        message: `Der Befund von ${patient.anredeLabel} steht auf dem Handy. Stimmt er so?`,
+      });
+    }
+    if (b._handyAenderung) return handyAenderung();
+    if (b._handyFragen) {
+      wahlMerken(clientId, patient, { befundZaehneGefragt: true });
+      return raus({
+        ok: true, rueckfrage: "befund_anzeige",
+        message: `Welche Zähne soll ich bei ${patient.anredeLabel} auf dem Handy ändern?`,
+      });
+    }
+    if (!auftragText && b.chef_satz && gezeigt.planAuftrag) auftragText = gezeigt.planAuftrag;
+    // Live 05.11.2026: „All-on-6 …“ war der Plan, die naechste Antwort nur „diesen Befund aus DS-Win“.
+    // Clara schickt diesen Satz als neuen Auftrag. Die Maschine sah keine Versorgung, fragte danach,
+    // und vergass die schon gewaehlte Quelle. Befund und Versorgung im Wechsel, ohne dass geplant wurde.
+    const teileVon = (text) => {
+      const a = E.auftragVerstehen(String(text || ""));
+      return a.teile?.length ? a.teile : [a];
+    };
+    const versorgungDa = (text) => teileVon(text).some((t) => t.versorgung);
+    const artVon = (text) => {
+      const teile = teileVon(text);
+      return {
+        art: teile.map((t) => `${t.versorgung || ""}:${t.allon || ""}`).join("|"),
+        kiefer: [...new Set(teile.map((t) => t.kiefer).filter(Boolean))].sort().join("|"),
+      };
+    };
+    // Zahngetragene Versorgung behaelt die genannten Zaehne. All-on, Total, Locator und Steg nicht.
+    const zaehneHalten = (alt, neu) => {
+      const teile = teileVon(neu);
+      if (teile.some((t) => ["allon", "totalprothese", "locator", "steg"].includes(t.versorgung))) return neu;
+      const neuText = String(neu).replace(/\b([1-4])\s*[,.]\s*([1-8])\b/g, "$1$2");
+      if (/\b[1-4][1-8]\b/.test(neuText)) return neu;
+      const altText = String(alt || "").replace(/\b([1-4])\s*[,.]\s*([1-8])\b/g, "$1$2");
+      const zs = [...new Set([...altText.matchAll(/\b[1-4][1-8]\b/g)].map((m) => m[0]))];
+      return zs.length ? `${neu}, Zähne ${zs.join(", ")}` : neu;
+    };
+    const planAnders = (alt, neu) => {
+      const a = artVon(alt);
+      const n = artVon(neu);
+      if (!n.art.replace(/[|:]/g, "")) return false;
+      return a.art !== n.art || (!!n.kiefer && a.kiefer !== n.kiefer);
+    };
+    // Das Modell liest jede Planung gegen die Wissensbasis. Die Engine bekommt den Satz
+    // nur, wenn die Art sich aendert. Stimmt die Art, bleiben Zaehne und Material im Original.
+    if (b._planSatz && versorgungDa(b._planSatz)) auftragText = zaehneHalten(auftragText, b._planSatz);
+    else if (!sp && !b._intentGefragt && process.env.MAS_HKP_INTENT !== "0") {
+      const satz = String(b.chef_satz || "").trim() || String(auftragText || "").trim();
+      const nurQuelle = !!(quelleAntwort(satz) || quelleAus(satz)) && !/prothese|br[uü]cke|krone|implantat|teleskop|steg|locator|inlay|festsitz|herausnehm/i.test(satz);
+      const kurz = /^(ja|nein|nee|nö|ok|okay|passt|genau|richtig)\b/i.test(satz);
+      if (satz && !kurz && !nurQuelle) {
+        const intent = await planIntent({ satz, bisher: gezeigt.planAuftrag || "", frage: gezeigt.frageText || "", praxis: await praxisKatalog(clientId).catch(() => null) });
+        if (intent && versorgungDa(intent) && planAnders(auftragText, intent)) {
+          log.info?.(`[hkp] Intent aus dem Gespraech: ${intent}`);
+          auftragText = zaehneHalten(auftragText, intent);
+        }
+      }
+    }
+    if (!sp && auftragText && !versorgungDa(auftragText) && versorgungDa(gezeigt.planAuftrag)) {
+      if (!String(b.befund_quelle || "").trim()) {
+        const q = quelleAntwort(auftragText) || quelleAus(auftragText);
+        if (q) b.befund_quelle = q;
+      }
+      log.info?.(`[hkp] Antwort ohne Versorgung, der gemerkte Plan bleibt`);
+      const rest = wahlLesen(clientId, patient).restZusatz || "";
+      auftragText = gezeigt.planAuftrag;
+      if (rest && !auftragText.includes(rest)) auftragText = `${auftragText}. ${rest}`;
+    }
     // Ohne Aufzaehlung (Chef 07.10.2026: "das nervt"). Clara erkennt die Rueckfrage
     // am Kern "Was soll ich fuer ... planen" (Diktat-Fenster, offener Auftrag).
     if (!auftragText) {
@@ -1785,12 +2261,15 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       });
     }
     if (!(auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung)) {
+      const q = quelleAntwort(b.befund_quelle);
+      if (q) wahlMerken(clientId, patient, { quelle: q });
       await befundVorab();
       return raus({
         ok: true, rueckfrage: "versorgung",
-        message: `${b._befundZuerst ? "Den Befund nehmen wir gleich im nächsten Schritt auf. Zuerst: " : ""}Welche Versorgung soll ich für ${patient.anredeLabel} planen?`,
+        message: `Welche Versorgung soll ich für ${patient.anredeLabel} planen?`,
       });
     }
+    if (auftragText !== gezeigt.planAuftrag) wahlMerken(clientId, patient, { planAuftrag: auftragText });
     const alteWeg = wahr(b.alte_verwerfen);
     const zusaetzlich = wahr(b.zusaetzlich) || alteWeg;
     const doppelt = privat ? [] : doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
@@ -1818,7 +2297,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
       bisher: wahl.gesagt, abgeleitetVorher: wahl.abgeleitet, genanntVorher: wahl.genannt,
       pvsName: wahl.pvsName, neuGefragt: !!wahl.neuGefragt, pvs: ohneAltenVorschlag(wahl),
       pfeiler: (auftrag.teile?.length ? auftrag.teile : [auftrag]).flatMap((t) => t.pfeiler || []).map(String),
-      ohneBefundOk: (auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung === "totalprothese"),
+      ohneBefundOk: (auftrag.teile?.length ? auftrag.teile : [auftrag]).every((t) => t.versorgung === "totalprothese" || t.versorgung === "allon"),
     });
     const befundDiktat = text || ausAuftrag;
     const stand = { gesagt: befund.gesagt, abgeleitet: befund.abgeleitet, genannt: befund.genannt, text };
@@ -1902,9 +2381,7 @@ router.post("/tools/hkp-create-draft", async (req, res) => {
 
     const z = r.zusammenfassung;
     const summen = privat ? { gesamt: zahl(z.gesamt), honorar: zahl(z.honorar), labor: zahl(z.labor), material: zahl(z.material) } : summenAus(r.ergebnis);
-    const versorgungText = privat ? PRIVAT_TEXT : auftrag.teile?.length > 1
-      ? `HKP mit ${liste(auftrag.teile.map((t) => `${VERSORGUNG_NAME[t.versorgung] || t.versorgung} im ${t.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}`))}`
-      : VERSORGUNG_TEXT[auftrag.versorgung] || "HKP";
+    const versorgungText = privat ? PRIVAT_TEXT : versorgungTextVon(auftrag);
     const daten = { patient, auftrag, auftragText, befund, befundDiktat, r, summen, versorgungText, zusaetzlich, doppelt, alteVerwerfen: alteWeg, privat };
     if (vorlesenAus()) {
       vetterWahl.delete(clientId);
@@ -1935,6 +2412,7 @@ router.post("/tools/hkp-befund", async (req, res) => {
     if (!clientId) return;
     const b = req.body || {};
     const p = await patientAufloesen(clientId, b, "Von welchem Patienten soll ich den Befund nehmen?");
+    mundVorschalten(res, clientId, () => String(b.aenderung || b.chef_satz || b.auftrag || ""), () => "");
     if (p.antwort) return res.json(p.antwort);
     const { nummer, pvsOhne, ...r } = await befundWerkzeugMitNummer(clientId, p.patient, {
       aenderung: String(b.aenderung || "").trim(), uebernehmen: wahr(b.uebernehmen), verwerfen: wahr(b.verwerfen),
@@ -1950,6 +2428,26 @@ router.post("/tools/hkp-befund", async (req, res) => {
     return res.json(card ? { ...r, card } : r);
   } catch (e) {
     log.error?.(`[hkp] befund: ${e?.stack || e}`);
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Abrechnungsfragen ("Geht die 9040 neben der 9050?") nur aus der Wissensbasis (Chef 05.11.2026: Clara hat
+// vorher frei geantwortet). Die Antwort wird woertlich gesprochen.
+router.post("/tools/abrechnung-frage", async (req, res) => {
+  try {
+    const clientId = await claraVorspann(req, res);
+    if (!clientId) return;
+    const b = req.body || {};
+    const frage = String(b.chef_satz || b.frage || "").trim();
+    if (!frage) return res.json({ ok: true, message: "Wie lautet Ihre Abrechnungsfrage?" });
+    const praxis = await praxisKatalog(clientId).catch(() => null);
+    const fachbegriffe = String(b.fachbegriffe || "").trim();
+    const a = await abrechnungAntwort({ frage, praxis, fachbegriffe });
+    log.info?.(`[hkp] abrechnung-frage (${a.quelle}): ${frage} -> ${a.message}`);
+    res.json({ ok: true, message: a.message, quelle: a.quelle, stimme: a.quelle === "modell" ? "modell" : "daten" });
+  } catch (e) {
+    log.error?.(`[hkp] abrechnung-frage: ${e?.stack || e}`);
     res.status(400).json({ error: String(e?.message || e) });
   }
 });
@@ -2236,6 +2734,235 @@ router.post("/tools/hkp-ausfuehrung-aendern", async (req, res) => {
   } catch (e) {
     if (e instanceof KonfliktFehler) return res.json({ ok: false, message: "Der HKP wurde gerade in PlanR geändert. Bitte noch einmal versuchen." });
     log.error?.(`[hkp] ausfuehrung-aendern: ${e?.stack || e}`);
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Schlanke Planungswerkzeuge (W-PLANR-FREI, Chef 06.11.2026): Clara fuehrt das Gespraech und versteht den Chef selbst.
+// Diese Werkzeuge haben keine Wortregeln und keinen Gespraechszustand: die Planart sagt Clara, gerechnet wird auf dem
+// Befund vom Handy (Praxisprogramm samt offener Aenderungen aus hkp-befund). Angelegt wird nur mit freigabe=true.
+// ---------------------------------------------------------------------------
+export const PLANARTEN = ["kasse", "privat", "impl", "kons", "mkv"];
+const PLANART_FRAGE = "Welche Planart: Kassen-HKP, privater Zahnersatz, Implantologie, private Kons oder Füllungs-MKV?";
+
+router.post("/tools/plan-rechnen", async (req, res) => {
+  try {
+    const clientId = await claraVorspann(req, res);
+    if (!clientId) return;
+    const b = req.body || {};
+    const planart = String(b.planart || "").trim().toLowerCase();
+    let versorgung = String(b.versorgung || b.auftrag || "").trim();
+    if (!PLANARTEN.includes(planart)) return res.json({ ok: false, fehlt: "planart", message: PLANART_FRAGE });
+    if (!versorgung) return res.json({ ok: false, fehlt: "versorgung", message: "Welche Versorgung soll ich rechnen?" });
+    if (planart === "privat" && privatAus()) return res.json({ ok: false, message: PRIVAT_AUS_SATZ });
+    if (SPRACH_PLAENE[planart]?.aus()) return res.json({ ok: false, message: SPRACH_PLAENE[planart].ausSatz });
+    const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den Plan rechnen?");
+    if (p.antwort) return res.json(p.antwort);
+    const patient = p.patient;
+    const pb = await Promise.race([pvsBefund(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
+    const pvsNr = pb?.ok ? String(pb.nummer || "") : "";
+    // "Die kommen raus" auf die Rueckfrage der Engine (Anruf 06.11.2026 08:38): Clara gibt nur die Zaehne,
+    // MAS markiert sie im Befund auf dem Handy und rechnet darauf. Ohne Praxisprogramm stehen sie im Auftrag.
+    const entfernen = zahnListe(b.entfernen);
+    const erhalten = zahnListe(b.erhalten).filter((z) => !entfernen.includes(z));
+    let markiert = "";
+    if (entfernen.length) {
+      const marken = pb?.ok && pvsNr ? entfernenMarken({ ...(pb.befund || {}), ...(pb.offen || {}) }, entfernen) : {};
+      const a = Object.keys(marken).length
+        ? await Promise.race([
+          befundAendernPvs(clientId, pvsNr, marken, await getAssistantName(clientId).catch(() => DEFAULT_ASSISTANT_NAME)).catch(() => null),
+          new Promise((r) => setTimeout(r, 15000, null)),
+        ])
+        : null;
+      if (a?.ok) {
+        pb.offen = { ...(pb.offen || {}), ...marken };
+        markiert = `Auf dem Handy steht jetzt: ${zahnBefundSatz(marken)}. `;
+      } else if (Object.keys(marken).length || !(pb?.ok && pvsNr)) {
+        versorgung = `${versorgung.replace(/[.\s]+$/, "")}, nach Entfernung der Zähne ${entfernen.join(", ")}`;
+      }
+    }
+    if (erhalten.length) versorgung = `${versorgung.replace(/[.\s]+$/, "")}, die Zähne ${erhalten.join(", ")} bleiben`;
+    const card = pvsNr ? befundKarte(clientId, pvsNr, patient) : null;
+    const mitKarte = (x) => (card && !x.card ? { ...x, card } : x);
+    const stand = pb?.ok ? { ...(pb.befund || {}), ...(pb.offen || {}) } : null;
+    const mitMerken = (x, extra = "") => {
+      const merken = [stand ? befundMerken(stand) : "", extra].filter(Boolean).join("\n");
+      const y = markiert && x.message ? { ...x, message: markiert + x.message } : x;
+      return merken ? { ...y, merken } : y;
+    };
+    // eine neue Rechnung ersetzt die alte Vorschau dieses Patienten
+    for (const v of vorschauen(clientId).filter((v) => v.patient?.id === patient.id)) vorschauWeg(clientId, v);
+    let art = planart;
+    if (stand) {
+      const korrektur = planartKorrigieren(art, versorgung, stand);
+      if (korrektur?.antwort) {
+        const merken = [befundMerken(stand), korrektur.hinweis].filter(Boolean).join("\n");
+        return res.json(mitKarte(merken ? { ...korrektur.antwort, merken } : korrektur.antwort));
+      }
+      if (korrektur?.planart && korrektur.planart !== art) {
+        log.info?.(`[hkp] plan-rechnen ${art} -> ${korrektur.planart}: Versorgung auf vorhandenen Implantaten`);
+        art = korrektur.planart;
+        if (art === "privat" && privatAus()) return res.json({ ok: false, message: PRIVAT_AUS_SATZ });
+        if (SPRACH_PLAENE[art]?.aus()) return res.json({ ok: false, message: SPRACH_PLAENE[art].ausSatz });
+      }
+    }
+    log.info?.(`[hkp] plan-rechnen ${art}: Patient ${patient.id}: ${versorgung}${markiert ? ` | entfernt markiert: ${entfernen.join(", ")}` : ""}`);
+    if (SPRACH_PLAENE[art]) {
+      const offen = pb?.ok ? pb.offen || {} : {};
+      const praxis = await praxisLaden(clientId).catch(() => ({ einstellungen: {} }));
+      const x = sprachPlanRechnen(clientId, {
+        sprachPlan: art, patient, auftragText: versorgung, befundZaehne: pb?.ok ? { ...pb.befund, ...offen } : {},
+        praxis: { einstellungen: praxis?.einstellungen || {} }, namenGesagt: [String(b.name || "").trim()], pvsNr,
+        befundQuelle: pb?.ok ? (Object.keys(offen).length ? { art: "gesprochen+pvs", pvs: pb.pvs, datum: new Date().toISOString() } : { art: "pvs", pvs: pb.pvs, datum: pb.datum }) : null,
+      });
+      return res.json(mitMerken(mitKarte(x.rueckfrage === "vorlesen" ? { ...x, rueckfrage: "freigabe" } : x)));
+    }
+    const pz = pb?.ok
+      ? { ok: true, name: pb.pvs, datum: pb.datum ? datumDe(pb.datum) : "", nummer: pb.nummer, befund: pb.befund || {}, offen: pb.offen || {} }
+      : { ok: false, name: pb?.pvs || "", befund: {}, offen: {} };
+    const r = await fachRechnen(clientId, patient, b, { plan: versorgung, offen: { ...pz.offen }, uebertragen: "" }, pz,
+      { privat: art === "privat", sagen: "", nurVorschau: true });
+    if (r.rueck) return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "engine", message: r.frage || r.rueck }), rueckfrageMerken(r.grund, r.zaehne)));
+    return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "freigabe", message: r.vorschau, ...(r.doppelt?.length ? { doppelt: r.doppelt.map((h) => h.id) } : {}) })));
+  } catch (e) {
+    log.error?.(`[hkp] plan-rechnen: ${e?.stack || e}`);
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+const ORT = { impl: "die Implantation im Planer Implantologie", kasse: "die Prothese als HKP", privat: "die Prothese im Planer Zahnersatz privat", kons: "die Kons im Planer Kons privat", mkv: "die Mehrkosten im Planer Füllung" };
+
+async function fallAnlegen(clientId, vs) {
+  const { patient } = vs;
+  const fallId = randomUUID();
+  const name = [patient.firstName, patient.lastName].filter(Boolean).join(" ") || patient.anredeLabel || "";
+  const entwuerfe = [];
+  const hkps = [];
+  const befund = vs.befundPaket || { befund: {}, hinweise: [], quelle: vs.befundQuelle || null };
+  for (const t of vs.teile || []) {
+    const anzeige = `Fall ${vs.fallTitel} · ${name} · ${t.kurz}`.slice(0, 160);
+    const gemeinsam = { anzeige, fallId, fallTitel: vs.fallTitel, patient, vorgelesen: true, hinweise: t.hinweise || [], pvsNr: vs.pvsNr, befundQuelle: vs.befundQuelle };
+    if (t.sprachPlan) {
+      const a = await sprachPlanAnlegen(clientId, { ...gemeinsam, sprachPlan: t.sprachPlan, auftragText: t.versorgung, r: t.r, summen: t.summen });
+      if (a.entwurfId && a.entwurfId !== "trocken") entwuerfe.push(a.entwurfId);
+    } else if (t.privat) {
+      const a = await privatAnlegen(clientId, { ...gemeinsam, auftragText: t.versorgung, befund, r: t.r, summen: t.summen });
+      if (a.entwurfId && a.entwurfId !== "trocken") entwuerfe.push(a.entwurfId);
+    } else {
+      const auftrag = E.auftragVerstehen(t.versorgung);
+      if (auftrag?.status && auftrag.status !== "ok" && auftrag.frage) return { ok: true, rueckfrage: "engine", message: auftrag.frage };
+      const a = await entwurfAnlegen(clientId, {
+        ...gemeinsam, auftrag, auftragText: t.versorgung, versorgungText: t.titel, befund, r: t.r, summen: t.summen,
+        zusaetzlich: true, doppelt: [],
+      });
+      if (a.hkpId && a.hkpId !== "trocken") hkps.push(a.hkpId);
+    }
+  }
+  const orte = (vs.teile || []).map((t) => ORT[t.planart] || t.kurz);
+  const liste = orte.length > 1 ? `${orte.slice(0, -1).join(", ")} und ${orte.at(-1)}` : orte[0] || "";
+  const message = `Der Fall ist angelegt und wartet auf Ihre Freigabe in PlanR: ${liste}. Die Entwürfe gehören zum selben Fall.`;
+  const primaerHkp = hkps[0] || "";
+  const primaerEntwurf = entwuerfe[0] || "";
+  return {
+    ok: true,
+    fallId, hkpId: primaerHkp, entwurfId: primaerEntwurf,
+    message,
+    ...mitUndo(primaerHkp ? "hkp" : "planr_entwurf", {
+      id: primaerHkp || primaerEntwurf,
+      label: `den Fall ${vs.fallTitel} für ${patient.anredeLabel}`,
+      weitereHkps: hkps.filter((id) => id !== primaerHkp),
+      weitereEntwuerfe: entwuerfe.filter((id) => id !== (primaerHkp ? "" : primaerEntwurf)),
+    }),
+  };
+}
+
+router.post("/tools/fall-rechnen", async (req, res) => {
+  try {
+    const clientId = await claraVorspann(req, res);
+    if (!clientId) return;
+    const b = req.body || {};
+    const hatName = String(b.name || b.patient_nummer || b.geburtsdatum || "").trim();
+    const muster = wahr(b.muster) || !hatName;
+    let patient = null;
+    let befundMap = {};
+    let befundQuelle = null;
+    let pvsNr = "";
+    let befundCard = null;
+    if (!muster) {
+      const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich die Rechnung rechnen?");
+      if (p.antwort) return res.json(p.antwort);
+      patient = p.patient;
+      const pb = await Promise.race([pvsBefund(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
+      if (pb?.ok) {
+        const offen = pb.offen || {};
+        befundMap = { ...pb.befund, ...offen };
+        pvsNr = String(pb.nummer || "");
+        befundQuelle = Object.keys(offen).length
+          ? { art: "gesprochen+pvs", pvs: pb.pvs, datum: new Date().toISOString() }
+          : { art: "pvs", pvs: pb.pvs, datum: pb.datum };
+        if (pvsNr) befundCard = befundKarte(clientId, pvsNr, patient);
+      }
+    }
+    const praxis = await praxisLaden(clientId).catch(() => ({ einstellungen: {} }));
+    const x = fallRechnen(b, {
+      muster, befund: befundMap,
+      patientDaten: patient ? patientFuerEngine(patient) : {},
+      patientLabel: patient?.anredeLabel || "",
+      einstellungen: praxis.einstellungen || {},
+      listen: praxisListen(praxis),
+      implantatSystem: implantatStandard(praxis),
+      praxisPlz: String(praxis?.einstellungen?.praxisPlz || ""),
+      kzvNr: String(praxis?.einstellungen?.kzv || ""),
+    });
+    if (x.status !== "ok") {
+      return res.json({ ok: true, rueckfrage: "engine", message: x.frage, ...(x.karte ? { card: x.karte } : {}), ...(befundCard ? { cards: [befundCard] } : {}) });
+    }
+    const wer = patient || { id: `muster:${clientId}`, anredeLabel: "die Musterrechnung", label: "Musterrechnung" };
+    for (const v of vorschauen(clientId).filter((v) => v.patient?.id === wer.id)) vorschauWeg(clientId, v);
+    vorschauMerken(clientId, {
+      fall: true, muster, patient: wer, teile: x.teile, fallTitel: x.fallTitel,
+      befundPaket: { befund: befundMap, quelle: befundQuelle, hinweise: [], pvs: pvsNr ? { nummer: pvsNr } : null },
+      befundQuelle, pvsNr, namenGesagt: [String(b.name || "").trim()], at: Date.now(),
+    });
+    const cards = [x.card, befundCard].filter(Boolean);
+    log.info?.(`[hkp] fall-rechnen ${muster ? "muster" : patient.id}: ${x.fallTitel}`);
+    return res.json({ ok: true, rueckfrage: muster ? "muster" : "freigabe", message: x.message, cards });
+  } catch (e) {
+    log.error?.(`[hkp] fall-rechnen: ${e?.stack || e}`);
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+router.post("/tools/plan-ablegen", async (req, res) => {
+  try {
+    const clientId = await claraVorspann(req, res);
+    if (!clientId) return;
+    const b = req.body || {};
+    const namenlos = !String(b.name || b.patient_nummer || b.geburtsdatum || "").trim();
+    if (namenlos) {
+      const muster = vorschauen(clientId).find((v) => v.muster && v.fall);
+      if (muster) {
+        return res.json({
+          ok: false,
+          message: "Das ist eine Musterrechnung, ich lege nichts an. Nennen Sie den Patienten, dann rechne ich auf seinem Befund und lege beide Entwürfe an.",
+        });
+      }
+    }
+    const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den Plan ablegen?");
+    if (p.antwort) return res.json(p.antwort);
+    const patient = p.patient;
+    const vs = vorschauen(clientId).find((v) => v.patient?.id === patient.id);
+    if (!vs) return res.json({ ok: false, message: `Für ${patient.anredeLabel} habe ich noch keinen gerechneten Plan. Ich rechne ihn zuerst.` });
+    if (!wahr(b.freigabe)) return res.json({ ok: false, rueckfrage: "freigabe", message: "Soll ich den Plan so anlegen?" });
+    vorschauWeg(clientId, vs);
+    log.info?.(`[hkp] plan-ablegen: Patient ${patient.id} (${vs.fall ? "fall" : vs.sprachPlan || (vs.privat ? "privat" : "kasse")})`);
+    if (vs.fall) return res.json(await fallAnlegen(clientId, vs));
+    if (vs.sprachPlan) return res.json(await sprachPlanAnlegen(clientId, vs));
+    if (vs.privat) return res.json(await privatAnlegen(clientId, { ...vs, vorgelesen: true }));
+    return res.json(await entwurfAnlegen(clientId, { ...vs, vorgelesen: true, zusaetzlich: true, alteVerwerfen: wahr(b.alte_verwerfen) }));
+  } catch (e) {
+    log.error?.(`[hkp] plan-ablegen: ${e?.stack || e}`);
     res.status(400).json({ error: String(e?.message || e) });
   }
 });

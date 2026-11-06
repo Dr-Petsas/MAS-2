@@ -1,6 +1,9 @@
 // Befund-Werkzeug durch die Route (Chef 15.10.2026): Befund vorlesen, Zahn aendern (offen in PlanR), erst nach "ja"
 // nach Dampsoft. PlanR ist ein lokaler Nachbau, der sich die offenen Aenderungen merkt wie der echte Server.
 import "dotenv/config";
+// Die Saetze der Engine werden hier woertlich geprueft; der Modell-Mund hat einen eigenen Test.
+process.env.MAS_HKP_FACH ??= "0";
+process.env.MAS_HKP_MUND ??= "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -87,10 +90,10 @@ test("Praxisprogramm nicht lesbar: ehrliche Ansage, leeres Zahnschema auf dem Ha
   assert.equal(r.pvsOhne, undefined);
 });
 
-test("vorlesen, aendern, nach ja nach Dampsoft – nur der geaenderte Kiefer", async () => {
+test("aufs Handy, aendern, erst nach der Freigabe nach Dampsoft – nur der geaenderte Kiefer", async () => {
   const lesen = await rufe({});
-  assert.match(lesen.message, /Befund von .*Anna Werkzeugtest aus Dampsoft vom 12\.10\.2026/);
-  assert.equal(lesen.rueckfrage, undefined);
+  assert.match(lesen.message, /Befund von .*Anna Werkzeugtest aus Dampsoft vom 12\.10\.2026 steht auf dem Handy\. Stimmt er so\?/);
+  assert.equal(lesen.rueckfrage, "befund_anzeige");
   // Zahnschema auf dem Handy und Eintrag "Befund · noch nichts geplant" in PlanR
   assert.equal(lesen.card?.kind, "befund");
   assert.equal(new URL(lesen.card.url).searchParams.get("befund"), "4711");
@@ -99,12 +102,14 @@ test("vorlesen, aendern, nach ja nach Dampsoft – nur der geaenderte Kiefer", a
   assert.deepEqual(vorgaenge.at(-1), { patient: "4711", phase: "befund" });
 
   const aendern = await rufe({ aenderung: "36 fehlt" });
-  assert.equal(aendern.rueckfrage, "befund_uebernehmen", aendern.message);
+  assert.equal(aendern.rueckfrage, "befund_anzeige", aendern.message);
+  assert.match(aendern.message, /Auf dem Handy steht jetzt für .*: .*36.*Stimmt der Befund so\?/);
   assert.deepEqual(offen, { 36: "f" });
   assert.equal(geschrieben.length, 0);
 
-  const nochmal = await rufe({});
-  assert.match(nochmal.message, /Noch nicht in Dampsoft übernommen: es fehlt 36/);
+  // Ohne Freigabe geht nichts ins Praxisprogramm, auch nicht beim erneuten Zeigen
+  await rufe({});
+  assert.equal(geschrieben.length, 0);
 
   const ja = await rufe({ uebernehmen: true });
   assert.match(ja.message, /in Dampsoft als geänderter Befund gespeichert, ohne Null-Eins und ohne Abrechnung/, ja.message);

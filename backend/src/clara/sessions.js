@@ -188,6 +188,32 @@ export async function getPendingRecording(clientId) {
   return snap.data()?.pendingRecording || null;
 }
 
+// Akte: Patient ist abgeglichen, Clara wartet auf den Prosa-Text (oder auf das Ja
+// zum schon gesprochenen Text). Nach 15 Minuten gilt der Bezug nicht mehr.
+export async function setAkteWartet(clientId, wartet) {
+  await voiceStateRef(clientId).set(
+    { updatedAt: FieldValue.serverTimestamp(), akteWartet: wartet || null },
+    { merge: true }
+  );
+  await mirrorToSession(clientId, { akteWartet: wartet || null });
+  return { ok: true };
+}
+
+export async function getAkteWartet(clientId) {
+  const snap = await voiceStateRef(clientId).get();
+  if (!snap.exists) return null;
+  return snap.data()?.akteWartet || null;
+}
+
+export async function clearAkteWartet(clientId) {
+  await voiceStateRef(clientId).set(
+    { updatedAt: FieldValue.serverTimestamp(), akteWartet: null },
+    { merge: true }
+  );
+  await mirrorToSession(clientId, { akteWartet: null });
+  return { ok: true };
+}
+
 export async function clearPendingRecording(clientId) {
   await voiceStateRef(clientId).set(
     { updatedAt: FieldValue.serverTimestamp(), pendingRecording: null },

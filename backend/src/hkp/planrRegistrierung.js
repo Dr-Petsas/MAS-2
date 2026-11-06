@@ -31,6 +31,7 @@ export function eingabePruefen(b) {
     email, passwort, vorname, nachname, praxis,
     titel: text(b?.titel, 40),
     sprachsteuerung: b?.sprachsteuerung === true,
+    doku: b?.doku === true,
     paket: text(b?.paket, 30),
     buchung: text(b?.buchung, 40),
     mandatsreferenz: text(b?.mandatsreferenz, 35),
@@ -74,7 +75,7 @@ export async function praxisRegistrieren(roh, { auth = admin.auth(), db = firest
       updatedAt: jetzt.toISOString(),
       subscriptions: {
         planr: {
-          enabled: true, sprachsteuerung: e.sprachsteuerung, paket: e.paket, seit: jetzt.toISOString(),
+          enabled: true, sprachsteuerung: e.sprachsteuerung, doku: e.doku, paket: e.paket, seit: jetzt.toISOString(),
           buchung: e.buchung, mandatsreferenz: e.mandatsreferenz,
         },
       },

@@ -34,6 +34,20 @@ const router = express.Router();
 // Per-practice IMAP/SMTP accounts (passwords encrypted at rest), inbox sync,
 // message read models and sending. All tenant-scoped under mas_mail_*.
 
+// Entwurf aus PlanR (Kostenvoranschlag) für Nadines Mailfenster
+router.get("/mail/planr-entwurf/:id", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) return res.status(403).json({ error: "clara_not_entitled", clientId });
+    await mailAccess(clientId, req);
+    const e = kvaEntwurfHolen(clientId, req.params.id);
+    if (!e) return res.status(404).json({ ok: false, error: "entwurf_weg", message: "Der Entwurf aus PlanR ist abgelaufen – bitte in PlanR erneut auf Versenden klicken." });
+    res.json({ ok: true, ...e });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
 router.get("/mail/accounts", async (req, res) => {
   try {
     const clientId = resolveClientId(req);

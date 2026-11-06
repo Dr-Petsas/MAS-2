@@ -6,6 +6,7 @@
 // Notaus: MAS_PLANR_PVS=0 (dann wieder Pickadoc-Kartei wie bisher).
 import { soundsSame } from "../clara/phonetics.js";
 import { claraZugangFuer } from "./planrClara.js";
+import { pvsNamenMerken } from "./pvsNamen.js";
 
 const basis = () => String(process.env.PLANR_URL || "https://planr.pickadoc.de").trim().replace(/\/+$/, "");
 const schluessel = () => String(process.env.PLANR_HKP_KEY || "").trim();
@@ -66,6 +67,12 @@ function wortPunkte(t, w) {
   if (w.length >= 3 && t.startsWith(w)) return 2;
   return soundsSame(t, w) || knapp(t, w) || anlautFehlt(t, w) ? 1 : 0;
 }
+
+// Chef 06.11.2026: P, F, Ph und B am Wortanfang verwechselt die Erkennung am Telefon ("Panelas" fuer "Fanelas").
+// Zaehlt nur, wenn das andere Namenswort sicher passt, und nur als Rueckfrage, nie als Treffer.
+const ANLAUT_TAUSCH = [["ph", "f"], ["f", "ph"], ["p", "f"], ["f", "p"], ["ph", "p"], ["p", "ph"], ["b", "p"], ["p", "b"]];
+const anlautTausch = (t, w) => w.length >= 4 && t !== w
+  && ANLAUT_TAUSCH.some(([a, b]) => w.startsWith(a) && t.startsWith(b) && t.slice(b.length) === w.slice(a.length));
 
 const MONATE = ["januar", "februar", "maerz", "april", "mai", "juni", "juli", "august", "september", "oktober", "november", "dezember"];
 
@@ -149,7 +156,9 @@ export async function identifizieren(clientId, { nummer = "", geburt = "", name 
     const passend = bewerten(name, liste);
     if (passend.length) liste = passend;
   }
-  return { ok: true, patients: liste.slice(0, 6).map((p) => ({ ...alsPatient(p), identifiziert: nummer ? "nummer" : "geburtsdatum" })) };
+  const patients = liste.slice(0, 6).map((p) => ({ ...alsPatient(p), identifiziert: nummer ? "nummer" : "geburtsdatum" }));
+  if (patients.length === 1) pvsNamenMerken(clientId, patients);
+  return { ok: true, patients };
 }
 
 /**
@@ -209,7 +218,10 @@ export async function sucheFuerPlan(clientId, name) {
   }
   // Nur Treffer zum ganzen Namen: ein Teiltreffer (nur der Vorname) verdraengt nie den Patienten aus der Kartei
   const ganz = r.patients.filter((p) => passtGanz(name, p));
-  return ganz.length ? { ...r, patients: ganz } : null;
+  if (!ganz.length) return null;
+  pvsNamenMerken(clientId, ganz);
+  const { alle, ...rest } = r;
+  return { ...rest, patients: ganz };
 }
 
 // Chef 04.11.2026: "wir suchen bei PLANUNGEN nur IN DAMPSOFT". Fuer Plaene und Befunde kommt der Patient nur aus
@@ -223,48 +235,106 @@ export async function sucheNurImPvsFuerPlan(clientId, name) {
   const r = await sucheImPvs(clientId, name);
   if (!r.ok) return { ok: false, error: r.error, quelle: "pvs" };
   // Nur Treffer zum ganzen Namen: ein Teiltreffer (nur der Vorname) wuerde sonst ungefragt gewaehlt
-  return { ...r, patients: r.patients.filter((p) => passtGanz(name, p)) };
+  const patients = r.patients.filter((p) => passtGanz(name, p));
+  if (patients.length) pvsNamenMerken(clientId, patients);
+  const { alle = r.patients, ...rest } = r;
+  const angebot = patients.length ? [] : gleicherNachname(name, alle);
+  return { ...rest, patients, angebot: angebot.length || patients.length ? angebot : anlautAngebot(name, alle) };
+}
+
+/**
+ * P/F-Anlaut (Chef 06.11.2026): "Protromos Panelas" ist im PVS "Prodromos Fanelas". Angeboten wird nur ein einziger
+ * Patient, bei dem jedes andere Wort sicher passt und genau der Anlaut eines Wortes getauscht ist. Notaus wie
+ * gleicherNachname.
+ */
+export function anlautAngebot(name, patienten) {
+  if (process.env.MAS_PLAN_NACHNAME_ANGEBOT === "0") return [];
+  const ws = woerter(name);
+  if (ws.length < 2) return [];
+  const treffer = (patienten || []).filter((p) => {
+    const teile = woerter(`${p?.firstName || ""} ${p?.lastName || ""}`);
+    let tausch = 0;
+    for (const w of ws) {
+      if (teile.some((t) => wortPunkte(t, w) > 0)) continue;
+      if (!teile.some((t) => anlautTausch(t, w))) return false;
+      tausch += 1;
+    }
+    return tausch > 0 && tausch < ws.length;
+  });
+  return treffer.length === 1 ? treffer : [];
+}
+
+/**
+ * Live 06.11.2026: "Utromos Fanelas" - der Vorname verhoert, den Nachnamen gibt es im PVS genau einmal.
+ * Kein Klang-Raten (patientDisambig.nichtGefundenFrage): nur ein WORTGLEICHER Nachname, und nur wenn er
+ * eindeutig ist. Gewaehlt wird nie - Clara fragt "Meinen Sie ...?". Notaus MAS_PLAN_NACHNAME_ANGEBOT=0.
+ */
+export function gleicherNachname(name, patienten) {
+  if (process.env.MAS_PLAN_NACHNAME_ANGEBOT === "0") return [];
+  const ws = new Set(woerter(name).filter((w) => w.length >= 4));
+  const treffer = (patienten || []).filter((p) => woerter(p?.lastName).some((t) => ws.has(t)));
+  return treffer.length === 1 ? treffer : [];
 }
 
 /** Passt JEDES gesprochene Wort zu Vor- oder Nachname (gleich, Anfang, Klang)? Patient in Kartei-Form. */
 export function passtGanz(gesprochen, p) {
   const ws = woerter(gesprochen);
   const teile = woerter(`${p?.firstName || ""} ${p?.lastName || ""}`);
-  return !!ws.length && ws.every((w) => teile.some((t) => wortPunkte(t, w) > 0));
+  const passt = (w) => teile.some((t) => wortPunkte(t, w) > 0);
+  // Live 06.11.2026: "Pro Dromos Phanelas" - die Erkennung zerlegt einen Namen in zwei Woerter.
+  for (let i = 0; i < ws.length;) {
+    const zwei = i + 1 < ws.length && !(passt(ws[i]) && passt(ws[i + 1])) && passt(ws[i] + ws[i + 1]);
+    if (zwei) i += 2;
+    else if (passt(ws[i])) i += 1;
+    else return false;
+  }
+  return !!ws.length;
 }
 
 const KLANG_VARIANTEN = [[/ph/g, "f"], [/^f/, "ph"], [/th/g, "t"], [/y/g, "i"], [/c/g, "k"], [/^k/, "c"], [/z/g, "s"],
-  [/v/g, "w"], [/w/g, "v"]];
+  [/v/g, "w"], [/w/g, "v"], [/^p(?!h)/, "f"], [/^f/, "p"], [/^p(?!h)/, "b"], [/^b/, "p"]];
 
-/** Suchbegriffe fuer die zweite Runde: Klangvarianten und die ersten vier Buchstaben jedes Wortes. */
-export function suchVarianten(name, schon = []) {
-  const gefragt = new Set(schon.map((x) => klein(x)));
-  const varianten = [], anfaenge = [];
-  for (const w of [...new Set(woerter(name).filter((x) => x.length >= 4))].slice(0, 3)) {
-    const formen = [w, ...KLANG_VARIANTEN.map(([re, rep]) => w.replace(re, rep)).filter((v) => v !== w)];
-    varianten.push(...formen.slice(1));
-    anfaenge.push(...formen.map((v) => v.slice(0, 4)));
-  }
-  return [...new Set([...varianten, ...anfaenge])].filter((q) => q.length >= 4 && !gefragt.has(q)).slice(0, 10);
+const klangFormen = (w) => KLANG_VARIANTEN.map(([re, rep]) => w.replace(re, rep)).filter((v) => v !== w);
+
+/** Suchbegriffe nach dem ersten Wort: zusammengezogene Woerter und Klang-/Anlautvarianten, dann die Wortanfaenge. */
+export function suchVarianten(name) {
+  const alle = woerter(name);
+  const lang = [...new Set(alle.filter((x) => x.length >= 4))].slice(0, 3);
+  // "Pro Dromos": nur ein kurzes Wort ist ein abgespaltener Namensteil
+  const zusammen = alle.slice(1).map((w, i) => (Math.min(alle[i].length, w.length) <= 4 ? alle[i] + w : "")).filter((x) => x.length >= 6);
+  const formen = [...zusammen, ...lang.flatMap(klangFormen)];
+  const anfaenge = lang.flatMap((w) => [w, ...klangFormen(w)]).map((v) => v.slice(0, 4));
+  return { formen: [...new Set(formen)], anfaenge: [...new Set(anfaenge)].filter((q) => q.length >= 4) };
 }
 
-/** Wie searchPatient: { ok, patients } bzw. { ok:false, error } */
+/**
+ * Wie searchPatient: { ok, patients } bzw. { ok:false, error }.
+ * Die Bridge arbeitet die Auftraege nacheinander ab (Anruf 06.11.2026: 13 Anfragen, 9 Sekunden): so wenig Anfragen
+ * wie moeglich und Schluss, sobald einer passt. Zuerst das laengste Wort (PlanR sucht beim ganzen Namen auch nur
+ * danach), dann die uebrigen Woerter mit Klang- und Anlautvarianten, zuletzt die Wortanfaenge.
+ */
 export async function sucheImPvs(clientId, name) {
-  const ganz = await frage(clientId, String(name || "").trim());
+  const gesprochen = String(name || "").split(/[^\p{L}]+/u).filter((w) => w.length >= 3);
+  const roheWoerter = [...new Set(gesprochen.map((w) => w.toLocaleLowerCase("de")))];
+  const erst = gesprochen.length ? gesprochen.reduce((a, b) => (b.length > a.length ? b : a)) : String(name || "").trim();
+  const ganz = await frage(clientId, erst);
   if (!ganz.ok) return { ok: false, error: ganz.meldung };
   let roh = ganz.patienten;
-  const sammeln = async (begriffe) => {
-    const teil = await Promise.all(begriffe.map((w) => frage(clientId, w)));
+  const gefragt = new Set([erst, klein(erst)]);
+  const runde = async (begriffe) => {
+    const neu = [...new Set(begriffe)].filter((q) => !gefragt.has(q)).slice(0, 8);
+    for (const q of neu) gefragt.add(q);
+    const teil = await Promise.all(neu.map((w) => frage(clientId, w)));
     const ids = new Map(roh.map((p) => [p.id, p]));
     for (const t of teil) for (const p of t.ok ? t.patienten : []) if (p?.id && !ids.has(p.id)) ids.set(p.id, p);
     roh = [...ids.values()];
   };
-  const einzeln = [...new Set(woerter(name).filter((w) => w.length >= 3))].slice(0, 3);
-  // Falsch verstandener Vor- oder Nachname: jedes Wort einzeln, dann nach Klang ordnen.
-  if (!roh.length) await sammeln(einzeln);
-  const ganzerName = (p) => passtGanz(name, { firstName: p?.vorname, lastName: p?.name });
-  if (!roh.some(ganzerName) && process.env.MAS_PVS_VARIANTEN !== "0") {
-    await sammeln(suchVarianten(name, [name, ...einzeln]));
-  }
-  return { ok: true, patients: bewerten(name, roh).map(alsPatient), quelle: "pvs" };
+  const fertig = () => roh.some((p) => {
+    const k = { firstName: p?.vorname, lastName: p?.name };
+    return passtGanz(name, k) || anlautAngebot(name, [k]).length > 0;
+  });
+  const varianten = process.env.MAS_PVS_VARIANTEN !== "0" ? suchVarianten(name) : { formen: [], anfaenge: [] };
+  if (!fertig()) await runde([...roheWoerter.slice(0, 3), ...varianten.formen]);
+  if (!fertig()) await runde(varianten.anfaenge);
+  return { ok: true, patients: bewerten(name, roh).map(alsPatient), alle: roh.map(alsPatient), quelle: "pvs" };
 }

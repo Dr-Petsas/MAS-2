@@ -3,6 +3,9 @@
 // PlanR-Uebersicht (planrEntwuerfe). PlanR ist ein lokaler Nachbau; Entwuerfe landen in der Test-Praxis und werden
 // wieder geloescht.
 import "dotenv/config";
+// Die Saetze der Engine werden hier woertlich geprueft; der Modell-Mund hat einen eigenen Test.
+process.env.MAS_HKP_FACH ??= "0";
+process.env.MAS_HKP_MUND ??= "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -61,6 +64,7 @@ async function rufe(body, pfad = "/tools/hkp-create-draft") {
   });
   const d = await r.json();
   if (d.entwurfId) angelegt.push(d.entwurfId);
+  if (d.rueckfrage === "befund_anzeige" && !body.chef_satz) return rufe({ ...body, chef_satz: "Ja, stimmt." }, pfad);
   return d;
 }
 const planrRuf = (pfad, init = {}) => fetch(`${basis}/planr${pfad}${pfad.includes("?") ? "&" : "?"}clientId=${CID}`, {

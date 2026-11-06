@@ -3,6 +3,8 @@
 // Die HKP-Engine mischt ihn wie der Browser (listenFuer) und ordnet die Positionen den
 // Leistungsschritten zu - ohne dass in PlanR erst jemand "Freigeben" klickt.
 // GET /api/intern/praxiskatalog, Schluessel PLANR_HKP_KEY. Notaus: MAS_PLANR_KATALOG=0.
+import { praxisWissenAbgleichen } from "./praxisWissen.js";
+
 const basis = () => String(process.env.PLANR_URL || "https://planr.pickadoc.de").trim().replace(/\/+$/, "");
 const schluessel = () => String(process.env.PLANR_HKP_KEY || "").trim();
 const GUELTIG_MS = 10 * 60 * 1000;
@@ -28,6 +30,18 @@ export async function praxisKatalog(clientId) {
     if (r.ok && d?.ok && d.katalog && Array.isArray(d.katalog.eigenlabor)) katalog = d.katalog;
   } catch { /* PlanR nicht erreichbar */ }
   if (!beantwortet) katalog = hit?.katalog ?? null;
+  if (katalog && katalog !== hit?.katalog) {
+    katalog = { ...katalog, clientId };
+    if (!process.env.NODE_TEST_CONTEXT) void praxisWissenAbgleichen(clientId, katalog);
+  }
   cache.set(clientId, { katalog, bis: Date.now() + (beantwortet ? GUELTIG_MS : FEHLER_MS) });
   return katalog;
+}
+
+/** Nach einem PVS-Abgleich in PlanR: Katalog frisch holen und das Praxis-Wissen sofort neu schreiben. */
+export async function praxisKatalogNeu(clientId) {
+  cache.delete(clientId);
+  const katalog = await praxisKatalog(clientId);
+  if (!katalog) return { ok: false, grund: "kein Praxiskatalog" };
+  return praxisWissenAbgleichen(clientId, katalog);
 }

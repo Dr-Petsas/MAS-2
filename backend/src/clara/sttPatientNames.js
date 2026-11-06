@@ -9,6 +9,7 @@
 import { getRangeAppointments, todayBerlin } from "./daySchedule.js";
 import { queryLatest } from "../brain/eventStore.js";
 import { listRecentContactNames } from "../brain/addressBook.js";
+import { pvsNamenAn, pvsNamenListe } from "../hkp/pvsNamen.js";
 
 export const STT_NAMES_CACHE_MS = 30 * 60 * 1000; // 30 min — Kalender aendert sich
 const MIN_LEN = 3;
@@ -151,6 +152,42 @@ async function collectFromMemory(cid, lastSet, firstSet) {
   }
 }
 
+// PVS-Patienten (Anruf 06.11.2026 08:36): wer nur in DS-Win steht, hat keinen Pickadoc-Termin und fehlte hier.
+// Mit kommen die Patienten der juengsten HKPs und Sprach-Entwuerfe und alle, die die PVS-Suche gefunden hat.
+// Notaus MAS_STT_PVS_NAMEN=0.
+const PVS_NAME_CAP = 400;
+
+function pushPvsPatient(p, lastSet, firstSet) {
+  addName(lastSet, p?.lastName ?? p?.name);
+  const vorname = p?.firstName ?? p?.vorname;
+  if (vorname) addName(firstSet, vorname);
+}
+
+async function collectFromPlanr(cid, lastSet, firstSet) {
+  if (!pvsNamenAn()) return;
+  for (const p of pvsNamenListe(cid)) pushPvsPatient(p, lastSet, firstSet);
+  const [{ hkpPatientenJuengste }, { entwurfPatientenJuengste }] = await Promise.all([
+    import("../hkp/store.js"), import("../hkp/planrEntwuerfe.js"),
+  ]);
+  const [hkps, entwuerfe] = await Promise.all([
+    hkpPatientenJuengste(cid).catch(() => []), entwurfPatientenJuengste(cid).catch(() => []),
+  ]);
+  for (const p of [...hkps, ...entwuerfe]) pushPvsPatient(p, lastSet, firstSet);
+}
+
+/** Seit dem Aufbau im PVS gefundene Patienten an einen gecachten Stand anhaengen. */
+function pvsNachtragen(cid, row) {
+  const neu = new Set();
+  for (const p of pvsNamenListe(cid)) pushPvsPatient(p, neu, neu);
+  const seen = new Set(row.names.map((n) => n.toLowerCase()));
+  const dazu = [...neu].filter((n) => !seen.has(n.toLowerCase()));
+  if (!dazu.length) return row;
+  const names = row.names.concat(dazu);
+  const aktuell = { ...row, names, count: names.length, pvsCount: (row.pvsCount || 0) + dazu.length };
+  cache.set(cid, aktuell);
+  return aktuell;
+}
+
 function orderedNames(priorityLast, priorityFirst, restLast, restFirst) {
   const seen = new Set();
   const out = [];
@@ -180,7 +217,8 @@ export async function listPatientNamesForStt(clientId, opts = {}) {
   if (!cid) return leereListe();
 
   if (!opts.force) {
-    const hit = cache.get(cid);
+    const gecacht = cache.get(cid);
+    const hit = gecacht ? pvsNachtragen(cid, gecacht) : null;
     if (hit && Date.now() - hit.at < STT_NAMES_CACHE_MS) {
       return { ...hit, cached: true };
     }
@@ -229,7 +267,13 @@ async function baueNamensliste(cid, opts = {}) {
   const win = sttCalendarWindow();
   const data = await getRangeAppointments(cid, { from: win.from, to: win.to });
   if (!data?.ok) {
-    return { ...empty, from: win.from, to: win.to };
+    // PlanR-Praxis ohne Pickadoc-Kalender: dann wenigstens die PVS-Patienten (nicht gecacht, der Kalender wird erneut gefragt)
+    const pvsLast = new Set();
+    const pvsFirst = new Set();
+    await collectFromPlanr(cid, pvsLast, pvsFirst).catch(() => {});
+    const seen = new Set();
+    const names = [...pvsLast, ...pvsFirst].filter((n) => !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase())).slice(0, PVS_NAME_CAP);
+    return { ...empty, names, count: names.length, pvsCount: names.length, source: names.length ? "pvs" : empty.source, from: win.from, to: win.to };
   }
 
   const priLast = new Set();
@@ -283,14 +327,23 @@ async function baueNamensliste(cid, opts = {}) {
   // bisherige Kalender-Verhalten (kein Regress).
   const memLast = new Set();
   const memFirst = new Set();
-  try {
-    await collectFromMemory(cid, memLast, memFirst);
-  } catch (e) {
-    // Gedaechtnis optional — Kalendernamen genuegen.
-  }
+  const pvsLast = new Set();
+  const pvsFirst = new Set();
+  await Promise.all([
+    collectFromMemory(cid, memLast, memFirst).catch(() => {}), // Gedaechtnis optional — Kalendernamen genuegen.
+    collectFromPlanr(cid, pvsLast, pvsFirst).catch(() => {}),
+  ]);
   const seen = new Set(calendarNames.map((n) => n.toLowerCase()));
-  const memoryNames = [];
   const sortDe = (a, b) => a.localeCompare(b, "de");
+  const pvsNames = [];
+  for (const n of [...pvsLast].sort(sortDe).concat([...pvsFirst].sort(sortDe))) {
+    if (pvsNames.length >= PVS_NAME_CAP) break;
+    const k = n.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    pvsNames.push(n);
+  }
+  const memoryNames = [];
   for (const n of [...memLast].sort(sortDe).concat([...memFirst].sort(sortDe))) {
     if (memoryNames.length >= MEMORY_NAME_CAP) break;
     const k = n.toLowerCase();
@@ -299,7 +352,7 @@ async function baueNamensliste(cid, opts = {}) {
     memoryNames.push(n);
   }
 
-  const names = calendarNames.concat(memoryNames);
+  const names = calendarNames.concat(pvsNames, memoryNames);
   const row = {
     at: Date.now(),
     names,
@@ -308,9 +361,10 @@ async function baueNamensliste(cid, opts = {}) {
     lastCount,
     firstCount: Math.max(0, firstCount),
     memoryCount: memoryNames.length,
+    pvsCount: pvsNames.length,
     from: data.from || win.from,
     to: data.to || win.to,
-    source: memoryNames.length ? "calendar+memory" : "calendar",
+    source: ["calendar", pvsNames.length ? "pvs" : "", memoryNames.length ? "memory" : ""].filter(Boolean).join("+"),
     todayCount: todayAppts.length,
     tomorrowCount: tomorrowAppts.length,
     patientIds: ctxIds,

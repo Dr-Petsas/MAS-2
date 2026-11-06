@@ -8,12 +8,13 @@ export const MODULE = new Set(["privat-kv", "kons-mkv", "privat-kons", "privat-i
 const col = async (clientId) => admin.firestore().collection("clients").doc(await registerFuer(clientId)).collection("planrEntwuerfe");
 const jetzt = () => new Date().toISOString();
 
-export async function entwurfAblegen(clientId, { modul, patient, anzeige, betrag, planJson, auftragText = "", befundQuelle = null, hinweise = [], engineStand = "" }) {
+export async function entwurfAblegen(clientId, { modul, patient, anzeige, betrag, planJson, auftragText = "", befundQuelle = null, hinweise = [], engineStand = "", fallId = "", fallTitel = "" }) {
   if (!MODULE.has(modul)) throw new Error(`Modul ${modul} nimmt keine Sprach-Entwuerfe an`);
   const ref = (await col(clientId)).doc();
   const e = {
     modul, status: "offen", patient, anzeige: String(anzeige || "").slice(0, 160), betrag: Number(betrag) || 0, planJson,
     auftragText: String(auftragText).slice(0, 2000), befundQuelle, hinweise: hinweise.slice(0, 30).map(String), engineStand,
+    ...(fallId ? { fallId: String(fallId), fallTitel: String(fallTitel || "").slice(0, 160) } : {}),
     erstelltVon: "clara", erstellt: jetzt(),
   };
   await ref.set(e);
@@ -28,6 +29,12 @@ export async function entwurfLesen(clientId, id) {
 export async function entwuerfeOffen(clientId) {
   const s = await (await col(clientId)).where("status", "==", "offen").limit(50).get();
   return s.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.erstellt).localeCompare(String(b.erstellt)));
+}
+
+/** Nur die Patienten der juengsten Entwuerfe (Namensliste der Spracherkennung), ohne Plan. */
+export async function entwurfPatientenJuengste(clientId, limit = 200) {
+  const s = await (await col(clientId)).orderBy("erstellt", "desc").limit(limit).select("patient").get();
+  return s.docs.map((d) => d.get("patient")).filter(Boolean);
 }
 
 /** Nur ein offener Entwurf wechselt den Status – so holt ihn genau eine Uebersicht ab bzw. nimmt ihn Clara zurueck. */

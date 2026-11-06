@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\Privat-HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\Privat-HKP && npm run build:engine   (sha256 5c02a2aea974)
+// Neu bauen: cd F:\PlanR\ZE\Privat-HKP && npm run build:engine   (sha256 06a669db53f7)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 //#endregion
@@ -1314,6 +1314,8 @@ var TEILKRONE_NOETIG = /* @__PURE__ */ new Set(["pw", "pkw"]);
 //#region ../HKP/src/engine/bruecken.ts
 var GLIED$3 = /^(S?B|AB)[VM]?$/;
 var PFEILER$1 = /^(S?K|PK|S?T|A$)/;
+/** Befundkürzel tragen keinen Brückenstrich. „K-“ ist die Krone k. */
+var befundOhneStrich = (code) => code.trim().toLowerCase().replace(/^-+|-+$/g, "");
 /**
 * Brücken eines Kiefers in Zahnreihenfolge (18…28 bzw. 48…38): zuerst die mit „-“ markierten Bereiche,
 * dann je Lauf von Brückengliedern außerhalb davon die angrenzenden Pfeiler.
@@ -1420,6 +1422,7 @@ var mk = (key) => schluessel(key, MANDANT_ID);
 //#region ../HKP/src/stammdaten.ts
 var leererPatient$1 = () => ({
 	anrede: "",
+	titel: "",
 	vorname: "",
 	name: "",
 	geburtsdatum: "",
@@ -1430,7 +1433,8 @@ var leererPatient$1 = () => ({
 	kassenNr: "",
 	versichertenNr: "",
 	status: "",
-	kassenart: "primaer"
+	kassenart: "primaer",
+	email: ""
 });
 mk("hkp.plan.v1");
 function leererPlan() {
@@ -2020,7 +2024,7 @@ function bereich$2(zahn) {
 //#endregion
 //#region ../HKP/src/engine/implantat.ts
 /** Kürzel (TP, sonst R) einer implantatgetragenen Krone, eines Implantat-Teleskops oder -Verbindungselements (Steg, Locator) */
-var IMPLANTAT_TP = /^S[KTO]/;
+var IMPLANTAT_TP = /^S[KTO]|^ZAS$/;
 var kuerzelVon = (v) => (v?.TP.trim() || v?.R || "").toUpperCase();
 var GEGENUEBER = {
 	"OK rechts": "UK rechts",
@@ -2281,6 +2285,38 @@ var EINHEITEN$1 = {
 	"BEB 2252": {
 		art: "keramik",
 		einheit: "krone"
+	},
+	"BEB 2301": {
+		art: "metall",
+		einheit: "teilkrone"
+	},
+	"BEB 2302": {
+		art: "metall",
+		einheit: "teilkrone"
+	},
+	"BEB 2303": {
+		art: "metall",
+		einheit: "teilkrone"
+	},
+	"BEB 2304": {
+		art: "metall",
+		einheit: "teilkrone"
+	},
+	"BEB 2551": {
+		art: "keramik",
+		einheit: "teilkrone"
+	},
+	"BEB 2552": {
+		art: "keramik",
+		einheit: "teilkrone"
+	},
+	"BEB 2553": {
+		art: "keramik",
+		einheit: "teilkrone"
+	},
+	"BEB 2554": {
+		art: "keramik",
+		einheit: "teilkrone"
 	},
 	"BEB 2351": {
 		art: "keramik",
@@ -2708,9 +2744,78 @@ var TP_ZUORDNUNG = {
 		goz: "2220",
 		beb: ["2534"]
 	},
+	VE: {
+		goz: "2220",
+		beb: [
+			"0833",
+			"2653",
+			"2951"
+		]
+	},
+	ZA: {
+		goz: "2210",
+		gozAnker: "5010",
+		beb: ["2251"]
+	},
+	ZAB: {
+		goz: "",
+		beb: ["2351"]
+	},
+	I1: {
+		goz: "2150",
+		beb: ["2301"]
+	},
+	I2: {
+		goz: "2160",
+		beb: ["2302"]
+	},
+	I3: {
+		goz: "2170",
+		beb: ["2303"]
+	},
+	I4: {
+		goz: "2170",
+		beb: ["2304"]
+	},
+	C1: {
+		goz: "2150",
+		beb: ["2551"]
+	},
+	C2: {
+		goz: "2160",
+		beb: ["2552"]
+	},
+	C3: {
+		goz: "2170",
+		beb: ["2553"]
+	},
+	C4: {
+		goz: "2170",
+		beb: ["2554"]
+	},
+	ON: {
+		goz: "2170",
+		beb: ["2304"]
+	},
+	ONK: {
+		goz: "2170",
+		beb: ["2554"]
+	},
 	T: {
 		goz: "5040",
 		beb: ["3001"]
+	},
+	TZ: {
+		goz: "5040",
+		beb: ["3001", "6905"]
+	},
+	TZV: {
+		goz: "5040",
+		beb: [
+			"3001",
+			"6905",
+			"2602"
+		]
 	},
 	TV: {
 		goz: "5040",
@@ -2718,7 +2823,7 @@ var TP_ZUORDNUNG = {
 	},
 	TM: {
 		goz: "5040",
-		beb: ["3001", "2612"]
+		beb: ["3001", "2602"]
 	},
 	KO: {
 		goz: "2210",
@@ -2753,7 +2858,12 @@ var TP_ZUORDNUNG = {
 	},
 	T2M: {
 		goz: "5100",
-		beb: ["3001", "2612"]
+		beb: ["3001", "2602"]
+	},
+	ZAS: {
+		goz: "2200",
+		gozAnker: "5000",
+		beb: ["2251"]
 	},
 	SK: {
 		goz: "2200",
@@ -2793,6 +2903,18 @@ var TP_ZUORDNUNG = {
 			"3023"
 		]
 	},
+	STZ: {
+		goz: "5040",
+		beb: ["3001", "6905"]
+	},
+	STZV: {
+		goz: "5040",
+		beb: [
+			"3001",
+			"6905",
+			"2602"
+		]
+	},
 	ST: {
 		goz: "5040",
 		beb: ["3001"]
@@ -2803,7 +2925,7 @@ var TP_ZUORDNUNG = {
 	},
 	STM: {
 		goz: "5040",
-		beb: ["3001", "2612"]
+		beb: ["3001", "2602"]
 	},
 	A: {
 		goz: "",
@@ -2843,7 +2965,7 @@ var TP_ZUORDNUNG = {
 	}
 };
 /** Brückenglied, auch implantatgetragen oder adhäsiv */
-var GLIED$2 = /^(S?B|AB)[VM]?$/;
+var GLIED$2 = /^(S?B|AB)[VM]?$|^ZAB$/;
 /** ersetzter Zahn einer Prothese, auch über einem Steg oder auf einem Implantat-Verbindungselement */
 var PROTHESENZAHN$1 = /^(S?EO?|SO)$/;
 /** ersetzter Zahn über einem Steg */
@@ -2851,8 +2973,8 @@ var STEGZAHN$1 = /^S?EO$/;
 /** Krone mit Geschiebe */
 var GESCHIEBE$1 = /^S?K[VM]?O$/;
 /** Pfeiler mit Krone, Teilkrone oder Teleskop (natürlich oder implantatgetragen) */
-var PFEILERKRONE$1 = /^(S?K|PK|S?T)/;
-var IMPLANTAT_PROTHESE$1 = /^(SE|SEO|SO|ST[VM]?)$/;
+var PFEILERKRONE$1 = /^(S?K|PK|ZA$|ZAS$|S?T)/;
+var IMPLANTAT_PROTHESE$1 = /^(SE|SEO|SO|ST[VM]?|STZ|STZV)$/;
 /** Kürzel, die eine Prothese im Kiefer voraussetzen (ersetzte Zähne, Teleskope, Geschiebe, Halteelemente) */
 var PROTHESEN_TP = /^(S?EO?|SO|S?T|S?K[VM]?O|K[VM]?H|H)$/;
 var ZAHN_BEMA = /^(20[abc]|91[abd]|90)$/;
@@ -2890,17 +3012,24 @@ function pos$1(ebene, nr, zahn, anzahl = 1) {
 		auto: true
 	};
 }
-var befundKuerzel = (z) => (z?.B ?? "").trim().toLowerCase();
+var befundKuerzel = (z) => befundOhneStrich(z?.B ?? "");
 var zahnListe$1 = (zahn) => zahn.split(/[,\s]+/).filter(Boolean);
 var spanne$1 = (zaehne) => zaehne.length === 1 ? zaehne[0] : `${zaehne[0]}-${zaehne[zaehne.length - 1]}`;
+/** Vollanatomische Seitenzahnkrone 2251, Front 2252; Brückenglied 2351 bzw. 2352 */
+function bebFuer$1(k, b, z) {
+	if (!istFrontzahn$1(z)) return b;
+	if ((k === "ZA" || k === "ZAS") && b === "2251") return "2252";
+	if (k === "ZAB" && b === "2351") return "2352";
+	return b;
+}
 /** Versorgungsform eines Kürzels für die Abgrenzung gleich-/andersartig */
 function kuerzelArt(k) {
 	k = k.trim().toUpperCase();
 	if (!k) return "";
-	if (k.startsWith("S")) return "implantat";
+	if (k === "ZAS" || k.startsWith("S")) return "implantat";
 	if (/^(E|EO|H)$/.test(k)) return "prothese";
 	if (/^(T|R)/.test(k) || GESCHIEBE$1.test(k)) return "kombi";
-	if (/^(B|A)/.test(k)) return "bruecke";
+	if (/^(B|A)/.test(k) || k === "ZAB") return "bruecke";
 	return "krone";
 }
 /**
@@ -3117,7 +3246,7 @@ function therapieplanAnwenden(regel, zaehne) {
 					});
 				}
 			}
-			if (!k || PROTHESENZAHN$1.test(k) || k === "H" || k === "R") continue;
+			if (!k || PROTHESENZAHN$1.test(k) || k === "H" || k === "R" || k === ")(") continue;
 			if (k === "A") hinweis("Adhäsivbrücke: GOZ 5150 (erste Spanne) bzw. 5160 (jede weitere) je Spanne ansetzen.");
 			const zuo = TP_ZUORDNUNG[k];
 			if (!zuo) {
@@ -3126,7 +3255,9 @@ function therapieplanAnwenden(regel, zaehne) {
 			}
 			const goz = (brueckenAnker.has(z) || GESCHIEBE$1.test(k) || stegAnker.has(z)) && zuo.gozAnker ? zuo.gozAnker : zuo.goz;
 			if (goz) neu.push(pos$1("GOZ", goz, z));
-			for (const b of zuo.beb) neu.push(pos$1("BEB", b, z));
+			for (const b of zuo.beb) neu.push(pos$1("BEB", bebFuer$1(k, b, z), z));
+			if (/^(TM|STM|T2M|TZV|STZV)$/.test(k)) hinweis("Vollverblendete Teleskope: Verblendung aus Kunststoff (Komposite, BEB 2602). Keramik platzt beim Aufsetzen durch die Spannung ab.");
+			if (/^VEK?$/.test(k)) neu.push(pos$1("GOZ", "2197", z));
 			if (GESCHIEBE$1.test(k)) neu.push(pos$1("GOZ", "5080", z));
 			if (PFEILERKRONE$1.test(k) && (andersZ || !hatte19)) neu.push(pos$1("GOZ", andersZ && brueckenAnker.has(z) ? "5120" : "2270", z));
 		}
@@ -3156,8 +3287,8 @@ function therapieplanAnwenden(regel, zaehne) {
 			} else if (!PFEILERKRONE$1.test(k)) hinweis(`Steg: Zahn ${x} ist kein Steganker (Krone, Wurzelkappe oder Implantat mit SO) – Planung bitte prüfen.`);
 		}
 		const einzelanker = sitz.filter((z) => plan(z) === "SO" && !stegAnker.has(z));
-		for (const z of einzelanker) neu.push(pos$1("GOZ", "5080", z), pos$1("BEB", "3027", z));
-		if (einzelanker.length) hinweis(`Implantat-Einzelanker (Locator/Kugelkopf) ${einzelanker.join(", ")}: GOZ 5080 je Verbindungselement – ob zusätzlich GOZ 5030 je Implantat anfällt, bitte prüfen.`);
+		for (const z of einzelanker) neu.push(pos$1("GOZ", "5030", z), pos$1("GOZ", "5080", z), pos$1("BEB", "3027", z));
+		if (einzelanker.length) hinweis(`Locator, Druckknopf oder Kugelkopf ${einzelanker.join(", ")}: GOZ 5030 je Implantat und GOZ 5080 je Verbindungselement. Matrize und Patrize sind ein Element, die Verschraubung der Kappe steckt in 5030.`);
 		if (prothese === "andersartig" && prothesenZaehne.length) {
 			const n = prothesenZaehne.length;
 			if (zahnlos) {
@@ -3246,7 +3377,7 @@ var kuerzel = (z) => (z?.B ?? "").trim().toLowerCase();
 function kieferAnalyse(reihe, zaehne) {
 	const sitz = reihe.filter((z) => kuerzel(zaehne[z]) !== ")(");
 	const fehlt = (z) => FEHLEND.has(kuerzel(zaehne[z]));
-	const vorhanden = sitz.filter((z) => !fehlt(z));
+	const vorhanden = sitz.filter((z) => !fehlt(z) && kuerzel(zaehne[z]) !== "i" && kuerzel(zaehne[z]) !== "ix");
 	const fehlendOhne8 = sitz.filter((z) => fehlt(z) && !istWeisheitszahn$1(z));
 	const luecken = [];
 	let start = -1;
@@ -5704,10 +5835,10 @@ function privatStufeAnwenden(plan, stufe) {
 //#endregion
 //#region ../HKP/src/engine/ausfuehrung.ts
 var WERKSTOFF_MUSTER = [
-	["hochgold", /hochgold|\bgold(?! ?reduz)/],
+	["hochgold", /hochgold|\bgold(?! ?reduz)|galvano/],
 	["goldreduziert", /gold ?reduziert|reduzierte?[snm]? gold|edelmetallreduziert/],
 	["nem", /\bn\.? ?e\.? ?m\b|nichtedel|kobalt|chrom|edelmetallfrei/],
-	["zirkon", /zirkon|\b(?:voll ?)?keramik(?! ?verblend)|\bvollkeramisch/],
+	["zirkon", /zirkon|vollanatom|monolith|vollzirkon|\b(?:voll ?)?keramik(?! ?verblend)|\bvollkeramisch/],
 	["presskeramik", /press ?keramik|e\.? ?max press|\bpress\b/],
 	["lithiumdisilikat", /lithium|e\.? ?max(?! press)|cad ?block/]
 ];
@@ -5741,11 +5872,20 @@ var STUFE_MUSTER = [
 	[PRIVAT_STUFE_MAX, /premium|maximal teuer|m(?:ö|oe)glichst teuer|so teuer wie m(?:ö|oe)glich|h(?:ö|oe)chste[nr]? stufe|maximale[nr]? stufe|stufe maximal|alles privat|voll privat|komplett privat|stufe (?:vier|4)\b/],
 	[3, /(?:ä|ae)sthetik|stufe (?:drei|3)\b/],
 	[2, /stufe vollkeramik|vollkeramik ?stufe|stufe (?:zwei|2)\b/],
-	[1, /teilverblend|stufe (?:eins|1)\b/],
+	[1, /stufe (?:eins|1)\b/],
 	[0, /stufe kasse|kassenstufe|nur kasse|zur(?:ü|ue)ck auf kasse|ohne privat|keine privat|stufe (?:null|0)\b/]
+];
+/** Letzte nicht verneinte Nennung. „momentan teilverblendet … voll verblendet“ bleibt Vollverblendung. */
+var VERBLENDUNG_MUSTER = [
+	["voll", /voll\s*verblend|vollverblend|voll\s*verbelnd|vollverbelnd|mehrfl(?:ä|ae|a)chig\w* verblend|rundum verblend|ringsum verblend|komplett verblend/],
+	["vestibulaer", /vestibul(?:ä|ae|a)?r/],
+	["teil", /teil\s*verblend|teilverblend|ger(?:ü|ue)st\w*.{0,30}verblend|verblendger(?:ü|ue)st/],
+	["keine", /unverblendet|ohne verblendung|nicht verblendet|vollmetall|nur metall|aus metall ohne/]
 ];
 var VERNEINT_DAVOR = /(?:\bstatt|\banstatt|\banstelle|\bnicht|\bkein\w*|\bohne|\bweg von)\s+(?:(?:dem|der|den|das|des|mit|im|in|von|vom|einem|einer|einen|eine)\s+)?$/;
 var VERNEINT_DANACH = /^\s+(?:bitte\s+|doch\s+|lieber\s+)?(?:nicht\b|war falsch|ist falsch|stimmt nicht)/;
+/** „momentan teilverblendet“ beschreibt den Ist-Stand, nicht den Wunsch */
+var IST_ZUSTAND = /(?:\bmomentan|\baktuell|\bderzeit|\bbisher|\bim moment|\bzurzeit|\bgegenw(?:ä|ae)rtig|\bjetzt noch)\s+(?:(?:die|der|das|den|dem|des|ein|eine|einer|einem)\s+)?$/;
 /**
 * Letzte nicht verneinte Nennung gewinnt („Zirkon statt NEM“, „NEM – nein, doch Zirkon“).
 * Ein Treffer innerhalb eines längeren Treffers anderer Art zählt nicht („reduziertes Gold“).
@@ -5760,7 +5900,7 @@ function letzteNennung(t, muster) {
 			bis: von + m[0].length
 		});
 	}
-	return treffer.filter((x) => !treffer.some((y) => y.wert !== x.wert && y.von <= x.von && y.bis >= x.bis && y.bis - y.von > x.bis - x.von)).filter((x) => !VERNEINT_DAVOR.test(t.slice(Math.max(0, x.von - 30), x.von)) && !VERNEINT_DANACH.test(t.slice(x.bis, x.bis + 30))).sort((a, b) => b.von - a.von)[0]?.wert;
+	return treffer.filter((x) => !treffer.some((y) => y.wert !== x.wert && y.von <= x.von && y.bis >= x.bis && y.bis - y.von > x.bis - x.von)).filter((x) => !VERNEINT_DAVOR.test(t.slice(Math.max(0, x.von - 30), x.von)) && !VERNEINT_DANACH.test(t.slice(x.bis, x.bis + 30)) && !IST_ZUSTAND.test(t.slice(Math.max(0, x.von - 40), x.von))).sort((a, b) => b.von - a.von)[0]?.wert;
 }
 /** Ausführung aus gesprochenem Text; nicht Genanntes bleibt weg */
 function ausfuehrungIn(text) {
@@ -5776,9 +5916,247 @@ function ausfuehrungIn(text) {
 	if (system) a.implantatSystem = system;
 	const stufe = letzteNennung(t, STUFE_MUSTER);
 	if (stufe !== void 0) a.privatStufe = stufe;
+	const verblendung = letzteNennung(t, VERBLENDUNG_MUSTER);
+	if (verblendung) a.verblendung = verblendung;
 	return a;
 }
-new Set(WERKSTOFFE_FUER$1.keramik);
+var KERAMIK$1 = new Set(WERKSTOFFE_FUER$1.keramik);
+/** Vollkeramik-Gerüst (nicht die metallische Vollverblendung TM/T2M/STM) */
+var KERAMIK_GERUEST = /* @__PURE__ */ new Set([
+	"KM",
+	"KMH",
+	"KMO",
+	"BM",
+	"PKM",
+	"SKM",
+	"SKMO",
+	"SBM",
+	"ABM"
+]);
+var VERBLEND_V = {
+	K: "KV",
+	KH: "KVH",
+	B: "BV",
+	PK: "PKV",
+	SK: "SKV",
+	SB: "SBV",
+	ST: "STV",
+	T: "TV",
+	T2: "T2V",
+	A: "ABV",
+	KM: "KV",
+	KMH: "KVH",
+	BM: "BV",
+	PKM: "PKV",
+	SKM: "SKV",
+	SBM: "SBV",
+	STM: "STV",
+	TM: "TV",
+	T2M: "T2V",
+	ABM: "ABV",
+	KV: "KV",
+	KVH: "KVH",
+	BV: "BV",
+	PKV: "PKV",
+	SKV: "SKV",
+	SBV: "SBV",
+	STV: "STV",
+	TV: "TV",
+	T2V: "T2V",
+	ABV: "ABV"
+};
+var VERBLEND_M = {
+	K: "KM",
+	KV: "KM",
+	KM: "KM",
+	KH: "KMH",
+	KVH: "KMH",
+	KMH: "KMH",
+	B: "BM",
+	BV: "BM",
+	BM: "BM",
+	PK: "PKM",
+	PKV: "PKM",
+	PKM: "PKM",
+	SK: "SKM",
+	SKV: "SKM",
+	SKM: "SKM",
+	SB: "SBM",
+	SBV: "SBM",
+	SBM: "SBM",
+	ST: "STM",
+	STV: "STM",
+	STM: "STM",
+	T: "TM",
+	TV: "TM",
+	TM: "TM",
+	T2: "T2M",
+	T2V: "T2M",
+	T2M: "T2M",
+	A: "ABM",
+	ABV: "ABM",
+	ABM: "ABM"
+};
+var VERBLEND_OHNE = {
+	KV: "K",
+	KM: "K",
+	KVH: "KH",
+	KMH: "KH",
+	BV: "B",
+	BM: "B",
+	PKV: "PK",
+	PKM: "PK",
+	SKV: "SK",
+	SKM: "SK",
+	SBV: "SB",
+	SBM: "SB",
+	STV: "ST",
+	STM: "ST",
+	TV: "T",
+	TM: "T",
+	T2V: "T2",
+	T2M: "T2",
+	ABV: "A",
+	ABM: "A"
+};
+function codeFuerVerblendung(code, zahn, art) {
+	const c = code.trim().toUpperCase();
+	if (!c) return void 0;
+	if (art === "voll") return VERBLEND_M[c];
+	if (art === "keine") return VERBLEND_OHNE[c] ?? (VERBLEND_V[c] || VERBLEND_M[c] ? c : void 0);
+	if (art === "vestibulaer" && !imVerblendbereich(zahn)) return VERBLEND_OHNE[c] ?? (VERBLEND_V[c] ? c : void 0);
+	return VERBLEND_V[c];
+}
+/** Therapiekürzel auf die gesprochene Verblendart. Vollkeramik (Zirkon und Co.) bleibt unangetastet. */
+function zaehneFuerVerblendung(plan, art, werkstoff) {
+	const keramikAuftrag = !!werkstoff && KERAMIK$1.has(werkstoff);
+	return Object.fromEntries(Object.entries(plan.zaehne).map(([z, v]) => {
+		const wirk = (v.TP.trim() || v.R.trim()).toUpperCase();
+		const gewaehlt = plan.werkstoffe?.[z];
+		if (gewaehlt && KERAMIK$1.has(gewaehlt) || keramikAuftrag && KERAMIK_GERUEST.has(wirk)) return [z, v];
+		const neu = codeFuerVerblendung(wirk, z, art);
+		if (!neu) return [z, v];
+		if (neu === v.R.trim().toUpperCase()) return [z, v.TP ? {
+			...v,
+			TP: ""
+		} : v];
+		if (neu === v.TP.trim().toUpperCase()) return [z, v];
+		return [z, {
+			...v,
+			TP: neu
+		}];
+	}));
+}
+//#endregion
+//#region ../HKP/src/engine/vokabular.ts
+var wort = (t) => ` ${t.toLowerCase().replace(/[‐–—]/g, "-").replace(/\s+/g, " ")} `;
+function letzte(t, muster) {
+	let bei = -1;
+	let wert;
+	for (const [v, re] of muster) for (const m of t.matchAll(new RegExp(re.source, "g"))) {
+		const i = m.index ?? 0;
+		if (i >= bei) {
+			bei = i;
+			wert = v;
+		}
+	}
+	return wert;
+}
+/** All-on-4/6, Steg, Locator, Inlay, Teleskop, Brücke, Krone, Suprakonstruktion – das Speziellere gewinnt */
+function prothetikIn(text) {
+	const t = wort(text);
+	const aus = {};
+	const all = t.match(/all[\s-]*on[\s-]*(4|vier|6|sechs)/);
+	const sekundaer = /sekund(?:ä|ae)r/.test(t) && /teleskop|krone|teil/.test(t) && !/prim(?:ä|ae)r/.test(t);
+	const teleskop = /teleskop|konus|doppelkrone|prim(?:ä|ae)r(?:krone|teleskop)/.test(t) || sekundaer;
+	const locator = /druckknopf|locator|locater|kugel(?:kopf|anker)|novaloc|equator/.test(t) || /patri(?:ze|ce)|matri(?:ze|ce)/.test(t) && /implantat|prothese/.test(t);
+	const steg = /steg|mesostruktur|hybridprothese/.test(t);
+	const inlay = /inlay|onlay|einlagef/.test(t) && !/krone|teleskop|br(?:ü|ue)cke/.test(t);
+	if (all) {
+		aus.versorgung = "allon";
+		aus.allon = /6|sechs/.test(all[1]) ? 6 : 4;
+	} else if (steg) {
+		aus.versorgung = "steg";
+		aus.anker = "steg";
+	} else if (locator) {
+		aus.versorgung = "locator";
+		aus.anker = /kugel/.test(t) && !/locator|druckknopf|novaloc|equator/.test(t) ? "kugel" : "locator";
+	} else if (inlay) aus.versorgung = "inlay";
+	else if (teleskop) {
+		aus.versorgung = "teleskopprothese";
+		aus.anker = "teleskop";
+		aus.sekundaer = sekundaer;
+	} else if (/br(?:ü|ue)cke/.test(t)) aus.versorgung = "bruecke";
+	else if (/totalprothese|vollprothese|\btotale\b/.test(t)) aus.versorgung = "totalprothese";
+	else if (/prothese/.test(t) && /implantat/.test(t)) {
+		aus.versorgung = "locator";
+		aus.anker = "locator";
+	} else if (/implantat|suprakonstruktion/.test(t)) aus.versorgung = "implantatkronen";
+	else if (/ger(?:ü|ue)st/.test(t) && /verblend/.test(t) || /teilkrone|dreiviertel|table[\s-]?top|okklusionsschale|kaufl(?:ä|ae)chenschale|veneer|verblendschale|galvano|krone/.test(t)) aus.versorgung = "kronen";
+	if (/table[\s-]?top|okklusionsschale|kaufl(?:ä|ae)chenschale/.test(t)) aus.kronenart = "tabletop";
+	else if (/teilkrone|dreiviertelkrone|3\/4/.test(t)) aus.kronenart = "teilkrone";
+	else if (/veneer|verblendschale/.test(t)) aus.kronenart = "veneer";
+	else if (/onlay/.test(t)) aus.kronenart = "onlay";
+	else if (/inlay|einlagef/.test(t)) aus.kronenart = "inlay";
+	else if (/galvano/.test(t)) aus.kronenart = "galvano";
+	if (/vollanatom|monolith|vollzirkon/.test(t)) aus.form = "vollanatomisch";
+	aus.retention = letzte(t, [["verschraubt", /verschraub|schraubenkrone|schraubkrone/], ["zementiert", /zementier/]]);
+	aus.abutment = letzte(t, [
+		["keramik", /keramik\s*abutment|zirkon\s*abutment|abutment\w* aus (?:zirkon|keramik)|individuelle[snm]? keramik/],
+		["individuell", /individuell\w* abutment|custom[\s-]?abutment|cad\s?cam\s*abutment|hybrid\s*abutment|ti[\s-]?base/],
+		["standard", /konfektioniert\w* abutment|standard\s*abutment|titan\s*abutment|multi[\s-]?unit/]
+	]);
+	if (/multi[\s-]?unit/.test(t) && !aus.retention) aus.retention = "verschraubt";
+	aus.loeffel = letzte(t, [["offen", /offene[mnrs]? (?:l(?:ö|oe)ffel|abform)/], ["geschlossen", /geschlossene[mnrs]? l(?:ö|oe)ffel/]]);
+	const fl = letzte(t, [
+		["4", /vier[\s-]*fl|4[\s-]*fl|mehr[\s-]*fl/],
+		["3", /drei[\s-]*fl|3[\s-]*fl|\bmod\b|\bmol\b|\bdol\b/],
+		["1", /ein[\s-]*fl|1[\s-]*fl/],
+		["2", /zwei[\s-]*fl|2[\s-]*fl|\bmo\b|\bod\b|\bdo\b/]
+	]);
+	if (fl) {
+		aus.flaechen = Number(fl);
+		aus.flaechenGenannt = true;
+	}
+	aus.aufImplantat = /implantat|suprakonstruktion|all[\s-]*on/.test(t) || aus.versorgung === "locator" || aus.versorgung === "steg" || aus.versorgung === "allon" || aus.versorgung === "implantatkronen";
+	if (!aus.anker && !aus.allon && !aus.retention && !aus.abutment && !aus.kronenart && !aus.form && !aus.versorgung) return {};
+	return aus;
+}
+/** Übliche Implantatsitze, wenn keine Zähne genannt sind (Maló). Distal davon keine Freiendglieder. */
+var ALLON_SITZ = {
+	4: {
+		OK: [
+			"15",
+			"12",
+			"22",
+			"25"
+		],
+		UK: [
+			"45",
+			"42",
+			"32",
+			"35"
+		]
+	},
+	6: {
+		OK: [
+			"16",
+			"14",
+			"12",
+			"22",
+			"24",
+			"26"
+		],
+		UK: [
+			"46",
+			"44",
+			"42",
+			"32",
+			"34",
+			"36"
+		]
+	}
+};
 //#endregion
 //#region ../HKP/src/engine/auftrag.ts
 var ZAHL_WORT = {
@@ -5899,6 +6277,63 @@ function zaehneIn(teil, kiefer) {
 	if (k && /\bfront(?:z(?:ä|ae)hne?)?\b/.test(t)) dazu(zahnSpanne(k === "OK" ? "13" : "43", k === "OK" ? "23" : "33"));
 	return out;
 }
+var STELLE_EINZEL = "[1-8]|eins|zwei|drei|vier|f(?:ü|ue)nf|sechs|sieben|acht";
+function stelleNummer(w) {
+	if (/^[1-8]$/.test(w)) return w;
+	const n = STELLE[w];
+	return n ? String(n) : void 0;
+}
+/** Ohne genannten Kiefer alle vier Quadranten. „im Oberkiefer“ nur 1 und 2. */
+function quadrantenAus(t, kiefer) {
+	const okWort = /\b(ok|oberkiefer|oben)\b/.test(t);
+	const ukWort = /\b(uk|unterkiefer|unten)\b/.test(t);
+	const ok = kiefer === "OK" || okWort && !ukWort;
+	const uk = kiefer === "UK" || ukWort && !okWort;
+	if (ok && !uk) return ["1", "2"];
+	if (uk && !ok) return ["4", "3"];
+	return [
+		"1",
+		"2",
+		"4",
+		"3"
+	];
+}
+/** „von 4 auf 6“, „von 3 auf 3“: Stellen im Quadranten, nicht die FDI-Nummer 46. */
+function positionsSpannen(t, kiefer) {
+	const anker = [];
+	const glieder = [];
+	const re = new RegExp(`(?:\\bvon|\\bab)\\s+(?:(?:der|dem|die|den|zahn)\\s+)?(${STELLE_EINZEL})(?!\\d)\\s+(?:auf|bis|nach|zu)\\s+(?:(?:die|den|der|dem|zahn)\\s+)?(${STELLE_EINZEL})(?!\\d)`, "g");
+	const qs = quadrantenAus(t, kiefer);
+	const dazuAnker = (z) => {
+		if (!anker.includes(z)) anker.push(z);
+	};
+	const dazuGlied = (z) => {
+		if (!glieder.includes(z) && !anker.includes(z)) glieder.push(z);
+	};
+	const ausSpanne = (von, bis) => {
+		const zs = zahnSpanne(von, bis);
+		if (zs.length < 2) return;
+		dazuAnker(zs[0]);
+		dazuAnker(zs[zs.length - 1]);
+		for (const z of zs.slice(1, -1)) dazuGlied(z);
+	};
+	for (const m of t.matchAll(re)) {
+		const a = stelleNummer(m[1]);
+		const b = stelleNummer(m[2]);
+		if (!a || !b) continue;
+		if (a === b) {
+			const kieferSet = new Set(qs.map((q) => q === "1" || q === "2" ? "OK" : "UK"));
+			if (kieferSet.has("OK")) ausSpanne(`1${a}`, `2${b}`);
+			if (kieferSet.has("UK")) ausSpanne(`4${a}`, `3${b}`);
+			continue;
+		}
+		for (const q of qs) ausSpanne(q + a, q + b);
+	}
+	return {
+		anker,
+		glieder
+	};
+}
 var satzteile = (t) => norm$1(t).split(/[,;.]| und nach | sowie | dazu | außerdem | ausserdem /).map((s) => s.trim()).filter(Boolean);
 var KIEFER_WORT = /\b(ok|o\.k\.|oberkiefer|oben|uk|u\.k\.|unterkiefer|unten)\b/g;
 /** Text an jeder Kiefer-Nennung schneiden: „Im Oberkiefer … und im Unterkiefer …“ → je Kiefer ein Abschnitt */
@@ -5927,12 +6362,15 @@ function kieferAbschnitte(text) {
 }
 /** „Totalprothese für beide Kiefer“, „oben und unten“ – eine Versorgung für OK und UK */
 var BEIDE_KIEFER = /\bbeide(n)? kiefer|\bbeidkiefer|\bok und uk\b|\buk und ok\b|\boben und unten\b|\bunten und oben\b/;
+var KIEFERWEIT = /* @__PURE__ */ new Set([
+	"teleskopprothese",
+	"totalprothese",
+	"locator",
+	"steg",
+	"allon"
+]);
 function versorgungIn(t, coverDenture) {
-	if (/teleskop|konus|doppelkrone/.test(t) || coverDenture) return "teleskopprothese";
-	if (/totalprothese|vollprothese|totale/.test(t)) return "totalprothese";
-	if (/br(ü|ue)cke/.test(t)) return "bruecke";
-	if (/implantat/.test(t)) return "implantatkronen";
-	if (/krone/.test(t)) return "kronen";
+	return prothetikIn(t).versorgung ?? (coverDenture ? "teleskopprothese" : void 0);
 }
 function auftragVerstehen(text) {
 	const ohne = ohneKieferBefund(text);
@@ -5943,8 +6381,8 @@ function auftragVerstehen(text) {
 	const auftrag = einzelAuftrag(text);
 	const abschnitte = kieferAbschnitte(text);
 	const beide = BEIDE_KIEFER.test(norm$1(text));
-	const gemeinsam = KIEFER_GEMEINSAM.test(norm$1(text)) && (auftrag.versorgung === "teleskopprothese" || auftrag.versorgung === "totalprothese") && new Set(abschnitte.map((a) => einzelAuftrag(a.text).versorgung).filter(Boolean)).size <= 1;
-	if (abschnitte.length < 2 && !(beide && auftrag.versorgung === "totalprothese") && !gemeinsam) return auftrag;
+	const gemeinsam = KIEFER_GEMEINSAM.test(norm$1(text)) && KIEFERWEIT.has(auftrag.versorgung ?? "kronen") && new Set(abschnitte.map((a) => einzelAuftrag(a.text).versorgung).filter(Boolean)).size <= 1;
+	if (abschnitte.length < 2 && !(beide && auftrag.versorgung === "totalprothese") && !gemeinsam) return brueckenKiefer(auftrag) ?? auftrag;
 	const roh = gemeinsam ? ["OK", "UK"].map((k) => einzelAuftrag(text, k)) : abschnitte.map((a) => ({
 		...einzelAuftrag(a.text),
 		kiefer: a.kiefer
@@ -5953,7 +6391,10 @@ function auftragVerstehen(text) {
 		const t = norm$1(abschnitte[i].text);
 		if (x.versorgung || /nichts|kein/.test(t) || befundWort(t, true)) return;
 		const nachbar = roh.slice(0, i).reverse().find((y) => y.versorgung) ?? roh.slice(i + 1).find((y) => y.versorgung);
-		if (nachbar?.versorgung) x.versorgung = nachbar.versorgung;
+		if (nachbar?.versorgung) {
+			x.versorgung = nachbar.versorgung;
+			if (x.versorgung === "bruecke") brueckeVerstehen(norm$1(abschnitte[i].text), x);
+		}
 	});
 	if (beide && auftrag.versorgung === "totalprothese") {
 		for (const k of ["OK", "UK"]) if (!roh.some((x) => x.kiefer === k && x.versorgung)) roh.push({
@@ -5963,10 +6404,13 @@ function auftragVerstehen(text) {
 			pfeiler: []
 		});
 	}
-	const teile = roh.filter((x) => x.versorgung && x.versorgung !== "kronen" && x.versorgung !== "implantatkronen").filter((x, i, alle) => alle.findIndex((y) => y.kiefer === x.kiefer) === i);
+	const teile = roh.filter((x) => x.versorgung && x.versorgung !== "kronen" && x.versorgung !== "implantatkronen" && x.versorgung !== "inlay").filter((x, i, alle) => alle.findIndex((y) => y.kiefer === x.kiefer) === i);
 	const kiefer = new Set(teile.map((x) => x.kiefer));
 	if (!teile.length) return auftrag;
-	for (const x of teile) x.pfeiler = x.pfeiler.filter((z) => kieferVon$1(z) === x.kiefer);
+	for (const x of teile) {
+		x.pfeiler = x.pfeiler.filter((z) => kieferVon$1(z) === x.kiefer);
+		if (x.glieder) x.glieder = x.glieder.filter((z) => kieferVon$1(z) === x.kiefer);
+	}
 	if (kiefer.size === 1) return {
 		...auftrag,
 		...teile[0],
@@ -5980,6 +6424,7 @@ function auftragVerstehen(text) {
 		kiefer: void 0,
 		teile,
 		pfeiler: teile.flatMap((x) => x.pfeiler),
+		glieder: teile.flatMap((x) => x.glieder ?? []),
 		coverDenture: teile.some((x) => x.coverDenture)
 	};
 }
@@ -5998,6 +6443,20 @@ function einzelAuftrag(text, kiefer) {
 	const nummern = [...t.matchAll(FDI)].map((m) => kieferVon$1(m[1]));
 	if (!auftrag.kiefer && nummern.length && nummern.every((k) => k === nummern[0])) auftrag.kiefer = nummern[0];
 	Object.assign(auftrag, ausfuehrungIn(text));
+	const worte = prothetikIn(t);
+	if (worte.versorgung) auftrag.versorgung = worte.versorgung;
+	if (worte.anker) auftrag.anker = worte.anker;
+	if (worte.allon) auftrag.allon = worte.allon;
+	if (worte.retention) auftrag.retention = worte.retention;
+	if (worte.abutment) auftrag.abutment = worte.abutment;
+	if (worte.kronenart) auftrag.kronenart = worte.kronenart;
+	if (worte.form) auftrag.form = worte.form;
+	if (worte.flaechen) auftrag.flaechen = worte.flaechen;
+	if (worte.flaechenGenannt) auftrag.flaechenGenannt = true;
+	if (worte.aufImplantat) auftrag.aufImplantat = true;
+	if (worte.sekundaer) auftrag.sekundaer = true;
+	if (worte.loeffel) auftrag.loeffel = worte.loeffel;
+	if (worte.kronenart === "galvano" && !auftrag.verblendung) auftrag.verblendung = "keine";
 	if (/h(ä|ae)rtefall/.test(t)) auftrag.haertefall = true;
 	if (/(kein|ohne)(en)? bonus/.test(t)) auftrag.bonus = "60";
 	else if (/\b(75|fünfundsiebzig|fuenfundsiebzig) ?(%|prozent)|\b(30|dreißig|dreissig) ?(%|prozent) bonus|bonus (von )?(30|dreißig|dreissig)\b|zehn jahre bonus|bonus (über |ueber )?zehn jahre/.test(t)) auftrag.bonus = "75";
@@ -6016,7 +6475,7 @@ function einzelAuftrag(text, kiefer) {
 		pfeilerDavor = false;
 		if (/entfern|extrah|ziehen|gezogen|raus/.test(teil)) auftrag.entfernen.push(...zs);
 		else if (/bleib|erhalt|behalt|stehen/.test(teil)) auftrag.erhalten.push(...zs);
-		else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil) || (auftrag.versorgung === "implantatkronen" || auftrag.versorgung === "kronen") && /implantat|\b(?:am|an|bei|f(?:ü|ue)r) (?:zahn )?[1-4][1-8]\b|\bzahn [1-4][1-8]\b|\bregion?\b/.test(teil)) {
+		else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|locator|locater|druckknopf|kugel(?:kopf|anker)|novaloc|equator|steg|inlay|onlay|tabletop|teilkrone|veneer|galvano|suprakonstruktion|abutment|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil) || (auftrag.versorgung === "implantatkronen" || auftrag.versorgung === "kronen" || auftrag.versorgung === "inlay") && /implantat|\b(?:am|an|bei|f(?:ü|ue)r) (?:zahn )?[1-4][1-8]\b|\bzahn [1-4][1-8]\b|\bregion?\b/.test(teil)) {
 			const vorBefund = teil.split(BEFUND_BEGINN)[0].split(ZAEHNE_NACHGESTELLT)[0];
 			const pf = vorBefund === teil ? zs : zaehneIn(vorBefund, auftrag.kiefer);
 			auftrag.pfeiler.push(...pf.filter((z) => !auftrag.pfeiler.includes(z)));
@@ -6037,11 +6496,33 @@ var GLIED_DANACH = new RegExp(`${GLIED_WORT}\\s+(?:(?:auf|in|bei|regio|f(?:ü|ue
 * („15 ist ein Brückenglied“) oder die Zähne zwischen genau zwei Ankern. Einzahl-Form („16 und 15 ist ein Glied“)
 * nimmt nur den Zahn direkt am Glied-Wort.
 */
+/** Brücken in beiden Kiefern aus einem Satz („jeweils von 4 auf 6 und von 3 auf 3“) */
+function brueckenKiefer(a) {
+	if (a.versorgung !== "bruecke") return void 0;
+	const zs = [...a.pfeiler, ...a.glieder ?? []];
+	if (new Set(zs.map(kieferVon$1)).size < 2) return void 0;
+	const teile = ["OK", "UK"].map((k) => ({
+		...a,
+		kiefer: k,
+		pfeiler: a.pfeiler.filter((z) => kieferVon$1(z) === k),
+		glieder: (a.glieder ?? []).filter((z) => kieferVon$1(z) === k)
+	})).filter((t) => t.pfeiler.length >= 2 && (t.glieder?.length ?? 0) > 0);
+	if (teile.length < 2) return void 0;
+	return {
+		...a,
+		kiefer: void 0,
+		teile,
+		pfeiler: teile.flatMap((t) => t.pfeiler),
+		glieder: teile.flatMap((t) => t.glieder ?? [])
+	};
+}
 function brueckeVerstehen(t, a) {
 	const nummern = (s) => [...s.matchAll(FDI)].map((m) => m[1]);
 	const spannen = [...t.matchAll(BRUECKEN_SPANNE)].filter((m) => kieferVon$1(m[1]) === kieferVon$1(m[2]));
 	const anker = [];
 	for (const m of spannen) for (const z of [m[1], m[2]]) if (!anker.includes(z)) anker.push(z);
+	const stellen = positionsSpannen(t, a.kiefer);
+	for (const z of stellen.anker) if (!anker.includes(z)) anker.push(z);
 	const glieder = [];
 	const dazu = (zs) => zs.forEach((z) => !glieder.includes(z) && !anker.includes(z) && glieder.push(z));
 	for (const m of t.matchAll(GLIED_DAVOR)) {
@@ -6053,6 +6534,7 @@ function brueckeVerstehen(t, a) {
 		dazu(/glieder/.test(m[0]) ? zs : zs.slice(0, 1));
 	}
 	for (const m of spannen) dazu(zahnSpanne(m[1], m[2]).slice(1, -1));
+	for (const z of stellen.glieder) dazu([z]);
 	const pfeiler = [...anker, ...a.pfeiler.filter((z) => !anker.includes(z))].filter((z) => !glieder.includes(z));
 	if (!glieder.length && pfeiler.length === 2 && kieferVon$1(pfeiler[0]) === kieferVon$1(pfeiler[1])) dazu(zahnSpanne(pfeiler[0], pfeiler[1]).slice(1, -1));
 	a.pfeiler = pfeiler;
@@ -6096,12 +6578,17 @@ var BEFUND_ARTEN = [
 		versorgung: true
 	},
 	{
-		re: /implantat[- ]?kron|implantatgetragene\w* kron|kronen? auf (?:dem |einem )?implantat/,
+		re: /druckknopf|locator|locater|kugel(?:kopf|anker)|novaloc|equator/,
+		code: "so",
+		versorgung: true
+	},
+	{
+		re: /implantat[- ]?kron|implantatgetragene\w* kron|kronen? auf (?:dem |einem )?implantat|suprakonstruktion/,
 		code: "sk",
 		versorgung: true
 	},
 	{
-		re: /\b(?:ist|sind|hat|haben|mit|tr(?:ä|ae)gt) (?:ein(?:em)? )?implantat\b|implantat\w* (?:ist |sind )?(?:vorhanden|intakt|drin|versorgt|in ordnung)|\b(?:ist|sind|bereits|schon) implantiert/,
+		re: /\b(?:ist|sind|hat|haben|mit|tr(?:ä|ae)gt) (?:ein(?:em)? )?implantat\w*|implantat\w* (?:ist |sind )?(?:vorhanden|intakt|drin|versorgt|in ordnung)|implantat\w*\s+(?:an|auf|in|bei|regio)|\b(?:ist|sind|bereits|schon) implantiert/,
 		code: "i",
 		versorgung: true
 	},
@@ -6245,7 +6732,7 @@ function ohneKieferBefund(text) {
 	const rest = teile.filter((t) => !kieferBefundTeil(t));
 	return rest.length && rest.length < teile.length ? rest.join(", ") : "";
 }
-var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|co?ver.?dent|kover|bonus|scan|abdruck|abform|gold|zirkon|keramik|\bnem\b|erstell|plan|hkp|kostenpl/;
+var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|co?ver.?dent|kover|bonus|scan|abdruck|abform|gold|zirkon|keramik|\bnem\b|erstell|plan|hkp|kostenpl|inlay|onlay|tabletop|teilkrone|galvano|abutment|suprakonstruktion|locator|druckknopf|kugelkopf|novaloc|steg|all[\s-]*on|veneer/;
 /** Befund-Satzteile aus einem gesprochenen Auftrag („… die Sechser und Siebener fehlen …“), sonst '' */
 /** Satzteil, der nur Zähne aufzählt („die Vierer“, „Fünfer“) – sein Verb steht weiter hinten */
 var NUR_ZAEHNE = /^(?:(?:die|der|den|und|sowie|auch|noch|bis|[1-4][1-8]|\d(?:er|ern)|einser|zweier|dreier|eckz(?:ah|äh|aeh)ne?n?|vierer|f(?:ü|ue)nfer|sechser|siebe?ner|achter)n?\s*)+$/;
@@ -6266,27 +6753,28 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 		if (!teil.kiefer && ![
 			"kronen",
 			"bruecke",
-			"implantatkronen"
-		].includes(teil.versorgung)) return {
+			"implantatkronen",
+			"inlay"
+		].includes(teil.versorgung ?? "")) return {
 			status: "rueckfrage",
 			grund: "kiefer",
 			frage: "Für welchen Kiefer – Oberkiefer oder Unterkiefer?"
 		};
 	}
-	const nurTotal = teile.every((x) => x.versorgung === "totalprothese");
-	if (!Object.keys(befund).length && !nurTotal) return {
+	const ohneBefundOk = teile.every((x) => x.versorgung === "totalprothese" || x.versorgung === "allon");
+	if (!Object.keys(befund).length && !ohneBefundOk) return {
 		status: "rueckfrage",
 		grund: "befund_fehlt",
 		frage: "Ich habe keinen Befund. Welche Zähne fehlen, und welche sind vorhanden?"
 	};
 	const tp = {};
 	for (const teil of teile) {
-		const r = teil.versorgung === "kronen" ? kronenPlanen(teil, befund, tp) : teil.versorgung === "bruecke" ? brueckePlanen(teil, befund, tp) : teil.versorgung === "implantatkronen" ? implantatPlanen(teil, befund, tp) : kieferPlanen(teil, teil.kiefer, befund, tp, hinweise);
+		const r = teil.versorgung === "kronen" ? kronenPlanen(teil, befund, tp) : teil.versorgung === "inlay" ? inlayPlanen(teil, befund, tp, hinweise) : teil.versorgung === "bruecke" ? brueckePlanen(teil, befund, tp, hinweise) : teil.versorgung === "implantatkronen" ? implantatPlanen(teil, befund, tp) : teil.versorgung === "allon" ? allonPlanen(teil, befund, tp, hinweise) : kieferPlanen(teil, teil.kiefer, befund, tp, hinweise);
 		if (r) return r;
 	}
 	return planRechnen(auftrag, teile, befund, tp, hinweise, optionen);
 }
-function brueckePlanen(auftrag, befund, tp) {
+function brueckePlanen(auftrag, befund, tp, hinweise) {
 	const anker = auftrag.pfeiler;
 	const glieder = auftrag.glieder ?? [];
 	if (anker.length < 2 || !glieder.length || new Set([...anker, ...glieder].map(kieferVon$1)).size > 1) return {
@@ -6294,14 +6782,15 @@ function brueckePlanen(auftrag, befund, tp) {
 		grund: "pfeiler",
 		frage: "Von welchem bis zu welchem Zahn soll die Brücke gehen – zum Beispiel von 14 auf 16?"
 	};
-	const ankerFehlt = anker.filter((z) => fehlt(befund, z) && befund[z] !== "x");
+	const implant = !!auftrag.aufImplantat || anker.some((z) => befund[z] === "i" || (befund[z] ?? "").startsWith("s"));
+	const ankerFehlt = anker.filter((z) => fehlt(befund, z) && befund[z] !== "x" && !implant);
 	if (ankerFehlt.length) return {
 		status: "rueckfrage",
 		grund: "pfeiler_fehlt",
 		zaehne: ankerFehlt,
 		frage: `Laut Befund ${ankerFehlt.length > 1 ? "fehlen" : "fehlt"} ${liste(ankerFehlt)}. Auf welchen Zähnen soll die Brücke stattdessen verankert sein?`
 	};
-	const stehen = glieder.filter((z) => z in befund && !fehlt(befund, z));
+	const stehen = glieder.filter((z) => z in befund && !fehlt(befund, z) && befund[z] !== "i");
 	if (stehen.length) return {
 		status: "rueckfrage",
 		grund: "glied_vorhanden",
@@ -6309,10 +6798,51 @@ function brueckePlanen(auftrag, befund, tp) {
 		frage: `Laut Befund ${stehen.length > 1 ? "sind" : "ist"} ${liste(stehen)} noch vorhanden. Soll ich ${stehen.length > 1 ? "sie" : "ihn"} als zu entfernen planen? Dann sagen Sie zum Beispiel: ${stehen[0]} wird entfernt.`
 	};
 	for (const z of glieder) if (!(z in befund)) befund[z] = "f";
-	if (auftrag.werkstoff && WERKSTOFFE$1[auftrag.werkstoff].art === "keramik") {
+	const keramik = !!(auftrag.werkstoff && WERKSTOFFE$1[auftrag.werkstoff].art === "keramik");
+	const vollverblendet = auftrag.verblendung === "voll";
+	if (implant) {
+		for (const z of anker) {
+			if (!(z in befund)) befund[z] = "f";
+			tp[z] = implantKrone(auftrag);
+		}
+		for (const z of glieder) tp[z] = implantGlied(auftrag);
+		if (([
+			"14",
+			"16",
+			"13",
+			"23"
+		].every((z) => anker.includes(z)) || [
+			"44",
+			"46",
+			"43",
+			"33"
+		].every((z) => anker.includes(z))) && !hinweise.some((h) => h.startsWith("Brücken je Kiefer"))) hinweise.push("Brücken je Kiefer von 4 auf 6 beidseits und von 3 auf 3. Die Siebener liegen außerhalb der Brücken und werden nicht ersetzt.");
+		if (vollverblendet && auftrag.form === "vollanatomisch" && !hinweise.some((h) => h.startsWith("Vollverblendung auf dem Zirkon"))) hinweise.push("Vollverblendung auf dem Zirkon: keramische Verblendung (BEB 2612), nicht die unverblendete Vollanatomie.");
+	} else if (vollverblendet || keramik && auftrag.form !== "vollanatomisch") {
+		for (const z of anker) tp[z] = "KM";
+		for (const z of glieder) tp[z] = "BM";
+	} else if (auftrag.form === "vollanatomisch") {
+		for (const z of anker) tp[z] = "ZA";
+		for (const z of glieder) tp[z] = "ZAB";
+	} else if (keramik) {
 		for (const z of anker) tp[z] = "KM";
 		for (const z of glieder) tp[z] = "BM";
 	}
+}
+var keramikAuftrag = (a) => !!(a.werkstoff && WERKSTOFFE$1[a.werkstoff].art === "keramik");
+/** Implantatkrone: 2200, als Brückenanker 5000. Eine genannte Vollverblendung geht vor der unverblendeten Vollanatomie. */
+function implantKrone(a) {
+	if (a.verblendung === "voll") return "SKM";
+	if (a.form === "vollanatomisch") return "ZAS";
+	if (keramikAuftrag(a)) return "SKM";
+	if (a.verblendung === "teil" || a.verblendung === "vestibulaer") return "SKV";
+	return "SK";
+}
+function implantGlied(a) {
+	if (a.verblendung === "voll") return "SBM";
+	if (a.form === "vollanatomisch") return "ZAB";
+	if (keramikAuftrag(a)) return "SBM";
+	return "SB";
 }
 /** Implantatkronen (TP SK) auf fehlenden Zähnen; ein laut Befund stehender Zahn muss erst als „wird entfernt“ genannt sein */
 function implantatPlanen(auftrag, befund, tp) {
@@ -6329,10 +6859,9 @@ function implantatPlanen(auftrag, befund, tp) {
 		zaehne: stehen,
 		frage: `Laut Befund ${stehen.length > 1 ? "sind" : "ist"} ${liste(stehen)} noch vorhanden. ${stehen.length > 1 ? "Werden sie" : "Wird er"} vorher entfernt? Dann sagen Sie zum Beispiel: ${stehen[0]} wird entfernt.`
 	};
-	const keramik = auftrag.werkstoff && WERKSTOFFE$1[auftrag.werkstoff].art === "keramik";
 	for (const z of sitze) {
 		if (!(z in befund)) befund[z] = "f";
-		tp[z] = keramik ? "SKM" : "SK";
+		tp[z] = implantKrone(auftrag);
 	}
 }
 function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
@@ -6350,21 +6879,33 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 			hinweise.push(`${name}: kein Befund genannt – für die Totalprothese als zahnlos angenommen.`);
 			unbekannt.length = 0;
 		}
-		const pfeiler = auftrag.versorgung === "teleskopprothese" ? auftrag.pfeiler.filter((z) => kieferVon$1(z) === kiefer) : [];
-		if (auftrag.versorgung === "teleskopprothese" && !pfeiler.length) return {
+		const ankerVersorgung = auftrag.versorgung === "teleskopprothese" || auftrag.versorgung === "locator" || auftrag.versorgung === "steg";
+		const pfeiler = ankerVersorgung ? auftrag.pfeiler.filter((z) => kieferVon$1(z) === kiefer) : [];
+		if (ankerVersorgung && !pfeiler.length) return {
 			status: "rueckfrage",
 			grund: "pfeiler",
-			frage: "Auf welchen Zähnen sollen die Teleskope sitzen?"
+			frage: `Auf welchen Zähnen oder Implantaten soll ${auftrag.versorgung === "locator" ? "die Druckknöpfe oder Kugelköpfe" : auftrag.versorgung === "steg" ? "der Implantatsteg" : "die Teleskope"} sitzen?`
 		};
-		const ohnePfeiler = pfeiler.filter((z) => fehlt(befund, z));
-		if (ohnePfeiler.length) return {
-			status: "rueckfrage",
-			grund: "pfeiler_fehlt",
-			zaehne: ohnePfeiler,
-			frage: `Laut Befund ${ohnePfeiler.length > 1 ? "fehlen" : "fehlt"} ${liste(ohnePfeiler)}. Auf welchen Zähnen sollen die Teleskope stattdessen sitzen?`
-		};
+		if ((auftrag.versorgung === "locator" || auftrag.versorgung === "steg" || !!auftrag.aufImplantat) && pfeiler.length) {
+			const stehen = pfeiler.filter((z) => z in befund && !fehlt(befund, z));
+			if (stehen.length) return {
+				status: "rueckfrage",
+				grund: "zahn_vorhanden",
+				zaehne: stehen,
+				frage: `Laut Befund ${stehen.length > 1 ? "sind" : "ist"} ${liste(stehen)} noch vorhanden. ${stehen.length > 1 ? "Werden sie" : "Wird er"} vorher entfernt? Dann sagen Sie zum Beispiel: ${stehen[0]} wird entfernt.`
+			};
+			for (const z of pfeiler) if (!(z in befund)) befund[z] = "f";
+		} else {
+			const ohnePfeiler = pfeiler.filter((z) => fehlt(befund, z));
+			if (ohnePfeiler.length) return {
+				status: "rueckfrage",
+				grund: "pfeiler_fehlt",
+				zaehne: ohnePfeiler,
+				frage: `Laut Befund ${ohnePfeiler.length > 1 ? "fehlen" : "fehlt"} ${liste(ohnePfeiler)}. Auf welchen Zähnen sollen die Teleskope stattdessen sitzen?`
+			};
+		}
 		const offen = reihe.filter((z) => !istWeisheitszahn$1(z) && z in befund && !fehlt(befund, z) && !pfeiler.includes(z) && !auftrag.erhalten.includes(z));
-		if ((auftrag.coverDenture || auftrag.versorgung === "totalprothese") && offen.length) return {
+		if ((auftrag.coverDenture || auftrag.versorgung === "totalprothese" || auftrag.versorgung === "locator" || auftrag.versorgung === "steg") && offen.length) return {
 			status: "rueckfrage",
 			grund: "restzaehne",
 			zaehne: offen,
@@ -6374,14 +6915,39 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 		const achter = reihe.filter((z) => istWeisheitszahn$1(z) && !(z in befund));
 		for (const z of achter) befund[z] = "f";
 		if (achter.length) hinweise.push(`${liste(achter)} nicht genannt – als fehlend angenommen.`);
-		for (const z of pfeiler) tp[z] = imVerblendbereich(z) ? "TV" : "T";
+		const keramikTel = keramikAuftrag(auftrag);
+		const bogen = pfeiler.map((z) => reihe.indexOf(z)).filter((i) => i >= 0);
+		const von = bogen.length ? Math.min(...bogen) : -1;
+		const bis = bogen.length ? Math.max(...bogen) : -1;
+		for (const z of pfeiler) tp[z] = ankerKuerzel(auftrag, z, keramikTel);
 		for (const z of reihe) {
 			if (pfeiler.includes(z) || !fehlt(befund, z)) continue;
 			if (istWeisheitszahn$1(z) && !auftrag.mitAchtern) continue;
-			tp[z] = "E";
+			const i = reihe.indexOf(z);
+			tp[z] = auftrag.versorgung === "steg" && i > von && i < bis ? "SEO" : "E";
 		}
+		if (auftrag.versorgung === "locator") hinweise.push(`${auftrag.anker === "kugel" ? "Kugelkopfanker" : "Druckknopfanker"} angenommen: GOZ 5030 je Implantat und GOZ 5080 je Verbindungselement, Matrize und Patrize zusammen.`);
+		if (auftrag.versorgung === "steg") hinweise.push("Implantatsteg angenommen: je Spanne eine Stegverbindung, je Implantat eine Kappe zur Aufnahme des Stegs.");
+		if (keramikTel && auftrag.versorgung === "teleskopprothese") hinweise.push("Zirkon-Primärteleskop angenommen: Teleskopkrone plus Zuschlag für Keramik, das Sekundärteil bleibt das Teleskop.");
 		if (auftrag.coverDenture) hinweise.push("Cover-Denture: gaumen- bzw. schleimhautgetragene Deckprothese auf den Teleskopen. Metallbasis (Befund 4.5) nur bei Notwendigkeit ankreuzen.");
 	}
+}
+function ankerKuerzel(a, z, keramikTel) {
+	if (a.versorgung === "locator" || a.versorgung === "steg") return "SO";
+	if (a.sekundaer) return a.verblendung === "voll" ? "T2M" : a.verblendung === "keine" ? "T2" : imVerblendbereich(z) ? "T2V" : "T2";
+	if (keramikTel) return `${a.aufImplantat ? "STZ" : "TZ"}${a.verblendung === "voll" ? "V" : ""}`;
+	if (a.aufImplantat) return a.verblendung === "voll" ? "STM" : a.verblendung === "keine" ? "ST" : imVerblendbereich(z) ? "STV" : "ST";
+	if (a.verblendung === "voll") return "TM";
+	if (a.verblendung === "keine") return "T";
+	return imVerblendbereich(z) ? "TV" : "T";
+}
+function kronenKuerzel(a) {
+	const keramik = keramikAuftrag(a);
+	if (a.kronenart === "veneer") return "VE";
+	if (a.kronenart === "teilkrone" || a.kronenart === "tabletop") return keramik ? "PKM" : "PK";
+	if (a.kronenart === "galvano") return "K";
+	if (a.form === "vollanatomisch") return "ZA";
+	if (keramik) return "KM";
 }
 function kronenPlanen(auftrag, befund, tp) {
 	const kronen = auftrag.pfeiler;
@@ -6390,14 +6956,115 @@ function kronenPlanen(auftrag, befund, tp) {
 		grund: "pfeiler",
 		frage: "Welche Zähne sollen überkront werden?"
 	};
-	const ohneBefund = kronen.filter((z) => !KRONE_NOETIG.has(befund[z] ?? ""));
-	if (ohneBefund.length) return {
+	if (!!(auftrag.kronenart || auftrag.form === "vollanatomisch")) {
+		const weg = kronen.filter((z) => fehlt(befund, z));
+		if (weg.length) return {
+			status: "rueckfrage",
+			grund: "zahn_vorhanden",
+			zaehne: weg,
+			frage: `${liste(weg)} ${weg.length > 1 ? "fehlen" : "fehlt"}. Eine Krone, ein Tabletop oder ein Veneer braucht den Zahn.`
+		};
+		for (const z of kronen) if (!(z in befund)) befund[z] = "";
+	} else {
+		const ohneBefund = kronen.filter((z) => !KRONE_NOETIG.has(befund[z] ?? ""));
+		if (ohneBefund.length) return {
+			status: "rueckfrage",
+			grund: "krone_befund",
+			zaehne: ohneBefund,
+			frage: `Für ${liste(ohneBefund)} steht im Befund keine Kronenbedürftigkeit. Ist ${ohneBefund.length > 1 ? "sie" : "er"} überkronungsbedürftig oder ist die Krone erneuerungsbedürftig?`
+		};
+	}
+	for (const z of kronen) {
+		const k = kronenKuerzel(auftrag);
+		if (k) tp[z] = k;
+	}
+}
+function inlayPlanen(auftrag, befund, tp, hinweise) {
+	const zs = auftrag.pfeiler;
+	if (!zs.length) return {
 		status: "rueckfrage",
-		grund: "krone_befund",
-		zaehne: ohneBefund,
-		frage: `Für ${liste(ohneBefund)} steht im Befund keine Kronenbedürftigkeit. Ist ${ohneBefund.length > 1 ? "sie" : "er"} überkronungsbedürftig oder ist die Krone erneuerungsbedürftig?`
+		grund: "pfeiler",
+		frage: "Auf welchen Zähnen soll das Inlay oder Onlay sitzen?"
 	};
-	if (auftrag.werkstoff && WERKSTOFFE$1[auftrag.werkstoff].art === "keramik") for (const z of kronen) tp[z] = "KM";
+	const weg = zs.filter((z) => fehlt(befund, z));
+	if (weg.length) return {
+		status: "rueckfrage",
+		grund: "zahn_vorhanden",
+		zaehne: weg,
+		frage: `${liste(weg)} ${weg.length > 1 ? "fehlen" : "fehlt"}. Ein Inlay oder Onlay braucht den Zahn.`
+	};
+	const keramik = keramikAuftrag(auftrag);
+	const fl = auftrag.flaechen ?? 2;
+	for (const z of zs) {
+		if (!(z in befund)) befund[z] = "";
+		tp[z] = auftrag.kronenart === "onlay" ? keramik ? "ONK" : "ON" : `${keramik ? "C" : "I"}${fl}`;
+	}
+	if (auftrag.kronenart === "onlay") hinweise.push("Onlay mehrflächig nach GOZ 2170 angenommen. Deckt es Höcker, ist es eine Teilkrone nach GOZ 2220 – dann Teilkrone sagen.");
+	else if (!auftrag.flaechenGenannt) hinweise.push("Flächen nicht genannt, zweiflächig angenommen (GOZ 2160).");
+}
+/** Festsitzende Ganzkieferbrücke auf 4 oder 6 Implantaten. Ohne genannte Sitze gelten die üblichen Positionen. */
+function allonPlanen(auftrag, befund, tp, hinweise) {
+	const kiefer = auftrag.kiefer;
+	if (!kiefer) return {
+		status: "rueckfrage",
+		grund: "kiefer",
+		frage: "All-on-4 oder All-on-6 – für welchen Kiefer?"
+	};
+	const n = auftrag.allon ?? 4;
+	const name = kiefer === "OK" ? "Oberkiefer" : "Unterkiefer";
+	const reihe = REIHE[kiefer];
+	let sitze = auftrag.pfeiler.filter((z) => kieferVon$1(z) === kiefer);
+	if (!sitze.length) {
+		sitze = ALLON_SITZ[n][kiefer];
+		hinweise.push(`All-on-${n} ${name}: übliche Implantatpositionen ${sitze.join(", ")} angenommen.`);
+	}
+	if (reihe.filter((z) => !(z in befund) && !istWeisheitszahn$1(z)).length === reihe.filter((z) => !istWeisheitszahn$1(z)).length) {
+		for (const z of reihe) befund[z] = "f";
+		hinweise.push(`${name}: kein Befund genannt – für All-on-${n} als zahnlos angenommen.`);
+	}
+	const stehen = sitze.filter((z) => z in befund && !fehlt(befund, z));
+	if (stehen.length) return {
+		status: "rueckfrage",
+		grund: "zahn_vorhanden",
+		zaehne: stehen,
+		frage: `Laut Befund ${stehen.length > 1 ? "sind" : "ist"} ${liste(stehen)} noch vorhanden. ${stehen.length > 1 ? "Werden sie" : "Wird er"} vorher entfernt? Dann sagen Sie zum Beispiel: ${stehen[0]} wird entfernt.`
+	};
+	const idx = sitze.map((z) => reihe.indexOf(z)).filter((i) => i >= 0);
+	const von = Math.min(...idx);
+	const bis = Math.max(...idx);
+	const imBogen = reihe.slice(von, bis + 1);
+	const glieder = imBogen.filter((z) => !sitze.includes(z));
+	const stehenGlied = glieder.filter((z) => z in befund && !fehlt(befund, z));
+	if (stehenGlied.length) return {
+		status: "rueckfrage",
+		grund: "glied_vorhanden",
+		zaehne: stehenGlied,
+		frage: `Laut Befund ${stehenGlied.length > 1 ? "sind" : "ist"} ${liste(stehenGlied)} noch vorhanden. Soll ich ${stehenGlied.length > 1 ? "sie" : "ihn"} als zu entfernen planen? Dann sagen Sie zum Beispiel: ${stehenGlied[0]} wird entfernt.`
+	};
+	const aussen = reihe.filter((z) => !imBogen.includes(z) && !istWeisheitszahn$1(z) && z in befund && !fehlt(befund, z));
+	if (aussen.length) return {
+		status: "rueckfrage",
+		grund: "restzaehne",
+		zaehne: aussen,
+		frage: `Im ${name} ${aussen.length > 1 ? "stehen" : "steht"} noch ${liste(aussen)}. ${aussen.length > 1 ? "Sollen die" : "Soll er"} entfernt werden? Hinter dem letzten Implantat setze ich keine Freiendglieder.`
+	};
+	for (const z of sitze) {
+		if (!(z in befund)) befund[z] = "f";
+		tp[z] = implantKrone(auftrag);
+	}
+	for (const z of glieder) {
+		if (!(z in befund)) befund[z] = "f";
+		tp[z] = implantGlied(auftrag);
+	}
+	const distal = [];
+	for (const z of reihe) {
+		if (tp[z]) continue;
+		if (!(z in befund)) befund[z] = "f";
+		tp[z] = ")(";
+		if (!istWeisheitszahn$1(z)) distal.push(z);
+	}
+	if (distal.length) hinweise.push(`All-on-${n}: hinter dem letzten Implantat keine Freiendglieder – ${liste(distal)} werden nicht ersetzt.`);
+	hinweise.push(`All-on-${n} angenommen: festsitzende implantatgetragene Brücke, je Implantat ein Anker und je Spanne ein Brückenglied. Der Festzuschuss folgt dem Befund des zahnlosen Kiefers.`);
 }
 function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 	const plan = leererPlan();
@@ -6409,7 +7076,7 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 	for (const [z, t] of Object.entries(tp)) plan.zaehne[z].TP = t;
 	plan.abformung = auftrag.abformung ?? optionen.abformung ?? "abdruck";
 	if (!auftrag.abformung && !optionen.abformung) hinweise.push("Abformung nicht genannt – konventioneller Abdruck angenommen.");
-	if (teile.some((x) => x.versorgung === "teleskopprothese")) plan.abformungProthese = plan.abformung;
+	if (teile.some((x) => x.versorgung === "teleskopprothese" || x.versorgung === "locator" || x.versorgung === "steg")) plan.abformungProthese = plan.abformung;
 	const bonus = auftrag.bonus ?? optionen.bonus;
 	plan.zuschuss = {
 		bonus: bonus ?? "60",
@@ -6425,13 +7092,49 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 		...optionen.praxisPlz ? { praxisPlz: optionen.praxisPlz } : {}
 	};
 	const system = auftrag.implantatSystem ?? optionen.implantatSystem;
-	if (system) plan.implantat = {
+	const abutment = auftrag.abutment ?? (auftrag.retention === "verschraubt" ? "individuell" : auftrag.retention === "zementiert" ? "standard" : void 0);
+	if (system || abutment || auftrag.loeffel && plan.abformung !== "scan") plan.implantat = {
 		...plan.implantat,
-		system
+		...system ? { system } : {},
+		...abutment ? { abutment } : {},
+		...auftrag.loeffel && plan.abformung !== "scan" ? { abformung: auftrag.loeffel } : {}
 	};
+	const haltung = [auftrag.retention === "verschraubt" ? "verschraubte" : auftrag.retention === "zementiert" ? "zementierte" : "", auftrag.form === "vollanatomisch" && auftrag.versorgung !== "kronen" && auftrag.versorgung !== "bruecke" ? "vollanatomische" : ""].filter(Boolean).join(" ");
+	const ankerGesagt = auftrag.allon ? `All-on-${auftrag.allon}` : auftrag.anker === "kugel" ? "Kugelkopfanker" : auftrag.versorgung === "locator" ? /locator|novaloc|equator/i.test(auftrag.text) ? "Locator" : "Druckknopfanker" : auftrag.versorgung === "steg" ? "Implantatsteg" : auftrag.kronenart === "galvano" && auftrag.versorgung === "teleskopprothese" ? "Galvanoteleskope" : keramikAuftrag(auftrag) && auftrag.versorgung === "teleskopprothese" ? "Zirkon-Primärteleskope" : void 0;
+	const kronenArt = auftrag.kronenart === "inlay" ? keramikAuftrag(auftrag) ? "Keramikinlays" : "Inlays" : auftrag.kronenart === "onlay" ? "Onlays" : auftrag.kronenart === "tabletop" ? "Tabletops" : auftrag.kronenart === "teilkrone" ? "Teilkronen" : auftrag.kronenart === "veneer" ? "Veneers" : auftrag.kronenart === "galvano" && auftrag.versorgung !== "teleskopprothese" ? "Galvanokronen" : auftrag.form === "vollanatomisch" && (auftrag.versorgung === "kronen" || auftrag.versorgung === "bruecke") ? "vollanatomische Zirkonkronen" : void 0;
+	const abutmentWort = auftrag.abutment === "keramik" ? "mit Keramikabutment" : auftrag.abutment === "individuell" ? "mit individuellem Abutment" : auftrag.abutment === "standard" ? "mit konfektioniertem Abutment" : void 0;
+	plan.einstellungen = {
+		...plan.einstellungen,
+		...ankerGesagt ? { ankerGesagt } : {},
+		...haltung ? { haltung } : {},
+		...kronenArt ? { kronenArt } : {},
+		...abutmentWort ? { abutmentWort } : {}
+	};
+	if (auftrag.retention === "verschraubt") {
+		const welches = auftrag.abutment === "keramik" ? "Keramikabutment auf Ti-Base (BEB 6906)" : auftrag.abutment === "standard" ? "konfektioniertes Abutment (BEB 4421)" : "individuelles Abutment auf Ti-Base (BEB 2033)";
+		hinweise.push(`Verschraubt angenommen: Verschraubung und Schraubenkanal sind in der Kronenposition enthalten. ${welches}.`);
+	} else if (auftrag.retention === "zementiert") {
+		const welches = auftrag.abutment === "keramik" ? "Keramikabutment (BEB 6906)" : auftrag.abutment === "individuell" ? "individuelles Abutment (BEB 2033)" : "konfektioniertes Abutment (BEB 4421)";
+		hinweise.push(`Zementiert angenommen: das Zementieren ist in der Kronenposition enthalten. ${welches}.`);
+	} else if (auftrag.abutment) hinweise.push(auftrag.abutment === "keramik" ? "Keramikabutment angenommen (BEB 6906 auf Ti-Base)." : auftrag.abutment === "individuell" ? "Individuelles Abutment angenommen (BEB 2033 auf Ti-Base)." : "Konfektioniertes Abutment angenommen (BEB 4421).");
+	if (auftrag.kronenart === "galvano") hinweise.push("Galvano angenommen: die Laborliste hat keine eigene Galvanoposition. Gerechnet wird die metallische Krone oder das Teleskop in Hochgold.");
+	if (auftrag.kronenart === "tabletop") hinweise.push("Tabletop als Teilkrone angenommen (GOZ 2220).");
 	const regel = therapieAnwenden(regelversorgungErmitteln(plan.zaehne, regelOptionen(plan)), plan.zaehne, plan);
 	let fertig = regelUebernehmen(plan, regel);
 	hinweise.push(...regel.hinweise);
+	if (auftrag.verblendung) {
+		fertig = {
+			...fertig,
+			zaehne: zaehneFuerVerblendung(fertig, auftrag.verblendung, auftrag.werkstoff),
+			einstellungen: {
+				...fertig.einstellungen,
+				verblendung: auftrag.verblendung
+			}
+		};
+		const regel2 = therapieAnwenden(regelversorgungErmitteln(fertig.zaehne, regelOptionen(fertig)), fertig.zaehne, fertig);
+		fertig = regelUebernehmen(fertig, regel2);
+		for (const h of regel2.hinweise) if (!hinweise.includes(h)) hinweise.push(h);
+	}
 	const stufe = auftrag.privatStufe ?? optionen.privatStufe ?? 0;
 	if (stufe > 0 && fertig.einstellungen.labor === "praxis") {
 		const r = privatStufeAnwenden(fertig, stufe);
@@ -9801,6 +10504,38 @@ var EINHEITEN = {
 		art: "keramik",
 		einheit: "krone"
 	},
+	"BEB 2301": {
+		art: "metall",
+		einheit: "teilkrone"
+	},
+	"BEB 2302": {
+		art: "metall",
+		einheit: "teilkrone"
+	},
+	"BEB 2303": {
+		art: "metall",
+		einheit: "teilkrone"
+	},
+	"BEB 2304": {
+		art: "metall",
+		einheit: "teilkrone"
+	},
+	"BEB 2551": {
+		art: "keramik",
+		einheit: "teilkrone"
+	},
+	"BEB 2552": {
+		art: "keramik",
+		einheit: "teilkrone"
+	},
+	"BEB 2553": {
+		art: "keramik",
+		einheit: "teilkrone"
+	},
+	"BEB 2554": {
+		art: "keramik",
+		einheit: "teilkrone"
+	},
 	"BEB 2351": {
 		art: "keramik",
 		einheit: "glied"
@@ -10007,6 +10742,55 @@ var ZUORDNUNG = {
 			"2951"
 		]
 	},
+	ZA: {
+		goz: "2210",
+		anker: "5010",
+		beb: ["2251"]
+	},
+	ZAB: {
+		goz: "",
+		beb: ["2351"]
+	},
+	I1: {
+		goz: "2150",
+		beb: ["2301"]
+	},
+	I2: {
+		goz: "2160",
+		beb: ["2302"]
+	},
+	I3: {
+		goz: "2170",
+		beb: ["2303"]
+	},
+	I4: {
+		goz: "2170",
+		beb: ["2304"]
+	},
+	C1: {
+		goz: "2150",
+		beb: ["2551"]
+	},
+	C2: {
+		goz: "2160",
+		beb: ["2552"]
+	},
+	C3: {
+		goz: "2170",
+		beb: ["2553"]
+	},
+	C4: {
+		goz: "2170",
+		beb: ["2554"]
+	},
+	ON: {
+		goz: "2170",
+		beb: ["2304"]
+	},
+	ONK: {
+		goz: "2170",
+		beb: ["2554"]
+	},
 	VEK: {
 		goz: "2220",
 		beb: [
@@ -10019,13 +10803,25 @@ var ZUORDNUNG = {
 		goz: "5040",
 		beb: ["3001"]
 	},
+	TZ: {
+		goz: "5040",
+		beb: ["3001", "6905"]
+	},
+	TZV: {
+		goz: "5040",
+		beb: [
+			"3001",
+			"6905",
+			"2602"
+		]
+	},
 	TV: {
 		goz: "5040",
 		beb: ["3001", "2611"]
 	},
 	TM: {
 		goz: "5040",
-		beb: ["3001", "2612"]
+		beb: ["3001", "2602"]
 	},
 	T2: {
 		goz: "5100",
@@ -10037,7 +10833,12 @@ var ZUORDNUNG = {
 	},
 	T2M: {
 		goz: "5100",
-		beb: ["3001", "2612"]
+		beb: ["3001", "2602"]
+	},
+	ZAS: {
+		goz: "2200",
+		anker: "5000",
+		beb: ["2251"]
 	},
 	SK: {
 		goz: "2200",
@@ -10077,6 +10878,18 @@ var ZUORDNUNG = {
 			"3023"
 		]
 	},
+	STZ: {
+		goz: "5040",
+		beb: ["3001", "6905"]
+	},
+	STZV: {
+		goz: "5040",
+		beb: [
+			"3001",
+			"6905",
+			"2602"
+		]
+	},
 	ST: {
 		goz: "5040",
 		beb: ["3001"]
@@ -10087,7 +10900,7 @@ var ZUORDNUNG = {
 	},
 	STM: {
 		goz: "5040",
-		beb: ["3001", "2612"]
+		beb: ["3001", "2602"]
 	},
 	A: {
 		goz: "",
@@ -10126,15 +10939,21 @@ var ZUORDNUNG = {
 		beb: ["2351", "2612"]
 	}
 };
-var GLIED = /^(S?B|AB)[VM]?$/;
+var GLIED = /^(S?B|AB)[VM]?$|^ZAB$/;
 var PROTHESENZAHN = /^(S?EO?|SO)$/;
 var STEGZAHN = /^S?EO$/;
 var GESCHIEBE = /^S?K[VM]?O$/;
-var PFEILERKRONE = /^(S?K|PK|S?T)/;
-var IMPLANTAT = /^S(K|T|O)/;
-var FESTSITZEND = /^(S?K|PK|VE|S?B|AB|A$|R$)/;
+var PFEILERKRONE = /^(S?K|PK|ZA$|ZAS$|S?T)/;
+var IMPLANTAT = /^S(K|T|O)|^ZAS$/;
+var FESTSITZEND = /^(S?K|PK|VE|ZA$|ZAS$|ZAB$|I\d|C\d|ONK?|S?B|AB|A$|R$)/;
 var VENEER = /^VEK?$/;
 var spanne = (z) => z.length === 1 ? z[0] : `${z[0]}-${z[z.length - 1]}`;
+function bebFuer(k, b, z) {
+	if (!istFrontzahn(z)) return b;
+	if ((k === "ZA" || k === "ZAS") && b === "2251") return "2252";
+	if (k === "ZAB" && b === "2351") return "2352";
+	return b;
+}
 /** Kieferhälften und Frontzahnbereiche für die optisch-elektronische Abformung (GOZ 0065) */
 function scanBereich(zahn) {
 	if (istFrontzahn(zahn)) return kieferVon(zahn) === "OK" ? "OK-Front" : "UK-Front";
@@ -10283,7 +11102,7 @@ function planen(zaehne, abformung, implantat = STANDARD_IMPLANTAT, prothese = ""
 		else if (b.anker.length === 1) hinweise.push(`Brücke ${spanne(b.zaehne)}: Freiendbrücke mit nur einem Anker (${b.anker[0]}) – bitte prüfen.`);
 		for (const z of sitz) {
 			const k = P(z);
-			if (!k) continue;
+			if (!k || k === ")(") continue;
 			if (FESTSITZEND.test(k) && !GLIED.test(k)) festsitzendKiefer.add(kiefer);
 			if (abformung === "scan" && (FESTSITZEND.test(k) && !GLIED.test(k) || /^S?T/.test(k))) {
 				scanBereiche.add(scanBereich(z));
@@ -10303,7 +11122,8 @@ function planen(zaehne, abformung, implantat = STANDARD_IMPLANTAT, prothese = ""
 			if (!zuo) continue;
 			const goz = (brueckenAnker.has(z) || GESCHIEBE.test(k) || stegAnker.has(z) || prothesenZaehne.length > 0 && /^S?T/.test(k)) && zuo.anker ? zuo.anker : zuo.goz;
 			if (goz) pos("GOZ", goz, z);
-			for (const b of zuo.beb) pos("BEB", b, z);
+			for (const b of zuo.beb) pos("BEB", bebFuer(k, b, z), z);
+			if (/^(TM|STM|T2M|TZV|STZV)$/.test(k) && !hinweise.some((h) => h.startsWith("Vollverblendete Teleskope"))) hinweise.push("Vollverblendete Teleskope: Verblendung aus Kunststoff (Komposite, BEB 2602). Keramik platzt beim Aufsetzen durch die Spannung ab.");
 			if (VENEER.test(k)) pos("GOZ", "2197", z);
 			if (GESCHIEBE.test(k)) pos("GOZ", "5080", z);
 			if (PFEILERKRONE.test(k)) pos("GOZ", brueckenAnker.has(z) ? "5120" : "2270", z);
@@ -10321,9 +11141,13 @@ function planen(zaehne, abformung, implantat = STANDARD_IMPLANTAT, prothese = ""
 			pos("BEB", "3031", zahn);
 			pos("BEB", "3032", zahn, s.zaehne.length);
 		}
-		for (const x of stegAnker) if (P(x) === "SO") pos("BEB", "2035", x);
+		for (const x of stegAnker) if (P(x) === "SO") {
+			pos("GOZ", "5030", x);
+			pos("BEB", "2035", x);
+		}
 		const einzelanker = sitz.filter((z) => P(z) === "SO" && !stegAnker.has(z));
 		for (const z of einzelanker) {
+			pos("GOZ", "5030", z);
 			pos("GOZ", "5080", z);
 			pos("BEB", "3027", z);
 		}
@@ -11269,6 +12093,7 @@ function kalkulieren(plan, e) {
 		summeHonorar,
 		summeLaborNetto,
 		mwst,
+		mwstSatz: e.mwst,
 		summeMaterial,
 		gesamt: runden(summeHonorar + summeLaborNetto + mwst + summeMaterial),
 		hinweise,
@@ -11279,6 +12104,7 @@ function kalkulieren(plan, e) {
 //#region src/stammdaten.ts
 var leererPatient = () => ({
 	anrede: "",
+	titel: "",
 	vorname: "",
 	name: "",
 	geburtsdatum: "",
@@ -11289,7 +12115,8 @@ var leererPatient = () => ({
 	kassenNr: "",
 	versichertenNr: "",
 	status: "",
-	kassenart: "primaer"
+	kassenart: "primaer",
+	email: ""
 });
 var standardPraxis = () => ({
 	name: "Zahnarztpraxis",
@@ -11344,8 +12171,8 @@ function neuerPlan(nummer) {
 * HKP-Engine (gleiche Kürzel), gerechnet wird mit der Engine dieses Planers. `npm run build:engine` baut
 * daraus MAS-2/backend/src/vendor/privat-ze-engine.mjs.
 */
-var ENGINE_STAND = "2026-10-15 21:02";
-var AUS_DEM_AUFTRAG = /angenommen|cover-denture|passt nicht/i;
+var ENGINE_STAND = "2026-11-05 08:37";
+var AUS_DEM_AUFTRAG = /angenommen|cover-denture|passt nicht|all-on|druckknopf|kugelkopf|implantatsteg|galvano|tabletop|inlay|onlay|abutment|verschraub|zementier/i;
 var NUR_KASSE = /bonus|festzuschuss|härtefall|kasse|bema|richtlinie|hkp/i;
 var sortiert = (zs) => [...zs].sort((a, b) => ALLE_ZAEHNE$1.indexOf(a) - ALLE_ZAEHNE$1.indexOf(b));
 /** Zahnschema des HKP-Entwurfs; ohne eigene Planung gilt dort die Regelversorgung (Zeile R) */
@@ -11368,11 +12195,17 @@ function zaehneAus(hkp) {
 function zusammenfassen(plan, k) {
 	const mit = (re) => sortiert(Object.entries(plan.zaehne).filter(([, z]) => re.test(z.TP)).map(([n]) => n));
 	return {
-		kronen: mit(/^(K|KV|KH|KVH|KM|KMH|PK|PKM|PKV)$/),
-		glieder: mit(/^(B|BV|BM)$/),
+		kronen: mit(/^(K|KV|KH|KVH|KM|KMH|PK|PKM|PKV|ZA|VE|VEK|I[1-4]|C[1-4]|ONK?)$/),
+		glieder: mit(/^(B|BV|BM|SB|SBV|SBM|ZAB)$/),
 		ersetzt: mit(/^(E|B|BV|BM)$/),
-		teleskope: mit(/^T2?[VM]?$/),
-		implantatkronen: mit(/^SK/),
+		teleskope: mit(/^S?T(?:2|Z)?[VM]?$/),
+		implantatkronen: mit(/^(SK|ZAS)/),
+		verbindung: mit(/^SO$/),
+		steg: mit(/^SEO$/),
+		...plan.ankerGesagt ? { ankerGesagt: plan.ankerGesagt } : {},
+		...plan.haltung ? { haltung: plan.haltung } : {},
+		...plan.kronenArt ? { kronenArt: plan.kronenArt } : {},
+		...plan.abutmentWort ? { abutmentWort: plan.abutmentWort } : {},
 		honorar: k.summeHonorar,
 		labor: Math.round((k.summeLaborNetto + k.mwst) * 100) / 100,
 		material: k.summeMaterial,
@@ -11395,10 +12228,16 @@ function privatZeEntwurf(auftragText, befund, optionen = {}) {
 		abformungProthese: r.plan.abformungProthese,
 		werkstoffe: { ...r.plan.werkstoffe }
 	};
-	if (r.plan.implantat?.system) plan.implantat = {
+	if (r.plan.implantat) plan.implantat = {
 		...plan.implantat,
-		system: r.plan.implantat.system
+		...r.plan.implantat.system ? { system: r.plan.implantat.system } : {},
+		...r.plan.implantat.abutment ? { abutment: r.plan.implantat.abutment } : {},
+		...r.plan.implantat.abformung === "offen" || r.plan.implantat.abformung === "geschlossen" ? { loeffel: r.plan.implantat.abformung } : {}
 	};
+	if (r.plan.einstellungen.ankerGesagt) plan.ankerGesagt = r.plan.einstellungen.ankerGesagt;
+	if (r.plan.einstellungen.haltung) plan.haltung = r.plan.einstellungen.haltung;
+	if (r.plan.einstellungen.kronenArt) plan.kronenArt = r.plan.einstellungen.kronenArt;
+	if (r.plan.einstellungen.abutmentWort) plan.abutmentWort = r.plan.einstellungen.abutmentWort;
 	const kalkulation = kalkulieren(plan, {
 		...STANDARD_EINSTELLUNGEN,
 		...optionen.einstellungen

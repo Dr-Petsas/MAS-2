@@ -13,7 +13,8 @@ import { fromTeethRaw } from "../pvs/befundMap.js";
 import { getPatientAppointments } from "../clara/daySchedule.js";
 import { loadBooking } from "../clara/booking.js";
 import { claraZugangFuer } from "./planrClara.js";
-import { befundSatz, zahnBefundSatz } from "./vorlesen.js";
+import { zahnBefundSatz } from "./vorlesen.js";
+import { befundMerken } from "./mitdenken.js";
 
 export const BEFUND_MAX_ALTER_TAGE = 183;
 
@@ -357,7 +358,7 @@ export async function befundErmitteln(clientId, patient, {
     if (p?.ok || l) return fragen("befund_quelle", quelleFrage(patient, { p, l, gesagt: hat(gesagt) }), p);
     if (hat(gesagt)) return ausGesagt({ ...abgeleitet, ...gesagt }, p);
     if (hat(abgeleitet)) return { ok: true, befund: abgeleitet, quelleWahl: "", ...stand, gesagt: {}, hinweise, quelle: { art: "gesprochen", datum: jetzt } };
-    // Reine Totalprothese: die Engine plant zahnlos und vermerkt die Annahme.
+    // Reine Totalprothese oder All-on-X: die Engine plant zahnlos und vermerkt die Annahme.
     if (ohneBefundOk) return { ok: true, befund: {}, quelleWahl: "", ...stand, gesagt: {}, hinweise, quelle: { art: "auftrag", datum: jetzt } };
     return fragen("befund_fehlt", neuFrage(jaws, p?.pvs, pvsFehler(p) || `Für ${patient.label} habe ich keinen gespeicherten Befund. `), p);
   }
@@ -416,10 +417,10 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
     }
     const a = await aendern(clientId, p.nummer, zaehne, wer);
     if (!a.ok) return { ok: true, message: `Den Befund konnte ich nicht ändern: ${a.meldung}` };
-    return {
-      ok: true, rueckfrage: "befund_uebernehmen", geaendert: zaehne,
-      message: `Für ${wen} eingetragen: ${zahnBefundSatz(zaehne)}. Das gilt jetzt auch für den nächsten Plan. Soll ich den Befund so in ${p.pvs} übernehmen?`,
-    };
+    return mitBefund({
+      ok: true, rueckfrage: "befund_anzeige", geaendert: zaehne,
+      message: `Auf dem Handy steht jetzt für ${wen}: ${zahnBefundSatz(zaehne)}. Stimmt der Befund so?`,
+    }, { ...p.befund, ...p.offen, ...zaehne });
   }
 
   if (uebernehmen) {
@@ -437,11 +438,16 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
   }
 
   const datum = p.datum ? ` vom ${datumDe(p.datum)}` : "";
-  const offen = hat(p.offen) ? ` Noch nicht in ${p.pvs} übernommen: ${zahnBefundSatz(p.offen)}. Soll ich das in ${p.pvs} übernehmen?` : "";
-  return {
-    ok: true, ...(offen ? { rueckfrage: "befund_uebernehmen" } : {}),
-    message: `Befund von ${wen} aus ${p.pvs}${datum}: ${befundSatz({ ...p.befund, ...p.offen }, ["OK", "UK"])}${offen}`,
-  };
+  return mitBefund({
+    ok: true, rueckfrage: "befund_anzeige",
+    message: `Der Befund von ${wen} aus ${p.pvs}${datum} steht auf dem Handy. Stimmt er so?`,
+  }, { ...p.befund, ...p.offen });
+}
+
+/** Gesprochener Satz bleibt, der Befundstand geht nur ans Modell (stimme daten: der Mund formuliert nicht um). */
+function mitBefund(antwort, stand) {
+  const merken = befundMerken(stand);
+  return { ...antwort, stimme: "daten", ...(merken ? { merken } : {}) };
 }
 
 /** Wie befundWerkzeug, dazu die Nummer im Praxisprogramm (Flip-Karte, Vorgang) – Clara bekommt davon nur message */

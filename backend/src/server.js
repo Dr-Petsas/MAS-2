@@ -56,6 +56,7 @@ import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_s
 import { fuerAlleMandanten } from "./tenants.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
 import { planrClaraSperre } from "./hkp/planrClara.js";
+import { praxisKatalogNeu } from "./hkp/planrKatalog.js";
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -463,6 +464,17 @@ server.listen(PORT, () => {
       ]);
       log.info("patient search warm", { clientId: cid, names: c?.count || 0, contextIds: ids.length });
     });
+  }
+  // Praxis-Wissen je Mandant: Analogpositionen, Eigenlabor, BEL und Leistungsketten aus dem PVS der
+  // Praxis (über PlanR) ohne Preise in Claras Wissensbasis. Gleicher Katalog = nur ein Hash-Vergleich.
+  // Nach einem PVS-Abgleich meldet PlanR sofort (POST /planr/praxis-wissen). Notaus: MAS_PRAXIS_WISSEN=0.
+  if (DEFAULT_CLIENT_ID && process.env.MAS_PRAXIS_WISSEN !== "0") {
+    const praxisWissenLauf = () => fuerAlleMandanten("praxis_wissen", async (cid) => {
+      const r = await praxisKatalogNeu(cid);
+      if (r?.neu) log.info("praxis_wissen neu", { clientId: cid, zeilen: r.zeilen, eingebettet: r.eingebettet });
+    });
+    setTimeout(praxisWissenLauf, 30_000);
+    setInterval(praxisWissenLauf, 30 * 60_000);
   }
   // Lisa call finalizer: fetch transcripts of finished outbound calls and
   // write the outcome to the shared brain. Cheap no-op when nothing is calling.

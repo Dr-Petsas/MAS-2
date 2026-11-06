@@ -15,5 +15,7 @@ export function planrAusBilling(billing) {
     erlaubt: mas || planr,
     // Volle Clara mit MAS, sonst nur die HKP-Clara mit gebuchter Sprachsteuerung
     clara: mas ? "voll" : planr && abo?.sprachsteuerung === true ? "planr" : "aus",
+    // Prosa in die Karteikarte: bei Pickadoc enthalten, sonst das PlanR-Upgrade (subscriptions.planr.doku)
+    doku: mas || (planr && abo?.doku === true),
   };
 }

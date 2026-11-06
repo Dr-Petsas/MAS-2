@@ -10,13 +10,18 @@ Object.assign(PVS, { 18: "f", 16: "k", 36: "sk" });
 const lesen = (offen = {}, geschrieben = "") => async () => ({ ok: true, pvs: "Dampsoft", datum: "2026-10-12", befund: { ...PVS }, nummer: "4711", offen, geschrieben });
 const keiner = async () => null;
 
-test("Werkzeug liest den aktuellen Befund samt offener Aenderungen vor", async () => {
+test("Werkzeug zeigt den Befund auf dem Handy, ohne ihn doppelt vorzulesen", async () => {
   const r = await befundWerkzeug("x", PATIENT, {}, { pvs: lesen({ 26: "f" }) });
-  assert.match(r.message, /Befund von Anna Test aus Dampsoft vom 12\.10\.2026/);
-  assert.match(r.message, /Noch nicht in Dampsoft übernommen: es fehlt 26\. Soll ich das in Dampsoft übernehmen\?/);
-  assert.equal(r.rueckfrage, "befund_uebernehmen");
+  assert.match(r.message, /Befund von Anna Test aus Dampsoft vom 12\.10\.2026 steht auf dem Handy/);
+  assert.equal(r.message.match(/Oberkiefer/g), null);
+  assert.doesNotMatch(r.message, /übernehmen/);
+  assert.equal(r.rueckfrage, "befund_anzeige");
+  assert.equal(r.stimme, "daten");
+  assert.match(r.merken, /nicht sprechen/);
+  assert.match(r.merken, /Implantatkrone: 36/);
+  assert.doesNotMatch(r.message, /nicht sprechen/);
   const ohne = await befundWerkzeug("x", PATIENT, {}, { pvs: lesen() });
-  assert.equal(ohne.rueckfrage, undefined);
+  assert.equal(ohne.rueckfrage, "befund_anzeige");
 });
 
 test("Aenderung geht als offen an PlanR, Eva fragt vor dem Schreiben", async () => {
@@ -26,8 +31,10 @@ test("Aenderung geht als offen an PlanR, Eva fragt vor dem Schreiben", async () 
     schreiben: async () => assert.fail("ohne Ja darf nichts ins Praxisprogramm"),
   });
   assert.deepEqual(gesendet, [["x", "4711", { 26: "f", 47: "i" }, "Eva"]]);
-  assert.equal(r.rueckfrage, "befund_uebernehmen");
-  assert.match(r.message, /Soll ich den Befund so in Dampsoft übernehmen\?/);
+  assert.equal(r.rueckfrage, "befund_anzeige");
+  assert.match(r.message, /Auf dem Handy steht jetzt/);
+  assert.match(r.message, /Stimmt der Befund so\?/);
+  assert.doesNotMatch(r.message, /übernehmen/);
   const leer = await befundWerkzeug("x", PATIENT, { aenderung: "ändere den Befund" }, { pvs: lesen() });
   assert.equal(leer.rueckfrage, "befund_aenderung");
 });

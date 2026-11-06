@@ -3629,3 +3629,40 @@ Cursor (`portal_create_studio`), 10 Pakete (0 Sicherung ... 9 Release-Gate).
 - Credit-Vertrag: ClonR-Formel bleibt (0,10 EUR/Credit, 5 Credits/4s);
   Freemium 1 Freivideo + 50 einmalig, Basic 150 erneuerbar, Premium 350.
 - DoD je Paket: Gate gruen (jest/tsc/build), committet, dokumentiert.
+
+### W-COACH - Clara als Abrechnungsspezialistin (freigegeben 06.11.2026, NACH W-PLANR-FREI)
+
+Auftrag Chef (06.11.2026, 00:18): Clara plant nicht nur, sie wird
+Abrechnungscoach. Auf "Wie rechne ich XY ab?" baut sie eine KOMPLETTE
+Rechnung mit allen Details und zeigt sie auf dem Flipscreen und in PlanR.
+Referenzfall (woertlich): "Implantatversorgung OK mit 6 Implantaten regio
+2, 4, 6 auf beiden Quadranten, externer Sinuslift rechts, interner Sinuslift
+beim 4er und 6er links, inklusive der spaeteren All-on-6-Prothetik" ->
+Privatrechnung Implantation (GOZ/GOAe, Material, Labor) UND HKP bzw.
+Privatplan Prothetik, als EIN Fall.
+
+Reihenfolge (Chef): erst das laufende Paket W-PLANR-FREI fertig (schlanke
+Werkzeuge befund-lesen/-schreiben, plan-rechnen, plan-ablegen; Rollen-Prompt
+Patient > Befund > Aenderung > Planung > Rechnen; ein Schalter fuer die alten
+Wortregeln). Der Coach setzt direkt auf diese Werkzeuge auf.
+
+Entscheidungen Chef (06.11.):
+- Patient: BEIDES. Ohne Patient = Musterrechnung (Lernen/Beratung, Befund aus
+  dem Gesagten, nichts geschrieben); mit Patient = echter Befund (01) und
+  Ablage in PlanR.
+- PlanR: jeder Teilplan als Entwurf im passenden Planer (Implantologie,
+  HKP bzw. Privat-ZE), die Teilplaene als EIN Fall verknuepft.
+- Kasse/Privat bei der Prothetik: ist der Status unbekannt, fragt Clara.
+  Kasse -> HKP mit Festzuschuss, privat -> Privatplan.
+
+Kern: Rueckfragen stellt das Modell frei (Zahnzuordnung "regio 2, 4, 6" ->
+12, 14, 16, 22, 24, 26; Sinuslift je Seite; Sofort/Spaet; Material;
+Kasse/Privat; Zeitpunkt der Prothetik). Die Antworten landen als feste
+Felder in den Engines (impl, hkp, privat-kv). Keine Wortregeln. Positionen
+und Begruendungen stammen aus der Wissensbasis (GOZ/BEMA/BEL/BEB plus
+Praxispositionen inkl. Analog- und Eigenlabor). Betraege nur auf Flip und
+in PlanR, nie gesprochen (Eiserne Regel 6).
+
+DoD: Referenzfall am echten Modell von der Frage bis zur Darstellung
+(Flip + PlanR, beide Teilplaene, ein Fall), Musterrechnung ohne Patient,
+Routentests gruen, Gate gruen, Chef-Abnahme.

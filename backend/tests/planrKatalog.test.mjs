@@ -11,7 +11,7 @@ test("praxisKatalog: holt mit Schluessel, haelt den Stand, faellt bei Ausfall au
   let antwort = async () => ({ ok: true, status: 200, json: async () => ({ ok: true, katalog: KATALOG }) });
   _setHolen(async (url, opt) => { gefragt.push({ url, key: opt.headers["X-PlanR-Key"] }); return antwort(); });
 
-  assert.deepEqual(await praxisKatalog("p1"), KATALOG);
+  assert.deepEqual(await praxisKatalog("p1"), { ...KATALOG, clientId: "p1" });
   assert.match(gefragt[0].url, /\/api\/intern\/praxiskatalog\?clientId=p1$/);
   assert.equal(gefragt[0].key, "k");
   await praxisKatalog("p1");

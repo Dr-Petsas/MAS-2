@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\Implantologie\Privat-Impl (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\Implantologie\Privat-Impl && npm run build:engine   (sha256 bf76f0ba382e)
+// Neu bauen: cd F:\PlanR\Implantologie\Privat-Impl && npm run build:engine   (sha256 c470eff569a0)
 //#region src/befund01.ts
 var OBERKIEFER$1 = [
 	"18",
@@ -76,6 +76,7 @@ var BEFUND_KUERZEL = {
 	")(": "Lückenschluss"
 };
 `${typeof location === "undefined" ? "http://127.0.0.1:5189" : location.pathname.startsWith("/planer/") ? location.origin : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com" : `http://${location.hostname}:5189`}`;
+Promise.resolve();
 //#endregion
 //#region src/data/implantatkoerper.ts
 var p = (koerper, deckschraube, gingivaformer) => ({
@@ -5406,6 +5407,7 @@ function kalkulieren(plan, einst) {
 		summeMaterialNetto,
 		summeLaborNetto,
 		mwst,
+		mwstSatz: einst.mwst,
 		gesamt: runden(summeGoz + summeGoae + summeMaterialNetto + summeLaborNetto + mwst),
 		hinweise,
 		nichtAngesetzt
@@ -5415,6 +5417,7 @@ function kalkulieren(plan, einst) {
 //#region src/stammdaten.ts
 var leererPatient = () => ({
 	anrede: "",
+	titel: "",
 	vorname: "",
 	name: "",
 	geburtsdatum: "",
@@ -5425,7 +5428,8 @@ var leererPatient = () => ({
 	kassenNr: "",
 	versichertenNr: "",
 	status: "",
-	kassenart: "primaer"
+	kassenart: "primaer",
+	email: ""
 });
 var standardPraxis = () => ({
 	name: "Zahnarztpraxis",
@@ -5499,7 +5503,7 @@ function neuerPlan(nummer) {
 * rechnet mit der Engine dieses Planers. `npm run build:engine` baut daraus MAS-2/backend/src/vendor/impl-engine.mjs.
 * Die Versorgung auf den Implantaten (Krone, Brücke, Prothese) plant der Planer Zahnersatz privat.
 */
-var ENGINE_STAND = "2026-10-15 22:48";
+var ENGINE_STAND = "2026-11-06 03:11";
 var GUELTIG = new Set(ALLE_ZAEHNE);
 /** 01: dort steht schon ein Implantat */
 var STEHT_IMPLANTAT = /* @__PURE__ */ new Set([
@@ -5550,14 +5554,36 @@ function zaehneFinden(t) {
 	}
 	return out;
 }
+var SINUS_ADJ = /extern\w*|intern\w*|lateral\w*|geschlossen\w*|krestal\w*|crestal\w*|osteotom\w*|summers\w*|fenster\w*/gi;
+var sinusArtWort = (wort) => /^intern|^geschlossen|^krestal|^crestal|^osteotom|^summers/.test(wort) ? "intern" : /^extern|^lateral|^fenster/.test(wort) ? "extern" : null;
+/** "externer Sinuslift rechts, interner links": je Kieferhälfte, nicht für beide Seiten dieselbe Art. */
+function sinusJeSeite(k) {
+	if (!/rechts|links/.test(k) || !/sinus|kieferh(?:ö|oe)hle|extern|intern|lateral|fenster/.test(k)) return null;
+	const bei = (seite) => {
+		const i = k.indexOf(seite);
+		if (i < 0) return null;
+		const davor = [...k.slice(Math.max(0, i - 80), i).matchAll(SINUS_ADJ)].at(-1)?.[0] ?? "";
+		const danach = k.slice(i, i + 48).match(SINUS_ADJ)?.[0] ?? "";
+		return sinusArtWort(davor) ?? sinusArtWort(danach);
+	};
+	const rechts = bei("rechts");
+	const links = bei("links");
+	if (!rechts && !links) return null;
+	const block = (art) => art === "extern" ? { sinusExtern: true } : art === "intern" ? { sinusIntern: true } : {};
+	return {
+		"OK-R": block(rechts),
+		"OK-L": block(links)
+	};
+}
 /** Erkennt Implantat-Positionen, Zeitpunkt, chirurgische Zusatzmaßnahmen und globale Angaben. */
 function implAuftragVerstehen(roh) {
 	const t = roh.replace(/\s+/g, " ").replace(/\b(\d\d),(?=\d\d\b)/g, "$1, ");
 	const k = t.toLowerCase();
 	const o = {};
 	const sinus = /sinus|kieferh(?:ö|oe)hle/.test(k);
+	const sinusJe = sinusJeSeite(k);
 	let sinusOffen = false;
-	if (sinus) {
+	if (!sinusJe && sinus) {
 		if (/intern|geschlossen|osteotom|krestal|crestal|summers/.test(k)) o.sinusIntern = true;
 		else if (/extern|lateral|fenster/.test(k)) o.sinusExtern = true;
 		else sinusOffen = true;
@@ -5572,15 +5598,17 @@ function implAuftragVerstehen(roh) {
 	else if (/allogen|spender|maxgraft/.test(k)) o.material = "allogen";
 	else if (/xenogen|bio-? ?oss|rind|bovin|cerabone/.test(k)) o.material = "xenogen";
 	else if (/synthetisch|alloplast|\btcp\b|hydroxyl/.test(k)) o.material = "synthetisch";
-	const materialAngenommen = !!(o.augmentation || o.sinusIntern || o.sinusExtern || sinusOffen || o.boneSplitting) && !o.material && !o.blockEntnahme && !o.ringEntnahme;
-	if (materialAngenommen) o.material = "xenogen";
+	const jeExtern = !!sinusJe && Object.values(sinusJe).some((x) => x?.sinusExtern);
+	const jeIntern = !!sinusJe && Object.values(sinusJe).some((x) => x?.sinusIntern);
+	const materialAngenommen = !!(o.augmentation || o.sinusIntern || o.sinusExtern || jeExtern || jeIntern || sinusOffen || o.boneSplitting) && !o.material && !o.blockEntnahme && !o.ringEntnahme;
+	if (materialAngenommen && !sinusJe) o.material = "xenogen";
 	if (/ohne membran|keine membran/.test(k)) o.membran = "keine";
 	else if (/titan/.test(k)) o.membran = "titan";
 	else if (/nicht[\s-]?resorb|ptfe/.test(k)) o.membran = "nicht-resorbierbar";
 	else if (/vlies|kollagenvlies/.test(k)) o.membran = "vlies";
 	else if (/membran/.test(k)) o.membran = "resorbierbar";
-	const membranAngenommen = !o.membran && !!(o.augmentation || o.sinusExtern || sinusOffen);
-	if (membranAngenommen) o.membran = "resorbierbar";
+	const membranAngenommen = !o.membran && !!(o.augmentation || o.sinusExtern || jeExtern || sinusOffen);
+	if (membranAngenommen && !sinusJe) o.membran = "resorbierbar";
 	if (/bindegewebe|\bbgt\b|\bctg\b/.test(k)) o.weichgewebe = "btt";
 	else if (/schleimhauttransplant|\bfst\b|freies schleimhaut/.test(k)) o.weichgewebe = "fst";
 	else if (/vestibulumplastik/.test(k)) o.weichgewebe = "vestibulumplastik";
@@ -5608,6 +5636,7 @@ function implAuftragVerstehen(roh) {
 		spaet: SPAET.test(t),
 		regionen: o,
 		sinusOffen,
+		sinusJe,
 		materialAngenommen,
 		membranAngenommen,
 		global: g,
@@ -5719,10 +5748,19 @@ function implEntwurf(auftragText, befund = {}, optionen = {}) {
 	const planRegionen = {};
 	for (const r of regionen) {
 		const ro = { ...rest };
-		if (IST_OK_SEITE(r)) Object.assign(ro, sinusIntern ? { sinusIntern } : {}, sinusExtern ? { sinusExtern } : {});
+		if (a.sinusJe && IST_OK_SEITE(r)) Object.assign(ro, a.sinusJe[r] ?? {});
+		else if (IST_OK_SEITE(r)) Object.assign(ro, sinusIntern ? { sinusIntern } : {}, sinusExtern ? { sinusExtern } : {});
+		if (a.sinusJe) {
+			if ((ro.sinusIntern || ro.sinusExtern || ro.augmentation) && a.materialAngenommen && !ro.material) ro.material = "xenogen";
+			if ((ro.augmentation || ro.sinusExtern) && a.membranAngenommen && !ro.membran) ro.membran = "resorbierbar";
+		}
 		planRegionen[r] = ro;
 	}
-	if ((sinusIntern || sinusExtern || a.sinusOffen) && !sinusRegionen.length) hinweise.push("Ein Sinuslift geht nur im Oberkiefer-Seitenzahnbereich, den habe ich nicht angesetzt.");
+	const rechts = a.sinusJe?.["OK-R"];
+	const links = a.sinusJe?.["OK-L"];
+	if (rechts?.sinusExtern && links?.sinusIntern) hinweise.push("Den externen Sinuslift habe ich rechts angesetzt, den internen links.");
+	if (rechts?.sinusIntern && links?.sinusExtern) hinweise.push("Den internen Sinuslift habe ich rechts angesetzt, den externen links.");
+	if ((sinusIntern || sinusExtern || a.sinusOffen || rechts?.sinusExtern || rechts?.sinusIntern || links?.sinusExtern || links?.sinusIntern) && !sinusRegionen.length) hinweise.push("Ein Sinuslift geht nur im Oberkiefer-Seitenzahnbereich, den habe ich nicht angesetzt.");
 	const plan = {
 		...basis,
 		nummer: "",

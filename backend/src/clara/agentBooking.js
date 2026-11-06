@@ -239,7 +239,7 @@ export async function searchPatient(clientId, name, opts = {}) {
     } catch { /* Beobachter darf die Suche nie kosten */ }
   };
   if (await patientenAusPvs(clientId)) {
-    const r = await sucheImPvs(clientId, name);
+    const { alle, ...r } = await sucheImPvs(clientId, name);
     melde("pvs", { name, treffer: (r.patients || []).length, fehler: r.error || "" });
     return r;
   }

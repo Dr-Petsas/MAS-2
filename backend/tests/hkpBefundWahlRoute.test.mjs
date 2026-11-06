@@ -8,6 +8,7 @@ import http from "node:http";
 import express from "express";
 
 const CID = "zzz-mas2-befundwahl";
+process.env.MAS_HKP_FACH ??= "0";
 process.env.PLANR_HKP_KEY = "k";
 process.env.MAS_HKP_AUSFUEHRUNG_FRAGE = "0";
 
@@ -104,9 +105,9 @@ test.after(async () => {
 test("aus Dampsoft: Clara fragt, uebernimmt den Befund unveraendert und schreibt nichts", async () => {
   const auftrag = "Brücke von 14 auf 16";
   const frage = await rufe({ auftrag });
-  assert.equal(frage.rueckfrage, "befund_quelle", frage.message);
-  assert.match(frage.message, /den aktuellen aus Dampsoft vom 12\.10\.2026/);
-  assert.doesNotMatch(frage.message, /Lena/);
+  assert.equal(frage.rueckfrage, "befund_anzeige", frage.message);
+  assert.match(frage.message, /steht auf dem Handy\. Stimmt er so\?/);
+  assert.equal(frage.card?.kind, "befund");
   assert.deepEqual(gelesen.at(-1), { clientId: CID, patient: "4711" });
   const vorschau = await rufe({ auftrag, befund: "aus Dampsoft" });
   assert.equal(vorschau.rueckfrage, "vorlesen", vorschau.message);
@@ -155,7 +156,8 @@ test("Befund zuerst: schon die Rueckfrage nach der Versorgung zeigt das Zahnsche
   vorgaenge.length = 0;
   const auftrag = "ich möchte gern einen HKP erstellen";
   const frage = await rufe({ auftrag });
-  assert.equal(frage.rueckfrage, "versorgung", frage.message);
+  assert.equal(frage.rueckfrage, "befund_anzeige", frage.message);
+  assert.match(frage.message, /steht auf dem Handy\. Stimmt er so\?/);
   assert.equal(frage.card?.kind, "befund", JSON.stringify(frage));
   assert.equal(new URL(frage.card.url).searchParams.get("befund"), "4711");
   await kurz();
@@ -169,7 +171,7 @@ test("Praxisprogramm nicht lesbar: PlanR legt den Befund aus dem Gespraech an, d
   vorgaenge.length = 0;
   const auftrag = "ich möchte gern einen HKP erstellen";
   const frage = await rufe({ name: "Bert Ohnebridge", auftrag });
-  assert.equal(frage.rueckfrage, "versorgung", frage.message);
+  assert.equal(frage.rueckfrage, "befund_anzeige", frage.message);
   assert.equal(new URL(frage.card?.url || "http://x").searchParams.get("befund"), "815", JSON.stringify(frage));
   await kurz();
   assert.deepEqual(vorgaenge.at(-1), {
@@ -222,7 +224,7 @@ test("neu: vorlesen, Korrektur, erst nach ja nach Dampsoft – nur der Oberkiefe
 test("wie Clara ruft: Befund und Korrektur haengen am Auftrag, Freigabe per befund_freigegeben", async () => {
   geschrieben.length = 0;
   const auftrag = "Brücke von 24 auf 26";
-  assert.equal((await rufe({ auftrag })).rueckfrage, "befund_quelle");
+  assert.equal((await rufe({ auftrag })).rueckfrage, "befund_anzeige");
   assert.equal((await rufe({ auftrag, befund_quelle: "neu" })).rueckfrage, "befund_fehlt");
   const mitBefund = `${auftrag}. Es fehlen 25 und 17 und 24 ist überkront`;
   const pruefen = await rufe({ auftrag: mitBefund });
@@ -247,6 +249,7 @@ test("gemerkter Befund kommt bei jedem Aufruf wieder: die Korrektur im Auftrag g
   geschrieben.length = 0;
   const auftrag = "Brücke von 24 auf 26";
   const befund = "es fehlen 25 und 17 und 24 ist überkront";
+  assert.equal((await rufe({ auftrag, befund_quelle: "neu" })).rueckfrage, "befund_anzeige");
   assert.equal((await rufe({ auftrag, befund_quelle: "neu" })).rueckfrage, "befund_fehlt");
   assert.equal((await rufe({ auftrag, befund })).rueckfrage, "befund_freigabe");
   const korrigiert = `${auftrag}. 17 ist vorhanden`;
@@ -263,7 +266,7 @@ test("gemerkter Befund kommt bei jedem Aufruf wieder: die Korrektur im Auftrag g
 test("aus Dampsoft mit spaeter genannter Aenderung: nur die Aenderung zur Freigabe, dann nach Dampsoft", async () => {
   geschrieben.length = 0;
   const auftrag = "Brücke von 14 auf 16";
-  assert.equal((await rufe({ auftrag })).rueckfrage, "befund_quelle");
+  assert.equal((await rufe({ auftrag })).rueckfrage, "befund_anzeige");
   const vorschau = await rufe({ auftrag, befund_quelle: "Dampsoft" });
   assert.equal(vorschau.rueckfrage, "vorlesen", vorschau.message);
   const geaendert = `${auftrag}. 17 fehlt`;
@@ -283,7 +286,7 @@ test("aus Dampsoft mit spaeter genannter Aenderung: nur die Aenderung zur Freiga
 
 // Demo 04.11.2026: Antworten kommen woertlich als chef_satz, das Modell setzt keine Felder; jedes Gespraech neu.
 // Das Sprachverstehen ist hier ein fester Nachbau, die Route dahinter laeuft echt.
-const { _setFragen, antwortPruefen } = await import("../src/hkp/antwortVerstehen.js");
+const { _setFragen, antwortPruefen, planSatz } = await import("../src/hkp/antwortVerstehen.js");
 const VERSTEHEN = {
   "den aktuellen": { art: "zustimmung", quelle: "pvs" },
   "Der Befund stimmt.": { art: "zustimmung" },
@@ -295,6 +298,19 @@ const VERSTEHEN = {
   "Ich möchte bitte eine Oberkiefer-Totalprothese planen mit Teleskop auf den Zähnen 1,3 und 2,3.":
     { art: "angabe", angabe: "Oberkiefer-Totalprothese mit Teleskop auf den Zähnen 13 und 23" },
   "Wir nehmen einen neuen Befund auf.": { art: "angabe", quelle: "neu" },
+  "Ballon im Oberkiefer und Unterkiefer": {
+    art: "angabe", angabe: "Ballon", plan: { versorgung: "allon", n: 6, kiefer: "beide" },
+  },
+  "feste Brücke auf sechs Implantaten oben und unten": {
+    art: "angabe", plan: { versorgung: "allon", n: 6, kiefer: "beide" },
+  },
+  "Mach oben eine Totalprothese.": {
+    art: "angabe", plan: { versorgung: "totalprothese", kiefer: "OK" }, sagen: "Totalprothese im Oberkiefer.",
+  },
+  "Nein, der ist richtig.": { art: "ablehnung", sagen: "Der Befund bleibt so. Was soll ich planen?" },
+  // Probe 05.11.2026 23:05 am echten Modell auf "… steht auf dem Handy. Stimmt er so?"
+  "Ja, der ist richtig.": { art: "zustimmung", quelle: "pvs", sagen: "Der Befund ist bestätigt. Was soll als Versorgung erstellt werden?" },
+  "Das ist richtig.": { art: "zustimmung" },
   "Okay, im Oberkiefer stehen der Zahn 1, 3 und 2, 3, alle anderen Zähne sind entfernt.":
     { art: "angabe", befund: { kiefer: "OK", zaehne: { 13: "vorhanden", 23: "vorhanden" }, rest: "fehlt" } },
   "Nein, der Befund stimmt nicht.": { art: "ablehnung" },
@@ -328,7 +344,7 @@ test("Demo-Ablauf Teleskop: woertliche Antworten, Pfeiler bleiben stehen, nur de
   const start = "ich möchte für Herrn Anna Befundtest einen Heil- und Kostenplan erstellen.";
   const befund = "13, 23 vorhanden, 11, 12, 14, 15, 16, 17, 18, 21, 22, 24, 25, 26, 27, 28 fehlen";
   const s = { sitzung: "demo-1" };
-  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "versorgung");
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "befund_anzeige");
   const satz = "Ich möchte eine Oberkieferprothese mit Teleskop auf 1,3 und 2,3, alle anderen Zähne werden ersetzt.";
   const q = await rufe({ auftrag: start, befund, chef_satz: satz, ...s });
   assert.equal(q.rueckfrage, "befund_quelle", q.message);
@@ -350,7 +366,7 @@ test("Demo-Ablauf Teleskop: woertliche Antworten, Pfeiler bleiben stehen, nur de
   assert.ok(fertig.hkpId, fertig.message);
   // Neues Gespraech: nichts vom alten Versuch gilt, die Quelle wird wieder gefragt
   const neu = await rufe({ auftrag: `${start} ${satz}`, befund, sitzung: "demo-2" });
-  assert.equal(neu.rueckfrage, "befund_quelle", neu.message);
+  assert.equal(neu.rueckfrage, "befund_anzeige", neu.message);
 });
 
 test("Live 04.11.2026 21:32: diktierter neuer Befund wird der Befund, 'Nein' fragt nach der Korrektur", async () => {
@@ -358,7 +374,7 @@ test("Live 04.11.2026 21:32: diktierter neuer Befund wird der Befund, 'Nein' fra
   const start = "Ich möchte einen Heil- und Kostenplan erstellen für den Herrn Anna Befundtest.";
   const s = { sitzung: "live-2132" };
   const ruf = (chef_satz) => rufe({ auftrag: start, name: "Anna Befundtest", chef_satz, ...s });
-  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "versorgung");
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "befund_anzeige");
   assert.equal((await ruf("Ich möchte bitte eine Oberkiefer-Totalprothese planen mit Teleskop auf den Zähnen 1,3 und 2,3.")).rueckfrage, "befund_quelle");
   assert.equal((await ruf("Wir nehmen einen neuen Befund auf.")).rueckfrage, "befund_fehlt");
   const pruefen = await ruf("Okay, im Oberkiefer stehen der Zahn 1, 3 und 2, 3, alle anderen Zähne sind entfernt.");
@@ -389,7 +405,7 @@ test("Probe 04.11.2026: 'Wir nehmen einen neuen Befund auf' auf die Befundfrage 
   const start = "Ich möchte einen Heil- und Kostenplan erstellen für den Herrn Anna Befundtest.";
   const s = { sitzung: "neu-auf-frage" };
   const ruf = (chef_satz) => rufe({ auftrag: start, chef_satz, ...s });
-  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "versorgung");
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "befund_anzeige");
   assert.equal((await ruf("Ich möchte bitte eine Oberkiefer-Totalprothese planen mit Teleskop auf den Zähnen 1,3 und 2,3.")).rueckfrage, "befund_quelle");
   assert.equal((await ruf("Wir nehmen einen neuen Befund auf.")).rueckfrage, "befund_fehlt");
   assert.equal((await ruf("Okay, im Oberkiefer stehen der Zahn 1, 3 und 2, 3, alle anderen Zähne sind entfernt.")).rueckfrage, "befund_freigabe");
@@ -412,10 +428,13 @@ test("Live 05.11.2026: Diktat ohne Modell wird nicht geraten, Korrektur ohne Aen
   const start = "Können wir für Herrn Anna Befundtest einen Heilung Kostenplan erstellen, bitte?";
   const s = { sitzung: "live-0526" };
   const ruf = (chef_satz) => rufe({ auftrag: start, chef_satz, ...s });
-  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "versorgung");
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "befund_anzeige");
   const zuerst = await ruf("Wir müssen erst mal den Befund ändern. Die Zähne 1, 3 und 2, 3 stehen noch.");
-  assert.equal(zuerst.rueckfrage, "versorgung", zuerst.message);
-  assert.match(zuerst.message, /^Den Befund nehmen wir gleich im nächsten Schritt auf\. Zuerst: Welche Versorgung/, "nicht dieselbe Frage noch einmal");
+  assert.equal(zuerst.rueckfrage, "befund_anzeige", zuerst.message);
+  assert.match(zuerst.message, /Auf dem Handy steht jetzt/);
+  assert.doesNotMatch(zuerst.message, /Dampsoft|übernehmen/);
+  assert.equal(aenderungen.length, 1, "die genannten Zähne stehen auf dem Handy");
+  aenderungen.length = 0;
   assert.equal((await ruf("Eine Oberkieferprothese mit Teleskopkrone auf 1,3 und 2,3.")).rueckfrage, "befund_quelle");
   assert.equal((await ruf("Wir nehmen einen neuen Befund auf.")).rueckfrage, "befund_fehlt");
 
@@ -457,13 +476,14 @@ test("Befund mit Rest je Kiefer: oben fehlen die anderen, unten stehen alle", ()
 test("Vorschlag aus einem frueheren Gespraech gilt nicht: verworfen, die Quelle wird gefragt", async () => {
   verworfen.length = 0;
   const frage = await rufe({ name: "Carla Altvorschlag", auftrag: "Brücke von 14 auf 16", sitzung: "alt-1" });
-  assert.equal(frage.rueckfrage, "befund_quelle", frage.message);
+  assert.equal(frage.rueckfrage, "befund_anzeige", frage.message);
   assert.deepEqual(verworfen, ["4712"]);
 });
 
 test("Aenderung aus dem Befund-Werkzeug gilt weiter fuer den naechsten Plan", async () => {
   verworfen.length = 0;
-  const frage = await rufe({ name: "Dora Werkzeugrest", auftrag: "Brücke von 14 auf 16", sitzung: "werkzeug-1" });
+  assert.equal((await rufe({ name: "Dora Werkzeugrest", auftrag: "Brücke von 14 auf 16", sitzung: "werkzeug-1" })).rueckfrage, "befund_anzeige");
+  const frage = await rufe({ name: "Dora Werkzeugrest", auftrag: "Brücke von 14 auf 16", sitzung: "werkzeug-1", chef_satz: "Ja, stimmt." });
   assert.equal(frage.rueckfrage, "befund_freigabe", frage.message);
   assert.match(frage.message, /Gegenüber Dampsoft ändere ich: es fehlt 17\./);
   assert.deepEqual(verworfen, []);
@@ -498,9 +518,116 @@ test("Oberkiefer-Totalprothese aendert den Unterkiefer nicht; alte Vorschau gilt
   assert.ok(geschrieben.every((g) => !Object.keys(g.zaehne).some((z) => /^[34]/.test(z))));
 });
 
+test("Live 05.11.2026: Befund-Antwort ersetzt den All-on-Plan nicht, die Quelle wird nicht erneut gefragt", async () => {
+  const s = { sitzung: "schleife-allon" };
+  const start = "Ich möchte einen HKP erstellen";
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "befund_anzeige");
+  const plan = "All on Six im Oberkiefer und im Unterkiefer planen";
+  const quelle = await rufe({ auftrag: plan, ...s });
+  assert.equal(quelle.rueckfrage, "befund_quelle", quelle.message);
+  const weiter = await rufe({ auftrag: "Wir nehmen diesen Befund aus DS Win.", befund_quelle: "pvs", ...s });
+  assert.notEqual(weiter.rueckfrage, "versorgung", weiter.message);
+  assert.notEqual(weiter.rueckfrage, "befund_quelle", weiter.message);
+  assert.match(weiter.message, /All-on-6/);
+  const ballon = await rufe({ auftrag: "Ballon im Oberkiefer und Unterkiefer", befund_quelle: "pvs", ...s });
+  assert.notEqual(ballon.rueckfrage, "versorgung", ballon.message);
+  assert.notEqual(ballon.rueckfrage, "befund_quelle", ballon.message);
+});
+
+test("Intent liest die Versorgung aus der Wissensbasis, die Engine bekommt den kanonischen Satz", async () => {
+  assert.equal(planSatz({ versorgung: "allon", n: 6, kiefer: "beide" }),
+    "All-on-6-Prothese im Oberkiefer und All-on-6-Prothese im Unterkiefer");
+  assert.equal(planSatz({ versorgung: "allon", n: 4, kiefer: "OK" }), "All-on-4-Prothese im Oberkiefer");
+  assert.equal(planSatz({ versorgung: "locator", kiefer: "UK" }), "Locator-Prothese im Unterkiefer");
+  assert.equal(planSatz({ versorgung: "allon", kiefer: "beide" }), "");
+  assert.equal(planSatz({ versorgung: "erfunden", kiefer: "OK" }), "");
+  // 06.11.2026: "Ja, stimmt." wurde zu "Brücke im Unterkiefer" und ersetzte "Brücke von 14 auf 16"
+  assert.equal(planSatz({ versorgung: "bruecke", kiefer: "UK" }), "");
+  assert.equal(planSatz({ versorgung: "kronen", kiefer: "OK" }), "");
+  const verstanden = antwortPruefen({ art: "angabe", plan: { versorgung: "allon", n: 6, kiefer: "beide" } });
+  assert.equal(verstanden.plan, "All-on-6-Prothese im Oberkiefer und All-on-6-Prothese im Unterkiefer");
+  assert.equal(antwortPruefen({ art: "zustimmung", plan: { versorgung: "allon", n: 6, kiefer: "beide" } }).plan, undefined);
+
+  const s = { sitzung: "intent-ballon" };
+  const start = "Ich möchte einen HKP erstellen";
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "befund_anzeige");
+  const ballon = await rufe({ auftrag: start, chef_satz: "Ballon im Oberkiefer und Unterkiefer", ...s });
+  assert.equal(ballon.rueckfrage, "befund_quelle", ballon.message);
+  const geplant = await rufe({ auftrag: start, befund_quelle: "pvs", ...s });
+  assert.notEqual(geplant.rueckfrage, "versorgung", geplant.message);
+  assert.match(geplant.message, /All-on-6/);
+
+  const roh = "feste Brücke auf sechs Implantaten oben und unten";
+  const u = { sitzung: "intent-umschrieben" };
+  assert.equal((await rufe({ auftrag: roh, ...u })).rueckfrage, "befund_anzeige");
+  const gelesen = await rufe({ auftrag: roh, ...u });
+  assert.equal(gelesen.rueckfrage, "befund_quelle", gelesen.message);
+  const fest = await rufe({ auftrag: roh, befund_quelle: "pvs", ...u });
+  assert.notEqual(fest.rueckfrage, "versorgung", fest.message);
+  assert.match(fest.message, /All-on-6/);
+});
+
+test("Live 05.11.2026 17:48: richtiger Befund bleibt, der naechste Plan fragt nicht noch einmal nach der Quelle", async () => {
+  const s = { sitzung: "befund-bleibt" };
+  const start = "Ich möchte einen HKP erstellen";
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "befund_anzeige");
+  const bleibt = await rufe({ auftrag: start, chef_satz: "Ja, der ist richtig.", ...s });
+  assert.doesNotMatch(bleibt.message, /Welche Zähne soll ich|Welchen Befund nehme ich/, bleibt.message);
+  assert.notEqual(bleibt.rueckfrage, "befund_anzeige", bleibt.message);
+  assert.notEqual(bleibt.rueckfrage, "befund_quelle", bleibt.message);
+  const plan = await rufe({ auftrag: start, chef_satz: "Mach oben eine Totalprothese.", ...s });
+  assert.notEqual(plan.rueckfrage, "befund_quelle", plan.message);
+  assert.doesNotMatch(plan.message, /Welchen Befund nehme ich/, plan.message);
+});
+
+test("Freies Gespraech: der Satz des Modells steht vor der offenen Entscheidung", async () => {
+  const s = { sitzung: "frei-sagen" };
+  const start = "Ich möchte einen HKP erstellen";
+  assert.equal((await rufe({ auftrag: start, ...s })).rueckfrage, "befund_anzeige");
+  const q = await rufe({ auftrag: start, chef_satz: "Mach oben eine Totalprothese.", ...s });
+  assert.match(q.message, /^Totalprothese im Oberkiefer\./, q.message);
+});
+
+test("Modell spricht: eigene Worte, die Fakten der Engine bleiben, ohne Modell gilt die Engine", async () => {
+  const { _setMund, mundPruefen } = await import("../src/hkp/antwortVerstehen.js");
+  const fakten = "Ich nehme den aktuellen Befund aus DS-Win. Im Oberkiefer stehen noch 16, 14, 13, 23, 24 und 26. Sollen die alle entfernt werden, oder bleiben welche stehen?";
+  const gut = "Gut, dann arbeite ich mit dem DS-Win-Befund. Oben stehen noch 16, 14, 13, 23, 24 und 26 – kommen die raus, oder bleiben welche?";
+  assert.equal(mundPruefen(gut, fakten), gut);
+  assert.equal(mundPruefen("Oben stehen noch 16, 14 und 13. Kommen die raus?", fakten), "", "Zahn verloren");
+  assert.equal(mundPruefen("Oben stehen 16, 14, 13, 23, 24 und 26.", fakten), "", "Frage verloren");
+  assert.equal(mundPruefen("Das kostet 16, 14, 13, 23, 24 und 26 Euro?", fakten), "");
+  assert.equal(mundPruefen('{"art":"unklar"}', fakten), "");
+
+  const s = { sitzung: "mund-1" };
+  const start = "Ich möchte einen HKP erstellen";
+  let gesehen = "";
+  _setMund(async (messages) => {
+    gesehen = messages.at(-1).content;
+    const f = /ERGEBNIS der Software: «([^»]*)»/.exec(gesehen)?.[1] || "";
+    return { ok: true, text: `Alles klar. ${f}` };
+  });
+  try {
+    const q = await rufe({ auftrag: start, ...s });
+    assert.equal(q.stimme, "modell", q.message);
+    assert.match(q.message, /^Alles klar\. /);
+    assert.equal(`Alles klar. ${q.fakten}`, q.message);
+    assert.match(gesehen, /Satz des Zahnarztes: «Ich möchte einen HKP erstellen»/);
+    _setMund(async () => ({ ok: true, text: "Passt, ich lege los." }));
+    const r = await rufe({ auftrag: start, chef_satz: "Mach oben eine Totalprothese.", ...s });
+    assert.equal(r.stimme, "daten", "Modell hat die offene Frage verloren -> Engine spricht");
+    assert.match(r.message, /^Totalprothese im Oberkiefer\./);
+  } finally {
+    _setMund(null);
+  }
+});
+
 test("Sprachverstehen: nur gueltiges JSON zaehlt, Zaehne nur aus der Frage", () => {
   assert.equal(antwortPruefen({ art: "vielleicht" }), null);
   assert.equal(antwortPruefen(null), null);
   const r = antwortPruefen({ art: "zustimmung", entfernen: ["12", "99", 13, "12"], quelle: "dampsoft", angabe: "x" }, ["12", "13"]);
   assert.deepEqual(r, { art: "zustimmung", quelle: "", entfernen: ["12", "13"], erhalten: [], angabe: "", befund: null });
+  assert.equal(antwortPruefen({ art: "angabe", sagen: "Totalprothese im Oberkiefer. Den Befund so lassen?" }).sagen,
+    "Totalprothese im Oberkiefer. Den Befund so lassen?");
+  assert.equal(antwortPruefen({ art: "angabe", sagen: "Das macht 500 Euro." }).sagen, undefined);
+  assert.match(antwortPruefen({ art: "gegenfrage", sagen: "Die 9050 geht nicht neben der 9040, einmal je Sitzung." }).sagen, /9040/);
 });

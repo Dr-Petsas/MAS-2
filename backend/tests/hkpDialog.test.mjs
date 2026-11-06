@@ -1,10 +1,10 @@
 // HKP-Dialog per Sprache: Ja auf die Vorschau, Zahlen und Doppelung im Vorlesen, Bruecken (Gespraeche 06.10.2026).
 // Start: node backend/tests/hkpDialog.test.mjs
 import assert from "node:assert/strict";
-const { vorschauPasst, vorschauFinden, doppelungHinweis, vetterAntwort, sindVettern, waehleHkp, vorschauGemeint, teilNamePasst } = await import("../src/routes/hkp.js");
+const { vorschauPasst, vorschauFinden, doppelungHinweis, vetterAntwort, sindVettern, waehleHkp, vorschauGemeint, teilNamePasst, versorgungTextVon } = await import("../src/routes/hkp.js");
 const { nameAusHinweis, spokenLooksLikeNewPerson } = await import("../src/clara/patientCatalog.js");
 const { vorleseSatz, befundSatz } = await import("../src/hkp/vorlesen.js");
-const { versorgungSatz, nurSummenFrage, summenAntwort } = await import("../src/hkp/sprech.js");
+const { versorgungSatz, nurSummenFrage, summenAntwort, hkpTitel } = await import("../src/hkp/sprech.js");
 
 let ok = 0;
 function t(name, fn) { fn(); ok += 1; console.log("  ok -", name); }
@@ -85,6 +85,9 @@ t("Bruecke wird als Bruecke vorgelesen", () => {
 });
 t("Implantatkronen werden als Implantatkronen vorgelesen (06.10. Greisinger)", () => {
   assert.equal(versorgungSatz({ implantatkronen: ["15", "14"], kronen: [], ersetzt: [] }), "Implantatkronen auf 14 und 15");
+  assert.equal(versorgungSatz({ implantatkronen: ["36"], haltung: "verschraubte", abutmentWort: "mit Keramikabutment" }), "verschraubte Implantatkrone auf 36 mit Keramikabutment");
+  assert.equal(versorgungSatz({ verbindung: ["43", "33"], ankerGesagt: "Druckknopfanker" }), "Druckknopfanker auf 33 und 43");
+  assert.equal(versorgungSatz({ implantatkronen: ["45", "42", "32", "35"], ankerGesagt: "All-on-4", glieder: ["44"] }), "All-on-4 auf 32, 35, 42 und 45, Brückenglied 44");
 });
 
 t("Befund: zwei Zaehne im selben Quadranten aufsteigend", () => {
@@ -175,7 +178,7 @@ t("Ausfuehrung: eine Frage mit allen offenen Punkten, Implantat-Standard medenti
   assert.equal(implantatStandard({}), "medentis-icx");
   assert.equal(implantatStandard({ einstellungen: { implantatSystem: "camlog" } }), "camlog");
   const f = ausfuehrungFrage(["werkstoff", "abformung", "labor", "implantatSystem"], { system: "medentis-icx" });
-  assert.equal(f, "Noch zur Ausführung: Welches Material – Nichtedelmetall, Zirkon, Presskeramik oder Gold? Intraoralscan oder konventioneller Abdruck? Eigenlabor oder Fremdlabor? Implantatsystem wie üblich medentis ICX oder ein anderes?");
+  assert.equal(f, "Noch zur Ausführung: Welches Material – Nichtedelmetall, Zirkon, Presskeramik oder Gold? Teilverblendung, vestibuläre Verblendung oder Vollverblendung? Intraoralscan oder konventioneller Abdruck? Eigenlabor oder Fremdlabor? Implantatsystem wie üblich medentis ICX oder ein anderes?");
   assert.match(ausfuehrungFrage(["werkstoff"], { nurTeleskope: true }), /Teleskope in Nichtedelmetall oder Gold\?/);
 });
 t("Ausfuehrung: je Patient nur EINMAL gefragt, 'wie immer' fragt nicht", () => {
@@ -248,6 +251,16 @@ t("keine Befund-Datei mit Notaus", () => {
   process.env.MAS_HKP_BEFUND_DATEI = "0";
   assert.equal(befundDateiBauen("h1", { befund: { quelle: { art: "gesprochen" } }, befundDiktat: "15 fehlt", r }), null);
   delete process.env.MAS_HKP_BEFUND_DATEI;
+});
+
+t("All-on wird All-on-6 gesagt, nicht der Schlüssel allon", () => {
+  const beide = versorgungTextVon({ teile: [{ versorgung: "allon", allon: 6, kiefer: "OK" }, { versorgung: "allon", allon: 6, kiefer: "UK" }] });
+  assert.equal(beide, "HKP mit All-on-6 im Oberkiefer und All-on-6 im Unterkiefer");
+  assert.equal(versorgungTextVon({ versorgung: "allon", allon: 4, kiefer: "UK" }), "All-on-4-HKP");
+  assert.equal(hkpTitel({
+    versorgungText: "HKP mit allon im Oberkiefer und allon im Unterkiefer",
+    zusammenfassung: { ankerGesagt: "All-on-6" },
+  }), "HKP mit All-on-6 im Oberkiefer und All-on-6 im Unterkiefer");
 });
 
 console.log(`hkpDialog: ${ok} Tests ok`);

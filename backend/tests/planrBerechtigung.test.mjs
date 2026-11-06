@@ -7,7 +7,7 @@ let ok = 0;
 function t(name, fn) { fn(); ok += 1; console.log("  ok -", name); }
 
 t("ohne Billing kein PlanR", () => {
-  assert.deepEqual(planrAusBilling(null), { mas: false, planr: false, erlaubt: false, clara: "aus" });
+  assert.deepEqual(planrAusBilling(null), { mas: false, planr: false, erlaubt: false, clara: "aus", doku: false });
 });
 
 t("MAS ueber crew premium oder Standort", () => {
@@ -19,6 +19,13 @@ t("MAS ueber crew premium oder Standort", () => {
 t("MAS-Kunden bekommen immer die volle Clara", () => {
   const b = planrAusBilling({ subscriptions: { crew: { tier: "premium" }, planr: { enabled: true, sprachsteuerung: true } } });
   assert.equal(b.clara, "voll");
+});
+
+t("Dokumentation: bei Pickadoc enthalten, sonst nur mit Upgrade", () => {
+  assert.equal(planrAusBilling({ subscriptions: { crew: { tier: "premium" } } }).doku, true);
+  assert.equal(planrAusBilling({ subscriptions: { planr: { enabled: true } } }).doku, false);
+  assert.equal(planrAusBilling({ subscriptions: { planr: { enabled: true, doku: true } } }).doku, true);
+  assert.equal(planrAusBilling({ subscriptions: { planr: { enabled: false, doku: true } } }).doku, false);
 });
 
 t("Standalone: HKP-Clara nur mit Sprachsteuerung", () => {

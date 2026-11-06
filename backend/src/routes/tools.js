@@ -3,7 +3,9 @@
 // byte-identisch uebernommen, nur app. -> router. Kein Verhalten geaendert.
 import express from "express";
 import { completeTask } from "../tools/createTask.js";
-import { assertAppEnabled } from "../entitlements.js";
+import { assertAppEnabled, getBilling } from "../entitlements.js";
+import { planrAusBilling } from "../hkp/planrBerechtigung.js";
+import { schritt as akteSchritt, werAus, istNurBestaetigung, frageNachText, frageBestaetigen } from "../clara/akteDoku.js";
 import { findSlots, bookAppointment, loadBooking, resolveCalendar, checkInviteSlot, ensureBerlinTz } from "../clara/booking.js";
 import { findDirectoryContact, hasColleagueTitle, spokenDirectoryEntry } from "../clara/directory.js";
 import { getDayAppointments, buildSpokenDayList, buildSpokenMemoryHints, buildSpokenPatientPrep, todayBerlin, relativeDayLabel, spokenOwnAbsence, getPatientAppointments, buildSpokenPatientAppointments, buildSpokenNextFreeSlot, buildSpokenTreatmentHistory, findSameTimeCompanions, buildSpokenCompanionQuestion, dayOfMs } from "../clara/daySchedule.js";
@@ -48,7 +50,7 @@ import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } fr
 import { mitUndo, rueckgaengigAn, zuruecknehmen } from "../clara/rueckgaengig.js";
 import { nameAusHinweis, spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
 import { passtGanz, planNurPvs, pvsKennungAufloesen, sucheFuerPlan, sucheNurImPvsFuerPlan } from "../hkp/planrPvs.js";
-import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall } from "../clara/sessions.js";
+import { emitCommand, setPatientCandidates, getSelectedPatient, getPatientCandidates, clearSelectedPatient, setActiveCase, getActiveCase, clearActiveCase, getOperator, getLastContext, getPendingRecording, setPendingRecording, clearPendingRecording, getActiveRecording, setActiveRecording, clearActiveRecording, setPendingLisaCall, getPendingLisaCall, clearPendingLisaCall, getAkteWartet, setAkteWartet, clearAkteWartet } from "../clara/sessions.js";
 import { pickCurrentAppointment, spokenApptWhen, startRecordingSession, stopRecordingSession, matchTodayAppointmentsByName, resolveChairAppointment } from "../clara/treatmentRecording.js";
 import { readTreatmentDictation, findInTreatment, readTreatmentLabels, addTreatmentLabel, findBackdatedAppointment } from "../shared/lenaBridge.js";
 import { disambiguationQuestion, nichtGefundenFrage, ordinalPick, narrowByPhoneFragment, narrowByExactName, narrowByNearName, isContinuityPhrase, isPureRelativeRef, stripRelativeRef, collapseSamePerson, merkmalEingrenzen } from "../clara/patientDisambig.js";
@@ -1243,8 +1245,17 @@ export async function resolveSpokenPatientForRead(clientId, { rawName, hint, ask
       if (exact.length) candidates = exact;
     }
     if (!candidates.length) {
+      const angebot = (found.angebot || [])[0];
       await setPatientCandidates(clientId, [], null);
-      return { done: true, payload: { ok: false, message: nichtGefundenFrage(name, { quelle: found.quelle === "pvs" ? "in der Praxissoftware" : "im Praxisgedächtnis" }) } };
+      if (angebot) {
+        // unbestaetigt nicht merken: sonst nimmt die naechste, wieder verhoerte Suche ihn ungefragt
+        const wer = `${angebot.firstName || ""} ${angebot.lastName || ""}`.trim();
+        const jahr = String(angebot.birthDate || "").slice(0, 4);
+        return { done: true, payload: { ok: true, rueckfrage: "nachname", stimme: "daten", message:
+          `Meinen Sie ${wer}${/^\d{4}$/.test(jahr) ? `, Jahrgang ${jahr}` : ""}?` } };
+      }
+      // woertlich (stimme "daten"): der Mund machte daraus "Ich habe keine Patientendaten gefunden" (06.11.2026 08:36)
+      return { done: true, payload: { ok: false, stimme: "daten", message: nichtGefundenFrage(name, { quelle: found.quelle === "pvs" ? "in der Praxissoftware" : "im Praxisgedächtnis" }) } };
     }
   } else {
     candidates = await gemerkt();
@@ -1978,6 +1989,77 @@ router.post("/tools/next-patients-briefing", async (req, res) => {
       try { out.message = (await politurSchnell(out.message, { kontext: "Heads-up zu den naechsten Patienten" })).text; } catch { /* deterministisch weiter */ }
     }
     return res.json(out);
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// 1f2) AKTE: Prosa in die Karteikarte. Erst Patient abgleichen, dann den Text.
+// Bei Pickadoc enthalten, für PlanR allein nur mit dem Doku-Upgrade.
+router.post("/tools/akte-dokumentieren", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const recht = planrAusBilling(await getBilling(clientId));
+    if (!recht.doku) {
+      return res.json({
+        ok: false,
+        message: "Die Dokumentation per Sprache ist bei Pickadoc enthalten. Für PlanR allein ist sie das Upgrade für 89 Euro im Monat, ohne Preis je Eintrag.",
+      });
+    }
+    const text = String(req.body?.text || "").trim();
+    const confirm = req.body?.confirm === true || req.body?.confirm === "true";
+    const wartet = await getAkteWartet(clientId);
+    const entscheid = akteSchritt({ text, confirm, wartet });
+    if (entscheid.art === "schreiben") {
+      const out = await saveTreatmentDictation(clientId, {
+        text: entscheid.text,
+        patientId: entscheid.patient.patientId,
+        lastName: entscheid.patient.lastName,
+        date: String(req.body?.date || "").trim(),
+        lang: "de-DE",
+      });
+      if (!out?.ok) return res.json(out);
+      await clearAkteWartet(clientId);
+      if (out.dictationId) {
+        setImmediate(() => {
+          strukturiereKarteikarte(clientId, {
+            locationId: out.locationId,
+            appointmentId: out.appointmentId,
+            combinedText: out.combinedText || entscheid.text,
+            motiveName: out.motiveName || "",
+            segmentsCount: 1,
+          }).catch((e) => log.warn("akte.kartei_failed", { clientId, err: String(e?.message || e) }));
+        });
+      }
+      const wer = out.patientName || entscheid.patient.wer;
+      const termin = String(out.message || "").split("—")[1]?.trim();
+      return res.json({ ok: true, message: termin ? `Steht in der Karteikarte von ${wer}, ${termin}` : `Steht in der Karteikarte von ${wer}.` });
+    }
+    if (entscheid.art === "fragen") return res.json({ ok: true, needsConfirm: true, message: entscheid.message });
+
+    const r = await resolveSpokenPatientForRead(clientId, {
+      rawName: String(req.body?.name || "").trim(),
+      hint: String(req.body?.hint || "").trim(),
+      askWho: "Für welchen Patienten soll ich in die Akte schreiben? Bitte den Namen nennen.",
+    });
+    if (r.done) return res.json(r.payload);
+    const sel = r.sel;
+    const wer = werAus(sel);
+    const prosa = text && !istNurBestaetigung(text) ? text : "";
+    await setAkteWartet(clientId, {
+      patientId: sel.id || "",
+      firstName: sel.firstName || "",
+      lastName: sel.lastName || "",
+      birthDate: sel.birthDate || "",
+      wer,
+      text: prosa,
+      at: Date.now(),
+    });
+    return res.json({ ok: true, needsConfirm: true, message: prosa ? frageBestaetigen(wer) : frageNachText(wer) });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
@@ -5466,9 +5548,16 @@ router.post("/tools/search-patient", async (req, res) => {
         patient: { firstName: sel.firstName, lastName: sel.lastName, birthDate: sel.birthDate },
         hasPhone: !!sel.hasPhone,
       });
+      // Anruf 06.11.2026 08:37: der Pickadoc-Hinweis mitten in der Planung verwirrte. Er steht nur noch im
+      // Kontext fuers Modell und wird erst bei Termin oder SMS gesagt. Notaus MAS_PVS_HINWEIS_IMMER=1.
+      const pvsHinweis = "Der Patient steht nur in der Praxissoftware, nicht in Pickadoc: Plaene und Befund gehen, fuer Termine oder SMS muss er erst in Pickadoc angelegt werden.";
+      const hinweisImmer = process.env.MAS_PVS_HINWEIS_IMMER === "1";
       const warn = nurImPvs
-        ? " Der Patient steht nur in der Praxissoftware, nicht in Pickadoc: Plaene und Befund gehen, fuer Termine oder SMS muss er erst in Pickadoc angelegt werden."
+        ? (hinweisImmer ? ` ${pvsHinweis}` : "")
         : sel.hasPhone ? "" : " Achtung: keine Telefonnummer hinterlegt.";
+      const context = nurImPvs && !hinweisImmer
+        ? `Nur fuer dich, nicht vorlesen: ${pvsHinweis} Sag das nur, wenn der Chef einen Termin oder eine SMS fuer ihn will.`
+        : undefined;
       // Keine Buchungsfrage anhaengen: das Tool wird auch fuer reine
       // Nachschlage-Fragen genutzt und drueckte Clara sonst bei jeder
       // Patientensuche in den Termin-Modus (2026-06-10). AUSNAHME: war dies
@@ -5481,6 +5570,7 @@ router.post("/tools/search-patient", async (req, res) => {
       return res.json({
         ok: true,
         message: `${patientLabel(sel)} gefunden.${warn}${followUp}`,
+        ...(context ? { context } : {}),
       });
     }
 

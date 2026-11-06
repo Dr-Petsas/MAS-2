@@ -3,6 +3,9 @@
 // PlanR-Uebersicht (planrEntwuerfe). PlanR ist ein lokaler Nachbau; Entwuerfe landen in der Test-Praxis und werden
 // wieder geloescht.
 import "dotenv/config";
+// Die Saetze der Engine werden hier woertlich geprueft; der Modell-Mund hat einen eigenen Test.
+process.env.MAS_HKP_FACH ??= "0";
+process.env.MAS_HKP_MUND ??= "0";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -55,12 +58,17 @@ const mas = await new Promise((r) => { const s = app.listen(0, "127.0.0.1", () =
 const basis = `http://127.0.0.1:${mas.address().port}`;
 const angelegt = [];
 
-async function rufe(body, pfad = "/tools/hkp-create-draft") {
+async function post(body, pfad = "/tools/hkp-create-draft") {
   const r = await fetch(`${basis}${pfad}`, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Client-Id": CID }, body: JSON.stringify({ name: "Petra Privattest", ...body }),
   });
   const d = await r.json();
   if (d.entwurfId) angelegt.push(d.entwurfId);
+  return d;
+}
+async function rufe(body, pfad = "/tools/hkp-create-draft") {
+  const d = await post(body, pfad);
+  if (d.rueckfrage === "befund_anzeige" && !body.chef_satz) return rufe({ ...body, chef_satz: "Ja, stimmt." }, pfad);
   return d;
 }
 const planrRuf = (pfad, init = {}) => fetch(`${basis}/planr${pfad}${pfad.includes("?") ? "&" : "?"}clientId=${CID}`, {
@@ -72,6 +80,26 @@ test.after(async () => {
   _setBillingLaden(null);
   mas.close();
   planr.close();
+});
+
+test("jede Planart: erst die 01 auf dem Handy, dann der Plan", async () => {
+  const faelle = [
+    ["art-kons", { auftrag: "Privater Kons-Plan, Keramikinlay 47 mod", sitzung: "art-kons" }],
+    ["art-mkv", { auftrag: "Mehrkostenvereinbarung Komposit an 24 o", sitzung: "art-mkv" }],
+    ["art-impl", { auftrag: "Kostenvoranschlag Implantat 26", sitzung: "art-impl" }],
+    ["art-privat", { auftrag: "Privater Zahnersatz, Brücke von 14 auf 16", sitzung: "art-privat" }],
+    ["art-ukps", { auftrag: "Privaten KB-Plan für eine UKPS", sitzung: "art-ukps" }],
+  ];
+  for (const [name, body] of faelle) {
+    const gezeigt = await post(body);
+    assert.equal(gezeigt.rueckfrage, "befund_anzeige", `${name}: ${gezeigt.message}`);
+    assert.match(gezeigt.message, /steht auf dem Handy\. Stimmt er so\?/);
+    assert.equal(gezeigt.card?.kind, "befund", name);
+    const weiter = await post({ ...body, chef_satz: "Ja, stimmt." });
+    assert.notEqual(weiter.rueckfrage, "befund_anzeige", `${name}: ${weiter.message}`);
+  }
+  await kurz();
+  vorgaenge.length = 0;
 });
 
 test("Kostenvoranschlag Kons: vorlesen mit GOZ-Summe, nach dem Ja als privat-kons-Entwurf ohne Regler, kein HKP", async () => {

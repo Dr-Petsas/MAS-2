@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { _ohnePvsVergessen, _setHolen, alsPatient, bewerten, isoGeburt, passtGanz, pvsKennungAufloesen, sucheFuerPlan, sucheImPvs, sucheNurImPvsFuerPlan } from "../src/hkp/planrPvs.js";
 import { _setBillingLaden } from "../src/hkp/planrClara.js";
+import { _pvsNamenVergessen, pvsNamenListe } from "../src/hkp/pvsNamen.js";
 
 _setBillingLaden(async (id) => (id === "planrPraxis"
   ? { subscriptions: { planr: { enabled: true, sprachsteuerung: true } } }
@@ -60,11 +61,11 @@ test("sucheFuerPlan: MAS-Praxis mit Bridge zuerst im PVS, sonst Kartei (null)", 
   process.env.PLANR_HKP_KEY = "k";
   _ohnePvsVergessen();
   let fragen = 0;
+  const kartei = [P("812", "Prodromos", "Fanelas"), P("813", "Prodromos", "Anders")];
   _setHolen(async (url) => {
     fragen += 1;
-    const q = new URL(url).searchParams.get("q");
-    const patienten = q === "Prodromos Fanelas" ? [P("812", "Prodromos", "Fanelas")]
-      : q === "Prodromos Kartei" ? [] : q === "prodromos" ? [P("813", "Prodromos", "Anders")] : [];
+    const q = String(new URL(url).searchParams.get("q") || "").toLowerCase();
+    const patienten = kartei.filter((p) => `${p.vorname} ${p.name}`.toLowerCase().includes(q));
     return { ok: true, json: async () => ({ ok: true, patienten }) };
   });
   const r = await sucheFuerPlan("masPraxis", "Prodromos Fanelas");
@@ -98,10 +99,10 @@ test("sucheFuerPlan: MAS-Praxis mit Bridge zuerst im PVS, sonst Kartei (null)", 
 test("Planung sucht nur im PVS (Chef 04.11.2026): kein Treffer bleibt leer, PVS aus ist ein Fehler, nie Kartei", async () => {
   process.env.PLANR_HKP_KEY = "k";
   _ohnePvsVergessen();
+  const kartei = [P("8787", "Maria", "Partheni", "1968-07-12"), P("900", "Maria", "Anders")];
   _setHolen(async (url) => {
-    const q = new URL(url).searchParams.get("q");
-    const patienten = q === "Maria Partheni" ? [P("8787", "Maria", "Partheni", "1968-07-12")]
-      : q === "maria" ? [P("900", "Maria", "Anders")] : [];
+    const q = String(new URL(url).searchParams.get("q") || "").toLowerCase();
+    const patienten = kartei.filter((p) => `${p.vorname} ${p.name}`.toLowerCase().includes(q));
     return { ok: true, json: async () => ({ ok: true, patienten }) };
   });
   const r = await sucheNurImPvsFuerPlan("masPraxis", "Maria Partheni");
@@ -157,14 +158,16 @@ test("sucheImPvs: ganzer Name, sonst einzelne Woerter; Schluessel und clientId g
     assert.equal(u.searchParams.get("clientId"), "praxisA");
     assert.equal(init.headers["X-PlanR-Key"], "k");
     const q = u.searchParams.get("q");
-    const patienten = q === "Hanna Myller" ? [] : q === "myller" ? [] : q === "hanna" ? [P("7", "Hanna", "Müller"), P("8", "Hanna", "Berg")] : [];
+    const patienten = q === "hanna" ? [P("7", "Hanna", "Müller"), P("8", "Hanna", "Berg")] : [];
     return { ok: true, json: async () => ({ ok: true, patienten }) };
   });
   const r = await sucheImPvs("praxisA", "Hanna Myller");
   assert.equal(r.ok, true);
   assert.equal(r.quelle, "pvs");
   assert.deepEqual(r.patients.map((p) => p.id), ["7"]);
-  assert.deepEqual(gefragt.sort(), ["Hanna Myller", "hanna", "myller"].sort());
+  // zuerst das laengste Wort, dann das andere mit Klangvariante in einer Runde, keine Wortanfaenge mehr
+  assert.equal(gefragt[0], "Myller");
+  assert.deepEqual(gefragt.slice(1).sort(), ["hanna", "miller"]);
   _setHolen(null);
 });
 
@@ -189,10 +192,62 @@ test("sucheImPvs: verhoerter Name findet den DS-Win-Patienten (live 04.11.2026 '
   assert.equal(passtGanz("Prodomos Lagos", { firstName: "Prodromos", lastName: "Fanelas" }), false);
   assert.equal(passtGanz("Anna Meier", { firstName: "Anna", lastName: "Maier" }), true);
   assert.equal(passtGanz("Anna Bauer", { firstName: "Anna", lastName: "Mauer" }), false);
-  // treffsicherer Name: keine zweite Runde
+  // treffsicherer Name: eine einzige Anfrage an die Bridge
   gefragt.length = 0;
   await sucheFuerPlan("masPraxis", "Prodromos Fanelas");
-  assert.deepEqual(gefragt, ["prodromos fanelas"]);
+  assert.deepEqual(gefragt, ["prodromos"]);
+  _setHolen(null);
+});
+
+test("Planung: P/F-Anlaut wird nur angeboten, wenn das andere Wort passt (live 06.11.2026 'Protromos Panelas')", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  _ohnePvsVergessen();
+  const kartei = [P("812", "Prodromos", "Fanelas", "1979-04-02"), P("820", "Prodromos", "Kallidis"),
+    P("821", "Prodromos", "Paschalidis"), P("822", "Prodromos", "Liakos"), P("840", "Anna", "Fanelas")];
+  const gefragt = [];
+  _setHolen(async (url) => {
+    const q = String(new URL(url).searchParams.get("q") || "").toLowerCase();
+    gefragt.push(q);
+    const patienten = kartei.filter((p) => `${p.vorname} ${p.name}`.toLowerCase().includes(q));
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  const r = await sucheNurImPvsFuerPlan("masPraxis", "Protromos Panelas");
+  // nie gewaehlt, nur gefragt
+  assert.deepEqual(r.patients, []);
+  assert.deepEqual(r.angebot.map((p) => p.id), ["812"]);
+  assert.equal(r.alle, undefined);
+  // frueher 13 Anfragen in drei Runden, jetzt hoechstens zwei Runden ohne Wortanfaenge
+  assert.ok(gefragt.length <= 7, gefragt.join(","));
+  assert.ok(!gefragt.some((q) => q.length === 4), gefragt.join(","));
+  // P/F allein reicht nie: anderes Wort passt nicht -> kein Angebot
+  assert.deepEqual((await sucheNurImPvsFuerPlan("masPraxis", "Utromos Panelas")).angebot, []);
+  // nur ein Wort gesprochen: kein Angebot
+  assert.deepEqual((await sucheNurImPvsFuerPlan("masPraxis", "Panelas")).angebot, []);
+  // kein Treffer als passtGanz: der Klang-Tausch macht keinen sicheren Treffer
+  assert.equal(passtGanz("Protromos Panelas", { firstName: "Prodromos", lastName: "Fanelas" }), false);
+  process.env.MAS_PLAN_NACHNAME_ANGEBOT = "0";
+  assert.deepEqual((await sucheNurImPvsFuerPlan("masPraxis", "Protromos Panelas")).angebot, []);
+  delete process.env.MAS_PLAN_NACHNAME_ANGEBOT;
+  _setHolen(null);
+});
+
+test("Im PVS gefundene Patienten kommen in die Namensliste der Spracherkennung", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  _ohnePvsVergessen();
+  _pvsNamenVergessen();
+  _setHolen(async (url) => {
+    const q = String(new URL(url).searchParams.get("q") || "").toLowerCase();
+    const patienten = "prodromos fanelas".includes(q) ? [P("812", "Prodromos", "Fanelas")] : [];
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  await sucheNurImPvsFuerPlan("praxisNamen", "Prodromos Fanelas");
+  assert.deepEqual(pvsNamenListe("praxisNamen").map((p) => `${p.vorname} ${p.name}`), ["Prodromos Fanelas"]);
+  // nur sichere Treffer, keine Angebote
+  await sucheNurImPvsFuerPlan("praxisNamen", "Protromos Panelas");
+  assert.equal(pvsNamenListe("praxisNamen").length, 1);
+  process.env.MAS_STT_PVS_NAMEN = "0";
+  assert.deepEqual(pvsNamenListe("praxisNamen"), []);
+  delete process.env.MAS_STT_PVS_NAMEN;
   _setHolen(null);
 });
 
@@ -218,6 +273,46 @@ test("Planung: verschluckter Anlaut findet den DS-Win-Patienten (live 04.11.2026
   assert.equal(passtGanz("Prodromus Anelis", fanelas), false);
   assert.equal(passtGanz("Anna Eier", { firstName: "Anna", lastName: "Meier" }), false);
   assert.equal(passtGanz("Anna Bauer", { firstName: "Anna", lastName: "Mauer" }), false);
+  _setHolen(null);
+});
+
+test("Planung: zerlegter Vorname findet den DS-Win-Patienten (live 06.11.2026 'Pro Dromos Phanelas')", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  _ohnePvsVergessen();
+  const kartei = [P("812", "Prodromos", "Fanelas"), P("820", "Prodromos", "Kallidis")];
+  _setHolen(async (url) => {
+    const q = String(new URL(url).searchParams.get("q") || "").toLowerCase();
+    const patienten = kartei.filter((p) => `${p.vorname} ${p.name}`.toLowerCase().includes(q));
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  const r = await sucheNurImPvsFuerPlan("masPraxis", "Pro Dromos Phanelas");
+  assert.deepEqual(r.patients.map((p) => p.id), ["812"]);
+  const fanelas = { firstName: "Prodromos", lastName: "Fanelas" };
+  assert.equal(passtGanz("Pro Dromos Phanelas", fanelas), true);
+  assert.equal(passtGanz("Pro Dromos Kallidis", fanelas), false);
+  assert.equal(passtGanz("Anna Maria Meier", { firstName: "Anna Maria", lastName: "Meier" }), true);
+  _setHolen(null);
+});
+
+test("Planung: verhoerter Vorname, wortgleicher Nachname wird angeboten, nie gewaehlt (live 06.11.2026 'Utromos Fanelas')", async () => {
+  process.env.PLANR_HKP_KEY = "k";
+  _ohnePvsVergessen();
+  const kartei = [P("812", "Prodromos", "Fanelas"), P("820", "Prodromos", "Kallidis"),
+    P("830", "Anna", "Meier"), P("831", "Paul", "Meier")];
+  _setHolen(async (url) => {
+    const q = String(new URL(url).searchParams.get("q") || "").toLowerCase();
+    const patienten = kartei.filter((p) => `${p.vorname} ${p.name}`.toLowerCase().includes(q));
+    return { ok: true, json: async () => ({ ok: true, patienten }) };
+  });
+  const r = await sucheNurImPvsFuerPlan("masPraxis", "Utromos Fanelas");
+  assert.deepEqual(r.patients, []);
+  assert.deepEqual(r.angebot.map((p) => p.id), ["812"]);
+  // zwei Meier: kein Angebot, kein Raten
+  const m = await sucheNurImPvsFuerPlan("masPraxis", "Hanna Meier");
+  assert.deepEqual(m.angebot, []);
+  // nur aehnlich klingend ist kein Angebot
+  const k = await sucheNurImPvsFuerPlan("masPraxis", "Utromos Panelas");
+  assert.deepEqual(k.angebot || [], []);
   _setHolen(null);
 });
 

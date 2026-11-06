@@ -40,9 +40,19 @@ export function versorgungSatz(z) {
   const teile = [];
   const glieder = aufsteigend(z.glieder);
   const impl = aufsteigend(z.implantatkronen);
-  if (impl.length) teile.push(`${impl.length === 1 ? "Implantatkrone" : "Implantatkronen"} auf ${liste(impl)}`);
-  if (z.teleskope?.length) teile.push(`Teleskope auf ${liste(aufsteigend(z.teleskope))}`);
-  if (z.kronen?.length) teile.push(`${glieder.length ? "Brückenanker-Kronen" : "Kronen"} auf ${liste(aufsteigend(z.kronen))}`);
+  const vor = z.haltung ? `${z.haltung} ` : "";
+  const dazu = (satz) => (z.abutmentWort ? `${satz} ${z.abutmentWort}` : satz);
+  if (z.ankerGesagt && /^All-on-/i.test(z.ankerGesagt) && impl.length) teile.push(dazu(`${vor}${z.ankerGesagt} auf ${liste(impl)}`));
+  else if (impl.length) teile.push(dazu(`${vor}${impl.length === 1 ? "Implantatkrone" : "Implantatkronen"} auf ${liste(impl)}`));
+  if (z.verbindung?.length) {
+    const name = z.ankerGesagt && !/^All-on-/i.test(z.ankerGesagt) ? z.ankerGesagt : (z.steg?.length ? "Implantatsteg" : "Druckknopfanker");
+    teile.push(`${name} auf ${liste(aufsteigend(z.verbindung))}`);
+  }
+  if (z.teleskope?.length) {
+    const art = z.ankerGesagt && /teleskop|galvano|zirkon/i.test(z.ankerGesagt) ? z.ankerGesagt : "Teleskope";
+    teile.push(`${art} auf ${liste(aufsteigend(z.teleskope))}`);
+  }
+  if (z.kronen?.length) teile.push(`${vor}${z.kronenArt || (glieder.length ? "Brückenanker-Kronen" : "Kronen")} auf ${liste(aufsteigend(z.kronen))}`);
   if (glieder.length) teile.push(`${glieder.length === 1 ? "Brückenglied" : "Brückenglieder"} ${liste(glieder)}`);
   const ersetzt = (z.ersetzt || []).filter((x) => !glieder.includes(x));
   if (ersetzt.length) teile.push(`${ersetzt.length === 1 ? "ein ersetzter Zahn" : `${ersetzt.length} ersetzte Zähne`}`);
@@ -77,7 +87,17 @@ export function mkvSummenSatz(s) {
     + `${s.privat7 > 0 ? `, dazu ${euroSprech(s.privat7)} als Privatvereinbarung` : ""}`;
 }
 
-export const hkpTitel = (h) => `${h.versorgungText || "HKP"}${h.kiefer ? ` im ${h.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}` : ""}`;
+/** Bereits angelegte Pläne tragen noch den Schlüssel „allon“. Angezeigt und vorgelesen wird All-on-4 oder All-on-6. */
+export function versorgungSprechen(text, anker = "") {
+  if (!/\ballon\b/i.test(String(text || ""))) return String(text || "");
+  const name = /^All-on-[46]$/.test(String(anker)) ? String(anker) : "All-on-4";
+  return String(text).replace(/\ballon\b/gi, name);
+}
+
+export function hkpTitel(h) {
+  const text = versorgungSprechen(h?.versorgungText || "HKP", h?.zusammenfassung?.ankerGesagt);
+  return `${text}${h?.kiefer ? ` im ${h.kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}` : ""}`;
+}
 
 /** Kurzbeschreibung eines HKP fuer Listen und Doppelungs-Rueckfragen */
 export function hkpKurz(h) {

@@ -40,9 +40,14 @@ function ausDoc(d) {
   return { id: d.id, ...x };
 }
 
-/** Kopf ohne Plan (fuer Listen) */
+/** Kopf ohne Plan (fuer Listen). „allon“ ist der Schlüssel, die Liste sagt All-on-4 oder All-on-6. */
 export function kopf(h) {
   const { planJson, ...rest } = h;
+  const anker = String(rest.zusammenfassung?.ankerGesagt || "");
+  if (/\ballon\b/i.test(String(rest.versorgungText || ""))) {
+    const name = /^All-on-[46]$/.test(anker) ? anker : "All-on-4";
+    rest.versorgungText = String(rest.versorgungText).replace(/\ballon\b/gi, name);
+  }
   return rest;
 }
 
@@ -64,6 +69,12 @@ export async function hkpAnlegen(clientId, daten, wer) {
 export async function hkpLesen(clientId, id) {
   const d = await (await col(clientId)).doc(String(id)).get();
   return d.exists ? ausDoc(d) : null;
+}
+
+/** Nur die Patienten der juengsten HKPs (Namensliste der Spracherkennung), ohne Plan. */
+export async function hkpPatientenJuengste(clientId, limit = 200) {
+  const snap = await (await col(clientId)).orderBy("erstellt", "desc").limit(limit).select("patient").get();
+  return snap.docs.map((d) => d.get("patient")).filter(Boolean);
 }
 
 export async function hkpListe(clientId, { patientId, limit = 300 } = {}) {

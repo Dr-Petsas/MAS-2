@@ -18,13 +18,30 @@ export function rueckgaengigAn() {
 }
 
 /** `{ undo: {...} }` zum Einstreuen in eine Werkzeug-Antwort, sonst `{}`. */
-export function mitUndo(art, { id = "", label = "", vorher = "", alt = [] } = {}) {
+export function mitUndo(art, { id = "", label = "", vorher = "", alt = [], weitereEntwuerfe = [], weitereHkps = [] } = {}) {
   if (!rueckgaengigAn() || !ARTEN.has(art)) return {};
   const undo = { art, label: String(label || "").trim(), wann: Date.now() };
   if (id) undo.id = String(id);
   if (vorher) undo.vorher = String(vorher);
   if (Array.isArray(alt) && alt.length) undo.alt = alt.map(String);
+  if (Array.isArray(weitereEntwuerfe) && weitereEntwuerfe.length) undo.weitereEntwuerfe = weitereEntwuerfe.map(String);
+  if (Array.isArray(weitereHkps) && weitereHkps.length) undo.weitereHkps = weitereHkps.map(String);
   return { undo };
+}
+
+async function fallMitnehmen(clientId, u, d) {
+  for (const id of u.weitereHkps || []) {
+    try {
+      const h = await d.hkpLesen(clientId, id);
+      if (h?.status !== "wartet_auf_freigabe") continue;
+      await d.hkpAktualisieren(clientId, h.id, {
+        version: h.version, felder: { status: "verworfen" }, wer: "Clara", was: "Fall per Sprache zurückgenommen (\"doch nicht\")",
+      });
+    } catch { /* der Hauptteil ist verworfen; ein Teil bleibt im Zweifel in PlanR sichtbar */ }
+  }
+  for (const id of u.weitereEntwuerfe || []) {
+    try { await d.entwurfVerwerfen(clientId, id); } catch { /* siehe oben */ }
+  }
 }
 
 async function standardDeps() {
@@ -94,12 +111,16 @@ export async function zuruecknehmen(clientId, undo, deps) {
       } catch { /* der neue Entwurf ist verworfen; ein alter bleibt im Zweifel verworfen und in PlanR sichtbar */ }
     }
     const altSatz = wieder ? ` Der vorige HKP wartet wieder auf Ihre Freigabe.` : "";
+    await fallMitnehmen(clientId, u, d);
     return { ok: true, undoErledigt: true, message: `Gut, ich habe ${label} wieder verworfen.${altSatz}` };
   }
 
   if (u.art === "planr_entwurf") {
     const r = await d.entwurfVerwerfen(clientId, u.id);
-    if (r.ok) return { ok: true, undoErledigt: true, message: `Gut, ich habe ${label} wieder verworfen.` };
+    if (r.ok) {
+      await fallMitnehmen(clientId, u, d);
+      return { ok: true, undoErledigt: true, message: `Gut, ich habe ${label} wieder verworfen.` };
+    }
     if (r.grund === "abgeholt") {
       return { ok: false, undoErledigt: true, message: `${gross(label)} liegt schon als Entwurf${r.nummer ? ` ${r.nummer}` : ""} in PlanR – bitte dort löschen.` };
     }
