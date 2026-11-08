@@ -18,12 +18,19 @@ function check(name, ok, info = "") {
   if (!ok) fehler += 1;
 }
 
+// Berliner UTC-Versatz des Tages (Sommer +02:00, Winter +01:00) — fest
+// verdrahtet lag der Test nach der Zeitumstellung eine Stunde daneben.
+const berlinOffset = (tag) => {
+  const name = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", timeZoneName: "longOffset" })
+    .formatToParts(new Date(`${tag}T12:00:00Z`)).find((p) => p.type === "timeZoneName")?.value || "GMT+01:00";
+  return name === "GMT" ? "+00:00" : name.replace("GMT", "");
+};
 const MORGEN = (() => {
-  const d = new Date(`${todayBerlin()}T12:00:00+02:00`);
-  d.setDate(d.getDate() + 1);
+  const d = new Date(`${todayBerlin()}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 })();
-const ms = (tag, hhmm) => new Date(`${tag}T${hhmm}:00+02:00`).getTime();
+const ms = (tag, hhmm) => new Date(`${tag}T${hhmm}:00${berlinOffset(tag)}`).getTime();
 
 const termin = (hhmm, endHhmm, kal = "Dr. Patrikis") => ({
   id: `t_${hhmm}`, startMs: ms(MORGEN, hhmm), endMs: ms(MORGEN, endHhmm),

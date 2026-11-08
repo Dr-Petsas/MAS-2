@@ -97,7 +97,7 @@ async function run() {
   check(/zur Kontrolle/.test(list), "Behandlungsart natürlich formuliert");
   check(/ein Neupatient/.test(list), "Liste markiert Neupatienten");
   // "Heute hat Dr. Test um 9 Uhr …" bzw. rotiert "Dr. Test hat heute um …".
-  check(/(hat Dr\. Test um|Dr\. Test hat \S+ um)/.test(list) && /Dr\. Zwei hat um/.test(list), "Liste gruppiert nach Behandler");
+  check(/(hat Dr\. Test um|Dr\. Test hat \S+(?:, [^.]+?,)? um)/.test(list) && /Dr\. Zwei hat um/.test(list), "Liste gruppiert nach Behandler");
   console.log("  spoken: " + list);
 
   console.log("\n=== Natürliche Ansage (reales Beispiel) ===");
@@ -108,13 +108,14 @@ async function run() {
   ];
   const own = buildSpokenDayList(day1, { date: DATE, calendars: petsasCal, operatorDoctorName: "Dr. Petsas" });
   // Rahmen rotiert seit Lockerheit 1: "Heute haben Sie ..." ODER "Sie haben heute ...".
-  check(/^(Heute haben Sie|Sie haben heute) um 14 Uhr Frau Thrandorf mit akuten Beschwerden/.test(own), "Eigener Kalender -> 'haben Sie ... Frau Thrandorf mit akuten Beschwerden'");
+  // An Wochenenden/Feiertagen nennt relativeDayLabel den Tag mit ("heute, Sonntag, ...").
+  check(/^(Heute(?:, [^.]+?,)? haben Sie|Sie haben heute(?:, [^.]+?,)?) um 14 Uhr Frau Thrandorf mit akuten Beschwerden/.test(own), "Eigener Kalender -> 'haben Sie ... Frau Thrandorf mit akuten Beschwerden'");
   check(/und um 14 Uhr 45 Herrn Diedershagen zur SLM-Besprechung/.test(own), "'um 14 Uhr 45 Herrn Diedershagen zur SLM-Besprechung'");
   check(/Unterlagen sind noch nicht unterschrieben/.test(own), "Gelbe Unterlagen-Ampel wird angesagt");
   check(/Notiz: bringt vielleicht seine Frau mit/.test(own), "Terminnotiz wird vorgelesen");
   console.log("  spoken: " + own);
   const foreign = buildSpokenDayList(day1, { date: DATE, calendars: petsasCal, operatorDoctorName: "Dr. Nikolaou" });
-  check(/^(Heute hat Dr\. Petsas|Dr\. Petsas hat heute)/.test(foreign), "Fremder Kalender -> 'hat Dr. Petsas ...'");
+  check(/^(Heute(?:, [^.]+?,)? hat Dr\. Petsas|Dr\. Petsas hat heute)/.test(foreign), "Fremder Kalender -> 'hat Dr. Petsas ...'");
 
   console.log("\n=== Praxisgedächtnis-Hinweise (Shared Memory) ===");
   const caseMap = new Map([["pD", [{

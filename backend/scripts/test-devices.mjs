@@ -125,7 +125,11 @@ async function run() {
     check(sendR.ok === false, "Senden an Fake-Endpoint schlägt kontrolliert fehl");
     const stillThere = await masCollection(C, "mas_devices").doc(r1.deviceId).get();
     // 404/410 => removed is legitimate; anything else must keep the device.
-    if (sendR.removed) {
+    if (sendR.reason === "push_paused") {
+      // Push bewusst pausiert (CLARA_PUSH=0 / Pause-Datei): nichts wurde
+      // gesendet, also gibt es auch kein lastPushOk zu protokollieren.
+      check(stillThere.exists, "Push pausiert -> Gerät bleibt registriert");
+    } else if (sendR.removed) {
       check(!stillThere.exists, "410/404 -> Gerät aufgeräumt");
       // restore for the remaining checks
       await masCollection(C, "mas_devices").doc(r1.deviceId).set(dev);

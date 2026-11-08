@@ -55,7 +55,8 @@ W.LenaDokuZahn.applySegments(st, [
 check("Befund-Box gefuellt", !!st.values.befund, st.values.befund);
 check("Therapie-Box gefuellt", !!st.values.therapie, st.values.therapie);
 check("Komplikationen=keine", st.values.komplikationen === "keine", st.values.komplikationen);
-check("Procedere gefuellt", !!st.values.procedere, st.values.procedere);
+// Procedere laeuft seit 26.07.2026 mit in die Box "Therapie / Behandlung".
+check("Procedere in der Therapie-Box", /kontrolle in einer woche/i.test(st.values.therapie || ""), st.values.therapie);
 check("Zaehne-Box gefuellt", !!st.values.zaehne, st.values.zaehne);
 
 // 5) Souffleuse: leere Pflicht-Box wird angesagt
@@ -254,7 +255,8 @@ check("36 ersetzt -> e", pErsetzt.length && pErsetzt[0].fdi === 36 && pErsetzt[0
     { text: "Das war alles soweit in Ordnung heute." },
     { text: "ok" },
   ]);
-  check("Freitext: Beschwerden -> befund", /beschwerden/i.test(stF.values.befund || ""), stF.values.befund);
+  // Patienten-Schilderungen haben eine eigene Box (Anamnese) statt pauschal Befund.
+  check("Freitext: Beschwerden -> anamnese", /beschwerden/i.test(stF.values.anamnese || ""), stF.values.anamnese);
   check("Freitext: Narrative ohne Stichwort -> befund", /soweit in ordnung/i.test(stF.values.befund || ""), stF.values.befund);
   check("Freitext: 'ok' nicht in Box", !/\bok\b/i.test(stF.values.befund || ""), stF.values.befund);
   check("Freitext: Schema-Karies bleibt", /16 karies/i.test(stF.values.befund || ""), stF.values.befund);
