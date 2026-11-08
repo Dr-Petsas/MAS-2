@@ -2907,6 +2907,7 @@ router.post("/tools/fall-rechnen", async (req, res) => {
     const praxis = await praxisLaden(clientId).catch(() => ({ einstellungen: {} }));
     const x = fallRechnen(b, {
       muster, befund: befundMap,
+      anzeige: String(b.anzeige || "").trim().toLowerCase() === "text" ? "text" : "",
       patientDaten: patient ? patientFuerEngine(patient) : {},
       patientLabel: patient?.anredeLabel || "",
       einstellungen: praxis.einstellungen || {},

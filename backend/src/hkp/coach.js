@@ -7,6 +7,7 @@ import * as I from "../vendor/impl-engine.mjs";
 import * as M from "../vendor/mkv-engine.mjs";
 import * as K from "../vendor/kons-engine.mjs";
 import { planPruefen } from "./ausschluss.js";
+import { begleitleistungen, begleitSatz, begleitWahl } from "./begleit.js";
 
 const ARTEN = new Set(["kasse", "privat", "impl", "kons", "mkv"]);
 const zahl = (x) => Math.round((Number(x) || 0) * 100) / 100;
@@ -92,8 +93,21 @@ function artAus(teil, text) {
   return a;
 }
 
-/** Ein Satz oder eine Teile-Liste wird zu den Engine-Aufträgen. Fehlende Kasse/Privat-Angabe bleibt eine Frage. */
-export function teileAufloesen(body) {
+/** Die ZE-Engine findet keine Versorgung, die Kons-Engine aber einen Zahn mit Therapie (Füllung, Inlay, Wurzelbehandlung). */
+function nurKons(text) {
+  let ze = null;
+  try { ze = E.auftragVerstehen(text); } catch { ze = null; }
+  if (ze?.versorgung) return false;
+  let kons = null;
+  try { kons = K.konsAuftragVerstehen(text); } catch { kons = null; }
+  return Object.keys(kons?.zaehne || {}).length > 0;
+}
+
+/**
+ * Ein Satz oder eine Teile-Liste wird zu den Engine-Aufträgen. Fehlende Kasse/Privat-Angabe bleibt eine Frage —
+ * außer in der Musterrechnung (`engineArt`): dort rechnet reine Zahnerhaltung als private Kons.
+ */
+export function teileAufloesen(body, { engineArt = false } = {}) {
   const roh = typeof body?.teile === "string" && body.teile.trim().startsWith("[")
     ? (() => { try { return JSON.parse(body.teile); } catch { return null; } })()
     : body?.teile;
@@ -119,6 +133,8 @@ export function teileAufloesen(body) {
       teile = [{ planart, versorgung }];
     }
   }
+  teile = teile.map((t) => (t.planart === "privat" || (engineArt && !t.planart)) && nurKons(t.versorgung)
+    ? { ...t, planart: "kons" } : t);
   if (teile.some((t) => !t.planart && PROTHESE.test(t.versorgung))) {
     return { teile, frage: "Für die Prothese: über die Kasse mit Festzuschuss, oder privat?" };
   }
@@ -131,8 +147,15 @@ export function teileAufloesen(body) {
 function zeilenAus(r) {
   const rech = r?.rechnung;
   const kalk = r?.kalkulation;
+  // Kons und Mehrkosten führen ihre Positionen je Zahn; bei Mehrkosten steht die BEMA-Leistung der Kasse daneben.
+  const jeZahn = Array.isArray(rech?.zaehne)
+    ? rech.zaehne.flatMap((z) => [...(z?.zeilen || []), ...(z?.kasse ? [{ ...z.kasse, zahn: z.zahn }] : [])])
+    : [];
   const roh = [
     ...(rech ? [...(rech.honorarGoz || []), ...(rech.honorarGoae || []), ...(rech.material || []), ...(rech.labor || [])] : []),
+    ...jeZahn,
+    ...(Array.isArray(rech?.begleit) ? rech.begleit : []),
+    ...(Array.isArray(rech?.frei) ? rech.frei : []),
     ...(kalk ? [...(kalk.honorar || []), ...(kalk.material || []), ...(kalk.labor || [])] : []),
     ...(r?.ergebnis?.positionen || []),
   ];
@@ -142,7 +165,7 @@ function zeilenAus(r) {
     zahn: String(p.zahn || ""),
     text: String(p.text || p.bezeichnung || "").replace(/\s+/g, " ").slice(0, 90),
     anzahl: Number(p.anzahl) || 1,
-    betrag: zahl(p.betrag ?? (p.preis != null ? Number(p.preis) * (Number(p.anzahl) || 1) : 0)),
+    betrag: zahl(p.betrag ?? (p.preis != null ? Number(p.preis) * (Number(p.anzahl) || 1) : p.summe ?? 0)),
   }));
 }
 
@@ -175,13 +198,150 @@ function summeZeilen(planart, summen) {
   if (planart === "impl" || planart === "kons") return [`Gesamt ${euro(summen.summe)}`];
   if (planart === "mkv") return [`Mehrkosten ${euro(summen.mehrkosten)}`, `Kasse ${euro(summen.kassenanteil)}`];
   if (planart === "privat") return [`Gesamt ${euro(summen.gesamt)}`];
-  return [`Gesamt ${euro(summen.gesamt)}`, `Festzuschuss ${euro(summen.festzuschuss)}`, `Eigenanteil ${euro(summen.eigenanteil)}`];
+  return [
+    `Gesamt ${euro(summen.gesamt)}`, `Festzuschuss ${euro(summen.festzuschuss)}`, `Eigenanteil ${euro(summen.eigenanteil)}`,
+    ...(summen.kzv ? [`Begleitleistungen über die KZV ${euro(summen.kzv)}`] : []),
+  ];
+}
+
+/** Private Begleitleistungen erhöhen Rechnung bzw. Mehrkosten; die der Kasse laufen über die KZV. */
+function summenMitBegleit(planart, summen, neu) {
+  const summe = (zs) => zahl(zs.reduce((s, z) => s + z.betrag, 0));
+  const privat = neu.filter((z) => !z.kzv);
+  const p = summe(privat);
+  const kzv = summe(neu.filter((z) => z.kzv));
+  const s = { ...summen };
+  if (planart === "kons") s.summe = zahl(s.summe + p);
+  if (planart === "mkv") Object.assign(s, { mehrkosten: zahl(s.mehrkosten + p), kassenanteil: zahl(s.kassenanteil + kzv) });
+  if (planart === "privat") {
+    const material = summe(privat.filter((z) => z.ebene === "MAT"));
+    Object.assign(s, { gesamt: zahl(s.gesamt + p), honorar: zahl(s.honorar + p - material), material: zahl(s.material + material) });
+  }
+  if (planart === "kasse" && kzv) s.kzv = kzv;
+  return s;
+}
+
+// Befund ohne eigenen Zahn: fehlend, nicht erhaltungswürdig, ersetzt, Implantat.
+const OHNE_ZAHN = /^(?:f|x|e|ew|b|bw|ab|abw|i\w*|s\w*)$/;
+
+/** Zähne, an denen weder Anästhesie noch Pfeilerröntgen anfällt: Implantate des Falls und Lücken im Befund. */
+function ohneEigenenZahn(teile, befund) {
+  const ohne = new Set(teile.filter((t) => t.planart === "impl").flatMap((t) => Object.keys(t.r?.plan?.zaehne || {})));
+  for (const t of teile) {
+    let ausAuftrag = {};
+    try { ausAuftrag = E.befundVerstehen(t.versorgung) || {}; } catch { ausAuftrag = {}; }
+    for (const [zahn, code] of Object.entries({ ...ausAuftrag, ...befund })) {
+      if (OHNE_ZAHN.test(String(code || "").trim().toLowerCase())) ohne.add(zahn);
+    }
+  }
+  return ohne;
+}
+
+const kchCache = new Map();
+/** KCH-Punktwert der Praxis-KZV. Die Tabelle der KZVen führt die Füllungs-MKV-Engine. */
+function kchPunktwert(ctx) {
+  const key = `${ctx.praxisPlz || ""}|${ctx.kzvNr || ""}`;
+  if (!kchCache.has(key)) {
+    const r = M.mkvEntwurf("Füllung o an 16", {}, { praxis: { plz: ctx.praxisPlz || "", kzvNr: ctx.kzvNr || "" } });
+    kchCache.set(key, Number(r?.rechnung?.punktwert) || 0);
+  }
+  return kchCache.get(key);
+}
+
+function begleitDazu(teile, body, ctx, befund) {
+  const wahl = begleitWahl(body?.begleit);
+  const ohne = ohneEigenenZahn(teile, befund);
+  for (const t of teile) {
+    // Nur die MKV-Engine rechnet mit dem KCH-Punktwert; der Kassen-HKP führt den ZE-Punktwert.
+    const punktwert = () => (t.planart === "mkv" && Number(t.r?.rechnung?.punktwert)) || kchPunktwert(ctx);
+    const neu = begleitleistungen(t, { ohne, wahl, punktwert });
+    if (!neu.length) continue;
+    t.zeilen = [...t.zeilen, ...neu];
+    t.summen = summenMitBegleit(t.planart, t.summen, neu);
+  }
+}
+
+/** Musterbefund, den Clara für Zahnersatz ohne Patient mitgibt ("36 fehlt, 35 und 37 ww"). */
+function musterBefund(body) {
+  const text = String(body?.befund || "").trim();
+  if (!text) return {};
+  try { return E.befundVerstehen(text) || {}; } catch { return {}; }
+}
+
+const KIEFER_ZAEHNE = {
+  OK: ["11", "12", "13", "14", "15", "16", "17", "21", "22", "23", "24", "25", "26", "27"],
+  UK: ["31", "32", "33", "34", "35", "36", "37", "41", "42", "43", "44", "45", "46", "47"],
+};
+const ZAHN_VERSORGUNG = new Set(["kronen", "bruecke", "implantatkronen", "inlay"]);
+
+/**
+ * Zahnersatz-Muster ohne Befund: der typische Ausgangsbefund steckt im Auftrag selbst.
+ * Pfeiler sind erneuerungsbedürftig, Glieder und Implantatsitze fehlen; bei einer
+ * Kieferprothese fehlt der Rest des Kiefers. Totalprothese und All-on rechnen ohne Befund.
+ */
+function standardBefund(teile) {
+  const befund = {};
+  for (const t of teile) {
+    if (t.planart !== "privat" && t.planart !== "kasse") continue;
+    let a = null;
+    try { a = E.auftragVerstehen(t.versorgung); } catch { a = null; }
+    if (!a?.versorgung || a.versorgung === "totalprothese" || a.versorgung === "allon") continue;
+    const kiefer = !ZAHN_VERSORGUNG.has(a.versorgung) ? KIEFER_ZAEHNE[a.kiefer] || [] : [];
+    for (const z of kiefer) befund[z] ??= "f";
+    for (const z of a.glieder || []) befund[z] = "f";
+    for (const z of a.pfeiler || []) befund[z] = a.aufImplantat ? "f" : "ww";
+    for (const z of a.entfernen || []) befund[z] = "x";
+  }
+  return befund;
+}
+
+const KANAELE_GESAGT = { 1: "einen Kanal", 2: "zwei Kanäle", 3: "drei Kanäle" };
+
+/** Typische Kanalzahl für die Musterrechnung: Molaren drei, obere Vierer zwei, sonst einer. */
+function typischeKanaele(zahn) {
+  const pos = Number(String(zahn).slice(-1));
+  if (pos >= 6) return 3;
+  return pos === 4 && Number(String(zahn)[0]) <= 2 ? 2 : 1;
+}
+
+/** Endo-Muster ohne Kanalzahl: die typische an den Auftrag hängen, damit die Engine rechnet. */
+function mitTypischenKanaelen(teil) {
+  let ohne = [];
+  try { ohne = K.konsAuftragVerstehen(teil.versorgung).ohneKanaele || []; } catch { ohne = []; }
+  if (!ohne.length) return null;
+  const n = [...ohne].sort((a, b) => Number(a) - Number(b)).map((z) => [z, typischeKanaele(z)]);
+  return {
+    teil: { ...teil, versorgung: `${teil.versorgung}, ${n.map(([z, k]) => `${z} mit ${k} Kanälen`).join(", ")}` },
+    satz: `Als Beispiel nehme ich ${aufzaehlen(n.map(([z, k]) => `an ${z} ${KANAELE_GESAGT[k]}`))} an.`,
+  };
+}
+
+function aufzaehlen(zaehne) {
+  return zaehne.length > 1 ? `${zaehne.slice(0, -1).join(", ")} und ${zaehne.at(-1)}` : zaehne[0];
+}
+
+/** Der angenommene Befund als Satz; viele fehlende Zähne eines Kiefers heißen "die übrigen Zähne". */
+function befundSatz(befund) {
+  const nach = (code) => Object.keys(befund).filter((z) => befund[z] === code).sort();
+  const teile = [];
+  const ww = nach("ww");
+  const f = nach("f");
+  const x = nach("x");
+  if (ww.length) teile.push(`${aufzaehlen(ww)} ${ww.length > 1 ? "sind" : "ist"} erneuerungsbedürftig`);
+  if (x.length) teile.push(`${aufzaehlen(x)} ${x.length > 1 ? "werden" : "wird"} entfernt`);
+  if (f.length > 4) teile.push("die übrigen Zähne im Kiefer fehlen");
+  else if (f.length) teile.push(`${aufzaehlen(f)} ${f.length > 1 ? "fehlen" : "fehlt"}`);
+  if (!teile.length) return "";
+  return `Als Ausgangsbefund nehme ich an: ${teile.length > 1 ? `${teile.slice(0, -1).join(", ")} und ${teile.at(-1)}` : teile[0]}.`;
 }
 
 function titelVon(planart, r) {
   if (planart === "impl") return I.implVersorgungSatz(r.zusammenfassung);
   const z = r.zusammenfassung || {};
   if (z.ankerGesagt) return String(z.ankerGesagt);
+  const zaehne = (planart === "kons" || planart === "mkv") && Array.isArray(r.rechnung?.zaehne) ? r.rechnung.zaehne : [];
+  const teile = zaehne.filter((t) => t?.titel && t?.zahn).map((t) => `${t.titel} an ${t.zahn}`);
+  if (teile.length) return teile.length > 1 ? `${teile.slice(0, -1).join(", ")} und ${teile.at(-1)}` : teile[0];
   if (planart === "privat") return "Privater Zahnersatz";
   if (planart === "kons") return "Kostenvoranschlag Kons";
   if (planart === "mkv") return "Füllungs-Mehrkosten";
@@ -208,7 +368,7 @@ function karteGruppen(zeilen) {
   const material = g.filter((z) => z.ebene === "MAT");
   const labor = g.filter((z) => z.ebene === "BEL" || z.ebene === "BEB");
   const honorar = g.filter((z) => z.ebene !== "MAT" && z.ebene !== "BEL" && z.ebene !== "BEB");
-  const geordnet = [...honorar.filter((z) => VORRANG.has(z.nr)), ...honorar.filter((z) => !VORRANG.has(z.nr))].slice(0, 8);
+  const geordnet = [...honorar.filter((z) => VORRANG.has(z.nr)), ...honorar.filter((z) => !VORRANG.has(z.nr))].slice(0, 10);
   if (material.length) {
     geordnet.push({ ebene: "Material", nr: "", anzahl: material.length, betrag: zahl(material.reduce((s, z) => s + z.betrag, 0)) });
   }
@@ -246,12 +406,47 @@ function karteBauen(teile, { muster, label, fallTitel }) {
  * Rechnet jeden Teil. Rückfrage der Engine oder fehlende Planart kommt vor der Karte.
  * `teile` der Antwort trägt das Engine-Ergebnis fürs spätere Ablegen.
  */
+/** Was Clara für eine Musterrechnung selbst angenommen hat (Beispielzahn, Material), als ganzer Satz vorneweg. */
+function annahmeSatz(body, ctx) {
+  const satz = String(body?.annahme || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  if (!satz || !ctx.muster || /€|euro/i.test(satz)) return "";
+  return /[.!?]$/.test(satz) ? satz : `${satz}.`;
+}
+
 export function fallRechnen(body, ctx = {}) {
-  const auf = teileAufloesen(body || {});
+  const annahme = annahmeSatz(body, ctx);
+  const auf = teileAufloesen(body || {}, { engineArt: Boolean(ctx.muster) });
   if (auf.frage) return { status: "rueckfrage", frage: auf.frage };
+  let befund = Object.keys(ctx.befund || {}).length ? ctx.befund : ctx.muster ? musterBefund(body) : {};
+  let befundAnnahme = "";
+  if (ctx.muster && !Object.keys(befund).length) {
+    befund = standardBefund(auf.teile);
+    befundAnnahme = befundSatz(befund);
+  }
+  const rctx = { ...ctx, befund };
+  // Der Musterbefund beschreibt Zahnersatz ("25 k"); Zahnerhaltung und Implantologie rechnen im Muster ohne ihn,
+  // sonst sperrt die Krone an 25 die Beispielfüllung.
+  const ohneMusterBefund = { ...rctx, befund: {} };
+  const ctxFuer = (planart) => (ctx.muster && planart !== "privat" && planart !== "kasse" ? ohneMusterBefund : rctx);
   const fertig = [];
-  for (const teil of auf.teile) {
-    const r = rechnenTeil(teil, ctx);
+  const angenommen = [];
+  for (let teil of auf.teile) {
+    let r = rechnenTeil(teil, ctxFuer(teil.planart));
+    if (teil.planart === "kasse" && r.status === "rueckfrage" && nurKons(teil.versorgung)) {
+      const mkv = rechnenTeil({ ...teil, planart: "mkv" }, ctxFuer("mkv"));
+      if (mkv.status === "ok") {
+        teil = { ...teil, planart: "mkv" };
+        r = mkv;
+      }
+    }
+    if (ctx.muster && teil.planart === "kons" && r.status === "rueckfrage" && r.grund === "kanaele") {
+      const typisch = mitTypischenKanaelen(teil);
+      if (typisch) {
+        teil = typisch.teil;
+        r = rechnenTeil(teil, ctxFuer(teil.planart));
+        if (r.status === "ok") angenommen.push(typisch.satz);
+      }
+    }
     if (r.status !== "ok") {
       return {
         status: "rueckfrage",
@@ -274,6 +469,8 @@ export function fallRechnen(body, ctx = {}) {
       r,
     });
   }
+  // Patientenpläne gehen mit dem Engine-Plan nach PlanR; Zusatzzeilen nur in der Musterrechnung.
+  if (ctx.muster) begleitDazu(fertig, body, ctx, befund);
   const titel = fallTitel(fertig);
   const pruefung = planPruefen(fertig.flatMap((t) => t.zeilen));
   const hinweis = [...fertig.flatMap((t) => t.hinweise), ...pruefung.slice(0, 2).map((e) => e.hinweis)].slice(0, 3);
@@ -285,10 +482,17 @@ export function fallRechnen(body, ctx = {}) {
   const satz = fertig.length === 1
     ? `Die Rechnung: ${fertig[0].titel}.`
     : `Die Rechnung hat ${fertig.length === 2 ? "zwei Teile" : `${fertig.length} Teile`}. ${namen.join(" ")}`;
+  const wo = ctx.anzeige === "text" ? "in der Rechnung hier im Gespräch" : "auf dem Handy";
   const schluss = ctx.muster
-    ? "Das ist eine Musterrechnung, ich speichere nichts. Alle Positionen und Beträge stehen auf dem Handy."
-    : "Alle Positionen und Beträge stehen auf dem Handy. Soll ich den Entwurf so anlegen?";
-  const message = [satz, ...hinweis, schluss].filter(Boolean).join(" ");
+    ? `Das ist eine Musterrechnung, ich speichere nichts. Alle Positionen und Beträge stehen ${wo}.`
+    : `Alle Positionen und Beträge stehen ${wo}. Soll ich den Entwurf so anlegen?`;
+  const begleitung = ctx.muster ? begleitSatz(fertig) : "";
+  // Kons-, MKV- und ZE-Engine nennen ihre Annahmen (Material, Flächen, Kanäle, Abdruck) selbst; ein freier
+  // Modellsatz ("Als Beispiel nehme ich eine Keramikkrone") widerspräche dort der Rechnung. In der Implantologie
+  // nennt er den Beispielzahn, ohne den die Engine gar nicht rechnet.
+  const modellAnnahme = fertig.every((t) => t.planart === "impl") ? annahme : "";
+  const message = [modellAnnahme, befundAnnahme, ...angenommen, satz, ...hinweis, begleitung, schluss]
+    .filter(Boolean).join(" ");
   return {
     status: "ok",
     message,
@@ -301,5 +505,6 @@ export function fallRechnen(body, ctx = {}) {
 function fallTitel(teile) {
   const prothese = teile.find((t) => /All-on-/.test(t.titel));
   if (prothese && teile.some((t) => t.planart === "impl")) return `${prothese.titel} mit Implantation`;
+  if (teile.length === 1 && (teile[0].planart === "kons" || teile[0].planart === "mkv")) return teile[0].titel;
   return teile.map((t) => t.kurz).join(" und ");
 }
