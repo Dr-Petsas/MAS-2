@@ -179,12 +179,18 @@ export async function trenneMemo(memo, { offeneAbrechnungsFrage = "", timeoutMs 
   for (const roh of parsed.abrechnung) {
     const passage = norm(roh);
     if (!passage) continue;
-    // Nur entfernen, was (a) woertlich im Memo steht und (b) nach Abrechnung
-    // aussieht ODER eine offene Abrechnungsfrage beantwortet. Sonst: Doku behalten.
+    // Ins Abrechnungs-Memo kommt, was woertlich im Memo steht und nach
+    // Abrechnung aussieht ODER die offene Abrechnungsfrage beantwortet. Aus der
+    // Doku entfernt wird aber NUR echte Abrechnungssprache: eine markerlose
+    // Antwort ("Infiltrationsanaesthesie gesetzt", "drei Kanaele") ist zugleich
+    // klinischer Befund und gehoert nach § 630f in die Kartei.
     const idx = doku.toLowerCase().indexOf(passage.toLowerCase());
-    const plausibel = ABRECHNUNG_MARKER.test(passage) || !!offeneAbrechnungsFrage;
+    const istAbrechnung = ABRECHNUNG_MARKER.test(passage);
+    const plausibel = istAbrechnung || !!offeneAbrechnungsFrage;
     if (idx >= 0 && plausibel) {
-      doku = (doku.slice(0, idx) + " " + doku.slice(idx + passage.length)).replace(/\s{2,}/g, " ").trim();
+      if (istAbrechnung) {
+        doku = (doku.slice(0, idx) + " " + doku.slice(idx + passage.length)).replace(/\s{2,}/g, " ").trim();
+      }
       abrechnung.push(passage);
       continue;
     }

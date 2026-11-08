@@ -55,6 +55,16 @@ check("reines Abrechnungs-Memo: Anweisung erfasst",
   /faktor|goz/i.test(t5.abrechnungText),
   `abrechnung=${t5.abrechnungText}`);
 
+// 6) Vorfall 08.11.2026: Sophie fragte zur Abrechnung nach der Anaesthesie, das
+//    Folgediktat beantwortete sie — und "Infiltrationsanaesthesie gesetzt"
+//    verschwand aus der Kartei. Klinische Antworten bleiben IMMER Doku.
+const t6 = await trenneMemo("Infiltrationsanästhesie gesetzt, keine Komplikationen, Kontrolle bei Beschwerden.",
+  { offeneAbrechnungsFrage: "Welche Anästhesie wurde gesetzt — Infiltration oder Leitung? Das brauche ich für die Abrechnung." });
+console.log("   doku:", JSON.stringify(t6.dokuText), "| abr.:", JSON.stringify(t6.abrechnungText), "| methode:", t6.methode);
+check("klinische Antwort auf Abrechnungsfrage bleibt in der Kartei",
+  /infiltrationsan[aä]sthesie gesetzt/i.test(t6.dokuText) && /komplikationen/i.test(t6.dokuText),
+  `doku=${t6.dokuText}`);
+
 console.log(fehler === 0 ? "\nALLE CHECKS BESTANDEN" : `\n${fehler} CHECK(S) FEHLGESCHLAGEN`);
 // Undici (Node-fetch) Keep-Alive-Pool schliessen und den Prozess NATUERLICH
 // auslaufen lassen (exitCode statt process.exit()). Ein abruptes process.exit()
