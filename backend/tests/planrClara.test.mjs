@@ -41,11 +41,12 @@ await t("MAS und Praxen ohne Billing: nichts gesperrt", async () => {
   }
 });
 
-await t("PlanR mit Sprachsteuerung: nur Suche, HKP, Rueckgaengig", async () => {
-  for (const pfad of ["/tools/search-patient", "/tools/hkp-create-draft", "/tools/hkp-overview", "/tools/hkp-position-change", "/tools/undo-last"]) {
+await t("PlanR mit Sprachsteuerung: nur Suche, HKP, Rechnen, Abrechnung, Rueckgaengig", async () => {
+  for (const pfad of ["/tools/search-patient", "/tools/hkp-create-draft", "/tools/hkp-overview", "/tools/hkp-position-change", "/tools/undo-last",
+    "/tools/fall-rechnen", "/tools/plan-rechnen", "/tools/plan-ablegen", "/tools/abrechnung-frage"]) {
     assert.equal((await aufruf(mw, pfad, "planrSprache")).gesperrt, false, pfad);
   }
-  for (const pfad of ["/tools/send-sms", "/tools/day-briefing", "/tools/find-slots", "/tools/compose-email", "/clara/team/ask", "/tools/search-patient-x"]) {
+  for (const pfad of ["/tools/send-sms", "/tools/day-briefing", "/tools/find-slots", "/tools/compose-email", "/clara/team/ask", "/tools/search-patient-x", "/tools/fall-rechnen-x"]) {
     const r = await aufruf(mw, pfad, "planrSprache");
     assert.equal(r.gesperrt, true, pfad);
     assert.equal(r.body.message, P.SPERRSATZ);

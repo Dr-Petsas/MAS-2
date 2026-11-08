@@ -2,7 +2,8 @@
 //
 // Nur Praxen mit eigenem PlanR-Abo OHNE MAS sind betroffen:
 //   - Sprachsteuerung gebucht  -> Zugang "planr": Sitzung laeuft immer mit dem
-//     Profil clara_planr (Patientensuche, HKP, Rueckgaengig) und jedes andere
+//     Profil clara_planr (Patientensuche, HKP, Plan-/Musterrechnung,
+//     Abrechnungsfragen, Rueckgaengig) und jedes andere
 //     Werkzeug wird hier serverseitig gesperrt.
 //   - nicht gebucht            -> Zugang "gesperrt": keine Clara-Sitzung.
 // Alle anderen Praxen (MAS, meddent, Demo, ohne Billing) bleiben "unberuehrt" —
@@ -20,7 +21,13 @@ export const NICHT_GEBUCHT = "Die Sprachsteuerung ist für diese Praxis nicht ge
 
 export const planrProfilId = () => String(process.env.CLARA_PLANR_PROFILE_ID || "clara_planr").trim();
 
-const ERLAUBT = [/^\/tools\/search-patient\/?$/, /^\/tools\/hkp-[a-z-]+\/?$/, /^\/tools\/undo-last\/?$/];
+// Genau die Werkzeuge des Profils clara_planr: fehlt hier eines, antwortet Clara in PlanR mit dem Sperrsatz.
+const ERLAUBT = [
+  /^\/tools\/search-patient\/?$/,
+  /^\/tools\/hkp-[a-z-]+\/?$/,
+  /^\/tools\/(plan-rechnen|fall-rechnen|plan-ablegen|abrechnung-frage)\/?$/,
+  /^\/tools\/undo-last\/?$/,
+];
 const GESCHUETZT = (p) => p.startsWith("/tools/") || p === "/clara/team/ask";
 
 /** "planr" | "gesperrt" | "unberuehrt" aus dem Billing-Dokument. */
