@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 e0032b4b1e63)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 edd6f7ebf420)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -22767,6 +22767,7 @@ var BEFUND_KUERZEL = {
 	ew: "ersetzter, aber erneuerungsbedürftiger Zahn",
 	f: "fehlender Zahn",
 	ix: "zu entfernendes Implantat",
+	j: "Implantat ohne Suprakonstruktion",
 	k: "klinisch intakte Krone",
 	kw: "erneuerungsbedürftige Krone",
 	pkw: "erneuerungsbedürftige Teilkrone",
@@ -29027,7 +29028,7 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 	const befund = Object.fromEntries(Object.entries(befundRoh).map(([z, b]) => [z, (b ?? "").trim().toLowerCase()]));
 	const hinweise = [];
 	const teile = auftrag.teile?.length ? auftrag.teile : [auftrag];
-	for (const teil of teile) for (const z of teil.entfernen) befund[z] = "x";
+	for (const teil of teile) for (const z of teil.entfernen) if (!implantatOhneAufbau(befund[z])) befund[z] = "x";
 	for (const teil of teile) {
 		if (!teil.versorgung) return {
 			status: "rueckfrage",
@@ -29633,7 +29634,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-09 06:57";
+var ENGINE_STAND = "2026-11-09 07:04";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {

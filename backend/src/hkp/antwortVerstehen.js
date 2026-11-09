@@ -388,8 +388,11 @@ befund: nur Zaehne, deren Befund sich durch das Gesagte aendert, sonst {}. Werte
 "" natuerlicher Zahn ohne Befund (steht), "f" fehlt, "i" Implantat, "k" intakte Krone, "kw" erneuerungsbeduerftige Krone,
 "ww" weitgehend zerstoert (braucht Krone), "pw" partielle Defekte, "x" nicht erhaltungswuerdig, "e" ersetzter Zahn,
 "b" Brueckenglied, "t" Teleskopkrone, "tw" erneuerungsbeduerftige Teleskopkrone, "sk" implantatgetragene Krone,
-"ix" zu entfernendes Implantat, ")(" Lueckenschluss.
+"ix" zu entfernendes Implantat, "j" Implantat ohne Suprakonstruktion (so schreibt es DS-Win), ")(" Lueckenschluss.
 "Das sind Implantate" heisst "i".
+i und j sind gesetzte Implantate ohne Suprakonstruktion. Sie sind keine Zaehne und stoeren eine Totalprothese nicht.
+Frag nie, ob sie entfernt werden. Schreib sie nicht als "werden entfernt" in den Plan und setze ihren Befund nicht auf x oder leer.
+Sie bleiben liegen und gelten wie fehlende Zaehne. Nur eine Implantatkrone (sk, st, so) oder ein natuerlicher Zahn ist eine Rueckfrage.
 rest: gilt fuer alle Zaehne eines Kiefers, die nicht in befund stehen. "Alle anderen im Oberkiefer fehlen" heisst
 "rest": {"OK": "f"}, fuer den Unterkiefer "UK". Sonst {}.
 
@@ -398,8 +401,9 @@ Formen: "All-on-6-Prothese im Oberkiefer und All-on-6-Prothese im Unterkiefer", 
 "Totalprothese im Oberkiefer und im Unterkiefer", "Teleskopprothese im Oberkiefer mit Teleskopen auf 13 und 23",
 "Locatorprothese im Oberkiefer auf den Implantaten 14 und 24", "Stegprothese im Unterkiefer auf den Implantaten 33 und 43",
 "Brücke von 14 bis 16", "Krone auf 26", "Kronen auf 11 und 21, vollverblendet", "Implantatkrone auf 36".
-Was mit stehenden Zaehnen geschieht, haengst du an, die Zaehne mit "und" verbunden:
+Was mit stehenden natuerlichen Zaehnen geschieht, haengst du an, die Zaehne mit "und" verbunden:
 "Totalprothese im Oberkiefer, 16 und 14 und 13 werden entfernt" oder "Totalprothese im Oberkiefer, 23 und 24 bleiben erhalten".
+Implantate ohne Suprakonstruktion (i, j) haengst du nicht an.
 Eine Deckprothese auf Implantaten ist eine Locator- oder Stegprothese. Material und Analogpositionen, die er nennt,
 uebernimmst du woertlich in den Satz. Erfinde keine Analogziffer.
 
@@ -417,7 +421,44 @@ Keine Betraege, keine Punktwerte, kein "ich rechne". Sag All-on-4 und All-on-6, 
 Meldet die Software eine Rueckfrage, loese sie selbst, wenn das Gespraech die Antwort schon enthaelt
 (plan anpassen, rechnen), sonst frag ihn genau danach.`;
 
-const KUERZEL_KURZ = { "": "steht", f: "fehlt", i: "Implantat", x: "nicht erhaltungswürdig", k: "Krone", kw: "Krone erneuerungsbedürftig", ww: "braucht Krone", e: "ersetzt", b: "Brückenglied", t: "Teleskop" };
+const KUERZEL_KURZ = {
+  "": "steht", f: "fehlt", i: "Implantat ohne Suprakonstruktion", j: "Implantat ohne Suprakonstruktion",
+  ix: "Implantat nicht erhaltungswürdig", x: "nicht erhaltungswürdig", k: "Krone", kw: "Krone erneuerungsbedürftig",
+  ww: "braucht Krone", e: "ersetzt", b: "Brückenglied", t: "Teleskop", sk: "Implantatkrone",
+};
+const NACKTES_IMPLANTAT = new Set(["i", "j", "ix"]);
+const WILL_ENTFERNEN = /\b(?:entfern\w*|extrah\w*|explant\w*|zieh\w*|gezogen|heraus)\b/i;
+
+/**
+ * Telefon-Clara plant selbst und haelt i/j fuer Zaehne. Ohne ausdrückliches Entfernen im Satz des Zahnarztes
+ * bleiben nackte Implantate liegen: kein Befundwechsel auf leer/x/ix, kein "werden entfernt", keine Entfernungsfrage.
+ */
+export function nackteNichtEntfernen(d, befund, satz) {
+  if (!d || WILL_ENTFERNEN.test(String(satz || ""))) return d;
+  const nackt = new Set(Object.entries(befund || {})
+    .filter(([, c]) => NACKTES_IMPLANTAT.has(String(c ?? "").trim().toLowerCase()))
+    .map(([z]) => z));
+  if (!nackt.size) return d;
+  const neuBefund = { ...(d.befund || {}) };
+  for (const [z, c] of Object.entries(neuBefund)) {
+    const neu = String(c ?? "").trim().toLowerCase();
+    if (nackt.has(z) && (neu === "" || neu === "x" || neu === "ix")) delete neuBefund[z];
+  }
+  const plan = String(d.plan || "").replace(/,?\s*((?:\d{2}\s*(?:,|und)\s*)+\d{2}|\d{2})\s+werden entfernt/gi, (ganz, liste) => {
+    const zs = liste.match(/\d{2}/g) || [];
+    return zs.length && zs.every((z) => nackt.has(z)) ? "" : ganz;
+  }).replace(/\s{2,}/g, " ").replace(/,\s*$/, "").trim();
+  const zahlen = String(d.sagen || "").match(/\b[1-4][1-8]\b/g) || [];
+  const fragtRaus = /entfern|extrah|stehen noch|bleiben welche|bleibt er stehen/i.test(String(d.sagen || ""));
+  if (fragtRaus && zahlen.length && zahlen.every((z) => nackt.has(z))) {
+    return {
+      ...d, befund: neuBefund, plan,
+      sagen: "Die Implantate ohne Suprakonstruktion bleiben liegen. Ich plane die Prothese darüber.",
+      rechnen: true,
+    };
+  }
+  return { ...d, befund: neuBefund, plan };
+}
 let fachFragen = null;
 export function _setFach(fn) { fachFragen = fn; }
 

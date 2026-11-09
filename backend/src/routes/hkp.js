@@ -45,7 +45,7 @@ import { befundSatz, jahrgangWahl, vetternFrage, vorleseSatz, zahnBefundSatz } f
 import { befundMerken, entfernenMarken, planartKorrigieren, rueckfrageMerken, zahnListe } from "../hkp/mitdenken.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
-import { abrechnungAntwort, antwortVerstehen, befundListe, fachEntscheiden, mundSprechen, planIntent, befundSatz as befundAusAntwort } from "../hkp/antwortVerstehen.js";
+import { abrechnungAntwort, antwortVerstehen, befundListe, fachEntscheiden, mundSprechen, nackteNichtEntfernen, planIntent, befundSatz as befundAusAntwort } from "../hkp/antwortVerstehen.js";
 import { planPruefen, positionenVon } from "../hkp/ausschluss.js";
 import { fallRechnen } from "../hkp/coach.js";
 import { praxisKatalog, praxisKatalogNeu } from "../hkp/planrKatalog.js";
@@ -76,6 +76,8 @@ const VERSORGUNG_NAME = {
 /** Gesprochener Name. „allon“ ist nur der Schlüssel – Clara sagt All-on-4 oder All-on-6. */
 export function versorgungName(t) {
   if (t?.versorgung === "allon") return `All-on-${Number(t.allon) === 6 ? 6 : 4}`;
+  if (t?.versorgung === "totalprothese" && t.interim) return "Interimsprothese";
+  if (t?.versorgung === "totalprothese" && t.immediat) return "Immediatprothese";
   return VERSORGUNG_NAME[t?.versorgung] || "HKP";
 }
 export function versorgungTextVon(auftrag) {
@@ -85,6 +87,8 @@ export function versorgungTextVon(auftrag) {
   }
   const t = teile[0] || {};
   if (t.versorgung === "allon") return `${versorgungName(t)}-HKP`;
+  if (t.versorgung === "totalprothese" && t.interim) return "Interimsprothese";
+  if (t.versorgung === "totalprothese" && t.immediat) return "Immediatprothese";
   return VERSORGUNG_TEXT[t.versorgung] || "HKP";
 }
 const AENDERUNG_GUELTIG_MS = 5 * 60 * 1000;
@@ -1896,6 +1900,16 @@ async function fachZug(clientId, patient, b, { privat }) {
       },
     });
     if (!d) break;
+    const geschuetzt = nackteNichtEntfernen(d, { ...p.befund, ...st.offen }, satz);
+    d.befund = geschuetzt.befund;
+    d.plan = geschuetzt.plan;
+    d.sagen = geschuetzt.sagen;
+    if (geschuetzt.rechnen) d.rechnen = true;
+    if (d.rechnen && !String(d.plan || "").trim() && !st.plan) {
+      const a = E.auftragVerstehen(satz);
+      const teile = a.teile?.length ? a.teile : [a];
+      if (teile.every((t) => t.versorgung)) d.plan = satz;
+    }
     log.info?.(`[hkp] fach ${runde + 1}: ${JSON.stringify({ befund: d.befund, plan: d.plan, rechnen: d.rechnen, uebertragen: d.uebertragen, abbrechen: d.abbrechen })} | ${d.sagen}`);
     sagen = d.sagen;
     rueck = "";
