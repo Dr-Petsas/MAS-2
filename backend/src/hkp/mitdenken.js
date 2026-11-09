@@ -5,7 +5,7 @@
 // Notaus: MAS_PLAN_MITDENKEN=0.
 import { befundSatz, KIEFER_ZAEHNE } from "./vorlesen.js";
 
-const IMPLANTAT = new Set(["i", "ix", "sk", "skw", "sb", "sbw", "st", "stw", "se", "sew", "so", "sow"]);
+const IMPLANTAT = new Set(["i", "j", "ix", "sk", "skw", "sb", "sbw", "st", "stw", "se", "sew", "so", "sow"]);
 const PROTHETIK = /all[\s-]*on|prothese|br[üu]cke|\bkrone|\bsteg\b|\blocator\b|\bteleskop/i;
 // "gesetzt" ist schon da und zaehlt nicht als neue Chirurgie. "setzen" schon.
 const CHIRURGIE = /\b(?:setzen|setzt|setze|einsetzen|implantieren|implantiert|sinuslift|knochenaufbau|augmentation|freilegung|sofortimplantat)\b/i;

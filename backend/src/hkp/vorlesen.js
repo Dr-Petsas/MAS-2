@@ -31,6 +31,7 @@ const BEFUND_WORT = [
   ["r", "Wurzelstiftkappe"],
   ["rw", "Wurzelstiftkappe erneuerungsbedürftig"],
   ["i", "Implantat vorhanden"],
+  ["j", "Implantat ohne Suprakonstruktion"],
   ["ix", "Implantat nicht erhaltungswürdig"],
   ["sk", "Implantatkrone"],
   ["skw", "Implantatkrone erneuerungsbedürftig"],

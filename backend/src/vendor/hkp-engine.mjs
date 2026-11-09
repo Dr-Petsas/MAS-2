@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 3d2d78e622f8)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 e0032b4b1e63)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26855,11 +26855,13 @@ function befund(nr, zahnGebiet, anzahl = 1) {
 	};
 }
 var kuerzel = (z) => (z?.B ?? "").trim().toLowerCase();
+/** i gesprochen, j aus DS-Win: Implantat ohne Suprakonstruktion. ix dito, schon als nicht erhaltungswürdig markiert. */
+var implantatNackt = (k) => k === "i" || k === "ix" || k === "j";
 /** Analysiert einen Kiefer: vorhandene Zähne, Lücken, Freiend */
 function kieferAnalyse(reihe, zaehne) {
 	const sitz = reihe.filter((z) => kuerzel(zaehne[z]) !== ")(");
 	const fehlt = (z) => FEHLEND.has(kuerzel(zaehne[z]));
-	const vorhanden = sitz.filter((z) => !fehlt(z) && kuerzel(zaehne[z]) !== "i" && kuerzel(zaehne[z]) !== "ix");
+	const vorhanden = sitz.filter((z) => !fehlt(z) && !implantatNackt(kuerzel(zaehne[z])));
 	const fehlendOhne8 = sitz.filter((z) => fehlt(z) && !istWeisheitszahn(z));
 	const luecken = [];
 	let start = -1;
@@ -27031,7 +27033,9 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 		positionen.push(pos("BEMA", "91d", z), pos("BEMA", "19", z), pos("BEL", "1200", z));
 		if (imVerblendbereich(z)) positionen.push(pos("BEL", "1620", z));
 	};
+	const dran = (k) => !optionen.nurKiefer?.length || optionen.nurKiefer.includes(k);
 	for (const [kiefer, reihe] of [["OK", OBERKIEFER], ["UK", UNTERKIEFER]]) {
+		if (!dran(kiefer)) continue;
 		const a = kieferAnalyse(reihe, zaehne);
 		const kieferName = kiefer === "OK" ? "Oberkiefer" : "Unterkiefer";
 		const versorgungsLuecken = a.luecken.filter((l) => l.zaehne.some((z) => VERSORGUNG_NOETIG.has(kuerzel(zaehne[z]))));
@@ -27043,8 +27047,10 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 			else if (n > 0) befunde.push(befund(n <= 4 ? "5.1" : n <= 8 ? "5.2" : "5.3", kiefer));
 			if (a.vorhanden.length === 0) positionen.push(pos("BEMA", kiefer === "OK" ? "97a" : "97b", kiefer));
 			else if (n > 0) positionen.push(pos("BEMA", n <= 4 ? "96a" : n <= 8 ? "96b" : "96c", kiefer));
+			for (const z of a.fehlendOhne8) if (!istImplantat(kuerzel(zaehne[z]))) R[z] = "E";
 			if (n > 0) hinweise.push(`${kieferName}: Interimsprothese (Befund 5.x) – zahntechnische Leistungen bitte ergänzen.`);
 			else hinweise.push(`${kieferName}: Interimsversorgung angekreuzt, aber kein fehlender Zahn im Befund.`);
+			continue;
 		}
 		const t2w = a.sitz.filter((z) => kuerzel(zaehne[z]) === "t2w");
 		if (t2w.length && neuVersorgung) hinweise.push(`${kieferName}: t2w bei Neuversorgung des Kiefers – das Teleskop wird mit der neuen Prothese geplant; 6.10 nur bei Erhalt der Prothese.`);
@@ -27062,15 +27068,17 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 			positionen.push(pos("BEMA", "100b", kiefer), pos("BEL", "0010", kiefer), pos("BEL", "8010", kiefer), pos("BEL", "8070", kiefer));
 			hinweise.push(`${kieferName}: Sekundärteleskop ${t2w.join(", ")} erneuern (6.10) mit Einarbeitung in die Prothese (6.3, Modellgussbasis). Bei schleimhautgetragener Deckprothese stattdessen 6.2.`);
 		}
-		if (!neuVersorgung) continue;
+		const zahnlosTrotzImplantat = a.vorhanden.length === 0 && a.sitz.some((z) => implantatNackt(kuerzel(zaehne[z])));
+		if (!neuVersorgung && !zahnlosTrotzImplantat) continue;
 		if (a.vorhanden.length <= 3) {
 			const nr = a.vorhanden.length === 0 ? kiefer === "OK" ? "4.2" : "4.4" : kiefer === "OK" ? "4.1" : "4.3";
 			befunde.push(befund(nr, kiefer));
-			for (const z of a.sitz) if (a.fehlt(z) && !istWeisheitszahn(z) && kuerzel(zaehne[z]) !== "rw" && !istImplantat(kuerzel(zaehne[z]))) R[z] = "E";
+			const luecke = (z) => a.fehlt(z) || implantatNackt(kuerzel(zaehne[z]));
+			for (const z of a.sitz) if (luecke(z) && !istWeisheitszahn(z) && kuerzel(zaehne[z]) !== "rw" && !istImplantat(kuerzel(zaehne[z]))) R[z] = "E";
 			prothesenKiefer.push(kiefer);
 			positionen.push(pos("BEMA", kiefer === "OK" ? "97a" : "97b", kiefer));
 			positionen.push(pos("BEMA", kiefer === "OK" ? "98b" : "98c", kiefer));
-			const n = a.fehlendOhne8.length;
+			const n = a.sitz.filter((z) => luecke(z) && !istWeisheitszahn(z)).length;
 			positionen.push(pos("BEL", "0010", kiefer, 2), pos("BEL", "0211", kiefer), pos("BEL", "0213", kiefer), pos("BEL", "0220", kiefer), pos("BEL", "0120", kiefer), pos("BEL", "3010", kiefer), pos("BEL", "3020", kiefer, n), pos("BEL", "3610", kiefer), pos("BEL", "3620", kiefer, n));
 			for (const z of a.vorhanden) {
 				const k = kuerzel(zaehne[z]);
@@ -27136,6 +27144,7 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 		positionen.push(pos("BEL", "3010", kiefer), pos("BEL", "3030", kiefer, n), pos("BEL", "3610", kiefer), pos("BEL", "3620", kiefer, n));
 	}
 	for (const [kiefer, reihe] of [["OK", OBERKIEFER], ["UK", UNTERKIEFER]]) {
+		if (!dran(kiefer)) continue;
 		const natuerlich = (z) => {
 			if (!z) return false;
 			const k = kuerzel(zaehne[z]);
@@ -28529,7 +28538,9 @@ function einzelAuftrag(text, kiefer) {
 		entfernen: [],
 		erhalten: [],
 		coverDenture: /co?ver.?dent|kover.?dent|deckprothese/.test(t),
-		mitAchtern: /(mit|inklusive|inkl\.?|samt) (den )?achter/.test(t)
+		mitAchtern: /(mit|inklusive|inkl\.?|samt) (den )?achter/.test(t),
+		interim: /interim|provisorisch|übergangsprothese|uebergangsprothese/.test(t),
+		immediat: /immediat|sofortprothese/.test(t)
 	};
 	auftrag.versorgung = versorgungIn(t, auftrag.coverDenture);
 	auftrag.kiefer = kiefer ?? kieferIn(t);
@@ -29004,10 +29015,12 @@ var fehlt = (b, z) => FEHLEND.has((b[z] ?? "").trim().toLowerCase());
 /** i/sk/st: Implantat oder implantatgetragene Krone. ix kommt raus und ist ebenfalls kein Zahn. */
 var IMPLANTAT_BLEIBT = /^(i|sk|skw|st|stw)$/;
 var implantatBleibt = (code) => IMPLANTAT_BLEIBT.test(code.trim().toLowerCase());
+/** Implantat ohne Suprakonstruktion. i im Gespräch, j so aus DS-Win. ix ist schon als nicht erhaltungswürdig markiert und bleibt trotzdem keine Lücke, die man noch einmal fragen muss. Es stört eine schleimhautgetragene Prothese nicht. */
+var implantatOhneAufbau = (code) => /^(i|ix|j)$/.test((code ?? "").trim().toLowerCase());
 var zahnStehtNoch = (b, z) => {
 	if (!(z in b) || fehlt(b, z)) return false;
 	const k = (b[z] ?? "").trim().toLowerCase();
-	return !implantatBleibt(k) && k !== "ix";
+	return !implantatBleibt(k) && !implantatOhneAufbau(k);
 };
 /** Erzeugt aus Auftrag und Befund einen gerechneten Plan – oder eine Rückfrage. */
 function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
@@ -29175,7 +29188,8 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 				frage: `Laut Befund ${ohnePfeiler.length > 1 ? "fehlen" : "fehlt"} ${liste(ohnePfeiler)}. Auf welchen Zähnen sollen die Teleskope stattdessen sitzen?`
 			};
 		}
-		const offen = reihe.filter((z) => !istWeisheitszahn(z) && z in befund && !fehlt(befund, z) && !pfeiler.includes(z) && !auftrag.erhalten.includes(z));
+		const nackt = reihe.filter((z) => implantatOhneAufbau(befund[z]) && !pfeiler.includes(z));
+		const offen = reihe.filter((z) => !istWeisheitszahn(z) && z in befund && !fehlt(befund, z) && !nackt.includes(z) && !pfeiler.includes(z) && !auftrag.erhalten.includes(z));
 		if ((auftrag.coverDenture || auftrag.versorgung === "totalprothese" || auftrag.versorgung === "locator" || auftrag.versorgung === "steg") && offen.length) return {
 			status: "rueckfrage",
 			grund: "restzaehne",
@@ -29192,11 +29206,12 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 		const bis = bogen.length ? Math.max(...bogen) : -1;
 		for (const z of pfeiler) tp[z] = ankerKuerzel(auftrag, z, keramikTel);
 		for (const z of reihe) {
-			if (pfeiler.includes(z) || !fehlt(befund, z)) continue;
+			if (pfeiler.includes(z) || !fehlt(befund, z) && !nackt.includes(z)) continue;
 			if (istWeisheitszahn(z) && !auftrag.mitAchtern) continue;
 			const i = reihe.indexOf(z);
 			tp[z] = auftrag.versorgung === "steg" && i > von && i < bis ? "SEO" : "E";
 		}
+		if (nackt.length && (auftrag.versorgung === "totalprothese" || auftrag.coverDenture)) hinweise.push(`${name}: Implantate an ${liste(nackt)} ohne Suprakonstruktion bleiben liegen und gelten für die Prothese wie fehlende Zähne.`);
 		if (auftrag.versorgung === "locator") hinweise.push(`${auftrag.anker === "kugel" ? "Kugelkopfanker" : "Druckknopfanker"} angenommen: GOZ 5030 je Implantat und GOZ 5080 je Verbindungselement, Matrize und Patrize zusammen.`);
 		if (auftrag.versorgung === "steg") hinweise.push("Implantatsteg angenommen: je Spanne eine Stegverbindung, je Implantat eine Kappe zur Aufnahme des Stegs.");
 		if (keramikTel && auftrag.versorgung === "teleskopprothese") hinweise.push("Zirkon-Primärteleskop angenommen: Teleskopkrone plus Zuschlag für Keramik, das Sekundärteil bleibt das Teleskop.");
@@ -29395,7 +29410,22 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 	} else if (auftrag.abutment) hinweise.push(auftrag.abutment === "keramik" ? "Keramikabutment angenommen (BEB 6906 auf Ti-Base)." : auftrag.abutment === "individuell" ? "Individuelles Abutment angenommen (BEB 2033 auf Ti-Base)." : "Konfektioniertes Abutment angenommen (BEB 4421).");
 	if (auftrag.kronenart === "galvano") hinweise.push("Galvano angenommen: die Laborliste hat keine eigene Galvanoposition. Gerechnet wird die metallische Krone oder das Teleskop in Hochgold.");
 	if (auftrag.kronenart === "tabletop") hinweise.push("Tabletop als Teilkrone angenommen (GOZ 2220).");
-	const regel = therapieAnwenden(regelversorgungErmitteln(plan.zaehne, regelOptionen(plan)), plan.zaehne, plan);
+	const prothese = (t) => t.versorgung === "totalprothese";
+	plan.weitere = {
+		...plan.weitere,
+		interimOK: teile.some((t) => !!t.interim && t.kiefer === "OK" && prothese(t)),
+		interimUK: teile.some((t) => !!t.interim && t.kiefer === "UK" && prothese(t)),
+		immediatOK: teile.some((t) => !!t.immediat && t.kiefer === "OK" && prothese(t)),
+		immediatUK: teile.some((t) => !!t.immediat && t.kiefer === "UK" && prothese(t))
+	};
+	const geplant = /* @__PURE__ */ new Set();
+	for (const t of teile) if (t.kiefer) geplant.add(t.kiefer);
+	if (!geplant.size) for (const z of Object.keys(tp)) geplant.add(kieferVon(z));
+	const regelOpt = {
+		...regelOptionen(plan),
+		...geplant.size ? { nurKiefer: [...geplant] } : {}
+	};
+	const regel = therapieAnwenden(regelversorgungErmitteln(plan.zaehne, regelOpt), plan.zaehne, plan);
 	let fertig = regelUebernehmen(plan, regel);
 	hinweise.push(...regel.hinweise);
 	if (auftrag.verblendung) {
@@ -29407,7 +29437,10 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 				verblendung: auftrag.verblendung
 			}
 		};
-		const regel2 = therapieAnwenden(regelversorgungErmitteln(fertig.zaehne, regelOptionen(fertig)), fertig.zaehne, fertig);
+		const regel2 = therapieAnwenden(regelversorgungErmitteln(fertig.zaehne, {
+			...regelOptionen(fertig),
+			...regelOpt
+		}), fertig.zaehne, fertig);
 		fertig = regelUebernehmen(fertig, regel2);
 		for (const h of regel2.hinweise) if (!hinweise.includes(h)) hinweise.push(h);
 	}
@@ -29600,7 +29633,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-06 09:00";
+var ENGINE_STAND = "2026-11-09 06:57";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
