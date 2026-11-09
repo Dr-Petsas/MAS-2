@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\Implantologie\Privat-Impl (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\Implantologie\Privat-Impl && npm run build:engine   (sha256 c470eff569a0)
+// Neu bauen: cd F:\PlanR\Implantologie\Privat-Impl && npm run build:engine   (sha256 89dd3af58cb5)
 //#region src/befund01.ts
 var OBERKIEFER$1 = [
 	"18",
@@ -49,7 +49,7 @@ var BEFUND_KUERZEL = {
 	e: "ersetzter Zahn",
 	ew: "ersetzter, aber erneuerungsbedürftiger Zahn",
 	f: "fehlender Zahn",
-	i: "Implantat mit intakter Suprakonstruktion",
+	i: "Implantat ohne Suprakonstruktion",
 	ix: "zu entfernendes Implantat",
 	k: "klinisch intakte Krone",
 	kw: "erneuerungsbedürftige Krone",
@@ -439,10 +439,34 @@ function planen(plan, _einst) {
 		const o = plan.regionen[r] ?? {};
 		const simultan = Object.keys(plan.zaehne).some((z) => regionVon(z) === r && IMPLANTAT_KUERZEL.has(tpVon(plan, z)));
 		const opSitz = simultan ? 3 : 2;
-		if (o.augmentation) push(goz("9100", r, opSitz, "Aufbau des Alveolarfortsatzes (GBR)"));
+		const sinus = !!(o.sinusIntern || o.sinusExtern);
+		const kamm = o.augmentation === true || sinus && o.augmentation !== false && !o.boneSplitting;
+		if (kamm) push(goz("9100", r, opSitz, "Aufbau des Alveolarfortsatzes (GBR)"));
 		if (o.boneSplitting) push(goz("9130", r, opSitz, "Bone Splitting / Spreading"));
-		if (o.sinusIntern) push(goz("9110", r, opSitz, "Interner Sinuslift (geschlossene Sinusbodenelevation)"));
+		if (o.sinusIntern) {
+			const kavitaeten = Object.keys(plan.zaehne).filter((z) => regionVon(z) === r && IMPLANTAT_KUERZEL.has(tpVon(plan, z))).length;
+			push({
+				...goz("9110", r, opSitz, "Interner Sinuslift (geschlossene Sinusbodenelevation)"),
+				anzahl: Math.max(1, kavitaeten)
+			});
+		}
 		if (o.sinusExtern) push(goz("9120", r, opSitz, "Externer Sinuslift (Knochenfensterung)"));
+		if (sinus) {
+			push({
+				id: `auto:goae:1479:${r}:5`,
+				ebene: "GOAE",
+				nr: "1479",
+				zahn: r,
+				anzahl: 1,
+				sitzung: 5,
+				grund: "Kieferhöhlenspülung in einer späteren Sitzung, durch die vorhandene Öffnung",
+				auto: true
+			});
+			if (!o.material && !o.blockEntnahme && !o.ringEntnahme) push(mat("kem-xenogen", r, opSitz));
+			if (o.sinusExtern && (!o.membran || o.membran === "keine")) push(mat("membran-resorbierbar", r, opSitz));
+			const deckungGesagt = !!o.weichgewebe && o.weichgewebe !== "keine";
+			if (o.sinusExtern && !kamm && !deckungGesagt) push(goz("3100", r, opSitz, "Plastische Deckung mit Periostschlitzung, über den einfachen Wundverschluss hinaus"));
+		}
 		const block = o.blockEntnahme || o.ringEntnahme;
 		const fremd = o.material === "allogen";
 		if (block && !fremd) push({
@@ -479,6 +503,16 @@ function planen(plan, _einst) {
 		if (wg && wg !== "keine") {
 			const wgSitz = plan.implantate && simultan ? 4 : opSitz;
 			if (wg === "rolllappen") push(goz("3100", r, wgSitz, "Plastische Deckung (Rolllappen)"));
+			else if (wg === "spaltlappen") push({
+				id: `auto:goae:2382:${r}:${wgSitz}`,
+				ebene: "GOAE",
+				nr: "2382",
+				zahn: r,
+				anzahl: 1,
+				sitzung: wgSitz,
+				grund: "Schwierige Lappenplastik (Spaltlappen)",
+				auto: true
+			});
 			else if (wg === "fst") {
 				push(goz("4130", r, wgSitz, "Gewinnung/Transplantation von Schleimhaut"));
 				push(mat("naht", r, wgSitz, 2));
@@ -496,6 +530,7 @@ function planen(plan, _einst) {
 			});
 		}
 	}
+	if (positionen.some((p) => p.nr === "9110" || p.nr === "9120")) hinweise.push("Sinuslift: das Einbringen von Knochenersatz und Membran steckt in 9110/9120, berechnet wird nur das Material. Der Kammaufbau 9100 gilt daneben nur anteilig und verdrängt 9090 und die plastische Deckung 3100. Der Verschluss der Höhle steckt in 9120, deshalb keine 3090. Die Spülung GOÄ 1479 ist eine spätere Sitzung.");
 	return {
 		positionen,
 		hinweise
@@ -550,6 +585,10 @@ function regelwerkAnwenden(eingang) {
 		if (has("3100") && (has("9100") || has("3090"))) {
 			raus.add(find("3100").id);
 			hinweise.push(`${region}: GOZ 3100 ist neben 9100/3090 nicht berechnungsfähig – entfernt.`);
+		}
+		if (has("3090") && has("9120")) {
+			raus.add(find("3090").id);
+			hinweise.push(`${region}: GOZ 3090 ist nach dem externen Sinuslift nicht berechnungsfähig, der Verschluss steckt in 9120.`);
 		}
 		if (has("9050") && (has("9010") || has("9040"))) {
 			raus.add(find("9050").id);
@@ -2125,6 +2164,33 @@ var goae_zahnarzt_default = {
 			"punkte": 40,
 			"abschnitt": "C II Abstrichentnahmen",
 			"kat": "C",
+			"maxFaktor": 3.5,
+			"schwelle": 2.3
+		},
+		{
+			"nr": "1465",
+			"text": "Punktion einer Kieferhöhle, gegebenenfalls einschließlich Spülung und/oder Instillation von Medikamenten",
+			"punkte": 119,
+			"abschnitt": "J HNO",
+			"kat": "J",
+			"maxFaktor": 3.5,
+			"schwelle": 2.3
+		},
+		{
+			"nr": "1479",
+			"text": "Ausspülung der Kieferhöhle von der natürlichen oder künstlichen Öffnung aus, auch einschließlich Instillation von Arzneimitteln",
+			"punkte": 59,
+			"abschnitt": "J HNO",
+			"kat": "J",
+			"maxFaktor": 3.5,
+			"schwelle": 2.3
+		},
+		{
+			"nr": "1628",
+			"text": "Plastischer Verschluss einer Kieferhöhlenfistel",
+			"punkte": 739,
+			"abschnitt": "J HNO",
+			"kat": "J",
 			"maxFaktor": 3.5,
 			"schwelle": 2.3
 		},
@@ -5443,6 +5509,131 @@ var standardPraxis = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+/** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
+var ZENTRALE_PRAXIS_KEY = "planr.praxis.zentral.v1";
+//#endregion
+//#region src/arzt.ts
+var ARZT_KEY = "planr.arzt.v1";
+var ARZT_EREIGNIS = "planr-arzt";
+var STEMPEL_BLAU = "#1c3f94";
+function arztLesen() {
+	try {
+		const r = typeof localStorage === "undefined" ? null : JSON.parse(localStorage.getItem("planr.arzt.v1") ?? "null");
+		return r && typeof r === "object" && typeof r.name === "string" ? r : null;
+	} catch {
+		return null;
+	}
+}
+var kennung = (s) => `${s.length}:${s.slice(-48)}`;
+/** Dunkle Striche → Stempelblau, Hintergrund (weiß oder transparent) → durchsichtig. */
+function blauFaerben(dataUrl) {
+	return new Promise((fertig) => {
+		if (!dataUrl || typeof document === "undefined") return fertig(dataUrl);
+		const bild = new Image();
+		bild.onload = () => {
+			const c = document.createElement("canvas");
+			c.width = bild.naturalWidth;
+			c.height = bild.naturalHeight;
+			const ctx = c.getContext("2d");
+			if (!ctx || !c.width || !c.height) return fertig(dataUrl);
+			ctx.drawImage(bild, 0, 0);
+			const d = ctx.getImageData(0, 0, c.width, c.height);
+			const [r, g, b] = [
+				1,
+				3,
+				5
+			].map((i) => parseInt(STEMPEL_BLAU.slice(i, i + 2), 16));
+			let [x0, y0, x1, y1] = [
+				c.width,
+				c.height,
+				-1,
+				-1
+			];
+			for (let i = 0; i < d.data.length; i += 4) {
+				const hell = (d.data[i] * 299 + d.data[i + 1] * 587 + d.data[i + 2] * 114) / 1e3;
+				const roh = d.data[i + 3] * (255 - hell) / 255;
+				const deckung = roh < 12 ? 0 : Math.min(255, roh * 2.2);
+				d.data[i] = r;
+				d.data[i + 1] = g;
+				d.data[i + 2] = b;
+				d.data[i + 3] = deckung;
+				if (deckung) {
+					const p = i / 4;
+					const [x, y] = [p % c.width, Math.floor(p / c.width)];
+					x0 = Math.min(x0, x);
+					x1 = Math.max(x1, x);
+					y0 = Math.min(y0, y);
+					y1 = Math.max(y1, y);
+				}
+			}
+			if (x1 < 0) return fertig("");
+			ctx.putImageData(d, 0, 0);
+			const rand = 4;
+			const [x, y] = [Math.max(0, x0 - rand), Math.max(0, y0 - rand)];
+			const zu = document.createElement("canvas");
+			zu.width = Math.min(c.width, x1 + rand + 1) - x;
+			zu.height = Math.min(c.height, y1 + rand + 1) - y;
+			zu.getContext("2d")?.drawImage(c, x, y, zu.width, zu.height, 0, 0, zu.width, zu.height);
+			fertig(zu.toDataURL("image/png"));
+		};
+		bild.onerror = () => fertig("");
+		bild.src = dataUrl;
+	});
+}
+/** Stand vom Server übernehmen; die Unterschrift nur bei Änderung neu färben. */
+async function arztUebernehmen(roh) {
+	if (!roh || typeof roh.name !== "string" || typeof localStorage === "undefined") return;
+	const original = typeof roh.signatur === "string" && roh.signatur.startsWith("data:image/") ? roh.signatur : "";
+	const alt = arztLesen();
+	const quelle = kennung(original);
+	if (alt && alt.name === roh.name && alt.quelle === quelle) return;
+	const neu = {
+		name: roh.name,
+		signatur: alt?.quelle === quelle ? alt.signatur : await blauFaerben(original),
+		quelle
+	};
+	try {
+		localStorage.setItem(ARZT_KEY, JSON.stringify(neu));
+	} catch {
+		return;
+	}
+	if (typeof window !== "undefined") window.dispatchEvent(new Event(ARZT_EREIGNIS));
+}
+//#endregion
+//#region src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+/** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
+var hubAdresse = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
+/** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
+function praxisAbgleichen() {
+	if (typeof fetch !== "function" || typeof localStorage === "undefined" || typeof location === "undefined") return;
+	fetch(hubAdresse().replace(/\/plaene$/, "/praxisdaten"), {
+		cache: "no-store",
+		credentials: "include"
+	}).then((r) => r.ok ? r.json() : null).then((d) => {
+		arztUebernehmen(d?.arzt);
+		if (!d?.praxis || !Object.keys(d.praxis).length) return;
+		const neu = JSON.stringify(d.praxis);
+		if (localStorage.getItem("planr.praxis.zentral.v1") === neu) return;
+		localStorage.setItem(ZENTRALE_PRAXIS_KEY, neu);
+		if (sessionStorage.getItem("planr.praxis.zentral.v1")) return;
+		sessionStorage.setItem(ZENTRALE_PRAXIS_KEY, "1");
+		location.reload();
+	}).catch(() => {});
+}
+praxisAbgleichen();
+typeof location === "undefined" || (new URLSearchParams(location.search).get("plan") ?? "").trim().slice(0, 80);
 //#endregion
 //#region src/planNeu.ts
 var heute = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -5478,7 +5669,7 @@ var STANDARD_GLOBAL = {
 	roehrchen: 0,
 	eigenesBlutlabor: true
 };
-var nummerFormat = (n) => `IMPL-${(/* @__PURE__ */ new Date()).getFullYear()}-${String(n).padStart(3, "0")}`;
+var nummerFormat = (n) => planNummer("IMPL", n);
 function neuerPlan(nummer) {
 	return {
 		nummer: nummerFormat(nummer),
@@ -5503,7 +5694,7 @@ function neuerPlan(nummer) {
 * rechnet mit der Engine dieses Planers. `npm run build:engine` baut daraus MAS-2/backend/src/vendor/impl-engine.mjs.
 * Die Versorgung auf den Implantaten (Krone, Brücke, Prothese) plant der Planer Zahnersatz privat.
 */
-var ENGINE_STAND = "2026-11-06 03:11";
+var ENGINE_STAND = "2026-11-09 20:09";
 var GUELTIG = new Set(ALLE_ZAEHNE);
 /** 01: dort steht schon ein Implantat */
 var STEHT_IMPLANTAT = /* @__PURE__ */ new Set([
@@ -5609,10 +5800,12 @@ function implAuftragVerstehen(roh) {
 	else if (/membran/.test(k)) o.membran = "resorbierbar";
 	const membranAngenommen = !o.membran && !!(o.augmentation || o.sinusExtern || jeExtern || sinusOffen);
 	if (membranAngenommen && !sinusJe) o.membran = "resorbierbar";
-	if (/bindegewebe|\bbgt\b|\bctg\b/.test(k)) o.weichgewebe = "btt";
+	const kammZumSinus = !/ohne (?:knochen)?aufbau|nur (?:der |den )?sinus/.test(k);
+	if (/spaltlappen|rehrmann|schwierige[rn]? lappen/.test(k)) o.weichgewebe = "spaltlappen";
+	else if (/bindegewebe|\bbgt\b|\bctg\b/.test(k)) o.weichgewebe = "btt";
 	else if (/schleimhauttransplant|\bfst\b|freies schleimhaut/.test(k)) o.weichgewebe = "fst";
 	else if (/vestibulumplastik/.test(k)) o.weichgewebe = "vestibulumplastik";
-	else if (/roll-?lappen/.test(k)) o.weichgewebe = "rolllappen";
+	else if (/roll-?lappen|plastische deckung/.test(k)) o.weichgewebe = "rolllappen";
 	const g = {};
 	if (/\bprgf\b|endoret/.test(k)) g.blut = "prgf";
 	else if (/\bprp\b/.test(k)) g.blut = "prp";
@@ -5639,6 +5832,7 @@ function implAuftragVerstehen(roh) {
 		sinusJe,
 		materialAngenommen,
 		membranAngenommen,
+		kammZumSinus,
 		global: g,
 		deckung,
 		system,
@@ -5667,7 +5861,8 @@ var WEICHGEWEBE = {
 	btt: "Bindegewebstransplantat",
 	fst: "Schleimhauttransplantat",
 	vestibulumplastik: "Vestibulumplastik",
-	rolllappen: "Rolllappen"
+	rolllappen: "Rolllappen",
+	spaltlappen: "Spaltlappen"
 };
 var SEDIERUNG = {
 	lachgas: "Lachgas",
@@ -5750,6 +5945,7 @@ function implEntwurf(auftragText, befund = {}, optionen = {}) {
 		const ro = { ...rest };
 		if (a.sinusJe && IST_OK_SEITE(r)) Object.assign(ro, a.sinusJe[r] ?? {});
 		else if (IST_OK_SEITE(r)) Object.assign(ro, sinusIntern ? { sinusIntern } : {}, sinusExtern ? { sinusExtern } : {});
+		if ((ro.sinusIntern || ro.sinusExtern) && a.kammZumSinus && !ro.boneSplitting) ro.augmentation = true;
 		if (a.sinusJe) {
 			if ((ro.sinusIntern || ro.sinusExtern || ro.augmentation) && a.materialAngenommen && !ro.material) ro.material = "xenogen";
 			if ((ro.augmentation || ro.sinusExtern) && a.membranAngenommen && !ro.membran) ro.membran = "resorbierbar";
