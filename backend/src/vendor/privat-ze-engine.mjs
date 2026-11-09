@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\Privat-HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\Privat-HKP && npm run build:engine   (sha256 06a669db53f7)
+// Neu bauen: cd F:\PlanR\ZE\Privat-HKP && npm run build:engine   (sha256 82cff43f4bf5)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 //#endregion
@@ -13,7 +13,7 @@ var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).expor
 * This source code is licensed under the MIT license found in the
 * LICENSE file in the root directory of this source tree.
 */
-var require_react_production = /* @__PURE__ */ __commonJSMin(((exports) => {
+var require_react_production$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 	var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element");
 	var REACT_PORTAL_TYPE = Symbol.for("react.portal");
 	var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -400,7 +400,7 @@ var require_react_production = /* @__PURE__ */ __commonJSMin(((exports) => {
 * This source code is licensed under the MIT license found in the
 * LICENSE file in the root directory of this source tree.
 */
-var require_react_development = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+var require_react_development$1 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	"production" !== process.env.NODE_ENV && (function() {
 		function defineDeprecationWarning(methodName, info) {
 			Object.defineProperty(Component.prototype, methodName, { get: function() {
@@ -1170,8 +1170,8 @@ var require_react_development = /* @__PURE__ */ __commonJSMin(((exports, module)
 	})();
 }));
 (/* @__PURE__ */ __commonJSMin(((exports, module) => {
-	if (process.env.NODE_ENV === "production") module.exports = require_react_production();
-	else module.exports = require_react_development();
+	if (process.env.NODE_ENV === "production") module.exports = require_react_production$1();
+	else module.exports = require_react_development$1();
 })))();
 /** Zahnreihenfolge, wie sie im HKP-Formular von links nach rechts erscheint. */
 var OBERKIEFER$1 = [
@@ -1250,6 +1250,7 @@ var BEFUND_KUERZEL = {
 	e: "ersetzter Zahn",
 	ew: "ersetzter, aber erneuerungsbedürftiger Zahn",
 	f: "fehlender Zahn",
+	i: "Implantat ohne Suprakonstruktion",
 	ix: "zu entfernendes Implantat",
 	k: "klinisch intakte Krone",
 	kw: "erneuerungsbedürftige Krone",
@@ -1375,7 +1376,7 @@ var STANDARD = {
 	name: "Praxis"
 };
 var speicher = () => typeof localStorage === "undefined" ? null : localStorage;
-function kennung(text) {
+function kennung$1(text) {
 	return text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 }
 /** Speicherschlüssel eines Mandanten */
@@ -1384,7 +1385,7 @@ function lesen() {
 	let liste = [];
 	try {
 		const roh = JSON.parse(speicher()?.getItem(LISTE_KEY) ?? "[]");
-		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung(m.id) === m.id && m.id);
+		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung$1(m.id) === m.id && m.id);
 	} catch {
 		liste = [];
 	}
@@ -1399,8 +1400,8 @@ function starten() {
 	const liste = lesen();
 	let id = speicher()?.getItem(AKTIV_KEY) ?? "standard";
 	const aufruf = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("mandant");
-	if (aufruf && kennung(aufruf)) {
-		id = kennung(aufruf);
+	if (aufruf && kennung$1(aufruf)) {
+		id = kennung$1(aufruf);
 		if (!liste.some((m) => m.id === id)) {
 			liste.push({
 				id,
@@ -3373,11 +3374,13 @@ function befund(nr, zahnGebiet, anzahl = 1) {
 	};
 }
 var kuerzel = (z) => (z?.B ?? "").trim().toLowerCase();
+/** i: Implantat ohne Suprakonstruktion. ix: schon als nicht erhaltungswürdig markiert. */
+var implantatNackt = (k) => k === "i" || k === "ix";
 /** Analysiert einen Kiefer: vorhandene Zähne, Lücken, Freiend */
 function kieferAnalyse(reihe, zaehne) {
 	const sitz = reihe.filter((z) => kuerzel(zaehne[z]) !== ")(");
 	const fehlt = (z) => FEHLEND.has(kuerzel(zaehne[z]));
-	const vorhanden = sitz.filter((z) => !fehlt(z) && kuerzel(zaehne[z]) !== "i" && kuerzel(zaehne[z]) !== "ix");
+	const vorhanden = sitz.filter((z) => !fehlt(z) && !implantatNackt(kuerzel(zaehne[z])));
 	const fehlendOhne8 = sitz.filter((z) => fehlt(z) && !istWeisheitszahn$1(z));
 	const luecken = [];
 	let start = -1;
@@ -3549,7 +3552,9 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 		positionen.push(pos("BEMA", "91d", z), pos("BEMA", "19", z), pos("BEL", "1200", z));
 		if (imVerblendbereich(z)) positionen.push(pos("BEL", "1620", z));
 	};
+	const dran = (k) => !optionen.nurKiefer?.length || optionen.nurKiefer.includes(k);
 	for (const [kiefer, reihe] of [["OK", OBERKIEFER$1], ["UK", UNTERKIEFER$1]]) {
+		if (!dran(kiefer)) continue;
 		const a = kieferAnalyse(reihe, zaehne);
 		const kieferName = kiefer === "OK" ? "Oberkiefer" : "Unterkiefer";
 		const versorgungsLuecken = a.luecken.filter((l) => l.zaehne.some((z) => VERSORGUNG_NOETIG.has(kuerzel(zaehne[z]))));
@@ -3561,8 +3566,10 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 			else if (n > 0) befunde.push(befund(n <= 4 ? "5.1" : n <= 8 ? "5.2" : "5.3", kiefer));
 			if (a.vorhanden.length === 0) positionen.push(pos("BEMA", kiefer === "OK" ? "97a" : "97b", kiefer));
 			else if (n > 0) positionen.push(pos("BEMA", n <= 4 ? "96a" : n <= 8 ? "96b" : "96c", kiefer));
+			for (const z of a.fehlendOhne8) if (!istImplantat(kuerzel(zaehne[z]))) R[z] = "E";
 			if (n > 0) hinweise.push(`${kieferName}: Interimsprothese (Befund 5.x) – zahntechnische Leistungen bitte ergänzen.`);
 			else hinweise.push(`${kieferName}: Interimsversorgung angekreuzt, aber kein fehlender Zahn im Befund.`);
+			continue;
 		}
 		const t2w = a.sitz.filter((z) => kuerzel(zaehne[z]) === "t2w");
 		if (t2w.length && neuVersorgung) hinweise.push(`${kieferName}: t2w bei Neuversorgung des Kiefers – das Teleskop wird mit der neuen Prothese geplant; 6.10 nur bei Erhalt der Prothese.`);
@@ -3580,15 +3587,17 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 			positionen.push(pos("BEMA", "100b", kiefer), pos("BEL", "0010", kiefer), pos("BEL", "8010", kiefer), pos("BEL", "8070", kiefer));
 			hinweise.push(`${kieferName}: Sekundärteleskop ${t2w.join(", ")} erneuern (6.10) mit Einarbeitung in die Prothese (6.3, Modellgussbasis). Bei schleimhautgetragener Deckprothese stattdessen 6.2.`);
 		}
-		if (!neuVersorgung) continue;
+		const zahnlosTrotzImplantat = a.vorhanden.length === 0 && a.sitz.some((z) => implantatNackt(kuerzel(zaehne[z])));
+		if (!neuVersorgung && !zahnlosTrotzImplantat) continue;
 		if (a.vorhanden.length <= 3) {
 			const nr = a.vorhanden.length === 0 ? kiefer === "OK" ? "4.2" : "4.4" : kiefer === "OK" ? "4.1" : "4.3";
 			befunde.push(befund(nr, kiefer));
-			for (const z of a.sitz) if (a.fehlt(z) && !istWeisheitszahn$1(z) && kuerzel(zaehne[z]) !== "rw" && !istImplantat(kuerzel(zaehne[z]))) R[z] = "E";
+			const luecke = (z) => a.fehlt(z) || implantatNackt(kuerzel(zaehne[z]));
+			for (const z of a.sitz) if (luecke(z) && !istWeisheitszahn$1(z) && kuerzel(zaehne[z]) !== "rw" && !istImplantat(kuerzel(zaehne[z]))) R[z] = "E";
 			prothesenKiefer.push(kiefer);
 			positionen.push(pos("BEMA", kiefer === "OK" ? "97a" : "97b", kiefer));
 			positionen.push(pos("BEMA", kiefer === "OK" ? "98b" : "98c", kiefer));
-			const n = a.fehlendOhne8.length;
+			const n = a.sitz.filter((z) => luecke(z) && !istWeisheitszahn$1(z)).length;
 			positionen.push(pos("BEL", "0010", kiefer, 2), pos("BEL", "0211", kiefer), pos("BEL", "0213", kiefer), pos("BEL", "0220", kiefer), pos("BEL", "0120", kiefer), pos("BEL", "3010", kiefer), pos("BEL", "3020", kiefer, n), pos("BEL", "3610", kiefer), pos("BEL", "3620", kiefer, n));
 			for (const z of a.vorhanden) {
 				const k = kuerzel(zaehne[z]);
@@ -3654,6 +3663,7 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 		positionen.push(pos("BEL", "3010", kiefer), pos("BEL", "3030", kiefer, n), pos("BEL", "3610", kiefer), pos("BEL", "3620", kiefer, n));
 	}
 	for (const [kiefer, reihe] of [["OK", OBERKIEFER$1], ["UK", UNTERKIEFER$1]]) {
+		if (!dran(kiefer)) continue;
 		const natuerlich = (z) => {
 			if (!z) return false;
 			const k = kuerzel(zaehne[z]);
@@ -5448,11 +5458,6 @@ function laborVon(p, plan) {
 }
 //#endregion
 //#region ../HKP/src/engine/aufwertung.ts
-/**
-* Übernimmt ein Ergebnis der Regelengine in den Plan. Erhalten bleiben manuelle Befunde/Positionen,
-* die Labor-Zuordnung (Eigen/Fremd) gleicher Positionen und – nach einem XML-Import – die
-* Fremdlabor-Positionen aus der Laborrechnung.
-*/
 function regelUebernehmen(p, regel, zaehne = p.zaehne, laborFuer = () => void 0) {
 	const schluessel = (x) => `${x.ebene}|${x.nr}|${x.zahn}`;
 	const bisher = new Map(p.positionen.filter((x) => x.labor).map((x) => [schluessel(x), x.labor]));
@@ -6066,7 +6071,7 @@ function letzte(t, muster) {
 function prothetikIn(text) {
 	const t = wort(text);
 	const aus = {};
-	const all = t.match(/all[\s-]*on[\s-]*(4|vier|6|sechs)/);
+	const all = t.match(/\b(?:all[\s-]*on|allon|orlon|olon|ollon|alon)[\s-]*(4|vier|four|6|sechs|six)\b/);
 	const sekundaer = /sekund(?:ä|ae)r/.test(t) && /teleskop|krone|teil/.test(t) && !/prim(?:ä|ae)r/.test(t);
 	const teleskop = /teleskop|konus|doppelkrone|prim(?:ä|ae)r(?:krone|teleskop)/.test(t) || sekundaer;
 	const locator = /druckknopf|locator|locater|kugel(?:kopf|anker)|novaloc|equator/.test(t) || /patri(?:ze|ce)|matri(?:ze|ce)/.test(t) && /implantat|prothese/.test(t);
@@ -6074,7 +6079,7 @@ function prothetikIn(text) {
 	const inlay = /inlay|onlay|einlagef/.test(t) && !/krone|teleskop|br(?:ü|ue)cke/.test(t);
 	if (all) {
 		aus.versorgung = "allon";
-		aus.allon = /6|sechs/.test(all[1]) ? 6 : 4;
+		aus.allon = /6|sechs|six/.test(all[1]) ? 6 : 4;
 	} else if (steg) {
 		aus.versorgung = "steg";
 		aus.anker = "steg";
@@ -6382,7 +6387,8 @@ function auftragVerstehen(text) {
 	const abschnitte = kieferAbschnitte(text);
 	const beide = BEIDE_KIEFER.test(norm$1(text));
 	const gemeinsam = KIEFER_GEMEINSAM.test(norm$1(text)) && KIEFERWEIT.has(auftrag.versorgung ?? "kronen") && new Set(abschnitte.map((a) => einzelAuftrag(a.text).versorgung).filter(Boolean)).size <= 1;
-	if (abschnitte.length < 2 && !(beide && auftrag.versorgung === "totalprothese") && !gemeinsam) return brueckenKiefer(auftrag) ?? auftrag;
+	const fuerBeide = beide && (auftrag.versorgung === "totalprothese" || auftrag.versorgung === "allon");
+	if (abschnitte.length < 2 && !fuerBeide && !gemeinsam) return brueckenKiefer(auftrag) ?? auftrag;
 	const roh = gemeinsam ? ["OK", "UK"].map((k) => einzelAuftrag(text, k)) : abschnitte.map((a) => ({
 		...einzelAuftrag(a.text),
 		kiefer: a.kiefer
@@ -6393,15 +6399,16 @@ function auftragVerstehen(text) {
 		const nachbar = roh.slice(0, i).reverse().find((y) => y.versorgung) ?? roh.slice(i + 1).find((y) => y.versorgung);
 		if (nachbar?.versorgung) {
 			x.versorgung = nachbar.versorgung;
+			if (x.allon == null && nachbar.allon) x.allon = nachbar.allon;
 			if (x.versorgung === "bruecke") brueckeVerstehen(norm$1(abschnitte[i].text), x);
 		}
 	});
-	if (beide && auftrag.versorgung === "totalprothese") {
+	if (fuerBeide) {
 		for (const k of ["OK", "UK"]) if (!roh.some((x) => x.kiefer === k && x.versorgung)) roh.push({
 			...einzelAuftrag(text),
 			kiefer: k,
-			versorgung: "totalprothese",
-			pfeiler: []
+			versorgung: auftrag.versorgung,
+			allon: auftrag.allon
 		});
 	}
 	const teile = roh.filter((x) => x.versorgung && x.versorgung !== "kronen" && x.versorgung !== "implantatkronen" && x.versorgung !== "inlay").filter((x, i, alle) => alle.findIndex((y) => y.kiefer === x.kiefer) === i);
@@ -6428,6 +6435,26 @@ function auftragVerstehen(text) {
 		coverDenture: teile.some((x) => x.coverDenture)
 	};
 }
+var LISTEN_VERB = {
+	entfernen: /entfern|extrah|ziehen|gezogen|raus/,
+	erhalten: /bleib|erhalt|behalt|stehen/
+};
+var listenArt = (teil) => LISTEN_VERB.entfernen.test(teil) ? "entfernen" : LISTEN_VERB.erhalten.test(teil) ? "erhalten" : void 0;
+var ersterZahnIn = (teil) => teil.search(new RegExp(`\\b${ZAHN_WORT}`));
+/** „Entfernung der Zähne 15“: das Verb steht vor dem ersten Zahn, die Aufzählung danach gehört dazu */
+var verbVorn = (teil, art) => {
+	const zahn = ersterZahnIn(teil);
+	return zahn >= 0 && teil.search(LISTEN_VERB[art]) < zahn;
+};
+/** „…, 22 und 25 werden entfernt“: Verb in der Mehrzahl hinter den Zähnen nimmt die Aufzählung davor mit */
+function listeDanach(teil) {
+	const art = teil ? listenArt(teil) : void 0;
+	if (!art || !teil || /\b(?:wird|soll|muss|ist|bleibt|steht)\b/.test(teil)) return void 0;
+	const zahn = ersterZahnIn(teil);
+	return zahn < 0 || teil.search(LISTEN_VERB[art]) > zahn ? art : void 0;
+}
+var ZAEHNE_VORWORT = /^\s*(?:(?:die|der|den)\s+)?(?:zahn|z(?:ä|ae)hne)\s+/;
+var nurZaehne = (teil) => NUR_ZAEHNE.test(teil) || NUR_ZAEHNE.test(teil.replace(ZAEHNE_VORWORT, ""));
 function einzelAuftrag(text, kiefer) {
 	const t = norm$1(text);
 	const auftrag = {
@@ -6436,7 +6463,9 @@ function einzelAuftrag(text, kiefer) {
 		entfernen: [],
 		erhalten: [],
 		coverDenture: /co?ver.?dent|kover.?dent|deckprothese/.test(t),
-		mitAchtern: /(mit|inklusive|inkl\.?|samt) (den )?achter/.test(t)
+		mitAchtern: /(mit|inklusive|inkl\.?|samt) (den )?achter/.test(t),
+		interim: /interim|provisorisch|übergangsprothese|uebergangsprothese/.test(t),
+		immediat: /immediat|sofortprothese/.test(t)
 	};
 	auftrag.versorgung = versorgungIn(t, auftrag.coverDenture);
 	auftrag.kiefer = kiefer ?? kieferIn(t);
@@ -6459,23 +6488,41 @@ function einzelAuftrag(text, kiefer) {
 	if (worte.kronenart === "galvano" && !auftrag.verblendung) auftrag.verblendung = "keine";
 	if (/h(ä|ae)rtefall/.test(t)) auftrag.haertefall = true;
 	if (/(kein|ohne)(en)? bonus/.test(t)) auftrag.bonus = "60";
-	else if (/\b(75|fünfundsiebzig|fuenfundsiebzig) ?(%|prozent)|\b(30|dreißig|dreissig) ?(%|prozent) bonus|bonus (von )?(30|dreißig|dreissig)\b|zehn jahre bonus|bonus (über |ueber )?zehn jahre/.test(t)) auftrag.bonus = "75";
+	else if (/\b(75|fünfundsiebzig|fuenfundsiebzig) ?(%|prozent)|\b(30|dreißig|dreissig) ?(%|prozent) bonus|bonus (von )?(30|dreißig|dreissig)\b|zehn jahre|bonusheft.{0,20}zehn/.test(t)) auftrag.bonus = "75";
 	else if (/\b(70|siebzig) ?(%|prozent)|\b(20|zwanzig) ?(%|prozent) bonus|bonus (von )?(20|zwanzig)\b|fünf jahre bonus|fuenf jahre bonus|bonusheft/.test(t)) auftrag.bonus = "70";
 	else if (/\b(60|sechzig) ?(%|prozent)/.test(t)) auftrag.bonus = "60";
 	const alleTeile = satzteile(text);
 	let pfeilerDavor = false;
+	let listeDavor;
 	alleTeile.forEach((teil, i) => {
 		const zs = zaehneIn(teil, auftrag.kiefer);
-		if (!zs.length) return;
+		if (!zs.length) {
+			listeDavor = void 0;
+			return;
+		}
+		if (nurZaehne(teil)) {
+			const fortsetzung = pfeilerDavor && !ZAEHNE_VORWORT.test(teil);
+			const art = listeDavor ?? (fortsetzung ? void 0 : listeDanach(alleTeile.slice(i + 1).find((u) => !nurZaehne(u))));
+			if (art) {
+				auftrag[art].push(...zs.filter((z) => !auftrag[art].includes(z)));
+				pfeilerDavor = false;
+				return;
+			}
+		}
 		if (NUR_ZAEHNE.test(teil)) {
 			const weiter = alleTeile.slice(i + 1).find((u) => !NUR_ZAEHNE.test(u));
-			if (pfeilerDavor && !(weiter && befundWort(weiter, true))) auftrag.pfeiler.push(...zs.filter((z) => !auftrag.pfeiler.includes(z)));
+			const befund = weiter ? befundWort(weiter, true) : void 0;
+			const zahnDort = weiter ? ersterZahnIn(weiter) : -1;
+			if (pfeilerDavor && !(befund && (zahnDort < 0 || befund.index > zahnDort))) auftrag.pfeiler.push(...zs.filter((z) => !auftrag.pfeiler.includes(z)));
 			return;
 		}
 		pfeilerDavor = false;
-		if (/entfern|extrah|ziehen|gezogen|raus/.test(teil)) auftrag.entfernen.push(...zs);
-		else if (/bleib|erhalt|behalt|stehen/.test(teil)) auftrag.erhalten.push(...zs);
-		else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|locator|locater|druckknopf|kugel(?:kopf|anker)|novaloc|equator|steg|inlay|onlay|tabletop|teilkrone|veneer|galvano|suprakonstruktion|abutment|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil) || (auftrag.versorgung === "implantatkronen" || auftrag.versorgung === "kronen" || auftrag.versorgung === "inlay") && /implantat|\b(?:am|an|bei|f(?:ü|ue)r) (?:zahn )?[1-4][1-8]\b|\bzahn [1-4][1-8]\b|\bregion?\b/.test(teil)) {
+		listeDavor = void 0;
+		const art = listenArt(teil);
+		if (art) {
+			auftrag[art].push(...zs);
+			if (verbVorn(teil, art)) listeDavor = art;
+		} else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|locator|locater|druckknopf|kugel(?:kopf|anker)|novaloc|equator|steg|inlay|onlay|tabletop|teilkrone|veneer|galvano|suprakonstruktion|abutment|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil) || (auftrag.versorgung === "implantatkronen" || auftrag.versorgung === "kronen" || auftrag.versorgung === "inlay") && /implantat|\b(?:am|an|bei|f(?:ü|ue)r) (?:zahn )?[1-4][1-8]\b|\bzahn [1-4][1-8]\b|\bregion?\b/.test(teil)) {
 			const vorBefund = teil.split(BEFUND_BEGINN)[0].split(ZAEHNE_NACHGESTELLT)[0];
 			const pf = vorBefund === teil ? zs : zaehneIn(vorBefund, auftrag.kiefer);
 			auftrag.pfeiler.push(...pf.filter((z) => !auftrag.pfeiler.includes(z)));
@@ -6738,12 +6785,24 @@ var VERSORGUNGS_TEIL = /prothese|teleskop|konus|doppelkrone|krone|anker|pfeiler|
 var NUR_ZAEHNE = /^(?:(?:die|der|den|und|sowie|auch|noch|bis|[1-4][1-8]|\d(?:er|ern)|einser|zweier|dreier|eckz(?:ah|äh|aeh)ne?n?|vierer|f(?:ü|ue)nfer|sechser|siebe?ner|achter)n?\s*)+$/;
 var liste = (zs) => zs.length <= 1 ? zs.join("") : `${zs.slice(0, -1).join(", ")} und ${zs[zs.length - 1]}`;
 var fehlt = (b, z) => FEHLEND.has((b[z] ?? "").trim().toLowerCase());
+/** i/sk/st: Implantat oder implantatgetragene Krone. ix kommt raus und ist ebenfalls kein Zahn. */
+var IMPLANTAT_BLEIBT = /^(i|sk|skw|st|stw)$/;
+var implantatBleibt = (code) => IMPLANTAT_BLEIBT.test(code.trim().toLowerCase());
+/** Implantat ohne Suprakonstruktion. Das Kürzel ist immer i. ix ist schon als nicht erhaltungswürdig markiert und bleibt keine Lücke, die man noch einmal fragen muss. */
+var implantatOhneAufbau = (code) => /^(i|ix)$/.test((code ?? "").trim().toLowerCase());
+/** sk: Suprakonstruktion mit klinisch intakter Krone. Keine Behandlung, Zeile R und TP bleiben leer. */
+var implantatkroneIntakt = (code) => (code ?? "").trim().toLowerCase() === "sk";
+var zahnStehtNoch = (b, z) => {
+	if (!(z in b) || fehlt(b, z)) return false;
+	const k = (b[z] ?? "").trim().toLowerCase();
+	return !implantatBleibt(k) && !implantatOhneAufbau(k);
+};
 /** Erzeugt aus Auftrag und Befund einen gerechneten Plan – oder eine Rückfrage. */
 function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 	const befund = Object.fromEntries(Object.entries(befundRoh).map(([z, b]) => [z, (b ?? "").trim().toLowerCase()]));
 	const hinweise = [];
 	const teile = auftrag.teile?.length ? auftrag.teile : [auftrag];
-	for (const teil of teile) for (const z of teil.entfernen) befund[z] = "x";
+	for (const teil of teile) for (const z of teil.entfernen) if (!implantatOhneAufbau(befund[z])) befund[z] = "x";
 	for (const teil of teile) {
 		if (!teil.versorgung) return {
 			status: "rueckfrage",
@@ -6852,7 +6911,7 @@ function implantatPlanen(auftrag, befund, tp) {
 		grund: "pfeiler",
 		frage: "Auf welche Zähne sollen die Implantatkronen – zum Beispiel auf 14 und 15?"
 	};
-	const stehen = sitze.filter((z) => z in befund && !fehlt(befund, z));
+	const stehen = sitze.filter((z) => zahnStehtNoch(befund, z));
 	if (stehen.length) return {
 		status: "rueckfrage",
 		grund: "zahn_vorhanden",
@@ -6904,7 +6963,9 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 				frage: `Laut Befund ${ohnePfeiler.length > 1 ? "fehlen" : "fehlt"} ${liste(ohnePfeiler)}. Auf welchen Zähnen sollen die Teleskope stattdessen sitzen?`
 			};
 		}
-		const offen = reihe.filter((z) => !istWeisheitszahn$1(z) && z in befund && !fehlt(befund, z) && !pfeiler.includes(z) && !auftrag.erhalten.includes(z));
+		const nackt = reihe.filter((z) => implantatOhneAufbau(befund[z]) && !pfeiler.includes(z));
+		const kronen = reihe.filter((z) => implantatkroneIntakt(befund[z]) && !pfeiler.includes(z));
+		const offen = reihe.filter((z) => !istWeisheitszahn$1(z) && z in befund && !fehlt(befund, z) && !nackt.includes(z) && !kronen.includes(z) && !pfeiler.includes(z) && !auftrag.erhalten.includes(z));
 		if ((auftrag.coverDenture || auftrag.versorgung === "totalprothese" || auftrag.versorgung === "locator" || auftrag.versorgung === "steg") && offen.length) return {
 			status: "rueckfrage",
 			grund: "restzaehne",
@@ -6921,11 +6982,13 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 		const bis = bogen.length ? Math.max(...bogen) : -1;
 		for (const z of pfeiler) tp[z] = ankerKuerzel(auftrag, z, keramikTel);
 		for (const z of reihe) {
-			if (pfeiler.includes(z) || !fehlt(befund, z)) continue;
+			if (pfeiler.includes(z) || !fehlt(befund, z) && !nackt.includes(z)) continue;
 			if (istWeisheitszahn$1(z) && !auftrag.mitAchtern) continue;
 			const i = reihe.indexOf(z);
 			tp[z] = auftrag.versorgung === "steg" && i > von && i < bis ? "SEO" : "E";
 		}
+		if (nackt.length && (auftrag.versorgung === "totalprothese" || auftrag.coverDenture)) hinweise.push(`${name}: Implantate an ${liste(nackt)} ohne Suprakonstruktion bleiben liegen und gelten für die Prothese wie fehlende Zähne.`);
+		if (kronen.length) hinweise.push(`${name}: Implantatkronen an ${liste(kronen)} sind intakt (sk). In Zeile R und TP bleibt das Feld leer.`);
 		if (auftrag.versorgung === "locator") hinweise.push(`${auftrag.anker === "kugel" ? "Kugelkopfanker" : "Druckknopfanker"} angenommen: GOZ 5030 je Implantat und GOZ 5080 je Verbindungselement, Matrize und Patrize zusammen.`);
 		if (auftrag.versorgung === "steg") hinweise.push("Implantatsteg angenommen: je Spanne eine Stegverbindung, je Implantat eine Kappe zur Aufnahme des Stegs.");
 		if (keramikTel && auftrag.versorgung === "teleskopprothese") hinweise.push("Zirkon-Primärteleskop angenommen: Teleskopkrone plus Zuschlag für Keramik, das Sekundärteil bleibt das Teleskop.");
@@ -7002,6 +7065,7 @@ function inlayPlanen(auftrag, befund, tp, hinweise) {
 	if (auftrag.kronenart === "onlay") hinweise.push("Onlay mehrflächig nach GOZ 2170 angenommen. Deckt es Höcker, ist es eine Teilkrone nach GOZ 2220 – dann Teilkrone sagen.");
 	else if (!auftrag.flaechenGenannt) hinweise.push("Flächen nicht genannt, zweiflächig angenommen (GOZ 2160).");
 }
+var zahnFrage = (zs) => zs.length > 1 ? `Die Zähne ${liste(zs)} stehen noch. Werden sie vorher entfernt?` : `Der Zahn ${zs[0]} steht noch. Wird er vorher entfernt?`;
 /** Festsitzende Ganzkieferbrücke auf 4 oder 6 Implantaten. Ohne genannte Sitze gelten die üblichen Positionen. */
 function allonPlanen(auftrag, befund, tp, hinweise) {
 	const kiefer = auftrag.kiefer;
@@ -7013,41 +7077,45 @@ function allonPlanen(auftrag, befund, tp, hinweise) {
 	const n = auftrag.allon ?? 4;
 	const name = kiefer === "OK" ? "Oberkiefer" : "Unterkiefer";
 	const reihe = REIHE[kiefer];
-	let sitze = auftrag.pfeiler.filter((z) => kieferVon$1(z) === kiefer);
-	if (!sitze.length) {
-		sitze = ALLON_SITZ[n][kiefer];
-		hinweise.push(`All-on-${n} ${name}: übliche Implantatpositionen ${sitze.join(", ")} angenommen.`);
-	}
+	const genannt = auftrag.pfeiler.filter((z) => kieferVon$1(z) === kiefer);
+	let sitze = genannt.length && genannt.length < n ? [.../* @__PURE__ */ new Set([...ALLON_SITZ[n][kiefer], ...genannt])] : genannt.length >= n ? [...genannt] : [...ALLON_SITZ[n][kiefer]];
+	if (genannt.length) sitze.sort((a, b) => reihe.indexOf(a) - reihe.indexOf(b));
+	if (!genannt.length) hinweise.push(`All-on-${n} ${name}: übliche Implantatpositionen ${sitze.join(", ")} angenommen.`);
 	if (reihe.filter((z) => !(z in befund) && !istWeisheitszahn$1(z)).length === reihe.filter((z) => !istWeisheitszahn$1(z)).length) {
 		for (const z of reihe) befund[z] = "f";
 		hinweise.push(`${name}: kein Befund genannt – für All-on-${n} als zahnlos angenommen.`);
 	}
-	const stehen = sitze.filter((z) => z in befund && !fehlt(befund, z));
-	if (stehen.length) return {
-		status: "rueckfrage",
-		grund: "zahn_vorhanden",
-		zaehne: stehen,
-		frage: `Laut Befund ${stehen.length > 1 ? "sind" : "ist"} ${liste(stehen)} noch vorhanden. ${stehen.length > 1 ? "Werden sie" : "Wird er"} vorher entfernt? Dann sagen Sie zum Beispiel: ${stehen[0]} wird entfernt.`
-	};
-	const idx = sitze.map((z) => reihe.indexOf(z)).filter((i) => i >= 0);
-	const von = Math.min(...idx);
-	const bis = Math.max(...idx);
+	const enden = () => sitze.map((z) => reihe.indexOf(z)).filter((i) => i >= 0);
+	let [von, bis] = [Math.min(...enden()), Math.max(...enden())];
+	for (const z of reihe.slice(von, bis + 1)) if (implantatBleibt(befund[z] ?? "") && !sitze.includes(z)) sitze.push(z);
+	sitze.sort((a, b) => reihe.indexOf(a) - reihe.indexOf(b));
+	[von, bis] = [Math.min(...enden()), Math.max(...enden())];
 	const imBogen = reihe.slice(von, bis + 1);
 	const glieder = imBogen.filter((z) => !sitze.includes(z));
-	const stehenGlied = glieder.filter((z) => z in befund && !fehlt(befund, z));
-	if (stehenGlied.length) return {
+	const voraus = `All-on-${n} im ${name} ist eine festsitzende Brücke auf ${n === 6 ? "sechs" : "vier"} Implantaten. Dafür muss der Kiefer zahnlos sein.`;
+	const stehen = reihe.filter((z) => imBogen.includes(z) && zahnStehtNoch(befund, z));
+	if (stehen.length) return {
 		status: "rueckfrage",
-		grund: "glied_vorhanden",
-		zaehne: stehenGlied,
-		frage: `Laut Befund ${stehenGlied.length > 1 ? "sind" : "ist"} ${liste(stehenGlied)} noch vorhanden. Soll ich ${stehenGlied.length > 1 ? "sie" : "ihn"} als zu entfernen planen? Dann sagen Sie zum Beispiel: ${stehenGlied[0]} wird entfernt.`
+		grund: sitze.some((z) => stehen.includes(z)) ? "zahn_vorhanden" : "glied_vorhanden",
+		zaehne: stehen,
+		frage: `${voraus} ${zahnFrage(stehen)}`
 	};
-	const aussen = reihe.filter((z) => !imBogen.includes(z) && !istWeisheitszahn$1(z) && z in befund && !fehlt(befund, z));
+	const aussen = reihe.filter((z) => !imBogen.includes(z) && !istWeisheitszahn$1(z) && zahnStehtNoch(befund, z));
 	if (aussen.length) return {
 		status: "rueckfrage",
 		grund: "restzaehne",
 		zaehne: aussen,
-		frage: `Im ${name} ${aussen.length > 1 ? "stehen" : "steht"} noch ${liste(aussen)}. ${aussen.length > 1 ? "Sollen die" : "Soll er"} entfernt werden? Hinter dem letzten Implantat setze ich keine Freiendglieder.`
+		frage: `${voraus} ${zahnFrage(aussen)} Hinter dem letzten Implantat setze ich keine Freiendglieder.`
 	};
+	const bestehend = sitze.filter((z) => implantatBleibt(befund[z] ?? ""));
+	const implantAussen = reihe.filter((z) => !sitze.includes(z) && implantatBleibt(befund[z] ?? ""));
+	for (const z of reihe) {
+		const k = (befund[z] ?? "").trim().toLowerCase();
+		if (implantatBleibt(k) && k !== "i") befund[z] = "i";
+		else if (k === "ix") befund[z] = "f";
+	}
+	if (bestehend.length) hinweise.push(`${name}: die Implantate an ${liste(bestehend)} bleiben. Die All-on-${n} sitzt darauf.`);
+	if (implantAussen.length) hinweise.push(`${name}: Implantate an ${liste(implantAussen)} liegen außerhalb der All-on-${n} und bleiben.`);
 	for (const z of sitze) {
 		if (!(z in befund)) befund[z] = "f";
 		tp[z] = implantKrone(auftrag);
@@ -7119,7 +7187,22 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 	} else if (auftrag.abutment) hinweise.push(auftrag.abutment === "keramik" ? "Keramikabutment angenommen (BEB 6906 auf Ti-Base)." : auftrag.abutment === "individuell" ? "Individuelles Abutment angenommen (BEB 2033 auf Ti-Base)." : "Konfektioniertes Abutment angenommen (BEB 4421).");
 	if (auftrag.kronenart === "galvano") hinweise.push("Galvano angenommen: die Laborliste hat keine eigene Galvanoposition. Gerechnet wird die metallische Krone oder das Teleskop in Hochgold.");
 	if (auftrag.kronenart === "tabletop") hinweise.push("Tabletop als Teilkrone angenommen (GOZ 2220).");
-	const regel = therapieAnwenden(regelversorgungErmitteln(plan.zaehne, regelOptionen(plan)), plan.zaehne, plan);
+	const prothese = (t) => t.versorgung === "totalprothese";
+	plan.weitere = {
+		...plan.weitere,
+		interimOK: teile.some((t) => !!t.interim && t.kiefer === "OK" && prothese(t)),
+		interimUK: teile.some((t) => !!t.interim && t.kiefer === "UK" && prothese(t)),
+		immediatOK: teile.some((t) => !!t.immediat && t.kiefer === "OK" && prothese(t)),
+		immediatUK: teile.some((t) => !!t.immediat && t.kiefer === "UK" && prothese(t))
+	};
+	const geplant = /* @__PURE__ */ new Set();
+	for (const t of teile) if (t.kiefer) geplant.add(t.kiefer);
+	if (!geplant.size) for (const z of Object.keys(tp)) geplant.add(kieferVon$1(z));
+	const regelOpt = {
+		...regelOptionen(plan),
+		...geplant.size ? { nurKiefer: [...geplant] } : {}
+	};
+	const regel = therapieAnwenden(regelversorgungErmitteln(plan.zaehne, regelOpt), plan.zaehne, plan);
 	let fertig = regelUebernehmen(plan, regel);
 	hinweise.push(...regel.hinweise);
 	if (auftrag.verblendung) {
@@ -7131,7 +7214,10 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 				verblendung: auftrag.verblendung
 			}
 		};
-		const regel2 = therapieAnwenden(regelversorgungErmitteln(fertig.zaehne, regelOptionen(fertig)), fertig.zaehne, fertig);
+		const regel2 = therapieAnwenden(regelversorgungErmitteln(fertig.zaehne, {
+			...regelOptionen(fertig),
+			...regelOpt
+		}), fertig.zaehne, fertig);
 		fertig = regelUebernehmen(fertig, regel2);
 		for (const h of regel2.hinweise) if (!hinweise.includes(h)) hinweise.push(h);
 	}
@@ -11376,6 +11462,7 @@ var ALLGEMEIN = "Überdurchschnittlicher Schwierigkeitsgrad und Zeitaufwand bei 
 var standardBegruendung = (nr) => GRUPPEN.find(([re]) => re.test(nr.trim()))?.[1] ?? ALLGEMEIN;
 //#endregion
 //#region src/engine/zusatz.ts
+var exoten = /* @__PURE__ */ JSON.parse("[{\"id\":\"krone\",\"titel\":\"Krone\",\"prioritaet\":10,\"situation\":\"krone-regel\",\"kuerzel\":[\"K\",\"KV\",\"KM\",\"KH\",\"KVH\",\"KMH\",\"KO\",\"KVO\",\"KMO\",\"PK\",\"PKV\",\"PKM\",\"VE\",\"VEK\",\"ZA\"],\"gruppen\":{\"praepariert\":[\"K\",\"KV\",\"KM\",\"KH\",\"KVH\",\"KMH\",\"KO\",\"KVO\",\"KMO\",\"PK\",\"PKV\",\"PKM\",\"VE\",\"VEK\",\"ZA\"],\"keramik\":[\"KM\",\"KMH\",\"KMO\",\"PKM\",\"VE\",\"VEK\"]},\"nicht\":[\"0040 nicht neben 0030: der schriftliche Plan ist schon berechnet\",\"8035 und 8065 gehören zur Brücke, zur Teleskopprothese und zu All-on, nicht zur einzelnen Krone\"],\"kurz\":\"Regler Krone: 2030, 0070, 0090, an Keramik 2197 und 2040, Funktionsanalyse 8000, 8010, 8020, oben 8050, 8080, 8090. Nicht 8035, nicht 8065, 0040 nicht neben 0030.\",\"text\":\"Schieberegler Zusatzleistungen für eine Krone, Teilkrone oder ein Veneer. Führend ist die speziellste Versorgung des Plans. Vorbereitende Nummern kommen aus jeder passenden Versorgung, jede Nummer nur einmal. Die Planung setzt die Krone selbst, GOZ 2210 oder 2220, das Provisorium 2270 und den Plan 0030. Der Regler setzt diese Grundnummern nicht noch einmal. Stufe 1: GOZ 2030 besondere Maßnahmen beim Präparieren, je Kieferhälfte oder Frontzahnbereich, nur am präparierten natürlichen Zahn. GOZ 0070 Vitalitätsprüfung, einmal je Sitzung. GOZ 0090 Infiltrationsanästhesie, je präpariertem Zahn. Stufe 2 nur an vollkeramischer Krone, Teilkrone oder Veneer: GOZ 2197 adhäsive Befestigung je Zahn und GOZ 2040 Kofferdam je Bereich. Nicht an einer metallischen Krone, nicht am Brückenglied, nicht an einer Teleskopprimärkrone. Stufe 3: GOZ 0065 setzt die Planung, sobald der Intraoralscan gewählt ist. Der Regler doppelt sie nicht und setzt sie nicht neben einen konventionellen Abdruck. Stufe 4 Funktionsdiagnostik: GOZ 8000 klinische Funktionsanalyse, GOZ 8010 ein Registrat, GOZ 8020 arbiträre Scharnierachse. Stufe 5 an der einzelnen Krone: GOZ 8050, 8080 und 8090. Nicht GOZ 8035 und nicht GOZ 8065. GOZ 0040 nicht neben 0030.\",\"stufen\":[{\"stufe\":1,\"nr\":\"2030\",\"je\":\"bereich\",\"an\":\"praepariert\",\"goz\":[\"2210\",\"2220\",\"5010\",\"5040\"],\"leer\":\"2030: keine zu präparierenden Zähne\",\"grund\":\"Besondere Maßnahmen beim Präparieren, je Kieferhälfte oder Frontzahnbereich\"},{\"stufe\":1,\"nr\":\"0070\",\"je\":\"sitzung\",\"an\":\"praepariert\",\"goz\":[\"2210\",\"2220\",\"5010\",\"5040\"],\"grund\":\"Vitalitätsprüfung vor der Präparation, je Sitzung\"},{\"stufe\":1,\"nr\":\"0090\",\"je\":\"zahn\",\"an\":\"praepariert\",\"goz\":[\"2210\",\"2220\",\"5010\",\"5040\"],\"grund\":\"Infiltrationsanästhesie, je Zahn\"},{\"stufe\":2,\"nr\":\"2197\",\"je\":\"zahn\",\"an\":\"keramik\",\"leer\":\"2197: keine vollkeramische Krone, Teilkrone oder kein Veneer\",\"grund\":\"Adhäsive Befestigung\"},{\"stufe\":2,\"nr\":\"2040\",\"je\":\"bereich\",\"an\":\"keramik\",\"grund\":\"Kofferdam zur adhäsiven Befestigung\"},{\"stufe\":4,\"nr\":\"8000\",\"je\":\"sitzung\",\"grund\":\"Klinische Funktionsanalyse zur Krone\"},{\"stufe\":4,\"nr\":\"8010\",\"je\":\"sitzung\",\"anzahl\":1,\"grund\":\"Registrieren der Zentrallage, ein Registrat\"},{\"stufe\":4,\"nr\":\"8020\",\"je\":\"sitzung\",\"grund\":\"Arbiträre Scharnierachse\"},{\"stufe\":5,\"nr\":\"8050\",\"je\":\"sitzung\",\"grund\":\"Halbindividueller Artikulator zur Krone\"},{\"stufe\":5,\"nr\":\"8080\",\"je\":\"sitzung\",\"grund\":\"Diagnostische Maßnahmen am Modell\"},{\"stufe\":5,\"nr\":\"8090\",\"je\":\"sitzung\",\"grund\":\"Diagnostischer Aufbau der Funktionsflächen\"}]},{\"id\":\"bruecke\",\"titel\":\"Brücke\",\"prioritaet\":30,\"situation\":\"bruecke\",\"kuerzel\":[\"B\",\"BV\",\"BM\",\"ABV\",\"ABM\",\"ZAB\",\"SB\",\"SBV\",\"SBM\",\"A\"],\"gruppen\":{\"praepariert\":[\"K\",\"KV\",\"KM\",\"KH\",\"KVH\",\"KMH\",\"KO\",\"KVO\",\"KMO\",\"PK\",\"PKV\",\"PKM\",\"ZA\",\"A\"],\"keramik\":[\"KM\",\"KMH\",\"KMO\",\"PKM\",\"SKM\",\"SKMO\"],\"implantat\":[\"SK\",\"SKV\",\"SKM\",\"SKO\",\"SKVO\",\"SKMO\",\"ZAS\"]},\"nicht\":[\"0040 nicht neben 0030: der schriftliche Plan ist schon berechnet\",\"8020 nicht neben 8035\",\"8050 nicht neben 8065\",\"2197 nicht am Brückenglied\"],\"kurz\":\"Regler Brücke: an den Ankern 2030, 0070, 0090, an Keramik 2197 und 2040. Funktionsanalyse Stufe 4 ist 8000, 8010, 8020. Stufe 5 ersetzt das durch 8035 und 8065, dazu 8080 und 8090. 8020 nicht neben 8035, 8050 nicht neben 8065.\",\"text\":\"Schieberegler Zusatzleistungen für eine Brücke, auch implantatgetragen, solange es nicht All-on-4 oder All-on-6 ist. Führend ist die speziellste Versorgung. Die Planung setzt das Brückenglied GOZ 5070 oder die Adhäsivbrücke 5150, das Provisorium 5140 und 5120 und den Plan 0030. Der Regler setzt diese Grundnummern nicht noch einmal. Stufe 1 an den natürlichen Ankerzähnen: GOZ 2030 je Kieferhälfte oder Frontzahnbereich, GOZ 0070 einmal je Sitzung, GOZ 0090 je Ankerzahn. Am Implantatanker GOZ 0090 zur Eingliederung, keine 2030, weil kein Zahn präpariert wird. Stufe 2 nur an der keramischen Ankerkrone, nicht am Brückenglied: GOZ 2197 und GOZ 2040. Stufe 3: GOZ 0065 bleibt bei der Planung des Scans und wird nicht gedoppelt. Stufe 4: GOZ 8000, GOZ 8010 ein Registrat, GOZ 8020. Stufe 5 elektronische Funktionsanalyse: GOZ 8035 statt 8020, GOZ 8065 statt 8050, dazu GOZ 8080 und GOZ 8090. 8020 nicht neben 8035. 8050 nicht neben 8065. GOZ 0040 nicht neben 0030.\",\"stufen\":[{\"stufe\":1,\"nr\":\"2030\",\"je\":\"bereich\",\"an\":\"praepariert\",\"goz\":[\"2210\",\"2220\",\"5010\",\"5040\"],\"leer\":\"2030: keine zu präparierenden Ankerzähne\",\"grund\":\"Besondere Maßnahmen beim Präparieren der Brückenanker\"},{\"stufe\":1,\"nr\":\"0070\",\"je\":\"sitzung\",\"an\":\"praepariert\",\"goz\":[\"2210\",\"2220\",\"5010\",\"5040\"],\"grund\":\"Vitalitätsprüfung der Anker, je Sitzung\"},{\"stufe\":1,\"nr\":\"0090\",\"je\":\"zahn\",\"an\":\"praepariert\",\"goz\":[\"2210\",\"2220\",\"5010\",\"5040\"],\"grund\":\"Infiltrationsanästhesie am Ankerzahn\"},{\"stufe\":1,\"nr\":\"0090\",\"je\":\"zahn\",\"an\":\"implantat\",\"grund\":\"Infiltrationsanästhesie zur Eingliederung der Implantatkrone\"},{\"stufe\":2,\"nr\":\"2197\",\"je\":\"zahn\",\"an\":\"keramik\",\"leer\":\"2197: kein keramischer Brückenanker\",\"grund\":\"Adhäsive Befestigung des Brückenankers\"},{\"stufe\":2,\"nr\":\"2040\",\"je\":\"bereich\",\"an\":\"keramik\",\"grund\":\"Kofferdam zur adhäsiven Befestigung\"},{\"stufe\":4,\"nr\":\"8000\",\"je\":\"sitzung\",\"grund\":\"Klinische Funktionsanalyse zur Brücke\"},{\"stufe\":4,\"nr\":\"8010\",\"je\":\"sitzung\",\"anzahl\":1,\"grund\":\"Registrieren der Zentrallage, ein Registrat\"},{\"stufe\":4,\"nr\":\"8020\",\"je\":\"sitzung\",\"bisStufe\":4,\"grund\":\"Arbiträre Scharnierachse\"},{\"stufe\":5,\"nr\":\"8035\",\"je\":\"sitzung\",\"grund\":\"Kinematische Scharnierachse, elektronische Aufzeichnung\"},{\"stufe\":5,\"nr\":\"8065\",\"je\":\"sitzung\",\"grund\":\"Elektronische Aufzeichnung der Unterkieferbewegungen\"},{\"stufe\":5,\"nr\":\"8080\",\"je\":\"sitzung\",\"grund\":\"Diagnostische Maßnahmen am Modell\"},{\"stufe\":5,\"nr\":\"8090\",\"je\":\"sitzung\",\"grund\":\"Diagnostischer Aufbau der Funktionsflächen\"}]},{\"id\":\"teleskopprothese\",\"titel\":\"Teleskopprothese\",\"prioritaet\":50,\"situation\":\"teleskop\",\"kuerzel\":[\"T\",\"TZ\",\"TZV\",\"TV\",\"TM\",\"T2\",\"T2V\",\"T2M\",\"ST\",\"STZ\",\"STZV\",\"STV\",\"STM\"],\"dazuKuerzel\":[\"E\",\"SE\",\"EO\",\"SEO\"],\"gruppen\":{\"teleskop\":[\"T\",\"TZ\",\"TZV\",\"TV\",\"TM\",\"ST\",\"STZ\",\"STZV\",\"STV\",\"STM\"]},\"nicht\":[\"0040 nicht neben 0030: der schriftliche Plan ist schon berechnet\",\"8020 nicht neben 8035\",\"8050 nicht neben 8065\",\"2197 nicht an der Teleskopprimärkrone\"],\"kurz\":\"Regler Teleskopprothese: 2030, 0070, 0090 an den Primärkronen, keine 2197. Funktionsanalyse 8000 und 8010 zweimal. Stufe 5: 8035 und 8065, dazu 8080, 8090 und 8100 je Zahnpaar. 8020 nicht neben 8035, 8050 nicht neben 8065.\",\"text\":\"Schieberegler Zusatzleistungen für eine Teleskopprothese oder Deckprothese auf Doppelkronen. Führend ist die speziellste Versorgung. Die Planung setzt die Primärkrone GOZ 5040 und die Prothese, GOZ 5210 mit 5170 oder bei Zahnlosigkeit 5220 oder 5230 mit 5180 oder 5190, und den Plan 0030. Der Regler setzt diese Grundnummern nicht noch einmal. Stufe 1 an der Primärkrone: GOZ 2030 je Bereich, GOZ 0070 einmal je Sitzung, GOZ 0090 je Primärkrone. Keine adhäsive Befestigung GOZ 2197 und kein Kofferdam GOZ 2040, die Primärkrone wird konventionell zementiert. Stufe 3: GOZ 0065 bleibt beim Scan in der Planung. Stufe 4: GOZ 8000 und GOZ 8010 zweimal, je Registrat, höchstens zweimal je Sitzung. Stufe 5 elektronische Funktionsanalyse: GOZ 8035 statt 8020, GOZ 8065 statt 8050, dazu GOZ 8080, GOZ 8090 und GOZ 8100 systematisches Einschleifen je Zahnpaar nach der Zahl der Teleskopkronen, höchstens acht. 8020 nicht neben 8035. 8050 nicht neben 8065. GOZ 0040 nicht neben 0030.\",\"stufen\":[{\"stufe\":1,\"nr\":\"2030\",\"je\":\"bereich\",\"an\":\"teleskop\",\"goz\":[\"5040\"],\"leer\":\"2030: keine Teleskopprimärkrone\",\"grund\":\"Besondere Maßnahmen beim Präparieren der Teleskopprimärkrone\"},{\"stufe\":1,\"nr\":\"0070\",\"je\":\"sitzung\",\"an\":\"teleskop\",\"goz\":[\"5040\"],\"grund\":\"Vitalitätsprüfung vor der Teleskoppräparation, je Sitzung\"},{\"stufe\":1,\"nr\":\"0090\",\"je\":\"zahn\",\"an\":\"teleskop\",\"goz\":[\"5040\"],\"grund\":\"Infiltrationsanästhesie an der Primärkrone\"},{\"stufe\":4,\"nr\":\"8000\",\"je\":\"sitzung\",\"grund\":\"Klinische Funktionsanalyse zur Teleskopprothese\"},{\"stufe\":4,\"nr\":\"8010\",\"je\":\"sitzung\",\"anzahl\":2,\"grund\":\"Registrieren der Zentrallage, zweites Registrat in derselben Sitzung\"},{\"stufe\":5,\"nr\":\"8035\",\"je\":\"sitzung\",\"grund\":\"Kinematische Scharnierachse, elektronische Aufzeichnung\"},{\"stufe\":5,\"nr\":\"8065\",\"je\":\"sitzung\",\"grund\":\"Elektronische Aufzeichnung der Unterkieferbewegungen\"},{\"stufe\":5,\"nr\":\"8080\",\"je\":\"sitzung\",\"grund\":\"Diagnostische Maßnahmen am Modell\"},{\"stufe\":5,\"nr\":\"8090\",\"je\":\"sitzung\",\"grund\":\"Diagnostischer Aufbau der Funktionsflächen\"},{\"stufe\":5,\"nr\":\"8100\",\"je\":\"paar\",\"an\":\"teleskop\",\"anzahlMax\":8,\"grund\":\"Systematisches Einschleifen, je Zahnpaar\"}]},{\"id\":\"teleskopkrone\",\"titel\":\"Teleskopkronen\",\"prioritaet\":45,\"situation\":\"teleskop\",\"kuerzel\":[\"T\",\"TZ\",\"TZV\",\"TV\",\"TM\",\"T2\",\"T2V\",\"T2M\",\"ST\",\"STZ\",\"STZV\",\"STV\",\"STM\"],\"gruppen\":{\"teleskop\":[\"T\",\"TZ\",\"TZV\",\"TV\",\"TM\",\"ST\",\"STZ\",\"STZV\",\"STV\",\"STM\"]},\"nicht\":[\"0040 nicht neben 0030: der schriftliche Plan ist schon berechnet\",\"8020 nicht neben 8035\",\"8050 nicht neben 8065\",\"2197 nicht an der Teleskopprimärkrone\"],\"kurz\":\"Regler Teleskopkronen ohne Prothese: gleiche Nummern wie die Teleskopprothese, 2030, 0070, 0090, 8000, 8010 zweimal, Stufe 5 mit 8035, 8065, 8080, 8090 und 8100. Keine 2197.\",\"text\":\"Schieberegler Zusatzleistungen für Teleskopkronen, wenn noch keine Prothese im Plan steht. Dieselbe Liste wie bei der Teleskopprothese. GOZ 5040 setzt die Planung. Stufe 1: GOZ 2030, 0070 und 0090 an der Primärkrone. Keine GOZ 2197. Stufe 4: GOZ 8000 und GOZ 8010 zweimal je Sitzung. Stufe 5: GOZ 8035, 8065, 8080, 8090 und 8100 je Zahnpaar. 8020 nicht neben 8035. 8050 nicht neben 8065. GOZ 0040 nicht neben 0030. Steht die Prothese dazu, führt die Teleskopprothese, nicht diese Zeile.\",\"stufen\":[{\"stufe\":1,\"nr\":\"2030\",\"je\":\"bereich\",\"an\":\"teleskop\",\"goz\":[\"5040\"],\"leer\":\"2030: keine Teleskopprimärkrone\",\"grund\":\"Besondere Maßnahmen beim Präparieren der Teleskopprimärkrone\"},{\"stufe\":1,\"nr\":\"0070\",\"je\":\"sitzung\",\"an\":\"teleskop\",\"goz\":[\"5040\"],\"grund\":\"Vitalitätsprüfung vor der Teleskoppräparation, je Sitzung\"},{\"stufe\":1,\"nr\":\"0090\",\"je\":\"zahn\",\"an\":\"teleskop\",\"goz\":[\"5040\"],\"grund\":\"Infiltrationsanästhesie an der Primärkrone\"},{\"stufe\":4,\"nr\":\"8000\",\"je\":\"sitzung\",\"grund\":\"Klinische Funktionsanalyse zu den Teleskopkronen\"},{\"stufe\":4,\"nr\":\"8010\",\"je\":\"sitzung\",\"anzahl\":2,\"grund\":\"Registrieren der Zentrallage, zweites Registrat in derselben Sitzung\"},{\"stufe\":5,\"nr\":\"8035\",\"je\":\"sitzung\",\"grund\":\"Kinematische Scharnierachse, elektronische Aufzeichnung\"},{\"stufe\":5,\"nr\":\"8065\",\"je\":\"sitzung\",\"grund\":\"Elektronische Aufzeichnung der Unterkieferbewegungen\"},{\"stufe\":5,\"nr\":\"8080\",\"je\":\"sitzung\",\"grund\":\"Diagnostische Maßnahmen am Modell\"},{\"stufe\":5,\"nr\":\"8090\",\"je\":\"sitzung\",\"grund\":\"Diagnostischer Aufbau der Funktionsflächen\"},{\"stufe\":5,\"nr\":\"8100\",\"je\":\"paar\",\"an\":\"teleskop\",\"anzahlMax\":8,\"grund\":\"Systematisches Einschleifen, je Zahnpaar\"}]},{\"id\":\"all-on-4\",\"titel\":\"All-on-4\",\"prioritaet\":60,\"situation\":\"allon\",\"kuerzel\":[\"SK\",\"SKV\",\"SKM\",\"SKO\",\"SKVO\",\"SKMO\",\"ZAS\"],\"dazuKuerzel\":[\"B\",\"BV\",\"BM\",\"SB\",\"SBV\",\"SBM\",\"ZAB\",\"E\",\"SE\",\"EO\",\"SEO\"],\"implantate\":{\"min\":4,\"max\":4},\"gruppen\":{\"implantat\":[\"SK\",\"SKV\",\"SKM\",\"SKO\",\"SKVO\",\"SKMO\",\"ZAS\"],\"keramik\":[\"SKM\",\"SKMO\"]},\"nicht\":[\"0040 nicht neben 0030: der schriftliche Plan ist schon berechnet\",\"8020 nicht neben 8035\",\"8050 nicht neben 8065\",\"9000 bis 9040 gehören in den Implantatplan, nicht in die Suprakonstruktion\",\"2030 nicht, es wird kein Zahn präpariert\"],\"kurz\":\"Regler All-on-4: 0090 je Implantat, an Keramik 2197 und 2040, keine 2030. Funktionsanalyse 8000 und 8010 zweimal. Stufe 5: 8035, 8065, 8080, 8090 und 8100 viermal. 8020 nicht neben 8035. Chirurgie 9000 nicht in diesem Plan.\",\"text\":\"Schieberegler Zusatzleistungen für All-on-4: genau vier implantatgetragene Kronen und eine Brücke oder Prothese. Führend vor der einzelnen Suprakonstruktion und vor der gewöhnlichen Brücke. Die Planung setzt GOZ 2200, als Anker GOZ 5000, das Glied GOZ 5070 und das Auswechseln der Aufbauten GOZ 9050. Der Regler setzt diese Grundnummern nicht noch einmal. Die Chirurgie GOZ 9000 bis 9040 gehört in den Implantatplan, nicht hier. Stufe 1: GOZ 0090 je Implantat zur Eingliederung. Keine GOZ 2030. Stufe 2 nur an der vollkeramischen Implantatkrone: GOZ 2197 und GOZ 2040. Stufe 3: GOZ 0065 bleibt beim Scan in der Planung. Stufe 4: GOZ 8000 und GOZ 8010 zweimal, höchstens zweimal je Sitzung. Stufe 5: GOZ 8035 statt 8020, GOZ 8065 statt 8050, dazu GOZ 8080, GOZ 8090 und GOZ 8100 je Zahnpaar, vier Paare. 8020 nicht neben 8035. 8050 nicht neben 8065. GOZ 0040 nicht neben 0030.\",\"stufen\":[{\"stufe\":1,\"nr\":\"0090\",\"je\":\"zahn\",\"an\":\"implantat\",\"grund\":\"Infiltrationsanästhesie zur Eingliederung, All-on-4\"},{\"stufe\":2,\"nr\":\"2197\",\"je\":\"zahn\",\"an\":\"keramik\",\"leer\":\"2197: keine vollkeramische Implantatkrone\",\"grund\":\"Adhäsive Befestigung der keramischen Implantatkrone\"},{\"stufe\":2,\"nr\":\"2040\",\"je\":\"bereich\",\"an\":\"keramik\",\"grund\":\"Kofferdam zur adhäsiven Befestigung\"},{\"stufe\":4,\"nr\":\"8000\",\"je\":\"sitzung\",\"grund\":\"Klinische Funktionsanalyse zu All-on-4\"},{\"stufe\":4,\"nr\":\"8010\",\"je\":\"sitzung\",\"anzahl\":2,\"grund\":\"Registrieren der Zentrallage, zweites Registrat in derselben Sitzung\"},{\"stufe\":5,\"nr\":\"8035\",\"je\":\"sitzung\",\"grund\":\"Kinematische Scharnierachse, elektronische Aufzeichnung\"},{\"stufe\":5,\"nr\":\"8065\",\"je\":\"sitzung\",\"grund\":\"Elektronische Aufzeichnung der Unterkieferbewegungen\"},{\"stufe\":5,\"nr\":\"8080\",\"je\":\"sitzung\",\"grund\":\"Diagnostische Maßnahmen am Modell\"},{\"stufe\":5,\"nr\":\"8090\",\"je\":\"sitzung\",\"grund\":\"Diagnostischer Aufbau der Funktionsflächen\"},{\"stufe\":5,\"nr\":\"8100\",\"je\":\"paar\",\"an\":\"implantat\",\"anzahlMax\":4,\"grund\":\"Systematisches Einschleifen, je Zahnpaar\"}]},{\"id\":\"all-on-6\",\"titel\":\"All-on-6\",\"prioritaet\":70,\"situation\":\"allon\",\"kuerzel\":[\"SK\",\"SKV\",\"SKM\",\"SKO\",\"SKVO\",\"SKMO\",\"ZAS\"],\"dazuKuerzel\":[\"B\",\"BV\",\"BM\",\"SB\",\"SBV\",\"SBM\",\"ZAB\",\"E\",\"SE\",\"EO\",\"SEO\"],\"implantate\":{\"min\":6,\"max\":6},\"gruppen\":{\"implantat\":[\"SK\",\"SKV\",\"SKM\",\"SKO\",\"SKVO\",\"SKMO\",\"ZAS\"],\"keramik\":[\"SKM\",\"SKMO\"]},\"nicht\":[\"0040 nicht neben 0030: der schriftliche Plan ist schon berechnet\",\"8020 nicht neben 8035\",\"8050 nicht neben 8065\",\"9000 bis 9040 gehören in den Implantatplan, nicht in die Suprakonstruktion\",\"2030 nicht, es wird kein Zahn präpariert\"],\"kurz\":\"Regler All-on-6: 0090 je Implantat, an Keramik 2197 und 2040, keine 2030. Funktionsanalyse 8000 und 8010 zweimal. Stufe 5: 8035, 8065, 8080, 8090 und 8100 sechsmal. 8020 nicht neben 8035. Chirurgie 9000 nicht in diesem Plan.\",\"text\":\"Schieberegler Zusatzleistungen für All-on-6: genau sechs implantatgetragene Kronen und eine Brücke oder Prothese. Führend vor All-on-4, vor der einzelnen Suprakonstruktion und vor der gewöhnlichen Brücke. Die Planung setzt GOZ 2200, als Anker GOZ 5000, das Glied GOZ 5070 und GOZ 9050. Der Regler setzt diese Grundnummern nicht noch einmal. Die Chirurgie GOZ 9000 bis 9040 gehört in den Implantatplan. Stufe 1: GOZ 0090 je Implantat. Keine GOZ 2030. Stufe 2 nur an der vollkeramischen Implantatkrone: GOZ 2197 und GOZ 2040. Stufe 3: GOZ 0065 bleibt beim Scan in der Planung. Stufe 4: GOZ 8000 und GOZ 8010 zweimal, höchstens zweimal je Sitzung. Stufe 5: GOZ 8035 statt 8020, GOZ 8065 statt 8050, dazu GOZ 8080, GOZ 8090 und GOZ 8100 je Zahnpaar, sechs Paare. 8020 nicht neben 8035. 8050 nicht neben 8065. GOZ 0040 nicht neben 0030.\",\"stufen\":[{\"stufe\":1,\"nr\":\"0090\",\"je\":\"zahn\",\"an\":\"implantat\",\"grund\":\"Infiltrationsanästhesie zur Eingliederung, All-on-6\"},{\"stufe\":2,\"nr\":\"2197\",\"je\":\"zahn\",\"an\":\"keramik\",\"leer\":\"2197: keine vollkeramische Implantatkrone\",\"grund\":\"Adhäsive Befestigung der keramischen Implantatkrone\"},{\"stufe\":2,\"nr\":\"2040\",\"je\":\"bereich\",\"an\":\"keramik\",\"grund\":\"Kofferdam zur adhäsiven Befestigung\"},{\"stufe\":4,\"nr\":\"8000\",\"je\":\"sitzung\",\"grund\":\"Klinische Funktionsanalyse zu All-on-6\"},{\"stufe\":4,\"nr\":\"8010\",\"je\":\"sitzung\",\"anzahl\":2,\"grund\":\"Registrieren der Zentrallage, zweites Registrat in derselben Sitzung\"},{\"stufe\":5,\"nr\":\"8035\",\"je\":\"sitzung\",\"grund\":\"Kinematische Scharnierachse, elektronische Aufzeichnung\"},{\"stufe\":5,\"nr\":\"8065\",\"je\":\"sitzung\",\"grund\":\"Elektronische Aufzeichnung der Unterkieferbewegungen\"},{\"stufe\":5,\"nr\":\"8080\",\"je\":\"sitzung\",\"grund\":\"Diagnostische Maßnahmen am Modell\"},{\"stufe\":5,\"nr\":\"8090\",\"je\":\"sitzung\",\"grund\":\"Diagnostischer Aufbau der Funktionsflächen\"},{\"stufe\":5,\"nr\":\"8100\",\"je\":\"paar\",\"an\":\"implantat\",\"anzahlMax\":6,\"grund\":\"Systematisches Einschleifen, je Zahnpaar\"}]},{\"id\":\"suprakonstruktion\",\"titel\":\"Suprakonstruktion\",\"prioritaet\":20,\"situation\":\"implantat-krone\",\"kuerzel\":[\"SK\",\"SKV\",\"SKM\",\"SKO\",\"SKVO\",\"SKMO\",\"ZAS\",\"SO\"],\"gruppen\":{\"implantat\":[\"SK\",\"SKV\",\"SKM\",\"SKO\",\"SKVO\",\"SKMO\",\"ZAS\",\"SO\"],\"keramik\":[\"SKM\",\"SKMO\"]},\"nicht\":[\"0040 nicht neben 0030: der schriftliche Plan ist schon berechnet\",\"9000 bis 9040 gehören in den Implantatplan, nicht in die Suprakonstruktion\",\"8035 und 8065 erst bei Brücke, Teleskopprothese, All-on-4 oder All-on-6\"],\"kurz\":\"Regler Suprakonstruktion: 0090 je Implantat, an Keramik 2197 und 2040, keine 2030. Funktionsanalyse 8000, 8010, 8020, oben 8050, 8080, 8090. All-on-4 und All-on-6 führen, sobald es genau vier oder sechs Implantate mit Brücke oder Prothese sind.\",\"text\":\"Schieberegler Zusatzleistungen für eine Suprakonstruktion, die einzelne Implantatkrone oder wenige Implantatkronen, nicht All-on-4 und nicht All-on-6. Die Planung setzt GOZ 2200 oder als Anker GOZ 5000 und das Auswechseln GOZ 9050. Der Regler setzt diese Grundnummern nicht noch einmal. Die Chirurgie GOZ 9000 bis 9040 gehört in den Implantatplan. Stufe 1: GOZ 0090 je Implantat zur Eingliederung. Keine GOZ 2030. Stufe 2 nur an der vollkeramischen Implantatkrone: GOZ 2197 und GOZ 2040. Stufe 3: GOZ 0065 bleibt beim Scan in der Planung. Stufe 4: GOZ 8000, GOZ 8010 ein Registrat, GOZ 8020. Stufe 5: GOZ 8050, 8080 und 8090. Die elektronische Analyse GOZ 8035 und 8065 übernimmt die Brücke, die Teleskopprothese oder All-on, sobald diese Versorgung führt. GOZ 0040 nicht neben 0030.\",\"stufen\":[{\"stufe\":1,\"nr\":\"0090\",\"je\":\"zahn\",\"an\":\"implantat\",\"grund\":\"Infiltrationsanästhesie zur Eingliederung der Suprakonstruktion\"},{\"stufe\":2,\"nr\":\"2197\",\"je\":\"zahn\",\"an\":\"keramik\",\"leer\":\"2197: keine vollkeramische Implantatkrone\",\"grund\":\"Adhäsive Befestigung der keramischen Implantatkrone\"},{\"stufe\":2,\"nr\":\"2040\",\"je\":\"bereich\",\"an\":\"keramik\",\"grund\":\"Kofferdam zur adhäsiven Befestigung\"},{\"stufe\":4,\"nr\":\"8000\",\"je\":\"sitzung\",\"grund\":\"Klinische Funktionsanalyse zur Suprakonstruktion\"},{\"stufe\":4,\"nr\":\"8010\",\"je\":\"sitzung\",\"anzahl\":1,\"grund\":\"Registrieren der Zentrallage, ein Registrat\"},{\"stufe\":4,\"nr\":\"8020\",\"je\":\"sitzung\",\"grund\":\"Arbiträre Scharnierachse\"},{\"stufe\":5,\"nr\":\"8050\",\"je\":\"sitzung\",\"grund\":\"Halbindividueller Artikulator zur Suprakonstruktion\"},{\"stufe\":5,\"nr\":\"8080\",\"je\":\"sitzung\",\"grund\":\"Diagnostische Maßnahmen am Modell\"},{\"stufe\":5,\"nr\":\"8090\",\"je\":\"sitzung\",\"grund\":\"Diagnostischer Aufbau der Funktionsflächen\"}]}]");
 /**
 * Regler wie im HKP: zusätzliche GOZ-Leistungen und Qualitätsstufen im Labor.
 * Jede Stufe nimmt nur Leistungen auf, für die die Planung eine Grundlage enthält.
@@ -11387,23 +11474,23 @@ var GOZ_STUFEN = [
 	},
 	{
 		titel: "Präparation",
-		leistungen: "GOZ 2030 je Kieferhälfte/Frontzahnbereich"
+		leistungen: "2030, 0070, 0090 aus der Wissensbasis, je nach Krone, Brücke, Teleskop oder Suprakonstruktion"
 	},
 	{
-		titel: "Adhäsive Befestigung",
-		leistungen: "+ GOZ 2197 je Keramikrestauration, 2040 Kofferdam"
+		titel: "Adhäsiv",
+		leistungen: "2197 und 2040 nur an Keramik, nicht am Teleskop und nicht am Brückenglied"
 	},
 	{
-		titel: "Digitale Abformung",
-		leistungen: "+ GOZ 0065 je Kieferhälfte/Frontzahnbereich (nicht bei Abdruck)"
+		titel: "Scan",
+		leistungen: "0065 bleibt in der Planung und wird nicht gedoppelt"
 	},
 	{
 		titel: "Funktionsdiagnostik",
-		leistungen: "+ GOZ 8000, 8010, 8020"
+		leistungen: "8000, 8010, 8020. Teleskop und All-on: 8010 zweimal, ohne 8020"
 	},
 	{
-		titel: "Instrumentelle Planung",
-		leistungen: "+ GOZ 8050, 8080, 8090"
+		titel: "elektronisch",
+		leistungen: "Brücke, Teleskop, All-on-4 und All-on-6: 8035 und 8065. Krone und einzelne Suprakonstruktion: 8050, 8080, 8090"
 	}
 ];
 var LABOR_STUFEN = [
@@ -11481,38 +11568,47 @@ function zusatzleistungen({ zaehne, abformung, basis, gozStufe, laborStufe, aus 
 	const anZahn = (z) => basis.filter((p) => p.zahn === z);
 	const bereicheVon = (liste) => [...new Set(liste.map(bereich))];
 	const einzelzaehne = [...new Set(basis.map((p) => p.zahn).filter((z) => /^[1-4][1-8]$/.test(z)))];
-	const praepariert = einzelzaehne.filter((z) => !/^S/.test(TP(z)) && anZahn(z).some((p) => p.ebene === "GOZ" && /^(2210|2220|5010|5040)$/.test(p.nr)));
-	const adhaesiv = praepariert.filter((z) => /^((K|PK)M|VE)/.test(TP(z)));
-	const implantatKronen = einzelzaehne.filter((z) => /^S(K|T)/.test(TP(z)));
-	const herausnehmbar = basis.some((p) => p.ebene === "GOZ" && /^52[0-3]0$/.test(p.nr));
-	const umfangreich = praepariert.length + implantatKronen.length >= 4 || herausnehmbar;
-	if (gozStufe >= 1) {
-		if (!praepariert.length) nichtAngesetzt.push("2030: keine zu präparierenden Zähne");
-		for (const b of bereicheVon(praepariert)) neu("GOZ", "2030", BEREICH_ZAEHNE[b], `Besondere Maßnahmen beim Präparieren (${b}): Retraktion, Blutstillung`);
+	const geplante = Object.keys(zaehne).filter((z) => /^[1-4][1-8]$/.test(z) && TP(z) && TP(z) !== ")(");
+	const treffer = exoten.filter((e) => {
+		const eigene = geplante.filter((z) => e.kuerzel.includes(TP(z)));
+		if (!eigene.length) return false;
+		if (e.implantate && (eigene.length < e.implantate.min || eigene.length > e.implantate.max)) return false;
+		if (e.dazuKuerzel?.length && !e.dazuKuerzel.some((k) => geplante.some((z) => TP(z) === k))) return false;
+		return true;
+	}).sort((a, b) => b.prioritaet - a.prioritaet);
+	const fuehrung = treffer[0];
+	if (gozStufe > 0 && !fuehrung) nichtAngesetzt.push("Regler: keine Krone, Brücke, Teleskopprothese, All-on oder Suprakonstruktion im Plan");
+	if (fuehrung) nichtAngesetzt.push(`Regler folgt der Wissensbasis: ${fuehrung.titel}`);
+	const gruppe = (e, name, goz) => {
+		const liste = name && e.gruppen[name] || [];
+		return einzelzaehne.filter((z) => liste.includes(TP(z)) && (!goz?.length || anZahn(z).some((p) => p.ebene === "GOZ" && goz.includes(p.nr))));
+	};
+	for (const e of treffer) for (const zeile of e.stufen) {
+		if (zeile.stufe >= 4 && e !== fuehrung) continue;
+		if (gozStufe < zeile.stufe || zeile.bisStufe && gozStufe > zeile.bisStufe) continue;
+		if (!zeile.nr) continue;
+		const zahnListe = zeile.an ? gruppe(e, zeile.an, zeile.goz) : [];
+		if (zeile.je === "sitzung" || !zeile.an) {
+			if (zeile.an && !zahnListe.length) {
+				if (zeile.leer) nichtAngesetzt.push(zeile.leer);
+				continue;
+			}
+			neu("GOZ", zeile.nr, "", zeile.grund, zeile.anzahl ?? 1);
+			continue;
+		}
+		if (!zahnListe.length) {
+			if (zeile.leer) nichtAngesetzt.push(zeile.leer);
+			continue;
+		}
+		if (zeile.je === "zahn") for (const z of zahnListe) neu("GOZ", zeile.nr, z, `${zeile.grund} ${TP(z)}`);
+		else if (zeile.je === "bereich") for (const b of bereicheVon(zahnListe)) neu("GOZ", zeile.nr, BEREICH_ZAEHNE[b], `${zeile.grund} (${b})`);
+		else if (zeile.je === "paar") neu("GOZ", zeile.nr, "", zeile.grund, Math.min(zeile.anzahlMax ?? 8, zahnListe.length));
 	}
-	if (gozStufe >= 2) {
-		if (!adhaesiv.length) nichtAngesetzt.push("2197/2040: keine vollkeramischen Kronen, Teilkronen oder Veneers");
-		for (const z of adhaesiv) neu("GOZ", "2197", z, `Adhäsive Befestigung der Keramikrestauration ${TP(z)}`);
-		for (const b of bereicheVon(adhaesiv)) neu("GOZ", "2040", BEREICH_ZAEHNE[b], `Kofferdam zur adhäsiven Befestigung (${b})`);
-	}
+	if (gozStufe >= 4 && fuehrung) for (const n of fuehrung.nicht) nichtAngesetzt.push(n);
 	if (gozStufe >= 3) {
 		if (!abformung) nichtAngesetzt.push("0065: Abformung noch nicht gewählt");
 		else if (abformung === "abdruck") nichtAngesetzt.push("0065: konventioneller Abdruck gewählt");
 		else if (basis.some((p) => p.nr === "0065")) nichtAngesetzt.push("0065: digitale Abformung ist bereits enthalten (Intraoralscan)");
-		else if (!praepariert.length) nichtAngesetzt.push("0065: kein festsitzender Zahnersatz an natürlichen Zähnen");
-	}
-	if (gozStufe >= 4) {
-		if (!umfangreich) nichtAngesetzt.push("8000 ff.: erst bei umfangreicher Versorgung (ab 4 Einheiten oder herausnehmbarem Zahnersatz)");
-		else {
-			neu("GOZ", "8000", "", "Klinische Funktionsanalyse vor umfangreicher prothetischer Versorgung");
-			neu("GOZ", "8010", "", "Registrieren der Zentrallage");
-			neu("GOZ", "8020", "", "Arbiträre Scharnierachse / Gesichtsbogen für die Artikulatormontage");
-		}
-	}
-	if (gozStufe >= 5 && umfangreich) {
-		neu("GOZ", "8050", "", "Registrieren der Unterkieferbewegungen, Einstellung des halbindividuellen Artikulators");
-		neu("GOZ", "8080", "", "Diagnostische Maßnahmen an Modellen im Artikulator, Behandlungsplanung");
-		neu("GOZ", "8090", "", "Diagnostischer Aufbau (Wax-up) der Funktionsflächen");
 	}
 	const einheiten = einzelzaehne.filter((z) => anZahn(z).some((p) => p.ebene === "BEB" && EINHEIT.test(p.nr)));
 	const keramik = einzelzaehne.filter((z) => anZahn(z).some((p) => p.ebene === "BEB" && KERAMIK.has(p.nr)));
@@ -12101,7 +12197,1176 @@ function kalkulieren(plan, e) {
 	};
 }
 //#endregion
-//#region src/stammdaten.ts
+//#region node_modules/react/cjs/react.production.js
+/**
+* @license React
+* react.production.js
+*
+* Copyright (c) Meta Platforms, Inc. and affiliates.
+*
+* This source code is licensed under the MIT license found in the
+* LICENSE file in the root directory of this source tree.
+*/
+var require_react_production = /* @__PURE__ */ __commonJSMin(((exports) => {
+	var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element");
+	var REACT_PORTAL_TYPE = Symbol.for("react.portal");
+	var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
+	var REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode");
+	var REACT_PROFILER_TYPE = Symbol.for("react.profiler");
+	var REACT_CONSUMER_TYPE = Symbol.for("react.consumer");
+	var REACT_CONTEXT_TYPE = Symbol.for("react.context");
+	var REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref");
+	var REACT_SUSPENSE_TYPE = Symbol.for("react.suspense");
+	var REACT_MEMO_TYPE = Symbol.for("react.memo");
+	var REACT_LAZY_TYPE = Symbol.for("react.lazy");
+	var REACT_ACTIVITY_TYPE = Symbol.for("react.activity");
+	var REACT_VIEW_TRANSITION_TYPE = Symbol.for("react.view_transition");
+	var MAYBE_ITERATOR_SYMBOL = Symbol.iterator;
+	function getIteratorFn(maybeIterable) {
+		if (null === maybeIterable || "object" !== typeof maybeIterable) return null;
+		maybeIterable = MAYBE_ITERATOR_SYMBOL && maybeIterable[MAYBE_ITERATOR_SYMBOL] || maybeIterable["@@iterator"];
+		return "function" === typeof maybeIterable ? maybeIterable : null;
+	}
+	var ReactNoopUpdateQueue = {
+		isMounted: function() {
+			return !1;
+		},
+		enqueueForceUpdate: function() {},
+		enqueueReplaceState: function() {},
+		enqueueSetState: function() {}
+	};
+	var assign = Object.assign;
+	var emptyObject = {};
+	function Component(props, context, updater) {
+		this.props = props;
+		this.context = context;
+		this.refs = emptyObject;
+		this.updater = updater || ReactNoopUpdateQueue;
+	}
+	Component.prototype.isReactComponent = {};
+	Component.prototype.setState = function(partialState, callback) {
+		if ("object" !== typeof partialState && "function" !== typeof partialState && null != partialState) throw Error("takes an object of state variables to update or a function which returns an object of state variables.");
+		this.updater.enqueueSetState(this, partialState, callback, "setState");
+	};
+	Component.prototype.forceUpdate = function(callback) {
+		this.updater.enqueueForceUpdate(this, callback, "forceUpdate");
+	};
+	function ComponentDummy() {}
+	ComponentDummy.prototype = Component.prototype;
+	function PureComponent(props, context, updater) {
+		this.props = props;
+		this.context = context;
+		this.refs = emptyObject;
+		this.updater = updater || ReactNoopUpdateQueue;
+	}
+	var pureComponentPrototype = PureComponent.prototype = new ComponentDummy();
+	pureComponentPrototype.constructor = PureComponent;
+	assign(pureComponentPrototype, Component.prototype);
+	pureComponentPrototype.isPureReactComponent = !0;
+	var isArrayImpl = Array.isArray;
+	function noop() {}
+	var ReactSharedInternals = {
+		H: null,
+		A: null,
+		T: null,
+		S: null
+	};
+	var hasOwnProperty = Object.prototype.hasOwnProperty;
+	function ReactElement(type, key, props) {
+		var refProp = props.ref;
+		return {
+			$$typeof: REACT_ELEMENT_TYPE,
+			type,
+			key,
+			ref: void 0 !== refProp ? refProp : null,
+			props
+		};
+	}
+	function cloneAndReplaceKey(oldElement, newKey) {
+		return ReactElement(oldElement.type, newKey, oldElement.props);
+	}
+	function isValidElement(object) {
+		return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
+	}
+	function escape(key) {
+		var escaperLookup = {
+			"=": "=0",
+			":": "=2"
+		};
+		return "$" + key.replace(/[=:]/g, function(match) {
+			return escaperLookup[match];
+		});
+	}
+	var userProvidedKeyEscapeRegex = /\/+/g;
+	function getElementKey(element, index) {
+		return "object" === typeof element && null !== element && null != element.key ? escape("" + element.key) : index.toString(36);
+	}
+	function resolveThenable(thenable) {
+		switch (thenable.status) {
+			case "fulfilled": return thenable.value;
+			case "rejected": throw thenable.reason;
+			default: switch ("string" === typeof thenable.status ? thenable.then(noop, noop) : (thenable.status = "pending", thenable.then(function(fulfilledValue) {
+				"pending" === thenable.status && (thenable.status = "fulfilled", thenable.value = fulfilledValue);
+			}, function(error) {
+				"pending" === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+			})), thenable.status) {
+				case "fulfilled": return thenable.value;
+				case "rejected": throw thenable.reason;
+			}
+		}
+		throw thenable;
+	}
+	function mapIntoArray(children, array, escapedPrefix, nameSoFar, callback) {
+		var type = typeof children;
+		if ("undefined" === type || "boolean" === type) children = null;
+		var invokeCallback = !1;
+		if (null === children) invokeCallback = !0;
+		else switch (type) {
+			case "bigint":
+			case "string":
+			case "number":
+				invokeCallback = !0;
+				break;
+			case "object": switch (children.$$typeof) {
+				case REACT_ELEMENT_TYPE:
+				case REACT_PORTAL_TYPE:
+					invokeCallback = !0;
+					break;
+				case REACT_LAZY_TYPE: return invokeCallback = children._init, mapIntoArray(invokeCallback(children._payload), array, escapedPrefix, nameSoFar, callback);
+			}
+		}
+		if (invokeCallback) return callback = callback(children), invokeCallback = "" === nameSoFar ? "." + getElementKey(children, 0) : nameSoFar, isArrayImpl(callback) ? (escapedPrefix = "", null != invokeCallback && (escapedPrefix = invokeCallback.replace(userProvidedKeyEscapeRegex, "$&/") + "/"), mapIntoArray(callback, array, escapedPrefix, "", function(c) {
+			return c;
+		})) : null != callback && (isValidElement(callback) && (callback = cloneAndReplaceKey(callback, escapedPrefix + (null == callback.key || children && children.key === callback.key ? "" : ("" + callback.key).replace(userProvidedKeyEscapeRegex, "$&/") + "/") + invokeCallback)), array.push(callback)), 1;
+		invokeCallback = 0;
+		var nextNamePrefix = "" === nameSoFar ? "." : nameSoFar + ":";
+		if (isArrayImpl(children)) for (var i = 0; i < children.length; i++) nameSoFar = children[i], type = nextNamePrefix + getElementKey(nameSoFar, i), invokeCallback += mapIntoArray(nameSoFar, array, escapedPrefix, type, callback);
+		else if (i = getIteratorFn(children), "function" === typeof i) for (children = i.call(children), i = 0; !(nameSoFar = children.next()).done;) nameSoFar = nameSoFar.value, type = nextNamePrefix + getElementKey(nameSoFar, i++), invokeCallback += mapIntoArray(nameSoFar, array, escapedPrefix, type, callback);
+		else if ("object" === type) {
+			if ("function" === typeof children.then) return mapIntoArray(resolveThenable(children), array, escapedPrefix, nameSoFar, callback);
+			array = String(children);
+			throw Error("Objects are not valid as a React child (found: " + ("[object Object]" === array ? "object with keys {" + Object.keys(children).join(", ") + "}" : array) + "). If you meant to render a collection of children, use an array instead.");
+		}
+		return invokeCallback;
+	}
+	function mapChildren(children, func, context) {
+		if (null == children) return children;
+		var result = [], count = 0;
+		mapIntoArray(children, result, "", "", function(child) {
+			return func.call(context, child, count++);
+		});
+		return result;
+	}
+	function lazyInitializer(payload) {
+		if (-1 === payload._status) {
+			var ctor = payload._result, thenable = ctor();
+			thenable.then(function(moduleObject) {
+				if (0 === payload._status || -1 === payload._status) payload._status = 1, payload._result = moduleObject, void 0 === thenable.status && (thenable.status = "fulfilled", thenable.value = moduleObject);
+			}, function(error) {
+				if (0 === payload._status || -1 === payload._status) payload._status = 2, payload._result = error, void 0 === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+			});
+			-1 === payload._status && (payload._status = 0, payload._result = thenable);
+		}
+		if (1 === payload._status) return payload._result.default;
+		throw payload._result;
+	}
+	var reportGlobalError = "function" === typeof reportError ? reportError : function(error) {
+		if ("object" === typeof window && "function" === typeof window.ErrorEvent) {
+			var event = new window.ErrorEvent("error", {
+				bubbles: !0,
+				cancelable: !0,
+				message: "object" === typeof error && null !== error && "string" === typeof error.message ? String(error.message) : String(error),
+				error
+			});
+			if (!window.dispatchEvent(event)) return;
+		} else if ("object" === typeof process && "function" === typeof process.emit) {
+			process.emit("uncaughtException", error);
+			return;
+		}
+		console.error(error);
+	};
+	function startTransition(scope) {
+		var prevTransition = ReactSharedInternals.T, currentTransition = {};
+		currentTransition.types = null !== prevTransition ? prevTransition.types : null;
+		ReactSharedInternals.T = currentTransition;
+		try {
+			var returnValue = scope(), onStartTransitionFinish = ReactSharedInternals.S;
+			null !== onStartTransitionFinish && onStartTransitionFinish(currentTransition, returnValue);
+			"object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && returnValue.then(noop, reportGlobalError);
+		} catch (error) {
+			reportGlobalError(error);
+		} finally {
+			null !== prevTransition && null !== currentTransition.types && (prevTransition.types = currentTransition.types), ReactSharedInternals.T = prevTransition;
+		}
+	}
+	function addTransitionType(type) {
+		var transition = ReactSharedInternals.T;
+		if (null !== transition) {
+			var transitionTypes = transition.types;
+			null === transitionTypes ? transition.types = [type] : -1 === transitionTypes.indexOf(type) && transitionTypes.push(type);
+		} else startTransition(addTransitionType.bind(null, type));
+	}
+	var Children = {
+		map: mapChildren,
+		forEach: function(children, forEachFunc, forEachContext) {
+			mapChildren(children, function() {
+				forEachFunc.apply(this, arguments);
+			}, forEachContext);
+		},
+		count: function(children) {
+			var n = 0;
+			mapChildren(children, function() {
+				n++;
+			});
+			return n;
+		},
+		toArray: function(children) {
+			return mapChildren(children, function(child) {
+				return child;
+			}) || [];
+		},
+		only: function(children) {
+			if (!isValidElement(children)) throw Error("React.Children.only expected to receive a single React element child.");
+			return children;
+		}
+	};
+	exports.Activity = REACT_ACTIVITY_TYPE;
+	exports.Children = Children;
+	exports.Component = Component;
+	exports.Fragment = REACT_FRAGMENT_TYPE;
+	exports.Profiler = REACT_PROFILER_TYPE;
+	exports.PureComponent = PureComponent;
+	exports.StrictMode = REACT_STRICT_MODE_TYPE;
+	exports.Suspense = REACT_SUSPENSE_TYPE;
+	exports.ViewTransition = REACT_VIEW_TRANSITION_TYPE;
+	exports.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = ReactSharedInternals;
+	exports.__COMPILER_RUNTIME = {
+		__proto__: null,
+		c: function(size) {
+			return ReactSharedInternals.H.useMemoCache(size);
+		}
+	};
+	exports.addTransitionType = addTransitionType;
+	exports.cache = function(fn) {
+		return function() {
+			return fn.apply(null, arguments);
+		};
+	};
+	exports.cacheSignal = function() {
+		return null;
+	};
+	exports.cloneElement = function(element, config, children) {
+		if (null === element || void 0 === element) throw Error("The argument must be a React element, but you passed " + element + ".");
+		var props = assign({}, element.props), key = element.key;
+		if (null != config) for (propName in void 0 !== config.key && (key = "" + config.key), config) !hasOwnProperty.call(config, propName) || "key" === propName || "__self" === propName || "__source" === propName || "ref" === propName && void 0 === config.ref || (props[propName] = config[propName]);
+		var propName = arguments.length - 2;
+		if (1 === propName) props.children = children;
+		else if (1 < propName) {
+			for (var childArray = Array(propName), i = 0; i < propName; i++) childArray[i] = arguments[i + 2];
+			props.children = childArray;
+		}
+		return ReactElement(element.type, key, props);
+	};
+	exports.createContext = function(defaultValue) {
+		defaultValue = {
+			$$typeof: REACT_CONTEXT_TYPE,
+			_currentValue: defaultValue,
+			_currentValue2: defaultValue,
+			_threadCount: 0,
+			Provider: null,
+			Consumer: null
+		};
+		defaultValue.Provider = defaultValue;
+		defaultValue.Consumer = {
+			$$typeof: REACT_CONSUMER_TYPE,
+			_context: defaultValue
+		};
+		return defaultValue;
+	};
+	exports.createElement = function(type, config, children) {
+		var propName, props = {}, key = null;
+		if (null != config) for (propName in void 0 !== config.key && (key = "" + config.key), config) hasOwnProperty.call(config, propName) && "key" !== propName && "__self" !== propName && "__source" !== propName && (props[propName] = config[propName]);
+		var childrenLength = arguments.length - 2;
+		if (1 === childrenLength) props.children = children;
+		else if (1 < childrenLength) {
+			for (var childArray = Array(childrenLength), i = 0; i < childrenLength; i++) childArray[i] = arguments[i + 2];
+			props.children = childArray;
+		}
+		if (type && type.defaultProps) for (propName in childrenLength = type.defaultProps, childrenLength) void 0 === props[propName] && (props[propName] = childrenLength[propName]);
+		return ReactElement(type, key, props);
+	};
+	exports.createRef = function() {
+		return { current: null };
+	};
+	exports.forwardRef = function(render) {
+		return {
+			$$typeof: REACT_FORWARD_REF_TYPE,
+			render
+		};
+	};
+	exports.isValidElement = isValidElement;
+	exports.lazy = function(ctor) {
+		return {
+			$$typeof: REACT_LAZY_TYPE,
+			_payload: {
+				_status: -1,
+				_result: ctor
+			},
+			_init: lazyInitializer
+		};
+	};
+	exports.memo = function(type, compare) {
+		return {
+			$$typeof: REACT_MEMO_TYPE,
+			type,
+			compare: void 0 === compare ? null : compare
+		};
+	};
+	exports.startTransition = startTransition;
+	exports.unstable_useCacheRefresh = function() {
+		return ReactSharedInternals.H.useCacheRefresh();
+	};
+	exports.use = function(usable) {
+		return ReactSharedInternals.H.use(usable);
+	};
+	exports.useActionState = function(action, initialState, permalink) {
+		return ReactSharedInternals.H.useActionState(action, initialState, permalink);
+	};
+	exports.useCallback = function(callback, deps) {
+		return ReactSharedInternals.H.useCallback(callback, deps);
+	};
+	exports.useContext = function(Context) {
+		return ReactSharedInternals.H.useContext(Context);
+	};
+	exports.useDebugValue = function() {};
+	exports.useDeferredValue = function(value, initialValue) {
+		return ReactSharedInternals.H.useDeferredValue(value, initialValue);
+	};
+	exports.useEffect = function(create, deps) {
+		return ReactSharedInternals.H.useEffect(create, deps);
+	};
+	exports.useEffectEvent = function(callback) {
+		return ReactSharedInternals.H.useEffectEvent(callback);
+	};
+	exports.useId = function() {
+		return ReactSharedInternals.H.useId();
+	};
+	exports.useImperativeHandle = function(ref, create, deps) {
+		return ReactSharedInternals.H.useImperativeHandle(ref, create, deps);
+	};
+	exports.useInsertionEffect = function(create, deps) {
+		return ReactSharedInternals.H.useInsertionEffect(create, deps);
+	};
+	exports.useLayoutEffect = function(create, deps) {
+		return ReactSharedInternals.H.useLayoutEffect(create, deps);
+	};
+	exports.useMemo = function(create, deps) {
+		return ReactSharedInternals.H.useMemo(create, deps);
+	};
+	exports.useOptimistic = function(passthrough, reducer) {
+		return ReactSharedInternals.H.useOptimistic(passthrough, reducer);
+	};
+	exports.useReducer = function(reducer, initialArg, init) {
+		return ReactSharedInternals.H.useReducer(reducer, initialArg, init);
+	};
+	exports.useRef = function(initialValue) {
+		return ReactSharedInternals.H.useRef(initialValue);
+	};
+	exports.useState = function(initialState) {
+		return ReactSharedInternals.H.useState(initialState);
+	};
+	exports.useSyncExternalStore = function(subscribe, getSnapshot, getServerSnapshot) {
+		return ReactSharedInternals.H.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+	};
+	exports.useTransition = function() {
+		return ReactSharedInternals.H.useTransition();
+	};
+	exports.version = "19.3.0";
+}));
+//#endregion
+//#region node_modules/react/cjs/react.development.js
+/**
+* @license React
+* react.development.js
+*
+* Copyright (c) Meta Platforms, Inc. and affiliates.
+*
+* This source code is licensed under the MIT license found in the
+* LICENSE file in the root directory of this source tree.
+*/
+var require_react_development = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+	"production" !== process.env.NODE_ENV && (function() {
+		function defineDeprecationWarning(methodName, info) {
+			Object.defineProperty(Component.prototype, methodName, { get: function() {
+				console.warn("%s(...) is deprecated in plain JavaScript React classes. %s", info[0], info[1]);
+			} });
+		}
+		function getIteratorFn(maybeIterable) {
+			if (null === maybeIterable || "object" !== typeof maybeIterable) return null;
+			maybeIterable = MAYBE_ITERATOR_SYMBOL && maybeIterable[MAYBE_ITERATOR_SYMBOL] || maybeIterable["@@iterator"];
+			return "function" === typeof maybeIterable ? maybeIterable : null;
+		}
+		function warnNoop(publicInstance, callerName) {
+			publicInstance = (publicInstance = publicInstance.constructor) && (publicInstance.displayName || publicInstance.name) || "ReactClass";
+			var warningKey = publicInstance + "." + callerName;
+			didWarnStateUpdateForUnmountedComponent[warningKey] || (console.error("Can't call %s on a component that is not yet mounted. This is a no-op, but it might indicate a bug in your application. Instead, assign to `this.state` directly or define a `state = {};` class property with the desired state in the %s component.", callerName, publicInstance), didWarnStateUpdateForUnmountedComponent[warningKey] = !0);
+		}
+		function Component(props, context, updater) {
+			this.props = props;
+			this.context = context;
+			this.refs = emptyObject;
+			this.updater = updater || ReactNoopUpdateQueue;
+		}
+		function ComponentDummy() {}
+		function PureComponent(props, context, updater) {
+			this.props = props;
+			this.context = context;
+			this.refs = emptyObject;
+			this.updater = updater || ReactNoopUpdateQueue;
+		}
+		function noop() {}
+		function testStringCoercion(value) {
+			return "" + value;
+		}
+		function checkKeyStringCoercion(value) {
+			try {
+				testStringCoercion(value);
+				var JSCompiler_inline_result = !1;
+			} catch (e) {
+				JSCompiler_inline_result = !0;
+			}
+			if (JSCompiler_inline_result) {
+				JSCompiler_inline_result = console;
+				var JSCompiler_temp_const = JSCompiler_inline_result.error;
+				var JSCompiler_inline_result$jscomp$0 = "function" === typeof Symbol && Symbol.toStringTag && value[Symbol.toStringTag] || value.constructor.name || "Object";
+				JSCompiler_temp_const.call(JSCompiler_inline_result, "The provided key is an unsupported type %s. This value must be coerced to a string before using it here.", JSCompiler_inline_result$jscomp$0);
+				return testStringCoercion(value);
+			}
+		}
+		function getComponentNameFromType(type) {
+			if (null == type) return null;
+			if ("function" === typeof type) return type.$$typeof === REACT_CLIENT_REFERENCE ? null : type.displayName || type.name || null;
+			if ("string" === typeof type) return type;
+			switch (type) {
+				case REACT_FRAGMENT_TYPE: return "Fragment";
+				case REACT_PROFILER_TYPE: return "Profiler";
+				case REACT_STRICT_MODE_TYPE: return "StrictMode";
+				case REACT_SUSPENSE_TYPE: return "Suspense";
+				case REACT_SUSPENSE_LIST_TYPE: return "SuspenseList";
+				case REACT_ACTIVITY_TYPE: return "Activity";
+				case REACT_VIEW_TRANSITION_TYPE: return "ViewTransition";
+			}
+			if ("object" === typeof type) switch ("number" === typeof type.tag && console.error("Received an unexpected object in getComponentNameFromType(). This is likely a bug in React. Please file an issue."), type.$$typeof) {
+				case REACT_PORTAL_TYPE: return "Portal";
+				case REACT_CONTEXT_TYPE: return type.displayName || "Context";
+				case REACT_CONSUMER_TYPE: return (type._context.displayName || "Context") + ".Consumer";
+				case REACT_FORWARD_REF_TYPE:
+					var innerType = type.render;
+					type = type.displayName;
+					type || (type = innerType.displayName || innerType.name || "", type = "" !== type ? "ForwardRef(" + type + ")" : "ForwardRef");
+					return type;
+				case REACT_MEMO_TYPE: return innerType = type.displayName || null, null !== innerType ? innerType : getComponentNameFromType(type.type) || "Memo";
+				case REACT_LAZY_TYPE:
+					innerType = type._payload;
+					type = type._init;
+					try {
+						return getComponentNameFromType(type(innerType));
+					} catch (x) {}
+			}
+			return null;
+		}
+		function getTaskName(type) {
+			if (type === REACT_FRAGMENT_TYPE) return "<>";
+			if ("object" === typeof type && null !== type && type.$$typeof === REACT_LAZY_TYPE) return "<...>";
+			try {
+				var name = getComponentNameFromType(type);
+				return name ? "<" + name + ">" : "<...>";
+			} catch (x) {
+				return "<...>";
+			}
+		}
+		function getOwner() {
+			var dispatcher = ReactSharedInternals.A;
+			return null === dispatcher ? null : dispatcher.getOwner();
+		}
+		function UnknownOwner() {
+			return Error("react-stack-top-frame");
+		}
+		function hasValidKey(config) {
+			if (hasOwnProperty.call(config, "key")) {
+				var getter = Object.getOwnPropertyDescriptor(config, "key").get;
+				if (getter && getter.isReactWarning) return !1;
+			}
+			return void 0 !== config.key;
+		}
+		function defineKeyPropWarningGetter(props, displayName) {
+			function warnAboutAccessingKey() {
+				specialPropKeyWarningShown || (specialPropKeyWarningShown = !0, console.error("%s: `key` is not a prop. Trying to access it will result in `undefined` being returned. If you need to access the same value within the child component, you should pass it as a different prop. (https://react.dev/link/special-props)", displayName));
+			}
+			warnAboutAccessingKey.isReactWarning = !0;
+			Object.defineProperty(props, "key", {
+				get: warnAboutAccessingKey,
+				configurable: !0
+			});
+		}
+		function elementRefGetterWithDeprecationWarning() {
+			var componentName = getComponentNameFromType(this.type);
+			didWarnAboutElementRef[componentName] || (didWarnAboutElementRef[componentName] = !0, console.error("Accessing element.ref was removed in React 19. ref is now a regular prop. It will be removed from the JSX Element type in a future release."));
+			componentName = this.props.ref;
+			return void 0 !== componentName ? componentName : null;
+		}
+		function ReactElement(type, key, props, owner, debugStack, debugTask) {
+			var refProp = props.ref;
+			type = {
+				$$typeof: REACT_ELEMENT_TYPE,
+				type,
+				key,
+				props,
+				_owner: owner
+			};
+			null !== (void 0 !== refProp ? refProp : null) ? Object.defineProperty(type, "ref", {
+				enumerable: !1,
+				get: elementRefGetterWithDeprecationWarning
+			}) : Object.defineProperty(type, "ref", {
+				enumerable: !1,
+				value: null
+			});
+			type._store = {};
+			Object.defineProperty(type._store, "validated", {
+				configurable: !1,
+				enumerable: !1,
+				writable: !0,
+				value: 0
+			});
+			Object.defineProperty(type, "_debugInfo", {
+				configurable: !1,
+				enumerable: !1,
+				writable: !0,
+				value: null
+			});
+			Object.defineProperty(type, "_debugStack", {
+				configurable: !1,
+				enumerable: !1,
+				writable: !0,
+				value: debugStack
+			});
+			Object.defineProperty(type, "_debugTask", {
+				configurable: !1,
+				enumerable: !1,
+				writable: !0,
+				value: debugTask
+			});
+			Object.freeze && (Object.freeze(type.props), Object.freeze(type));
+			return type;
+		}
+		function cloneAndReplaceKey(oldElement, newKey) {
+			newKey = ReactElement(oldElement.type, newKey, oldElement.props, oldElement._owner, oldElement._debugStack, oldElement._debugTask);
+			oldElement._store && (newKey._store.validated = oldElement._store.validated);
+			return newKey;
+		}
+		function validateChildKeys(node) {
+			isValidElement(node) ? node._store && (node._store.validated = 1) : "object" === typeof node && null !== node && node.$$typeof === REACT_LAZY_TYPE && ("fulfilled" === node._payload.status ? isValidElement(node._payload.value) && node._payload.value._store && (node._payload.value._store.validated = 1) : node._store && (node._store.validated = 1));
+		}
+		function isValidElement(object) {
+			return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
+		}
+		function escape(key) {
+			var escaperLookup = {
+				"=": "=0",
+				":": "=2"
+			};
+			return "$" + key.replace(/[=:]/g, function(match) {
+				return escaperLookup[match];
+			});
+		}
+		function getElementKey(element, index) {
+			return "object" === typeof element && null !== element && null != element.key ? (checkKeyStringCoercion(element.key), escape("" + element.key)) : index.toString(36);
+		}
+		function resolveThenable(thenable) {
+			switch (thenable.status) {
+				case "fulfilled": return thenable.value;
+				case "rejected": throw thenable.reason;
+				default: switch ("string" === typeof thenable.status ? thenable.then(noop, noop) : (thenable.status = "pending", thenable.then(function(fulfilledValue) {
+					"pending" === thenable.status && (thenable.status = "fulfilled", thenable.value = fulfilledValue);
+				}, function(error) {
+					"pending" === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+				})), thenable.status) {
+					case "fulfilled": return thenable.value;
+					case "rejected": throw thenable.reason;
+				}
+			}
+			throw thenable;
+		}
+		function mapIntoArray(children, array, escapedPrefix, nameSoFar, callback) {
+			var type = typeof children;
+			if ("undefined" === type || "boolean" === type) children = null;
+			var invokeCallback = !1;
+			if (null === children) invokeCallback = !0;
+			else switch (type) {
+				case "bigint":
+				case "string":
+				case "number":
+					invokeCallback = !0;
+					break;
+				case "object": switch (children.$$typeof) {
+					case REACT_ELEMENT_TYPE:
+					case REACT_PORTAL_TYPE:
+						invokeCallback = !0;
+						break;
+					case REACT_LAZY_TYPE: return invokeCallback = children._init, mapIntoArray(invokeCallback(children._payload), array, escapedPrefix, nameSoFar, callback);
+				}
+			}
+			if (invokeCallback) {
+				invokeCallback = children;
+				callback = callback(invokeCallback);
+				var childKey = "" === nameSoFar ? "." + getElementKey(invokeCallback, 0) : nameSoFar;
+				isArrayImpl(callback) ? (escapedPrefix = "", null != childKey && (escapedPrefix = childKey.replace(userProvidedKeyEscapeRegex, "$&/") + "/"), mapIntoArray(callback, array, escapedPrefix, "", function(c) {
+					return c;
+				})) : null != callback && (isValidElement(callback) && (null != callback.key && (invokeCallback && invokeCallback.key === callback.key || checkKeyStringCoercion(callback.key)), escapedPrefix = cloneAndReplaceKey(callback, escapedPrefix + (null == callback.key || invokeCallback && invokeCallback.key === callback.key ? "" : ("" + callback.key).replace(userProvidedKeyEscapeRegex, "$&/") + "/") + childKey), "" !== nameSoFar && null != invokeCallback && isValidElement(invokeCallback) && null == invokeCallback.key && invokeCallback._store && !invokeCallback._store.validated && (escapedPrefix._store.validated = 2), callback = escapedPrefix), array.push(callback));
+				return 1;
+			}
+			invokeCallback = 0;
+			childKey = "" === nameSoFar ? "." : nameSoFar + ":";
+			if (isArrayImpl(children)) for (var i = 0; i < children.length; i++) nameSoFar = children[i], type = childKey + getElementKey(nameSoFar, i), invokeCallback += mapIntoArray(nameSoFar, array, escapedPrefix, type, callback);
+			else if (i = getIteratorFn(children), "function" === typeof i) for (i === children.entries && (didWarnAboutMaps || console.warn("Using Maps as children is not supported. Use an array of keyed ReactElements instead."), didWarnAboutMaps = !0), children = i.call(children), i = 0; !(nameSoFar = children.next()).done;) nameSoFar = nameSoFar.value, type = childKey + getElementKey(nameSoFar, i++), invokeCallback += mapIntoArray(nameSoFar, array, escapedPrefix, type, callback);
+			else if ("object" === type) {
+				if ("function" === typeof children.then) return mapIntoArray(resolveThenable(children), array, escapedPrefix, nameSoFar, callback);
+				array = String(children);
+				throw Error("Objects are not valid as a React child (found: " + ("[object Object]" === array ? "object with keys {" + Object.keys(children).join(", ") + "}" : array) + "). If you meant to render a collection of children, use an array instead.");
+			}
+			return invokeCallback;
+		}
+		function mapChildren(children, func, context) {
+			if (null == children) return children;
+			var result = [], count = 0;
+			mapIntoArray(children, result, "", "", function(child) {
+				return func.call(context, child, count++);
+			});
+			return result;
+		}
+		function lazyInitializer(payload) {
+			if (-1 === payload._status) {
+				var resolveDebugValue = null, rejectDebugValue = null, ioInfo = payload._ioInfo;
+				null != ioInfo && (ioInfo.start = ioInfo.end = performance.now(), ioInfo.value = new Promise(function(resolve, reject) {
+					resolveDebugValue = resolve;
+					rejectDebugValue = reject;
+				}));
+				ioInfo = payload._result;
+				var thenable = ioInfo();
+				thenable.then(function(moduleObject) {
+					if (0 === payload._status || -1 === payload._status) {
+						payload._status = 1;
+						payload._result = moduleObject;
+						var _ioInfo = payload._ioInfo;
+						if (null != _ioInfo) {
+							_ioInfo.end = performance.now();
+							var debugValue = null == moduleObject ? void 0 : moduleObject.default;
+							resolveDebugValue(debugValue);
+							_ioInfo.value.status = "fulfilled";
+							_ioInfo.value.value = debugValue;
+						}
+						void 0 === thenable.status && (thenable.status = "fulfilled", thenable.value = moduleObject);
+					}
+				}, function(error) {
+					if (0 === payload._status || -1 === payload._status) {
+						payload._status = 2;
+						payload._result = error;
+						var _ioInfo2 = payload._ioInfo;
+						null != _ioInfo2 && (_ioInfo2.end = performance.now(), _ioInfo2.value.then(noop, noop), rejectDebugValue(error), _ioInfo2.value.status = "rejected", _ioInfo2.value.reason = error);
+						void 0 === thenable.status && (thenable.status = "rejected", thenable.reason = error);
+					}
+				});
+				ioInfo = payload._ioInfo;
+				if (null != ioInfo) {
+					var displayName = thenable.displayName;
+					"string" === typeof displayName && (ioInfo.name = displayName);
+				}
+				-1 === payload._status && (payload._status = 0, payload._result = thenable);
+			}
+			if (1 === payload._status) return ioInfo = payload._result, void 0 === ioInfo && console.error("lazy: Expected the result of a dynamic import() call. Instead received: %s\n\nYour code should look like: \n  const MyComponent = lazy(() => import('./MyComponent'))\n\nDid you accidentally put curly braces around the import?", ioInfo), "default" in ioInfo || console.error("lazy: Expected the result of a dynamic import() call. Instead received: %s\n\nYour code should look like: \n  const MyComponent = lazy(() => import('./MyComponent'))", ioInfo), ioInfo.default;
+			throw payload._result;
+		}
+		function resolveDispatcher() {
+			var dispatcher = ReactSharedInternals.H;
+			null === dispatcher && console.error("Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem.");
+			return dispatcher;
+		}
+		function releaseAsyncTransition() {
+			ReactSharedInternals.asyncTransitions--;
+		}
+		function startTransition(scope) {
+			var prevTransition = ReactSharedInternals.T, currentTransition = {};
+			currentTransition.types = null !== prevTransition ? prevTransition.types : null;
+			currentTransition._updatedFibers = /* @__PURE__ */ new Set();
+			ReactSharedInternals.T = currentTransition;
+			try {
+				var returnValue = scope(), onStartTransitionFinish = ReactSharedInternals.S;
+				null !== onStartTransitionFinish && onStartTransitionFinish(currentTransition, returnValue);
+				"object" === typeof returnValue && null !== returnValue && "function" === typeof returnValue.then && (ReactSharedInternals.asyncTransitions++, returnValue.then(releaseAsyncTransition, releaseAsyncTransition), returnValue.then(noop, reportGlobalError));
+			} catch (error) {
+				reportGlobalError(error);
+			} finally {
+				null === prevTransition && currentTransition._updatedFibers && (scope = currentTransition._updatedFibers.size, currentTransition._updatedFibers.clear(), 10 < scope && console.warn("Detected a large number of updates inside startTransition. If this is due to a subscription please re-write it to use React provided hooks. Otherwise concurrent mode guarantees are off the table.")), null !== prevTransition && null !== currentTransition.types && (null !== prevTransition.types && prevTransition.types !== currentTransition.types && console.error("We expected inner Transitions to have transferred the outer types set and that you cannot add to the outer Transition while inside the inner.This is a bug in React."), prevTransition.types = currentTransition.types), ReactSharedInternals.T = prevTransition;
+			}
+		}
+		function addTransitionType(type) {
+			var transition = ReactSharedInternals.T;
+			if (null !== transition) {
+				var transitionTypes = transition.types;
+				null === transitionTypes ? transition.types = [type] : -1 === transitionTypes.indexOf(type) && transitionTypes.push(type);
+			} else 0 === ReactSharedInternals.asyncTransitions && console.error("addTransitionType can only be called inside a `startTransition()` callback. It must be associated with a specific Transition."), startTransition(addTransitionType.bind(null, type));
+		}
+		function enqueueTask(task) {
+			if (null === enqueueTaskImpl) try {
+				var requireString = ("require" + Math.random()).slice(0, 7);
+				enqueueTaskImpl = (module && module[requireString]).call(module, "timers").setImmediate;
+			} catch (_err) {
+				enqueueTaskImpl = function(callback) {
+					!1 === didWarnAboutMessageChannel && (didWarnAboutMessageChannel = !0, "undefined" === typeof MessageChannel && console.error("This browser does not have a MessageChannel implementation, so enqueuing tasks via await act(async () => ...) will fail. Please file an issue at https://github.com/facebook/react/issues if you encounter this warning."));
+					var channel = new MessageChannel();
+					channel.port1.onmessage = callback;
+					channel.port2.postMessage(void 0);
+				};
+			}
+			return enqueueTaskImpl(task);
+		}
+		function aggregateErrors(errors) {
+			return 1 < errors.length && "function" === typeof AggregateError ? new AggregateError(errors) : errors[0];
+		}
+		function popActScope(prevActQueue, prevActScopeDepth) {
+			prevActScopeDepth !== actScopeDepth - 1 && console.error("You seem to have overlapping act() calls, this is not supported. Be sure to await previous act() calls before making a new one. ");
+			actScopeDepth = prevActScopeDepth;
+		}
+		function recursivelyFlushAsyncActWork(returnValue, resolve, reject) {
+			var queue = ReactSharedInternals.actQueue;
+			if (null !== queue) if (0 !== queue.length) try {
+				flushActQueue(queue);
+				enqueueTask(function() {
+					return recursivelyFlushAsyncActWork(returnValue, resolve, reject);
+				});
+				return;
+			} catch (error) {
+				ReactSharedInternals.thrownErrors.push(error);
+			}
+			else ReactSharedInternals.actQueue = null;
+			0 < ReactSharedInternals.thrownErrors.length ? (queue = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(queue)) : resolve(returnValue);
+		}
+		function flushActQueue(queue) {
+			if (!isFlushing) {
+				isFlushing = !0;
+				var i = 0;
+				try {
+					for (; i < queue.length; i++) {
+						var callback = queue[i];
+						do {
+							ReactSharedInternals.didUsePromise = !1;
+							var continuation = callback(!1);
+							if (null !== continuation) {
+								if (ReactSharedInternals.didUsePromise) {
+									queue[i] = callback;
+									queue.splice(0, i);
+									return;
+								}
+								callback = continuation;
+							} else break;
+						} while (1);
+					}
+					queue.length = 0;
+				} catch (error) {
+					queue.splice(0, i + 1), ReactSharedInternals.thrownErrors.push(error);
+				} finally {
+					isFlushing = !1;
+				}
+			}
+		}
+		"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+		var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = Symbol.for("react.view_transition"), MAYBE_ITERATOR_SYMBOL = Symbol.iterator, didWarnStateUpdateForUnmountedComponent = {}, ReactNoopUpdateQueue = {
+			isMounted: function() {
+				return !1;
+			},
+			enqueueForceUpdate: function(publicInstance) {
+				warnNoop(publicInstance, "forceUpdate");
+			},
+			enqueueReplaceState: function(publicInstance) {
+				warnNoop(publicInstance, "replaceState");
+			},
+			enqueueSetState: function(publicInstance) {
+				warnNoop(publicInstance, "setState");
+			}
+		}, assign = Object.assign, emptyObject = {};
+		Object.freeze(emptyObject);
+		Component.prototype.isReactComponent = {};
+		Component.prototype.setState = function(partialState, callback) {
+			if ("object" !== typeof partialState && "function" !== typeof partialState && null != partialState) throw Error("takes an object of state variables to update or a function which returns an object of state variables.");
+			this.updater.enqueueSetState(this, partialState, callback, "setState");
+		};
+		Component.prototype.forceUpdate = function(callback) {
+			this.updater.enqueueForceUpdate(this, callback, "forceUpdate");
+		};
+		var deprecatedAPIs = {
+			isMounted: ["isMounted", "Instead, make sure to clean up subscriptions and pending requests in componentWillUnmount to prevent memory leaks."],
+			replaceState: ["replaceState", "Refactor your code to use setState instead (see https://github.com/facebook/react/issues/3236)."]
+		};
+		for (fnName in deprecatedAPIs) deprecatedAPIs.hasOwnProperty(fnName) && defineDeprecationWarning(fnName, deprecatedAPIs[fnName]);
+		ComponentDummy.prototype = Component.prototype;
+		deprecatedAPIs = PureComponent.prototype = new ComponentDummy();
+		deprecatedAPIs.constructor = PureComponent;
+		assign(deprecatedAPIs, Component.prototype);
+		deprecatedAPIs.isPureReactComponent = !0;
+		var isArrayImpl = Array.isArray, REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = {
+			H: null,
+			A: null,
+			T: null,
+			S: null,
+			actQueue: null,
+			asyncTransitions: 0,
+			isBatchingLegacy: !1,
+			didScheduleLegacyUpdate: !1,
+			didUsePromise: !1,
+			thrownErrors: [],
+			getCurrentStack: null,
+			recentlyCreatedOwnerStacks: 0
+		}, hasOwnProperty = Object.prototype.hasOwnProperty, createTask = console.createTask ? console.createTask : function() {
+			return null;
+		};
+		deprecatedAPIs = { react_stack_bottom_frame: function(callStackForError) {
+			return callStackForError();
+		} };
+		var specialPropKeyWarningShown, didWarnAboutOldJSXRuntime;
+		var didWarnAboutElementRef = {};
+		var unknownOwnerDebugStack = deprecatedAPIs.react_stack_bottom_frame.bind(deprecatedAPIs, UnknownOwner)();
+		var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
+		var didWarnAboutMaps = !1, userProvidedKeyEscapeRegex = /\/+/g, reportGlobalError = "function" === typeof reportError ? reportError : function(error) {
+			if ("object" === typeof window && "function" === typeof window.ErrorEvent) {
+				var event = new window.ErrorEvent("error", {
+					bubbles: !0,
+					cancelable: !0,
+					message: "object" === typeof error && null !== error && "string" === typeof error.message ? String(error.message) : String(error),
+					error
+				});
+				if (!window.dispatchEvent(event)) return;
+			} else if ("object" === typeof process && "function" === typeof process.emit) {
+				process.emit("uncaughtException", error);
+				return;
+			}
+			console.error(error);
+		}, didWarnAboutMessageChannel = !1, enqueueTaskImpl = null, actScopeDepth = 0, didWarnNoAwaitAct = !1, isFlushing = !1, queueSeveralMicrotasks = "function" === typeof queueMicrotask ? function(callback) {
+			queueMicrotask(function() {
+				return queueMicrotask(callback);
+			});
+		} : enqueueTask;
+		deprecatedAPIs = Object.freeze({
+			__proto__: null,
+			c: function(size) {
+				return resolveDispatcher().useMemoCache(size);
+			}
+		});
+		var fnName = {
+			map: mapChildren,
+			forEach: function(children, forEachFunc, forEachContext) {
+				mapChildren(children, function() {
+					forEachFunc.apply(this, arguments);
+				}, forEachContext);
+			},
+			count: function(children) {
+				var n = 0;
+				mapChildren(children, function() {
+					n++;
+				});
+				return n;
+			},
+			toArray: function(children) {
+				return mapChildren(children, function(child) {
+					return child;
+				}) || [];
+			},
+			only: function(children) {
+				if (!isValidElement(children)) throw Error("React.Children.only expected to receive a single React element child.");
+				return children;
+			}
+		};
+		exports.Activity = REACT_ACTIVITY_TYPE;
+		exports.Children = fnName;
+		exports.Component = Component;
+		exports.Fragment = REACT_FRAGMENT_TYPE;
+		exports.Profiler = REACT_PROFILER_TYPE;
+		exports.PureComponent = PureComponent;
+		exports.StrictMode = REACT_STRICT_MODE_TYPE;
+		exports.Suspense = REACT_SUSPENSE_TYPE;
+		exports.ViewTransition = REACT_VIEW_TRANSITION_TYPE;
+		exports.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = ReactSharedInternals;
+		exports.__COMPILER_RUNTIME = deprecatedAPIs;
+		exports.act = function(callback) {
+			var prevActQueue = ReactSharedInternals.actQueue, prevActScopeDepth = actScopeDepth;
+			actScopeDepth++;
+			var queue = ReactSharedInternals.actQueue = null !== prevActQueue ? prevActQueue : [], didAwaitActCall = !1;
+			try {
+				var result = callback();
+			} catch (error) {
+				ReactSharedInternals.thrownErrors.push(error);
+			}
+			if (0 < ReactSharedInternals.thrownErrors.length) throw popActScope(prevActQueue, prevActScopeDepth), callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
+			if (null !== result && "object" === typeof result && "function" === typeof result.then) {
+				var thenable = result;
+				queueSeveralMicrotasks(function() {
+					didAwaitActCall || didWarnNoAwaitAct || (didWarnNoAwaitAct = !0, console.error("You called act(async () => ...) without await. This could lead to unexpected testing behaviour, interleaving multiple act calls and mixing their scopes. You should - await act(async () => ...);"));
+				});
+				return { then: function(resolve, reject) {
+					didAwaitActCall = !0;
+					thenable.then(function(returnValue) {
+						popActScope(prevActQueue, prevActScopeDepth);
+						if (0 === prevActScopeDepth) {
+							try {
+								flushActQueue(queue), enqueueTask(function() {
+									return recursivelyFlushAsyncActWork(returnValue, resolve, reject);
+								});
+							} catch (error$0) {
+								ReactSharedInternals.thrownErrors.push(error$0);
+							}
+							if (0 < ReactSharedInternals.thrownErrors.length) {
+								var _thrownError = aggregateErrors(ReactSharedInternals.thrownErrors);
+								ReactSharedInternals.thrownErrors.length = 0;
+								reject(_thrownError);
+							}
+						} else resolve(returnValue);
+					}, function(error) {
+						popActScope(prevActQueue, prevActScopeDepth);
+						0 < ReactSharedInternals.thrownErrors.length ? (error = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, reject(error)) : reject(error);
+					});
+				} };
+			}
+			var returnValue$jscomp$0 = result;
+			popActScope(prevActQueue, prevActScopeDepth);
+			0 === prevActScopeDepth && (flushActQueue(queue), 0 !== queue.length && queueSeveralMicrotasks(function() {
+				didAwaitActCall || didWarnNoAwaitAct || (didWarnNoAwaitAct = !0, console.error("A component suspended inside an `act` scope, but the `act` call was not awaited. When testing React components that depend on asynchronous data, you must await the result:\n\nawait act(() => ...)"));
+			}), ReactSharedInternals.actQueue = null);
+			if (0 < ReactSharedInternals.thrownErrors.length) throw callback = aggregateErrors(ReactSharedInternals.thrownErrors), ReactSharedInternals.thrownErrors.length = 0, callback;
+			return { then: function(resolve, reject) {
+				didAwaitActCall = !0;
+				0 === prevActScopeDepth ? (ReactSharedInternals.actQueue = queue, enqueueTask(function() {
+					return recursivelyFlushAsyncActWork(returnValue$jscomp$0, resolve, reject);
+				})) : resolve(returnValue$jscomp$0);
+			} };
+		};
+		exports.addTransitionType = addTransitionType;
+		exports.cache = function(fn) {
+			return function() {
+				return fn.apply(null, arguments);
+			};
+		};
+		exports.cacheSignal = function() {
+			return null;
+		};
+		exports.captureOwnerStack = function() {
+			var getCurrentStack = ReactSharedInternals.getCurrentStack;
+			return null === getCurrentStack ? null : getCurrentStack();
+		};
+		exports.cloneElement = function(element, config, children) {
+			if (null === element || void 0 === element) throw Error("The argument must be a React element, but you passed " + element + ".");
+			var props = assign({}, element.props), key = element.key, owner = element._owner;
+			if (null != config) {
+				var JSCompiler_inline_result;
+				a: {
+					if (hasOwnProperty.call(config, "ref") && (JSCompiler_inline_result = Object.getOwnPropertyDescriptor(config, "ref").get) && JSCompiler_inline_result.isReactWarning) {
+						JSCompiler_inline_result = !1;
+						break a;
+					}
+					JSCompiler_inline_result = void 0 !== config.ref;
+				}
+				JSCompiler_inline_result && (owner = getOwner());
+				hasValidKey(config) && (checkKeyStringCoercion(config.key), key = "" + config.key);
+				for (propName in config) !hasOwnProperty.call(config, propName) || "key" === propName || "__self" === propName || "__source" === propName || "ref" === propName && void 0 === config.ref || (props[propName] = config[propName]);
+			}
+			var propName = arguments.length - 2;
+			if (1 === propName) props.children = children;
+			else if (1 < propName) {
+				JSCompiler_inline_result = Array(propName);
+				for (var i = 0; i < propName; i++) JSCompiler_inline_result[i] = arguments[i + 2];
+				props.children = JSCompiler_inline_result;
+			}
+			props = ReactElement(element.type, key, props, owner, element._debugStack, element._debugTask);
+			for (key = 2; key < arguments.length; key++) validateChildKeys(arguments[key]);
+			return props;
+		};
+		exports.createContext = function(defaultValue) {
+			defaultValue = {
+				$$typeof: REACT_CONTEXT_TYPE,
+				_currentValue: defaultValue,
+				_currentValue2: defaultValue,
+				_threadCount: 0,
+				Provider: null,
+				Consumer: null
+			};
+			defaultValue.Provider = defaultValue;
+			defaultValue.Consumer = {
+				$$typeof: REACT_CONSUMER_TYPE,
+				_context: defaultValue
+			};
+			defaultValue._currentRenderer = null;
+			defaultValue._currentRenderer2 = null;
+			return defaultValue;
+		};
+		exports.createElement = function(type, config, children) {
+			for (var i = 2; i < arguments.length; i++) validateChildKeys(arguments[i]);
+			var propName;
+			i = {};
+			var key = null;
+			if (null != config) for (propName in didWarnAboutOldJSXRuntime || !("__self" in config) || "key" in config || (didWarnAboutOldJSXRuntime = !0, console.warn("Your app (or one of its dependencies) is using an outdated JSX transform. Update to the modern JSX transform for faster performance: https://react.dev/link/new-jsx-transform")), hasValidKey(config) && (checkKeyStringCoercion(config.key), key = "" + config.key), config) hasOwnProperty.call(config, propName) && "key" !== propName && "__self" !== propName && "__source" !== propName && (i[propName] = config[propName]);
+			var childrenLength = arguments.length - 2;
+			if (1 === childrenLength) i.children = children;
+			else if (1 < childrenLength) {
+				for (var childArray = Array(childrenLength), _i = 0; _i < childrenLength; _i++) childArray[_i] = arguments[_i + 2];
+				Object.freeze && Object.freeze(childArray);
+				i.children = childArray;
+			}
+			if (type && type.defaultProps) for (propName in childrenLength = type.defaultProps, childrenLength) void 0 === i[propName] && (i[propName] = childrenLength[propName]);
+			key && defineKeyPropWarningGetter(i, "function" === typeof type ? type.displayName || type.name || "Unknown" : type);
+			(propName = 1e4 > ReactSharedInternals.recentlyCreatedOwnerStacks++) ? (childArray = Error.stackTraceLimit, Error.stackTraceLimit = 10, childrenLength = Error("react-stack-top-frame"), Error.stackTraceLimit = childArray) : childrenLength = unknownOwnerDebugStack;
+			return ReactElement(type, key, i, getOwner(), childrenLength, propName ? createTask(getTaskName(type)) : unknownOwnerDebugTask);
+		};
+		exports.createRef = function() {
+			var refObject = { current: null };
+			Object.seal(refObject);
+			return refObject;
+		};
+		exports.forwardRef = function(render) {
+			null != render && render.$$typeof === REACT_MEMO_TYPE ? console.error("forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...)).") : "function" !== typeof render ? console.error("forwardRef requires a render function but was given %s.", null === render ? "null" : typeof render) : 0 !== render.length && 2 !== render.length && console.error("forwardRef render functions accept exactly two parameters: props and ref. %s", 1 === render.length ? "Did you forget to use the ref parameter?" : "Any additional parameter will be undefined.");
+			null != render && null != render.defaultProps && console.error("forwardRef render functions do not support defaultProps. Did you accidentally pass a React component?");
+			var elementType = {
+				$$typeof: REACT_FORWARD_REF_TYPE,
+				render
+			}, ownName;
+			Object.defineProperty(elementType, "displayName", {
+				enumerable: !1,
+				configurable: !0,
+				get: function() {
+					return ownName;
+				},
+				set: function(name) {
+					ownName = name;
+					render.name || render.displayName || (Object.defineProperty(render, "name", { value: name }), render.displayName = name);
+				}
+			});
+			return elementType;
+		};
+		exports.isValidElement = isValidElement;
+		exports.lazy = function(ctor) {
+			ctor = {
+				_status: -1,
+				_result: ctor
+			};
+			var lazyType = {
+				$$typeof: REACT_LAZY_TYPE,
+				_payload: ctor,
+				_init: lazyInitializer
+			}, ioInfo = {
+				name: "lazy",
+				start: -1,
+				end: -1,
+				value: null,
+				owner: null,
+				debugStack: Error("react-stack-top-frame"),
+				debugTask: console.createTask ? console.createTask("lazy()") : null
+			};
+			ctor._ioInfo = ioInfo;
+			lazyType._debugInfo = [{ awaited: ioInfo }];
+			return lazyType;
+		};
+		exports.memo = function(type, compare) {
+			type ?? console.error("memo: The first argument must be a component. Instead received: %s", null === type ? "null" : typeof type);
+			compare = {
+				$$typeof: REACT_MEMO_TYPE,
+				type,
+				compare: void 0 === compare ? null : compare
+			};
+			var ownName;
+			Object.defineProperty(compare, "displayName", {
+				enumerable: !1,
+				configurable: !0,
+				get: function() {
+					return ownName;
+				},
+				set: function(name) {
+					ownName = name;
+					type.name || type.displayName || (Object.defineProperty(type, "name", { value: name }), type.displayName = name);
+				}
+			});
+			return compare;
+		};
+		exports.startTransition = startTransition;
+		exports.unstable_useCacheRefresh = function() {
+			return resolveDispatcher().useCacheRefresh();
+		};
+		exports.use = function(usable) {
+			return resolveDispatcher().use(usable);
+		};
+		exports.useActionState = function(action, initialState, permalink) {
+			return resolveDispatcher().useActionState(action, initialState, permalink);
+		};
+		exports.useCallback = function(callback, deps) {
+			return resolveDispatcher().useCallback(callback, deps);
+		};
+		exports.useContext = function(Context) {
+			var dispatcher = resolveDispatcher();
+			Context.$$typeof === REACT_CONSUMER_TYPE && console.error("Calling useContext(Context.Consumer) is not supported and will cause bugs. Did you mean to call useContext(Context) instead?");
+			return dispatcher.useContext(Context);
+		};
+		exports.useDebugValue = function(value, formatterFn) {
+			return resolveDispatcher().useDebugValue(value, formatterFn);
+		};
+		exports.useDeferredValue = function(value, initialValue) {
+			return resolveDispatcher().useDeferredValue(value, initialValue);
+		};
+		exports.useEffect = function(create, deps) {
+			create ?? console.warn("React Hook useEffect requires an effect callback. Did you forget to pass a callback to the hook?");
+			return resolveDispatcher().useEffect(create, deps);
+		};
+		exports.useEffectEvent = function(callback) {
+			return resolveDispatcher().useEffectEvent(callback);
+		};
+		exports.useId = function() {
+			return resolveDispatcher().useId();
+		};
+		exports.useImperativeHandle = function(ref, create, deps) {
+			return resolveDispatcher().useImperativeHandle(ref, create, deps);
+		};
+		exports.useInsertionEffect = function(create, deps) {
+			create ?? console.warn("React Hook useInsertionEffect requires an effect callback. Did you forget to pass a callback to the hook?");
+			return resolveDispatcher().useInsertionEffect(create, deps);
+		};
+		exports.useLayoutEffect = function(create, deps) {
+			create ?? console.warn("React Hook useLayoutEffect requires an effect callback. Did you forget to pass a callback to the hook?");
+			return resolveDispatcher().useLayoutEffect(create, deps);
+		};
+		exports.useMemo = function(create, deps) {
+			return resolveDispatcher().useMemo(create, deps);
+		};
+		exports.useOptimistic = function(passthrough, reducer) {
+			return resolveDispatcher().useOptimistic(passthrough, reducer);
+		};
+		exports.useReducer = function(reducer, initialArg, init) {
+			return resolveDispatcher().useReducer(reducer, initialArg, init);
+		};
+		exports.useRef = function(initialValue) {
+			return resolveDispatcher().useRef(initialValue);
+		};
+		exports.useState = function(initialState) {
+			return resolveDispatcher().useState(initialState);
+		};
+		exports.useSyncExternalStore = function(subscribe, getSnapshot, getServerSnapshot) {
+			return resolveDispatcher().useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+		};
+		exports.useTransition = function() {
+			return resolveDispatcher().useTransition();
+		};
+		exports.version = "19.3.0";
+		"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+	})();
+}));
+(/* @__PURE__ */ __commonJSMin(((exports, module) => {
+	if (process.env.NODE_ENV === "production") module.exports = require_react_production();
+	else module.exports = require_react_development();
+})))();
 var leererPatient = () => ({
 	anrede: "",
 	titel: "",
@@ -12130,6 +13395,131 @@ var standardPraxis = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+/** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
+var ZENTRALE_PRAXIS_KEY = "planr.praxis.zentral.v1";
+//#endregion
+//#region src/arzt.ts
+var ARZT_KEY = "planr.arzt.v1";
+var ARZT_EREIGNIS = "planr-arzt";
+var STEMPEL_BLAU = "#1c3f94";
+function arztLesen() {
+	try {
+		const r = typeof localStorage === "undefined" ? null : JSON.parse(localStorage.getItem("planr.arzt.v1") ?? "null");
+		return r && typeof r === "object" && typeof r.name === "string" ? r : null;
+	} catch {
+		return null;
+	}
+}
+var kennung = (s) => `${s.length}:${s.slice(-48)}`;
+/** Dunkle Striche → Stempelblau, Hintergrund (weiß oder transparent) → durchsichtig. */
+function blauFaerben(dataUrl) {
+	return new Promise((fertig) => {
+		if (!dataUrl || typeof document === "undefined") return fertig(dataUrl);
+		const bild = new Image();
+		bild.onload = () => {
+			const c = document.createElement("canvas");
+			c.width = bild.naturalWidth;
+			c.height = bild.naturalHeight;
+			const ctx = c.getContext("2d");
+			if (!ctx || !c.width || !c.height) return fertig(dataUrl);
+			ctx.drawImage(bild, 0, 0);
+			const d = ctx.getImageData(0, 0, c.width, c.height);
+			const [r, g, b] = [
+				1,
+				3,
+				5
+			].map((i) => parseInt(STEMPEL_BLAU.slice(i, i + 2), 16));
+			let [x0, y0, x1, y1] = [
+				c.width,
+				c.height,
+				-1,
+				-1
+			];
+			for (let i = 0; i < d.data.length; i += 4) {
+				const hell = (d.data[i] * 299 + d.data[i + 1] * 587 + d.data[i + 2] * 114) / 1e3;
+				const roh = d.data[i + 3] * (255 - hell) / 255;
+				const deckung = roh < 12 ? 0 : Math.min(255, roh * 2.2);
+				d.data[i] = r;
+				d.data[i + 1] = g;
+				d.data[i + 2] = b;
+				d.data[i + 3] = deckung;
+				if (deckung) {
+					const p = i / 4;
+					const [x, y] = [p % c.width, Math.floor(p / c.width)];
+					x0 = Math.min(x0, x);
+					x1 = Math.max(x1, x);
+					y0 = Math.min(y0, y);
+					y1 = Math.max(y1, y);
+				}
+			}
+			if (x1 < 0) return fertig("");
+			ctx.putImageData(d, 0, 0);
+			const rand = 4;
+			const [x, y] = [Math.max(0, x0 - rand), Math.max(0, y0 - rand)];
+			const zu = document.createElement("canvas");
+			zu.width = Math.min(c.width, x1 + rand + 1) - x;
+			zu.height = Math.min(c.height, y1 + rand + 1) - y;
+			zu.getContext("2d")?.drawImage(c, x, y, zu.width, zu.height, 0, 0, zu.width, zu.height);
+			fertig(zu.toDataURL("image/png"));
+		};
+		bild.onerror = () => fertig("");
+		bild.src = dataUrl;
+	});
+}
+/** Stand vom Server übernehmen; die Unterschrift nur bei Änderung neu färben. */
+async function arztUebernehmen(roh) {
+	if (!roh || typeof roh.name !== "string" || typeof localStorage === "undefined") return;
+	const original = typeof roh.signatur === "string" && roh.signatur.startsWith("data:image/") ? roh.signatur : "";
+	const alt = arztLesen();
+	const quelle = kennung(original);
+	if (alt && alt.name === roh.name && alt.quelle === quelle) return;
+	const neu = {
+		name: roh.name,
+		signatur: alt?.quelle === quelle ? alt.signatur : await blauFaerben(original),
+		quelle
+	};
+	try {
+		localStorage.setItem(ARZT_KEY, JSON.stringify(neu));
+	} catch {
+		return;
+	}
+	if (typeof window !== "undefined") window.dispatchEvent(new Event(ARZT_EREIGNIS));
+}
+//#endregion
+//#region src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+/** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
+var hubAdresse = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
+/** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
+function praxisAbgleichen() {
+	if (typeof fetch !== "function" || typeof localStorage === "undefined" || typeof location === "undefined") return;
+	fetch(hubAdresse().replace(/\/plaene$/, "/praxisdaten"), {
+		cache: "no-store",
+		credentials: "include"
+	}).then((r) => r.ok ? r.json() : null).then((d) => {
+		arztUebernehmen(d?.arzt);
+		if (!d?.praxis || !Object.keys(d.praxis).length) return;
+		const neu = JSON.stringify(d.praxis);
+		if (localStorage.getItem("planr.praxis.zentral.v1") === neu) return;
+		localStorage.setItem(ZENTRALE_PRAXIS_KEY, neu);
+		if (sessionStorage.getItem("planr.praxis.zentral.v1")) return;
+		sessionStorage.setItem(ZENTRALE_PRAXIS_KEY, "1");
+		location.reload();
+	}).catch(() => {});
+}
+praxisAbgleichen();
+typeof location === "undefined" || (new URLSearchParams(location.search).get("plan") ?? "").trim().slice(0, 80);
 //#endregion
 //#region src/planNeu.ts
 var heute = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -12150,7 +13540,7 @@ var STANDARD_REGLER = {
 };
 function neuerPlan(nummer) {
 	return {
-		nummer: `KV-${(/* @__PURE__ */ new Date()).getFullYear()}-${String(nummer).padStart(3, "0")}`,
+		nummer: planNummer("KV", nummer),
 		datum: heute(),
 		patient: leererPatient(),
 		zaehne: {},
@@ -12171,7 +13561,7 @@ function neuerPlan(nummer) {
 * HKP-Engine (gleiche Kürzel), gerechnet wird mit der Engine dieses Planers. `npm run build:engine` baut
 * daraus MAS-2/backend/src/vendor/privat-ze-engine.mjs.
 */
-var ENGINE_STAND = "2026-11-05 08:37";
+var ENGINE_STAND = "2026-11-09 20:23";
 var AUS_DEM_AUFTRAG = /angenommen|cover-denture|passt nicht|all-on|druckknopf|kugelkopf|implantatsteg|galvano|tabletop|inlay|onlay|abutment|verschraub|zementier/i;
 var NUR_KASSE = /bonus|festzuschuss|härtefall|kasse|bema|richtlinie|hkp/i;
 var sortiert = (zs) => [...zs].sort((a, b) => ALLE_ZAEHNE$1.indexOf(a) - ALLE_ZAEHNE$1.indexOf(b));

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { praxisWissenSuchen, praxisZeilen } from "./praxisWissen.js";
+import { praxisStilAbschnitt } from "./praxisStil.js";
 
 const DATEI = path.join(path.dirname(fileURLToPath(import.meta.url)), "wissen", "abrechnung.json");
 const VEKTOR_DATEI = path.join(path.dirname(fileURLToPath(import.meta.url)), "wissen", "abrechnung.vektoren.json");
@@ -285,6 +286,8 @@ function quelltexteWort(satz, max = 4) {
       score += gewicht * idf * ((f * (k1 + 1)) / (f + k1 * (1 - bb + (bb * d.len) / avg)));
       getroffen.add(quelle);
     }
+    // Kuratierte Versorgungstexte vor dem langen OCR-Korpus, sonst frisst „Krone“ die Kompendiumsseite.
+    if (score > 0 && String(d.x.q).startsWith("PlanR Exoten")) score *= 3;
     if (score > 0) treffer.push({ score, woerter: getroffen.size, d });
   }
   treffer.sort((a, c) => c.score - a.score);
@@ -372,6 +375,7 @@ export function wissenFuer(satz, praxis = null, bedeutung = null) {
   for (const { z } of treffer.slice(0, 12)) zeilen.push(zeileVon(z));
 
   const praxisText = praxisAbschnitt(praxis, roh, codes, bedeutung?.praxis || []);
+  const stilText = praxisStilAbschnitt(praxis?.clientId, satz);
   let quellText = "";
   for (const x of quelltexteFuer(satz, 4, bedeutung)) {
     const zeile = `(${x.q}, ${x.s}) ${x.t}`;
@@ -379,7 +383,7 @@ export function wissenFuer(satz, praxis = null, bedeutung = null) {
     quellText += `\n${zeile}`;
   }
   if (quellText) quellText = `[QUELLTEXTE: Wortlaut aus Richtlinien, Kommentaren und Recherchen, mit Fundstelle in Klammern]${quellText}`;
-  if (!gefragt.length && !erwaehnt.length && !zeilen.length && !praxisText && !quellText) return "";
+  if (!gefragt.length && !erwaehnt.length && !zeilen.length && !praxisText && !quellText && !stilText) return "";
   const kopf = "Wissensbasis zu diesem Satz. Kommentare sind die Bestimmungstexte der Gebührenordnung. „Nicht neben“ gilt für dieselbe Sitzung. Steht zu zwei Nummern kein solcher Kommentar, erfinde keine Ausschlussregel. Abrechnungsbeispiele sind die Zuordnung der Engine. Die Engine setzt die Positionen. Nenne keine Beträge.";
   const abschnitt = (titel, z) => (z.length ? [`[${titel}]`, ...z] : []);
   const kern = [
@@ -387,6 +391,7 @@ export function wissenFuer(satz, praxis = null, bedeutung = null) {
     ...abschnitt("GEFRAGTE NUMMERN: Leistungstext und eigene Bestimmung. Fehlt \"Kommentar\", hat die Nummer keine eigene Bestimmung", gefragt),
     ...abschnitt("ANDERE NUMMERN, deren Bestimmung eine gefragte Nummer erwähnt. Gilt nur für das, was der Satz dort ausdrücklich sagt", erwaehnt),
     praxisText,
+    stilText,
     quellText,
   ].filter(Boolean).join("\n");
   const rest = zeilen.length ? ["[WEITERE TREFFER: Abrechnungsbeispiele, Therapien, verwandte Nummern]", ...zeilen].join("\n") : "";

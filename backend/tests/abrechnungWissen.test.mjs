@@ -78,3 +78,20 @@ test("der Ausschnitt trifft die gemeinte Situation und bleibt kurz", () => {
   assert.equal(wissenFuer("Ja, der Befund stimmt."), "");
   assert.equal(wissenFuer("Ja"), "");
 });
+
+test("Exoten je Versorgung liegen in der Wissensbasis und kommen beim Nachschlagen mit", () => {
+  assert.equal(basis.exoten.length, 7);
+  assert.ok(basis.exoten.every((e) => e.text && e.stufen.length && !/€|euro/i.test(e.text)));
+  const tel = wissenFuer("Teleskopprothese Funktionsanalyse");
+  assert.match(tel, /8035/);
+  assert.match(tel, /8065/);
+  assert.match(tel, /2197/);
+  assert.match(tel, /8020 nicht neben 8035/);
+  const krone = wissenFuer("einzelne Krone Vollkeramik");
+  assert.match(krone, /8050/);
+  assert.match(krone, /Nicht 8035|nicht 8035|Nicht GOZ 8035/);
+  const allon = wissenFuer("All-on-6 mit Keramik");
+  assert.match(allon, /8100/);
+  assert.match(allon, /0090/);
+  assert.match(allon, /9000/);
+});

@@ -368,17 +368,22 @@ const situationen = [
     text: "Implantat, rekonstruktive Phase. GOZ 9040: Freilegen und Einfügen eines Aufbauelements, zum Beispiel Gingivaformer, beim zweiphasigen System. GOZ 9050: Entfernen, Wiedereinsetzen oder Auswechseln der Aufbauelemente, in der Regel zweimal je Implantat (Abformung und Eingliederung), höchstens dreimal je Implantat und einmal je Sitzung, nicht neben 9010 und nicht neben 9040. GOZ 9060: Wechsel im Reparaturfall, höchstens einmal je Implantat und Sitzung. Die chirurgischen Nummern 9000 bis 9040 gehören nicht in den Heil- und Kostenplan, sie werden gesondert geplant." },
 ];
 
+const exoten = JSON.parse(fs.readFileSync(path.join(PLANR, "ZE/Privat-HKP/src/data/exoten.json"), "utf8"));
+for (const e of exoten) textAdd("PlanR Exoten je Versorgung", e.titel, `${e.titel}. ${e.kurz} ${e.text}`);
+textAdd("PlanR Exoten je Versorgung", "Regler",
+  "Der Schieberegler Zusatzleistungen liest die Exoten je Versorgung aus dieser Wissensbasis. Führend ist die speziellste Versorgung: All-on-6, All-on-4, Teleskopprothese, Teleskopkronen, Brücke, Suprakonstruktion, Krone. Die Funktionsanalyse kommt nur von der führenden Versorgung. Vorbereitende Nummern kommen aus jeder passenden Versorgung, jede Nummer nur einmal. Das Modell sucht die passende Versorgung hier. Es gibt keine Wortregel im Rechenweg.");
+
 const basis = {
-  stand: "2026-11-06",
-  hinweis: "Ziffern, Bestimmungstexte (Feld h) und Abrechnungsbeispiele der Engine. Praxispositionen kommen live aus dem PVS, nicht aus dieser Datei. Keine Preise, keine Punktwerte.",
+  stand: "2026-11-09",
+  hinweis: "Ziffern, Bestimmungstexte (Feld h), Abrechnungsbeispiele und Exoten je Versorgung. Praxispositionen kommen live aus dem PVS, nicht aus dieser Datei. Keine Preise, keine Punktwerte.",
   zaehlung: ziffern.reduce((m, z) => ({ ...m, [z.k]: (m[z.k] || 0) + 1 }), {}),
-  ziffern, befunde, therapien, situationen, texte,
+  ziffern, befunde, therapien, situationen, exoten, texte,
 };
 
 fs.mkdirSync(path.dirname(ZIEL), { recursive: true });
 fs.writeFileSync(ZIEL, JSON.stringify(basis));
 const kb = fs.statSync(ZIEL).size;
 const kommentare = ziffern.filter((z) => z.h).length;
-console.log(`wissen ${ziffern.length} Ziffern, ${kommentare} Kommentare, ${befunde.length} Befunde, ${therapien.length} Therapien, ${situationen.length} Situationen, ${texte.length} Quelltexte, ${kb} Bytes`);
+console.log(`wissen ${ziffern.length} Ziffern, ${kommentare} Kommentare, ${befunde.length} Befunde, ${therapien.length} Therapien, ${situationen.length} Situationen, ${exoten.length} Exoten, ${texte.length} Quelltexte, ${kb} Bytes`);
 console.log(texte.reduce((m, t) => ({ ...m, [t.q.slice(0, 50)]: (m[t.q.slice(0, 50)] || 0) + 1 }), {}));
 console.log(basis.zaehlung);
