@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 cca05376f030)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 6fa7948b7a59)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -29060,6 +29060,8 @@ var IMPLANTAT_BLEIBT = /^(i|sk|skw|st|stw)$/;
 var implantatBleibt = (code) => IMPLANTAT_BLEIBT.test(code.trim().toLowerCase());
 /** Implantat ohne Suprakonstruktion. Das Kürzel ist immer i. ix ist schon als nicht erhaltungswürdig markiert und bleibt keine Lücke, die man noch einmal fragen muss. */
 var implantatOhneAufbau = (code) => /^(i|ix)$/.test((code ?? "").trim().toLowerCase());
+/** sk: Suprakonstruktion mit klinisch intakter Krone. Keine Behandlung, Zeile R und TP bleiben leer. */
+var implantatkroneIntakt = (code) => (code ?? "").trim().toLowerCase() === "sk";
 var zahnStehtNoch = (b, z) => {
 	if (!(z in b) || fehlt(b, z)) return false;
 	const k = (b[z] ?? "").trim().toLowerCase();
@@ -29235,7 +29237,8 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 			};
 		}
 		const nackt = reihe.filter((z) => implantatOhneAufbau(befund[z]) && !pfeiler.includes(z));
-		const offen = reihe.filter((z) => !istWeisheitszahn(z) && z in befund && !fehlt(befund, z) && !nackt.includes(z) && !pfeiler.includes(z) && !auftrag.erhalten.includes(z));
+		const kronen = reihe.filter((z) => implantatkroneIntakt(befund[z]) && !pfeiler.includes(z));
+		const offen = reihe.filter((z) => !istWeisheitszahn(z) && z in befund && !fehlt(befund, z) && !nackt.includes(z) && !kronen.includes(z) && !pfeiler.includes(z) && !auftrag.erhalten.includes(z));
 		if ((auftrag.coverDenture || auftrag.versorgung === "totalprothese" || auftrag.versorgung === "locator" || auftrag.versorgung === "steg") && offen.length) return {
 			status: "rueckfrage",
 			grund: "restzaehne",
@@ -29258,6 +29261,7 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 			tp[z] = auftrag.versorgung === "steg" && i > von && i < bis ? "SEO" : "E";
 		}
 		if (nackt.length && (auftrag.versorgung === "totalprothese" || auftrag.coverDenture)) hinweise.push(`${name}: Implantate an ${liste(nackt)} ohne Suprakonstruktion bleiben liegen und gelten für die Prothese wie fehlende Zähne.`);
+		if (kronen.length) hinweise.push(`${name}: Implantatkronen an ${liste(kronen)} sind intakt (sk). In Zeile R und TP bleibt das Feld leer.`);
 		if (auftrag.versorgung === "locator") hinweise.push(`${auftrag.anker === "kugel" ? "Kugelkopfanker" : "Druckknopfanker"} angenommen: GOZ 5030 je Implantat und GOZ 5080 je Verbindungselement, Matrize und Patrize zusammen.`);
 		if (auftrag.versorgung === "steg") hinweise.push("Implantatsteg angenommen: je Spanne eine Stegverbindung, je Implantat eine Kappe zur Aufnahme des Stegs.");
 		if (keramikTel && auftrag.versorgung === "teleskopprothese") hinweise.push("Zirkon-Primärteleskop angenommen: Teleskopkrone plus Zuschlag für Keramik, das Sekundärteil bleibt das Teleskop.");
@@ -29679,7 +29683,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-09 07:58";
+var ENGINE_STAND = "2026-11-09 08:00";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
