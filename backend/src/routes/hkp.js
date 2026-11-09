@@ -47,9 +47,10 @@ import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
 import { abrechnungAntwort, antwortVerstehen, befundListe, fachEntscheiden, mundSprechen, nackteNichtEntfernen, planIntent, befundSatz as befundAusAntwort } from "../hkp/antwortVerstehen.js";
 import { planPruefen, positionenVon } from "../hkp/ausschluss.js";
-import { fallRechnen } from "../hkp/coach.js";
+import { akteVon, bonusNorm, fallRechnen, protheseGesagt, verbundSatz } from "../hkp/coach.js";
 import { praxisKatalog, praxisKatalogNeu } from "../hkp/planrKatalog.js";
 import { praxisWissenStand } from "../hkp/praxisWissen.js";
+import { praxisStilMerken, praxisStilStand } from "../hkp/praxisStil.js";
 import {
   AKTIV, KonfliktFehler, STATUS, STATUS_TEXT, hkpAktualisieren, hkpAnlegen, hkpDateiAnhaengen, hkpDateiLesen, hkpFeldSetzen, hkpLesen, hkpListe, kopf,
   praxisLaden, praxisSpeichern, praxisKatalogeSpeichern,
@@ -151,9 +152,12 @@ function patientVon(sel) {
   const lastName = String(sel.lastName || "").trim();
   const g = String(sel.gender || sel.patientGender || "").toLowerCase();
   const anrede = g.startsWith("m") ? "Herrn " : g.startsWith("f") || g.startsWith("w") ? "Frau " : "";
+  const akte = akteVon(sel);
   return {
     id: String(sel.id || ""), firstName, lastName, birthDate: String(sel.birthDate || ""),
     ...(sel.quelle === "pvs" ? { pvsNummer: String(sel.id || "") } : {}),
+    ...(akte.versicherung ? { versicherung: akte.versicherung, privateInsurance: akte.versicherung === "privat" } : {}),
+    ...(akte.bonus ? { bonus: akte.bonus } : {}),
     label: `${firstName} ${lastName}`.trim() || "der Patient",
     anredeLabel: anrede ? `${anrede}${lastName}` : `${firstName} ${lastName}`.trim(),
   };
@@ -658,6 +662,7 @@ router.get("/planr/entwuerfe", planrGuard, async (req, res) => {
       ok: true,
       entwuerfe: offen.filter((e) => ENTWURF_MODULE.has(e.modul)).map((e) => ({
         id: e.id, modul: e.modul, patient: e.anzeige, betrag: e.betrag, erstellt: e.erstellt, plan: JSON.parse(e.planJson),
+        ...(e.fallId ? { fallId: e.fallId, fallTitel: e.fallTitel || "" } : {}),
       })),
     });
   } catch (e) {
@@ -815,6 +820,20 @@ router.post("/planr/praxis-wissen", planrGuard, async (req, res) => {
 
 router.get("/planr/praxis-wissen", planrGuard, (req, res) => {
   res.json({ ok: true, stand: praxisWissenStand(req.planrClientId) });
+});
+
+// Fallkatalog: deterministische Praxisregeln aus den hochgeladenen Plänen, je Mandant.
+router.post("/planr/praxis-stil", planrGuard, (req, res) => {
+  try {
+    const r = praxisStilMerken(req.planrClientId, req.body?.regeln);
+    res.json({ ok: Boolean(r.ok), ...r, stand: praxisStilStand(req.planrClientId) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+router.get("/planr/praxis-stil", planrGuard, (req, res) => {
+  res.json({ ok: true, stand: praxisStilStand(req.planrClientId) });
 });
 
 // HKP-Clara fuer PlanR-Standalone (hkp/planrClara.js): Stufe, Ruf-Name, Handy-Kopplung.
@@ -1823,14 +1842,26 @@ async function fachRechnen(clientId, patient, b, st, p, { privat, sagen, nurVors
   const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [], einstellungen: {} }));
   const system = implantatStandard(praxis);
   const patientDaten = { name: patient.lastName, vorname: patient.firstName, geburtsdatum: patient.birthDate };
-  const r = privat
+  const akte = akteVon(patient);
+  const gesagt = protheseGesagt(st.plan);
+  const alsPrivat = gesagt ? gesagt === "privat" : akte.versicherung ? akte.versicherung === "privat" : privat;
+  const bonus = auftrag.bonus || bonusNorm(b.bonus) || akte.bonus;
+  if (!alsPrivat && !bonus) {
+    return { rueck: "Welcher Bonus steht in der Akte: ohne Bonus, fünf Jahre oder zehn Jahre?", frage: "Welcher Bonus steht in der Akte: ohne Bonus, fünf Jahre oder zehn Jahre?" };
+  }
+  const ausAkte = !gesagt && akte.versicherung && alsPrivat !== privat
+    ? (alsPrivat ? "Laut Akte privat versichert. " : "Laut Akte gesetzlich versichert. ")
+    : "";
+  const r = alsPrivat
     ? P.privatZeEntwurf(st.plan, befundMap, { patient: patientDaten, implantatSystem: system })
-    : E.hkpEntwurf(st.plan, befundMap, { patient: patientDaten, einstellungen: praxis.einstellungen, implantatSystem: system }, praxisListen(praxis));
+    : E.hkpEntwurf(st.plan, befundMap, {
+      patient: patientDaten, einstellungen: praxis.einstellungen, implantatSystem: system, bonus, haertefall: bonus === "100",
+    }, praxisListen(praxis));
   if (r.status !== "ok") {
     const frage = r.grund === "restzaehne" && r.zaehne?.length ? restFrage(r.zaehne) : r.frage || "";
     return { rueck: `Die Engine kann "${st.plan}" mit diesem Befund nicht rechnen: ${frage || r.grund}`, frage, grund: r.grund, zaehne: r.zaehne };
   }
-  const frage = privat ? null : ausfuehrungRueckfrage(clientId, patient, st.plan, auftrag, r, system);
+  const frage = alsPrivat ? null : ausfuehrungRueckfrage(clientId, patient, st.plan, auftrag, r, system);
   if (frage) return { rueck: `Vor dem Rechnen fehlt die Ausführung (einmal fragen, sonst gilt der Praxis-Standard): ${frage.message}`, frage: frage.message };
   const jetzt = new Date().toISOString();
   const name = p.name || "";
@@ -1841,15 +1872,15 @@ async function fachRechnen(clientId, patient, b, st, p, { privat, sagen, nurVors
       : Object.keys(st.offen).length || !p.ok ? { art: p.ok ? "gesprochen+pvs" : "gesprochen", pvs: name, datum: jetzt }
         : { art: "pvs", pvs: name, datum: p.datum },
   };
-  if (!privat) liveMelden(clientId, { phase: "plan", plan: r.plan, meldung: "" });
-  if (p.nummer) vorgangMelden(clientId, p.nummer, { modul: privat ? "privat-kv" : "hkp", phase: "planung", plan: planZeilen(r.plan), meldung: "" });
+  if (!alsPrivat) liveMelden(clientId, { phase: "plan", plan: r.plan, meldung: "" });
+  if (p.nummer) vorgangMelden(clientId, p.nummer, { modul: alsPrivat ? "privat-kv" : "hkp", phase: "planung", plan: planZeilen(r.plan), meldung: "" });
   const z = r.zusammenfassung;
-  const summen = privat ? { gesamt: zahl(z.gesamt), honorar: zahl(z.honorar), labor: zahl(z.labor), material: zahl(z.material) } : summenAus(r.ergebnis);
-  const versorgungText = privat ? PRIVAT_TEXT : versorgungTextVon(auftrag);
+  const summen = alsPrivat ? { gesamt: zahl(z.gesamt), honorar: zahl(z.honorar), labor: zahl(z.labor), material: zahl(z.material) } : summenAus(r.ergebnis);
+  const versorgungText = alsPrivat ? PRIVAT_TEXT : versorgungTextVon(auftrag);
   const alteWeg = wahr(b.alte_verwerfen);
-  const doppelt = privat ? [] : doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
-  const daten = { patient, auftrag, auftragText: st.plan, befund, befundDiktat: "", r, summen, versorgungText, zusaetzlich: wahr(b.zusaetzlich) || alteWeg, doppelt, alteVerwerfen: alteWeg, privat };
-  const vorweg = sagen && !sagen.includes("?") ? `${sagen} ` : "";
+  const doppelt = alsPrivat ? [] : doppelungen(await hkpsVonPatient(clientId, patient), auftrag.kiefer);
+  const daten = { patient, auftrag, auftragText: st.plan, befund, befundDiktat: "", r, summen, versorgungText, zusaetzlich: wahr(b.zusaetzlich) || alteWeg, doppelt, alteVerwerfen: alteWeg, privat: alsPrivat };
+  const vorweg = `${ausAkte}${sagen && !sagen.includes("?") ? `${sagen} ` : ""}`;
   if (vorlesenAus() && !nurVorschau) {
     const e = await (privat ? privatAnlegen : entwurfAnlegen)(clientId, daten);
     return { fertig: e.message ? { ...e, message: `${vorweg}${e.message}` } : e };
@@ -1857,8 +1888,8 @@ async function fachRechnen(clientId, patient, b, st, p, { privat, sagen, nurVors
   vorschauMerken(clientId, { ...daten, namenGesagt: [String(b.name || "").trim()], at: Date.now() });
   const vorschau = vorleseSatz({
     patient, versorgungText, kiefer: geplanteKiefer(auftrag, z), zaehne: r.plan.zaehne, versorgung: versorgungSatz(z),
-    ausfuehrung: privat ? "" : ausfuehrungText(r.plan), summen: privat ? privatSummenSatz(summen) : summenSatz(summen),
-    spanne: privat ? "" : spanneVon(r.plan, praxis),
+    ausfuehrung: alsPrivat ? "" : ausfuehrungText(r.plan), summen: alsPrivat ? privatSummenSatz(summen) : summenSatz(summen),
+    spanne: alsPrivat ? "" : spanneVon(r.plan, praxis),
     doppelt: doppelt.length ? doppelungHinweis(doppelt, alteWeg) : "", befundFreigegeben: !!st.uebertragen,
     hinweis: ausschlussHinweise(r, patient).join(" "),
   });
@@ -2685,7 +2716,31 @@ function vorschauFuerAenderung(clientId, b) {
 }
 
 function vorschauKorrigieren(clientId, vs, text, praxis) {
-  const auftragText = `${String(vs.auftragText || "").replace(/[\s.]+$/, "")}. ${text}`.trim();
+  const a = E.ausfuehrungIn(text);
+  const nurMaterial = !/(?<!\d)[1-4][1-8](?!\d)/.test(text)
+    && (a.werkstoff || a.abformung || a.labor || a.verblendung || a.implantatSystem || Number.isInteger(a.privatStufe));
+  const ziel = vs.fall
+    ? (vs.teile || []).find((t) => t.planart === "kasse" || t.planart === "privat")
+    : vs.r?.plan ? vs : null;
+  const plan = vs.fall ? ziel?.r?.plan : vs.r?.plan;
+  if (nurMaterial && plan && ziel?.planart !== "privat" && !vs.privat) {
+    const e = E.ausfuehrungAendern(plan, a, praxisListen(praxis));
+    if (e.ok) {
+      const summen = summenAus(e.ergebnis);
+      if (vs.fall) {
+        ziel.r = { ...ziel.r, plan: e.plan, ergebnis: e.ergebnis, zusammenfassung: e.nachher };
+        ziel.summen = summen;
+        vorschauMerken(clientId, { ...vs, at: Date.now() });
+      } else {
+        vorschauMerken(clientId, {
+          ...vs, r: { ...vs.r, plan: e.plan, ergebnis: e.ergebnis, zusammenfassung: e.nachher }, summen, at: Date.now(),
+        });
+      }
+      return { ok: true, geaendert: true, message: `Am offenen Plan geändert: ${e.beschreibung}. Der übrige Plan bleibt.` };
+    }
+    if (vs.fall) return { ok: true, message: e.meldung };
+  }
+  const auftragText = `${String(vs.auftragText || vs.teile?.map((t) => t.versorgung).filter(Boolean).join(". ") || "").replace(/[\s.]+$/, "")}. ${text}`.trim();
   if (vs.sprachPlan) {
     vorschauWeg(clientId, vs);
     return sprachPlanRechnen(clientId, { ...vs, auftragText });
@@ -2805,6 +2860,31 @@ router.post("/tools/plan-rechnen", async (req, res) => {
       const y = markiert && x.message ? { ...x, message: markiert + x.message } : x;
       return merken ? { ...y, merken } : y;
     };
+    const praxisFuerFall = await praxisLaden(clientId).catch(() => ({ einstellungen: {} }));
+    if (verbundSatz(versorgung)) {
+      const x = fallRechnen({ versorgung, bonus: b.bonus }, {
+        muster: false, befund: stand || {},
+        patientDaten: patientFuerEngine(patient), patientLabel: patient.anredeLabel || "",
+        akte: akteVon(patient), einstellungen: praxisFuerFall.einstellungen || {}, listen: praxisListen(praxisFuerFall),
+        implantatSystem: implantatStandard(praxisFuerFall),
+        praxisPlz: String(praxisFuerFall?.einstellungen?.praxisPlz || ""), kzvNr: String(praxisFuerFall?.einstellungen?.kzv || ""),
+      });
+      if (x.status !== "ok") return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "engine", message: x.frage })));
+      vorschauMerken(clientId, {
+        fall: true, muster: false, patient, teile: x.teile, fallTitel: x.fallTitel,
+        befundPaket: { befund: stand || {}, quelle: pb?.ok ? { art: "pvs", pvs: pb.pvs, datum: pb.datum } : null, hinweise: [], pvs: pvsNr ? { nummer: pvsNr } : null },
+        befundQuelle: pb?.ok ? { art: "pvs", pvs: pb.pvs, datum: pb.datum } : null, pvsNr,
+        namenGesagt: [String(b.name || "").trim()], at: Date.now(),
+      });
+      return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "freigabe", message: x.message, cards: [x.card, card].filter(Boolean) })));
+    }
+    if (!/(?<!\d)[1-4][1-8](?!\d)/.test(versorgung)) {
+      const a = E.ausfuehrungIn(versorgung);
+      if (a.werkstoff || a.abformung || a.labor || a.verblendung || a.implantatSystem) {
+        const vs = vorschauFuerAenderung(clientId, b);
+        if (vs) return res.json(vorschauKorrigieren(clientId, vs, versorgung, praxisFuerFall));
+      }
+    }
     // eine neue Rechnung ersetzt die alte Vorschau dieses Patienten
     for (const v of vorschauen(clientId).filter((v) => v.patient?.id === patient.id)) vorschauWeg(clientId, v);
     let art = planart;
@@ -2924,6 +3004,7 @@ router.post("/tools/fall-rechnen", async (req, res) => {
       anzeige: String(b.anzeige || "").trim().toLowerCase() === "text" ? "text" : "",
       patientDaten: patient ? patientFuerEngine(patient) : {},
       patientLabel: patient?.anredeLabel || "",
+      akte: akteVon(patient || {}),
       einstellungen: praxis.einstellungen || {},
       listen: praxisListen(praxis),
       implantatSystem: implantatStandard(praxis),

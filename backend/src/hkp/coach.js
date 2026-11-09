@@ -13,9 +13,11 @@ const ARTEN = new Set(["kasse", "privat", "impl", "kons", "mkv"]);
 const zahl = (x) => Math.round((Number(x) || 0) * 100) / 100;
 const euro = (n) => `${(Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const zeilenKurz = (t) => {
-  const s = String(t || "").trim();
-  if (s.length <= 36) return s;
-  return s.slice(0, 36).replace(/\s\S*$/, "") || s.slice(0, 36);
+  const s = String(t || "").replace(/\s*\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+  if (s.length <= 72) return s;
+  const kurz = s.slice(0, 72);
+  const ende = kurz.lastIndexOf(" ");
+  return (ende > 40 ? kurz.slice(0, ende) : kurz).replace(/[,;:\s]+$/, "");
 };
 const PROTHESE = /all[\s-]*on|prothetik|suprakonstruktion|implantatgetragen/i;
 const CHIRURGIE = /implantat|sinus|augmentation|knochenaufbau/i;
@@ -69,13 +71,70 @@ export function versorgungFuerEngine(teil) {
   return extra.length ? `${t}${t ? ", " : ""}${extra.join(", ")}` : t;
 }
 
-export function protheseArt(text, angegeben) {
-  const a = String(angegeben || "").trim().toLowerCase();
-  if (a === "kasse" || a === "privat") return a;
+/** Nur das Gesagte. Ein gesetztes Werkzeugfeld ist noch keine Antwort des Zahnarztes. */
+export function protheseGesagt(text) {
   const t = String(text || "");
   if (/\bprivat/.test(t) && !/\bkasse|gesetzlich/.test(t)) return "privat";
   if (/\bkasse|gesetzlich|\bhkp\b|festzuschuss/.test(t)) return "kasse";
   return "";
+}
+
+/**
+ * Prothese: das Gesagte schlägt die Akte, die Akte schlägt ein mitgegebenes Feld.
+ * Ohne alles bleibt die Art leer, dann wird einmal gefragt.
+ */
+export function protheseWahl(text, angegeben, akte = "") {
+  const gesagt = protheseGesagt(text);
+  if (gesagt) return { art: gesagt, quelle: "gesagt" };
+  if (akte === "kasse" || akte === "privat") return { art: akte, quelle: "akte" };
+  const a = String(angegeben || "").trim().toLowerCase();
+  if (a === "kasse" || a === "privat") return { art: a, quelle: "angabe" };
+  return { art: "", quelle: "" };
+}
+
+export function protheseArt(text, angegeben, akte = "") {
+  return protheseWahl(text, angegeben, akte).art;
+}
+
+const BONUS_WORT = { "60": "60", "70": "70", "75": "75", "100": "100" };
+
+/** „70“, „fünf Jahre“, „ohne Bonus“, „Härtefall“ → Festzuschuss-Stufe. */
+export function bonusNorm(roh) {
+  const t = String(roh || "").toLowerCase().replace("%", "").trim();
+  if (!t) return "";
+  if (BONUS_WORT[t]) return BONUS_WORT[t];
+  if (/härte|haerte/.test(t)) return "100";
+  if (/zehn|10 jahre|\b75\b/.test(t)) return "75";
+  if (/fünf|fuenf|5 jahre|\b70\b/.test(t)) return "70";
+  if (/ohne|kein|\b60\b/.test(t)) return "60";
+  return "";
+}
+
+/** Versicherung und Bonus, soweit die Akte sie trägt. Leer heißt: nicht raten. */
+export function akteVon(p) {
+  const o = p || {};
+  const text = `${o.versicherung || ""} ${o.insurance || ""}`.toLowerCase();
+  const privat = o.privateInsurance === true || /\bprivat/.test(text);
+  const kasse = o.privateInsurance === false || /gesetz|kasse|\bgkv\b/.test(text);
+  return {
+    versicherung: privat && !kasse ? "privat" : kasse && !privat ? "kasse" : privat ? "privat" : "",
+    bonus: bonusNorm(o.bonus || o.bonusheft || ""),
+  };
+}
+
+/** Bonus aus dem Satz, sonst aus der Antwort, sonst aus der Akte. */
+export function bonusAus(text, angegeben, akteBonus = "") {
+  let erkannt = "";
+  try { erkannt = E.auftragVerstehen(String(text || "")).bonus || ""; } catch { erkannt = ""; }
+  return erkannt || bonusNorm(angegeben) || bonusNorm(akteBonus);
+}
+
+/** Implantation und die spätere Prothese sind ein Fall. Eine Prothese auf schon stehenden Implantaten bleibt ein Plan. */
+export function verbundSatz(text) {
+  const t = String(text || "");
+  const setzt = /implantatversorgung|implantation|sinus|augmentation|knochenaufbau|\b(?:\d+|zwei|drei|vier|sechs|acht)\s+implantat/i.test(t);
+  const darauf = /auf (?:den |die )?implantat/i.test(t);
+  return setzt && !darauf && PROTHESE.test(t);
 }
 
 function protheseSatz(text) {
@@ -107,11 +166,12 @@ function nurKons(text) {
  * Ein Satz oder eine Teile-Liste wird zu den Engine-Aufträgen. Fehlende Kasse/Privat-Angabe bleibt eine Frage —
  * außer in der Musterrechnung (`engineArt`): dort rechnet reine Zahnerhaltung als private Kons.
  */
-export function teileAufloesen(body, { engineArt = false } = {}) {
+export function teileAufloesen(body, { engineArt = false, akte = "" } = {}) {
   const roh = typeof body?.teile === "string" && body.teile.trim().startsWith("[")
     ? (() => { try { return JSON.parse(body.teile); } catch { return null; } })()
     : body?.teile;
   let teile = [];
+  let versicherungQuelle = "";
   if (Array.isArray(roh) && roh.length) {
     teile = roh.map((t) => {
       const versorgung = versorgungFuerEngine(t);
@@ -122,16 +182,18 @@ export function teileAufloesen(body, { engineArt = false } = {}) {
     if (!text) return { teile: [], frage: "Was soll ich rechnen?" };
     const chirurgie = CHIRURGIE.test(text);
     const prothese = PROTHESE.test(text);
+    const wahl = protheseWahl(text, body?.prothese, akte);
     if (chirurgie && prothese) {
       teile = [
         { planart: "impl", versorgung: versorgungFuerEngine({ versorgung: text, zaehne: body?.zaehne, sinus: body?.sinus }) },
-        { planart: protheseArt(text, body?.prothese), versorgung: protheseSatz(text) },
+        { planart: wahl.art, versorgung: protheseSatz(text) },
       ];
     } else {
       const versorgung = versorgungFuerEngine({ versorgung: text, zaehne: body?.zaehne, sinus: body?.sinus });
-      const planart = artAus({ planart: body?.planart, prothese: body?.prothese }, versorgung);
+      const planart = artAus({ planart: body?.planart, prothese: wahl.art }, versorgung);
       teile = [{ planart, versorgung }];
     }
+    versicherungQuelle = wahl.quelle;
   }
   teile = teile.map((t) => (t.planart === "privat" || (engineArt && !t.planart)) && nurKons(t.versorgung)
     ? { ...t, planart: "kons" } : t);
@@ -141,7 +203,7 @@ export function teileAufloesen(body, { engineArt = false } = {}) {
   if (teile.some((t) => !ARTEN.has(t.planart))) {
     return { teile, frage: "Welche Planart: Kassen-HKP, privater Zahnersatz, Implantologie, private Kons oder Füllungs-MKV?" };
   }
-  return { teile, frage: "" };
+  return { teile, frage: "", versicherungQuelle };
 }
 
 function zeilenAus(r) {
@@ -167,18 +229,6 @@ function zeilenAus(r) {
     anzahl: Number(p.anzahl) || 1,
     betrag: zahl(p.betrag ?? (p.preis != null ? Number(p.preis) * (Number(p.anzahl) || 1) : p.summe ?? 0)),
   }));
-}
-
-function gruppen(zeilen) {
-  const map = new Map();
-  for (const z of zeilen) {
-    const key = `${z.ebene}|${z.nr}`;
-    const g = map.get(key) || { ...z, anzahl: 0, betrag: 0 };
-    g.anzahl += z.anzahl;
-    g.betrag = zahl(g.betrag + z.betrag);
-    map.set(key, g);
-  }
-  return [...map.values()];
 }
 
 function summenVon(planart, r) {
@@ -358,34 +408,45 @@ function rechnenTeil(teil, ctx) {
   if (teil.planart === "kons") return K.konsEntwurf(teil.versorgung, befund, { patient });
   if (teil.planart === "mkv") return M.mkvEntwurf(teil.versorgung, befund, { patient, praxis: { plz: ctx.praxisPlz || "", kzvNr: ctx.kzvNr || "" } });
   if (teil.planart === "privat") return P.privatZeEntwurf(teil.versorgung, befund, { patient, implantatSystem: system });
-  return E.hkpEntwurf(teil.versorgung, befund, { patient, einstellungen: ctx.einstellungen || {}, implantatSystem: system }, ctx.listen || {});
+  return E.hkpEntwurf(teil.versorgung, befund, {
+    patient, einstellungen: ctx.einstellungen || {}, implantatSystem: system,
+    ...(ctx.bonus ? { bonus: ctx.bonus, haertefall: ctx.bonus === "100" } : {}),
+  }, ctx.listen || {});
 }
 
 const VORRANG = new Set(["9010", "9040", "9050", "9000", "9100", "9110", "9120", "5000", "5040", "5070"]);
 
-function karteGruppen(zeilen) {
-  const g = gruppen(zeilen);
-  const material = g.filter((z) => z.ebene === "MAT");
-  const labor = g.filter((z) => z.ebene === "BEL" || z.ebene === "BEB");
-  const honorar = g.filter((z) => z.ebene !== "MAT" && z.ebene !== "BEL" && z.ebene !== "BEB");
-  const geordnet = [...honorar.filter((z) => VORRANG.has(z.nr)), ...honorar.filter((z) => !VORRANG.has(z.nr))].slice(0, 10);
-  if (material.length) {
-    geordnet.push({ ebene: "Material", nr: "", anzahl: material.length, betrag: zahl(material.reduce((s, z) => s + z.betrag, 0)) });
+function leistungsname(t) {
+  return zeilenKurz(String(t || "").replace(/\s+Knochenfensterung\b.*/i, "").replace(/\s+Mit einer Leistung\b.*/i, ""));
+}
+
+function rechnungZeilen(zeilen) {
+  const map = new Map();
+  for (const z of zeilen) {
+    const name = leistungsname(z.text);
+    const key = `${z.ebene}|${z.nr}|${name}`;
+    const g = map.get(key) || { ...z, text: name, anzahl: 0, betrag: 0 };
+    g.anzahl += z.anzahl;
+    g.betrag = zahl(g.betrag + z.betrag);
+    map.set(key, g);
   }
-  if (labor.length) {
-    geordnet.push({ ebene: "Labor", nr: "", anzahl: labor.length, betrag: zahl(labor.reduce((s, z) => s + z.betrag, 0)) });
-  }
-  return geordnet;
+  const rang = (z) => (z.ebene === "MAT" ? 2 : z.ebene === "BEL" || z.ebene === "BEB" ? 3 : VORRANG.has(z.nr) ? 0 : 1);
+  const geordnet = [...map.values()].sort((a, b) => rang(a) - rang(b) || String(a.nr).localeCompare(String(b.nr), "de"));
+  const sichtbar = geordnet.slice(0, 18);
+  const zeilenText = sichtbar.map((z) => {
+    const geld = z.betrag ? ` · ${euro(z.betrag)}` : "";
+    return { text: `${z.ebene} ${z.nr}${z.text ? ` ${z.text}` : ""} · ${z.anzahl}×${geld}`.replace(/\s+/g, " ") };
+  });
+  if (geordnet.length > sichtbar.length) zeilenText.push({ text: `${geordnet.length - sichtbar.length} weitere Positionen` });
+  return zeilenText;
 }
 
 function karteBauen(teile, { muster, label, fallTitel }) {
   const items = [];
   for (const t of teile) {
-    for (const g of karteGruppen(t.zeilen)) {
-      const geld = g.betrag ? ` · ${euro(g.betrag)}` : "";
-      const nr = g.nr ? ` ${g.nr}` : "";
-      const name = g.text ? ` ${zeilenKurz(g.text)}` : "";
-      items.push({ icon: "list", level: "info", text: `${t.kurz} · ${g.ebene}${nr}${name} · ${g.anzahl}×${geld}` });
+    items.push({ icon: "list", level: "ok", text: `${t.kurz} · ${t.titel}` });
+    for (const g of rechnungZeilen(t.zeilen)) {
+      items.push({ icon: "list", level: "info", text: `${t.kurz} · ${g.text}` });
     }
     for (const s of summeZeilen(t.planart, t.summen)) {
       items.push({ icon: "euro", level: "ok", text: `${t.kurz} · ${s}` });
@@ -397,7 +458,7 @@ function karteBauen(teile, { muster, label, fallTitel }) {
     title: label || (muster ? "Musterrechnung" : "Rechnung"),
     subtitle: fallTitel,
     heading: "Positionen und Beträge",
-    items: items.slice(0, 24),
+    items: items.slice(0, 48),
     footer: muster ? "Musterrechnung, nichts gespeichert. Beträge nur hier." : "Beträge nur hier. Anlegen erst nach Ihrem Ja.",
   };
 }
@@ -415,15 +476,21 @@ function annahmeSatz(body, ctx) {
 
 export function fallRechnen(body, ctx = {}) {
   const annahme = annahmeSatz(body, ctx);
-  const auf = teileAufloesen(body || {}, { engineArt: Boolean(ctx.muster) });
+  const akte = ctx.akte || akteVon(ctx.patientDaten);
+  const auf = teileAufloesen(body || {}, { engineArt: Boolean(ctx.muster), akte: akte.versicherung });
   if (auf.frage) return { status: "rueckfrage", frage: auf.frage };
+  const kasseText = auf.teile.filter((t) => t.planart === "kasse").map((t) => t.versorgung).join(" ");
+  const bonus = bonusAus(`${body?.versorgung || ""} ${kasseText}`, body?.bonus, akte.bonus);
+  if (!ctx.muster && auf.teile.some((t) => t.planart === "kasse") && !bonus) {
+    return { status: "rueckfrage", frage: "Welcher Bonus steht in der Akte: ohne Bonus, fünf Jahre oder zehn Jahre?" };
+  }
   let befund = Object.keys(ctx.befund || {}).length ? ctx.befund : ctx.muster ? musterBefund(body) : {};
   let befundAnnahme = "";
   if (ctx.muster && !Object.keys(befund).length) {
     befund = standardBefund(auf.teile);
     befundAnnahme = befundSatz(befund);
   }
-  const rctx = { ...ctx, befund };
+  const rctx = { ...ctx, befund, bonus };
   // Der Musterbefund beschreibt Zahnersatz ("25 k"); Zahnerhaltung und Implantologie rechnen im Muster ohne ihn,
   // sonst sperrt die Krone an 25 die Beispielfüllung.
   const ohneMusterBefund = { ...rctx, befund: {} };
@@ -491,7 +558,13 @@ export function fallRechnen(body, ctx = {}) {
   // Modellsatz ("Als Beispiel nehme ich eine Keramikkrone") widerspräche dort der Rechnung. In der Implantologie
   // nennt er den Beispielzahn, ohne den die Engine gar nicht rechnet.
   const modellAnnahme = fertig.every((t) => t.planart === "impl") ? annahme : "";
-  const message = [modellAnnahme, befundAnnahme, ...angenommen, satz, ...hinweis, begleitung, schluss]
+  const akteSatz = auf.versicherungQuelle === "akte"
+    ? (akte.versicherung === "privat" ? "Die Versicherung steht in der Akte: privat." : "Die Versicherung steht in der Akte: gesetzlich.")
+    : "";
+  const bonusSatz = !ctx.muster && bonus && akte.bonus === bonus && !bonusAus(body?.versorgung || "", body?.bonus, "")
+    ? `Der Bonus steht in der Akte: ${bonus} Prozent.`
+    : "";
+  const message = [modellAnnahme, akteSatz, bonusSatz, befundAnnahme, ...angenommen, satz, ...hinweis, begleitung, schluss]
     .filter(Boolean).join(" ");
   return {
     status: "ok",

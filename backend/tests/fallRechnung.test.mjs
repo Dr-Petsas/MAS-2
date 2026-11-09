@@ -219,6 +219,17 @@ test("Keine Begleitzeilen bei Implantaten, auf Implantatpfeilern und im Patiente
   assert.deepEqual(nrn(patient), []);
 });
 
+test("Akte setzt Versicherung und Bonus, fehlender Bonus wird gefragt", () => {
+  const akte = fallRechnen({ versorgung: SATZ }, { muster: false, befund: {}, akte: { versicherung: "kasse", bonus: "75" } });
+  assert.equal(akte.status, "ok", akte.frage || "");
+  assert.equal(akte.teile.find((t) => t.planart === "kasse").r.plan.zuschuss.bonus, "75");
+  assert.match(akte.message, /Akte: gesetzlich/);
+  assert.match(akte.message, /75 Prozent/);
+  const ohne = fallRechnen({ versorgung: "Brücke von 14 auf 16", planart: "kasse" }, { muster: false, befund: { 15: "f", 14: "ww", 16: "ww" } });
+  assert.equal(ohne.status, "rueckfrage");
+  assert.match(ohne.frage, /Bonus/);
+});
+
 test("Prothese ohne Kasse oder Privat bleibt eine Frage", () => {
   const x = fallRechnen({ versorgung: SATZ }, { muster: true, befund: {} });
   assert.equal(x.status, "rueckfrage");

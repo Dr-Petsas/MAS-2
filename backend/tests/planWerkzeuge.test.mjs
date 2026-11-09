@@ -103,7 +103,9 @@ test("Engine-Rueckfrage kommt als Satz zurueck, ohne Gespraechszustand", async (
 });
 
 test("Kassen-HKP auf dem Befund vom Handy (offene Aenderung 45 ww gilt), Freigabe legt den HKP an", async () => {
-  const v = await rufe("/tools/plan-rechnen", { planart: "kasse", versorgung: "Brücke von 45 auf 47" });
+  const ohne = await rufe("/tools/plan-rechnen", { planart: "kasse", versorgung: "Brücke von 45 auf 47" });
+  assert.match(ohne.message, /Bonus steht in der Akte/);
+  const v = await rufe("/tools/plan-rechnen", { planart: "kasse", versorgung: "Brücke von 45 auf 47, ohne Bonus" });
   assert.equal(v.rueckfrage, "freigabe", v.message);
   assert.match(v.message, /Bevor ich anlege/);
   const fertig = await rufe("/tools/plan-ablegen", { freigabe: true });
@@ -122,7 +124,7 @@ test("Privatplan: planart privat rechnet mit der Privat-Engine", async () => {
 });
 
 test("Stehende Zaehne: Rueckfrage gibt die Zahnliste still mit, entfernen markiert sie auf dem Handy (Anruf 06.11.2026 08:38)", async () => {
-  const allOn = "All-on-6 im Oberkiefer auf den Implantaten 16, 13, 14, 23, 24 und 26, festsitzende Prothese";
+  const allOn = "All-on-6 im Oberkiefer auf den Implantaten 16, 13, 14, 23, 24 und 26, festsitzende Prothese, ohne Bonus";
   try {
     const frage = await rufe("/tools/plan-rechnen", { planart: "kasse", versorgung: allOn });
     assert.equal(frage.rueckfrage, "engine", frage.message);

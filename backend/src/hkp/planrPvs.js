@@ -112,6 +112,9 @@ export function alsPatient(p) {
     hasPhone: false,
     createdAt: null,
     quelle: "pvs",
+    ...(p?.versicherung || p?.insurance ? { versicherung: String(p.versicherung || p.insurance) } : {}),
+    ...(p?.privateInsurance === true || p?.privateInsurance === false ? { privateInsurance: p.privateInsurance === true } : {}),
+    ...(p?.bonus || p?.bonusheft ? { bonus: String(p.bonus || p.bonusheft) } : {}),
   };
 }
 

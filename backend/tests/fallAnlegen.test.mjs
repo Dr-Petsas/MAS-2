@@ -80,7 +80,7 @@ test("Musterrechnung ohne Patient: Karte mit Beträgen, Ablegen verweigert", asy
 });
 
 test("mit Patient: ein Fall aus Implantation und Kassen-HKP, doch nicht verwirft beide", async () => {
-  const v = await rufe("/tools/fall-rechnen", { name: "Olga Oberkiefertest", versorgung: SATZ, prothese: "kasse" });
+  const v = await rufe("/tools/fall-rechnen", { name: "Olga Oberkiefertest", versorgung: SATZ, prothese: "kasse", bonus: "70" });
   assert.equal(v.rueckfrage, "freigabe", v.message);
   assert.match(v.message, /Soll ich den Entwurf so anlegen\?/);
   assert.doesNotMatch(v.message, /€|\beuro\b/i);
