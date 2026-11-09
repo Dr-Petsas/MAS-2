@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 6fa7948b7a59)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 558ba9bbcfed)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -27324,11 +27324,6 @@ function therapieAnwenden(regel, zaehne, plan) {
 }
 //#endregion
 //#region src/engine/aufwertung.ts
-/**
-* Übernimmt ein Ergebnis der Regelengine in den Plan. Erhalten bleiben manuelle Befunde/Positionen,
-* die Labor-Zuordnung (Eigen/Fremd) gleicher Positionen und – nach einem XML-Import – die
-* Fremdlabor-Positionen aus der Laborrechnung.
-*/
 function regelUebernehmen(p, regel, zaehne = p.zaehne, laborFuer = () => void 0) {
 	const schluessel = (x) => `${x.ebene}|${x.nr}|${x.zahn}`;
 	const bisher = new Map(p.positionen.filter((x) => x.labor).map((x) => [schluessel(x), x.labor]));
@@ -29069,10 +29064,7 @@ var zahnStehtNoch = (b, z) => {
 };
 /** Erzeugt aus Auftrag und Befund einen gerechneten Plan – oder eine Rückfrage. */
 function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
-	const befund = Object.fromEntries(Object.entries(befundRoh).map(([z, b]) => {
-		const code = (b ?? "").trim().toLowerCase();
-		return [z, code === "j" ? "i" : code];
-	}));
+	const befund = Object.fromEntries(Object.entries(befundRoh).map(([z, b]) => [z, (b ?? "").trim().toLowerCase()]));
 	const hinweise = [];
 	const teile = auftrag.teile?.length ? auftrag.teile : [auftrag];
 	for (const teil of teile) for (const z of teil.entfernen) if (!implantatOhneAufbau(befund[z])) befund[z] = "x";
@@ -29683,7 +29675,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-09 08:00";
+var ENGINE_STAND = "2026-11-09 17:43";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
@@ -29743,27 +29735,27 @@ function zusammenfassen(plan, e) {
 	};
 }
 var katalogHatLabor = (praxis) => !!(praxis.katalog?.bel?.length || praxis.katalog?.eigenlabor?.length || praxis.eigen?.length);
+/** Dieselbe Katalogrechnung für Clara und den geöffneten Planer: Eigenlabor und Analognummern. */
+function planMitKatalog(plan, praxis = {}, fremd = false) {
+	let n = plan;
+	if (!fremd && katalogHatLabor(praxis) && n.einstellungen.labor === "gewerbe") n = {
+		...n,
+		einstellungen: {
+			...n.einstellungen,
+			labor: "praxis"
+		}
+	};
+	return analogUebernehmen(n, listenFuer(n, praxis));
+}
 /** Gesprochener Auftrag + Befund → gerechneter HKP-Entwurf oder Rückfrage */
 function hkpEntwurf(auftragText, befund, optionen = {}, praxis = {}) {
 	const r = planAusAuftrag(auftragVerstehen(auftragText), befund, optionen);
 	if (r.status !== "ok") return r;
 	const fremd = /\bfremdlabor\b|\bgewerbelabor\b/i.test(auftragText);
 	const hinweise = [...r.hinweise];
-	let plan = r.plan;
-	if (!fremd && katalogHatLabor(praxis) && plan.einstellungen.labor !== "praxis") {
-		plan = {
-			...plan,
-			einstellungen: {
-				...plan.einstellungen,
-				labor: "praxis"
-			}
-		};
-		hinweise.push("Eigenlabor der Praxis: Laborpositionen und BEL-Preise aus dem Praxiskatalog.");
-	}
-	const listen = listenFuer(plan, praxis);
-	const mitAnalog = analogUebernehmen(plan, listen);
-	if (mitAnalog !== plan) hinweise.push("Analogpositionen der Praxis ersetzen die zugehörigen GOZ-Nummern.");
-	plan = mitAnalog;
+	const plan = planMitKatalog(r.plan, praxis, fremd);
+	if (plan.einstellungen.labor === "praxis" && r.plan.einstellungen.labor !== "praxis") hinweise.push("Eigenlabor der Praxis: Laborpositionen und BEL-Preise aus dem Praxiskatalog.");
+	if (plan.positionen !== r.plan.positionen) hinweise.push("Analogpositionen der Praxis ersetzen die zugehörigen GOZ-Nummern.");
 	const ergebnis = rechnen(plan, praxis);
 	return {
 		status: "ok",
@@ -30059,4 +30051,4 @@ function positionPruefen(e, listen, frage) {
 	};
 }
 //#endregion
-export { BEFUND_KUERZEL, EIGEN_KASSE_MIN, ENGINE_STAND, LABOR_SPRECH, PRIVAT_STUFEN, STANDARD_LISTEN, WERKSTOFF_SPRECH, ZUSATZ_STUFEN, aufZielpreis, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundDatei, befundDateiName, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, preisSpanne, rechnen, systemSprech, zahlwort, zusammenfassen };
+export { BEFUND_KUERZEL, EIGEN_KASSE_MIN, ENGINE_STAND, LABOR_SPRECH, PRIVAT_STUFEN, STANDARD_LISTEN, WERKSTOFF_SPRECH, ZUSATZ_STUFEN, aufZielpreis, auftragVerstehen, ausfuehrungAendern, ausfuehrungIn, ausfuehrungSatz, ausfuehrungVon, befundAusAuftrag, befundDatei, befundDateiName, befundVerstehen, berechnen, hkpEntwurf, kurzText, listenFuer, planAusAuftrag, planMitKatalog, planNormalisieren, positionAendern, positionPruefen, positionVerstehen, preisSpanne, rechnen, systemSprech, zahlwort, zusammenfassen };
