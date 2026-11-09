@@ -123,6 +123,15 @@ async function planrBefund(clientId, patient, { body = null, ms, pfad = "/api/in
 }
 
 const obj = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
+/** Implantat ohne Suprakonstruktion ist immer i. Ein exportiertes j wird dabei zu i. */
+function implantatKuerzel(zaehne) {
+  const aus = {};
+  for (const [z, c] of Object.entries(obj(zaehne))) {
+    const code = String(c ?? "").trim();
+    aus[z] = code.toLowerCase() === "j" ? "i" : code;
+  }
+  return aus;
+}
 
 /**
  * Aktueller Befund im Praxisprogramm: { ok:true, pvs, datum, befund, nummer, offen, offenWer, stand, geschrieben } | { ok:false, pvs, meldung } | null.
@@ -134,7 +143,7 @@ export async function pvsBefund(clientId, patient) {
   if (!d?.ok) return d;
   return {
     ok: true, pvs: String(d.pvs || "dem Praxisprogramm"), datum: String(d.datum || ""),
-    befund: obj(d.zaehne), nummer: String(d.patient || ""), offen: obj(d.offen), offenWer: String(d.offenWer || ""),
+    befund: implantatKuerzel(obj(d.zaehne)), nummer: String(d.patient || ""), offen: implantatKuerzel(obj(d.offen)), offenWer: String(d.offenWer || ""),
     stand: String(d.stand || ""), geschrieben: String(d.geschrieben || ""),
   };
 }

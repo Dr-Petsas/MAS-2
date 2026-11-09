@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 edd6f7ebf420)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 0e0841676e33)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -22766,8 +22766,8 @@ var BEFUND_KUERZEL = {
 	e: "ersetzter Zahn",
 	ew: "ersetzter, aber erneuerungsbedürftiger Zahn",
 	f: "fehlender Zahn",
+	i: "Implantat ohne Suprakonstruktion",
 	ix: "zu entfernendes Implantat",
-	j: "Implantat ohne Suprakonstruktion",
 	k: "klinisch intakte Krone",
 	kw: "erneuerungsbedürftige Krone",
 	pkw: "erneuerungsbedürftige Teilkrone",
@@ -26856,8 +26856,8 @@ function befund(nr, zahnGebiet, anzahl = 1) {
 	};
 }
 var kuerzel = (z) => (z?.B ?? "").trim().toLowerCase();
-/** i gesprochen, j aus DS-Win: Implantat ohne Suprakonstruktion. ix dito, schon als nicht erhaltungswürdig markiert. */
-var implantatNackt = (k) => k === "i" || k === "ix" || k === "j";
+/** i: Implantat ohne Suprakonstruktion. ix: schon als nicht erhaltungswürdig markiert. */
+var implantatNackt = (k) => k === "i" || k === "ix";
 /** Analysiert einen Kiefer: vorhandene Zähne, Lücken, Freiend */
 function kieferAnalyse(reihe, zaehne) {
 	const sitz = reihe.filter((z) => kuerzel(zaehne[z]) !== ")(");
@@ -29016,8 +29016,8 @@ var fehlt = (b, z) => FEHLEND.has((b[z] ?? "").trim().toLowerCase());
 /** i/sk/st: Implantat oder implantatgetragene Krone. ix kommt raus und ist ebenfalls kein Zahn. */
 var IMPLANTAT_BLEIBT = /^(i|sk|skw|st|stw)$/;
 var implantatBleibt = (code) => IMPLANTAT_BLEIBT.test(code.trim().toLowerCase());
-/** Implantat ohne Suprakonstruktion. i im Gespräch, j so aus DS-Win. ix ist schon als nicht erhaltungswürdig markiert und bleibt trotzdem keine Lücke, die man noch einmal fragen muss. Es stört eine schleimhautgetragene Prothese nicht. */
-var implantatOhneAufbau = (code) => /^(i|ix|j)$/.test((code ?? "").trim().toLowerCase());
+/** Implantat ohne Suprakonstruktion. Das Kürzel ist immer i. ix ist schon als nicht erhaltungswürdig markiert und bleibt keine Lücke, die man noch einmal fragen muss. */
+var implantatOhneAufbau = (code) => /^(i|ix)$/.test((code ?? "").trim().toLowerCase());
 var zahnStehtNoch = (b, z) => {
 	if (!(z in b) || fehlt(b, z)) return false;
 	const k = (b[z] ?? "").trim().toLowerCase();
@@ -29025,7 +29025,10 @@ var zahnStehtNoch = (b, z) => {
 };
 /** Erzeugt aus Auftrag und Befund einen gerechneten Plan – oder eine Rückfrage. */
 function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
-	const befund = Object.fromEntries(Object.entries(befundRoh).map(([z, b]) => [z, (b ?? "").trim().toLowerCase()]));
+	const befund = Object.fromEntries(Object.entries(befundRoh).map(([z, b]) => {
+		const code = (b ?? "").trim().toLowerCase();
+		return [z, code === "j" ? "i" : code];
+	}));
 	const hinweise = [];
 	const teile = auftrag.teile?.length ? auftrag.teile : [auftrag];
 	for (const teil of teile) for (const z of teil.entfernen) if (!implantatOhneAufbau(befund[z])) befund[z] = "x";
@@ -29634,7 +29637,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-09 07:04";
+var ENGINE_STAND = "2026-11-09 07:45";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {

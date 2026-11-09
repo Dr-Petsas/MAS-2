@@ -385,14 +385,14 @@ Antworte NUR mit JSON:
 {"befund": {}, "rest": {}, "plan": "", "rechnen": false, "uebertragen": false, "abbrechen": false, "sagen": ""}
 
 befund: nur Zaehne, deren Befund sich durch das Gesagte aendert, sonst {}. Werte sind eHKP-Kuerzel:
-"" natuerlicher Zahn ohne Befund (steht), "f" fehlt, "i" Implantat, "k" intakte Krone, "kw" erneuerungsbeduerftige Krone,
+"" natuerlicher Zahn ohne Befund (steht), "f" fehlt, "i" Implantat ohne Suprakonstruktion, "k" intakte Krone, "kw" erneuerungsbeduerftige Krone,
 "ww" weitgehend zerstoert (braucht Krone), "pw" partielle Defekte, "x" nicht erhaltungswuerdig, "e" ersetzter Zahn,
 "b" Brueckenglied, "t" Teleskopkrone, "tw" erneuerungsbeduerftige Teleskopkrone, "sk" implantatgetragene Krone,
-"ix" zu entfernendes Implantat, "j" Implantat ohne Suprakonstruktion (so schreibt es DS-Win), ")(" Lueckenschluss.
-"Das sind Implantate" heisst "i".
-i und j sind gesetzte Implantate ohne Suprakonstruktion. Sie sind keine Zaehne und stoeren eine Totalprothese nicht.
-Frag nie, ob sie entfernt werden. Schreib sie nicht als "werden entfernt" in den Plan und setze ihren Befund nicht auf x oder leer.
-Sie bleiben liegen und gelten wie fehlende Zaehne. Nur eine Implantatkrone (sk, st, so) oder ein natuerlicher Zahn ist eine Rueckfrage.
+"ix" zu entfernendes Implantat, ")(" Lueckenschluss.
+"Das sind Implantate" oder "Implantat ohne Suprakonstruktion" heisst "i". Das Kuerzel fuer ein gesetztes Implantat ohne Suprakonstruktion ist immer i.
+i ist kein Zahn und stoert eine Totalprothese nicht.
+Frag nie, ob es entfernt wird. Schreib es nicht als "werden entfernt" in den Plan und setze seinen Befund nicht auf x oder leer.
+Es bleibt liegen und gilt wie ein fehlender Zahn. Nur eine Implantatkrone oder ein natuerlicher Zahn ist eine Rueckfrage.
 rest: gilt fuer alle Zaehne eines Kiefers, die nicht in befund stehen. "Alle anderen im Oberkiefer fehlen" heisst
 "rest": {"OK": "f"}, fuer den Unterkiefer "UK". Sonst {}.
 
@@ -403,7 +403,7 @@ Formen: "All-on-6-Prothese im Oberkiefer und All-on-6-Prothese im Unterkiefer", 
 "Brücke von 14 bis 16", "Krone auf 26", "Kronen auf 11 und 21, vollverblendet", "Implantatkrone auf 36".
 Was mit stehenden natuerlichen Zaehnen geschieht, haengst du an, die Zaehne mit "und" verbunden:
 "Totalprothese im Oberkiefer, 16 und 14 und 13 werden entfernt" oder "Totalprothese im Oberkiefer, 23 und 24 bleiben erhalten".
-Implantate ohne Suprakonstruktion (i, j) haengst du nicht an.
+Implantate ohne Suprakonstruktion (i) haengst du nicht an.
 Eine Deckprothese auf Implantaten ist eine Locator- oder Stegprothese. Material und Analogpositionen, die er nennt,
 uebernimmst du woertlich in den Satz. Erfinde keine Analogziffer.
 
@@ -422,15 +422,15 @@ Meldet die Software eine Rueckfrage, loese sie selbst, wenn das Gespraech die An
 (plan anpassen, rechnen), sonst frag ihn genau danach.`;
 
 const KUERZEL_KURZ = {
-  "": "steht", f: "fehlt", i: "Implantat ohne Suprakonstruktion", j: "Implantat ohne Suprakonstruktion",
+  "": "steht", f: "fehlt", i: "Implantat ohne Suprakonstruktion",
   ix: "Implantat nicht erhaltungswürdig", x: "nicht erhaltungswürdig", k: "Krone", kw: "Krone erneuerungsbedürftig",
   ww: "braucht Krone", e: "ersetzt", b: "Brückenglied", t: "Teleskop", sk: "Implantatkrone",
 };
-const NACKTES_IMPLANTAT = new Set(["i", "j", "ix"]);
+const NACKTES_IMPLANTAT = new Set(["i", "ix"]);
 const WILL_ENTFERNEN = /\b(?:entfern\w*|extrah\w*|explant\w*|zieh\w*|gezogen|heraus)\b/i;
 
 /**
- * Telefon-Clara plant selbst und haelt i/j fuer Zaehne. Ohne ausdrückliches Entfernen im Satz des Zahnarztes
+ * Telefon-Clara plant selbst und haelt i fuer einen Zahn. Ohne ausdrückliches Entfernen im Satz des Zahnarztes
  * bleiben nackte Implantate liegen: kein Befundwechsel auf leer/x/ix, kein "werden entfernt", keine Entfernungsfrage.
  */
 export function nackteNichtEntfernen(d, befund, satz) {

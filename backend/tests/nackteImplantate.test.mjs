@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { befundListe, nackteNichtEntfernen } from "../src/hkp/antwortVerstehen.js";
 
-const befund = { 46: "j", 44: "j", 43: "j", 33: "j", 34: "j", 36: "j", 41: "f" };
+const befund = { 46: "i", 44: "i", 43: "i", 33: "i", 34: "i", 36: "i", 41: "f" };
 
-test("DS-Win j liest das Telefon als Implantat ohne Suprakonstruktion", () => {
+test("Implantat steht als i", () => {
   assert.match(befundListe(befund), /Implantat ohne Suprakonstruktion: 46, 44, 43, 33, 34, 36/);
+  assert.doesNotMatch(befundListe(befund), /\bj\b/);
 });
 
 test("Entfernungsfrage über nackte Implantate wird zur Planung", () => {
