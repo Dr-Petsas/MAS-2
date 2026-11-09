@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 0e0841676e33)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 cca05376f030)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -25910,6 +25910,41 @@ function finden(liste, nr, norm = (s) => s.trim().toLowerCase()) {
 	const n = norm(nr);
 	return liste?.eintraege.find((e) => norm(e.nr) === n);
 }
+var nummer = (s) => s.trim().toLowerCase();
+/** Praxiseigene Analogposition zu einer GOZ-Nummer: analogZu, Endung a (2330a) oder Textanfang „2330 analog“. */
+function analogPosition(liste, nr) {
+	const ziel = nummer(nr);
+	if (!liste || !/^\d{4}$/.test(ziel)) return void 0;
+	const treffer = liste.eintraege.filter((e) => {
+		if (nummer(e.nr) === ziel) return false;
+		if (e.analogZu && nummer(e.analogZu) === ziel) return true;
+		const endung = nummer(e.nr).match(/^(\d{4})a$/);
+		if (endung && endung[1] === ziel) return true;
+		const text = e.text.trim().toLowerCase().match(/^(\d{4})\s+analog\b/);
+		return !!text && text[1] === ziel;
+	});
+	return treffer.length === 1 ? treffer[0] : void 0;
+}
+/** GOZ-Zeilen des Plans auf die Analogposition der Praxis umstellen, wenn es genau eine gibt. */
+function analogUebernehmen(plan, listen) {
+	let n = 0;
+	const positionen = plan.positionen.map((p) => {
+		if (p.ebene !== "GOZ") return p;
+		const a = analogPosition(listen.goz, p.nr);
+		if (!a || nummer(a.nr) === nummer(p.nr)) return p;
+		n += 1;
+		return {
+			...p,
+			nr: a.nr,
+			text: p.text || a.text,
+			faktor: p.faktor ?? a.faktor
+		};
+	});
+	return n ? {
+		...plan,
+		positionen
+	} : plan;
+}
 var bemaNorm = (s) => s.replace(/\s/g, "").toLowerCase();
 /** Zähne einer Zahn-/Gebietsangabe wie „15-13“, „16,26“, „OK“ oder „UK links“ */
 function zaehneVon(gebiet) {
@@ -25962,7 +25997,14 @@ function versorgungsartErmitteln(plan) {
 	if (andersartigeZaehne(plan).size) return "andersartig";
 	return Object.values(plan.zaehne).some((v) => v.TP.trim() && v.TP.trim().toUpperCase() !== v.R) || plan.positionen.some((p) => p.ebene === "GOZ" || p.ebene === "BEB") ? "gleichartig" : "regel";
 }
-function positionBerechnen(p, listen, plan) {
+function positionBerechnen(roh, listen, plan) {
+	const analog = roh.ebene === "GOZ" ? analogPosition(listen.goz, roh.nr) : void 0;
+	const p = analog && nummer(analog.nr) !== nummer(roh.nr) ? {
+		...roh,
+		nr: analog.nr,
+		text: roh.text || analog.text,
+		faktor: roh.faktor ?? analog.faktor
+	} : roh;
 	const anzahl = p.anzahl || 0;
 	const basis = {
 		...p,
@@ -29637,7 +29679,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-09 07:45";
+var ENGINE_STAND = "2026-11-09 07:58";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
@@ -29696,17 +29738,35 @@ function zusammenfassen(plan, e) {
 		warnungen: e.hinweise.filter((h) => h.stufe !== "info").map((h) => h.text)
 	};
 }
+var katalogHatLabor = (praxis) => !!(praxis.katalog?.bel?.length || praxis.katalog?.eigenlabor?.length || praxis.eigen?.length);
 /** Gesprochener Auftrag + Befund → gerechneter HKP-Entwurf oder Rückfrage */
 function hkpEntwurf(auftragText, befund, optionen = {}, praxis = {}) {
 	const r = planAusAuftrag(auftragVerstehen(auftragText), befund, optionen);
 	if (r.status !== "ok") return r;
-	const ergebnis = rechnen(r.plan, praxis);
+	const fremd = /\bfremdlabor\b|\bgewerbelabor\b/i.test(auftragText);
+	const hinweise = [...r.hinweise];
+	let plan = r.plan;
+	if (!fremd && katalogHatLabor(praxis) && plan.einstellungen.labor !== "praxis") {
+		plan = {
+			...plan,
+			einstellungen: {
+				...plan.einstellungen,
+				labor: "praxis"
+			}
+		};
+		hinweise.push("Eigenlabor der Praxis: Laborpositionen und BEL-Preise aus dem Praxiskatalog.");
+	}
+	const listen = listenFuer(plan, praxis);
+	const mitAnalog = analogUebernehmen(plan, listen);
+	if (mitAnalog !== plan) hinweise.push("Analogpositionen der Praxis ersetzen die zugehörigen GOZ-Nummern.");
+	plan = mitAnalog;
+	const ergebnis = rechnen(plan, praxis);
 	return {
 		status: "ok",
-		plan: r.plan,
+		plan,
 		ergebnis,
-		zusammenfassung: zusammenfassen(r.plan, ergebnis),
-		hinweise: r.hinweise
+		zusammenfassung: zusammenfassen(plan, ergebnis),
+		hinweise
 	};
 }
 var EINER = {
