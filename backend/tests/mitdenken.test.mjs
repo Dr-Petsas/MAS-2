@@ -2,7 +2,7 @@
 // planart impl darf daraus keine neue Implantation machen.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { befundMerken, planartKorrigieren } from "../src/hkp/mitdenken.js";
+import { befundMerken, planartKorrigieren, rueckfrageMerken } from "../src/hkp/mitdenken.js";
 
 const OK = ["18", "17", "16", "15", "14", "13", "12", "11", "21", "22", "23", "24", "25", "26", "27", "28"];
 const UK = ["48", "47", "46", "45", "44", "43", "42", "41", "31", "32", "33", "34", "35", "36", "37", "38"];
@@ -60,4 +60,15 @@ test("planart privat und der Notaus bleiben unangetastet", () => {
   } finally {
     delete process.env.MAS_PLAN_MITDENKEN;
   }
+});
+
+// Gespräch 14.11.2026 (Appler): Brücke 17-15 bestellt, 26 muss laut Befund raus.
+// Clara fragt nach der zweiten Brücke; das Modell bekommt den Weg für Ja und Nein.
+test("weitere Lücke: Merkzettel nennt Vorschlag für Ja und erhalten für Nein", () => {
+  const m = rueckfrageMerken("weitere_luecke", ["26"], "Brücke von 25 auf 27");
+  assert.match(m, /nicht sprechen/);
+  assert.ok(m.includes('"Brücke von 25 auf 27"'));
+  assert.ok(m.includes('erhalten="26"'));
+  assert.equal(rueckfrageMerken("weitere_luecke", [], "x"), "");
+  assert.ok(rueckfrageMerken("restzaehne", ["13"]).includes('entfernen="13"'));
 });

@@ -120,8 +120,16 @@ export function entfernenMarken(stand, zaehne) {
 const ZAHN_RUECKFRAGE = new Set(["zahn_vorhanden", "glied_vorhanden", "restzaehne"]);
 
 /** Rueckfrage der Engine zu stehenden Zaehnen: welche Zaehne gemeint sind, sieht nur das Modell. */
-export function rueckfrageMerken(grund, zaehne) {
+export function rueckfrageMerken(grund, zaehne, vorschlag = "") {
   const zs = zahnListe(zaehne);
+  if (an() && String(grund || "") === "weitere_luecke" && zs.length) {
+    const l = zs.join(", ");
+    const dazu = vorschlag ? `"${vorschlag}"` : "die Versorgung, die der Chef dafür nennt,";
+    return `Offene Rückfrage zur Lücke ${l}, nicht sprechen: Will der Chef sie mitplanen, rechne sofort erneut, `
+      + `versorgung = bisherige Versorgung und zusätzlich ${dazu}, ohne nachzufragen. `
+      + `Soll die Lücke ohne Ersatz bleiben: dieselbe Versorgung und erhalten="${l}". `
+      + `Fragt er nach, erkläre kurz: Der Befund zeigt dort eine Lücke, die Kasse sieht dafür eine eigene Regelversorgung vor.`;
+  }
   if (!an() || !ZAHN_RUECKFRAGE.has(String(grund || "")) || !zs.length) return "";
   const liste = zs.join(", ");
   return `Offene Rückfrage zu den Zähnen ${liste}, nicht sprechen: Sagt der Chef, sie kommen raus, `

@@ -1855,11 +1855,11 @@ async function fachRechnen(clientId, patient, b, st, p, { privat, sagen, nurVors
   const r = alsPrivat
     ? P.privatZeEntwurf(st.plan, befundMap, { patient: patientDaten, implantatSystem: system })
     : E.hkpEntwurf(st.plan, befundMap, {
-      patient: patientDaten, einstellungen: praxis.einstellungen, implantatSystem: system, bonus, haertefall: bonus === "100",
+      patient: patientDaten, einstellungen: praxis.einstellungen, implantatSystem: system, bonus, haertefall: bonus === "100", lueckenFragen: nurVorschau,
     }, praxisListen(praxis));
   if (r.status !== "ok") {
     const frage = r.grund === "restzaehne" && r.zaehne?.length ? restFrage(r.zaehne) : r.frage || "";
-    return { rueck: `Die Engine kann "${st.plan}" mit diesem Befund nicht rechnen: ${frage || r.grund}`, frage, grund: r.grund, zaehne: r.zaehne };
+    return { rueck: `Die Engine kann "${st.plan}" mit diesem Befund nicht rechnen: ${frage || r.grund}`, frage, grund: r.grund, zaehne: r.zaehne, vorschlag: r.vorschlag };
   }
   const frage = alsPrivat ? null : ausfuehrungRueckfrage(clientId, patient, st.plan, auftrag, r, system);
   if (frage) return { rueck: `Vor dem Rechnen fehlt die Ausführung (einmal fragen, sonst gilt der Praxis-Standard): ${frage.message}`, frage: frage.message };
@@ -2917,7 +2917,7 @@ router.post("/tools/plan-rechnen", async (req, res) => {
       : { ok: false, name: pb?.pvs || "", befund: {}, offen: {} };
     const r = await fachRechnen(clientId, patient, b, { plan: versorgung, offen: { ...pz.offen }, uebertragen: "" }, pz,
       { privat: art === "privat", sagen: "", nurVorschau: true });
-    if (r.rueck) return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "engine", message: r.frage || r.rueck }), rueckfrageMerken(r.grund, r.zaehne)));
+    if (r.rueck) return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "engine", message: r.frage || r.rueck }), rueckfrageMerken(r.grund, r.zaehne, r.vorschlag)));
     return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "freigabe", message: r.vorschau, ...(r.doppelt?.length ? { doppelt: r.doppelt.map((h) => h.id) } : {}) })));
   } catch (e) {
     log.error?.(`[hkp] plan-rechnen: ${e?.stack || e}`);

@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 1b26260e038e)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 767eaa7e6264)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -23832,8 +23832,45 @@ var ZUSATZ_STUFEN = [
 	{
 		titel: "Instrumentelle Planung",
 		leistungen: "+ GOZ 8050, 8080, 8090"
+	},
+	{
+		titel: "Anästhesie und Vitalität",
+		leistungen: "+ GOZ 0090 je Zahn bzw. Implantatkrone, 0070 je Sitzung"
+	},
+	{
+		titel: "Elektronische Aufzeichnung",
+		leistungen: "+ GOZ 8035 und 8065 statt 8020 und 8050, 8100 je Zahnpaar (Brücke, Teleskop, ab 4 Implantaten)"
 	}
 ];
+/** Kürzel aus der Wissensbasis (Privat-HKP exoten.json): Brücke und Teleskop tragen die elektronische Aufzeichnung */
+var BRUECKE = /* @__PURE__ */ new Set([
+	"B",
+	"BV",
+	"BM",
+	"ABV",
+	"ABM",
+	"ZAB",
+	"SB",
+	"SBV",
+	"SBM",
+	"A"
+]);
+var TELESKOP = /* @__PURE__ */ new Set([
+	"T",
+	"TZ",
+	"TZV",
+	"TV",
+	"TM",
+	"T2",
+	"T2V",
+	"T2M",
+	"ST",
+	"STZ",
+	"STZV",
+	"STV",
+	"STM"
+]);
+var IMPLANTAT_KERAMIK = /* @__PURE__ */ new Set(["SKM", "SKMO"]);
 /** Kieferhälfte bzw. Frontzahnbereich im Sinne der GOZ (13–23 und 33–43 = Frontzahnbereich) */
 function bereich(zahn) {
 	const q = zahn[0];
@@ -23865,16 +23902,21 @@ function zusatzleistungen(plan) {
 	};
 	const versorgung = (z) => (plan.zaehne[z].TP.trim() || plan.zaehne[z].R.trim()).toUpperCase();
 	const zaehne = Object.keys(plan.zaehne);
-	const anZahn = (z) => plan.positionen.filter((p) => p.zahn === z);
+	const anZahn = (z) => plan.positionen.filter((p) => p.zahn === z || p.zahn.split(",").some((t) => t.trim() === z));
 	/** natürliche Zähne, die laut Planung eine Krone, Teilkrone, Teleskop- oder Ankerkrone erhalten (Zeile R allein reicht nicht – die Regelbrücke kann entfallen) */
 	const fehlt = (z) => FEHLEND.has(plan.zaehne[z].B.trim().toLowerCase()) || /^(B|E)/.test(plan.zaehne[z].R.trim().toUpperCase());
 	const implantat = (z) => /^S/.test(versorgung(z)) || /^[si]/.test(plan.zaehne[z].B.trim().toLowerCase());
 	const praepariert = zaehne.filter((z) => !fehlt(z) && !implantat(z) && anZahn(z).some((p) => p.ebene === "BEMA" && /^(20[abc]|91[abcd])$/.test(p.nr) || p.ebene === "GOZ" && /^(22[012]0|50[0-4]0)$/.test(p.nr)));
 	/** vollkeramische bzw. keramisch vollverblendete Kronen/Teilkronen – adhäsiv zu befestigen (auch vom Eigenlabor-Regler aufgewertete) */
 	const adhaesiv = praepariert.filter((z) => /^(K|PK)M/.test(versorgung(z)) || anZahn(z).some((p) => p.ebene === "BEB" && (p.nr === "2281" || p.nr === "2534")));
-	const implantatKronen = zaehne.filter((z) => /^S(K|B|T)/.test(versorgung(z)) && anZahn(z).some((p) => p.ebene === "GOZ"));
+	const hatGoz = plan.positionen.some((p) => p.ebene === "GOZ");
+	const implantatKronen = zaehne.filter((z) => /^S(K|B|T)/.test(versorgung(z)) && (anZahn(z).some((p) => p.ebene === "GOZ") || hatGoz));
+	/** keramische Implantatkronen werden wie Keramikkronen adhäsiv befestigt (Wissensbasis Suprakonstruktion) */
+	const adhaesivImplantat = implantatKronen.filter((z) => IMPLANTAT_KERAMIK.has(versorgung(z)));
+	const teleskope = zaehne.filter((z) => TELESKOP.has(versorgung(z)));
+	const gross = zaehne.some((z) => BRUECKE.has(versorgung(z))) || teleskope.length > 0 || implantatKronen.length >= 4;
 	const herausnehmbar = plan.positionen.some((p) => p.ebene === "BEMA" && /^9[67][abc]$/.test(p.nr) || p.ebene === "GOZ" && /^52[0-5]0$/.test(p.nr));
-	const umfangreich = praepariert.length + implantatKronen.length >= 4 || herausnehmbar;
+	const umfangreich = praepariert.length + implantatKronen.length >= 4 || herausnehmbar || implantatKronen.length > 0;
 	const vorhanden = new Set(plan.positionen.filter((p) => p.ebene === "GOZ").map(zusatzSchluessel));
 	const neu = (nr, zahn, begruendung, anzahl = 1) => {
 		const p = {
@@ -23895,9 +23937,11 @@ function zusatzleistungen(plan) {
 		for (const b of bereicheVon(praepariert)) neu("2030", BEREICH_ZAEHNE[b], `Besondere Maßnahmen beim Präparieren (${b}): Retraktion, Blutstillung, Zahnfleischkorrektur`);
 	}
 	if (stufe >= 2) {
-		if (!adhaesiv.length) nichtAngesetzt.push("2197/2040: keine vollkeramischen Kronen oder Teilkronen (TP …M)");
+		const kleben = [...adhaesiv, ...adhaesivImplantat];
+		if (!kleben.length) nichtAngesetzt.push("2197/2040: keine vollkeramischen Kronen oder Teilkronen (TP …M)");
 		for (const z of adhaesiv) neu("2197", z, `Adhäsive Befestigung der Keramikrestauration ${versorgung(z)}`);
-		for (const b of bereicheVon(adhaesiv)) neu("2040", BEREICH_ZAEHNE[b], `Kofferdam zur adhäsiven Befestigung (${b})`);
+		for (const z of adhaesivImplantat) neu("2197", z, `Adhäsive Befestigung der keramischen Implantatkrone ${versorgung(z)}`);
+		for (const b of bereicheVon(kleben)) neu("2040", BEREICH_ZAEHNE[b], `Kofferdam zur adhäsiven Befestigung (${b})`);
 	}
 	if (stufe >= 3 && plan.abformung === "abdruck") nichtAngesetzt.push("0065: konventioneller Abdruck gewählt");
 	else if (stufe >= 3) {
@@ -23906,18 +23950,34 @@ function zusatzleistungen(plan) {
 		const gescannt = new Set(plan.positionen.filter((p) => p.ebene === "GOZ" && p.nr === "0065").map((p) => p.zahn));
 		for (const b of bereicheVon(praepariert)) if (!konventionell.has(BEREICH_ZAEHNE[b]) && !gescannt.has(b)) neu("0065", BEREICH_ZAEHNE[b], `Digitale Abformung (${b}) statt konventioneller Abformung`);
 	}
+	const elektronisch = stufe >= 7 && gross;
 	if (stufe >= 4) {
-		if (!umfangreich) nichtAngesetzt.push("8000 ff.: erst bei umfangreicher Versorgung (ab 4 Einheiten oder herausnehmbarem Zahnersatz)");
+		if (!umfangreich) nichtAngesetzt.push("8000 ff.: erst bei umfangreicher Versorgung (ab 4 Einheiten, herausnehmbarem Zahnersatz oder Implantatkronen)");
 		else {
 			neu("8000", "", "Klinische Funktionsanalyse vor umfangreicher prothetischer Versorgung");
 			neu("8010", "", "Registrieren der Zentrallage (höchstens 2 je Sitzung)");
-			neu("8020", "", "Arbiträre Scharnierachse / Gesichtsbogen für die Artikulatormontage");
+			if (!elektronisch) neu("8020", "", "Arbiträre Scharnierachse / Gesichtsbogen für die Artikulatormontage");
 		}
 	}
 	if (stufe >= 5 && umfangreich) {
-		neu("8050", "", "Registrieren der Unterkieferbewegungen, Einstellung des halbindividuellen Artikulators");
+		if (!elektronisch) neu("8050", "", "Registrieren der Unterkieferbewegungen, Einstellung des halbindividuellen Artikulators");
 		neu("8080", "", "Diagnostische Maßnahmen an Modellen im Artikulator, Behandlungsplanung");
 		neu("8090", "", "Diagnostischer Aufbau (Wax-up) der Funktionsflächen");
+	}
+	if (stufe >= 6) {
+		if (!praepariert.length && !implantatKronen.length) nichtAngesetzt.push("0090/0070: keine Kronen, Anker oder Implantatkronen");
+		for (const z of praepariert) neu("0090", z, `Infiltrationsanästhesie zur Präparation ${versorgung(z)}`);
+		for (const z of implantatKronen) neu("0090", z, "Infiltrationsanästhesie zur Eingliederung der Implantatkrone");
+		if (praepariert.length) neu("0070", "", "Vitalitätsprüfung vor der Präparation, je Sitzung");
+	}
+	if (stufe >= 7) {
+		if (!gross) nichtAngesetzt.push("8035/8065/8100: erst bei Brücke, Teleskopen oder ab 4 Implantaten (einzelne Kronen: 8020 und 8050)");
+		else {
+			neu("8035", "", "Kinematische Scharnierachse, elektronische Aufzeichnung (statt 8020)");
+			neu("8065", "", "Elektronische Aufzeichnung der Unterkieferbewegungen (statt 8050)");
+			const paare = teleskope.length || (implantatKronen.length >= 4 ? implantatKronen.length : 0);
+			if (paare) neu("8100", "", "Systematisches Einschleifen, je Zahnpaar", Math.min(8, paare));
+		}
 	}
 	return {
 		positionen,
@@ -26049,7 +26109,9 @@ function positionBerechnen(roh, listen, plan) {
 			const eigen = p.faktor ?? (e?.faktor || plan.einstellungen.gozFaktor);
 			const regler = Math.min(plan.einstellungen.honorarFaktor || 0, GOZ_HOECHSTSATZ);
 			const faktor = Math.max(eigen, regler);
-			const einzel = p.preis ?? runden$1((e?.punkte ?? 0) * pw * faktor);
+			const nachFaktor = runden$1((e?.punkte ?? 0) * pw * faktor);
+			const hebt = p.preis !== void 0 && !!p.reglerPreis && regler > 0 && nachFaktor > p.preis;
+			const einzel = p.preis === void 0 || hebt ? nachFaktor : p.preis;
 			const faktorBegruendung = faktor > 2.3 ? p.faktorBegruendung?.trim() || standardBegruendung(p.nr) : void 0;
 			return {
 				...basis,
@@ -26102,8 +26164,9 @@ function positionBerechnen(roh, listen, plan) {
 			}
 			const eigen = labor === "eigen" || !e ? eigenFinden(eigenKatalog(listen.eigen), p.nr, k) : void 0;
 			const aufschlag = labor === "eigen" ? Math.min(Math.max(0, plan.einstellungen.eigenPrivatAufschlag || 0), 100) : 0;
+			const fest = p.preis === void 0 ? void 0 : p.reglerPreis ? runden$1(p.preis * (1 + aufschlag / 100)) : p.preis;
 			if (eigen) {
-				const einzel = p.preis ?? runden$1(eigen.preis * (1 + aufschlag / 100));
+				const einzel = fest ?? runden$1(eigen.preis * (1 + aufschlag / 100));
 				return {
 					...basis,
 					labor,
@@ -26119,7 +26182,7 @@ function positionBerechnen(roh, listen, plan) {
 				labor,
 				fehler: `BEB-Nr. ${p.nr} nicht in der Liste`
 			};
-			const einzel = p.preis ?? runden$1(e.preis * (1 + aufschlag / 100));
+			const einzel = fest ?? runden$1(e.preis * (1 + aufschlag / 100));
 			const richtpreis = p.preis === void 0 && e?.richtpreis ? { richtpreis: true } : {};
 			return {
 				...basis,
@@ -27056,6 +27119,9 @@ function zuschlaegeAnsetzen(k, R, anker, befunde, positionen, hinweise) {
 		hinweise.push(`${kiefer}: Ausnahmefall Nr. 36 ZE-Richtlinie (atrophierter zahnloser Kiefer) – Regelversorgung nach BEMA mit Implantat-Kennzeichnung, bitte Leistungen prüfen.`);
 	}
 }
+function lueckeErsetzen(z, optionen) {
+	return !optionen.nichtErsetzen?.includes(z);
+}
 function regelversorgungErmitteln(zaehne, optionen = {}) {
 	zaehler = 0;
 	const R = {};
@@ -27083,14 +27149,15 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 		const kieferName = kiefer === "OK" ? "Oberkiefer" : "Unterkiefer";
 		const versorgungsLuecken = a.luecken.filter((l) => l.zaehne.some((z) => VERSORGUNG_NOETIG.has(kuerzel(zaehne[z]))));
 		const neuVersorgung = versorgungsLuecken.length > 0 || a.freiendSeiten.some((f) => f.bedarf);
-		for (const z of a.sitz) if (kuerzel(zaehne[z]) === "x") hinweise.push(`Zahn ${z} ist nicht erhaltungswürdig (x) und wird als fehlend geplant.`);
+		for (const z of a.sitz) if (kuerzel(zaehne[z]) === "x" && lueckeErsetzen(z, optionen)) hinweise.push(`Zahn ${z} ist nicht erhaltungswürdig (x) und wird als fehlend geplant.`);
 		if (kiefer === "OK" ? optionen.interimOK : optionen.interimUK) {
-			const n = a.fehlendOhne8.length;
+			const luecken = a.fehlendOhne8.filter((z) => !istImplantat(kuerzel(zaehne[z])) && lueckeErsetzen(z, optionen));
+			const n = luecken.length;
 			if (a.vorhanden.length === 0) befunde.push(befund("5.4", kiefer));
 			else if (n > 0) befunde.push(befund(n <= 4 ? "5.1" : n <= 8 ? "5.2" : "5.3", kiefer));
 			if (a.vorhanden.length === 0) positionen.push(pos("BEMA", kiefer === "OK" ? "97a" : "97b", kiefer));
 			else if (n > 0) positionen.push(pos("BEMA", n <= 4 ? "96a" : n <= 8 ? "96b" : "96c", kiefer));
-			for (const z of a.fehlendOhne8) if (!istImplantat(kuerzel(zaehne[z]))) R[z] = "E";
+			for (const z of luecken) R[z] = "E";
 			if (n > 0) hinweise.push(`${kieferName}: Interimsprothese (Befund 5.x) – zahntechnische Leistungen bitte ergänzen.`);
 			else hinweise.push(`${kieferName}: Interimsversorgung angekreuzt, aber kein fehlender Zahn im Befund.`);
 			continue;
@@ -27140,6 +27207,7 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 			festsitzend = true;
 			let vorherige;
 			for (const l of versorgungsLuecken) {
+				if (!l.zaehne.some((z) => lueckeErsetzen(z, optionen))) continue;
 				const n = l.zaehne.length;
 				let nr = n === 1 ? "2.1" : n === 2 ? "2.2" : n === 3 ? "2.3" : "2.4";
 				if (n === 1 && vorherige && vorherige.nach === l.vor) nr = "2.5";
@@ -27159,7 +27227,7 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 		}
 		befunde.push(befund("3.1", kiefer));
 		prothesenKiefer.push(kiefer);
-		const zuErsetzen = a.sitz.filter((z) => a.fehlt(z) && !istImplantat(kuerzel(zaehne[z])) && (!istWeisheitszahn(z) || a.sitz.includes(`${z[0]}7`) && a.fehlt(`${z[0]}7`)));
+		const zuErsetzen = a.sitz.filter((z) => a.fehlt(z) && !istImplantat(kuerzel(zaehne[z])) && lueckeErsetzen(z, optionen) && (!istWeisheitszahn(z) || a.sitz.includes(`${z[0]}7`) && a.fehlt(`${z[0]}7`)));
 		for (const z of zuErsetzen) R[z] = "E";
 		const halte = /* @__PURE__ */ new Set();
 		for (let i = 0; i < a.sitz.length; i++) {
@@ -27370,6 +27438,10 @@ var PRIVAT_STUFEN = [
 	{
 		titel: "Premium",
 		text: "+ Wax-up/Mock-up, Wurzelpontic, Keramik-Aufbau/-Primärteleskop, Zahnfleischmaske, Sonderkunststoff, Farbbestimmung in der Praxis, Fotodokumentation"
+	},
+	{
+		titel: "Exoten",
+		text: "+ Stumpf unter dem Mikroskop, individueller Artikulator, Registrat auswerten und einstellen, Kontrollmodell, Aufwand verschraubte Suprastruktur, Implantat-Kontrollschablone, Farbanpassung im Labor"
 	}
 ];
 var PRIVAT_STUFE_MAX = PRIVAT_STUFEN.length - 1;
@@ -27590,6 +27662,54 @@ var PRIVAT_EXTRAS = [
 		ab: 4,
 		je: "fall",
 		wenn: () => true
+	},
+	{
+		nr: "0217",
+		ab: 5,
+		je: "zahn",
+		wenn: (i) => !i.implantat && (i.art === "krone" || i.art === "teleskop")
+	},
+	{
+		nr: "2972",
+		ab: 5,
+		je: "zahn",
+		wenn: (i) => i.implantat && festsitzend(i)
+	},
+	{
+		nr: "1225",
+		ab: 5,
+		je: "kiefer",
+		wenn: (i) => i.implantat
+	},
+	{
+		nr: "0007",
+		ab: 5,
+		je: "kiefer",
+		wenn: festsitzend
+	},
+	{
+		nr: "0405",
+		ab: 5,
+		je: "fall",
+		wenn: festsitzend
+	},
+	{
+		nr: "0521",
+		ab: 5,
+		je: "fall",
+		wenn: () => true
+	},
+	{
+		nr: "0511",
+		ab: 5,
+		je: "fall",
+		wenn: () => true
+	},
+	{
+		nr: "0705",
+		ab: 5,
+		je: "fall",
+		wenn: keramischFest
 	}
 ];
 /** Abutment-Leistungen der Implantatprothetik (konfektioniert bearbeiten, individuell, Keramik) */
@@ -27764,7 +27884,7 @@ var SYSTEM_SPRECH = {
 	durchschnitt: "noch nicht gewählt"
 };
 var STUFE_MUSTER = [
-	[PRIVAT_STUFE_MAX, /premium|maximal teuer|m(?:ö|oe)glichst teuer|so teuer wie m(?:ö|oe)glich|h(?:ö|oe)chste[nr]? stufe|maximale[nr]? stufe|stufe maximal|alles privat|voll privat|komplett privat|stufe (?:vier|4)\b/],
+	[4, /premium|maximal teuer|m(?:ö|oe)glichst teuer|so teuer wie m(?:ö|oe)glich|h(?:ö|oe)chste[nr]? stufe|maximale[nr]? stufe|stufe maximal|alles privat|voll privat|komplett privat|stufe (?:vier|4)\b/],
 	[3, /(?:ä|ae)sthetik|stufe (?:drei|3)\b/],
 	[2, /stufe vollkeramik|vollkeramik ?stufe|stufe (?:zwei|2)\b/],
 	[1, /stufe (?:eins|1)\b/],
@@ -28186,7 +28306,7 @@ function prothetikIn(text) {
 		aus.anker = "teleskop";
 		aus.sekundaer = sekundaer;
 	} else if (/br(?:ü|ue)cke/.test(t)) aus.versorgung = "bruecke";
-	else if (/totalprothese|vollprothese|\btotale\b/.test(t)) aus.versorgung = "totalprothese";
+	else if (/totalprothese|vollprothese|\btotale\b|interims?\s*prothese|interims?\s*p[oa]these/.test(t)) aus.versorgung = "totalprothese";
 	else if (/prothese/.test(t) && /implantat/.test(t)) {
 		aus.versorgung = "locator";
 		aus.anker = "locator";
@@ -28629,13 +28749,24 @@ function einzelAuftrag(text, kiefer) {
 			if (pfeilerDavor && !(befund && (zahnDort < 0 || befund.index > zahnDort))) auftrag.pfeiler.push(...zs.filter((z) => !auftrag.pfeiler.includes(z)));
 			return;
 		}
+		const fortsetzen = listeDavor;
 		pfeilerDavor = false;
 		listeDavor = void 0;
 		const art = listenArt(teil);
+		let aufgezaehlt = false;
 		if (art) {
 			auftrag[art].push(...zs);
 			if (verbVorn(teil, art)) listeDavor = art;
-		} else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|locator|locater|druckknopf|kugel(?:kopf|anker)|novaloc|equator|steg|inlay|onlay|tabletop|teilkrone|veneer|galvano|suprakonstruktion|abutment|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil) || (auftrag.versorgung === "implantatkronen" || auftrag.versorgung === "kronen" || auftrag.versorgung === "inlay") && /implantat|\b(?:am|an|bei|f(?:ü|ue)r) (?:zahn )?[1-4][1-8]\b|\bzahn [1-4][1-8]\b|\bregion?\b/.test(teil)) {
+		} else if (fortsetzen) {
+			const schnitt = teil.search(/\b(?:interims?\s*p[oa]these|interims?\s*prothese|totalprothese|vollprothese|prothese)\b/i);
+			const kopf = schnitt > 0 ? teil.slice(0, schnitt) : "";
+			const weiter = kopf ? zaehneIn(kopf, auftrag.kiefer) : [];
+			if (weiter.length) {
+				auftrag[fortsetzen].push(...weiter.filter((z) => !auftrag[fortsetzen].includes(z)));
+				aufgezaehlt = true;
+			}
+		}
+		if (!art && !aufgezaehlt && (/teleskop|konus|doppelkrone|pfeiler|krone|anker|locator|locater|druckknopf|kugel(?:kopf|anker)|novaloc|equator|steg|inlay|onlay|tabletop|teilkrone|veneer|galvano|suprakonstruktion|abutment|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil) || (auftrag.versorgung === "implantatkronen" || auftrag.versorgung === "kronen" || auftrag.versorgung === "inlay") && /implantat|\b(?:am|an|bei|f(?:ü|ue)r) (?:zahn )?[1-4][1-8]\b|\bzahn [1-4][1-8]\b|\bregion?\b/.test(teil))) {
 			const vorBefund = teil.split(BEFUND_BEGINN)[0].split(ZAEHNE_NACHGESTELLT)[0];
 			const pf = vorBefund === teil ? zs : zaehneIn(vorBefund, auftrag.kiefer);
 			auftrag.pfeiler.push(...pf.filter((z) => !auftrag.pfeiler.includes(z)));
@@ -29096,7 +29227,69 @@ function planAusAuftrag(auftrag, befundRoh, optionen = {}) {
 		const r = teil.versorgung === "kronen" ? kronenPlanen(teil, befund, tp) : teil.versorgung === "inlay" ? inlayPlanen(teil, befund, tp, hinweise) : teil.versorgung === "bruecke" ? brueckePlanen(teil, befund, tp, hinweise) : teil.versorgung === "implantatkronen" ? implantatPlanen(teil, befund, tp) : teil.versorgung === "allon" ? allonPlanen(teil, befund, tp, hinweise) : kieferPlanen(teil, teil.kiefer, befund, tp, hinweise);
 		if (r) return r;
 	}
+	if (optionen.lueckenFragen) {
+		const frage = weitereLueckeFragen(auftrag, teile, befund, tp);
+		if (frage) return frage;
+	}
 	return planRechnen(auftrag, teile, befund, tp, hinweise, optionen);
+}
+/** Brücke, Kronen, Implantatkronen, Inlays nennen ihre Zähne: die übrigen Lücken der geplanten Kiefer. */
+function lueckenAusserhalb(teile, befund, tp) {
+	const geplant = /* @__PURE__ */ new Set();
+	for (const t of teile) if (t.kiefer) geplant.add(t.kiefer);
+	if (!geplant.size) for (const z of Object.keys(tp)) geplant.add(kieferVon(z));
+	const aufZaehne = teile.every((t) => [
+		"bruecke",
+		"kronen",
+		"implantatkronen",
+		"inlay"
+	].includes(t.versorgung ?? ""));
+	const imAuftrag = new Set(teile.flatMap((t) => [
+		...t.pfeiler,
+		...t.glieder ?? [],
+		...t.entfernen
+	]));
+	return aufZaehne ? Object.keys(befund).filter((z) => geplant.has(kieferVon(z)) && fehlt(befund, z) && !imAuftrag.has(z)) : [];
+}
+/** Lücken, die laut Befund Zahnersatz brauchen, im Auftrag aber fehlen: erklären und fragen statt still planen oder still weglassen. */
+function weitereLueckeFragen(auftrag, teile, befund, tp) {
+	const entschieden = new Set([auftrag.erhalten, ...teile.map((t) => t.erhalten)].flat());
+	const offen = new Set(lueckenAusserhalb(teile, befund, tp).filter((z) => !istWeisheitszahn(z) && (befund[z] === "f" || befund[z] === "x") && !entschieden.has(z)));
+	if (!offen.size) return void 0;
+	const gruppen = [];
+	for (const reihe of [OBERKIEFER, UNTERKIEFER]) {
+		const sitz = reihe.filter((z) => z in befund && befund[z] !== ")(");
+		let start = -1;
+		for (let i = 0; i <= sitz.length; i++) {
+			if (i < sitz.length && fehlt(befund, sitz[i])) {
+				if (start < 0) start = i;
+				continue;
+			}
+			if (start >= 0) {
+				const zs = sitz.slice(start, i).filter((z) => !istWeisheitszahn(z));
+				if (zs.some((z) => offen.has(z))) gruppen.push({
+					zaehne: zs,
+					vor: sitz[start - 1],
+					nach: sitz[i]
+				});
+				start = -1;
+			}
+		}
+	}
+	if (!gruppen.length) return void 0;
+	const zaehne = gruppen.flatMap((g) => g.zaehne);
+	const raus = zaehne.filter((z) => befund[z] === "x");
+	const weg = zaehne.filter((z) => befund[z] !== "x");
+	const lage = [raus.length ? `${raus.length > 1 ? "sind die Zähne" : "ist Zahn"} ${liste(raus)} nicht erhaltungswürdig und ${raus.length > 1 ? "müssen" : "muss"} entfernt werden` : "", weg.length ? `${weg.length > 1 ? "fehlen die Zähne" : "fehlt Zahn"} ${liste(weg)}` : ""].filter(Boolean).join(", außerdem ");
+	const bruecken = gruppen.every((g) => g.vor && g.nach && g.zaehne.length <= 3);
+	const vorschlag = bruecken ? gruppen.map((g) => `Brücke von ${g.vor} auf ${g.nach}`).join(" und ") : "";
+	return {
+		status: "rueckfrage",
+		grund: "weitere_luecke",
+		zaehne,
+		frage: bruecken ? gruppen.length > 1 ? `Ich habe noch eine Unklarheit: Laut Befund ${lage}. Dort wären ebenfalls Brücken zu planen: ${gruppen.map((g) => `von ${g.vor} auf ${g.nach}`).join(" und ")}. Soll ich die gleich mit planen, oder bleiben die Lücken ohne Ersatz?` : `Ich habe noch eine Unklarheit: Laut Befund ${lage}. Dort wäre ebenfalls eine ${vorschlag} zu planen. Soll ich die gleich mit planen, oder bleibt die Lücke ohne Ersatz?` : `Ich habe noch eine Unklarheit: Laut Befund ${lage}. Dort wäre ebenfalls Zahnersatz zu planen. Soll ich das gleich mit planen, oder bleiben die Lücken ohne Ersatz?`,
+		...vorschlag ? { vorschlag } : {}
+	};
 }
 function brueckePlanen(auftrag, befund, tp, hinweise) {
 	const anker = auftrag.pfeiler;
@@ -29188,6 +29381,9 @@ function implantatPlanen(auftrag, befund, tp) {
 		tp[z] = implantKrone(auftrag);
 	}
 }
+function lueckeImPlan(z, a) {
+	return !a.erhalten.includes(z);
+}
 function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 	const name = kiefer === "OK" ? "Oberkiefer" : "Unterkiefer";
 	{
@@ -29249,6 +29445,7 @@ function kieferPlanen(auftrag, kiefer, befund, tp, hinweise) {
 		for (const z of reihe) {
 			if (pfeiler.includes(z) || !fehlt(befund, z) && !nackt.includes(z)) continue;
 			if (istWeisheitszahn(z) && !auftrag.mitAchtern) continue;
+			if (!lueckeImPlan(z, auftrag)) continue;
 			const i = reihe.indexOf(z);
 			tp[z] = auftrag.versorgung === "steg" && i > von && i < bis ? "SEO" : "E";
 		}
@@ -29463,9 +29660,14 @@ function planRechnen(auftrag, teile, befund, tp, hinweise, optionen) {
 	const geplant = /* @__PURE__ */ new Set();
 	for (const t of teile) if (t.kiefer) geplant.add(t.kiefer);
 	if (!geplant.size) for (const z of Object.keys(tp)) geplant.add(kieferVon(z));
+	const andereLuecken = lueckenAusserhalb(teile, befund, tp);
+	const nichtErsetzen = [.../* @__PURE__ */ new Set([...auftrag.erhalten, ...andereLuecken])];
+	const unversorgt = andereLuecken.filter((z) => !/8$/.test(z) && (befund[z] === "f" || befund[z] === "x"));
+	if (unversorgt.length) hinweise.push(`${liste(unversorgt)} ${unversorgt.length > 1 ? "fehlen" : "fehlt"} ebenfalls, ${unversorgt.length > 1 ? "gehören" : "gehört"} aber nicht zum Auftrag und ${unversorgt.length > 1 ? "bleiben" : "bleibt"} ohne Ersatz.`);
 	const regelOpt = {
 		...regelOptionen(plan),
-		...geplant.size ? { nurKiefer: [...geplant] } : {}
+		...geplant.size ? { nurKiefer: [...geplant] } : {},
+		...nichtErsetzen.length ? { nichtErsetzen } : {}
 	};
 	const regel = therapieAnwenden(regelversorgungErmitteln(plan.zaehne, regelOpt), plan.zaehne, plan);
 	let fertig = regelUebernehmen(plan, regel);
@@ -29675,7 +29877,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-09 18:02";
+var ENGINE_STAND = "2026-11-14 23:36";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
