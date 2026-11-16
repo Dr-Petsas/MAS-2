@@ -39,7 +39,7 @@ Bittet er darum, den Plan zu prüfen, zu korrigieren, in Ordnung zu bringen oder
 - rechnung: Hinweis der Rechnung des Planers. Erklären; ändern nur über einen passenden SCHALTER.
 Eine Position mit herkunft "planer" verschwindet über ihren SCHALTER; "weg" nimmst du für sie nur, wenn kein Schalter sie bringt (manche Planer lehnen das ab, das meldet die Seite dann). Ein "schalter"-Schritt muss den Wert ändern: ein Schalter, der schon aus ist, bringt keine Leistung und löst nichts.
 In "antwort" nennst du Positionen mit Nummer und Zahn oder Region, nie mit ihrer id und ohne die Wörter "hand" und "planer".
-10. Zahnschema: Soll sich am Befund oder an der Planung eines Zahns etwas ändern (Zahn fehlt, Implantat dazu oder weg, Krone statt Brückenglied, andere Füllung, andere Fläche, anderes Implantatsystem …) und steht "zahn" in ERLAUBT, gib je Zahn EINEN Schritt "zahn" mit nur den Feldern, die sich ändern, und nur Werten aus ZAHNSCHEMA (der Schlüssel, nicht die Bedeutung). Der Planer rechnet danach alle Positionen selbst neu: gib dazu KEIN "hinzu", "weg" oder "setze" für Positionen, die aus dem Zahnschema errechnet werden. Ein leerer Wert "" nimmt den Eintrag heraus, wenn ZAHNSCHEMA ihn anbietet. Nennt der Arzt eine Versorgung, für die es mehrere passende Kürzel gibt, und ergibt sich die Wahl nicht aus dem übrigen Plan, frage nach. Zahnnummern sind FDI (11 bis 48). Ist nicht klar, welcher Zahn gemeint ist, frage nach.
+10. Zahnschema: Soll sich am Befund oder an der Planung eines Zahns etwas ändern (Zahn fehlt, Implantat dazu oder weg, Krone statt Brückenglied, andere Füllung, andere Fläche, anderes Implantatsystem …) und steht "zahn" in ERLAUBT, gib je Zahn EINEN Schritt "zahn" mit nur den Feldern, die sich ändern, und nur Werten aus ZAHNSCHEMA (der Schlüssel, nicht die Bedeutung). Der Planer rechnet danach alle Positionen selbst neu: gib dazu KEIN "hinzu", "weg" oder "setze" für Positionen, die aus dem Zahnschema errechnet werden. Ein leerer Wert "" nimmt den Eintrag heraus, wenn ZAHNSCHEMA ihn anbietet. Nennt der Arzt eine Versorgung, für die es mehrere passende Kürzel gibt, und ergibt sich die Wahl nicht aus dem übrigen Plan, frage nach. Zahnnummern sind FDI (11 bis 48): 1x Oberkiefer rechts, 2x Oberkiefer links, 3x Unterkiefer links, 4x Unterkiefer rechts; "Regio 26" ist der Zahn 26. Eine zweistellige Zahl wie 26 im Satz ist ein Zahn, keine Gebührennummer. Das Zahnschema gilt für jeden Zahn, auch wenn sein Kiefer oder seine Region bisher nicht im Plan vorkommt: die Region kommt mit dem Zahn von selbst dazu. Brücke "von A auf B": A und B sind die Pfeiler und bekommen ein Kronen- bzw. Ankerkürzel; nur die fehlenden Zähne dazwischen bekommen Befund fehlend und ein Brückenglied-Kürzel. Ein Brückenglied steht nie auf einem vorhandenen Zahn, ein Pfeiler nie auf einem fehlenden. Gib dafür je betroffenem Zahn einen Schritt. Ist nicht klar, welcher Zahn gemeint ist, frage nach. Ein Zahn, der bisher nicht im Plan steht, kommt mit dem Schritt "zahn" dazu: das ist der normale Weg, einen Plan zu erweitern, kein Hindernis. Was an einem Zahn schon eingetragen ist, bleibt bestehen, wenn du das Feld weglässt (wechselt nur die Art der Versorgung, bleiben z. B. die Flächen). Nimmst du einen Befund heraus, auf dem die Planung desselben Zahns beruht, nimm die Planung im selben Schritt mit heraus. Ein Feld mit "ja":true nimmt true oder false, ein Feld mit "von"/"bis" eine Zahl in diesen Grenzen, ein Feld mit "werte" einen der Schlüssel. Felder, die der Arzt nicht nennt (System, Maße, Zeitpunkt, Material …), lässt du weg: der Planer nimmt dafür seine Vorgaben bzw. die der übrigen Zähne. Frage nicht danach, sondern führe aus; der Arzt kann sie danach ändern. Sagt er, dass ein Zahn fehlt, und soll dort etwas geplant werden, setze Befund und Planung im selben Schritt.
 
 Beim Korrigieren fasst du nur Positionen an, die in den ids einer Meldung stehen, und änderst nur, was die Meldung verlangt: kein anderer Faktor, keine andere Anzahl, keine neue Position. Das Programm verwirft alles andere.
 Steht eine Schritt-Art nicht in ERLAUBT, sage, was die Praxis im Planer selbst tun muss. Was du nicht sicher lösen kannst, lässt du offen und nennst es. Behaupte nie, eine Meldung sei behoben: die Seite prüft den Plan nach deinen Schritten neu und meldet selbst, was erledigt und was offen ist.
@@ -53,7 +53,7 @@ Schritte:
 {"op":"zahn","zahn":"16","felder":{"<Feldname aus ZAHNSCHEMA>":"<Wert>"}}
 {"op":"zurueck"}   (nimmt die letzte Änderung aus dieser Zeile zurück)
 
-Antworte nur mit JSON: {"antwort":"...","schritte":[...],"pruefung":false}. Ohne Änderung ist schritte leer. "pruefung" ist true, wenn der Auftrag das Prüfen und Korrigieren ist. "entschieden":true kommt nur dazu, wenn der Satz selbst festlegt, welche Position einer doppelt- oder ausschluss-Meldung geht oder bleibt. Kein Markdown.`;
+Antworte nur mit JSON, die Felder in dieser Reihenfolge: {"aendert":false,"schritte":[...],"antwort":"...","pruefung":false}. Entscheide zuerst "aendert", schreibe dann die Schritte und erst danach die Antwort. Ohne Änderung ist schritte leer. "aendert" ist true, wenn du in diesem Zug etwas am Plan änderst; dann MUSS "schritte" die Schritte dafür enthalten, denn nur Schritte ändern den Plan, der Text in "antwort" ändert nichts. "antwort" ist für den Arzt geschrieben: das Ergebnis, nicht deine Überlegung, keine Feld- oder Schalternamen. "pruefung" ist true, wenn der Auftrag das Prüfen und Korrigieren ist. "entschieden":true kommt nur dazu, wenn der Satz selbst festlegt, welche Position einer doppelt- oder ausschluss-Meldung geht oder bleibt. Kein Markdown.`;
 
 const OPS = ["schalter", "hinzu", "setze", "weg", "zurueck", "zahn"];
 /** Arten der Prüfmodul-Meldungen, wie PlanR sie mitgibt (_gemeinsam/src/planKi.ts PruefArt) */
@@ -139,6 +139,8 @@ export function planPruefung(positionen) {
 }
 
 /** Je genannter Nummer: steht sie im Plan, und wo */
+const zahnNr = (z) => z.length === 2 && "1234".includes(z[0]) && "12345678".includes(z[1]);
+
 export function genannteNummern(text, blick) {
   return nummernImSatz(text).slice(0, 8).map((n) => {
     const da = blick.positionen.filter((p) => klein(p.nr) === n);
@@ -146,11 +148,13 @@ export function genannteNummern(text, blick) {
       ? `${n}: steht im Plan (${da.map((p) => `${p.ebene}${p.zahn ? ` ${p.zahn}` : ""}, ${p.anzahl}x, ${p.betrag.toFixed(2)} EUR`).join("; ")})`
       : `${n}: steht NICHT im Plan`;
     const partner = [...new Set(ausschlussTabelle().filter((e) => klein(e.a) === n || klein(e.b) === n).map((e) => klein(klein(e.a) === n ? e.b : e.a)))].slice(0, 12);
+    // Eine Zahnnummer (FDI), die weder als Leistung im Plan steht noch in der Tabelle vorkommt, ist ein Zahn und keine Gebührennummer.
+    if (!partner.length && !da.length && zahnNr(n)) return "";
     if (!partner.length) return `${stand}. Die Ausschluss-Tabelle kennt zu ${n} keinen Eintrag.`;
     const drin = partner.filter((x) => blick.positionen.some((p) => klein(p.nr) === x));
     const fehlt = partner.filter((x) => !drin.includes(x));
     return `${stand}. Laut Tabelle nicht neben: ${partner.join(", ")}. Davon im Plan: ${drin.join(", ") || "keine"}${fehlt.length ? `; NICHT im Plan: ${fehlt.join(", ")}` : ""}. ${drin.length ? "Ein Ausschluss greift." : "Aus der Tabelle greift an diesem Plan kein Ausschluss."}`;
-  });
+  }).filter(Boolean);
 }
 
 /** Was der Planer aus der vorigen Runde dieses Auftrags gemeldet hat */
@@ -228,6 +232,8 @@ export function planKiRueckfrage(blick) {
 /** FDI-Zahn des bleibenden Gebisses */
 const istZahn = (z) => z.length === 2 && "1234".includes(z[0]) && "12345678".includes(z[1]);
 
+const JA_WERTE = { true: true, ja: true, 1: true, false: false, nein: false, 0: false };
+
 /** Schritt "zahn": nur Felder und Werte, die der Planer für sein Zahnschema gemeldet hat. */
 function zahnSchritt(s, zahnfelder) {
   const zahn = String(s?.zahn ?? "").trim();
@@ -237,8 +243,9 @@ function zahnSchritt(s, zahnfelder) {
     const f = zahnfelder.find((x) => x.name === name);
     if (!f) return null;
     if (f.ja) {
-      if (typeof roh !== "boolean") return null;
-      felder[name] = roh;
+      const b = typeof roh === "boolean" ? roh : JA_WERTE[String(roh ?? "").trim().toLowerCase()];
+      if (typeof b !== "boolean") return null;
+      felder[name] = b;
     } else if (f.werte) {
       const wert = String(roh ?? "");
       const treffer = Object.keys(f.werte).find((k) => k === wert) ?? Object.keys(f.werte).find((k) => k.toLowerCase() === wert.toLowerCase());
@@ -328,6 +335,7 @@ export function planKiLesen(rohText, blick) {
   }
   const pruefung = daten.pruefung === true;
   const entschieden = daten.entschieden === true;
+  const aendert = daten.aendert === true;
   const frage = pruefung && !entschieden ? planKiRueckfrage(blick) : "";
-  return { antwort, schritte: pruefung ? nurZuMeldungen(schritte, blick, verworfen, entschieden) : schritte, verworfen, pruefung, frage, entschieden };
+  return { antwort, schritte: pruefung ? nurZuMeldungen(schritte, blick, verworfen, entschieden) : schritte, verworfen, pruefung, frage, entschieden, aendert };
 }

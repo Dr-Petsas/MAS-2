@@ -170,7 +170,7 @@ test("Zahnschema: Schritt zahn nur mit gemeldeten Feldern und Werten", () => {
     { op: "zahn", zahn: "36", felder: { befund: "gibtsnicht" } },
     { op: "zahn", zahn: "36", felder: { fremd: "x" } },
     { op: "zahn", zahn: "36", felder: { laenge: 40 } },
-    { op: "zahn", zahn: "36", felder: { cpt: "ja" } },
+    { op: "zahn", zahn: "36", felder: { cpt: "vielleicht" } },
     { op: "zahn", zahn: "36", felder: {} },
   ] }), b);
   assert.deepEqual(r.schritte, [

@@ -669,6 +669,24 @@ router.post("/planr/plan-ki", planrGuard, async (req, res) => {
       antwort = await fragen(rest);
       ergebnis = antwort.ok ? planKiLesen(antwort.text, blick) : null;
     }
+    // Entscheidung der Praxis angekommen, aber kein Schritt dazu: einmal nachhaken statt einer leeren Zusage.
+    const ohneSchritt = (e) => e && e.entschieden && !e.schritte.length;
+    if (ohneSchritt(ergebnis) && frist - (Date.now() - beginn) > 15000) {
+      log.warn?.("[planr] plan-ki: entschieden ohne Schritt, zweiter Versuch");
+      nachrichten.push({ role: "assistant", content: antwort.text }, { role: "user", content: 'Du hast "entschieden":true gesetzt, aber "schritte" ist leer. Gib dieselbe Antwort noch einmal als JSON, diesmal mit den Schritten für genau das, was der Arzt entschieden hat. Bringt kein SCHALTER die Position, nimm "weg" mit ihrer id. Hat er entschieden, dass alles bleibt, lass "schritte" leer und sage in "antwort" nur, dass nichts geändert wird.' });
+      const zweite = await fragen(frist - (Date.now() - beginn));
+      const neu = zweite.ok ? planKiLesen(zweite.text, blick) : null;
+      if (neu && neu.entschieden) ergebnis = neu;
+    }
+    // Aenderung angekuendigt ("aendert":true), aber kein Schritt geliefert und keiner verworfen: einmal nachhaken.
+    const angekuendigt = (e) => e && !e.pruefung && !e.entschieden && !e.schritte.length && (e.aendert || e.verworfen.length > 0);
+    if (angekuendigt(ergebnis) && frist - (Date.now() - beginn) > 15000) {
+      log.warn?.("[planr] plan-ki: Aenderung angekuendigt ohne Schritt, zweiter Versuch");
+      nachrichten.push({ role: "assistant", content: antwort.text }, { role: "user", content: 'Du hast eine Änderung angekündigt, aber es ist kein gültiger Schritt angekommen. So ändert sich am Plan nichts (ein Schritt mit einem Feld oder Wert, den ZAHNSCHEMA, SCHALTER oder PLAN nicht kennt, wird verworfen). Gib dieselbe Antwort noch einmal als JSON, diesmal mit den Schritten für genau diese Änderung (für Befund, Planung und Angaben je Zahn der Schritt "zahn" mit den Feldern aus ZAHNSCHEMA). Ist die Änderung nicht möglich, setze "aendert":false und nenne in "antwort" den Grund.' });
+      const zweite = await fragen(frist - (Date.now() - beginn));
+      const neu = zweite.ok ? planKiLesen(zweite.text, blick) : null;
+      if (neu) ergebnis = neu;
+    }
     if (!ergebnis) {
       log.warn?.(`[planr] plan-ki ohne brauchbare Antwort (${antwort.ok ? "kein JSON" : antwort.error || "Modell"})`);
       return res.json({ ok: false, message: "Dazu habe ich gerade keine Antwort bekommen. Der Plan ist unveraendert." });
@@ -677,7 +695,9 @@ router.post("/planr/plan-ki", planrGuard, async (req, res) => {
     log.info?.(`[planr] plan-ki ${blick.planart} positionen=${blick.positionen.length} schritte=${ergebnis.schritte.length} tabelle=${tabelle.length}`);
     // Hat der Korrekturlauf nur Unzulaessiges vorgeschlagen, gilt die Ankuendigung des Modells nicht.
     const leer = ergebnis.pruefung && !ergebnis.frage && !ergebnis.schritte.length && ergebnis.verworfen.length > 0;
-    const antwortText = ohneSchritt(ergebnis)
+    const antwortText = angekuendigt(ergebnis)
+      ? "Das habe ich nicht in einen zulässigen Schritt für diesen Plan umsetzen können. Am Plan ist nichts geändert. Bitte sagen Sie es noch einmal mit Zahn und gewünschter Versorgung."
+      : ohneSchritt(ergebnis)
       ? `${ergebnis.antwort} Am Plan ist damit nichts geändert.`
       : leer ? "Dafür habe ich keinen zulässigen Schritt gefunden. Am Plan habe ich nichts geändert." : ergebnis.antwort;
     res.json({ ok: true, antwort: antwortText, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length, pruefung: ergebnis.pruefung, ...(ergebnis.frage ? { frage: ergebnis.frage } : {}) });
@@ -789,15 +809,6 @@ router.get("/planr/hkp/:id/datei/:dateiId", planrGuard, async (req, res) => {
   try {
     const d = await hkpDateiLesen(req.planrClientId, req.params.id, req.params.dateiId);
     if (!d) return res.status(404).json({ ok: false, error: "nicht_gefunden", message: "Die Datei gibt es an diesem HKP nicht." });
-    // Entscheidung der Praxis angekommen, aber kein Schritt dazu: einmal nachhaken statt einer leeren Zusage.
-    const ohneSchritt = (e) => e && e.entschieden && !e.schritte.length;
-    if (ohneSchritt(ergebnis) && frist - (Date.now() - beginn) > 15000) {
-      log.warn?.("[planr] plan-ki: entschieden ohne Schritt, zweiter Versuch");
-      nachrichten.push({ role: "assistant", content: antwort.text }, { role: "user", content: 'Du hast "entschieden":true gesetzt, aber "schritte" ist leer. Gib dieselbe Antwort noch einmal als JSON, diesmal mit den Schritten für genau das, was der Arzt entschieden hat. Bringt kein SCHALTER die Position, nimm "weg" mit ihrer id. Hat er entschieden, dass alles bleibt, lass "schritte" leer und sage in "antwort" nur, dass nichts geändert wird.' });
-      const zweite = await fragen(frist - (Date.now() - beginn));
-      const neu = zweite.ok ? planKiLesen(zweite.text, blick) : null;
-      if (neu && neu.entschieden) ergebnis = neu;
-    }
     res.json({ ok: true, datei: { name: d.name, typ: d.typ, inhalt: d.inhalt } });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
