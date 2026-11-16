@@ -34,6 +34,8 @@ import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, logOutboundMail, resolveClientId } 
 import { sendMail } from "../mail/mailbox.js";
 import { chat, strongLlm } from "../mail/llm.js";
 import { PROBE_EINORDNEN, einordnungLesen } from "../hkp/probeEinordnen.js";
+import { PLAN_KI_SYSTEM, blickSaeubern, planKiLesen, planKiNachricht, planPruefung, tabelleFuer } from "../hkp/planKi.js";
+import { wissenSuchen } from "../hkp/wissen.js";
 import { kvaEntwurfAblegen } from "../mail/kvaEntwurf.js";
 import { listAccounts } from "../mail/accounts.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
@@ -638,6 +640,44 @@ router.post("/planr/probe-einordnen", planrGuard, async (req, res) => {
   } catch (e) {
     log.error?.(`[planr] probe-einordnen: ${e?.stack || e}`);
     res.status(500).json({ ok: false, message: "Das Einordnen ist fehlgeschlagen." });
+  }
+});
+
+/** KI-Zeile im offenen Plan: Frage oder Aenderungswunsch samt ganzem Plan. Antwort und Schritte, der Planer fuehrt aus. Nichts wird gespeichert. */
+router.post("/planr/plan-ki", planrGuard, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const text = String(b.text || "").trim().slice(0, 1200);
+    const blick = blickSaeubern(b.blick);
+    if (!text || !blick.planart) return res.json({ ok: false, message: "Kein Text oder kein Plan." });
+    const tabelle = tabelleFuer(text, blick);
+    const wissen = await wissenSuchen(text, null).catch(() => "");
+    const { base, model } = strongLlm();
+    const antwort = await chat([
+      { role: "system", content: PLAN_KI_SYSTEM },
+      { role: "user", content: planKiNachricht({ text, blick, verlauf: b.verlauf, tabelle, wissen }) },
+    ], { temperature: 0.1, maxTokens: 900, model, baseUrl: base, timeoutMs: Number(process.env.MAS_PLAN_KI_MS || 45000) });
+    const ergebnis = antwort.ok ? planKiLesen(antwort.text, blick) : null;
+    if (!ergebnis) {
+      log.warn?.(`[planr] plan-ki ohne brauchbare Antwort (${antwort.ok ? "kein JSON" : antwort.error || "Modell"})`);
+      return res.json({ ok: false, message: "Dazu habe ich gerade keine Antwort bekommen. Der Plan ist unveraendert." });
+    }
+    if (ergebnis.verworfen.length) log.warn?.(`[planr] plan-ki: Schritte verworfen: ${ergebnis.verworfen.join(", ")}`);
+    log.info?.(`[planr] plan-ki ${blick.planart} positionen=${blick.positionen.length} schritte=${ergebnis.schritte.length} tabelle=${tabelle.length}`);
+    res.json({ ok: true, antwort: ergebnis.antwort, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length });
+  } catch (e) {
+    log.error?.(`[planr] plan-ki: ${e?.stack || e}`);
+    res.status(500).json({ ok: false, message: "Die KI-Zeile ist gerade nicht erreichbar." });
+  }
+});
+
+/** Pruefmodul der Planer: Ausschluesse zwischen den Positionen eines Plans (nur ebene, nr, zahn). */
+router.post("/planr/plan-pruefen", planrGuard, (req, res) => {
+  try {
+    res.json({ ok: true, meldungen: planPruefung(req.body?.positionen) });
+  } catch (e) {
+    log.error?.(`[planr] plan-pruefen: ${e?.stack || e}`);
+    res.status(500).json({ ok: false, meldungen: [] });
   }
 });
 
