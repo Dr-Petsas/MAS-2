@@ -285,5 +285,5 @@ export function planKiLesen(rohText, blick) {
   const pruefung = daten.pruefung === true;
   const entschieden = daten.entschieden === true;
   const frage = pruefung && !entschieden ? planKiRueckfrage(blick) : "";
-  return { antwort, schritte: pruefung ? nurZuMeldungen(schritte, blick, verworfen, entschieden) : schritte, verworfen, pruefung, frage };
+  return { antwort, schritte: pruefung ? nurZuMeldungen(schritte, blick, verworfen, entschieden) : schritte, verworfen, pruefung, frage, entschieden };
 }

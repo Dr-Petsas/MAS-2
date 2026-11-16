@@ -677,7 +677,10 @@ router.post("/planr/plan-ki", planrGuard, async (req, res) => {
     log.info?.(`[planr] plan-ki ${blick.planart} positionen=${blick.positionen.length} schritte=${ergebnis.schritte.length} tabelle=${tabelle.length}`);
     // Hat der Korrekturlauf nur Unzulaessiges vorgeschlagen, gilt die Ankuendigung des Modells nicht.
     const leer = ergebnis.pruefung && !ergebnis.frage && !ergebnis.schritte.length && ergebnis.verworfen.length > 0;
-    res.json({ ok: true, antwort: leer ? "Dafür habe ich keinen zulässigen Schritt gefunden. Am Plan habe ich nichts geändert." : ergebnis.antwort, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length, pruefung: ergebnis.pruefung, ...(ergebnis.frage ? { frage: ergebnis.frage } : {}) });
+    const antwortText = ohneSchritt(ergebnis)
+      ? `${ergebnis.antwort} Am Plan ist damit nichts geändert.`
+      : leer ? "Dafür habe ich keinen zulässigen Schritt gefunden. Am Plan habe ich nichts geändert." : ergebnis.antwort;
+    res.json({ ok: true, antwort: antwortText, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length, pruefung: ergebnis.pruefung, ...(ergebnis.frage ? { frage: ergebnis.frage } : {}) });
   } catch (e) {
     log.error?.(`[planr] plan-ki: ${e?.stack || e}`);
     res.status(500).json({ ok: false, message: "Die KI-Zeile ist gerade nicht erreichbar." });
@@ -786,6 +789,15 @@ router.get("/planr/hkp/:id/datei/:dateiId", planrGuard, async (req, res) => {
   try {
     const d = await hkpDateiLesen(req.planrClientId, req.params.id, req.params.dateiId);
     if (!d) return res.status(404).json({ ok: false, error: "nicht_gefunden", message: "Die Datei gibt es an diesem HKP nicht." });
+    // Entscheidung der Praxis angekommen, aber kein Schritt dazu: einmal nachhaken statt einer leeren Zusage.
+    const ohneSchritt = (e) => e && e.entschieden && !e.schritte.length;
+    if (ohneSchritt(ergebnis) && frist - (Date.now() - beginn) > 15000) {
+      log.warn?.("[planr] plan-ki: entschieden ohne Schritt, zweiter Versuch");
+      nachrichten.push({ role: "assistant", content: antwort.text }, { role: "user", content: 'Du hast "entschieden":true gesetzt, aber "schritte" ist leer. Gib dieselbe Antwort noch einmal als JSON, diesmal mit den Schritten für genau das, was der Arzt entschieden hat. Bringt kein SCHALTER die Position, nimm "weg" mit ihrer id. Hat er entschieden, dass alles bleibt, lass "schritte" leer und sage in "antwort" nur, dass nichts geändert wird.' });
+      const zweite = await fragen(frist - (Date.now() - beginn));
+      const neu = zweite.ok ? planKiLesen(zweite.text, blick) : null;
+      if (neu && neu.entschieden) ergebnis = neu;
+    }
     res.json({ ok: true, datei: { name: d.name, typ: d.typ, inhalt: d.inhalt } });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
