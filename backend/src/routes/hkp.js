@@ -32,6 +32,8 @@ import { DEFAULT_ASSISTANT_NAME, getAssistantName, invalidateAssistantName } fro
 import { log } from "../log.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, logOutboundMail, resolveClientId } from "./_shared.js";
 import { sendMail } from "../mail/mailbox.js";
+import { chat, strongLlm } from "../mail/llm.js";
+import { PROBE_EINORDNEN, einordnungLesen } from "../hkp/probeEinordnen.js";
 import { kvaEntwurfAblegen } from "../mail/kvaEntwurf.js";
 import { listAccounts } from "../mail/accounts.js";
 import { resolveSpokenPatientForRead } from "./tools.js";
@@ -615,6 +617,27 @@ router.post("/planr/kva/entwurf", planrGuard, async (req, res) => {
     res.json({ ok: true, id, url: `${web}/clara?ki=nadine&entwurf=${id}` });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+/** Welcher Plan ist diese Datei (HKP, PAR, KB, Implantation ...)? Nur der gelesene Text, nichts wird gespeichert. */
+router.post("/planr/probe-einordnen", planrGuard, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const text = String(b.text || "").trim().slice(0, 9000);
+    const name = String(b.name || "").trim().slice(0, 160);
+    if (!text && !name) return res.json({ ok: false, message: "Kein Text." });
+    const { base, model } = strongLlm();
+    const antwort = await chat([
+      { role: "system", content: PROBE_EINORDNEN },
+      { role: "user", content: `Dateiname: ${name || "ohne"}\n\nText:\n${text || "(kein Text gelesen)"}` },
+    ], { temperature: 0, maxTokens: 400, model, baseUrl: base, timeoutMs: 40000 });
+    const ergebnis = antwort.ok ? einordnungLesen(antwort.text) : null;
+    if (!ergebnis) return res.json({ ok: false, message: "Die Datei ließ sich gerade nicht einordnen." });
+    res.json({ ok: true, ...ergebnis });
+  } catch (e) {
+    log.error?.(`[planr] probe-einordnen: ${e?.stack || e}`);
+    res.status(500).json({ ok: false, message: "Das Einordnen ist fehlgeschlagen." });
   }
 });
 
