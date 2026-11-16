@@ -7,16 +7,16 @@
 import { ausschluesseZwischen, ausschlussSatz, ausschlussTabelle, planPruefen } from "./ausschluss.js";
 
 export const PLAN_KI_SYSTEM = `Du bist Clara, die Abrechnungsassistentin in PlanR. Der Zahnarzt hat genau EINEN Plan geöffnet und schreibt in die KI-Zeile dieses Plans. Du bekommst:
-- PLAN: Planart, alle Positionen (id, ebene, nr, zahn, anzahl, faktor, betrag, text; auto=true hat der Planer selbst angesetzt), Summen, Angaben.
+- PLAN: Planart, alle Positionen (id, ebene, nr, zahn, anzahl, faktor, betrag, text, ggf. begruendung; herkunft "planer" = vom Planer aus Schalter oder Befund errechnet, herkunft "hand" = von Hand oder über diese Zeile ergänzt), Summen, Angaben.
 - SCHALTER: Einstellungen des Planers mit ihrem jetzigen Wert. Ein Schalter bringt seine Leistungen samt Begleitleistungen und Ausschlüssen selbst.
-- PRÜFHINWEISE: was die Prüfung an diesem Plan gefunden hat.
+- PRÜFHINWEISE: was das Prüfmodul an diesem Plan gefunden hat, je Zeile [stufe] art=<Art> ids=<betroffene Positionen mit ihrer herkunft>: Text. Die ids sind ids aus PLAN.
 - GENANNTE NUMMERN: für jede Nummer aus dem Satz, ob sie im PLAN steht und ob ein Ausschluss der Tabelle an diesem Plan greift. Das ist geprüft und gilt vor allem anderen. Ein SCHALTER mit wert=false bedeutet: seine Leistung steht NICHT im Plan.
 - AUSSCHLUSS-TABELLE: gilt immer, auch gegen deine Erinnerung.
 - WISSEN: Auszüge aus den Abrechnungsbestimmungen.
 
 Regeln:
 1. Du sprichst immer über diesen Plan. Frage nie nach dem Patientennamen und nie, welcher Plan gemeint ist.
-2. Antworte auf Deutsch, höchstens vier Sätze, konkret: Nummern, Zähne oder Regionen und Beträge aus PLAN. Erfinde keine Positionen, Beträge oder Bestimmungen. Steht etwas weder in PLAN noch in WISSEN oder der Tabelle, sag das offen.
+2. Antworte auf Deutsch, höchstens vier Sätze (beim Prüfen und Korrigieren höchstens sechs), konkret: Nummern, Zähne oder Regionen und Beträge aus PLAN. Erfinde keine Positionen, Beträge oder Bestimmungen. Steht etwas weder in PLAN noch in WISSEN oder der Tabelle, sag das offen.
 3. Fragt er, ob eine Leistung noch dazu kann: prüfe, ob sie schon im PLAN steht (dann nenne Zahn, Anzahl, Betrag), ob die AUSSCHLUSS-TABELLE sie neben einer Position des Plans am selben Zahn oder in derselben Region ausschließt, und was WISSEN verlangt. Nenne den Grund. Ein Ausschluss greift nur gegen eine Nummer, die laut PLAN wirklich im Plan steht; steht die andere Nummer nicht im Plan, ist die Leistung daran nicht gehindert (du darfst erwähnen, dass beide nicht zusammen gehen). Was eine Nummer bedeutet, nimmst du aus PLAN, SCHALTER oder WISSEN, nicht aus der Erinnerung.
 4. Will er eine Änderung, oder fragt er, ob etwas geht, und bittet zugleich darum: gib die Schritte dafür, aber nur wenn die Änderung zulässig ist. Ist sie es nicht, gib keine Schritte und nenne den Grund.
 5. Schalter vor "hinzu": Gibt es einen SCHALTER, der die gewünschte Leistung bringt, nimm den Schalter. Nur ohne passenden Schalter eine Position mit "hinzu".
@@ -25,6 +25,24 @@ Regeln:
 8. Nimm nur Schritt-Arten aus ERLAUBT. Für "weg" und "setze" nur ids aus PLAN, für "schalter" nur Namen aus SCHALTER.
 9. In "antwort" steht bei einer Änderung, was du änderst und warum das zulässig ist. Schritte werden sofort ausgeführt: bitte dann nicht um Bestätigung. Neue Summen nennst du nicht, die meldet die Seite nach der Änderung selbst.
 
+Prüfen und Korrigieren:
+Bittet er darum, den Plan zu prüfen, zu korrigieren, in Ordnung zu bringen oder die Meldungen des Prüfmoduls zu beheben, arbeitest du die PRÜFHINWEISE mit stufe fehler und warnung ab. Du allein entscheidest aus dem Satz, ob das gemeint ist. Setze dann "pruefung":true. Will er nur wissen, was das Prüfmodul meldet, erkläre die Meldungen und ändere nichts. Nennt er nur einen Teil ("nur die Begründungen"), behebe nur diesen Teil. Je Art:
+- begruendung_fehlt: je id ein "setze" mit "begruendung". Ein Satz, der den erhöhten Aufwand DIESER Leistung beschreibt (Schwierigkeit, Zeitaufwand, Umstände der Ausführung), abgeleitet nur aus Leistungstext, Zahn oder Region dieser einen Position. Übernimm keine Befunde aus der Begründung einer anderen Position. Kein Patientenname, keine erfundenen Befunde oder Diagnosen. Sage in der Antwort, dass es Vorschläge sind, die die Praxis vor dem Ausdruck prüft. Hat die Position in PLAN schon eine begruendung, lass sie.
+- faktor_ueber_35: ohne Vereinbarung nach § 2 GOZ ist höchstens 3,5 zulässig. Setze den faktor auf 3.5 und gib eine begruendung dazu, wenn keine da ist. Sagt er, dass eine Vereinbarung besteht, ändere den Faktor nicht und nenne die Einstellung der Praxis dafür.
+- faktor_ueber_35_vereinbart: nur erwähnen, nichts ändern.
+- faktor_unter_1: setze faktor 1, wenn der Satz nichts anderes verlangt.
+- anzahl_null, kein_betrag: eine Position mit herkunft "hand" mit "weg" entfernen. Eine Position mit herkunft "planer" kommt aus einem Schalter oder der Rechnung: nicht entfernen, sondern erklären, woran es liegt.
+- kein_preis: der Preis fehlt. Erfinde keinen. Frage nach dem Preis und gib für diese Position keinen Schritt.
+- kein_text: melden, nichts ändern.
+- doppelt: dieselbe Leistung steht zweimal am selben Zahn. Entferne die Position mit herkunft "hand"; die mit herkunft "planer" bleibt. Haben beide dieselbe herkunft und ist nicht klar, welche gemeint ist, frage. An einer Position, die du im selben Zug entfernst, änderst du sonst nichts.
+- ausschluss: zwei Positionen schließen sich aus. Hat eine der beiden herkunft "hand", entferne diese mit "weg". Haben beide herkunft "planer", schalte den SCHALTER aus, der eine der beiden bringt und jetzt eingeschaltet ist. Sind beide gleich entstanden, bleibt die höher bewertete (größerer betrag), außer WISSEN oder der Text der Meldung sagen etwas anderes. Gilt der Ausschluss laut Meldung nur in derselben Sitzung und tragen die Positionen verschiedene sitzung, ändere nichts und sage das. Bist du nicht sicher, welche Leistung fachlich erbracht wird, entferne nichts und frage.
+- rechnung: Hinweis der Rechnung des Planers. Erklären; ändern nur über einen passenden SCHALTER.
+Eine Position mit herkunft "planer" verschwindet über ihren SCHALTER; "weg" nimmst du für sie nur, wenn kein Schalter sie bringt (manche Planer lehnen das ab, das meldet die Seite dann). Ein "schalter"-Schritt muss den Wert ändern: ein Schalter, der schon aus ist, bringt keine Leistung und löst nichts.
+In "antwort" nennst du Positionen mit Nummer und Zahn oder Region, nie mit ihrer id und ohne die Wörter "hand" und "planer".
+Beim Korrigieren fasst du nur Positionen an, die in den ids einer Meldung stehen, und änderst nur, was die Meldung verlangt: kein anderer Faktor, keine andere Anzahl, keine neue Position. Das Programm verwirft alles andere.
+Steht eine Schritt-Art nicht in ERLAUBT, sage, was die Praxis im Planer selbst tun muss. Was du nicht sicher lösen kannst, lässt du offen und nennst es. Behaupte nie, eine Meldung sei behoben: die Seite prüft den Plan nach deinen Schritten neu und meldet selbst, was erledigt und was offen ist.
+Steht unter NACH DEINEN SCHRITTEN ein Abschnitt, hast du in diesem Auftrag schon geändert; PLAN und PRÜFHINWEISE zeigen den Stand danach. Behebe nur, was noch offen ist. Wiederhole keinen Schritt, der dort als abgelehnt steht, und nimm nichts zurück, was du gerade geändert hast. Kannst du nichts mehr tun, gib keine Schritte und sage in einem Satz, was offen bleibt und warum.
+
 Schritte:
 {"op":"schalter","name":"<Name aus SCHALTER>","wert":true}
 {"op":"hinzu","ebene":"GOZ","nr":"9100","zahn":"16","anzahl":1,"faktor":2.3}
@@ -32,9 +50,13 @@ Schritte:
 {"op":"weg","id":"<id>"}
 {"op":"zurueck"}   (nimmt die letzte Änderung aus dieser Zeile zurück)
 
-Antworte nur mit JSON: {"antwort":"...","schritte":[...]}. Ohne Änderung ist schritte leer. Kein Markdown.`;
+Antworte nur mit JSON: {"antwort":"...","schritte":[...],"pruefung":false}. Ohne Änderung ist schritte leer. "pruefung" ist true, wenn der Auftrag das Prüfen und Korrigieren ist. Kein Markdown.`;
 
 const OPS = ["schalter", "hinzu", "setze", "weg", "zurueck"];
+/** Arten der Prüfmodul-Meldungen, wie PlanR sie mitgibt (_gemeinsam/src/planKi.ts PruefArt) */
+const PRUEF_ARTEN = ["anzahl_null", "kein_betrag", "kein_preis", "kein_text", "faktor_ueber_35", "faktor_ueber_35_vereinbart", "faktor_unter_1", "begruendung_fehlt", "doppelt", "ausschluss", "rechnung"];
+/** So viele Schritte nimmt ein Zug an: ein Plan mit vielen gesteigerten Leistungen braucht je Zeile eine Begründung. */
+export const PLAN_KI_SCHRITTE = 60;
 const klein = (s) => String(s || "").toLowerCase();
 const zahl = (x) => (typeof x === "number" && Number.isFinite(x) ? x : typeof x === "string" && x.trim() && Number.isFinite(Number(x.replace(",", "."))) ? Number(x.replace(",", ".")) : null);
 
@@ -48,6 +70,8 @@ export function blickSaeubern(roh) {
     ...(zahl(p?.faktor) != null ? { faktor: zahl(p.faktor) } : {}),
     betrag: zahl(p?.betrag) ?? 0, text: s(p?.text, 140),
     ...(p?.auto ? { auto: true } : {}),
+    ...(typeof p?.begruendung === "string" && p.begruendung.trim() ? { begruendung: s(p.begruendung.trim(), 300) } : {}),
+    ...(p?.ohnePreis ? { ohnePreis: true } : {}),
     ...(zahl(p?.sitzung) != null ? { sitzung: zahl(p.sitzung) } : {}),
   })).filter((p) => p.id && p.nr);
   const schalter = (Array.isArray(b.schalter) ? b.schalter : []).slice(0, 120).map((x) => ({
@@ -56,12 +80,18 @@ export function blickSaeubern(roh) {
     ...(Array.isArray(x?.werte) ? { werte: x.werte.slice(0, 20).map((w) => s(w, 60)) } : {}),
   })).filter((x) => x.name);
   const paare = (o, n) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).slice(0, n).map(([k, v]) => [s(k, 40), typeof v === "number" ? v : s(v, 300)]));
+  const ids = new Set(positionen.map((p) => p.id));
+  const hinweise = (Array.isArray(b.hinweise) ? b.hinweise : []).slice(0, 80).map((h) => ({
+    stufe: s(h?.stufe, 10), text: s(h?.text, 300),
+    ...(PRUEF_ARTEN.includes(h?.art) ? { art: h.art } : {}),
+    ...(Array.isArray(h?.ids) && h.ids.some((i) => ids.has(String(i))) ? { ids: h.ids.map(String).filter((i) => ids.has(i)).slice(0, 12) } : {}),
+  })).filter((h) => h.text);
   return {
     planart: s(b.planart, 40), name: s(b.name, 80), gesperrt: b.gesperrt === true,
     kann: (Array.isArray(b.kann) ? b.kann : []).map(String).filter((o) => OPS.includes(o)),
     ebenen: (Array.isArray(b.ebenen) ? b.ebenen : []).slice(0, 10).map((e) => s(e, 8)),
     positionen, schalter, summen: paare(b.summen, 20), angaben: paare(b.angaben, 30),
-    hinweise: (Array.isArray(b.hinweise) ? b.hinweise : []).slice(0, 40).map((h) => ({ stufe: s(h?.stufe, 10), text: s(h?.text, 300) })).filter((h) => h.text),
+    hinweise,
   };
 }
 
@@ -114,22 +144,63 @@ export function genannteNummern(text, blick) {
   });
 }
 
-export function planKiNachricht({ text, blick, verlauf = [], tabelle = [], wissen = "" }) {
+/** Was der Planer aus der vorigen Runde dieses Auftrags gemeldet hat */
+function nachlaufText(n) {
+  if (!n || typeof n !== "object") return "";
+  const liste = (x) => (Array.isArray(x) ? x : []).slice(0, 60).map((t) => `- ${String(t || "").slice(0, 300)}`).join("\n");
+  const getan = liste(n.getan), nicht = liste(n.nicht);
+  if (!getan && !nicht) return "";
+  return `NACH DEINEN SCHRITTEN (Runde ${Number(n.runde) || 2} dieses Auftrags; PLAN und PRÜFHINWEISE oben sind der Stand danach):\nAusgeführt:\n${getan || "- nichts"}\nVom Planer abgelehnt:\n${nicht || "- nichts"}`;
+}
+
+export function planKiNachricht({ text, blick, verlauf = [], tabelle = [], wissen = "", nachlauf = null }) {
   const genannt = genannteNummern(text, blick);
   const zuvor = (Array.isArray(verlauf) ? verlauf : []).slice(-6)
     .map((z) => `${z?.wer === "clara" ? "Clara" : "Zahnarzt"}: ${String(z?.text || "").slice(0, 400)}`).join("\n");
-  const plan = { planart: blick.planart, name: blick.name, gesperrt: blick.gesperrt, angaben: blick.angaben, summen: blick.summen, positionen: blick.positionen };
+  const herkunft = new Map(blick.positionen.map((p) => [p.id, p.auto ? "planer" : "hand"]));
+  const positionen = blick.positionen.map(({ auto, ...p }) => ({ ...p, herkunft: auto ? "planer" : "hand" }));
+  const plan = { planart: blick.planart, name: blick.name, gesperrt: blick.gesperrt, angaben: blick.angaben, summen: blick.summen, positionen };
   return [
     `ERLAUBT: ${blick.gesperrt ? "nichts (Plan gesperrt)" : blick.kann.join(", ") || "nichts (dieser Planer nimmt von hier noch keine Änderungen an)"}${blick.ebenen.length ? `\nEbenen für "hinzu": ${blick.ebenen.join(", ")}` : ""}`,
     `PLAN:\n${JSON.stringify(plan)}`,
     `SCHALTER:\n${blick.schalter.length ? JSON.stringify(blick.schalter) : "keine"}`,
-    `PRÜFHINWEISE:\n${blick.hinweise.length ? blick.hinweise.map((h) => `- [${h.stufe}] ${h.text}`).join("\n") : "keine"}`,
+    `PRÜFHINWEISE:\n${blick.hinweise.length ? blick.hinweise.map((h) => `- [${h.stufe}]${h.art ? ` art=${h.art}` : ""}${h.ids?.length ? ` ids=${h.ids.map((i) => `${i}(${herkunft.get(i)})`).join(",")}` : ""}: ${h.text}`).join("\n") : "keine"}`,
     `AUSSCHLUSS-TABELLE:\n${tabelle.length ? tabelle.map((t) => `- ${t}`).join("\n") : "kein Treffer zu den genannten Nummern und diesem Plan"}`,
     `WISSEN:\n${String(wissen || "").slice(0, 6000) || "nichts gefunden"}`,
     zuvor ? `BISHER IN DIESER ZEILE:\n${zuvor}` : "",
+    nachlaufText(nachlauf),
     genannt.length ? `GENANNTE NUMMERN (vom Programm am PLAN geprüft, verbindlich; deine Antwort darf dem nicht widersprechen. Steht hier "NICHT im Plan", dann behaupte nicht, die Nummer stehe im Plan):\n${genannt.map((g) => `- ${g}`).join("\n")}` : "",
     `Zahnarzt jetzt: «${String(text || "").slice(0, 1200)}»`,
   ].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Korrekturlauf: es bleibt nur, was eine Meldung des Prüfmoduls verlangt. Das Modell darf dabei
+ * keinen Faktor anheben, keine unbeteiligte Position anfassen und nichts ergänzen.
+ */
+function nurZuMeldungen(schritte, blick, verworfen) {
+  const zu = (...arten) => new Set(blick.hinweise.filter((h) => arten.includes(h.art)).flatMap((h) => h.ids || []));
+  const wegErlaubt = zu("doppelt", "ausschluss", "anzahl_null", "kein_betrag");
+  const zuHoch = zu("faktor_ueber_35"), zuTief = zu("faktor_unter_1"), ohneGrund = zu("begruendung_fehlt");
+  const schalterErlaubt = blick.hinweise.some((h) => h.art === "ausschluss" || h.art === "rechnung");
+  const entfernt = new Set(schritte.filter((s) => s.op === "weg" && wegErlaubt.has(s.id)).map((s) => s.id));
+  const pos = new Map(blick.positionen.map((p) => [p.id, p]));
+  const raus = [];
+  for (const s of schritte) {
+    if (s.op === "weg") { if (wegErlaubt.has(s.id)) raus.push(s); else verworfen.push("weg ohne Meldung"); continue; }
+    if (s.op === "schalter") { if (schalterErlaubt) raus.push(s); else verworfen.push("schalter ohne Meldung"); continue; }
+    if (s.op === "setze") {
+      if (entfernt.has(s.id)) { verworfen.push("setze an entfernter Position"); continue; }
+      const neu = { op: "setze", id: s.id };
+      if (s.faktor != null && ((zuHoch.has(s.id) && s.faktor <= 3.5) || (zuTief.has(s.id) && s.faktor >= 1 && s.faktor <= 2.3))) neu.faktor = s.faktor;
+      // Eine Begründung nur, wo sie fehlt oder der Faktor über der Schwelle bleibt und noch keine da ist.
+      if (s.begruendung && (ohneGrund.has(s.id) || (zuHoch.has(s.id) && !pos.get(s.id)?.begruendung))) neu.begruendung = s.begruendung;
+      if (Object.keys(neu).length > 2) raus.push(neu); else verworfen.push("setze ohne Meldung");
+      continue;
+    }
+    verworfen.push(`${s.op} im Korrekturlauf`);
+  }
+  return raus;
 }
 
 /** Antwort des Modells prüfen: nur Schritte, die dieser Plan zulässt. Ungültiges -> null. */
@@ -150,7 +221,7 @@ export function planKiLesen(rohText, blick) {
   const kann = new Set(blick.gesperrt ? [] : blick.kann);
   const schritte = [];
   const verworfen = [];
-  for (const s of (Array.isArray(daten.schritte) ? daten.schritte : []).slice(0, 12)) {
+  for (const s of (Array.isArray(daten.schritte) ? daten.schritte : []).slice(0, PLAN_KI_SCHRITTE)) {
     const op = String(s?.op || "");
     if (!kann.has(op)) { verworfen.push(op || "?"); continue; }
     if (op === "zurueck") { schritte.push({ op }); continue; }
@@ -182,6 +253,8 @@ export function planKiLesen(rohText, blick) {
         wert = String(wert ?? "");
         if (ziel.werte && !ziel.werte.includes(wert)) { verworfen.push("schalter"); continue; }
       }
+      // Ein Schalter, der schon so steht, ändert nichts am Plan.
+      if (wert === ziel.wert) { verworfen.push("schalter unverändert"); continue; }
       schritte.push({ op, name: ziel.name, wert });
       continue;
     }
@@ -198,5 +271,6 @@ export function planKiLesen(rohText, blick) {
       schritte.push(neu);
     }
   }
-  return { antwort, schritte, verworfen };
+  const pruefung = daten.pruefung === true;
+  return { antwort, schritte: pruefung ? nurZuMeldungen(schritte, blick, verworfen) : schritte, verworfen, pruefung };
 }

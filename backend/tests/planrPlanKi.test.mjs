@@ -65,3 +65,64 @@ test("planKiNachricht: Plan, Schalter und Satz stehen drin, kein Patient", () =>
   assert.ok(n.includes('"nr":"9010"') && n.includes("region.OK rechts.augmentation") && n.includes("geht 9100 noch?") && n.includes("- T1"));
   assert.equal(n.includes("darf nicht durch"), false);
 });
+
+test("Pruefmodul: Art, ids und Begruendung erreichen das Modell, fremde ids nicht", () => {
+  const b = blickSaeubern({
+    planart: "privat-impl", kann: ["setze", "weg"],
+    positionen: [
+      { id: "p1", ebene: "GOZ", nr: "9010", zahn: "16", anzahl: 1, faktor: 3.5, betrag: 100, text: "Implantat", begruendung: "Erschwerter Zugang." },
+      { id: "p2", ebene: "GOZ", nr: "9100", zahn: "16", anzahl: 1, faktor: 3.5, betrag: 100, text: "Augmentation" },
+    ],
+    hinweise: [
+      { stufe: "warnung", text: "9100 ueber 2,3 ohne Begruendung", art: "begruendung_fehlt", ids: ["p2", "fremd"] },
+      { stufe: "fehler", text: "x", art: "erfunden", ids: ["fremd"] },
+    ],
+  });
+  assert.equal(b.positionen[0].begruendung, "Erschwerter Zugang.");
+  assert.deepEqual(b.hinweise[0], { stufe: "warnung", text: "9100 ueber 2,3 ohne Begruendung", art: "begruendung_fehlt", ids: ["p2"] });
+  assert.deepEqual(b.hinweise[1], { stufe: "fehler", text: "x" });
+  const n = planKiNachricht({ text: "pruefe und korrigiere den plan", blick: b, nachlauf: { runde: 2, getan: ["9010: Faktor 3,5"], nicht: ["9100: geht nicht"] } });
+  assert.ok(n.includes("- [warnung] art=begruendung_fehlt ids=p2(hand): 9100"), n);
+  assert.ok(n.includes("NACH DEINEN SCHRITTEN") && n.includes("- 9100: geht nicht"));
+  assert.equal(planKiNachricht({ text: "x", blick: b }).includes("NACH DEINEN SCHRITTEN"), false);
+});
+
+test("planKiLesen: viele Begruendungen in einem Zug, pruefung-Kennzeichen", () => {
+  const pos = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, ebene: "GOZ", nr: "9010", zahn: "16", anzahl: 1, faktor: 3.5, betrag: 1, text: "t" }));
+  const b = blickSaeubern({ planart: "privat-impl", kann: ["setze"], positionen: pos });
+  const r = planKiLesen(JSON.stringify({ antwort: "Begruendungen ergaenzt.", pruefung: false, schritte: pos.map((p) => ({ op: "setze", id: p.id, begruendung: "Erhoehter Zeitaufwand." })) }), b);
+  assert.equal(r.schritte.length, 30);
+  assert.equal(r.pruefung, false);
+  assert.equal(planKiLesen('{"antwort":"ok","schritte":[]}', b).pruefung, false);
+});
+
+test("Korrekturlauf: nur was eine Meldung verlangt, kein Faktor nach oben, nichts an entfernten Positionen", () => {
+  const z = { ebene: "GOZ", nr: "0090", zahn: "16", anzahl: 1, betrag: 10, text: "Infiltration" };
+  const b = blickSaeubern({
+    planart: "privat-impl", kann: ["setze", "weg", "schalter", "hinzu"], ebenen: ["GOZ"],
+    positionen: [{ ...z, id: "hoch", faktor: 4.2 }, { ...z, id: "auto", faktor: 2.3, auto: true }, { ...z, id: "ohne", nr: "9100", faktor: 3.5 }, { ...z, id: "fremd", nr: "9010", faktor: 2.3 }],
+    schalter: [{ name: "s", text: "S", wert: true }],
+    hinweise: [
+      { stufe: "fehler", text: "f", art: "faktor_ueber_35", ids: ["hoch"] },
+      { stufe: "warnung", text: "d", art: "doppelt", ids: ["hoch", "auto"] },
+      { stufe: "warnung", text: "b", art: "begruendung_fehlt", ids: ["ohne"] },
+    ],
+  });
+  const lesen = (schritte) => planKiLesen(JSON.stringify({ antwort: "a", pruefung: true, schritte }), b);
+  const r = lesen([
+    { op: "setze", id: "hoch", faktor: 3.5, begruendung: "Erhoehter Aufwand." },
+    { op: "setze", id: "auto", faktor: 3.5 },
+    { op: "setze", id: "fremd", faktor: 3.5, begruendung: "x" },
+    { op: "setze", id: "ohne", faktor: 2.3, begruendung: "Erhoehter Zeitaufwand." },
+    { op: "weg", id: "fremd" },
+    { op: "schalter", name: "s", wert: false },
+    { op: "hinzu", ebene: "GOZ", nr: "9100", zahn: "16" },
+  ]);
+  assert.deepEqual(r.schritte, [
+    { op: "setze", id: "hoch", faktor: 3.5, begruendung: "Erhoehter Aufwand." },
+    { op: "setze", id: "ohne", begruendung: "Erhoehter Zeitaufwand." },
+  ]);
+  assert.equal(r.verworfen.length, 5);
+  const weg = lesen([{ op: "weg", id: "hoch" }, { op: "setze", id: "hoch", faktor: 3.5 }]);
+  assert.deepEqual(weg.schritte, [{ op: "weg", id: "hoch" }]);
+});

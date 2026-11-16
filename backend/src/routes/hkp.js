@@ -653,18 +653,31 @@ router.post("/planr/plan-ki", planrGuard, async (req, res) => {
     const tabelle = tabelleFuer(text, blick);
     const wissen = await wissenSuchen(text, null).catch(() => "");
     const { base, model } = strongLlm();
-    const antwort = await chat([
+    const nachrichten = [
       { role: "system", content: PLAN_KI_SYSTEM },
-      { role: "user", content: planKiNachricht({ text, blick, verlauf: b.verlauf, tabelle, wissen }) },
-    ], { temperature: 0.1, maxTokens: 900, model, baseUrl: base, timeoutMs: Number(process.env.MAS_PLAN_KI_MS || 45000) });
-    const ergebnis = antwort.ok ? planKiLesen(antwort.text, blick) : null;
+      { role: "user", content: planKiNachricht({ text, blick, verlauf: b.verlauf, tabelle, wissen, nachlauf: b.nachlauf }) },
+    ];
+    const beginn = Date.now();
+    const frist = Number(process.env.MAS_PLAN_KI_MS || 55000);
+    const fragen = (timeoutMs) => chat(nachrichten, { temperature: 0.1, maxTokens: Number(process.env.MAS_PLAN_KI_TOKENS || 2500), model, baseUrl: base, timeoutMs });
+    let antwort = await fragen(frist);
+    let ergebnis = antwort.ok ? planKiLesen(antwort.text, blick) : null;
+    // Kam kein lesbares JSON und ist noch Zeit, ein zweiter Versuch statt einer leeren Antwort.
+    const rest = frist - (Date.now() - beginn);
+    if (!ergebnis && antwort.ok && rest > 15000) {
+      log.warn?.("[planr] plan-ki: Antwort ohne JSON, zweiter Versuch");
+      antwort = await fragen(rest);
+      ergebnis = antwort.ok ? planKiLesen(antwort.text, blick) : null;
+    }
     if (!ergebnis) {
       log.warn?.(`[planr] plan-ki ohne brauchbare Antwort (${antwort.ok ? "kein JSON" : antwort.error || "Modell"})`);
       return res.json({ ok: false, message: "Dazu habe ich gerade keine Antwort bekommen. Der Plan ist unveraendert." });
     }
     if (ergebnis.verworfen.length) log.warn?.(`[planr] plan-ki: Schritte verworfen: ${ergebnis.verworfen.join(", ")}`);
     log.info?.(`[planr] plan-ki ${blick.planart} positionen=${blick.positionen.length} schritte=${ergebnis.schritte.length} tabelle=${tabelle.length}`);
-    res.json({ ok: true, antwort: ergebnis.antwort, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length });
+    // Hat der Korrekturlauf nur Unzulaessiges vorgeschlagen, gilt die Ankuendigung des Modells nicht.
+    const leer = ergebnis.pruefung && !ergebnis.schritte.length && ergebnis.verworfen.length > 0;
+    res.json({ ok: true, antwort: leer ? "Dafür habe ich keinen zulässigen Schritt gefunden. Am Plan habe ich nichts geändert." : ergebnis.antwort, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length, pruefung: ergebnis.pruefung });
   } catch (e) {
     log.error?.(`[planr] plan-ki: ${e?.stack || e}`);
     res.status(500).json({ ok: false, message: "Die KI-Zeile ist gerade nicht erreichbar." });
