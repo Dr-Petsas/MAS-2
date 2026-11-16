@@ -9,6 +9,7 @@ import { ausschluesseZwischen, ausschlussSatz, ausschlussTabelle, planPruefen } 
 export const PLAN_KI_SYSTEM = `Du bist Clara, die Abrechnungsassistentin in PlanR. Der Zahnarzt hat genau EINEN Plan geöffnet und schreibt in die KI-Zeile dieses Plans. Du bekommst:
 - PLAN: Planart, alle Positionen (id, ebene, nr, zahn, anzahl, faktor, betrag, text, ggf. begruendung; herkunft "planer" = vom Planer aus Schalter oder Befund errechnet, herkunft "hand" = von Hand oder über diese Zeile ergänzt), Summen, Angaben.
 - SCHALTER: Einstellungen des Planers mit ihrem jetzigen Wert. Ein Schalter bringt seine Leistungen samt Begleitleistungen und Ausschlüssen selbst.
+- ZAHNSCHEMA: die Felder, die du je Zahn ändern darfst (Befund, Planung und was der Planer sonst je Zahn führt), jedes mit seinen erlaubten Werten und deren Bedeutung. Der jetzige Stand je Zahn steht in PLAN unter angaben oder in den Positionen.
 - PRÜFHINWEISE: was das Prüfmodul an diesem Plan gefunden hat, je Zeile [stufe] art=<Art> ids=<betroffene Positionen mit ihrer herkunft>: Text. Die ids sind ids aus PLAN.
 - GENANNTE NUMMERN: für jede Nummer aus dem Satz, ob sie im PLAN steht und ob ein Ausschluss der Tabelle an diesem Plan greift. Das ist geprüft und gilt vor allem anderen. Ein SCHALTER mit wert=false bedeutet: seine Leistung steht NICHT im Plan.
 - AUSSCHLUSS-TABELLE: gilt immer, auch gegen deine Erinnerung.
@@ -38,6 +39,8 @@ Bittet er darum, den Plan zu prüfen, zu korrigieren, in Ordnung zu bringen oder
 - rechnung: Hinweis der Rechnung des Planers. Erklären; ändern nur über einen passenden SCHALTER.
 Eine Position mit herkunft "planer" verschwindet über ihren SCHALTER; "weg" nimmst du für sie nur, wenn kein Schalter sie bringt (manche Planer lehnen das ab, das meldet die Seite dann). Ein "schalter"-Schritt muss den Wert ändern: ein Schalter, der schon aus ist, bringt keine Leistung und löst nichts.
 In "antwort" nennst du Positionen mit Nummer und Zahn oder Region, nie mit ihrer id und ohne die Wörter "hand" und "planer".
+10. Zahnschema: Soll sich am Befund oder an der Planung eines Zahns etwas ändern (Zahn fehlt, Implantat dazu oder weg, Krone statt Brückenglied, andere Füllung, andere Fläche, anderes Implantatsystem …) und steht "zahn" in ERLAUBT, gib je Zahn EINEN Schritt "zahn" mit nur den Feldern, die sich ändern, und nur Werten aus ZAHNSCHEMA (der Schlüssel, nicht die Bedeutung). Der Planer rechnet danach alle Positionen selbst neu: gib dazu KEIN "hinzu", "weg" oder "setze" für Positionen, die aus dem Zahnschema errechnet werden. Ein leerer Wert "" nimmt den Eintrag heraus, wenn ZAHNSCHEMA ihn anbietet. Nennt der Arzt eine Versorgung, für die es mehrere passende Kürzel gibt, und ergibt sich die Wahl nicht aus dem übrigen Plan, frage nach. Zahnnummern sind FDI (11 bis 48). Ist nicht klar, welcher Zahn gemeint ist, frage nach.
+
 Beim Korrigieren fasst du nur Positionen an, die in den ids einer Meldung stehen, und änderst nur, was die Meldung verlangt: kein anderer Faktor, keine andere Anzahl, keine neue Position. Das Programm verwirft alles andere.
 Steht eine Schritt-Art nicht in ERLAUBT, sage, was die Praxis im Planer selbst tun muss. Was du nicht sicher lösen kannst, lässt du offen und nennst es. Behaupte nie, eine Meldung sei behoben: die Seite prüft den Plan nach deinen Schritten neu und meldet selbst, was erledigt und was offen ist.
 Steht unter NACH DEINEN SCHRITTEN ein Abschnitt, hast du in diesem Auftrag schon geändert; PLAN und PRÜFHINWEISE zeigen den Stand danach. Behebe nur, was noch offen ist. Wiederhole keinen Schritt, der dort als abgelehnt steht, und nimm nichts zurück, was du gerade geändert hast. Kannst du nichts mehr tun, gib keine Schritte und sage in einem Satz, was offen bleibt und warum.
@@ -47,11 +50,12 @@ Schritte:
 {"op":"hinzu","ebene":"GOZ","nr":"9100","zahn":"16","anzahl":1,"faktor":2.3}
 {"op":"setze","id":"<id>","anzahl":2,"faktor":3.5,"begruendung":"..."}
 {"op":"weg","id":"<id>"}
+{"op":"zahn","zahn":"16","felder":{"<Feldname aus ZAHNSCHEMA>":"<Wert>"}}
 {"op":"zurueck"}   (nimmt die letzte Änderung aus dieser Zeile zurück)
 
 Antworte nur mit JSON: {"antwort":"...","schritte":[...],"pruefung":false}. Ohne Änderung ist schritte leer. "pruefung" ist true, wenn der Auftrag das Prüfen und Korrigieren ist. "entschieden":true kommt nur dazu, wenn der Satz selbst festlegt, welche Position einer doppelt- oder ausschluss-Meldung geht oder bleibt. Kein Markdown.`;
 
-const OPS = ["schalter", "hinzu", "setze", "weg", "zurueck"];
+const OPS = ["schalter", "hinzu", "setze", "weg", "zurueck", "zahn"];
 /** Arten der Prüfmodul-Meldungen, wie PlanR sie mitgibt (_gemeinsam/src/planKi.ts PruefArt) */
 const PRUEF_ARTEN = ["anzahl_null", "kein_betrag", "kein_preis", "kein_text", "faktor_ueber_35", "faktor_ueber_35_vereinbart", "faktor_unter_1", "begruendung_fehlt", "doppelt", "ausschluss", "rechnung"];
 /** So viele Schritte nimmt ein Zug an: ein Plan mit vielen gesteigerten Leistungen braucht je Zeile eine Begründung. */
@@ -78,6 +82,12 @@ export function blickSaeubern(roh) {
     wert: typeof x?.wert === "boolean" || typeof x?.wert === "number" ? x.wert : s(x?.wert, 60),
     ...(Array.isArray(x?.werte) ? { werte: x.werte.slice(0, 20).map((w) => s(w, 60)) } : {}),
   })).filter((x) => x.name);
+  const zahnfelder = (Array.isArray(b.zahnfelder) ? b.zahnfelder : []).slice(0, 16).map((x) => ({
+    name: s(x?.name, 40), text: s(x?.text, 200),
+    ...(x?.werte && typeof x.werte === "object" ? { werte: Object.fromEntries(Object.entries(x.werte).slice(0, 160).map(([k, v]) => [s(k, 24), s(v, 120)])) } : {}),
+    ...(zahl(x?.von) != null && zahl(x?.bis) != null ? { von: zahl(x.von), bis: zahl(x.bis) } : {}),
+    ...(x?.ja === true ? { ja: true } : {}),
+  })).filter((x) => x.name && (x.werte || x.ja || x.von != null));
   const paare = (o, n) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).slice(0, n).map(([k, v]) => [s(k, 40), typeof v === "number" ? v : s(v, 300)]));
   const ids = new Set(positionen.map((p) => p.id));
   const hinweise = (Array.isArray(b.hinweise) ? b.hinweise : []).slice(0, 80).map((h) => ({
@@ -89,7 +99,7 @@ export function blickSaeubern(roh) {
     planart: s(b.planart, 40), name: s(b.name, 80), gesperrt: b.gesperrt === true,
     kann: (Array.isArray(b.kann) ? b.kann : []).map(String).filter((o) => OPS.includes(o)),
     ebenen: (Array.isArray(b.ebenen) ? b.ebenen : []).slice(0, 10).map((e) => s(e, 8)),
-    positionen, schalter, summen: paare(b.summen, 20), angaben: paare(b.angaben, 30),
+    positionen, schalter, zahnfelder, summen: paare(b.summen, 20), angaben: paare(b.angaben, 30),
     hinweise,
   };
 }
@@ -163,6 +173,7 @@ export function planKiNachricht({ text, blick, verlauf = [], tabelle = [], wisse
     `ERLAUBT: ${blick.gesperrt ? "nichts (Plan gesperrt)" : blick.kann.join(", ") || "nichts (dieser Planer nimmt von hier noch keine Änderungen an)"}${blick.ebenen.length ? `\nEbenen für "hinzu": ${blick.ebenen.join(", ")}` : ""}`,
     `PLAN:\n${JSON.stringify(plan)}`,
     `SCHALTER:\n${blick.schalter.length ? JSON.stringify(blick.schalter) : "keine"}`,
+    blick.zahnfelder?.length ? `ZAHNSCHEMA (Felder für den Schritt "zahn"):\n${JSON.stringify(blick.zahnfelder)}` : "",
     `PRÜFHINWEISE:\n${blick.hinweise.length ? blick.hinweise.map((h) => `- [${h.stufe}]${h.art ? ` art=${h.art}` : ""}${h.ids?.length ? ` ids=${h.ids.map((i) => `${i}(${herkunft.get(i)})`).join(",")}` : ""}: ${h.text}`).join("\n") : "keine"}`,
     `AUSSCHLUSS-TABELLE:\n${tabelle.length ? tabelle.map((t) => `- ${t}`).join("\n") : "kein Treffer zu den genannten Nummern und diesem Plan"}`,
     `WISSEN:\n${String(wissen || "").slice(0, 6000) || "nichts gefunden"}`,
@@ -214,6 +225,34 @@ export function planKiRueckfrage(blick) {
   return `Hier entscheiden Sie: ${liste}${mehr} Welche Position soll jeweils entfallen, oder soll es so bleiben?`;
 }
 
+/** FDI-Zahn des bleibenden Gebisses */
+const istZahn = (z) => z.length === 2 && "1234".includes(z[0]) && "12345678".includes(z[1]);
+
+/** Schritt "zahn": nur Felder und Werte, die der Planer für sein Zahnschema gemeldet hat. */
+function zahnSchritt(s, zahnfelder) {
+  const zahn = String(s?.zahn ?? "").trim();
+  if (!istZahn(zahn) || !s.felder || typeof s.felder !== "object") return null;
+  const felder = {};
+  for (const [name, roh] of Object.entries(s.felder).slice(0, 16)) {
+    const f = zahnfelder.find((x) => x.name === name);
+    if (!f) return null;
+    if (f.ja) {
+      if (typeof roh !== "boolean") return null;
+      felder[name] = roh;
+    } else if (f.werte) {
+      const wert = String(roh ?? "");
+      const treffer = Object.keys(f.werte).find((k) => k === wert) ?? Object.keys(f.werte).find((k) => k.toLowerCase() === wert.toLowerCase());
+      if (treffer === undefined) return null;
+      felder[name] = treffer;
+    } else {
+      const n = zahl(roh);
+      if (n == null || n < f.von || n > f.bis) return null;
+      felder[name] = n;
+    }
+  }
+  return Object.keys(felder).length ? { op: "zahn", zahn, felder } : null;
+}
+
 /** Antwort des Modells prüfen: nur Schritte, die dieser Plan zulässt. Ungültiges -> null. */
 export function planKiLesen(rohText, blick) {
   const roh = String(rohText || "");
@@ -249,6 +288,11 @@ export function planKiLesen(rohText, blick) {
       if (preis != null && preis >= 0 && preis <= 100000) neu.preis = Math.round(preis * 100) / 100;
       if (typeof s.begruendung === "string" && s.begruendung.trim()) neu.begruendung = s.begruendung.trim().slice(0, 300);
       if (Object.keys(neu).length > 2) schritte.push(neu); else verworfen.push("setze");
+      continue;
+    }
+    if (op === "zahn") {
+      const neu = zahnSchritt(s, blick.zahnfelder || []);
+      if (neu) schritte.push(neu); else verworfen.push("zahn");
       continue;
     }
     if (op === "schalter") {

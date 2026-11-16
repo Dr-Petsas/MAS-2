@@ -149,3 +149,36 @@ test("Korrekturlauf: bei Ausschluss schaltet das Modell nichts ab, bevor die Pra
   assert.deepEqual(n.schritte, [{ op: "weg", id: "a" }]);
   assert.equal(n.frage, "");
 });
+
+test("Zahnschema: Schritt zahn nur mit gemeldeten Feldern und Werten", () => {
+  const b = blickSaeubern({
+    planart: "privat-hkp", kann: ["zahn", "zurueck"], positionen: [], schalter: [],
+    zahnfelder: [
+      { name: "befund", text: "Befund", werte: { "": "leer", f: "fehlt", kw: "Krone erneuern" } },
+      { name: "planung", text: "Planung", werte: { "": "leer", I: "Implantat", KM: "Krone" } },
+      { name: "laenge", text: "Länge", von: 4, bis: 20 },
+      { name: "cpt", text: "CPT", ja: true },
+      { name: "kaputt" },
+    ],
+  });
+  assert.equal(b.zahnfelder.length, 4);
+  assert.ok(planKiNachricht({ text: "16 fehlt", blick: b }).includes("ZAHNSCHEMA"));
+  const r = planKiLesen(JSON.stringify({ antwort: "Ich trage das ein.", schritte: [
+    { op: "zahn", zahn: "16", felder: { befund: "F", planung: "I", laenge: "11,5", cpt: true } },
+    { op: "zahn", zahn: "26", felder: { planung: "" } },
+    { op: "zahn", zahn: "19", felder: { befund: "f" } },
+    { op: "zahn", zahn: "36", felder: { befund: "gibtsnicht" } },
+    { op: "zahn", zahn: "36", felder: { fremd: "x" } },
+    { op: "zahn", zahn: "36", felder: { laenge: 40 } },
+    { op: "zahn", zahn: "36", felder: { cpt: "ja" } },
+    { op: "zahn", zahn: "36", felder: {} },
+  ] }), b);
+  assert.deepEqual(r.schritte, [
+    { op: "zahn", zahn: "16", felder: { befund: "f", planung: "I", laenge: 11.5, cpt: true } },
+    { op: "zahn", zahn: "26", felder: { planung: "" } },
+  ]);
+  assert.equal(r.verworfen.filter((v) => v === "zahn").length, 6);
+  // Ohne "zahn" in kann und im Korrekturlauf fällt der Schritt.
+  assert.deepEqual(planKiLesen('{"antwort":"x","schritte":[{"op":"zahn","zahn":"16","felder":{"befund":"f"}}]}', blick).schritte, []);
+  assert.deepEqual(planKiLesen('{"antwort":"x","pruefung":true,"schritte":[{"op":"zahn","zahn":"16","felder":{"befund":"f"}}]}', b).schritte, []);
+});
