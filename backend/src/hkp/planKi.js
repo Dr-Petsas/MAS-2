@@ -4,25 +4,26 @@
  * diesen Plan. Änderungen kommen als Schritte zurück; der Planer führt sie aus.
  * Hier wird nichts gespeichert und kein Patient übergeben.
  */
-import { ausschluesseZwischen, ausschlussSatz, planPruefen } from "./ausschluss.js";
+import { ausschluesseZwischen, ausschlussSatz, ausschlussTabelle, planPruefen } from "./ausschluss.js";
 
 export const PLAN_KI_SYSTEM = `Du bist Clara, die Abrechnungsassistentin in PlanR. Der Zahnarzt hat genau EINEN Plan geöffnet und schreibt in die KI-Zeile dieses Plans. Du bekommst:
 - PLAN: Planart, alle Positionen (id, ebene, nr, zahn, anzahl, faktor, betrag, text; auto=true hat der Planer selbst angesetzt), Summen, Angaben.
 - SCHALTER: Einstellungen des Planers mit ihrem jetzigen Wert. Ein Schalter bringt seine Leistungen samt Begleitleistungen und Ausschlüssen selbst.
 - PRÜFHINWEISE: was die Prüfung an diesem Plan gefunden hat.
+- GENANNTE NUMMERN: für jede Nummer aus dem Satz, ob sie im PLAN steht und ob ein Ausschluss der Tabelle an diesem Plan greift. Das ist geprüft und gilt vor allem anderen. Ein SCHALTER mit wert=false bedeutet: seine Leistung steht NICHT im Plan.
 - AUSSCHLUSS-TABELLE: gilt immer, auch gegen deine Erinnerung.
 - WISSEN: Auszüge aus den Abrechnungsbestimmungen.
 
 Regeln:
 1. Du sprichst immer über diesen Plan. Frage nie nach dem Patientennamen und nie, welcher Plan gemeint ist.
 2. Antworte auf Deutsch, höchstens vier Sätze, konkret: Nummern, Zähne oder Regionen und Beträge aus PLAN. Erfinde keine Positionen, Beträge oder Bestimmungen. Steht etwas weder in PLAN noch in WISSEN oder der Tabelle, sag das offen.
-3. Fragt er, ob eine Leistung noch dazu kann: prüfe, ob sie schon im PLAN steht (dann nenne Zahn, Anzahl, Betrag), ob die AUSSCHLUSS-TABELLE sie neben einer Position des Plans am selben Zahn oder in derselben Region ausschließt, und was WISSEN verlangt. Nenne den Grund.
+3. Fragt er, ob eine Leistung noch dazu kann: prüfe, ob sie schon im PLAN steht (dann nenne Zahn, Anzahl, Betrag), ob die AUSSCHLUSS-TABELLE sie neben einer Position des Plans am selben Zahn oder in derselben Region ausschließt, und was WISSEN verlangt. Nenne den Grund. Ein Ausschluss greift nur gegen eine Nummer, die laut PLAN wirklich im Plan steht; steht die andere Nummer nicht im Plan, ist die Leistung daran nicht gehindert (du darfst erwähnen, dass beide nicht zusammen gehen). Was eine Nummer bedeutet, nimmst du aus PLAN, SCHALTER oder WISSEN, nicht aus der Erinnerung.
 4. Will er eine Änderung, oder fragt er, ob etwas geht, und bittet zugleich darum: gib die Schritte dafür, aber nur wenn die Änderung zulässig ist. Ist sie es nicht, gib keine Schritte und nenne den Grund.
 5. Schalter vor "hinzu": Gibt es einen SCHALTER, der die gewünschte Leistung bringt, nimm den Schalter. Nur ohne passenden Schalter eine Position mit "hinzu".
 6. Fehlt eine nötige Angabe (Zahn oder Region) und kommen mehrere in Frage, stelle genau EINE Rückfrage und gib keine Schritte. Kommt nur ein Zahn oder eine Region in Frage, nimm diese.
 7. Ist der Plan gesperrt (gesperrt=true), änderst du nichts und sagst, dass er freigegeben ist.
 8. Nimm nur Schritt-Arten aus ERLAUBT. Für "weg" und "setze" nur ids aus PLAN, für "schalter" nur Namen aus SCHALTER.
-9. In "antwort" steht bei einer Änderung, was du änderst und warum das zulässig ist. Neue Summen nennst du nicht, die meldet die Seite nach der Änderung selbst.
+9. In "antwort" steht bei einer Änderung, was du änderst und warum das zulässig ist. Schritte werden sofort ausgeführt: bitte dann nicht um Bestätigung. Neue Summen nennst du nicht, die meldet die Seite nach der Änderung selbst.
 
 Schritte:
 {"op":"schalter","name":"<Name aus SCHALTER>","wert":true}
@@ -98,7 +99,23 @@ export function planPruefung(positionen) {
   return raus.slice(0, 40);
 }
 
+/** Je genannter Nummer: steht sie im Plan, und wo */
+export function genannteNummern(text, blick) {
+  return nummernImSatz(text).slice(0, 8).map((n) => {
+    const da = blick.positionen.filter((p) => klein(p.nr) === n);
+    const stand = da.length
+      ? `${n}: steht im Plan (${da.map((p) => `${p.ebene}${p.zahn ? ` ${p.zahn}` : ""}, ${p.anzahl}x, ${p.betrag.toFixed(2)} EUR`).join("; ")})`
+      : `${n}: steht NICHT im Plan`;
+    const partner = [...new Set(ausschlussTabelle().filter((e) => klein(e.a) === n || klein(e.b) === n).map((e) => klein(klein(e.a) === n ? e.b : e.a)))].slice(0, 12);
+    if (!partner.length) return `${stand}. Die Ausschluss-Tabelle kennt zu ${n} keinen Eintrag.`;
+    const drin = partner.filter((x) => blick.positionen.some((p) => klein(p.nr) === x));
+    const fehlt = partner.filter((x) => !drin.includes(x));
+    return `${stand}. Laut Tabelle nicht neben: ${partner.join(", ")}. Davon im Plan: ${drin.join(", ") || "keine"}${fehlt.length ? `; NICHT im Plan: ${fehlt.join(", ")}` : ""}. ${drin.length ? "Ein Ausschluss greift." : "Aus der Tabelle greift an diesem Plan kein Ausschluss."}`;
+  });
+}
+
 export function planKiNachricht({ text, blick, verlauf = [], tabelle = [], wissen = "" }) {
+  const genannt = genannteNummern(text, blick);
   const zuvor = (Array.isArray(verlauf) ? verlauf : []).slice(-6)
     .map((z) => `${z?.wer === "clara" ? "Clara" : "Zahnarzt"}: ${String(z?.text || "").slice(0, 400)}`).join("\n");
   const plan = { planart: blick.planart, name: blick.name, gesperrt: blick.gesperrt, angaben: blick.angaben, summen: blick.summen, positionen: blick.positionen };
@@ -110,6 +127,7 @@ export function planKiNachricht({ text, blick, verlauf = [], tabelle = [], wisse
     `AUSSCHLUSS-TABELLE:\n${tabelle.length ? tabelle.map((t) => `- ${t}`).join("\n") : "kein Treffer zu den genannten Nummern und diesem Plan"}`,
     `WISSEN:\n${String(wissen || "").slice(0, 6000) || "nichts gefunden"}`,
     zuvor ? `BISHER IN DIESER ZEILE:\n${zuvor}` : "",
+    genannt.length ? `GENANNTE NUMMERN (vom Programm am PLAN geprüft, verbindlich; deine Antwort darf dem nicht widersprechen. Steht hier "NICHT im Plan", dann behaupte nicht, die Nummer stehe im Plan):\n${genannt.map((g) => `- ${g}`).join("\n")}` : "",
     `Zahnarzt jetzt: «${String(text || "").slice(0, 1200)}»`,
   ].filter(Boolean).join("\n\n");
 }
