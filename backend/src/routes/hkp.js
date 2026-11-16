@@ -676,8 +676,8 @@ router.post("/planr/plan-ki", planrGuard, async (req, res) => {
     if (ergebnis.verworfen.length) log.warn?.(`[planr] plan-ki: Schritte verworfen: ${ergebnis.verworfen.join(", ")}`);
     log.info?.(`[planr] plan-ki ${blick.planart} positionen=${blick.positionen.length} schritte=${ergebnis.schritte.length} tabelle=${tabelle.length}`);
     // Hat der Korrekturlauf nur Unzulaessiges vorgeschlagen, gilt die Ankuendigung des Modells nicht.
-    const leer = ergebnis.pruefung && !ergebnis.schritte.length && ergebnis.verworfen.length > 0;
-    res.json({ ok: true, antwort: leer ? "Dafür habe ich keinen zulässigen Schritt gefunden. Am Plan habe ich nichts geändert." : ergebnis.antwort, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length, pruefung: ergebnis.pruefung });
+    const leer = ergebnis.pruefung && !ergebnis.frage && !ergebnis.schritte.length && ergebnis.verworfen.length > 0;
+    res.json({ ok: true, antwort: leer ? "Dafür habe ich keinen zulässigen Schritt gefunden. Am Plan habe ich nichts geändert." : ergebnis.antwort, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length, pruefung: ergebnis.pruefung, ...(ergebnis.frage ? { frage: ergebnis.frage } : {}) });
   } catch (e) {
     log.error?.(`[planr] plan-ki: ${e?.stack || e}`);
     res.status(500).json({ ok: false, message: "Die KI-Zeile ist gerade nicht erreichbar." });

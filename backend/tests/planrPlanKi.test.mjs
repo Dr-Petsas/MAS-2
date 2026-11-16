@@ -123,6 +123,29 @@ test("Korrekturlauf: nur was eine Meldung verlangt, kein Faktor nach oben, nicht
     { op: "setze", id: "ohne", begruendung: "Erhoehter Zeitaufwand." },
   ]);
   assert.equal(r.verworfen.length, 5);
+  // Doppelte Position: ohne Entscheidung der Praxis wird nichts entfernt, das Programm fragt.
   const weg = lesen([{ op: "weg", id: "hoch" }, { op: "setze", id: "hoch", faktor: 3.5 }]);
-  assert.deepEqual(weg.schritte, [{ op: "weg", id: "hoch" }]);
+  assert.deepEqual(weg.schritte, [{ op: "setze", id: "hoch", faktor: 3.5 }]);
+  assert.match(weg.frage, /Hier entscheiden Sie: d\. Welche Position/);
+  // Hat der Arzt entschieden, wird genau das ausgefuehrt und nicht noch einmal gefragt.
+  const ja = planKiLesen(JSON.stringify({ antwort: "a", pruefung: true, entschieden: true, schritte: [{ op: "weg", id: "hoch" }, { op: "setze", id: "hoch", faktor: 3.5 }, { op: "weg", id: "fremd" }] }), b);
+  assert.deepEqual(ja.schritte, [{ op: "weg", id: "hoch" }]);
+  assert.equal(ja.frage, "");
+});
+
+test("Korrekturlauf: bei Ausschluss schaltet das Modell nichts ab, bevor die Praxis entschieden hat", () => {
+  const z = { ebene: "GOZ", zahn: "16", anzahl: 1, faktor: 2.3, betrag: 10, text: "x" };
+  const b = blickSaeubern({
+    planart: "privat-impl", kann: ["setze", "weg", "schalter"], ebenen: ["GOZ"],
+    positionen: [{ ...z, id: "a", nr: "3300" }, { ...z, id: "b", nr: "3060", auto: true }],
+    schalter: [{ name: "s", text: "S", wert: true }],
+    hinweise: [{ stufe: "fehler", text: "GOZ 3300 und 3060 schliessen sich aus", art: "ausschluss", ids: ["a", "b"] }],
+  });
+  const r = planKiLesen(JSON.stringify({ antwort: "a", pruefung: true, schritte: [{ op: "weg", id: "a" }, { op: "schalter", name: "s", wert: false }] }), b);
+  assert.deepEqual(r.schritte, []);
+  assert.match(r.frage, /3300 und 3060 schliessen sich aus\. Welche Position/);
+  // Ein gewoehnlicher Aenderungsauftrag ("nimm die 3300 raus") bleibt unberuehrt.
+  const n = planKiLesen(JSON.stringify({ antwort: "a", schritte: [{ op: "weg", id: "a" }] }), b);
+  assert.deepEqual(n.schritte, [{ op: "weg", id: "a" }]);
+  assert.equal(n.frage, "");
 });

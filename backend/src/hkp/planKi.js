@@ -34,8 +34,7 @@ Bittet er darum, den Plan zu prüfen, zu korrigieren, in Ordnung zu bringen oder
 - anzahl_null, kein_betrag: eine Position mit herkunft "hand" mit "weg" entfernen. Eine Position mit herkunft "planer" kommt aus einem Schalter oder der Rechnung: nicht entfernen, sondern erklären, woran es liegt.
 - kein_preis: der Preis fehlt. Erfinde keinen. Frage nach dem Preis und gib für diese Position keinen Schritt.
 - kein_text: melden, nichts ändern.
-- doppelt: dieselbe Leistung steht zweimal am selben Zahn. Entferne die Position mit herkunft "hand"; die mit herkunft "planer" bleibt. Haben beide dieselbe herkunft und ist nicht klar, welche gemeint ist, frage. An einer Position, die du im selben Zug entfernst, änderst du sonst nichts.
-- ausschluss: zwei Positionen schließen sich aus. Hat eine der beiden herkunft "hand", entferne diese mit "weg". Haben beide herkunft "planer", schalte den SCHALTER aus, der eine der beiden bringt und jetzt eingeschaltet ist. Sind beide gleich entstanden, bleibt die höher bewertete (größerer betrag), außer WISSEN oder der Text der Meldung sagen etwas anderes. Gilt der Ausschluss laut Meldung nur in derselben Sitzung und tragen die Positionen verschiedene sitzung, ändere nichts und sage das. Bist du nicht sicher, welche Leistung fachlich erbracht wird, entferne nichts und frage.
+- doppelt, ausschluss: hier entscheidet immer die Praxis, welche Position bleibt. Im Korrekturlauf gibst du dafür KEINEN Schritt (kein "weg", kein "schalter") und erwähnst diese Meldungen in "antwort" nicht: das Programm stellt die Rückfrage selbst und nennt die betroffenen Positionen. Erst wenn der Satz des Arztes selbst sagt, welche Position gehen oder bleiben soll (auch als Antwort auf diese Rückfrage, siehe VERLAUF), setzt du "entschieden":true und gibst genau die Schritte, die er verlangt: "weg" für die genannte Position; eine Position mit herkunft "planer" über ihren SCHALTER, wenn einer sie bringt. Sagt er, dass die doppelten Positionen bleiben sollen, änderst du daran nichts. Nennt er eine Nummer, die mehrfach gemeint sein kann, frage nach Zahn oder Region. An einer Position, die du im selben Zug entfernst, änderst du sonst nichts.
 - rechnung: Hinweis der Rechnung des Planers. Erklären; ändern nur über einen passenden SCHALTER.
 Eine Position mit herkunft "planer" verschwindet über ihren SCHALTER; "weg" nimmst du für sie nur, wenn kein Schalter sie bringt (manche Planer lehnen das ab, das meldet die Seite dann). Ein "schalter"-Schritt muss den Wert ändern: ein Schalter, der schon aus ist, bringt keine Leistung und löst nichts.
 In "antwort" nennst du Positionen mit Nummer und Zahn oder Region, nie mit ihrer id und ohne die Wörter "hand" und "planer".
@@ -50,7 +49,7 @@ Schritte:
 {"op":"weg","id":"<id>"}
 {"op":"zurueck"}   (nimmt die letzte Änderung aus dieser Zeile zurück)
 
-Antworte nur mit JSON: {"antwort":"...","schritte":[...],"pruefung":false}. Ohne Änderung ist schritte leer. "pruefung" ist true, wenn der Auftrag das Prüfen und Korrigieren ist. Kein Markdown.`;
+Antworte nur mit JSON: {"antwort":"...","schritte":[...],"pruefung":false}. Ohne Änderung ist schritte leer. "pruefung" ist true, wenn der Auftrag das Prüfen und Korrigieren ist. "entschieden":true kommt nur dazu, wenn der Satz selbst festlegt, welche Position einer doppelt- oder ausschluss-Meldung geht oder bleibt. Kein Markdown.`;
 
 const OPS = ["schalter", "hinzu", "setze", "weg", "zurueck"];
 /** Arten der Prüfmodul-Meldungen, wie PlanR sie mitgibt (_gemeinsam/src/planKi.ts PruefArt) */
@@ -178,11 +177,13 @@ export function planKiNachricht({ text, blick, verlauf = [], tabelle = [], wisse
  * Korrekturlauf: es bleibt nur, was eine Meldung des Prüfmoduls verlangt. Das Modell darf dabei
  * keinen Faktor anheben, keine unbeteiligte Position anfassen und nichts ergänzen.
  */
-function nurZuMeldungen(schritte, blick, verworfen) {
+function nurZuMeldungen(schritte, blick, verworfen, entschieden) {
   const zu = (...arten) => new Set(blick.hinweise.filter((h) => arten.includes(h.art)).flatMap((h) => h.ids || []));
-  const wegErlaubt = zu("doppelt", "ausschluss", "anzahl_null", "kein_betrag");
+  // Bei doppelten und sich ausschliessenden Positionen entscheidet die Praxis (Dr. Petsas 16.11.2026: immer nachfragen).
+  const wegErlaubt = entschieden ? zu("doppelt", "ausschluss", "anzahl_null", "kein_betrag") : zu("anzahl_null", "kein_betrag");
   const zuHoch = zu("faktor_ueber_35"), zuTief = zu("faktor_unter_1"), ohneGrund = zu("begruendung_fehlt");
-  const schalterErlaubt = blick.hinweise.some((h) => h.art === "ausschluss" || h.art === "rechnung");
+  const schalterErlaubt = blick.hinweise.some((h) => h.art === "rechnung" || (entschieden && h.art === "ausschluss"))
+    && (entschieden || !blick.hinweise.some((h) => h.art === "ausschluss"));
   const entfernt = new Set(schritte.filter((s) => s.op === "weg" && wegErlaubt.has(s.id)).map((s) => s.id));
   const pos = new Map(blick.positionen.map((p) => [p.id, p]));
   const raus = [];
@@ -201,6 +202,16 @@ function nurZuMeldungen(schritte, blick, verworfen) {
     verworfen.push(`${s.op} im Korrekturlauf`);
   }
   return raus;
+}
+
+/** Rückfrage des Programms im Korrekturlauf: welche der doppelten oder sich ausschliessenden Positionen bleibt. */
+export function planKiRueckfrage(blick) {
+  const offen = blick.hinweise.filter((h) => h.art === "doppelt" || h.art === "ausschluss");
+  if (!offen.length) return "";
+  const punkt = (t) => (/[.!?]$/.test(t) ? t : `${t}.`);
+  const liste = offen.slice(0, 8).map((h) => punkt(h.text)).join(" ");
+  const mehr = offen.length > 8 ? ` Dazu ${offen.length - 8} weitere Meldungen im Prüfmodul.` : "";
+  return `Hier entscheiden Sie: ${liste}${mehr} Welche Position soll jeweils entfallen, oder soll es so bleiben?`;
 }
 
 /** Antwort des Modells prüfen: nur Schritte, die dieser Plan zulässt. Ungültiges -> null. */
@@ -272,5 +283,7 @@ export function planKiLesen(rohText, blick) {
     }
   }
   const pruefung = daten.pruefung === true;
-  return { antwort, schritte: pruefung ? nurZuMeldungen(schritte, blick, verworfen) : schritte, verworfen, pruefung };
+  const entschieden = daten.entschieden === true;
+  const frage = pruefung && !entschieden ? planKiRueckfrage(blick) : "";
+  return { antwort, schritte: pruefung ? nurZuMeldungen(schritte, blick, verworfen, entschieden) : schritte, verworfen, pruefung, frage };
 }
