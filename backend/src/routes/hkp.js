@@ -35,7 +35,8 @@ import { sendMail } from "../mail/mailbox.js";
 import { chat, strongLlm } from "../mail/llm.js";
 import { PROBE_EINORDNEN, einordnungLesen } from "../hkp/probeEinordnen.js";
 import { EINRICHTUNG_KI_FORMAT, EINRICHTUNG_KI_SYSTEM, einrichtungKiLesen, einrichtungKiNachricht, lageSaeubern } from "../hkp/einrichtungKi.js";
-import { PLAN_KI_SYSTEM, blickSaeubern, planKiLesen, planKiNachricht, planPruefung, tabelleFuer } from "../hkp/planKi.js";
+import { planPruefung } from "../hkp/planKi.js";
+import { planKiZug } from "../hkp/planKiZug.js";
 import { wissenSuchen } from "../hkp/wissen.js";
 import { kvaEntwurfAblegen } from "../mail/kvaEntwurf.js";
 import { listAccounts } from "../mail/accounts.js";
@@ -675,61 +676,7 @@ router.post("/planr/einrichtung-ki", planrGuard, async (req, res) => {
 /** KI-Zeile im offenen Plan: Frage oder Aenderungswunsch samt ganzem Plan. Antwort und Schritte, der Planer fuehrt aus. Nichts wird gespeichert. */
 router.post("/planr/plan-ki", planrGuard, async (req, res) => {
   try {
-    const b = req.body || {};
-    const text = String(b.text || "").trim().slice(0, 1200);
-    const blick = blickSaeubern(b.blick);
-    if (!text || !blick.planart) return res.json({ ok: false, message: "Kein Text oder kein Plan." });
-    const tabelle = tabelleFuer(text, blick);
-    const wissen = await wissenSuchen(text, null).catch(() => "");
-    const { base, model } = strongLlm();
-    const nachrichten = [
-      { role: "system", content: PLAN_KI_SYSTEM },
-      { role: "user", content: planKiNachricht({ text, blick, verlauf: b.verlauf, tabelle, wissen, nachlauf: b.nachlauf }) },
-    ];
-    const beginn = Date.now();
-    const frist = Number(process.env.MAS_PLAN_KI_MS || 55000);
-    const fragen = (timeoutMs) => chat(nachrichten, { temperature: 0.1, maxTokens: Number(process.env.MAS_PLAN_KI_TOKENS || 2500), model, baseUrl: base, timeoutMs });
-    let antwort = await fragen(frist);
-    let ergebnis = antwort.ok ? planKiLesen(antwort.text, blick) : null;
-    // Kam kein lesbares JSON und ist noch Zeit, ein zweiter Versuch statt einer leeren Antwort.
-    const rest = frist - (Date.now() - beginn);
-    if (!ergebnis && antwort.ok && rest > 15000) {
-      log.warn?.("[planr] plan-ki: Antwort ohne JSON, zweiter Versuch");
-      antwort = await fragen(rest);
-      ergebnis = antwort.ok ? planKiLesen(antwort.text, blick) : null;
-    }
-    // Entscheidung der Praxis angekommen, aber kein Schritt dazu: einmal nachhaken statt einer leeren Zusage.
-    const ohneSchritt = (e) => e && e.entschieden && !e.schritte.length;
-    if (ohneSchritt(ergebnis) && frist - (Date.now() - beginn) > 15000) {
-      log.warn?.("[planr] plan-ki: entschieden ohne Schritt, zweiter Versuch");
-      nachrichten.push({ role: "assistant", content: antwort.text }, { role: "user", content: 'Du hast "entschieden":true gesetzt, aber "schritte" ist leer. Gib dieselbe Antwort noch einmal als JSON, diesmal mit den Schritten für genau das, was der Arzt entschieden hat. Bringt kein SCHALTER die Position, nimm "weg" mit ihrer id. Hat er entschieden, dass alles bleibt, lass "schritte" leer und sage in "antwort" nur, dass nichts geändert wird.' });
-      const zweite = await fragen(frist - (Date.now() - beginn));
-      const neu = zweite.ok ? planKiLesen(zweite.text, blick) : null;
-      if (neu && neu.entschieden) ergebnis = neu;
-    }
-    // Aenderung angekuendigt ("aendert":true), aber kein Schritt geliefert und keiner verworfen: einmal nachhaken.
-    const angekuendigt = (e) => e && !e.pruefung && !e.entschieden && !e.schritte.length && (e.aendert || e.verworfen.length > 0);
-    if (angekuendigt(ergebnis) && frist - (Date.now() - beginn) > 15000) {
-      log.warn?.("[planr] plan-ki: Aenderung angekuendigt ohne Schritt, zweiter Versuch");
-      nachrichten.push({ role: "assistant", content: antwort.text }, { role: "user", content: 'Du hast eine Änderung angekündigt, aber es ist kein gültiger Schritt angekommen. So ändert sich am Plan nichts (ein Schritt mit einem Feld oder Wert, den ZAHNSCHEMA, SCHALTER oder PLAN nicht kennt, wird verworfen). Gib dieselbe Antwort noch einmal als JSON, diesmal mit den Schritten für genau diese Änderung (für Befund, Planung und Angaben je Zahn der Schritt "zahn" mit den Feldern aus ZAHNSCHEMA). Ist die Änderung nicht möglich, setze "aendert":false und nenne in "antwort" den Grund.' });
-      const zweite = await fragen(frist - (Date.now() - beginn));
-      const neu = zweite.ok ? planKiLesen(zweite.text, blick) : null;
-      if (neu) ergebnis = neu;
-    }
-    if (!ergebnis) {
-      log.warn?.(`[planr] plan-ki ohne brauchbare Antwort (${antwort.ok ? "kein JSON" : antwort.error || "Modell"})`);
-      return res.json({ ok: false, message: "Dazu habe ich gerade keine Antwort bekommen. Der Plan ist unveraendert." });
-    }
-    if (ergebnis.verworfen.length) log.warn?.(`[planr] plan-ki: Schritte verworfen: ${ergebnis.verworfen.join(", ")}`);
-    log.info?.(`[planr] plan-ki ${blick.planart} positionen=${blick.positionen.length} schritte=${ergebnis.schritte.length} tabelle=${tabelle.length}`);
-    // Hat der Korrekturlauf nur Unzulaessiges vorgeschlagen, gilt die Ankuendigung des Modells nicht.
-    const leer = ergebnis.pruefung && !ergebnis.frage && !ergebnis.schritte.length && ergebnis.verworfen.length > 0;
-    const antwortText = angekuendigt(ergebnis)
-      ? "Das habe ich nicht in einen zulässigen Schritt für diesen Plan umsetzen können. Am Plan ist nichts geändert. Bitte sagen Sie es noch einmal mit Zahn und gewünschter Versorgung."
-      : ohneSchritt(ergebnis)
-      ? `${ergebnis.antwort} Am Plan ist damit nichts geändert.`
-      : leer ? "Dafür habe ich keinen zulässigen Schritt gefunden. Am Plan habe ich nichts geändert." : ergebnis.antwort;
-    res.json({ ok: true, antwort: antwortText, schritte: ergebnis.schritte, verworfen: ergebnis.verworfen.length, pruefung: ergebnis.pruefung, ...(ergebnis.frage ? { frage: ergebnis.frage } : {}) });
+    res.json(await planKiZug(req.body || {}));
   } catch (e) {
     log.error?.(`[planr] plan-ki: ${e?.stack || e}`);
     res.status(500).json({ ok: false, message: "Die KI-Zeile ist gerade nicht erreichbar." });

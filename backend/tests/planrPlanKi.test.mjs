@@ -182,3 +182,25 @@ test("Zahnschema: Schritt zahn nur mit gemeldeten Feldern und Werten", () => {
   assert.deepEqual(planKiLesen('{"antwort":"x","schritte":[{"op":"zahn","zahn":"16","felder":{"befund":"f"}}]}', blick).schritte, []);
   assert.deepEqual(planKiLesen('{"antwort":"x","pruefung":true,"schritte":[{"op":"zahn","zahn":"16","felder":{"befund":"f"}}]}', b).schritte, []);
 });
+
+test("planKiLesen: die Schrittliste zaehlt auch unter einem verschriebenen Feldnamen", () => {
+  const r = planKiLesen(`{"aendert":true,"schsteps":[{"op":"weg","id":"a2"}],"antwort":"Ich nehme die 9130 heraus.","pruefung":false}`, blick);
+  assert.deepEqual(r.schritte, [{ op: "weg", id: "a2" }]);
+});
+
+test("planKiForm: nur ids, Schalter und Schritt-Arten dieses Plans", async () => {
+  const { planKiForm } = await import("../src/hkp/planKiZug.js");
+  const f = planKiForm(blick);
+  const arten = f.properties.schritte.items.anyOf;
+  const von = (op) => arten.find((a) => a.properties.op.enum[0] === op);
+  assert.deepEqual(arten.map((a) => a.properties.op.enum[0]), ["schalter", "hinzu", "setze", "weg", "zurueck"]);
+  assert.deepEqual(von("weg").properties.id.enum, ["a1", "a2"]);
+  assert.deepEqual(von("schalter").properties.name.enum, ["region.OK rechts.augmentation", "global.bildgebung"]);
+  assert.deepEqual(von("hinzu").properties.ebene.enum, ["GOZ", "GOAE"]);
+  assert.deepEqual(f.required, ["aendert", "schritte", "antwort", "pruefung"]);
+  const zu = planKiForm({ ...blick, gesperrt: true });
+  assert.equal(zu.properties.schritte.maxItems, 0);
+  const mitZahn = planKiForm({ ...blick, kann: [...blick.kann, "zahn"], zahnfelder: [{ name: "planung", werte: { "": "leer", I: "Implantat" } }, { name: "sofort", ja: true }, { name: "laenge", von: 6, bis: 16 }] });
+  const felder = mitZahn.properties.schritte.items.anyOf.find((a) => a.properties.op.enum[0] === "zahn").properties.felder.properties;
+  assert.deepEqual(felder, { planung: { type: "string", enum: ["", "I"] }, sofort: { type: "boolean" }, laenge: { type: "number" } });
+});
