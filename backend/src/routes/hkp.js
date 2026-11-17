@@ -34,6 +34,7 @@ import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, logOutboundMail, resolveClientId } 
 import { sendMail } from "../mail/mailbox.js";
 import { chat, strongLlm } from "../mail/llm.js";
 import { PROBE_EINORDNEN, einordnungLesen } from "../hkp/probeEinordnen.js";
+import { EINRICHTUNG_KI_FORMAT, EINRICHTUNG_KI_SYSTEM, einrichtungKiLesen, einrichtungKiNachricht, lageSaeubern } from "../hkp/einrichtungKi.js";
 import { PLAN_KI_SYSTEM, blickSaeubern, planKiLesen, planKiNachricht, planPruefung, tabelleFuer } from "../hkp/planKi.js";
 import { wissenSuchen } from "../hkp/wissen.js";
 import { kvaEntwurfAblegen } from "../mail/kvaEntwurf.js";
@@ -640,6 +641,34 @@ router.post("/planr/probe-einordnen", planrGuard, async (req, res) => {
   } catch (e) {
     log.error?.(`[planr] probe-einordnen: ${e?.stack || e}`);
     res.status(500).json({ ok: false, message: "Das Einordnen ist fehlgeschlagen." });
+  }
+});
+
+/** Hilfe-Zeile im Einrichtungsassistenten: Frage der Praxis samt Lage des Assistenten. Antwort in einfachen Worten, dazu höchstens ein Knopf im Assistenten. Nichts wird gespeichert. */
+router.post("/planr/einrichtung-ki", planrGuard, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const text = String(b.text || "").trim().slice(0, 800);
+    if (!text) return res.json({ ok: false, message: "Kein Text." });
+    const lage = lageSaeubern(b.lage);
+    const { base, model } = strongLlm();
+    const nachrichten = [
+      { role: "system", content: EINRICHTUNG_KI_SYSTEM },
+      { role: "user", content: einrichtungKiNachricht({ text, lage, verlauf: b.verlauf }) },
+    ];
+    const fragen = (extraBody) => chat(nachrichten, { temperature: 0.2, maxTokens: 700, model, baseUrl: base, timeoutMs: 25000, extraBody });
+    let antwort = await fragen(EINRICHTUNG_KI_FORMAT);
+    let ergebnis = antwort.ok ? einrichtungKiLesen(antwort.text, lage) : null;
+    // Zweiter Versuch ohne Formatzwang, falls der Server ihn nicht kennt oder nichts Lesbares kam.
+    if (!ergebnis) {
+      antwort = await fragen();
+      ergebnis = antwort.ok ? einrichtungKiLesen(antwort.text, lage) : null;
+    }
+    if (!ergebnis) return res.json({ ok: false, message: "Die Hilfe antwortet gerade nicht." });
+    res.json({ ok: true, ...ergebnis });
+  } catch (e) {
+    log.error?.(`[planr] einrichtung-ki: ${e?.stack || e}`);
+    res.status(500).json({ ok: false, message: "Die Hilfe antwortet gerade nicht." });
   }
 });
 
