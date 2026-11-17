@@ -197,10 +197,30 @@ test("planKiForm: nur ids, Schalter und Schritt-Arten dieses Plans", async () =>
   assert.deepEqual(von("weg").properties.id.enum, ["a1", "a2"]);
   assert.deepEqual(von("schalter").properties.name.enum, ["region.OK rechts.augmentation", "global.bildgebung"]);
   assert.deepEqual(von("hinzu").properties.ebene.enum, ["GOZ", "GOAE"]);
-  assert.deepEqual(f.required, ["aendert", "schritte", "antwort", "pruefung"]);
+  assert.deepEqual(f.required, ["art", "aendert", "schritte", "antwort", "pruefung"]);
   const zu = planKiForm({ ...blick, gesperrt: true });
   assert.equal(zu.properties.schritte.maxItems, 0);
   const mitZahn = planKiForm({ ...blick, kann: [...blick.kann, "zahn"], zahnfelder: [{ name: "planung", werte: { "": "leer", I: "Implantat" } }, { name: "sofort", ja: true }, { name: "laenge", von: 6, bis: 16 }] });
   const felder = mitZahn.properties.schritte.items.anyOf.find((a) => a.properties.op.enum[0] === "zahn").properties.felder.properties;
-  assert.deepEqual(felder, { planung: { type: "string", enum: ["", "I"] }, sofort: { type: "boolean" }, laenge: { type: "number" } });
+  assert.deepEqual(felder, { planung: { type: "string", enum: ["", "I"] }, sofort: { type: "boolean" }, laenge: { type: "number", minimum: 6, maximum: 16 } });
+});
+
+test("Schritt zahn: wer den Eintrag herausnimmt, scheitert nicht an einem ungueltigen Nebenfeld; sonst nennt der Server den Grund", () => {
+  const b = { ...blick, kann: ["zahn"], zahnfelder: [{ name: "therapie", werte: { "": "Zahn aus dem Plan nehmen", endo: "Wurzelbehandlung" } }, { name: "kanaele", von: 1, bis: 5 }] };
+  const weg = planKiLesen('{"aendert":true,"schritte":[{"op":"zahn","zahn":"37","felder":{"therapie":"","kanaele":0}}],"antwort":"Zahn 37 ist heraus.","pruefung":false}', b);
+  assert.deepEqual(weg.schritte, [{ op: "zahn", zahn: "37", felder: { therapie: "" } }]);
+  const falsch = planKiLesen('{"aendert":true,"schritte":[{"op":"zahn","zahn":"37","felder":{"kanaele":9}}],"antwort":"Neun Kanaele.","pruefung":false}', b);
+  assert.deepEqual(falsch.schritte, []);
+  assert.match(falsch.gruende[0], /kanaele.*von 1 bis 5/);
+  const null0 = planKiLesen('{"aendert":true,"schritte":[{"op":"setze","id":"a2","anzahl":0}],"antwort":"Die 9130 ist heraus.","pruefung":false}', blick);
+  assert.deepEqual(null0.schritte, []);
+  assert.match(null0.gruende[0], /Anzahl 0 gibt es nicht/);
+});
+
+test("planKiLesen: geht_nicht verwirft Ersatzschritte", () => {
+  const blick = { planart: "kassen-par", kann: ["zahn"], ebenen: [], positionen: [], schalter: [], hinweise: [], zahnfelder: [{ name: "stMesial", text: "Sondierungstiefe", von: 0, bis: 15 }] };
+  const mit = (art) => planKiLesen(JSON.stringify({ art, aendert: true, schritte: [{ op: "zahn", zahn: "36", felder: { stMesial: 4 } }], antwort: "x", pruefung: false }), blick);
+  assert.equal(mit("geht_nicht").schritte.length, 0);
+  assert.equal(mit("geht_nicht").aendert, false);
+  assert.equal(mit("aenderung").schritte.length, 1);
 });

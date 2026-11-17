@@ -25,12 +25,13 @@ export function planKiForm(blick) {
     kann.has("hinzu") && art("hinzu", { ebene: blick.ebenen.length ? { type: "string", enum: blick.ebenen } : text, nr: text, zahn: text, anzahl: { type: "integer" }, faktor: zahlW, preis: zahlW, text }, ["ebene", "nr", "zahn", "anzahl"]),
     kann.has("setze") && ids.length && art("setze", { id, anzahl: { type: "integer" }, faktor: zahlW, preis: zahlW, begruendung: text }, ["id"]),
     kann.has("weg") && ids.length && art("weg", { id }, ["id"]),
-    kann.has("zahn") && (blick.zahnfelder || []).length && art("zahn", { zahn: text, felder: { type: "object", properties: Object.fromEntries(blick.zahnfelder.map((f) => [f.name, f.ja ? { type: "boolean" } : f.werte ? { type: "string", enum: Object.keys(f.werte) } : zahlW])), additionalProperties: false } }, ["zahn", "felder"]),
+    kann.has("zahn") && (blick.zahnfelder || []).length && art("zahn", { zahn: text, felder: { type: "object", properties: Object.fromEntries(blick.zahnfelder.map((f) => [f.name, f.ja ? { type: "boolean" } : f.werte ? { type: "string", enum: Object.keys(f.werte) } : f.von != null ? { type: "number", minimum: f.von, maximum: f.bis } : zahlW])), additionalProperties: false } }, ["zahn", "felder"]),
     kann.has("zurueck") && art("zurueck", {}, []),
   ].filter(Boolean);
   return {
     type: "object",
     properties: {
+      art: { type: "string", enum: ["auskunft", "aenderung", "rueckfrage", "geht_nicht"] },
       aendert: { type: "boolean" },
       schritte: arten.length ? { type: "array", items: { anyOf: arten } } : { type: "array", maxItems: 0 },
       antwort: text,
@@ -38,7 +39,7 @@ export function planKiForm(blick) {
       entschieden: { type: "boolean" },
       doppelt_ok: { type: "array", items: { type: "object", properties: { ids: { type: "array", items: id }, grund: text }, required: ["ids", "grund"], additionalProperties: false } },
     },
-    required: ["aendert", "schritte", "antwort", "pruefung"],
+    required: ["art", "aendert", "schritte", "antwort", "pruefung"],
     additionalProperties: false,
   };
 }
@@ -96,7 +97,7 @@ export async function planKiZug(b = {}) {
   const angekuendigt = (e) => e && !e.pruefung && !e.entschieden && !e.schritte.length && (e.aendert || e.verworfen.length > 0);
   if (angekuendigt(ergebnis) && frist - (Date.now() - beginn) > 15000) {
     log.warn?.(`[planr] plan-ki: Aenderung angekuendigt ohne Schritt, zweiter Versuch (verworfen: ${ergebnis.verworfen.join(", ") || "-"}) ${process.env.MAS_PLAN_KI_ROH ? antwort.text.slice(0, 900) : ""}`);
-    nachrichten.push({ role: "assistant", content: antwort.text }, { role: "user", content: 'Du hast eine Änderung angekündigt, aber es ist kein gültiger Schritt angekommen. So ändert sich am Plan nichts (ein Schritt mit einem Feld oder Wert, den ZAHNSCHEMA, SCHALTER oder PLAN nicht kennt, wird verworfen). Gib dieselbe Antwort noch einmal als JSON, diesmal mit den Schritten für genau diese Änderung (für Befund, Planung und Angaben je Zahn der Schritt "zahn" mit den Feldern aus ZAHNSCHEMA). Ist die Änderung nicht möglich, setze "aendert":false und nenne in "antwort" den Grund.' });
+    nachrichten.push({ role: "assistant", content: antwort.text }, { role: "user", content: 'Du hast eine Änderung angekündigt, aber es ist kein gültiger Schritt angekommen. So ändert sich am Plan nichts (ein Schritt mit einem Feld oder Wert, den ZAHNSCHEMA, SCHALTER oder PLAN nicht kennt, wird verworfen).' + (ergebnis.gruende.length ? ` Verworfen wurde: ${ergebnis.gruende.slice(0, 6).join(" ")}` : "") + ' Gib dieselbe Antwort noch einmal als JSON, diesmal mit den Schritten für genau diese Änderung (für Befund, Planung und Angaben je Zahn der Schritt "zahn" mit den Feldern aus ZAHNSCHEMA). Ist die Änderung nicht möglich, setze "aendert":false und nenne in "antwort" den Grund.' });
     const zweite = await fragen(frist - (Date.now() - beginn));
     const neu = zweite.ok ? planKiLesen(zweite.text, blick) : null;
     if (neu) ergebnis = neu;
