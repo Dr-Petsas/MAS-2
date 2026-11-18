@@ -51,6 +51,7 @@ import { befundSatz, jahrgangWahl, vetternFrage, vorleseSatz, zahnBefundSatz } f
 import { befundMerken, entfernenMarken, planartKorrigieren, rueckfrageMerken, zahnListe } from "../hkp/mitdenken.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
 import { mitUndo } from "../clara/rueckgaengig.js";
+import { planSprache, planSpracheAn } from "../hkp/planSprache.js";
 import { abrechnungAntwort, antwortVerstehen, befundListe, fachEntscheiden, mundSprechen, nackteNichtEntfernen, planIntent, befundSatz as befundAusAntwort } from "../hkp/antwortVerstehen.js";
 import { planPruefen, positionenVon } from "../hkp/ausschluss.js";
 import { akteVon, bonusNorm, fallRechnen, protheseGesagt, verbundSatz } from "../hkp/coach.js";
@@ -2748,6 +2749,24 @@ router.post("/tools/hkp-position-change", async (req, res) => {
     });
   } catch (e) {
     if (e instanceof KonfliktFehler) return res.json({ ok: false, message: "Der HKP wurde gerade in PlanR geändert. Bitte noch einmal versuchen." });
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Die KI-Zeile der Planer per Sprache (18.11.2026): Fragen zur Abrechnung, ändern, erweitern, kürzen, löschen –
+// an jedem Plan aller Planer. Ablauf und Modell wie in der KI-Zeile (hkp/planSprache.js).
+/** Zugänge des Registers für planSprache und sein Rückgängig. */
+export const planSpracheZugang = () => ({ hkpListe, hkpLesen, hkpAktualisieren, praxisLaden, praxisListen, planAus, summenAus, E, namePasst, mitUndo });
+
+router.post("/tools/plan-ki", async (req, res) => {
+  try {
+    const clientId = await claraVorspann(req, res);
+    if (!clientId) return;
+    if (!planSpracheAn()) return res.json({ ok: false, message: "Pläne ändern per Sprache ist gerade abgeschaltet. Bitte in PlanR ändern." });
+    res.json(await planSprache(clientId, req.body || {}, planSpracheZugang()));
+  } catch (e) {
+    if (e instanceof KonfliktFehler) return res.json({ ok: false, message: "Der Plan wurde gerade in PlanR geändert. Bitte noch einmal versuchen." });
+    log.warn?.(`[plan-sprache] ${String(e?.message || e)}`);
     res.status(400).json({ error: String(e?.message || e) });
   }
 });

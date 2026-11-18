@@ -11,7 +11,7 @@
 
 export const RUECKGAENGIG_MS = 15 * 60 * 1000;
 
-const ARTEN = new Set(["termin", "hkp", "hkp_aenderung", "planr_entwurf", "vorgang", "aufgabe", "endgueltig"]);
+const ARTEN = new Set(["termin", "hkp", "hkp_aenderung", "planr_entwurf", "plan_ki", "plan_weg", "vorgang", "aufgabe", "endgueltig"]);
 
 export function rueckgaengigAn() {
   return !/^(0|false|no|off)$/i.test(String(process.env.MAS_RUECKGAENGIG ?? "1").trim());
@@ -45,8 +45,9 @@ async function fallMitnehmen(clientId, u, d) {
 }
 
 async function standardDeps() {
-  const [{ cancelBookingById }, store, cases, entwuerfe] = await Promise.all([
+  const [{ cancelBookingById }, store, cases, entwuerfe, sprache, hkpRoute] = await Promise.all([
     import("./agentBooking.js"), import("../hkp/store.js"), import("../brain/caseStore.js"), import("../hkp/planrEntwuerfe.js"),
+    import("../hkp/planSprache.js"), import("../routes/hkp.js"),
   ]);
   return {
     terminAbsagen: cancelBookingById,
@@ -55,6 +56,8 @@ async function standardDeps() {
     statusText: store.STATUS_TEXT,
     vorgangStatus: cases.setStatus,
     entwurfVerwerfen: entwuerfe.entwurfVerwerfen,
+    planAenderungZurueck: (clientId, id) => sprache.planAenderungZurueck(clientId, id, hkpRoute.planSpracheZugang()),
+    planWiederholen: (clientId, id) => sprache.planWiederholen(clientId, id, hkpRoute.planSpracheZugang()),
   };
 }
 
@@ -125,6 +128,20 @@ export async function zuruecknehmen(clientId, undo, deps) {
       return { ok: false, undoErledigt: true, message: `${gross(label)} liegt schon als Entwurf${r.nummer ? ` ${r.nummer}` : ""} in PlanR – bitte dort löschen.` };
     }
     return { ok: false, undoErledigt: true, message: r.grund === "fehlt" ? `${gross(label)} finde ich nicht mehr.` : `${gross(label)} ist schon verworfen.` };
+  }
+
+  if (u.art === "plan_ki") {
+    const r = await d.planAenderungZurueck(clientId, u.id);
+    if (r.ok) return { ok: true, undoErledigt: true, message: `Gut, ich habe ${label} zurückgenommen. Der Plan ist wieder wie vorher.` };
+    return { ok: false, undoErledigt: true, message: r.grund === "veraltet"
+      ? "Der Plan wurde seitdem noch einmal geändert. Sagen Sie mir die Gegenänderung, dann setze ich sie um."
+      : "Den Stand von vorher habe ich nicht mehr. Sagen Sie mir die Gegenänderung, dann setze ich sie um." };
+  }
+
+  if (u.art === "plan_weg") {
+    const r = await d.planWiederholen(clientId, u.id);
+    if (r.ok) return { ok: true, undoErledigt: true, message: `Gut, ich habe ${label} zurückgeholt.` };
+    return { ok: false, undoErledigt: false, message: `Zurückholen konnte ich ${label} gerade nicht. Bitte in PlanR im Papierkorb nachsehen.` };
   }
 
   if (u.art === "vorgang" || u.art === "aufgabe") {
