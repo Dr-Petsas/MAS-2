@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\Start (sprache/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\Start && npm run build:sprache   (sha256 b2ba28ffc908)
+// Neu bauen: cd F:\PlanR\Start && npm run build:sprache   (sha256 24ed0364408a)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 //#endregion
@@ -938,11 +938,11 @@ var ZUSCHLAG_ZU = {
 		"6.10"
 	]
 };
-var schluessel$10 = (nr) => nr === "4.3" ? "4.1" : nr === "4.4" ? "4.2" : nr;
+var schluessel$13 = (nr) => nr === "4.3" ? "4.1" : nr === "4.4" ? "4.2" : nr;
 /** Zelle der Kombinationstabelle oder undefined, wenn einer der Befunde nicht in der Tabelle steht */
 function kombination(a, b) {
-	const zeile = MATRIX[schluessel$10(a)];
-	const i = SPALTEN.indexOf(schluessel$10(b));
+	const zeile = MATRIX[schluessel$13(a)];
+	const i = SPALTEN.indexOf(schluessel$13(b));
 	if (!zeile || i < 0) return void 0;
 	return zeile[i];
 }
@@ -1212,7 +1212,7 @@ function zusatzleistungen$2(plan) {
 var GLIED$4 = /^(S?B|AB)[VM]?$/;
 var PFEILER$1 = /^(S?K|PK|S?T|A$)/;
 /** Eingabe „-KM“, „KM-“ oder „-KM-“ → Kürzel und Brückenmarken */
-function markeLesen(eingabe) {
+function markeLesen$1(eingabe) {
 	const t = eingabe.trim();
 	const bAnfang = t.startsWith("-");
 	const bEnde = t.length > 1 && t.endsWith("-");
@@ -27698,49 +27698,49 @@ var goz_2012_default$9 = {
 };
 //#endregion
 //#region ../ZE/HKP/src/mandant.ts
-var LISTE_KEY$7 = "planr.mandanten.v1";
-var AKTIV_KEY$7 = "planr.mandant.v1";
+var LISTE_KEY$12 = "planr.mandanten.v1";
+var AKTIV_KEY$10 = "planr.mandant.v1";
 /** Der Standard-Mandant liest die alten Schlüssel ohne Zusatz – vorhandene Daten bleiben ihm erhalten. */
-var STANDARD_ID$7 = "standard";
-var STANDARD$7 = {
-	id: STANDARD_ID$7,
+var STANDARD_ID$10 = "standard";
+var STANDARD$10 = {
+	id: STANDARD_ID$10,
 	name: "Praxis"
 };
-var speicher$7 = () => typeof localStorage === "undefined" ? null : localStorage;
-function kennung$17(text) {
+var speicher$10 = () => typeof localStorage === "undefined" ? null : localStorage;
+function kennung$20(text) {
 	return text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 }
 /** Speicherschlüssel eines Mandanten */
-var schluessel$9 = (key, mandantId) => mandantId === "standard" ? key : `${key}@${mandantId}`;
-function lesen$7() {
+var schluessel$12 = (key, mandantId) => mandantId === "standard" ? key : `${key}@${mandantId}`;
+function lesen$10() {
 	let liste = [];
 	try {
-		const roh = JSON.parse(speicher$7()?.getItem(LISTE_KEY$7) ?? "[]");
-		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung$17(m.id) === m.id && m.id);
+		const roh = JSON.parse(speicher$10()?.getItem(LISTE_KEY$12) ?? "[]");
+		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung$20(m.id) === m.id && m.id);
 	} catch {
 		liste = [];
 	}
-	return [liste.find((m) => m.id === "standard") ?? STANDARD$7, ...liste.filter((m) => m.id !== STANDARD_ID$7)].map((m) => ({
+	return [liste.find((m) => m.id === "standard") ?? STANDARD$10, ...liste.filter((m) => m.id !== STANDARD_ID$10)].map((m) => ({
 		id: m.id,
 		name: String(m.name || m.id)
 	}));
 }
-var schreiben$7 = (liste) => speicher$7()?.setItem(LISTE_KEY$7, JSON.stringify(liste));
+var schreiben$10 = (liste) => speicher$10()?.setItem(LISTE_KEY$12, JSON.stringify(liste));
 /** Aktiver Mandant beim Laden der Seite; ?mandant=kürzel wählt (und legt bei Bedarf an). */
-function starten$7() {
-	const liste = lesen$7();
-	let id = speicher$7()?.getItem(AKTIV_KEY$7) ?? "standard";
+function starten$10() {
+	const liste = lesen$10();
+	let id = speicher$10()?.getItem(AKTIV_KEY$10) ?? "standard";
 	const aufruf = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("mandant");
-	if (aufruf && kennung$17(aufruf)) {
-		id = kennung$17(aufruf);
+	if (aufruf && kennung$20(aufruf)) {
+		id = kennung$20(aufruf);
 		if (!liste.some((m) => m.id === id)) {
 			liste.push({
 				id,
 				name: aufruf.trim()
 			});
-			schreiben$7(liste);
+			schreiben$10(liste);
 		}
-		speicher$7()?.setItem(AKTIV_KEY$7, id);
+		speicher$10()?.setItem(AKTIV_KEY$10, id);
 	}
 	return {
 		liste,
@@ -27748,8 +27748,8 @@ function starten$7() {
 	};
 }
 /** Gilt für die ganze Sitzung; ein Wechsel lädt die Seite neu, damit alle Speicher den neuen Mandanten lesen. */
-var MANDANT_ID$7 = starten$7().aktiv.id;
-var mk$7 = (key) => schluessel$9(key, MANDANT_ID$7);
+var MANDANT_ID$10 = starten$10().aktiv.id;
+var mk$10 = (key) => schluessel$12(key, MANDANT_ID$10);
 //#endregion
 //#region ../ZE/HKP/src/daten.ts
 var SPEICHER$10 = (datei) => `planr.daten.${datei}`;
@@ -27784,7 +27784,7 @@ function zusaetzliche$2(ordner, mitgeliefert) {
 }
 //#endregion
 //#region ../ZE/HKP/src/store/preislisten.ts
-var SPEICHER_KEY = mk$7("hkp.preislisten.v1");
+var SPEICHER_KEY = mk$10("hkp.preislisten.v1");
 /** GOZ 2012 plus Kürzel, Faktoren und eigene Positionen aus dem PVS (store/praxiskatalog); gilt statt goz-2012 */
 var PRAXIS_GOZ_ID = "goz-praxis";
 /** Mitgelieferte Listen unter ihrem Dateinamen beim Datendienst (Start/public/daten) */
@@ -28061,16 +28061,16 @@ var leererPatient$10 = () => ({
 	kassenart: "primaer",
 	email: ""
 });
-var text$1 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
-var erster = (o, ...keys) => {
+var text$11 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$10 = (o, ...keys) => {
 	for (const k of keys) {
-		const t = text$1(o[k]).trim();
+		const t = text$11(o[k]).trim();
 		if (t) return t;
 	}
 	return "";
 };
 /** "80331 München" -> { plz, ort } */
-function plzOrtTrennen(s) {
+function plzOrtTrennen$10(s) {
 	const t = s.trim();
 	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
 	return m ? {
@@ -28082,7 +28082,7 @@ function plzOrtTrennen(s) {
 	};
 }
 /** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
-function anschriftLesen(s) {
+function anschriftLesen$10(s) {
 	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
 	if (!teile.length) return {
 		strasse: "",
@@ -28097,11 +28097,11 @@ function anschriftLesen(s) {
 	};
 	return {
 		strasse: teile.slice(0, i).join(", "),
-		...plzOrtTrennen(teile.slice(i).join(" "))
+		...plzOrtTrennen$10(teile.slice(i).join(" "))
 	};
 }
 /** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
-function nameTrennen(voll) {
+function nameTrennen$10(voll) {
 	const t = voll.trim().replace(/\s+/g, " ");
 	if (!t) return {
 		vorname: "",
@@ -28127,39 +28127,39 @@ function nameTrennen(voll) {
 * Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
 * Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
 */
-function patientMigrieren(roh) {
+function patientMigrieren$10(roh) {
 	const p = leererPatient$10();
 	if (!roh || typeof roh !== "object") return p;
 	const o = roh;
 	const { vorname, name } = "vorname" in o ? {
-		vorname: erster(o, "vorname"),
-		name: erster(o, "name")
-	} : nameTrennen(erster(o, "name"));
+		vorname: erster$10(o, "vorname"),
+		name: erster$10(o, "name")
+	} : nameTrennen$10(erster$10(o, "name"));
 	let { strasse, plz, ort } = {
-		strasse: erster(o, "strasse"),
-		plz: erster(o, "plz"),
-		ort: erster(o, "ort")
+		strasse: erster$10(o, "strasse"),
+		plz: erster$10(o, "plz"),
+		ort: erster$10(o, "ort")
 	};
-	if (!plz && !ort && text$1(o.plzOrt)) ({plz, ort} = plzOrtTrennen(text$1(o.plzOrt)));
-	if (!strasse && !plz && !ort && text$1(o.anschrift)) ({strasse, plz, ort} = anschriftLesen(text$1(o.anschrift)));
+	if (!plz && !ort && text$11(o.plzOrt)) ({plz, ort} = plzOrtTrennen$10(text$11(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$11(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$10(text$11(o.anschrift)));
 	return {
-		anrede: erster(o, "anrede"),
-		titel: erster(o, "titel"),
+		anrede: erster$10(o, "anrede"),
+		titel: erster$10(o, "titel"),
 		vorname,
 		name,
-		geburtsdatum: erster(o, "geburtsdatum"),
+		geburtsdatum: erster$10(o, "geburtsdatum"),
 		strasse,
 		plz,
 		ort,
-		kasse: erster(o, "kasse", "versicherung", "kostentraeger"),
-		kassenNr: erster(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
-		versichertenNr: erster(o, "versichertenNr", "versichertennr"),
-		status: erster(o, "status"),
+		kasse: erster$10(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$10(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$10(o, "versichertenNr", "versichertennr"),
+		status: erster$10(o, "status"),
 		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
-		email: erster(o, "email", "mail")
+		email: erster$10(o, "email", "mail")
 	};
 }
-mk$7("hkp.plan.v1");
+mk$10("hkp.plan.v1");
 function leererPlan() {
 	return {
 		patient: leererPatient$10(),
@@ -28272,7 +28272,7 @@ function planNormalisieren(p) {
 	return {
 		...leer,
 		...p,
-		patient: patientMigrieren(p.patient),
+		patient: patientMigrieren$10(p.patient),
 		verwaltung: {
 			...leer.verwaltung,
 			...p.verwaltung
@@ -28286,7 +28286,7 @@ function planNormalisieren(p) {
 				R: (zahn?.R ?? "").toUpperCase().replace(/^-+|-+$/g, "")
 			};
 			if (!d.TP.includes("-")) return [z, d];
-			const m = markeLesen(d.TP);
+			const m = markeLesen$1(d.TP);
 			return [z, {
 				...d,
 				TP: m.kuerzel,
@@ -28525,7 +28525,7 @@ var nrGleich = (ebene, a, b) => {
 	const n = (s) => belNrNorm(s).toLowerCase().replace(/^0+(?=\d)/, "");
 	return ebene === "BEL" || ebene === "BEB" ? n(a).padStart(4, "0") === n(b).padStart(4, "0") : n(a) === n(b);
 };
-var schluessel$8 = (p) => `${p.ebene}|${p.nr}|${p.zahn}`;
+var schluessel$11 = (p) => `${p.ebene}|${p.nr}|${p.zahn}`;
 var anzeige = (ebene, nr) => `${ebene} ${nr}`;
 /** Ändert eine Position und rechnet neu. Regelengine-Positionen, die entfernt werden, landen in `ausgeschlossen`. */
 function positionAendern(planRoh, a, praxis = {}) {
@@ -28556,7 +28556,7 @@ function positionAendern(planRoh, a, praxis = {}) {
 			BEL: "bel",
 			BEB: "beb"
 		}[a.ebene]]?.eintraege)?.find((x) => nrGleich(a.ebene, x.nr, a.nr))?.nr ?? a.nr;
-		const k = schluessel$8({
+		const k = schluessel$11({
 			ebene: a.ebene,
 			nr,
 			zahn
@@ -28589,7 +28589,7 @@ function positionAendern(planRoh, a, praxis = {}) {
 		const ids = new Set(betroffen.map((p) => p.id));
 		const zaehne = [...new Set(betroffen.map((p) => p.zahn).filter(Boolean))];
 		const wo = zaehne.length ? ` an ${zaehne.join(", ")}` : "";
-		const neueAus = betroffen.filter((p) => p.auto).map(schluessel$8);
+		const neueAus = betroffen.filter((p) => p.auto).map(schluessel$11);
 		if (a.aktion === "entfernen") {
 			positionen = positionen.filter((p) => !ids.has(p.id));
 			beschreibung = `${anzeige(a.ebene, betroffen[0].nr)}${wo} entfernen`;
@@ -28915,7 +28915,7 @@ var EBENEN$4 = [
 	"BEL",
 	"BEB"
 ];
-var schluessel$7 = (p) => `${p.ebene}|${p.nr}|${p.zahn}`;
+var schluessel$10 = (p) => `${p.ebene}|${p.nr}|${p.zahn}`;
 /** Eine einzelne Position hinzufügen, ändern oder entfernen, wie im Reiter Positionen. */
 function positionSchritt(plan, s, praxis) {
 	if (s.op === "hinzu") {
@@ -28937,7 +28937,7 @@ function positionSchritt(plan, s, praxis) {
 	}
 	const p = plan.positionen.find((x) => x.id === s.id);
 	if (!p) return "Diese Zeile steht nicht als eigene Position im Plan: sie folgt aus einem Regler, dem Kronenmaterial oder der Ausführung. Das ändern Sie dort.";
-	const aus = p.auto ? [.../* @__PURE__ */ new Set([...plan.ausgeschlossen, schluessel$7(p)])] : plan.ausgeschlossen;
+	const aus = p.auto ? [.../* @__PURE__ */ new Set([...plan.ausgeschlossen, schluessel$10(p)])] : plan.ausgeschlossen;
 	if (s.op === "weg") return {
 		plan: {
 			...plan,
@@ -32484,6 +32484,17 @@ var implantatsystem = (id) => IMPLANTATSYSTEME.find((s) => s.id === id) ?? IMPLA
 //#region ../ZE/Privat-HKP/src/engine/bruecken.ts
 var GLIED$2 = /^(S?B|AB)[VM]?$/;
 var PFEILER = /^(S?K|PK|S?T|A$)/;
+/** Eingabe „-KM“, „KM-“ oder „-KM-“ → Kürzel und Brückenmarken */
+function markeLesen(eingabe) {
+	const t = eingabe.trim();
+	const bAnfang = t.startsWith("-");
+	const bEnde = t.length > 1 && t.endsWith("-");
+	return {
+		kuerzel: t.replace(/^-+|-+$/g, ""),
+		bAnfang,
+		bEnde
+	};
+}
 /**
 * Brücken eines Kiefers in Zahnreihenfolge (18…28 bzw. 48…38): zuerst die mit „-“ markierten Bereiche,
 * dann je Lauf von Brückengliedern außerhalb davon die angrenzenden Pfeiler.
@@ -36311,6 +36322,104 @@ var standardPraxis$9 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$10 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$9 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$10(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$9(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$9(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$9(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$9(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$9(roh) {
+	const p = leererPatient$9();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$9(o, "vorname"),
+		name: erster$9(o, "name")
+	} : nameTrennen$9(erster$9(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$9(o, "strasse"),
+		plz: erster$9(o, "plz"),
+		ort: erster$9(o, "ort")
+	};
+	if (!plz && !ort && text$10(o.plzOrt)) ({plz, ort} = plzOrtTrennen$9(text$10(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$10(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$9(text$10(o.anschrift)));
+	return {
+		anrede: erster$9(o, "anrede"),
+		titel: erster$9(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$9(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$9(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$9(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$9(o, "versichertenNr", "versichertennr"),
+		status: erster$9(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$9(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$9 = "planr.praxis.zentral.v1";
 //#endregion
@@ -36326,7 +36435,7 @@ function arztLesen$9() {
 		return null;
 	}
 }
-var kennung$16 = (s) => `${s.length}:${s.slice(-48)}`;
+var kennung$19 = (s) => `${s.length}:${s.slice(-48)}`;
 /** Dunkle Striche → Stempelblau, Hintergrund (weiß oder transparent) → durchsichtig. */
 function blauFaerben$9(dataUrl) {
 	return new Promise((fertig) => {
@@ -36387,7 +36496,7 @@ async function arztUebernehmen$9(roh) {
 	if (!roh || typeof roh.name !== "string" || typeof localStorage === "undefined") return;
 	const original = typeof roh.signatur === "string" && roh.signatur.startsWith("data:image/") ? roh.signatur : "";
 	const alt = arztLesen$9();
-	const quelle = kennung$16(original);
+	const quelle = kennung$19(original);
 	if (alt && alt.name === roh.name && alt.quelle === quelle) return;
 	const neu = {
 		name: roh.name,
@@ -36409,11 +36518,19 @@ async function arztUebernehmen$9(roh) {
 * für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
 */
 /** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
-function planNummer$2(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+function planNummer$9(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
 	const n = Math.max(1, Math.floor(lauf) || 1);
 	const reihe = Math.floor((n - 1) / 999);
 	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
 	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$9 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$9 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$9(nummer) {
+	if (NUMMER_REIHE$9.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$9);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
 }
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$9 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
@@ -36456,7 +36573,7 @@ var STANDARD_REGLER$1 = {
 };
 function neuerPlan$8(nummer) {
 	return {
-		nummer: planNummer$2("KV", nummer),
+		nummer: planNummer$9("KV", nummer),
 		datum: heute$2(),
 		patient: leererPatient$9(),
 		zaehne: {},
@@ -36469,6 +36586,90 @@ function neuerPlan$8(nummer) {
 		regler: STANDARD_REGLER$1,
 		bemerkung: ""
 	};
+}
+//#endregion
+//#region ../ZE/Privat-HKP/src/mandant.ts
+var LISTE_KEY$11 = "planr.mandanten.v1";
+var AKTIV_KEY$9 = "planr.mandant.v1";
+/** Der Standard-Mandant liest die alten Schlüssel ohne Zusatz – vorhandene Daten bleiben ihm erhalten. */
+var STANDARD_ID$9 = "standard";
+var STANDARD$9 = {
+	id: STANDARD_ID$9,
+	name: "Praxis"
+};
+var speicher$9 = () => typeof localStorage === "undefined" ? null : localStorage;
+function kennung$18(text) {
+	return text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+/** Speicherschlüssel eines Mandanten */
+var schluessel$9 = (key, mandantId) => mandantId === "standard" ? key : `${key}@${mandantId}`;
+function lesen$9() {
+	let liste = [];
+	try {
+		const roh = JSON.parse(speicher$9()?.getItem(LISTE_KEY$11) ?? "[]");
+		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung$18(m.id) === m.id && m.id);
+	} catch {
+		liste = [];
+	}
+	return [liste.find((m) => m.id === "standard") ?? STANDARD$9, ...liste.filter((m) => m.id !== STANDARD_ID$9)].map((m) => ({
+		id: m.id,
+		name: String(m.name || m.id)
+	}));
+}
+var schreiben$9 = (liste) => speicher$9()?.setItem(LISTE_KEY$11, JSON.stringify(liste));
+/** Aktiver Mandant beim Laden der Seite; ?mandant=kürzel wählt (und legt bei Bedarf an). */
+function starten$9() {
+	const liste = lesen$9();
+	let id = speicher$9()?.getItem(AKTIV_KEY$9) ?? "standard";
+	const aufruf = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("mandant");
+	if (aufruf && kennung$18(aufruf)) {
+		id = kennung$18(aufruf);
+		if (!liste.some((m) => m.id === id)) {
+			liste.push({
+				id,
+				name: aufruf.trim()
+			});
+			schreiben$9(liste);
+		}
+		speicher$9()?.setItem(AKTIV_KEY$9, id);
+	}
+	return {
+		liste,
+		aktiv: liste.find((m) => m.id === id) ?? liste[0]
+	};
+}
+/** Gilt für die ganze Sitzung; ein Wechsel lädt die Seite neu, damit alle Speicher den neuen Mandanten lesen. */
+var MANDANT_ID$9 = starten$9().aktiv.id;
+var mk$9 = (key) => schluessel$9(key, MANDANT_ID$9);
+mk$9("privat-kv.plan.v1");
+mk$9("privat-kv.einstellungen.v1");
+mk$9("privat-kv.liste.v1");
+/** früher eine Wahl 'beides' = Zähne gescannt, Überabdruck für den herausnehmbaren Teil */
+function planMigrieren$8(p) {
+	const abformung = p.abformung === "beides" ? {
+		abformung: "scan",
+		abformungProthese: "abdruck"
+	} : {};
+	return {
+		...p,
+		...abformung,
+		patient: patientMigrieren$9(p.patient),
+		zaehne: markenMigrieren(p.zaehne),
+		nummer: nummerMitReihe$9(p.nummer)
+	};
+}
+/** Brückenstriche, die im Kürzel selbst stehen („-KM“), in die Brückenmarken übernehmen */
+function markenMigrieren(zaehne) {
+	return Object.fromEntries(Object.entries(zaehne).map(([z, d]) => {
+		if (!d.TP.includes("-")) return [z, d];
+		const m = markeLesen(d.TP);
+		return [z, {
+			...d,
+			TP: m.kuerzel,
+			bAnfang: d.bAnfang || m.bAnfang,
+			bEnde: d.bEnde || m.bEnde
+		}];
+	}));
 }
 //#endregion
 //#region ../Implantologie/Privat-Impl/src/types.ts
@@ -44318,6 +44519,104 @@ var standardPraxis$8 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$9 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$8 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$9(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$8(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$8(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$8(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$8(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$8(roh) {
+	const p = leererPatient$8();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$8(o, "vorname"),
+		name: erster$8(o, "name")
+	} : nameTrennen$8(erster$8(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$8(o, "strasse"),
+		plz: erster$8(o, "plz"),
+		ort: erster$8(o, "ort")
+	};
+	if (!plz && !ort && text$9(o.plzOrt)) ({plz, ort} = plzOrtTrennen$8(text$9(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$9(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$8(text$9(o.anschrift)));
+	return {
+		anrede: erster$8(o, "anrede"),
+		titel: erster$8(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$8(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$8(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$8(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$8(o, "versichertenNr", "versichertennr"),
+		status: erster$8(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$8(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$8 = "planr.praxis.zentral.v1";
 //#endregion
@@ -44333,7 +44632,7 @@ function arztLesen$8() {
 		return null;
 	}
 }
-var kennung$15 = (s) => `${s.length}:${s.slice(-48)}`;
+var kennung$17 = (s) => `${s.length}:${s.slice(-48)}`;
 /** Dunkle Striche → Stempelblau, Hintergrund (weiß oder transparent) → durchsichtig. */
 function blauFaerben$8(dataUrl) {
 	return new Promise((fertig) => {
@@ -44394,7 +44693,7 @@ async function arztUebernehmen$8(roh) {
 	if (!roh || typeof roh.name !== "string" || typeof localStorage === "undefined") return;
 	const original = typeof roh.signatur === "string" && roh.signatur.startsWith("data:image/") ? roh.signatur : "";
 	const alt = arztLesen$8();
-	const quelle = kennung$15(original);
+	const quelle = kennung$17(original);
 	if (alt && alt.name === roh.name && alt.quelle === quelle) return;
 	const neu = {
 		name: roh.name,
@@ -44416,11 +44715,19 @@ async function arztUebernehmen$8(roh) {
 * für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
 */
 /** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
-function planNummer$1(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+function planNummer$8(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
 	const n = Math.max(1, Math.floor(lauf) || 1);
 	const reihe = Math.floor((n - 1) / 999);
 	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
 	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$8 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$8 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$8(nummer) {
+	if (NUMMER_REIHE$8.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$8);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
 }
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$8 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
@@ -44478,10 +44785,10 @@ var STANDARD_GLOBAL = {
 	roehrchen: 0,
 	eigenesBlutlabor: true
 };
-var nummerFormat$1 = (n) => planNummer$1("IMPL", n);
+var nummerFormat$8 = (n) => planNummer$8("IMPL", n);
 function neuerPlan$7(nummer) {
 	return {
-		nummer: nummerFormat$1(nummer),
+		nummer: nummerFormat$8(nummer),
 		datum: heute$1(),
 		patient: leererPatient$8(),
 		zaehne: {},
@@ -44493,6 +44800,82 @@ function neuerPlan$7(nummer) {
 		entfernt: [],
 		regler: { ...STANDARD_REGLER },
 		bemerkung: ""
+	};
+}
+//#endregion
+//#region ../Implantologie/Privat-Impl/src/mandant.ts
+var LISTE_KEY$9 = "planr.mandanten.v1";
+var AKTIV_KEY$8 = "planr.mandant.v1";
+/** Der Standard-Mandant liest die alten Schlüssel ohne Zusatz – vorhandene Daten bleiben ihm erhalten. */
+var STANDARD_ID$8 = "standard";
+var STANDARD$8 = {
+	id: STANDARD_ID$8,
+	name: "Praxis"
+};
+var speicher$8 = () => typeof localStorage === "undefined" ? null : localStorage;
+function kennung$16(text) {
+	return text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+/** Speicherschlüssel eines Mandanten */
+var schluessel$8 = (key, mandantId) => mandantId === "standard" ? key : `${key}@${mandantId}`;
+function lesen$8() {
+	let liste = [];
+	try {
+		const roh = JSON.parse(speicher$8()?.getItem(LISTE_KEY$9) ?? "[]");
+		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung$16(m.id) === m.id && m.id);
+	} catch {
+		liste = [];
+	}
+	return [liste.find((m) => m.id === "standard") ?? STANDARD$8, ...liste.filter((m) => m.id !== STANDARD_ID$8)].map((m) => ({
+		id: m.id,
+		name: String(m.name || m.id)
+	}));
+}
+var schreiben$8 = (liste) => speicher$8()?.setItem(LISTE_KEY$9, JSON.stringify(liste));
+/** Aktiver Mandant beim Laden der Seite; ?mandant=kürzel wählt (und legt bei Bedarf an). */
+function starten$8() {
+	const liste = lesen$8();
+	let id = speicher$8()?.getItem(AKTIV_KEY$8) ?? "standard";
+	const aufruf = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("mandant");
+	if (aufruf && kennung$16(aufruf)) {
+		id = kennung$16(aufruf);
+		if (!liste.some((m) => m.id === id)) {
+			liste.push({
+				id,
+				name: aufruf.trim()
+			});
+			schreiben$8(liste);
+		}
+		speicher$8()?.setItem(AKTIV_KEY$8, id);
+	}
+	return {
+		liste,
+		aktiv: liste.find((m) => m.id === id) ?? liste[0]
+	};
+}
+/** Gilt für die ganze Sitzung; ein Wechsel lädt die Seite neu, damit alle Speicher den neuen Mandanten lesen. */
+var MANDANT_ID$8 = starten$8().aktiv.id;
+var mk$8 = (key) => schluessel$8(key, MANDANT_ID$8);
+mk$8("privat-impl.plan.v1");
+mk$8("privat-impl.einstellungen.v1");
+mk$8("privat-impl.liste.v1");
+/** alte Stände auf das aktuelle Plan-Schema anheben (Regler/Global ergänzen) */
+function planMigrieren$7(p) {
+	return {
+		...neuerPlan$7(1),
+		...p,
+		patient: patientMigrieren$8(p.patient),
+		global: {
+			...STANDARD_GLOBAL,
+			...p.global ?? {}
+		},
+		regler: {
+			...STANDARD_REGLER,
+			...p.regler ?? {}
+		},
+		regionen: p.regionen ?? {},
+		implantate: p.implantate ?? {},
+		nummer: nummerMitReihe$8(p.nummer)
 	};
 }
 //#endregion
@@ -44944,49 +45327,49 @@ function kzvAusPlz$3(plz) {
 }
 //#endregion
 //#region ../KONS/MKV/src/mandant.ts
-var LISTE_KEY$6 = "planr.mandanten.v1";
-var AKTIV_KEY$6 = "planr.mandant.v1";
+var LISTE_KEY$7 = "planr.mandanten.v1";
+var AKTIV_KEY$7 = "planr.mandant.v1";
 /** Der Standard-Mandant liest die alten Schlüssel ohne Zusatz – vorhandene Daten bleiben ihm erhalten. */
-var STANDARD_ID$6 = "standard";
-var STANDARD$6 = {
-	id: STANDARD_ID$6,
+var STANDARD_ID$7 = "standard";
+var STANDARD$7 = {
+	id: STANDARD_ID$7,
 	name: "Praxis"
 };
-var speicher$6 = () => typeof localStorage === "undefined" ? null : localStorage;
-function kennung$14(text) {
+var speicher$7 = () => typeof localStorage === "undefined" ? null : localStorage;
+function kennung$15(text) {
 	return text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 }
 /** Speicherschlüssel eines Mandanten */
-var schluessel$6 = (key, mandantId) => mandantId === "standard" ? key : `${key}@${mandantId}`;
-function lesen$6() {
+var schluessel$7 = (key, mandantId) => mandantId === "standard" ? key : `${key}@${mandantId}`;
+function lesen$7() {
 	let liste = [];
 	try {
-		const roh = JSON.parse(speicher$6()?.getItem(LISTE_KEY$6) ?? "[]");
-		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung$14(m.id) === m.id && m.id);
+		const roh = JSON.parse(speicher$7()?.getItem(LISTE_KEY$7) ?? "[]");
+		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung$15(m.id) === m.id && m.id);
 	} catch {
 		liste = [];
 	}
-	return [liste.find((m) => m.id === "standard") ?? STANDARD$6, ...liste.filter((m) => m.id !== STANDARD_ID$6)].map((m) => ({
+	return [liste.find((m) => m.id === "standard") ?? STANDARD$7, ...liste.filter((m) => m.id !== STANDARD_ID$7)].map((m) => ({
 		id: m.id,
 		name: String(m.name || m.id)
 	}));
 }
-var schreiben$6 = (liste) => speicher$6()?.setItem(LISTE_KEY$6, JSON.stringify(liste));
+var schreiben$7 = (liste) => speicher$7()?.setItem(LISTE_KEY$7, JSON.stringify(liste));
 /** Aktiver Mandant beim Laden der Seite; ?mandant=kürzel wählt (und legt bei Bedarf an). */
-function starten$6() {
-	const liste = lesen$6();
-	let id = speicher$6()?.getItem(AKTIV_KEY$6) ?? "standard";
+function starten$7() {
+	const liste = lesen$7();
+	let id = speicher$7()?.getItem(AKTIV_KEY$7) ?? "standard";
 	const aufruf = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("mandant");
-	if (aufruf && kennung$14(aufruf)) {
-		id = kennung$14(aufruf);
+	if (aufruf && kennung$15(aufruf)) {
+		id = kennung$15(aufruf);
 		if (!liste.some((m) => m.id === id)) {
 			liste.push({
 				id,
 				name: aufruf.trim()
 			});
-			schreiben$6(liste);
+			schreiben$7(liste);
 		}
-		speicher$6()?.setItem(AKTIV_KEY$6, id);
+		speicher$7()?.setItem(AKTIV_KEY$7, id);
 	}
 	return {
 		liste,
@@ -44994,8 +45377,8 @@ function starten$6() {
 	};
 }
 /** Gilt für die ganze Sitzung; ein Wechsel lädt die Seite neu, damit alle Speicher den neuen Mandanten lesen. */
-var MANDANT_ID$6 = starten$6().aktiv.id;
-var mk$6 = (key) => schluessel$6(key, MANDANT_ID$6);
+var MANDANT_ID$7 = starten$7().aktiv.id;
+var mk$7 = (key) => schluessel$7(key, MANDANT_ID$7);
 //#endregion
 //#region ../KONS/MKV/src/punktwerte.ts
 /**
@@ -45012,7 +45395,7 @@ var MITGELIEFERT$5 = punktwerte_default$3;
 /** Die gültige Tabelle (aktualisiert, sonst mitgeliefert). */
 var punktwertTabelle$3 = () => aktuell$7(PUNKTWERTE_DATEI$3, MITGELIEFERT$5);
 /** Praxiseigene Werte je Mandant: KZV -> Bereich -> Paar. */
-var K_EIGEN$3 = mk$6("planr.punktwerte-eigen.v1");
+var K_EIGEN$3 = mk$7("planr.punktwerte-eigen.v1");
 function eigeneWerte$3() {
 	try {
 		const roh = localStorage.getItem(K_EIGEN$3);
@@ -50852,6 +51235,104 @@ var standardPraxis$7 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$8 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$7 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$8(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$7(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$7(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$7(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$7(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$7(roh) {
+	const p = leererPatient$7();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$7(o, "vorname"),
+		name: erster$7(o, "name")
+	} : nameTrennen$7(erster$7(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$7(o, "strasse"),
+		plz: erster$7(o, "plz"),
+		ort: erster$7(o, "ort")
+	};
+	if (!plz && !ort && text$8(o.plzOrt)) ({plz, ort} = plzOrtTrennen$7(text$8(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$8(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$7(text$8(o.anschrift)));
+	return {
+		anrede: erster$7(o, "anrede"),
+		titel: erster$7(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$7(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$7(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$7(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$7(o, "versichertenNr", "versichertennr"),
+		status: erster$7(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$7(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$7 = "planr.praxis.zentral.v1";
 //#endregion
@@ -50867,7 +51348,7 @@ function arztLesen$7() {
 		return null;
 	}
 }
-var kennung$13 = (s) => `${s.length}:${s.slice(-48)}`;
+var kennung$14 = (s) => `${s.length}:${s.slice(-48)}`;
 /** Dunkle Striche → Stempelblau, Hintergrund (weiß oder transparent) → durchsichtig. */
 function blauFaerben$7(dataUrl) {
 	return new Promise((fertig) => {
@@ -50928,7 +51409,7 @@ async function arztUebernehmen$7(roh) {
 	if (!roh || typeof roh.name !== "string" || typeof localStorage === "undefined") return;
 	const original = typeof roh.signatur === "string" && roh.signatur.startsWith("data:image/") ? roh.signatur : "";
 	const alt = arztLesen$7();
-	const quelle = kennung$13(original);
+	const quelle = kennung$14(original);
 	if (alt && alt.name === roh.name && alt.quelle === quelle) return;
 	const neu = {
 		name: roh.name,
@@ -50944,6 +51425,26 @@ async function arztUebernehmen$7(roh) {
 }
 //#endregion
 //#region ../KONS/MKV/src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer$7(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$7 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$7 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$7(nummer) {
+	if (NUMMER_REIHE$7.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$7);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
+}
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$7 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
 /** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
@@ -50988,6 +51489,7 @@ var reglerAus$2 = (e) => ({
 	inlayFaktor: e.inlayFaktor,
 	laborKlasse: 1
 });
+var nummerFormat$7 = (n) => planNummer$7("FMKV", n);
 function neuerPlan$6(nummer, einst) {
 	return {
 		nummer,
@@ -50996,6 +51498,26 @@ function neuerPlan$6(nummer, einst) {
 		zaehne: {},
 		regler: reglerAus$2(einst),
 		bemerkung: ""
+	};
+}
+mk$7("kons-mkv.plan.v1");
+mk$7("kons-mkv.einstellungen.v1");
+mk$7("kons-mkv.liste.v1");
+function planMigrieren$6(roh, einst) {
+	const basis = neuerPlan$6(nummerFormat$7(einst.naechsteNummer), einst);
+	if (!roh || typeof roh !== "object") return basis;
+	const p = roh;
+	return {
+		...basis,
+		...p,
+		patient: patientMigrieren$7(p.patient),
+		regler: {
+			...basis.regler,
+			...p.regler
+		},
+		zaehne: p.zaehne ?? {},
+		bemerkung: p.bemerkung ?? "",
+		nummer: nummerMitReihe$7(p.nummer || basis.nummer)
 	};
 }
 //#endregion
@@ -58407,6 +58929,104 @@ var standardPraxis$6 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$7 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$6 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$7(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$6(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$6(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$6(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$6(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$6(roh) {
+	const p = leererPatient$6();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$6(o, "vorname"),
+		name: erster$6(o, "name")
+	} : nameTrennen$6(erster$6(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$6(o, "strasse"),
+		plz: erster$6(o, "plz"),
+		ort: erster$6(o, "ort")
+	};
+	if (!plz && !ort && text$7(o.plzOrt)) ({plz, ort} = plzOrtTrennen$6(text$7(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$7(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$6(text$7(o.anschrift)));
+	return {
+		anrede: erster$6(o, "anrede"),
+		titel: erster$6(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$6(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$6(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$6(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$6(o, "versichertenNr", "versichertennr"),
+		status: erster$6(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$6(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$6 = "planr.praxis.zentral.v1";
 //#endregion
@@ -58422,7 +59042,7 @@ function arztLesen$6() {
 		return null;
 	}
 }
-var kennung$12 = (s) => `${s.length}:${s.slice(-48)}`;
+var kennung$13 = (s) => `${s.length}:${s.slice(-48)}`;
 /** Dunkle Striche → Stempelblau, Hintergrund (weiß oder transparent) → durchsichtig. */
 function blauFaerben$6(dataUrl) {
 	return new Promise((fertig) => {
@@ -58483,7 +59103,7 @@ async function arztUebernehmen$6(roh) {
 	if (!roh || typeof roh.name !== "string" || typeof localStorage === "undefined") return;
 	const original = typeof roh.signatur === "string" && roh.signatur.startsWith("data:image/") ? roh.signatur : "";
 	const alt = arztLesen$6();
-	const quelle = kennung$12(original);
+	const quelle = kennung$13(original);
 	if (alt && alt.name === roh.name && alt.quelle === quelle) return;
 	const neu = {
 		name: roh.name,
@@ -58499,6 +59119,26 @@ async function arztUebernehmen$6(roh) {
 }
 //#endregion
 //#region ../KONS/Privat-Kons/src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer$6(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$6 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$6 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$6(nummer) {
+	if (NUMMER_REIHE$6.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$6);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
+}
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$6 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
 /** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
@@ -58531,6 +59171,7 @@ var STANDARD_EINSTELLUNGEN$6 = {
 	laborPreise: STANDARD_LABOR.map((l) => ({ ...l })),
 	materialPreise: STANDARD_MATERIAL.map((m) => ({ ...m }))
 };
+var nummerFormat$6 = (n) => planNummer$6("PK", n);
 function neuerPlan$5(nummer, einst) {
 	return {
 		nummer,
@@ -58546,6 +59187,81 @@ function neuerPlan$5(nummer, einst) {
 			materialKlasse: 1
 		},
 		bemerkung: ""
+	};
+}
+//#endregion
+//#region ../KONS/Privat-Kons/src/mandant.ts
+var LISTE_KEY$6 = "planr.mandanten.v1";
+var AKTIV_KEY$6 = "planr.mandant.v1";
+/** Der Standard-Mandant liest die alten Schlüssel ohne Zusatz – vorhandene Daten bleiben ihm erhalten. */
+var STANDARD_ID$6 = "standard";
+var STANDARD$6 = {
+	id: STANDARD_ID$6,
+	name: "Praxis"
+};
+var speicher$6 = () => typeof localStorage === "undefined" ? null : localStorage;
+function kennung$12(text) {
+	return text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+/** Speicherschlüssel eines Mandanten */
+var schluessel$6 = (key, mandantId) => mandantId === "standard" ? key : `${key}@${mandantId}`;
+function lesen$6() {
+	let liste = [];
+	try {
+		const roh = JSON.parse(speicher$6()?.getItem(LISTE_KEY$6) ?? "[]");
+		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung$12(m.id) === m.id && m.id);
+	} catch {
+		liste = [];
+	}
+	return [liste.find((m) => m.id === "standard") ?? STANDARD$6, ...liste.filter((m) => m.id !== STANDARD_ID$6)].map((m) => ({
+		id: m.id,
+		name: String(m.name || m.id)
+	}));
+}
+var schreiben$6 = (liste) => speicher$6()?.setItem(LISTE_KEY$6, JSON.stringify(liste));
+/** Aktiver Mandant beim Laden der Seite; ?mandant=kürzel wählt (und legt bei Bedarf an). */
+function starten$6() {
+	const liste = lesen$6();
+	let id = speicher$6()?.getItem(AKTIV_KEY$6) ?? "standard";
+	const aufruf = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("mandant");
+	if (aufruf && kennung$12(aufruf)) {
+		id = kennung$12(aufruf);
+		if (!liste.some((m) => m.id === id)) {
+			liste.push({
+				id,
+				name: aufruf.trim()
+			});
+			schreiben$6(liste);
+		}
+		speicher$6()?.setItem(AKTIV_KEY$6, id);
+	}
+	return {
+		liste,
+		aktiv: liste.find((m) => m.id === id) ?? liste[0]
+	};
+}
+/** Gilt für die ganze Sitzung; ein Wechsel lädt die Seite neu, damit alle Speicher den neuen Mandanten lesen. */
+var MANDANT_ID$6 = starten$6().aktiv.id;
+var mk$6 = (key) => schluessel$6(key, MANDANT_ID$6);
+mk$6("privat-kons.plan.v2");
+mk$6("privat-kons.einstellungen.v2");
+mk$6("privat-kons.liste.v2");
+function planMigrieren$5(roh, einst) {
+	const basis = neuerPlan$5(nummerFormat$6(einst.naechsteNummer), einst);
+	if (!roh || typeof roh !== "object") return basis;
+	const p = roh;
+	return {
+		...basis,
+		...p,
+		patient: patientMigrieren$6(p.patient),
+		regler: {
+			...basis.regler,
+			...p.regler
+		},
+		zaehne: p.zaehne ?? {},
+		frei: p.frei ?? [],
+		bemerkung: p.bemerkung ?? "",
+		nummer: nummerMitReihe$6(p.nummer || basis.nummer)
 	};
 }
 //#endregion
@@ -62844,6 +63560,104 @@ var standardPraxis$5 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$6 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$5 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$6(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$5(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$5(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$5(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$5(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$5(roh) {
+	const p = leererPatient$5();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$5(o, "vorname"),
+		name: erster$5(o, "name")
+	} : nameTrennen$5(erster$5(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$5(o, "strasse"),
+		plz: erster$5(o, "plz"),
+		ort: erster$5(o, "ort")
+	};
+	if (!plz && !ort && text$6(o.plzOrt)) ({plz, ort} = plzOrtTrennen$5(text$6(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$6(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$5(text$6(o.anschrift)));
+	return {
+		anrede: erster$5(o, "anrede"),
+		titel: erster$5(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$5(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$5(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$5(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$5(o, "versichertenNr", "versichertennr"),
+		status: erster$5(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$5(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$5 = "planr.praxis.zentral.v1";
 //#endregion
@@ -62942,11 +63756,19 @@ async function arztUebernehmen$5(roh) {
 * für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
 */
 /** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
-function planNummer(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+function planNummer$5(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
 	const n = Math.max(1, Math.floor(lauf) || 1);
 	const reihe = Math.floor((n - 1) / 999);
 	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
 	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$5 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$5 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$5(nummer) {
+	if (NUMMER_REIHE$5.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$5);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
 }
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$5 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
@@ -63101,10 +63923,10 @@ function leererBefund(phase = "initial", bezeichnung = "Initialbefund", datum = 
 		zaehne
 	};
 }
-var nummerFormat = (n) => planNummer("PAR", n);
+var nummerFormat$5 = (n) => planNummer$5("PAR", n);
 function neuerFall(nummer) {
 	return {
-		nummer: nummerFormat(nummer),
+		nummer: nummerFormat$5(nummer),
 		datum: heute(),
 		patient: leererPatient$5(),
 		antrag: {
@@ -63163,6 +63985,146 @@ function neuerFall(nummer) {
 			werte: {}
 		},
 		bemerkung: ""
+	};
+}
+function fixTermin(t) {
+	return {
+		id: t.id ?? id$32(),
+		schluessel: t.schluessel ?? "",
+		art: t.art ?? "kontrolle",
+		titel: t.titel ?? "",
+		datum: t.datum ?? "",
+		datumManuell: t.datumManuell ?? false,
+		erbracht: t.erbracht ?? false,
+		zaehne: Array.isArray(t.zaehne) ? t.zaehne : null,
+		module: t.module ?? [],
+		verlaengerung: t.verlaengerung ?? false,
+		auswahl: t.auswahl ?? [],
+		abgewaehlt: t.abgewaehlt ?? [],
+		auto: t.auto ?? [],
+		mengen: t.mengen ?? {},
+		faktoren: t.faktoren ?? {},
+		roentgen: t.roentgen ?? "",
+		bemerkung: t.bemerkung ?? ""
+	};
+}
+/**
+* Alte Befunde mit 6 Messstellen [mb, b, db, mo, o, do] auf mesial/distal
+* zusammenlegen: je Seite der tiefere Wert; ein tieferer Wert der Mittelstellen
+* geht an die flachere Seite, damit Diagnose und AIT-Zaehne gleich bleiben.
+*/
+function zweiMessstellen(z) {
+	if (z.st.length === 2 && z.bop.length === 2) return z;
+	const max = (...w) => {
+		const n = w.filter((x) => x != null);
+		return n.length ? Math.max(...n) : null;
+	};
+	const [mb, b, db, mo, o, dd] = z.st;
+	const st = [max(mb, mo), max(db, dd)];
+	const bop = [!!(z.bop[0] || z.bop[3]), !!(z.bop[2] || z.bop[5])];
+	const mitte = max(b, o);
+	if (mitte != null && mitte > (max(st[0], st[1]) ?? -1)) {
+		const i = (st[0] ?? -1) <= (st[1] ?? -1) ? 0 : 1;
+		st[i] = mitte;
+		bop[i] = bop[i] || !!(z.bop[1] || z.bop[4]);
+	}
+	return {
+		...z,
+		st,
+		bop
+	};
+}
+/** Vor dem Sonstiges-Kreuz stand der ganze Freitext in `sonstiges`: er ist die Fortsetzung. */
+function anamneseMigrieren(a, alt) {
+	if (!alt || alt.sonstigesAn != null) return a;
+	return {
+		...a,
+		sonstigesAn: !!alt.sonstiges?.trim(),
+		sonstiges: "",
+		sonstigesFortsetzung: alt.sonstiges ?? ""
+	};
+}
+function fixBefund(b, vorgabe) {
+	if (!b) return vorgabe;
+	const zaehne = {};
+	for (const z of ALLE_ZAEHNE$1) {
+		const alt = b.zaehne?.[z];
+		zaehne[z] = alt ? zweiMessstellen({
+			...leererZahnBefund(),
+			...alt
+		}) : leererZahnBefund();
+	}
+	return {
+		id: b.id ?? id$32(),
+		phase: b.phase ?? vorgabe.phase,
+		datum: b.datum ?? vorgabe.datum,
+		bezeichnung: b.bezeichnung ?? vorgabe.bezeichnung,
+		zaehne
+	};
+}
+var hatMesswerte = (b) => Object.values(b.zaehne).some((z) => z.st.some((w) => w != null));
+/**
+* Je Phase nur EIN Befund (UPT: einer je Datum). Bleibt der erste mit
+* Messwerten, sonst der erste; mehrfach angeklickte leere Kopien fallen weg.
+*/
+function befundeBereinigen(befunde) {
+	const gewaehlt = /* @__PURE__ */ new Map();
+	for (const b of befunde) {
+		const k = b.phase === "upt" ? `upt:${b.datum}` : b.phase;
+		const da = gewaehlt.get(k);
+		if (!da || !hatMesswerte(da) && hatMesswerte(b)) gewaehlt.set(k, b);
+	}
+	const behalten = new Set(gewaehlt.values());
+	return befunde.filter((b) => behalten.has(b));
+}
+/** Fehlende Felder nach einem Schema-Update ergaenzen. */
+function fallMigrieren(roh) {
+	const v = neuerFall(1);
+	const p = roh ?? {};
+	let befunde;
+	if (Array.isArray(p.befunde)) befunde = p.befunde.map((b, i) => fixBefund(b, leererBefund(i === 0 ? "initial" : "beva", i === 0 ? "Initialbefund" : "Befund")));
+	else if (p.befunde && typeof p.befunde === "object") {
+		const alt = p.befunde;
+		befunde = [];
+		if (alt.initial) befunde.push(fixBefund(alt.initial, leererBefund("initial", "Initialbefund")));
+		if (alt.beva) befunde.push(fixBefund(alt.beva, leererBefund("beva", "BEV a")));
+		if (alt.bevb) befunde.push(fixBefund(alt.bevb, leererBefund("bevb", "BEV b")));
+		if (befunde.length === 0) befunde = [leererBefund()];
+	} else befunde = [leererBefund()];
+	return {
+		...v,
+		...p,
+		patient: patientMigrieren$5(p.patient),
+		antrag: {
+			...v.antrag,
+			...p.antrag
+		},
+		anamnese: anamneseMigrieren({
+			...v.anamnese,
+			...p.anamnese
+		}, p.anamnese),
+		diagnose: {
+			...v.diagnose,
+			...p.diagnose
+		},
+		befunde: befundeBereinigen(befunde),
+		termine: Array.isArray(p.termine) ? p.termine.map(fixTermin) : [],
+		planung: {
+			...v.planung,
+			...p.planung
+		},
+		modus: p.modus ?? v.modus,
+		nummer: nummerMitReihe$5(p.nummer || v.nummer),
+		zielGesamt: p.zielGesamt ?? 0,
+		zusatz: {
+			...v.zusatz,
+			...p.zusatz,
+			vorherLeistungen: {
+				...v.zusatz.vorherLeistungen,
+				...p.zusatz?.vorherLeistungen
+			},
+			werte: { ...p.zusatz?.werte }
+		}
 	};
 }
 //#endregion
@@ -67723,6 +68685,104 @@ var standardPraxis$4 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$5 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$4 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$5(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$4(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$4(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$4(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$4(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$4(roh) {
+	const p = leererPatient$4();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$4(o, "vorname"),
+		name: erster$4(o, "name")
+	} : nameTrennen$4(erster$4(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$4(o, "strasse"),
+		plz: erster$4(o, "plz"),
+		ort: erster$4(o, "ort")
+	};
+	if (!plz && !ort && text$5(o.plzOrt)) ({plz, ort} = plzOrtTrennen$4(text$5(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$5(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$4(text$5(o.anschrift)));
+	return {
+		anrede: erster$4(o, "anrede"),
+		titel: erster$4(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$4(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$4(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$4(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$4(o, "versichertenNr", "versichertennr"),
+		status: erster$4(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$4(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$4 = "planr.praxis.zentral.v1";
 //#endregion
@@ -67815,6 +68875,26 @@ async function arztUebernehmen$4(roh) {
 }
 //#endregion
 //#region ../PAR/Privat-PAR/src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer$4(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$4 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$4 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$4(nummer) {
+	if (NUMMER_REIHE$4.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$4);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
+}
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$4 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
 /** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
@@ -67900,6 +68980,7 @@ var STANDARD_EINSTELLUNGEN$4 = {
 	gueltigMonate: 6,
 	naechsteNummer: 1
 };
+var nummerFormat$4 = (n) => planNummer$4("PPAR", n);
 function neuerPlan$4(nummer, einst) {
 	return {
 		nummer,
@@ -67928,6 +69009,26 @@ function neuerPlan$4(nummer, einst) {
 		faktoren: {},
 		zusatz: [],
 		bemerkung: ""
+	};
+}
+function planMigrieren$4(roh, einst) {
+	const basis = neuerPlan$4(nummerFormat$4(einst.naechsteNummer), einst);
+	if (!roh || typeof roh !== "object") return basis;
+	const p = roh;
+	return {
+		...basis,
+		...p,
+		patient: patientMigrieren$4(p.patient),
+		optionen: {
+			...basis.optionen,
+			...p.optionen
+		},
+		fehlend: Array.isArray(p.fehlend) ? p.fehlend : basis.fehlend,
+		cpt: Array.isArray(p.cpt) ? p.cpt : [],
+		faktoren: p.faktoren ?? {},
+		zusatz: Array.isArray(p.zusatz) ? p.zusatz : [],
+		bemerkung: p.bemerkung ?? "",
+		nummer: nummerMitReihe$4(p.nummer || basis.nummer)
 	};
 }
 var punktwerte_default$1 = {
@@ -86498,7 +87599,7 @@ var kiZeilen$3 = (r) => listenZeilen$3([
 	...r.material,
 	...r.privat
 ]);
-var text = (k) => ({
+var text$4 = (k) => ({
 	lesen: (p) => p.angaben[k] ?? "",
 	setzen: (p, w) => ({
 		...p,
@@ -86524,19 +87625,19 @@ var FELDER$2 = [
 	{
 		name: "angaben.befund",
 		text: "Anamnese, Befunde, Diagnose (freier Text auf dem Formular)",
-		...text("befund"),
+		...text$4("befund"),
 		da: bei("kiefergelenk", "ukps")
 	},
 	{
 		name: "angaben.verletzung",
 		text: "Ort, Zeit und Ursache sowie Art der Verletzung (freier Text auf dem Formular)",
-		...text("verletzung"),
+		...text$4("verletzung"),
 		da: bei("kieferbruch")
 	},
 	{
 		name: "angaben.behandlung",
 		text: "vorgesehene Behandlung (freier Text auf dem Formular)",
-		...text("behandlung")
+		...text$4("behandlung")
 	},
 	{
 		name: "angaben.unfall",
@@ -87837,6 +88938,104 @@ var standardPraxis$3 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$3 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$3 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$3(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$3(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$3(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$3(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$3(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$3(roh) {
+	const p = leererPatient$3();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$3(o, "vorname"),
+		name: erster$3(o, "name")
+	} : nameTrennen$3(erster$3(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$3(o, "strasse"),
+		plz: erster$3(o, "plz"),
+		ort: erster$3(o, "ort")
+	};
+	if (!plz && !ort && text$3(o.plzOrt)) ({plz, ort} = plzOrtTrennen$3(text$3(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$3(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$3(text$3(o.anschrift)));
+	return {
+		anrede: erster$3(o, "anrede"),
+		titel: erster$3(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$3(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$3(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$3(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$3(o, "versichertenNr", "versichertennr"),
+		status: erster$3(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$3(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$3 = "planr.praxis.zentral.v1";
 //#endregion
@@ -87929,6 +89128,26 @@ async function arztUebernehmen$3(roh) {
 }
 //#endregion
 //#region ../KB/Kassen-KB/src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer$3(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$3 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$3 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$3(nummer) {
+	if (NUMMER_REIHE$3.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$3);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
+}
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$3 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
 /** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
@@ -87976,6 +89195,7 @@ var leereAngaben$1 = () => ({
 	genehmigungsverzicht: false,
 	antragsnummer: ""
 });
+var nummerFormat$3 = (n) => planNummer$3("KB", n);
 function neuerPlan$3(nummer, einst) {
 	return {
 		nummer,
@@ -87987,6 +89207,37 @@ function neuerPlan$3(nummer, einst) {
 		abformung: "abdruck",
 		fremdlabor: { name: einst.fremdlaborName },
 		bemerkung: ""
+	};
+}
+/** Ältere Pläne führten die UKPS unter „Kiefergelenkserkrankung“. */
+function artMigrieren(p, angaben) {
+	const pos = Array.isArray(p.positionen) ? p.positionen : [];
+	const nurUkps = pos.some((x) => x.ebene === "BEMA" && x.nr.startsWith("UP")) && !pos.some((x) => x.ebene === "BEMA" && /^K\d/.test(x.nr));
+	return p.angaben?.art === "kiefergelenk" && nurUkps ? {
+		...angaben,
+		art: "ukps"
+	} : angaben;
+}
+function planMigrieren$3(roh, einst) {
+	const basis = neuerPlan$3(nummerFormat$3(einst.naechsteNummer), einst);
+	if (!roh || typeof roh !== "object") return basis;
+	const p = roh;
+	return {
+		...basis,
+		...p,
+		patient: patientMigrieren$3(p.patient),
+		angaben: artMigrieren(p, {
+			...basis.angaben,
+			...p.angaben
+		}),
+		positionen: Array.isArray(p.positionen) ? p.positionen : [],
+		abformung: p.abformung === "scan" ? "scan" : "abdruck",
+		fremdlabor: {
+			...basis.fremdlabor,
+			...p.fremdlabor
+		},
+		bemerkung: p.bemerkung ?? "",
+		nummer: nummerMitReihe$3(p.nummer || basis.nummer)
 	};
 }
 //#endregion
@@ -93464,6 +94715,104 @@ var standardPraxis$2 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$2 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$2 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$2(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$2(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$2(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$2(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$2(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$2(roh) {
+	const p = leererPatient$2();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$2(o, "vorname"),
+		name: erster$2(o, "name")
+	} : nameTrennen$2(erster$2(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$2(o, "strasse"),
+		plz: erster$2(o, "plz"),
+		ort: erster$2(o, "ort")
+	};
+	if (!plz && !ort && text$2(o.plzOrt)) ({plz, ort} = plzOrtTrennen$2(text$2(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$2(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$2(text$2(o.anschrift)));
+	return {
+		anrede: erster$2(o, "anrede"),
+		titel: erster$2(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$2(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$2(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$2(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$2(o, "versichertenNr", "versichertennr"),
+		status: erster$2(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$2(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$2 = "planr.praxis.zentral.v1";
 //#endregion
@@ -93556,6 +94905,26 @@ async function arztUebernehmen$2(roh) {
 }
 //#endregion
 //#region ../KB/Privat-KB/src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer$2(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$2 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$2 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$2(nummer) {
+	if (NUMMER_REIHE$2.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$2);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
+}
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$2 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
 /** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
@@ -93654,6 +95023,7 @@ var reglerAus$1 = (e) => ({
 	faFaktor: e.faFaktor,
 	laborKlasse: 1
 });
+var nummerFormat$2 = (n) => planNummer$2("PKB", n);
 function neuerPlan$2(nummer, einst) {
 	return {
 		nummer,
@@ -93665,6 +95035,29 @@ function neuerPlan$2(nummer, einst) {
 		abformung: "abdruck",
 		fremdlabor: { name: einst.laborName },
 		bemerkung: ""
+	};
+}
+function planMigrieren$2(roh, einst) {
+	const basis = neuerPlan$2(nummerFormat$2(einst.naechsteNummer), einst);
+	if (!roh || typeof roh !== "object") return basis;
+	const p = roh;
+	return {
+		...basis,
+		...p,
+		patient: patientMigrieren$2(p.patient),
+		regler: {
+			...basis.regler,
+			...p.regler
+		},
+		positionen: Array.isArray(p.positionen) ? p.positionen : [],
+		abformung: p.abformung === "scan" ? "scan" : "abdruck",
+		fremdlabor: {
+			...basis.fremdlabor,
+			...p.fremdlabor
+		},
+		diagnose: p.diagnose ?? "",
+		bemerkung: p.bemerkung ?? "",
+		nummer: nummerMitReihe$2(p.nummer || basis.nummer)
 	};
 }
 var punktwerte_default = {
@@ -115243,6 +116636,104 @@ var standardPraxis$1 = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text$1 = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster$1 = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text$1(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen$1(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen$1(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen$1(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen$1(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren$1(roh) {
+	const p = leererPatient$1();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster$1(o, "vorname"),
+		name: erster$1(o, "name")
+	} : nameTrennen$1(erster$1(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster$1(o, "strasse"),
+		plz: erster$1(o, "plz"),
+		ort: erster$1(o, "ort")
+	};
+	if (!plz && !ort && text$1(o.plzOrt)) ({plz, ort} = plzOrtTrennen$1(text$1(o.plzOrt)));
+	if (!strasse && !plz && !ort && text$1(o.anschrift)) ({strasse, plz, ort} = anschriftLesen$1(text$1(o.anschrift)));
+	return {
+		anrede: erster$1(o, "anrede"),
+		titel: erster$1(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster$1(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster$1(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster$1(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster$1(o, "versichertenNr", "versichertennr"),
+		status: erster$1(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster$1(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY$1 = "planr.praxis.zentral.v1";
 //#endregion
@@ -115335,6 +116826,26 @@ async function arztUebernehmen$1(roh) {
 }
 //#endregion
 //#region ../KFO/Kassen-KFO/src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer$1(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE$1 = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT$1 = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe$1(nummer) {
+	if (NUMMER_REIHE$1.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT$1);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
+}
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse$1 = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
 /** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
@@ -115414,6 +116925,7 @@ var leereEinstufung = () => ({
 		null
 	]
 });
+var nummerFormat$1 = (n) => planNummer$1("KFO", n);
 function neuerPlan$1(nummer, einst) {
 	return {
 		nummer,
@@ -115424,6 +116936,27 @@ function neuerPlan$1(nummer, einst) {
 		positionen: [],
 		labor: einst.labor,
 		bemerkung: ""
+	};
+}
+function planMigrieren$1(roh, einst) {
+	const basis = neuerPlan$1(nummerFormat$1(einst.naechsteNummer), einst);
+	if (!roh || typeof roh !== "object") return basis;
+	const p = roh;
+	return {
+		...basis,
+		...p,
+		patient: patientMigrieren$1(p.patient),
+		angaben: {
+			...basis.angaben,
+			...p.angaben
+		},
+		einstufung: {
+			...basis.einstufung,
+			...p.einstufung
+		},
+		positionen: Array.isArray(p.positionen) ? p.positionen : [],
+		bemerkung: p.bemerkung ?? "",
+		nummer: nummerMitReihe$1(p.nummer || basis.nummer)
 	};
 }
 //#endregion
@@ -120627,6 +122160,104 @@ var standardPraxis = () => ({
 	abrechnungsNr: "",
 	kzvNr: ""
 });
+var text = (v) => typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+var erster = (o, ...keys) => {
+	for (const k of keys) {
+		const t = text(o[k]).trim();
+		if (t) return t;
+	}
+	return "";
+};
+/** "80331 München" -> { plz, ort } */
+function plzOrtTrennen(s) {
+	const t = s.trim();
+	const m = /^(\d{4,5})\s*(.*)$/.exec(t);
+	return m ? {
+		plz: m[1],
+		ort: m[2].trim()
+	} : {
+		plz: "",
+		ort: t
+	};
+}
+/** "Hauptstr. 1, 80331 München" (auch mehrzeilig) -> { strasse, plz, ort } */
+function anschriftLesen(s) {
+	const teile = s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+	if (!teile.length) return {
+		strasse: "",
+		plz: "",
+		ort: ""
+	};
+	const i = teile.findIndex((t) => /^\d{4,5}\b/.test(t));
+	if (i < 0) return {
+		strasse: teile.join(", "),
+		plz: "",
+		ort: ""
+	};
+	return {
+		strasse: teile.slice(0, i).join(", "),
+		...plzOrtTrennen(teile.slice(i).join(" "))
+	};
+}
+/** Ein voller Name ohne getrennten Vornamen: letztes Wort = Name. "Meier, Hans" ebenso. */
+function nameTrennen(voll) {
+	const t = voll.trim().replace(/\s+/g, " ");
+	if (!t) return {
+		vorname: "",
+		name: ""
+	};
+	if (t.includes(",")) {
+		const [n, ...v] = t.split(",");
+		return {
+			vorname: v.join(",").trim(),
+			name: n.trim()
+		};
+	}
+	const w = t.split(" ");
+	return w.length < 2 ? {
+		vorname: "",
+		name: t
+	} : {
+		vorname: w.slice(0, -1).join(" "),
+		name: w[w.length - 1]
+	};
+}
+/**
+* Liest jeden früheren Stand: MKV/Kons (voller Name, kassennummer, versichertennr, versicherung),
+* Privat-ZE/Implantologie (plzOrt, kostentraeger), PAR (kostentraegerkennung), HKP (anschrift).
+*/
+function patientMigrieren(roh) {
+	const p = leererPatient();
+	if (!roh || typeof roh !== "object") return p;
+	const o = roh;
+	const { vorname, name } = "vorname" in o ? {
+		vorname: erster(o, "vorname"),
+		name: erster(o, "name")
+	} : nameTrennen(erster(o, "name"));
+	let { strasse, plz, ort } = {
+		strasse: erster(o, "strasse"),
+		plz: erster(o, "plz"),
+		ort: erster(o, "ort")
+	};
+	if (!plz && !ort && text(o.plzOrt)) ({plz, ort} = plzOrtTrennen(text(o.plzOrt)));
+	if (!strasse && !plz && !ort && text(o.anschrift)) ({strasse, plz, ort} = anschriftLesen(text(o.anschrift)));
+	return {
+		anrede: erster(o, "anrede"),
+		titel: erster(o, "titel"),
+		vorname,
+		name,
+		geburtsdatum: erster(o, "geburtsdatum"),
+		strasse,
+		plz,
+		ort,
+		kasse: erster(o, "kasse", "versicherung", "kostentraeger"),
+		kassenNr: erster(o, "kassenNr", "kostentraegerkennung", "kassennummer"),
+		versichertenNr: erster(o, "versichertenNr", "versichertennr"),
+		status: erster(o, "status"),
+		kassenart: o.kassenart === "ersatz" ? "ersatz" : "primaer",
+		email: erster(o, "email", "mail")
+	};
+}
 /** Praxiskopf vom PlanR-Server (/api/praxisdaten); alle Planer teilen sich diesen Speicher. */
 var ZENTRALE_PRAXIS_KEY = "planr.praxis.zentral.v1";
 //#endregion
@@ -120719,6 +122350,26 @@ async function arztUebernehmen(roh) {
 }
 //#endregion
 //#region ../KFO/Privat-KFO/src/ablage.ts
+/**
+* Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
+* Die Form der Einträge entspricht dem späteren MAS-Register, damit die Ablage
+* für die Clara-Anbindung umziehen kann, ohne dass sich die Oberfläche ändert.
+*/
+/** Lauf 1 ist A001, 934 ist A934, 1000 ist B001. Clara-Nummern wie C002 bleiben unverändert. */
+function planNummer(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYear()) {
+	const n = Math.max(1, Math.floor(lauf) || 1);
+	const reihe = Math.floor((n - 1) / 999);
+	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
+	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
+}
+var NUMMER_REIHE = /^[A-Za-z]{2,8}-\d{4}-[A-Z]\d{3}$/;
+var NUMMER_ALT = /^([A-Za-z]{2,8})-(\d{4})-(\d{3})$/;
+/** IMPL-2026-001 wird IMPL-2026-A001. Eine Nummer mit Buchstabe bleibt. */
+function nummerMitReihe(nummer) {
+	if (NUMMER_REIHE.test(nummer)) return nummer;
+	const alt = String(nummer || "").match(NUMMER_ALT);
+	return alt ? `${alt[1]}-${alt[2]}-A${alt[3]}` : nummer;
+}
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
 /** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
@@ -120816,6 +122467,7 @@ var reglerAus = (e) => ({
 	roeFaktor: e.roeFaktor,
 	laborKlasse: 1
 });
+var nummerFormat = (n) => planNummer("PKFO", n);
 function neuerPlan(nummer, einst) {
 	return {
 		nummer,
@@ -120831,9 +122483,32 @@ function neuerPlan(nummer, einst) {
 		bemerkung: ""
 	};
 }
+function planMigrieren(roh, einst) {
+	const basis = neuerPlan(nummerFormat(einst.naechsteNummer), einst);
+	if (!roh || typeof roh !== "object") return basis;
+	const p = roh;
+	return {
+		...basis,
+		...p,
+		patient: patientMigrieren(p.patient),
+		aufgabe: {
+			...basis.aufgabe,
+			...p.aufgabe
+		},
+		regler: {
+			...basis.regler,
+			...p.regler
+		},
+		positionen: Array.isArray(p.positionen) ? p.positionen : [],
+		diagnose: p.diagnose ?? "",
+		therapie: p.therapie ?? "",
+		bemerkung: p.bemerkung ?? "",
+		nummer: nummerMitReihe(p.nummer || basis.nummer)
+	};
+}
 //#endregion
 //#region sprache/index.ts
-var ENGINE_STAND = "2026-11-18 07:46";
+var ENGINE_STAND = "2026-11-18 09:03";
 var kparPreise = (fall, einst) => {
 	const kassenart = fall?.patient?.kassenart;
 	const pw = (bereich) => ermittlePunktwert$2({
@@ -120863,6 +122538,10 @@ var MODULE = {
 	},
 	"privat-kv": {
 		neu: () => neuerPlan$8(0),
+		alt: (p) => planMigrieren$8({
+			...neuerPlan$8(0),
+			...p
+		}),
 		text: "Kostenvoranschlag Zahnersatz",
 		standard: STANDARD_EINSTELLUNGEN$9,
 		dienst: (lesen, schreiben) => zeKi(lesen, schreiben),
@@ -120871,6 +122550,7 @@ var MODULE = {
 	},
 	"privat-impl": {
 		neu: () => neuerPlan$7(0),
+		alt: (p) => planMigrieren$7(p),
 		text: "Kostenvoranschlag Implantologie",
 		standard: STANDARD_EINSTELLUNGEN$8,
 		dienst: (lesen, schreiben) => implKi(lesen, schreiben),
@@ -120879,6 +122559,7 @@ var MODULE = {
 	},
 	"kons-mkv": {
 		neu: (e) => neuerPlan$6("", e),
+		alt: (p, e) => planMigrieren$6(p, e),
 		text: "Füllungs-Mehrkostenvereinbarung",
 		standard: STANDARD_EINSTELLUNGEN$7,
 		dienst: (lesen, schreiben) => mkvKi(lesen, schreiben),
@@ -120887,6 +122568,7 @@ var MODULE = {
 	},
 	"privat-kons": {
 		neu: (e) => neuerPlan$5("", e),
+		alt: (p, e) => planMigrieren$5(p, e),
 		text: "Kostenvoranschlag Kons",
 		standard: STANDARD_EINSTELLUNGEN$6,
 		dienst: (lesen, schreiben) => konsKi(lesen, schreiben),
@@ -120895,6 +122577,7 @@ var MODULE = {
 	},
 	"kassen-par": {
 		neu: () => neuerFall(0),
+		alt: (p) => fallMigrieren(p),
 		text: "PAR-Plan",
 		standard: STANDARD_EINSTELLUNGEN$5,
 		dienst: (lesen, schreiben) => parKi$1(() => {
@@ -120910,6 +122593,7 @@ var MODULE = {
 	},
 	"privat-par": {
 		neu: (e) => neuerPlan$4("", e),
+		alt: (p, e) => planMigrieren$4(p, e),
 		text: "Kostenvoranschlag Parodontologie",
 		standard: STANDARD_EINSTELLUNGEN$4,
 		dienst: (lesen, schreiben) => parKi(lesen, schreiben),
@@ -120917,6 +122601,7 @@ var MODULE = {
 	},
 	"kassen-kb": {
 		neu: (e) => neuerPlan$3("", e),
+		alt: (p, e) => planMigrieren$3(p, e),
 		text: "Kassenplan Schiene",
 		standard: STANDARD_EINSTELLUNGEN$3,
 		dienst: (lesen, schreiben) => kbKi$1(lesen, schreiben),
@@ -120924,6 +122609,7 @@ var MODULE = {
 	},
 	"privat-kb": {
 		neu: (e) => neuerPlan$2("", e),
+		alt: (p, e) => planMigrieren$2(p, e),
 		text: "Kostenvoranschlag Schiene",
 		standard: STANDARD_EINSTELLUNGEN$2,
 		dienst: (lesen, schreiben) => kbKi(lesen, schreiben),
@@ -120932,6 +122618,7 @@ var MODULE = {
 	},
 	"kassen-kfo": {
 		neu: (e) => neuerPlan$1("", e),
+		alt: (p, e) => planMigrieren$1(p, e),
 		text: "KFO-Kassenplan",
 		standard: STANDARD_EINSTELLUNGEN$1,
 		dienst: (lesen, schreiben) => kfoKi$1(lesen, schreiben),
@@ -120939,6 +122626,7 @@ var MODULE = {
 	},
 	"privat-kfo": {
 		neu: (e) => neuerPlan("", e),
+		alt: (p, e) => planMigrieren(p, e),
 		text: "Kostenvoranschlag Kieferorthopädie",
 		standard: STANDARD_EINSTELLUNGEN,
 		dienst: (lesen, schreiben) => kfoKi(lesen, schreiben),
@@ -120965,12 +122653,22 @@ function einstVon(m, einst) {
 	}
 	return aus;
 }
+/** Plan so, wie ihn der Planer nach dem Öffnen führt; scheitert das Anheben, bleibt der Stand unberührt. */
+function gehoben(m, plan, e) {
+	if (!m.alt || !plan || typeof plan !== "object") return plan;
+	try {
+		return m.alt(plan, e) ?? plan;
+	} catch {
+		return plan;
+	}
+}
 var offen = (h) => h.filter((x) => x.stufe !== "info");
 /** Stand des Plans, wie ihn das Modell sieht. */
 function blick(modul, plan, einst, gesperrt = false) {
 	const m = MODULE[modul];
 	if (!m) throw new Error(`modul_unbekannt: ${modul}`);
 	const e = einstVon(m, einst);
+	plan = gehoben(m, plan, e);
 	const b = m.dienst(() => ({
 		plan,
 		einst: e,
@@ -120991,6 +122689,7 @@ function bewerten(modul, plan, einst) {
 	const m = MODULE[modul];
 	if (!m) throw new Error(`modul_unbekannt: ${modul}`);
 	const e = einstVon(m, einst);
+	plan = gehoben(m, plan, e);
 	const betrag = Number(m.betrag(plan, e)) || 0;
 	let pvs;
 	try {
@@ -121038,7 +122737,7 @@ async function lauf(o) {
 			nicht: r.nicht
 		};
 	};
-	let plan = o.plan;
+	let plan = gehoben(m, o.plan, e);
 	let b = lesen(plan);
 	const teile = [];
 	const getanAlle = [];

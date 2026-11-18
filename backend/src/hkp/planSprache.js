@@ -141,7 +141,20 @@ async function laden(clientId, z, d) {
   }
   const r = await planr(clientId, "/api/intern/plan", { query: { modul: z.modul, nummer: z.nummer } });
   if (!r.ok || !r.plan) return { fehler: r.meldung || "Den Plan kann ich gerade nicht aus PlanR lesen." };
-  return { plan: r.plan, einst: r.einst || undefined, stand: r.stand, gesperrt: r.karte?.status === "freigegeben" };
+  return { plan: r.plan, einst: r.einst || undefined, stand: r.stand, gesperrt: r.karte?.status === "freigegeben", karte: Number(r.karte?.betrag) };
+}
+
+/**
+ * Rechnet Clara denselben Betrag, der in PlanR am Plan steht? Die Preise und Faktoren der Praxis liegen im Browser
+ * des Planers und kommen von dort zu PlanR. Fehlen sie oder sind sie seit dem letzten Speichern geändert, weicht
+ * die Summe ab – dann sagt Clara das dazu, statt still eine andere Zahl zu nennen oder zu speichern.
+ */
+function abgleich(s, z, g) {
+  if (z.modul === "hkp" || !Number.isFinite(g.karte)) return { gleich: true };
+  let gerechnet;
+  try { gerechnet = Number(s.bewerten(z.modul, g.plan, g.einst).betrag); } catch { return { gleich: true }; }
+  if (!Number.isFinite(gerechnet) || Math.abs(gerechnet - g.karte) < 0.015) return { gleich: true };
+  return { gleich: false, ohnePreise: !g.einst, karte: g.karte, gerechnet };
 }
 
 /** Geänderten Plan zurückschreiben; liefert den neuen Stand. */
@@ -205,10 +218,26 @@ export async function planSprache(clientId, b = {}, d = {}) {
   if (!z.inhalt) return { ok: true, message: `Den Inhalt vom ${titel} kennt PlanR noch nicht. Bitte den Plan einmal im Planer öffnen, dann kann ich daran arbeiten.` };
   const g = await laden(clientId, z, d);
   if (g.fehler) return { ok: true, message: g.fehler };
-  const l = await s.lauf({ modul: z.modul, plan: g.plan, einst: g.einst, gesperrt: g.gesperrt, text, verlauf: verlaufVon(clientId, z), fragen });
+  let l;
+  try {
+    l = await s.lauf({ modul: z.modul, plan: g.plan, einst: g.einst, gesperrt: g.gesperrt, text, verlauf: verlaufVon(clientId, z), fragen });
+  } catch (err) {
+    log.warn?.(`[plan-sprache] ${kennung(z)} nicht lesbar: ${String(err?.message || err).slice(0, 200)}`);
+    return { ok: true, plan: kennung(z), message: `Den ${titel} kann ich gerade nicht auswerten. Bitte in PlanR öffnen. Geändert habe ich nichts.` };
+  }
   const gesagt = String(l.text || "").trim() || "Dazu habe ich gerade keine Antwort.";
   verlaufMerken(clientId, z, text, gesagt);
-  if (!l.geaendert) return { ok: true, plan: kennung(z), message: gesagt };
+  const a = abgleich(s, z, g);
+  if (!a.gleich) log.info?.(`[plan-sprache] ${kennung(z)} Summe weicht ab: PlanR ${a.karte}, gerechnet ${a.gerechnet}${a.ohnePreise ? " (ohne Praxispreise)" : ""}`);
+  if (!l.geaendert) {
+    const hinweis = a.gleich ? "" : a.ohnePreise
+      ? ` Achtung: In PlanR steht der Plan mit ${euroSprech(a.karte)}. Die Preise der Praxis für diesen Planer liegen mir noch nicht vor, meine Beträge können deshalb abweichen.`
+      : ` Achtung: In PlanR steht der Plan noch mit ${euroSprech(a.karte)}; mit den heutigen Preisen der Praxis sind es ${euroSprech(a.gerechnet)}.`;
+    return { ok: true, plan: kennung(z), message: `${gesagt}${hinweis}` };
+  }
+  if (!a.gleich && a.ohnePreise) {
+    return { ok: true, plan: kennung(z), message: `Ändern kann ich den ${titel} per Sprache noch nicht: Die Preise der Praxis für diesen Planer liegen mir nicht vor, die Summe würde danach nicht stimmen. Bitte den Planer einmal in PlanR öffnen, dann geht es. Geändert habe ich nichts.` };
+  }
 
   const e = await schreiben(clientId, z, l.plan, g.stand, d, { betrag: l.betrag, pvs: l.pvs, was: `per Sprache: ${l.getan.join("; ").slice(0, 300)}` });
   if (!e.ok) return { ok: false, message: e.meldung };
@@ -216,7 +245,7 @@ export async function planSprache(clientId, b = {}, d = {}) {
   merker.set(id, { clientId, ziel: { modul: z.modul, nummer: z.nummer }, plan: g.plan, stand: e.stand, at: Date.now() });
   for (const [k, m] of merker) if (Date.now() - m.at > 2 * MERK_MS) merker.delete(k);
   log.info?.(`[plan-sprache] ${kennung(z)} geändert: ${l.getan.length} Schritte`);
-  return { ok: true, geaendert: true, plan: kennung(z), ...undo("plan_ki", id, `die Änderung am ${titel}`), message: `Erledigt. ${gesagt} ${summeSatz(z, l.betrag, e.summen)}` };
+  return { ok: true, geaendert: true, plan: kennung(z), ...undo("plan_ki", id, `die Änderung am ${titel}`), message: `Erledigt. ${gesagt} ${summeSatz(z, l.betrag, e.summen)}${a.gleich ? "" : ` Vorher stand er in PlanR mit ${euroSprech(a.karte)}; gerechnet ist jetzt mit den heutigen Preisen der Praxis.`}` };
 }
 
 /** Rückgängig einer Änderung: den Plan von vorher zurückschreiben – nur wenn seitdem niemand sonst geändert hat. */

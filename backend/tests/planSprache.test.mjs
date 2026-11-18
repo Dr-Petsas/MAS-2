@@ -10,8 +10,12 @@ process.env.PLANR_HKP_KEY = "k";
 const S = await import("../src/vendor/plan-ki-engine.mjs");
 const lager = new Map();
 const neuerPlan = () => ({ karte: { modul: "privat-par", nummer: "PAR-2026-0007", patient: "Petra Privattest", betrag: 900, status: "entwurf", geaendert: "2026-11-17T10:00:00.000Z" }, plan: S.neu("privat-par"), stand: "2026-11-17T10:00:00.000Z", weg: false });
-lager.set("privat-par|PAR-2026-0007", neuerPlan());
+// Der Betrag an der Karte ist der, den der Planer gerechnet hat.
+const passend = (e, modul) => { e.karte.betrag = S.bewerten(modul, e.plan).betrag; return e; };
+lager.set("privat-par|PAR-2026-0007", passend(neuerPlan(), "privat-par"));
+const preise = new Map();
 lager.set("privat-kb|KB-2026-0002", { karte: { modul: "privat-kb", nummer: "KB-2026-0002", patient: "Petra Privattest", betrag: 400, status: "freigegeben", geaendert: "2026-11-10T10:00:00.000Z" }, plan: S.neu("privat-kb"), stand: "2026-11-10T10:00:00.000Z", weg: false });
+passend(lager.get("privat-kb|KB-2026-0002"), "privat-kb");
 
 const planr = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://planr");
@@ -22,7 +26,7 @@ const planr = http.createServer(async (req, res) => {
   if (u.pathname === "/api/intern/plaene") return senden(200, { ok: true, plaene: [...lager.values()].filter((e) => !e.weg).map((e) => ({ ...e.karte, inhalt: true })) });
   if (u.pathname === "/api/intern/plan" && req.method === "GET") {
     const e = lager.get(`${u.searchParams.get("modul")}|${u.searchParams.get("nummer")}`);
-    return e ? senden(200, { ok: true, karte: e.karte, plan: e.plan, stand: e.stand, einst: null }) : senden(404, { ok: false });
+    return e ? senden(200, { ok: true, karte: e.karte, plan: e.plan, stand: e.stand, einst: preise.get(e.karte.modul) ?? null }) : senden(404, { ok: false });
   }
   const b = JSON.parse(roh || "{}");
   const e = lager.get(`${b.modul}|${b.nummer}`);
@@ -121,4 +125,33 @@ test("in PlanR inzwischen geändert: nichts überschrieben, ehrliche Antwort", a
 test("unbekannter Name: keine Erfindung", async () => {
   const r = await planSprache(CID, { name: "Herr Niemand", text: "Was kostet das?" }, d);
   assert.match(r.message, /finde ich keinen Plan/);
+});
+
+test("Summe in PlanR weicht ab und die Praxispreise fehlen: Hinweis bei der Auskunft, keine Änderung", async () => {
+  const e = lager.get("privat-par|PAR-2026-0007");
+  const echt = e.karte.betrag;
+  e.karte.betrag = echt - 31.02;
+  _setzen({ zug });
+  const f = await planSprache(CID, { name: "Privattest", planart: "privat-par", text: "Wie viele Positionen hat der Plan?" }, d);
+  assert.match(f.message, /In PlanR steht der Plan mit/);
+  assert.match(f.message, /liegen mir noch nicht vor/);
+  const vorher = e.stand;
+  const r = await planSprache(CID, { text: "Faktor auf 3,5" }, d);
+  assert.equal(r.geaendert, undefined);
+  assert.match(r.message, /Geändert habe ich nichts/);
+  assert.equal(e.stand, vorher);
+  assert.equal(e.karte.betrag, echt - 31.02);
+  e.karte.betrag = echt;
+});
+
+test("Summe weicht ab, Praxispreise liegen vor: Änderung wird gespeichert und der alte Betrag genannt", async () => {
+  const e = lager.get("privat-par|PAR-2026-0007");
+  preise.set("privat-par", {});
+  e.karte.betrag = S.bewerten("privat-par", e.plan, {}).betrag - 10;
+  _setzen({ zug });
+  const r = await planSprache(CID, { name: "Privattest", planart: "privat-par", text: "Faktor auf 3,5" }, d);
+  assert.equal(r.geaendert, true, r.message);
+  assert.match(r.message, /Vorher stand er in PlanR mit/);
+  assert.equal(e.karte.betrag, S.bewerten("privat-par", e.plan, {}).betrag);
+  preise.clear();
 });
