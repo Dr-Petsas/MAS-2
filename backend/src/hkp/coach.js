@@ -6,10 +6,18 @@ import * as P from "../vendor/privat-ze-engine.mjs";
 import * as I from "../vendor/impl-engine.mjs";
 import * as M from "../vendor/mkv-engine.mjs";
 import * as K from "../vendor/kons-engine.mjs";
+import * as KB from "../vendor/privat-kb-engine.mjs";
 import { planPruefen } from "./ausschluss.js";
 import { begleitleistungen, begleitSatz, begleitWahl } from "./begleit.js";
 
-const ARTEN = new Set(["kasse", "privat", "impl", "kons", "mkv"]);
+const ARTEN = new Set(["kasse", "privat", "impl", "kons", "mkv", "schiene"]);
+const istSchiene = (t) => String(t?.planart || "").trim().toLowerCase() === "schiene";
+/** Schiene privat: das Modell wählt die Vorlagen als Werkzeugfeld, kein Satz wird zerlegt */
+const schieneTeil = (t) => ({
+  planart: "schiene", versorgung: String(t?.versorgung || t?.text || "").trim() || "Schiene",
+  schienen: Array.isArray(t?.schienen) ? t.schienen : String(t?.schienen || "").split(",").map((x) => x.trim()).filter(Boolean),
+  abformung: String(t?.abformung || "").trim().toLowerCase(),
+});
 const zahl = (x) => Math.round((Number(x) || 0) * 100) / 100;
 const euro = (n) => `${(Number(n) || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const zeilenKurz = (t) => {
@@ -174,9 +182,12 @@ export function teileAufloesen(body, { engineArt = false, akte = "" } = {}) {
   let versicherungQuelle = "";
   if (Array.isArray(roh) && roh.length) {
     teile = roh.map((t) => {
+      if (istSchiene(t)) return schieneTeil({ ...t, schienen: t.schienen ?? body?.schienen, abformung: t.abformung ?? body?.abformung });
       const versorgung = versorgungFuerEngine(t);
       return { planart: artAus(t, versorgung), versorgung };
     }).filter((t) => t.versorgung);
+  } else if (istSchiene(body)) {
+    teile = [schieneTeil(body)];
   } else {
     const text = String(body?.versorgung || body?.auftrag || "").trim();
     if (!text) return { teile: [], frage: "Was soll ich rechnen?" };
@@ -201,7 +212,7 @@ export function teileAufloesen(body, { engineArt = false, akte = "" } = {}) {
     return { teile, frage: "Für die Prothese: über die Kasse mit Festzuschuss, oder privat?" };
   }
   if (teile.some((t) => !ARTEN.has(t.planart))) {
-    return { teile, frage: "Welche Planart: Kassen-HKP, privater Zahnersatz, Implantologie, private Kons oder Füllungs-MKV?" };
+    return { teile, frage: "Welche Planart: Kassen-HKP, privater Zahnersatz, Implantologie, private Kons, Füllungs-MKV oder Schiene privat?" };
   }
   return { teile, frage: "", versicherungQuelle };
 }
@@ -214,7 +225,7 @@ function zeilenAus(r) {
     ? rech.zaehne.flatMap((z) => [...(z?.zeilen || []), ...(z?.kasse ? [{ ...z.kasse, zahn: z.zahn }] : [])])
     : [];
   const roh = [
-    ...(rech ? [...(rech.honorarGoz || []), ...(rech.honorarGoae || []), ...(rech.material || []), ...(rech.labor || [])] : []),
+    ...(rech ? [...(Array.isArray(rech.honorar) ? rech.honorar : []), ...(rech.honorarGoz || []), ...(rech.honorarGoae || []), ...(rech.material || []), ...(rech.labor || [])] : []),
     ...jeZahn,
     ...(Array.isArray(rech?.begleit) ? rech.begleit : []),
     ...(Array.isArray(rech?.frei) ? rech.frei : []),
@@ -235,6 +246,7 @@ function summenVon(planart, r) {
   const z = r.zusammenfassung || {};
   if (planart === "impl") return { summe: zahl(z.summe), honorar: zahl(z.honorar), materialLabor: zahl(z.materialLabor) };
   if (planart === "kons") return { summe: zahl(z.summe) };
+  if (planart === "schiene") return { summe: zahl(z.summe), honorar: zahl(z.honorar), labor: zahl(z.labor) };
   if (planart === "mkv") return { mehrkosten: zahl(z.mehrkosten), kassenanteil: zahl(z.kassenanteil) };
   if (planart === "privat") return { gesamt: zahl(z.gesamt), honorar: zahl(z.honorar), labor: zahl(z.labor), material: zahl(z.material) };
   const s = r.ergebnis?.summen || {};
@@ -245,7 +257,7 @@ function summenVon(planart, r) {
 }
 
 function summeZeilen(planart, summen) {
-  if (planart === "impl" || planart === "kons") return [`Gesamt ${euro(summen.summe)}`];
+  if (planart === "impl" || planart === "kons" || planart === "schiene") return [`Gesamt ${euro(summen.summe)}`];
   if (planart === "mkv") return [`Mehrkosten ${euro(summen.mehrkosten)}`, `Kasse ${euro(summen.kassenanteil)}`];
   if (planart === "privat") return [`Gesamt ${euro(summen.gesamt)}`];
   return [
@@ -261,7 +273,7 @@ function summenMitBegleit(planart, summen, neu) {
   const p = summe(privat);
   const kzv = summe(neu.filter((z) => z.kzv));
   const s = { ...summen };
-  if (planart === "kons") s.summe = zahl(s.summe + p);
+  if (planart === "kons" || planart === "schiene") s.summe = zahl(s.summe + p);
   if (planart === "mkv") Object.assign(s, { mehrkosten: zahl(s.mehrkosten + p), kassenanteil: zahl(s.kassenanteil + kzv) });
   if (planart === "privat") {
     const material = summe(privat.filter((z) => z.ebene === "MAT"));
@@ -387,6 +399,7 @@ function befundSatz(befund) {
 
 function titelVon(planart, r) {
   if (planart === "impl") return I.implVersorgungSatz(r.zusammenfassung);
+  if (planart === "schiene") return KB.kbVersorgungSatz(r.zusammenfassung);
   const z = r.zusammenfassung || {};
   if (z.ankerGesagt) return String(z.ankerGesagt);
   const zaehne = (planart === "kons" || planart === "mkv") && Array.isArray(r.rechnung?.zaehne) ? r.rechnung.zaehne : [];
@@ -398,12 +411,13 @@ function titelVon(planart, r) {
   return "Kassenplan";
 }
 
-const KURZ = { impl: "Implantation", kasse: "Kassenplan", privat: "Privatplan", kons: "Kons", mkv: "Mehrkosten" };
+const KURZ = { impl: "Implantation", kasse: "Kassenplan", privat: "Privatplan", kons: "Kons", mkv: "Mehrkosten", schiene: "Schiene" };
 
 function rechnenTeil(teil, ctx) {
   const befund = ctx.befund || {};
   const patient = ctx.patientDaten || {};
   const system = ctx.implantatSystem || "";
+  if (teil.planart === "schiene") return KB.kbEntwurf({ vorlagen: teil.schienen || [], abformung: teil.abformung || "" }, { patient });
   if (teil.planart === "impl") return I.implEntwurf(teil.versorgung, befund, { patient, implantatSystem: system });
   if (teil.planart === "kons") return K.konsEntwurf(teil.versorgung, befund, { patient });
   if (teil.planart === "mkv") return M.mkvEntwurf(teil.versorgung, befund, { patient, praxis: { plz: ctx.praxisPlz || "", kzvNr: ctx.kzvNr || "" } });
@@ -526,7 +540,7 @@ export function fallRechnen(body, ctx = {}) {
     const zeilen = zeilenAus(r);
     fertig.push({
       planart: teil.planart,
-      sprachPlan: ["impl", "kons", "mkv"].includes(teil.planart) ? teil.planart : "",
+      sprachPlan: ["impl", "kons", "mkv", "schiene"].includes(teil.planart) ? teil.planart : "",
       privat: teil.planart === "privat",
       versorgung: teil.versorgung,
       kurz: KURZ[teil.planart] || teil.planart,
@@ -578,6 +592,6 @@ export function fallRechnen(body, ctx = {}) {
 function fallTitel(teile) {
   const prothese = teile.find((t) => /All-on-/.test(t.titel));
   if (prothese && teile.some((t) => t.planart === "impl")) return `${prothese.titel} mit Implantation`;
-  if (teile.length === 1 && (teile[0].planart === "kons" || teile[0].planart === "mkv")) return teile[0].titel;
+  if (teile.length === 1 && (teile[0].planart === "kons" || teile[0].planart === "mkv" || teile[0].planart === "schiene")) return teile[0].titel;
   return teile.map((t) => t.kurz).join(" und ");
 }

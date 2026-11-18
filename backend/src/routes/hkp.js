@@ -21,6 +21,7 @@ import * as P from "../vendor/privat-ze-engine.mjs";
 import * as M from "../vendor/mkv-engine.mjs";
 import * as K from "../vendor/kons-engine.mjs";
 import * as I from "../vendor/impl-engine.mjs";
+import * as KB from "../vendor/privat-kb-engine.mjs";
 import { assertAppEnabled, getBilling } from "../entitlements.js";
 import { planrAusBilling } from "../hkp/planrBerechtigung.js";
 import { claraZugang, rufnameSaeubern } from "../hkp/planrClara.js";
@@ -65,7 +66,7 @@ import {
 import {
   HKP_VORSCHLAG, auftragsKiefer, befundAendernPvs, befundErmitteln, befundInsPvs, befundVerwerfenPvs, befundWerkzeugMitNummer, datumDe, fremdeKuerzel, hkpVorschlag, kieferBefund, lenaFreigeschaltet, neuFrage, planZeilen, pvsBefund, pvsKennung, quelleAntwort, quelleAus, vorgangMelden,
 } from "../hkp/befundQuelle.js";
-import { detailSatz, euroSprech, hkpKurz, hkpTitel, implSummenSatz, konsSummenSatz, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
+import { detailSatz, euroSprech, hkpKurz, hkpTitel, implSummenSatz, konsSummenSatz, liste, mkvSummenSatz, nurSummenFrage, privatSummenSatz, schieneSummenSatz, summenAntwort, summenSatz, uebersichtSatz, versorgungSatz, zahlWort, zeitraumSatz } from "../hkp/sprech.js";
 import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAblegen } from "../hkp/planrEntwuerfe.js";
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
@@ -1773,7 +1774,33 @@ const SPRACH_PLAENE = {
     nachsatz: "Faktoren, Material und Zusatzleistungen rechnet der Planer dort nach Ihren Einstellungen",
     stand: () => I.ENGINE_STAND,
   },
+  // Schienen privat (Chef 18.11.2026: "wir müssen Schienen anlegen können, jeder Art"). Kein Satz wird zerlegt:
+  // das Modell wählt die Vorlagen des Privat-KB-Planers als Werkzeugfeld (schienen, abformung). Ohne Zahnbefund.
+  // Notaus MAS_SCHIENE=0.
+  schiene: {
+    modul: "privat-kb", text: "Kostenvoranschlag Schiene", planer: "Privat-KB", art: "der", akk: "den",
+    struktur: true,
+    aus: () => engineAus("MAS_SCHIENE"),
+    ausSatz: "Einen Kostenvoranschlag für eine Schiene kann ich gerade nicht per Sprache anlegen. Bitte im Privat-KB-Planer in PlanR erstellen.",
+    entwurf: (text, befund, patient, praxis, auftrag) => KB.kbEntwurf(auftrag || {}, { patient: patientFuerEngine(patient) }),
+    versorgung: (z) => KB.kbVersorgungSatz(z),
+    summen: (z) => ({ summe: zahl(z.summe), honorar: zahl(z.honorar), labor: zahl(z.labor) }),
+    summenSatz: schieneSummenSatz, betrag: (s) => s.summe, hinweise: () => [],
+    nachsatz: "Faktoren und Laborpreise rechnet der Planer dort nach Ihren Einstellungen",
+    stand: () => KB.ENGINE_STAND,
+  },
 };
+const SCHIENEN_IDS = new Set(KB.KB_VORLAGEN.map((v) => v.id));
+/** Die Werkzeugfelder des Modells für die Schiene: nur bekannte Vorlagen, Abformung nur abdruck oder scan */
+export function schieneAuftrag(b) {
+  const roh = Array.isArray(b?.schienen) ? b.schienen : String(b?.schienen || "").split(",");
+  const abformung = String(b?.abformung || "").trim().toLowerCase();
+  return {
+    vorlagen: [...new Set(roh.map((x) => String(x || "").trim().toLowerCase()).filter((x) => SCHIENEN_IDS.has(x)))],
+    abformung: abformung === "scan" || abformung === "abdruck" ? abformung : "",
+    diagnose: String(b?.diagnose || "").trim().slice(0, 200),
+  };
+}
 const grossAnfang = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const sprachPlanZeilen = (cfg, plan) => Object.fromEntries(Object.entries(plan?.zaehne || {})
   .map(([z, l]) => [z, { TP: cfg.tp ? cfg.tp(l) : `${cfg.kuerzel[l.therapie] || ""}${l.flaechen || l.kanaele || ""}`, R: "" }]));
@@ -1781,7 +1808,7 @@ const sprachPlanZeilen = (cfg, plan) => Object.fromEntries(Object.entries(plan?.
 /** Welche Sprach-Planart der Kons-Familie meint der Auftrag? planart des Werkzeugs vor dem Wortlaut. */
 function sprachPlanAus(b, auftragText) {
   const art = String(b.planart || "").trim().toLowerCase();
-  if (SPRACH_PLAENE[art]) return art;
+  if (SPRACH_PLAENE[art] && !SPRACH_PLAENE[art].struktur) return art;
   const t = auftragText;
   if (implGesagt(t)) return "impl";
   if (!MKV_WORT.test(t) && !ZE_WORT.test(t) && KONS_WORT.test(t) && (wahr(b.privat) || KONS_PRIVAT_WORT.test(t))) return "kons";
@@ -1799,18 +1826,21 @@ function ausschlussHinweise(r, patient) {
 
 function sprachPlanRechnen(clientId, d) {
   const cfg = SPRACH_PLAENE[d.sprachPlan];
-  const r = cfg.entwurf(d.auftragText, d.befundZaehne || {}, d.patient, d.praxis);
+  const r = cfg.entwurf(d.auftragText, d.befundZaehne || {}, d.patient, d.praxis, d.auftrag);
   if (r.status !== "ok") {
+    if (cfg.struktur) return { ok: true, rueckfrage: r.grund, message: r.frage };
     wahlMerken(clientId, d.patient, { planart: d.sprachPlan, teilAuftrag: d.auftragText, teilKonflikt: r.zahn || "", teilGrund: r.grund });
     return { ok: true, rueckfrage: r.grund, message: r.frage };
   }
   const z = r.zusammenfassung;
   const summen = cfg.summen(z);
   const hinweise = [...ausschlussHinweise(r, d.patient), ...cfg.hinweise(r), ...r.hinweise,
-    ...(d.befundQuelle ? [] : ["Einen Befund aus dem Praxisprogramm hatte ich nicht, die Zähne habe ich deshalb nicht geprüft."])];
+    ...(d.befundQuelle || cfg.struktur ? [] : ["Einen Befund aus dem Praxisprogramm hatte ich nicht, die Zähne habe ich deshalb nicht geprüft."])];
   // vollstaendig vorgelesen: ein neuer Auftrag beginnt von vorn (Korrekturen laufen ueber hkp-ausfuehrung-aendern)
-  wahlMerken(clientId, d.patient, { planart: d.sprachPlan, teilAuftrag: "", teilKonflikt: "", teilGrund: "" });
-  vorgangMelden(clientId, d.pvsNr, { modul: cfg.modul, phase: "planung", plan: sprachPlanZeilen(cfg, r.plan), meldung: "" });
+  if (!cfg.struktur) {
+    wahlMerken(clientId, d.patient, { planart: d.sprachPlan, teilAuftrag: "", teilKonflikt: "", teilGrund: "" });
+    vorgangMelden(clientId, d.pvsNr, { modul: cfg.modul, phase: "planung", plan: sprachPlanZeilen(cfg, r.plan), meldung: "" });
+  }
   vorschauMerken(clientId, { ...d, r, summen, hinweise, versorgungText: cfg.text, at: Date.now() });
   return {
     ok: true, rueckfrage: "vorlesen",
@@ -1880,7 +1910,7 @@ async function sprachPlanAnlegen(clientId, d) {
     fallId: d.fallId || "", fallTitel: d.fallTitel || "",
   });
   log.info?.(`[hkp] ${cfg.modul}-Entwurf ${e.id} abgelegt (Patient ${patient.id})`);
-  vorgangMelden(clientId, d.pvsNr, { modul: cfg.modul, phase: "angelegt", plan: sprachPlanZeilen(cfg, r.plan), meldung: "" });
+  if (!cfg.struktur) vorgangMelden(clientId, d.pvsNr, { modul: cfg.modul, phase: "angelegt", plan: sprachPlanZeilen(cfg, r.plan), meldung: "" });
   befundWahl.delete(wahlSchluessel(clientId, patient));
   return {
     ok: true, entwurfId: e.id,
@@ -2836,6 +2866,7 @@ function vorschauKorrigieren(clientId, vs, text, praxis) {
   }
   const auftragText = `${String(vs.auftragText || vs.teile?.map((t) => t.versorgung).filter(Boolean).join(". ") || "").replace(/[\s.]+$/, "")}. ${text}`.trim();
   if (vs.sprachPlan) {
+    if (SPRACH_PLAENE[vs.sprachPlan].struktur) return { ok: true, message: "Die Schiene ändere ich über eine neue Rechnung: nennen Sie mir Schiene und Abformung noch einmal." };
     vorschauWeg(clientId, vs);
     return sprachPlanRechnen(clientId, { ...vs, auftragText });
   }
@@ -2906,8 +2937,8 @@ router.post("/tools/hkp-ausfuehrung-aendern", async (req, res) => {
 // Diese Werkzeuge haben keine Wortregeln und keinen Gespraechszustand: die Planart sagt Clara, gerechnet wird auf dem
 // Befund vom Handy (Praxisprogramm samt offener Aenderungen aus hkp-befund). Angelegt wird nur mit freigabe=true.
 // ---------------------------------------------------------------------------
-export const PLANARTEN = ["kasse", "privat", "impl", "kons", "mkv"];
-const PLANART_FRAGE = "Welche Planart: Kassen-HKP, privater Zahnersatz, Implantologie, private Kons oder Füllungs-MKV?";
+export const PLANARTEN = ["kasse", "privat", "impl", "kons", "mkv", "schiene"];
+const PLANART_FRAGE = "Welche Planart: Kassen-HKP, privater Zahnersatz, Implantologie, private Kons, Füllungs-MKV oder Schiene privat?";
 
 router.post("/tools/plan-rechnen", async (req, res) => {
   try {
@@ -2917,12 +2948,23 @@ router.post("/tools/plan-rechnen", async (req, res) => {
     const planart = String(b.planart || "").trim().toLowerCase();
     let versorgung = String(b.versorgung || b.auftrag || "").trim();
     if (!PLANARTEN.includes(planart)) return res.json({ ok: false, fehlt: "planart", message: PLANART_FRAGE });
+    const schiene = planart === "schiene" ? schieneAuftrag(b) : null;
+    if (schiene && !versorgung) versorgung = schiene.vorlagen.join(", ") || "Schiene";
     if (!versorgung) return res.json({ ok: false, fehlt: "versorgung", message: "Welche Versorgung soll ich rechnen?" });
     if (planart === "privat" && privatAus()) return res.json({ ok: false, message: PRIVAT_AUS_SATZ });
     if (SPRACH_PLAENE[planart]?.aus()) return res.json({ ok: false, message: SPRACH_PLAENE[planart].ausSatz });
     const p = await patientAufloesen(clientId, b, "Für welchen Patienten soll ich den Plan rechnen?");
     if (p.antwort) return res.json(p.antwort);
     const patient = p.patient;
+    if (schiene) {
+      for (const v of vorschauen(clientId).filter((v) => v.patient?.id === patient.id)) vorschauWeg(clientId, v);
+      log.info?.(`[hkp] plan-rechnen schiene: Patient ${patient.id}: ${schiene.vorlagen.join(", ") || "ohne Vorlage"}${schiene.abformung ? ` (${schiene.abformung})` : ""}`);
+      const x = sprachPlanRechnen(clientId, {
+        sprachPlan: "schiene", patient, auftragText: versorgung, auftrag: schiene, befundZaehne: {}, praxis: { einstellungen: {} },
+        namenGesagt: [String(b.name || "").trim()], pvsNr: "", befundQuelle: null,
+      });
+      return res.json(x.rueckfrage === "vorlesen" ? { ...x, rueckfrage: "freigabe" } : x);
+    }
     const pb = await Promise.race([pvsBefund(clientId, patient).catch(() => null), new Promise((r) => setTimeout(r, 12000, null))]);
     const pvsNr = pb?.ok ? String(pb.nummer || "") : "";
     // "Die kommen raus" auf die Rueckfrage der Engine (Anruf 06.11.2026 08:38): Clara gibt nur die Zaehne,
@@ -3019,7 +3061,7 @@ router.post("/tools/plan-rechnen", async (req, res) => {
   }
 });
 
-const ORT = { impl: "die Implantation im Planer Implantologie", kasse: "die Prothese als HKP", privat: "die Prothese im Planer Zahnersatz privat", kons: "die Kons im Planer Kons privat", mkv: "die Mehrkosten im Planer Füllung" };
+const ORT = { impl: "die Implantation im Planer Implantologie", kasse: "die Prothese als HKP", privat: "die Prothese im Planer Zahnersatz privat", kons: "die Kons im Planer Kons privat", mkv: "die Mehrkosten im Planer Füllung", schiene: "die Schiene im Privat-KB-Planer" };
 
 async function fallAnlegen(clientId, vs) {
   const { patient } = vs;

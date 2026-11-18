@@ -75,6 +75,12 @@ export function konsSummenSatz(s) {
   return s ? `insgesamt ${euroSprech(s.summe)} nach GOZ` : "";
 }
 
+/** Schiene privat: Honorar nach GOZ, das Labor mit Mehrwertsteuer als Teil der Summe */
+export function schieneSummenSatz(s) {
+  if (!s) return "";
+  return `insgesamt ${euroSprech(s.summe)} nach GOZ${s.labor > 0 ? `, davon ${euroSprech(s.labor)} Labor` : ""}`;
+}
+
 export function implSummenSatz(s) {
   if (!s) return "";
   return `insgesamt ${euroSprech(s.summe)} nach GOZ und GOÄ${s.materialLabor > 0 ? `, davon ${euroSprech(s.materialLabor)} Material und Labor` : ""}`;

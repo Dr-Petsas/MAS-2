@@ -147,3 +147,28 @@ test("Stehende Zaehne: Rueckfrage gibt die Zahnliste still mit, entfernen markie
     offen = { ...OFFEN_START };
   }
 });
+
+test("Schiene privat: das Modell nennt die Vorlage als Feld, ohne Vorlage kommt die Frage, Freigabe legt im Privat-KB-Planer ab", async () => {
+  const frage = await rufe("/tools/plan-rechnen", { planart: "schiene", versorgung: "ich will einen privatplan für eine schiene" });
+  assert.equal(frage.rueckfrage, "vorlage", frage.message);
+  assert.match(frage.message, /Welche Schiene/);
+  const v = await rufe("/tools/plan-rechnen", { planart: "schiene", schienen: ["knirscher"], versorgung: "Knirscherschiene" });
+  assert.equal(v.rueckfrage, "freigabe", v.message);
+  assert.match(v.message, /Kostenvoranschlag Schiene/);
+  assert.match(v.message, /Knirscherschiene/);
+  assert.doesNotMatch(v.message, /Befund aus dem Praxisprogramm/);
+  const fertig = await rufe("/tools/plan-ablegen", { freigabe: true });
+  assert.ok(fertig.entwurfId, fertig.message);
+  assert.match(fertig.message, /Privat-KB/);
+  const e = await entwurfLesen(CID, fertig.entwurfId);
+  assert.equal(e.modul, "privat-kb");
+  const plan = JSON.parse(e.planJson);
+  assert.ok(plan.positionen.some((x) => x.nr === "7010"));
+  assert.equal(plan.regler, undefined);
+});
+
+test("Schiene privat: Intraoralscan und mehrere Vorlagen in einem Plan", async () => {
+  const v = await rufe("/tools/plan-rechnen", { planart: "schiene", schienen: ["michigan", "fal", "gibtsnicht"], abformung: "scan" });
+  assert.equal(v.rueckfrage, "freigabe", v.message);
+  assert.match(v.message, /Intraoralscan/);
+});

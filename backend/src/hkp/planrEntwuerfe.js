@@ -3,7 +3,7 @@
 import admin from "../firebase.js";
 import { registerFuer } from "./verbund.js";
 
-export const MODULE = new Set(["privat-kv", "kons-mkv", "privat-kons", "privat-impl"]);
+export const MODULE = new Set(["privat-kv", "kons-mkv", "privat-kons", "privat-impl", "privat-kb"]);
 // Im Praxis-Verbund (verbund.js) holt die Uebersicht der Haupt-Praxis die Entwuerfe ab.
 const col = async (clientId) => admin.firestore().collection("clients").doc(await registerFuer(clientId)).collection("planrEntwuerfe");
 const jetzt = () => new Date().toISOString();
