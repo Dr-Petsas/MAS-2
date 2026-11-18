@@ -1,0 +1,46 @@
+{
+  "hinweis": "Grundsätze je Planart für die KI-Zeile in PlanR. Jede Zeile steht mit Fundstelle in abrechnung.json (Recherchen je Planer, BEMA-Bestimmungen) oder in der Rechnung des Planers. Keine Beträge, keine Punktwerte.",
+  "kassen-kb": [
+    "Dieser Plan ist eine Sachleistung der gesetzlichen Kasse nach BEMA Teil 2 (K1 bis K9) mit Labor nach BEL II. Die Kasse trägt Honorar, Labor und Material voll: der Patient zahlt nichts selbst, es gibt hier keinen Eigenanteil und keine Festzuschüsse. Festzuschüsse und andersartige Versorgung gibt es nur beim Zahnersatz, nie bei Schienen.",
+    "Etwas selbst zahlt der Patient nur für Leistungen, die die Praxis ausdrücklich privat mit ihm vereinbart; solche Zeilen stehen im PLAN mit eigener Summe \"privat\". Ist sie 0, zahlt er nichts.",
+    "Honorar einer BEMA-Leistung = Punktzahl × Punktwert KB der KZV. Die Rechnung dazu steht unter BEMA-RECHNUNG; rechne nicht selbst anders.",
+    "K1 bis K4 brauchen vor Beginn die Kostenübernahme (Genehmigung) der Kasse, es sei denn, die Kasse verzichtet nach Landesvertrag darauf. K6 bis K9 sind ohne Genehmigung abrechenbar.",
+    "K1 Aufbissbehelf mit adjustierter Oberfläche, K2 Aufbissbehelf ohne adjustierte Oberfläche, K3 Umarbeitung einer Prothese zum Aufbissbehelf, K4 semipermanente Schienung je Interdentalraum, K6 Wiederherstellung oder Unterfütterung, K7 Kontrollbehandlung ggf. mit einfachen Korrekturen, K8 Kontrollbehandlung mit Einschleifen, K9 Kontrollbehandlung mit Aufbau einer neuen adjustierten Oberfläche. Ein Kontrollmodell ist keine K-Position.",
+    "K7 neben K1: Der BEMA nennt für K7 keine Höchstzahl je Fall oder Zeitraum; sie ist je Kontrollsitzung einmal abrechenbar, so oft die Kontrolle nötig ist. Nicht abrechenbar ist sie in der Sitzung, in der K1, K2 oder K3 eingegliedert wird, und je Sitzung gilt nur eine von K6 bis K9. Im zeitlichen Zusammenhang nur eine von K1 bis K3."
+  ],
+  "kassen-kfo": [
+    "Kassen-KFO nach BEMA Teil 3 und § 29 SGB V: Der Versicherte zahlt zunächst 20 % der Kosten als Eigenanteil selbst an die Praxis, je Quartal mit der Abrechnung; für das zweite und jedes weitere gleichzeitig behandelte Kind sind es 10 %. Die Kasse zahlt den Rest direkt.",
+    "Die Kasse zahlt den Eigenanteil zurück, wenn die Behandlung im geplanten Umfang abgeschlossen ist (§ 29 Abs. 3 SGB V); die Praxis bescheinigt den Abschluss.",
+    "Der Eigenanteil bemisst sich an KFO-Honorar, Labor und Material. Ohne Eigenanteil bleiben 01k, BEMA 12 und Röntgen.",
+    "Kassenleistung ist die Behandlung nur bei einer Einstufung ab KIG 3 und in der Regel bei Beginn vor dem 18. Geburtstag. Steht in PLAN unter angaben kassenleistung \"nein\" oder fehlt die Einstufung, rechnet der Planer noch keinen Eigenanteil: der Wert 0 in den Summen heißt dann nur, dass die Einstufung fehlt, nicht dass der Patient nichts zahlt. Nenne in diesem Fall die Regel (20 % bzw. 10 %, Rückzahlung nach Abschluss) und sage, dass der Betrag erst mit der Einstufung im Plan steht; rechne ihn nicht selbst aus. Steht in den Summen ein Eigenanteil über 0, nennst du diesen Betrag.",
+    "Mehrleistungen, Zusatzleistungen und andere Privatleistungen zahlt die Familie selbst und bekommt sie nicht zurück; sie werden vor Beginn schriftlich vereinbart (§ 29 Abs. 5 bis 7 SGB V).",
+    "Honorar einer BEMA-Leistung = Punktzahl × Punktwert KFO der KZV; die Rechnung steht unter BEMA-RECHNUNG. 119 und 120 werden in höchstens 12 Quartalsabschlägen abgerechnet."
+  ],
+  "mkv": [
+    "Mehrkostenvereinbarung nach § 28 Abs. 2 SGB V: Der Patient wählt eine aufwendigere Füllung. Die Praxis berechnet sie nach GOZ; abgezogen wird, was die Kasse für die vergleichbare plastische Füllung zahlt. Der Patient trägt die Differenz (Mehrkosten).",
+    "Abgezogen wird immer die BEMA-Nummer 13 nach der Flächenzahl der Füllung: 13a einflächig, 13b zweiflächig, 13c dreiflächig, 13d mehr als dreiflächig oder Eckenaufbau im Frontzahnbereich. Kassenanteil = Punktzahl dieser Nummer × Punktwert der KZV. Welche Nummer an welchem Zahn abgezogen wird, steht in PLAN unter angaben kassenabzug. Andere BEMA-Nummern zieht die Kasse hier nicht ab.",
+    "Beim Austausch einer intakten Füllung gibt es keinen Kassenanteil; der Patient zahlt dann die ganze Leistung.",
+    "Die Vereinbarung wird vor Beginn der Behandlung schriftlich geschlossen."
+  ],
+  "kassen-par": [
+    "Parodontitis-Behandlungsstrecke der gesetzlichen Kasse nach BEMA Teil 4 und PAR-Richtlinie. Die Leistungen der Strecke sind BEMA-Leistungen und heißen: 4 (Befundaufnahme und Parodontalstatus), ATG (Aufklärungs- und Therapiegespräch), MHU (Mundhygieneunterweisung), AIT a und AIT b (antiinfektiöse Therapie je ein- bzw. mehrwurzeligem Zahn), BEV a (Befundevaluation nach AIT), CPT a und CPT b (chirurgische Therapie je ein- bzw. mehrwurzeligem Zahn), BEV b (Befundevaluation nach CPT), UPT a bis UPT g (unterstützende Parodontitistherapie: a Mundhygienekontrolle, b Mundhygieneunterweisung, c supragingivale und gingivale Reinigung je Zahn, d Messung von Sondierungstiefen und Bluten, e und f subgingivale Instrumentierung je ein- bzw. mehrwurzeligem Zahn, g Untersuchung des Parodontalzustands).",
+    "Fragt der Arzt nach den BEMA-Positionen der Strecke, nennst du genau diese Kürzel. GOZ-Nummern (zum Beispiel 4000, 1040, 4070, 4075, 4080) sind keine BEMA-Positionen; sie kommen nur als Privatleistung vor und werden nie als BEMA-Position genannt.",
+    "Die Strecke ist vor Beginn von der Kasse zu genehmigen (Parodontalstatus). Die UPT läuft über zwei Jahre; die Häufigkeit richtet sich nach dem Grad: Grad A einmal, Grad B zweimal, Grad C dreimal im Kalenderjahr.",
+    "Die Kassenleistungen der Strecke sind Sachleistung ohne Eigenanteil."
+  ],
+  "kassen-hkp": [
+    "Zahnersatz der gesetzlichen Kasse: Die Kasse zahlt einen befundbezogenen Festzuschuss (§ 55 SGB V), 60 % der Regelversorgung, mit Bonusheft 70 % oder 75 %, im Härtefall 100 %. Der Festzuschuss hängt am Befund, nicht an der gewählten Versorgung.",
+    "Gleichartige Versorgung (§ 55 Abs. 4 SGB V), z. B. vollkeramische oder vollverblendete Krone statt der Regelkrone: der Festzuschuss bleibt derselbe wie bei der Regelversorgung, die Mehrleistung wird nach GOZ berechnet und die Mehrkosten samt höherem Labor trägt der Patient. Deshalb steigt der Eigenanteil, obwohl der Festzuschuss gleich bleibt.",
+    "Andersartige Versorgung (§ 55 Abs. 5 SGB V), z. B. Implantatkrone statt Brücke: die ganze Versorgung wird nach GOZ berechnet, die Kasse erstattet dem Patienten den Festzuschuss.",
+    "Material eines einzelnen Zahns: Nennt der Arzt einen Zahn (\"die Krone an 16 vollkeramisch\", \"26 in Zirkon\"), änderst du nur diesen Zahn mit einem Schritt zahn (Felder planung und werkstoff im ZAHNSCHEMA). Den Schalter kronenmaterial setzt du nur, wenn er ausdrücklich alle Kronen oder den ganzen Plan meint; er stellt jede Krone, jedes Brückenglied und jeden Anker um. Das gilt auch, wenn der Plan nur eine Krone hat."
+  ],
+  "privat-hkp": [
+    "Metall oder Keramik steht in der Planung des Zahns, nicht im Text der Antwort: Sagt der Arzt vollkeramisch, Keramik oder Zirkon, trägst du an Kronen und Brückenpfeilern die Planung KM ein und an Brückengliedern BM. K und B sind die Metall-Ausführung; verblendet ist KV und BV. Eine \"vollkeramische Brücke von 14 auf 16\" bei fehlendem 15 ist also 14 KM, 15 BM, 16 KM. Prüfe vor dem Absenden, dass die Kürzel in deinen Schritten zu dem passen, was du in der Antwort sagst.",
+    "Material eines einzelnen Zahns: Nennt der Arzt einen Zahn (\"die Krone an 16 vollkeramisch\", \"26 in Zirkon\"), änderst du nur diesen Zahn mit einem Schritt zahn (Felder planung und werkstoff im ZAHNSCHEMA). Den Schalter kronenmaterial setzt du nur, wenn er ausdrücklich alle Kronen oder den ganzen Plan meint; er stellt jede Krone, jedes Brückenglied und jeden Anker um. Das gilt auch, wenn der Plan nur eine Krone hat."
+  ],
+  "_goz": [
+    "Faktor nach § 5 GOZ: Der Regelsatz ist der 2,3-fache Satz. Eine schriftliche Begründung braucht nur eine Position ÜBER 2,3 (§ 5 Abs. 2, § 10 Abs. 3 GOZ). Genau 2,3 und alles darunter braucht keine Begründung.",
+    "Der Gebührenrahmen reicht vom 1,0-fachen bis zum 3,5-fachen Satz. Bis einschließlich 3,5 genügt die Begründung. Erst ÜBER 3,5 ist eine abweichende Vereinbarung nach § 2 Abs. 1 und 2 GOZ nötig: schriftlich, vor Erbringung der Leistung, mit Nummer, Bezeichnung, vereinbartem Steigerungssatz und Betrag sowie dem Hinweis, dass die Erstattung nicht in vollem Umfang gewährleistet ist. Die Grenze heißt immer \"über 3,5\" (jeder Wert darüber, auch 3,6 oder 3,51); nenne keinen anderen Schwellenwert.",
+    "Welche Positionen dieses Plans über 2,3 oder über 3,5 liegen, hat das Programm unter FAKTOREN gezählt. Diese Liste ist vollständig: nenne genau diese Positionen und keine anderen; steht dort \"keine\", liegt keine Position darüber."
+  ]
+}

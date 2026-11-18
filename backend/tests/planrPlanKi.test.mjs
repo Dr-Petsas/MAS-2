@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { blickSaeubern, planKiLesen, planKiNachricht, planPruefung, tabelleFuer } from "../src/hkp/planKi.js";
+import { bemaRechnungText, blickSaeubern, ohneQuelle, faktorenText, grundsaetzeFuer, planKiLesen, planKiNachricht, planPruefung, tabelleFuer } from "../src/hkp/planKi.js";
 
 const blick = blickSaeubern({
   planart: "implantologie", name: "Implantatplanung", gesperrt: false,
@@ -223,4 +223,57 @@ test("planKiLesen: geht_nicht verwirft Ersatzschritte", () => {
   assert.equal(mit("geht_nicht").schritte.length, 0);
   assert.equal(mit("geht_nicht").aendert, false);
   assert.equal(mit("aenderung").schritte.length, 1);
+});
+
+test("Grundsaetze der Planart: Kassen-Schiene ohne Eigenanteil, KFO mit 20 Prozent, GOZ-Regeln nur bei Faktoren", () => {
+  const kb = blickSaeubern({ planart: "kassen-kb", kann: [], positionen: [{ id: "k1", ebene: "BEMA", nr: "K1", anzahl: 1, betrag: 143.07, punkte: 106, punktwert: 1.3497 }] });
+  const g = grundsaetzeFuer(kb).join("\n");
+  assert.match(g, /Sachleistung/);
+  assert.match(g, /Kontrollbehandlung/);
+  assert.doesNotMatch(g, /§ 5 GOZ/);
+  assert.match(grundsaetzeFuer(blickSaeubern({ planart: "kassen-kfo", kann: [], positionen: [] })).join("\n"), /20 %[\s\S]*Abschluss/);
+  assert.match(grundsaetzeFuer(blickSaeubern({ planart: "mkv", kann: [], positionen: [] })).join("\n"), /13a/);
+  assert.match(grundsaetzeFuer(blickSaeubern({ planart: "kassen-par", kann: [], positionen: [] })).join("\n"), /AIT/);
+  assert.match(grundsaetzeFuer(blickSaeubern({ planart: "privat-kons", kann: [], positionen: [] })).join("\n"), /über 3,5/);
+  assert.deepEqual(grundsaetzeFuer(blickSaeubern({ planart: "gibt-es-nicht", kann: [], positionen: [] })), []);
+});
+
+test("FAKTOREN: zaehlt ueber 2,3 und ueber 3,5 selbst, GOAE getrennt", () => {
+  const b = blickSaeubern({ planart: "privat-impl", kann: [], positionen: [
+    { id: "a", ebene: "GOZ", nr: "9010", anzahl: 1, faktor: 2.3, betrag: 1 },
+    { id: "b", ebene: "GOZ", nr: "0530", anzahl: 1, faktor: 2.3, betrag: 1 },
+    { id: "c", ebene: "GOZ", nr: "9100", anzahl: 1, faktor: 3.2, betrag: 1 },
+    { id: "d", ebene: "GOZ", nr: "9040", anzahl: 1, faktor: 4, betrag: 1 },
+    { id: "e", ebene: "GOAE", nr: "5377", anzahl: 1, faktor: 1.8, betrag: 1 },
+  ] });
+  const z = faktorenText(b).split("\n");
+  assert.match(z[0], /Über 2,3 bis 3,5[^:]*: .*9100.*3,2/);
+  assert.doesNotMatch(z[0], /0530|9010|9040|5377/);
+  assert.match(z[1], /Über 3,5[^:]*: .*9040/);
+  assert.match(z[2], /2 Positionen, Faktoren von 2,3 bis 2,3/);
+  assert.match(z[3], /GOÄ[\s\S]*keine/);
+  const ohne = blickSaeubern({ planart: "privat-kons", kann: [], positionen: [{ id: "a", ebene: "GOZ", nr: "2410", anzahl: 3, faktor: 2.3, betrag: 1 }] });
+  assert.match(faktorenText(ohne), /Über 2,3 bis 3,5[^:]*: keine\n- Über 3,5[^:]*: keine/);
+  assert.equal(faktorenText(blickSaeubern({ planart: "kassen-kb", kann: [], positionen: [{ id: "k", ebene: "BEMA", nr: "K1", anzahl: 1, betrag: 1 }] })), "");
+});
+
+test("BEMA-RECHNUNG: Punktzahl mal Punktwert steht fertig in der Nachricht", () => {
+  const b = blickSaeubern({ planart: "kassen-kb", kann: [], positionen: [
+    { id: "k1", ebene: "BEMA", nr: "K1", anzahl: 1, betrag: 143.07, punkte: 106, punktwert: 1.3497 },
+    { id: "k7", ebene: "BEMA", nr: "K7", anzahl: 2, betrag: 16.2, punkte: 6, punktwert: 1.3497 },
+    { id: "l", ebene: "BEL", nr: "4010", anzahl: 1, betrag: 80 },
+  ] });
+  const t = bemaRechnungText(b);
+  assert.match(t, /- K1: 106 Punkte × Punktwert 1,3497 = 143,07 EUR je Leistung; im Plan 1x = 143,07 EUR/);
+  assert.match(t, /- K7: 6 Punkte × Punktwert 1,3497 = 8,10 EUR je Leistung; im Plan 2x = 16,20 EUR/);
+  assert.doesNotMatch(t, /4010/);
+  const n = planKiNachricht({ text: "Wie rechnet sich die K1?", blick: b });
+  assert.match(n, /GRUNDSÄTZE DIESER PLANART[\s\S]*Sachleistung[\s\S]*BEMA-RECHNUNG[\s\S]*106 Punkte/);
+  assert.doesNotMatch(n, /FAKTOREN \(/);
+});
+
+test("ohneQuelle: die Antwort nennt keinen Abschnittsnamen", () => {
+  assert.equal(ohneQuelle("Laut FAKTOREN liegen keine Positionen über dem 2,3-fachen Satz."), "Danach liegen keine Positionen über dem 2,3-fachen Satz.");
+  assert.equal(ohneQuelle("Die K1 kostet 143,07 EUR (BEMA-RECHNUNG)."), "Die K1 kostet 143,07 EUR.");
+  assert.equal(ohneQuelle("Die Faktoren liegen bei 2,3."), "Die Faktoren liegen bei 2,3.");
 });

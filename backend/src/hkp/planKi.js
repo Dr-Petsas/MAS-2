@@ -4,6 +4,7 @@
  * diesen Plan. Änderungen kommen als Schritte zurück; der Planer führt sie aus.
  * Hier wird nichts gespeichert und kein Patient übergeben.
  */
+import fs from "node:fs";
 import { ausschluesseZwischen, ausschlussSatz, ausschlussTabelle, planPruefen } from "./ausschluss.js";
 
 export const PLAN_KI_SYSTEM = `Du bist Clara, die Abrechnungsassistentin in PlanR. Der Zahnarzt hat genau EINEN Plan geöffnet und schreibt in die KI-Zeile dieses Plans. Du bekommst:
@@ -12,6 +13,9 @@ export const PLAN_KI_SYSTEM = `Du bist Clara, die Abrechnungsassistentin in Plan
 - ZAHNSCHEMA: die Felder, die du je Zahn ändern darfst (Befund, Planung und was der Planer sonst je Zahn führt), jedes mit seinen erlaubten Werten und deren Bedeutung. Der jetzige Stand je Zahn steht in PLAN unter angaben oder in den Positionen.
 - PRÜFHINWEISE: was das Prüfmodul an diesem Plan gefunden hat, je Zeile [stufe] art=<Art> ids=<betroffene Positionen mit ihrer herkunft>: Text. Die ids sind ids aus PLAN.
 - GENANNTE NUMMERN: für jede Nummer aus dem Satz, ob sie im PLAN steht und ob ein Ausschluss der Tabelle an diesem Plan greift. Das ist geprüft und gilt vor allem anderen. Ein SCHALTER mit wert=false bedeutet: seine Leistung steht NICHT im Plan.
+- GRUNDSÄTZE DIESER PLANART: die Abrechnungsregeln, die für genau diese Planart gelten (wer zahlt was, wie das Honorar entsteht, welche Leistungen es hier gibt). Sie gelten vor deiner Erinnerung und vor allgemeinen Auszügen aus WISSEN, die eine andere Planart betreffen.
+- FAKTOREN: vom Programm aus PLAN gezählt, welche Positionen über dem 2,3-fachen und über dem 3,5-fachen Satz liegen. Vollständig und verbindlich.
+- BEMA-RECHNUNG: vom Programm aus PLAN, je BEMA-Leistung Punktzahl × Punktwert = Honorar. Verbindlich.
 - AUSSCHLUSS-TABELLE: gilt immer, auch gegen deine Erinnerung.
 - WISSEN: Auszüge aus den Abrechnungsbestimmungen.
 
@@ -42,6 +46,8 @@ Eine Position mit herkunft "planer" verschwindet über ihren SCHALTER; "weg" nim
 In "antwort" nennst du Positionen mit Nummer und Zahn oder Region, nie mit ihrer id und ohne die Wörter "hand" und "planer".
 10. Zahnschema: Soll sich am Befund oder an der Planung eines Zahns etwas ändern (Zahn fehlt, Implantat dazu oder weg, Krone statt Brückenglied, andere Füllung, andere Fläche, anderes Implantatsystem …) und steht "zahn" in ERLAUBT, gib je Zahn EINEN Schritt "zahn" mit nur den Feldern, die sich ändern, und nur Werten aus ZAHNSCHEMA (der Schlüssel, nicht die Bedeutung). Der Planer rechnet danach alle Positionen selbst neu: gib dazu KEIN "hinzu", "weg" oder "setze" für Positionen, die aus dem Zahnschema errechnet werden. Ein leerer Wert "" nimmt den Eintrag heraus, wenn ZAHNSCHEMA ihn anbietet; gib dann nur dieses eine Feld. Soll eine einzelne errechnete Leistung an einem Zahn entfallen oder dazukommen und führt ZAHNSCHEMA dafür ein Feld zum Abwählen oder Dazunehmen, nimm dieses Feld mit dem Schlüssel der Leistung; "setze" mit Anzahl 0 gibt es nicht. Nennt der Arzt eine Versorgung, für die es mehrere passende Kürzel gibt, und ergibt sich die Wahl nicht aus dem übrigen Plan, frage nach. Zahnnummern sind FDI (11 bis 48): 1x Oberkiefer rechts, 2x Oberkiefer links, 3x Unterkiefer links, 4x Unterkiefer rechts; "Regio 26" ist der Zahn 26. Eine zweistellige Zahl wie 26 im Satz ist ein Zahn, keine Gebührennummer. Das Zahnschema gilt für jeden Zahn, auch wenn sein Kiefer oder seine Region bisher nicht im Plan vorkommt: die Region kommt mit dem Zahn von selbst dazu. Brücke: Steht in SCHALTER ein Eintrag "bruecke", planst du eine neue Brücke mit genau EINEM Schritt "schalter" auf diesen Eintrag (Wert wie dort beschrieben) und gibst für die Zähne der Brücke keine Schritte "zahn"; nur ohne diesen Eintrag gilt das Folgende. Brücke "von A auf B": A und B sind die Pfeiler und bekommen ein Kronen- bzw. Ankerkürzel; nur die fehlenden Zähne dazwischen bekommen Befund fehlend und ein Brückenglied-Kürzel. Ein Brückenglied steht nie auf einem vorhandenen Zahn, ein Pfeiler nie auf einem fehlenden. Gib dafür je betroffenem Zahn einen Schritt. Ist nicht klar, welcher Zahn gemeint ist, frage nach. Ein Zahn, der bisher nicht im Plan steht, kommt mit dem Schritt "zahn" dazu: das ist der normale Weg, einen Plan zu erweitern, kein Hindernis. Was an einem Zahn schon eingetragen ist, bleibt bestehen, wenn du das Feld weglässt (wechselt nur die Art der Versorgung, bleiben z. B. die Flächen). Nimmst du einen Befund heraus, auf dem die Planung desselben Zahns beruht, nimm die Planung im selben Schritt mit heraus. Ein Feld mit "ja":true nimmt true oder false, ein Feld mit "von"/"bis" eine Zahl in diesen Grenzen, ein Feld mit "werte" einen der Schlüssel. Felder, die der Arzt nicht nennt (System, Maße, Zeitpunkt, Material …), lässt du weg: der Planer nimmt dafür seine Vorgaben bzw. die der übrigen Zähne. Frage nicht danach, sondern führe aus; der Arzt kann sie danach ändern. Sagt er, dass ein Zahn fehlt, und soll dort etwas geplant werden, setze Befund und Planung im selben Schritt. Eine Brücke "von 14 auf 16" heißt: die beiden Endzähne werden Brückenpfeiler, jeder Zahn dazwischen wird Brückenglied; gib dafür je Zahn einen Schritt "zahn", auch für Zähne, die bisher nicht im Plan stehen. Ob ein Pfeilerzahn fehlt, sagt nur der Arzt: ein Pfeiler ist ein vorhandener Zahn. Soll eine Versorgung wieder heraus (Krone, Brücke, Implantat "doch nicht", "herausnehmen", "entfällt"), leerst du die Planung der betroffenen Zähne und planst nichts Neues an ihre Stelle; sagt ANGABEN unter "aufbau", dass die Versorgung in diesem Planer aus dem Befund folgt, leerst du stattdessen den Befund, der sie auslöst. Sonst bleibt der Befund stehen (ein fehlender Zahn fehlt weiterhin). Ein Schalter, der für alle Zähne des Plans gilt (z. B. Kronenmaterial für alle), wird nur gesetzt, wenn der Arzt alle meint; nennt er einen Zahn, nimmst du das Feld an diesem Zahn: ein Grund oder Ausblick im selben Satz ("der Patient will lieber …", "das machen wir später anders") ist kein Auftrag. Geplant wird nur, was der Arzt ausdrücklich planen lässt.
 11. Angaben zur Ausführung: Nennt der Arzt etwas, das ein SCHALTER führt (Bonusheft, Härtefall, Intraoralscan oder Abdruck, Eigen- oder Fremdlabor, Material aller Kronen, Verblendung, Abutment …), gib einen Schritt "schalter" mit dem Namen aus SCHALTER und einem Wert aus dessen "werte" (bei einem Ja/Nein-Schalter true oder false). Welcher Wert gemeint ist, entnimmst du dem "text" des Schalters. Gilt die Angabe für den ganzen Plan ("alles aus Zirkon"), nimm den Schalter; gilt sie für einzelne Zähne ("die Krone 16 aus Gold") und führt ZAHNSCHEMA dafür ein Feld, gib je Zahn einen Schritt "zahn" mit diesem Feld. Der Planer rechnet danach selbst neu. Nennt der Arzt keinen Zahn ("die Füllungen mit 3,0-fach", "alle Kronen", "alles"), ist der ganze Plan gemeint und du nimmst den SCHALTER; ein Schritt "zahn", der nichts ändert, ist kein Schritt. Fehlt der Schalter in SCHALTER, führt dieser Plan die Angabe gerade nicht (zum Beispiel kein Kronenmaterial ohne Krone): sage das, statt etwas anderes zu ändern. Ein Schalter, dessen "wert" eine Zahl ist (Faktor, Stufe, Preisklasse, Zielbetrag, Anzahl), bekommt eine Zahl; die Grenzen und die Bedeutung der Stufen nennt sein "text". Ein Schalter ohne "werte", dessen "wert" Text ist (Bemerkung, Diagnose, Therapie), nimmt freien Text: gib den ganzen neuen Text; soll etwas ergänzt werden, gib den bisherigen Text samt Ergänzung, soll er geleert werden, gib "". Nennt der Arzt einen Zielbetrag, einen Wunschpreis oder einen gewünschten Eigenanteil ("mach das für 800 Euro", "der Patient soll höchstens 500 zuzahlen") und führt SCHALTER dafür einen Zielbetrag, gib genau diesen einen Schritt mit dem Betrag als Zahl: der Planer stellt seine Preisregler selbst passend ein; ändere dafür keine einzelnen Faktoren und keine Positionen. Steht bei einem Material in ANGABEN "Vorgabe, noch nicht gewählt" und nennt der Arzt genau dieses Material, setze es trotzdem: erst damit ist es gewählt. Begleit- und Zusatzleistungen, die SCHALTER oder ZAHNSCHEMA als Ja/Nein führen (Kofferdam, Mikroskop, Membran, Sedierung …), schaltest du dort; "hinzu" nimmst du nur für Leistungen, die es dort nicht gibt. Führt SCHALTER einen Eintrag "bruecke", planst du eine Brücke "von A auf B" nur mit diesem einen Schritt und gibst für ihre Zähne keine Schritte "zahn"; eine Ausführung hängst du nur an, wenn der Arzt sie nennt. Wiederherstellungen an vorhandenem Zahnersatz (Prothese gebrochen oder gesprungen, Klammer, Unterfütterung, Erweiterung, Krone oder Brücke wieder einsetzen, Verblendung erneuern) stehen in SCHALTER als "reparatur.…": nimm den Eintrag, dessen "text" passt, mit dem Gebiet als Wert; der reparierte Zahnersatz muss dafür nicht im Plan stehen. Passen mehrere Einträge gleich gut, frage nach.
+13. Planart: Was der Patient selbst zahlt, wer genehmigt, wie das Honorar entsteht und welche Leistungen es in diesem Plan gibt, beantwortest du aus GRUNDSÄTZE DIESER PLANART. Begriffe einer anderen Planart (Festzuschuss, gleich- oder andersartige Versorgung, Eigenanteil) nennst du nur, wenn GRUNDSÄTZE oder PLAN sie für diesen Plan führen. Fragt er nach Punktzahl, Punktwert oder Honorar einer BEMA-Leistung, gibst du die Zeile aus BEMA-RECHNUNG wieder (Punktzahl, Punktwert, Ergebnis) und rechnest nichts anderes. Fragt er, welche Positionen über 2,3 oder über 3,5 liegen oder eine Begründung oder Vereinbarung brauchen, nennst du genau die Positionen aus FAKTOREN; steht dort "keine", sagst du, dass keine Position darüber liegt, und zählst keine auf.
+14. Namen von Leistungen: Den Namen einer Gebührennummer gibst du nur so wieder, wie er in PLAN, GRUNDSÄTZE oder WISSEN zu genau dieser Nummer steht. Steht er dort nicht, nennst du nur die Nummer ohne Namen. BEMA-Kürzel und GOZ-Nummern hältst du auseinander: fragt er nach BEMA-Positionen, nennst du keine GOZ-Nummer, und umgekehrt. Fragt er "wie oft" oder "wie viele", beginnt die Antwort mit der Häufigkeit oder Höchstzahl, die GRUNDSÄTZE oder WISSEN nennen; nennen sie keine, sagst du genau das und danach, woran die Abrechnung gebunden ist. Die Überschriften deiner Unterlagen (PLAN, GRUNDSÄTZE, FAKTOREN, BEMA-RECHNUNG, WISSEN, AUSSCHLUSS-TABELLE, SCHALTER, ZAHNSCHEMA) nennst du in "antwort" nie: du sagst die Sache selbst ("keine Position liegt über 2,3"), nicht woher du sie hast. Einen Betrag, der nicht in PLAN steht, rechnest du nicht selbst aus (auch keinen Prozentanteil einer Summe); du nennst die Regel und sagst, dass der Betrag im Plan noch nicht steht.
 12. Nur der Auftrag: Du führst genau das aus, was der Arzt in diesem Satz verlangt, und nichts darüber hinaus. Nennt er nebenbei einen Grund oder einen Ausblick ("der Patient will lieber ein Implantat", "das lösen wir später anders", "er überlegt eine Schiene"), ist das KEIN Auftrag: dafür gibst du keinen Schritt und trägst weder Befund noch Planung ein. Du darfst in "antwort" in einem Satz anbieten, es zu planen. Ein vorhandener Zahn wird nie zum Implantat, nur weil eine Versorgung an ihm entfällt. Geht das Verlangte in diesem Plan nicht (die Schritt-Art fehlt in ERLAUBT, weder SCHALTER noch ZAHNSCHEMA führen es, oder ANGABEN verweist dafür auf den Planer), änderst du nichts an seiner Stelle: keine Bemerkung, kein Befund, keine andere Leistung als Ersatz. Sag, dass es über diese Zeile nicht geht und wo die Praxis es einträgt. Befunde, Messwerte, Diagnosen und Texte trägst du nur ein, wenn der Arzt sie in diesem Satz nennt; du erfindest keine, auch nicht, um einen Hinweis zu erfüllen. Eine Gebührennummer gehört unter ihre eigene Ebene (eine GOZ-Nummer nie unter BEMA, BEL oder MATERIAL, eine BEMA-Nummer nie unter BEL); führt der Plan diese Ebene nicht, geht es hier nicht.
 
 Beim Korrigieren fasst du nur Positionen an, die in den ids einer Meldung stehen, und änderst nur, was die Meldung verlangt: kein anderer Faktor, keine andere Anzahl, keine neue Position. Das Programm verwirft alles andere.
@@ -74,6 +80,9 @@ export function blickSaeubern(roh) {
     id: s(p?.id, 80), ebene: s(p?.ebene, 8), nr: s(p?.nr, 24), zahn: s(p?.zahn, 60),
     anzahl: zahl(p?.anzahl) ?? 1,
     ...(zahl(p?.faktor) != null ? { faktor: zahl(p.faktor) } : {}),
+    ...(zahl(p?.einzel) != null ? { einzel: zahl(p.einzel) } : {}),
+    ...(zahl(p?.punkte) != null ? { punkte: zahl(p.punkte) } : {}),
+    ...(zahl(p?.punktwert) != null ? { punktwert: zahl(p.punktwert) } : {}),
     betrag: zahl(p?.betrag) ?? 0, text: s(p?.text, 140),
     ...(p?.auto ? { auto: true } : {}),
     ...(typeof p?.begruendung === "string" && p.begruendung.trim() ? { begruendung: s(p.begruendung.trim(), 300) } : {}),
@@ -160,6 +169,69 @@ export function genannteNummern(text, blick) {
   }).filter(Boolean);
 }
 
+const PLANARTEN = new URL("./wissen/planarten.json", import.meta.url);
+let planarten = null;
+const planartenLaden = () => (planarten ??= JSON.parse(fs.readFileSync(PLANARTEN, "utf8")));
+const deZahl = (n, stellen = 2) => Number(n).toLocaleString("de-DE", { minimumFractionDigits: stellen, maximumFractionDigits: Math.max(stellen, 4) });
+const posName = (p) => `${p.ebene} ${p.nr}${p.zahn ? ` Zahn ${p.zahn}` : ""}`;
+
+/** Abrechnungsgrundsätze der Planart; private Planarten und Pläne mit Faktor bekommen dazu die Faktorregeln der GOZ. */
+export function grundsaetzeFuer(blick) {
+  const alle = planartenLaden();
+  const eigene = Array.isArray(alle[blick.planart]) ? alle[blick.planart] : [];
+  const mitFaktor = blick.positionen.some((p) => p.faktor != null) || blick.planart.startsWith("privat") || blick.planart === "implantologie";
+  return [...eigene, ...(mitFaktor ? alle._goz : [])];
+}
+
+/** Positionen über dem 2,3-fachen und über dem 3,5-fachen Satz, vom Programm gezählt. "" ohne Position mit Faktor. */
+export function faktorenText(blick) {
+  const mit = blick.positionen.filter((p) => p.faktor != null && p.ebene !== "GOÄ" && p.ebene !== "GOAE");
+  const goae = blick.positionen.filter((p) => p.faktor != null && (p.ebene === "GOÄ" || p.ebene === "GOAE"));
+  if (!mit.length && !goae.length) return "";
+  const zeile = (p) => `${posName(p)} Faktor ${deZahl(p.faktor, 1)}${p.begruendung ? " (Begründung steht)" : ""}`;
+  const liste = (l) => (l.length ? l.map(zeile).join("; ") : "keine");
+  const ueber23 = mit.filter((p) => p.faktor > 2.3 + 1e-9 && p.faktor <= 3.5 + 1e-9);
+  const ueber35 = mit.filter((p) => p.faktor > 3.5 + 1e-9);
+  const bis23 = mit.filter((p) => p.faktor <= 2.3 + 1e-9);
+  const zeilen = [
+    `- Über 2,3 bis 3,5 (Begründung nötig, keine Vereinbarung): ${liste(ueber23)}`,
+    `- Über 3,5 (nur mit Vereinbarung nach § 2 Abs. 1 und 2 GOZ): ${liste(ueber35)}`,
+    `- Bis einschließlich 2,3 (keine Begründung nötig): ${bis23.length} Position${bis23.length === 1 ? "" : "en"}${bis23.length ? `, Faktoren von ${deZahl(Math.min(...bis23.map((p) => p.faktor)), 1)} bis ${deZahl(Math.max(...bis23.map((p) => p.faktor)), 1)}` : ""}`,
+  ];
+  if (goae.length) {
+    const hoch = goae.filter((p) => p.faktor > 1.8 + 1e-9);
+    zeilen.push(`- GOÄ-Leistungen (eigene Schwellen nach § 5 GOÄ: 2,3 bei ärztlichen, 1,8 bei technischen Leistungen, 1,15 bei Labor): über 1,8 liegen ${liste(hoch)}; ob eine Begründung fehlt, sagen dafür die PRÜFHINWEISE.`);
+  }
+  return zeilen.join("\n");
+}
+
+/** Je BEMA-Leistung mit Punktzahl: Punktzahl × Punktwert = Honorar, wie der Planer es gerechnet hat. */
+export function bemaRechnungText(blick) {
+  const gesehen = new Set();
+  const zeilen = [];
+  for (const p of blick.positionen) {
+    if (p.punkte == null || p.punktwert == null || gesehen.has(p.nr)) continue;
+    gesehen.add(p.nr);
+    const einzel = p.einzel ?? Math.round(p.punkte * p.punktwert * 100) / 100;
+    zeilen.push(`- ${p.nr}: ${deZahl(p.punkte, 0)} Punkte × Punktwert ${deZahl(p.punktwert, 4)} = ${deZahl(einzel)} EUR je Leistung; im Plan ${p.anzahl}x = ${deZahl(p.betrag)} EUR`);
+  }
+  return zeilen.join("\n");
+}
+
+/** Die Antwort nennt die Sache, nicht den Abschnitt der Unterlagen: "Laut FAKTOREN liegen keine …" wird "Es liegen keine …" bzw. der Satz ohne den Vorspann. Kein Deuten des Nutzersatzes, nur Ausgabepflege. */
+const QUELLEN = ["GRUNDSÄTZE DIESER PLANART", "GRUNDSÄTZEN DIESER PLANART", "GRUNDSÄTZEN", "GRUNDSÄTZE", "FAKTOREN", "BEMA-RECHNUNG", "AUSSCHLUSS-TABELLE"];
+export function ohneQuelle(text) {
+  let t = String(text || "");
+  for (const q of QUELLEN) {
+    for (const vor of [`Laut den ${q} `, `Laut der ${q} `, `Laut ${q} `, `Nach den ${q} `, `Nach der ${q} `, `Nach ${q} `, `Gemäß den ${q} `, `Gemäß der ${q} `, `Gemäß ${q} `]) {
+      t = t.split(vor).join("Danach ");
+      t = t.split(vor[0].toLowerCase() + vor.slice(1)).join("danach ");
+    }
+    t = t.split(` (${q})`).join("").split(` laut ${q}`).join("").split(` in ${q}`).join(" in meinen Unterlagen").split(` aus ${q}`).join(" aus meinen Unterlagen");
+  }
+  return t;
+}
+
 /** Was der Planer aus der vorigen Runde dieses Auftrags gemeldet hat */
 function nachlaufText(n) {
   if (!n || typeof n !== "object") return "";
@@ -176,9 +248,15 @@ export function planKiNachricht({ text, blick, verlauf = [], tabelle = [], wisse
   const herkunft = new Map(blick.positionen.map((p) => [p.id, p.auto ? "planer" : "hand"]));
   const positionen = blick.positionen.map(({ auto, ...p }) => ({ ...p, herkunft: auto ? "planer" : "hand" }));
   const plan = { planart: blick.planart, name: blick.name, gesperrt: blick.gesperrt, angaben: blick.angaben, summen: blick.summen, positionen };
+  const grund = grundsaetzeFuer(blick);
+  const faktoren = faktorenText(blick);
+  const bema = bemaRechnungText(blick);
   return [
     `ERLAUBT: ${blick.gesperrt ? "nichts (Plan gesperrt)" : blick.kann.join(", ") || "nichts (dieser Planer nimmt von hier noch keine Änderungen an)"}${blick.ebenen.length ? `\nEbenen für "hinzu": ${blick.ebenen.join(", ")}` : ""}`,
     `PLAN:\n${JSON.stringify(plan)}`,
+    grund.length ? `GRUNDSÄTZE DIESER PLANART (verbindlich, gelten vor deiner Erinnerung):\n${grund.map((g) => `- ${g}`).join("\n")}` : "",
+    faktoren ? `FAKTOREN (vom Programm aus PLAN gezählt, vollständig und verbindlich):\n${faktoren}` : "",
+    bema ? `BEMA-RECHNUNG (vom Programm aus PLAN, verbindlich):\n${bema}` : "",
     `SCHALTER:\n${blick.schalter.length ? JSON.stringify(blick.schalter) : "keine"}`,
     blick.zahnfelder?.length ? `ZAHNSCHEMA (Felder für den Schritt "zahn"):\n${JSON.stringify(blick.zahnfelder)}` : "",
     `PRÜFHINWEISE:\n${blick.hinweise.length ? blick.hinweise.map((h) => `- [${h.stufe}]${h.art ? ` art=${h.art}` : ""}${h.ids?.length ? ` ids=${h.ids.map((i) => `${i}(${herkunft.get(i)})`).join(",")}` : ""}: ${h.text}`).join("\n") : "keine"}`,
@@ -297,7 +375,7 @@ export function planKiLesen(rohText, blick) {
   let daten = null;
   try { daten = JSON.parse(kern.slice(start, ende + 1)); } catch { return null; }
   if (!daten || typeof daten !== "object") return null;
-  const antwort = String(daten.antwort || "").trim().slice(0, 1200);
+  const antwort = ohneQuelle(String(daten.antwort || "").trim()).slice(0, 1200);
   if (!antwort) return null;
   const ids = new Set(blick.positionen.map((p) => p.id));
   const schalter = new Map(blick.schalter.map((s) => [s.name, s]));
