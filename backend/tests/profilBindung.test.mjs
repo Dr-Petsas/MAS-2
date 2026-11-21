@@ -120,6 +120,38 @@ await t("Notaus MAS_PLANR_SPERRE=0 hebt die Profil-Bindung nicht auf", async () 
   }
 });
 
+// Handy-Kopplung aus PlanR (/planr/clara/kopplung): erst "gebucht?", dann "kann die Praxis ueberhaupt sprechen?"
+const kopplung = async (clientId) => {
+  if (!P.kopplungErlaubt(BILLING[clientId] ?? null)) return { error: "nicht_gebucht" };
+  return (await B.gespraechSperre({ clientId, planrProfil: P.sitzungsProfil, ladeBooking, standardClient: STANDARD })) || { ok: true };
+};
+
+await t("Kopplung: PlanR mit Sprachpaket bekommt den QR-Code", async () => {
+  assert.deepEqual(await kopplung("planrSprache"), { ok: true });
+});
+
+await t("Kopplung: Standardpraxis mit voller Clara bekommt den QR-Code", async () => {
+  assert.deepEqual(await kopplung(STANDARD), { ok: true });
+});
+
+await t("Kopplung: volle Clara ohne eigenes Profil -> 'nicht eingerichtet' statt QR-Code ins Leere", async () => {
+  assert.deepEqual(await kopplung("masOhneProfil"), { error: "clara_nicht_eingerichtet", message: B.NICHT_EINGERICHTET });
+});
+
+await t("Kopplung: PlanR ohne Sprachpaket und abgelaufenes PlanR bleiben 'nicht gebucht'", async () => {
+  assert.deepEqual(await kopplung("planrOhne"), { error: "nicht_gebucht" });
+  assert.deepEqual(await kopplung("abgelaufen"), { error: "nicht_gebucht" });
+});
+
+await t("Kopplung: Notaus MAS_PROFIL_BINDUNG=0 gibt den QR-Code wie vorher", async () => {
+  process.env.MAS_PROFIL_BINDUNG = "0";
+  try {
+    assert.deepEqual(await kopplung("masOhneProfil"), { ok: true });
+  } finally {
+    delete process.env.MAS_PROFIL_BINDUNG;
+  }
+});
+
 P._setBillingLaden(null);
 console.log(`profilBindung: ${ok} Pruefungen bestanden`);
 process.exit(0);

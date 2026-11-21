@@ -56,3 +56,13 @@ export async function sitzungsEntscheidung({ clientId, gewuenscht, planrProfil, 
   if (wahl.gesperrt) return { gesperrt: true, error: "clara_nicht_eingerichtet", message: wahl.message };
   return { profileId: wahl.profileId };
 }
+
+/**
+ * Kann diese Praxis ueberhaupt ein Gespraech fuehren? Fuer die Handy-Kopplung aus PlanR:
+ * kein QR-Code, der beim ersten Anruf in "nicht eingerichtet" endet. Gleiche Entscheidung
+ * wie /clara/session, also auch derselbe Notaus (MAS_PROFIL_BINDUNG=0).
+ */
+export async function gespraechSperre({ clientId, planrProfil, ladeBooking, standardClient }) {
+  const e = await sitzungsEntscheidung({ clientId, gewuenscht: "", planrProfil, ladeBooking, standardClient, standardProfil: "standard" });
+  return e.gesperrt ? { error: e.error, message: e.message } : null;
+}

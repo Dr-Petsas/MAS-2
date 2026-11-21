@@ -1235,7 +1235,10 @@
         });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({}));
-          throw new Error(err.error || `HTTP ${resp.status}`);
+          // Der Server schickt bei einer Sperre einen fertigen Satz mit: den zeigen statt des Fehlercodes.
+          const fehler = new Error(err.message || err.error || `HTTP ${resp.status}`);
+          fehler.klartext = !!err.message;
+          throw fehler;
         }
         const cfg = await resp.json();
         // In den Einstellungen entfernt, lokal aber noch gespeichert: die App
@@ -1347,7 +1350,7 @@
         } catch {}
       } catch (e) {
         connecting = false;
-        setStatus("Verbindung fehlgeschlagen: " + String(e.message || e));
+        setStatus(e && e.klartext ? String(e.message) : "Verbindung fehlgeschlagen: " + String(e.message || e));
         phase = incoming ? "ringing" : "idle";
         render();
         if (chatUi.getMode() === "chat") {

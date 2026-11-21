@@ -37,6 +37,14 @@ export function claraZugang(billing) {
   return b.clara === "planr" ? "planr" : "gesperrt";
 }
 
+/**
+ * Handy-Kopplung aus PlanR: mit gebuchter HKP-Clara und mit voller Clara (MAS).
+ * Die MAS-Praxis koppelt damit ihre bestehende Clara, am Billing aendert sich nichts.
+ */
+export function kopplungErlaubt(billing) {
+  return claraZugang(billing) === "planr" || planrAusBilling(billing).clara === "voll";
+}
+
 export const werkzeugErlaubt = (pfad) => ERLAUBT.some((r) => r.test(String(pfad || "")));
 
 let laden = getBilling;

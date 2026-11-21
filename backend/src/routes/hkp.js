@@ -24,7 +24,9 @@ import * as I from "../vendor/impl-engine.mjs";
 import * as KB from "../vendor/privat-kb-engine.mjs";
 import { assertAppEnabled, getBilling } from "../entitlements.js";
 import { planrAusBilling } from "../hkp/planrBerechtigung.js";
-import { claraZugang, rufnameSaeubern } from "../hkp/planrClara.js";
+import { claraZugang, rufnameSaeubern, kopplungErlaubt, sitzungsProfil, NICHT_GEBUCHT } from "../hkp/planrClara.js";
+import { gespraechSperre } from "../clara/profilBindung.js";
+import { loadBooking } from "../clara/booking.js";
 import QRCode from "qrcode";
 import { clientRef } from "../tenant.js";
 import { createPairingToken } from "../clara/devices.js";
@@ -946,8 +948,10 @@ router.put("/planr/clara", planrGuard, async (req, res) => {
 
 router.post("/planr/clara/kopplung", planrGuard, async (req, res) => {
   try {
-    const { zugang } = await claraStand(req.planrClientId);
-    if (zugang !== "planr") return res.status(403).json({ ok: false, error: "nicht_gebucht" });
+    if (!kopplungErlaubt(await getBilling(req.planrClientId))) return res.status(403).json({ ok: false, error: "nicht_gebucht", message: NICHT_GEBUCHT });
+    // Volle Clara ohne eigenes Profil: lieber gleich sagen als einen QR-Code ausgeben, der ins Leere fuehrt.
+    const sperre = await gespraechSperre({ clientId: req.planrClientId, planrProfil: sitzungsProfil, ladeBooking: loadBooking, standardClient: DEFAULT_CLIENT_ID });
+    if (sperre) return res.status(403).json({ ok: false, ...sperre });
     const name = String(req.body?.name || "").trim().slice(0, 80);
     const nutzer = String(req.body?.nutzer || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24);
     if (!name || !nutzer) return res.status(400).json({ ok: false, error: "name_fehlt" });

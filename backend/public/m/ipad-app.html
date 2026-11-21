@@ -2418,7 +2418,7 @@
           body.deviceId = device.deviceId; body.deviceKey = device.deviceKey;
         }
         const resp = await fetch("/clara/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
+        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.message || err.error || `HTTP ${resp.status}`); }
         const cfg = await resp.json();
         if (cfg.operator?.name) els.calling.textContent = `Verbunden · ${cfg.operator.name}`;
 
