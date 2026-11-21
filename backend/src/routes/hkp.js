@@ -75,6 +75,7 @@ import { MODULE as ENTWURF_MODULE, entwuerfeOffen, entwurfAbgeholt, entwurfAbleg
 import { ereignisAus, imZeitraum, zeitraumAus } from "../hkp/zeitraum.js";
 import { liveAbonnieren, liveAus, liveMelden, livePatient } from "../hkp/live.js";
 import { registerFuer, verbundLesen, verbundLoesen, verbundSetzen } from "../hkp/verbund.js";
+import { claraPraxisFuer, VERBUND_HINWEIS, VERBUND_NAME } from "../hkp/verbundClara.js";
 
 const router = express.Router();
 
@@ -533,7 +534,9 @@ router.get("/planr/live", planrGuard, (req, res) => {
 // PlanR-Anmeldung: darf diese Pickadoc-Praxis PlanR nutzen (MAS oder PlanR-Abo)?
 router.get("/planr/berechtigung", planrGuard, async (req, res) => {
   try {
-    res.json({ ok: true, clientId: req.planrClientId, ...planrAusBilling(await getBilling(req.planrClientId)) });
+    // Eigene Buchung unveraendert (danach wird abgerechnet). Im Verbund zusaetzlich: wessen Clara gilt.
+    const [eigen, c] = await Promise.all([getBilling(req.planrClientId), claraPraxisFuer(req.planrClientId)]);
+    res.json({ ok: true, clientId: req.planrClientId, ...planrAusBilling(eigen), ...(c.verbund ? { claraVerbund: { haupt: c.praxis, stufe: c.stufe } } : {}) });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -1039,10 +1042,16 @@ async function claraStand(clientId) {
   return { stufe: planrAusBilling(billing).clara, zugang: claraZugang(billing) };
 }
 
+// Im Praxis-Verbund gilt die Clara der Haupt-Praxis (hkp/verbundClara.js): Stand, Name und Kopplung kommen von dort.
 router.get("/planr/clara", planrGuard, async (req, res) => {
   try {
-    const { stufe, zugang } = await claraStand(req.planrClientId);
-    res.json({ ok: true, stufe, zugang, umbenennbar: zugang === "planr", assistantName: await getAssistantName(req.planrClientId), standardName: DEFAULT_ASSISTANT_NAME });
+    const c = await claraPraxisFuer(req.planrClientId);
+    const { stufe, zugang } = await claraStand(c.praxis);
+    res.json({
+      ok: true, stufe, zugang, umbenennbar: zugang === "planr" && !c.verbund,
+      assistantName: await getAssistantName(c.praxis), standardName: DEFAULT_ASSISTANT_NAME,
+      ...(c.verbund ? { verbund: true, message: VERBUND_HINWEIS } : {}),
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
@@ -1050,6 +1059,7 @@ router.get("/planr/clara", planrGuard, async (req, res) => {
 
 router.put("/planr/clara", planrGuard, async (req, res) => {
   try {
+    if ((await claraPraxisFuer(req.planrClientId)).verbund) return res.status(403).json({ ok: false, error: "verbund_gast", message: VERBUND_NAME });
     const { zugang } = await claraStand(req.planrClientId);
     if (zugang !== "planr") return res.status(403).json({ ok: false, error: "nicht_umbenennbar" });
     const r = rufnameSaeubern(req.body?.assistantName);
@@ -1065,16 +1075,20 @@ router.put("/planr/clara", planrGuard, async (req, res) => {
 
 router.post("/planr/clara/kopplung", planrGuard, async (req, res) => {
   try {
-    if (!kopplungErlaubt(await getBilling(req.planrClientId))) return res.status(403).json({ ok: false, error: "nicht_gebucht", message: NICHT_GEBUCHT });
+    // Im Verbund wird das Handy unter der Haupt-Praxis gekoppelt: das Gespraech laeuft als deren Clara.
+    const c = await claraPraxisFuer(req.planrClientId);
+    const praxis = c.praxis;
+    if (!kopplungErlaubt(await getBilling(praxis))) return res.status(403).json({ ok: false, error: "nicht_gebucht", message: NICHT_GEBUCHT });
     // Volle Clara ohne eigenes Profil: lieber gleich sagen als einen QR-Code ausgeben, der ins Leere fuehrt.
-    const sperre = await gespraechSperre({ clientId: req.planrClientId, planrProfil: sitzungsProfil, ladeBooking: loadBooking, standardClient: DEFAULT_CLIENT_ID });
+    const sperre = await gespraechSperre({ clientId: praxis, planrProfil: sitzungsProfil, ladeBooking: loadBooking, standardClient: DEFAULT_CLIENT_ID });
     if (sperre) return res.status(403).json({ ok: false, ...sperre });
     const name = String(req.body?.name || "").trim().slice(0, 80);
     const nutzer = String(req.body?.nutzer || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24);
     if (!name || !nutzer) return res.status(400).json({ ok: false, error: "name_fehlt" });
-    const t = await createPairingToken(req.planrClientId, { id: `planr_${nutzer}`, name, role: normalizeRole(req.body?.role) }, { createdBy: "planr", deviceType: "phone", apps: ["clara"] });
+    const t = await createPairingToken(praxis, { id: `planr_${nutzer}`, name, role: normalizeRole(req.body?.role) }, { createdBy: "planr", deviceType: "phone", apps: ["clara"] });
+    if (c.verbund) log.info("planr.clara.kopplung.verbund", { gast: req.planrClientId, haupt: praxis });
     const enc = encodeURIComponent;
-    const url = `${PUBLIC_BASE_URL}/m/pair.html?c=${enc(req.planrClientId)}&t=${enc(t.token)}`;
+    const url = `${PUBLIC_BASE_URL}/m/pair.html?c=${enc(praxis)}&t=${enc(t.token)}`;
     let qrDataUrl = "";
     try { qrDataUrl = await QRCode.toDataURL(url, { width: 280, margin: 1 }); } catch { qrDataUrl = ""; }
     res.json({ ok: true, url, qrDataUrl, code: t.code, expiresAtMs: t.expiresAtMs });

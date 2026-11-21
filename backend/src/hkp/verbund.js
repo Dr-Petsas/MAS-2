@@ -41,12 +41,21 @@ export async function registerFuer(clientId) {
   try {
     const v = verbundAus(await laden(id));
     const register = v ? String(v.register) : id;
-    cache.set(id, { at: Date.now(), register });
+    const haupt = v && ID_RE.test(String(v.haupt || "")) && String(v.haupt) !== id ? String(v.haupt) : "";
+    cache.set(id, { at: Date.now(), register, haupt });
     return register;
   } catch (e) {
     log.warn?.(`[planr-verbund] ${id}: ${e?.message || e}`);
     return hit?.register || id;
   }
+}
+
+/** Haupt-Praxis dieser Praxis im Verbund, sonst "" (auch fuer die Haupt-Praxis selbst und bei jedem Fehler). Wirft nie. */
+export async function hauptFuer(clientId) {
+  const id = String(clientId || "").trim();
+  if (!id || aus()) return "";
+  await registerFuer(id);
+  return cache.get(id)?.haupt || "";
 }
 
 /** Ohne Firestore-Zugriff (z. B. Live-Ansicht, synchron): zuletzt bekanntes Register, sonst die Praxis selbst */
