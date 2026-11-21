@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 84218e89138b)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 59adec629750)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -23070,7 +23070,8 @@ function leererPlan() {
 			metallbasisUK: false,
 			stuetzstift: false,
 			atrophieOK: false,
-			atrophieUK: false
+			atrophieUK: false,
+			supraRegel: []
 		},
 		reparaturen: [],
 		abformung: "",
@@ -24760,6 +24761,30 @@ var GEGENUEBER = {
 function implantatZaehne(zaehne) {
 	return ALLE_ZAEHNE.filter((z) => IMPLANTAT_TP.test(kuerzelVon$1(zaehne[z])));
 }
+var befundVon = (v) => (v?.B ?? "").trim().toLowerCase();
+var nachbarn = (z) => {
+	const reihe = kieferVon(z) === "OK" ? OBERKIEFER : UNTERKIEFER;
+	const i = reihe.indexOf(z);
+	return [reihe[i - 1], reihe[i + 1]];
+};
+/** Befund 7.1: erneuerungsbedürftige Implantatkrone in einer zahnbegrenzten Einzelzahnlücke – beide Nachbarn sind natürliche Zähne. */
+function supraEinzelzahnluecke(zaehne, z) {
+	if (befundVon(zaehne[z]) !== "skw") return false;
+	return nachbarn(z).every((n) => {
+		if (!n) return false;
+		const k = befundVon(zaehne[n]);
+		return !FEHLEND.has(k) && !k.startsWith("s");
+	});
+}
+/**
+* Ausnahmefall Nr. 36 a) ZE-Richtlinie: Die Suprakonstruktion in einer zahnbegrenzten Einzelzahnlücke ist
+* Regelversorgung, wenn keine parodontale Behandlungsbedürftigkeit besteht und die Nachbarzähne kariesfrei
+* und nicht überkronungsbedürftig bzw. überkront sind. Die Praxis setzt den Fall je Zahn (klinisch.supraRegel);
+* am Zahnschema prüfbar sind die Einzelzahnlücke und Nachbarzähne ohne Befund oder mit intakter Krone (k).
+*/
+function supraAlsRegelversorgung(zaehne, klinisch, z) {
+	return !!klinisch?.supraRegel?.includes(z) && supraEinzelzahnluecke(zaehne, z) && nachbarn(z).every((n) => ["", "k"].includes(befundVon(zaehne[n])));
+}
 var zaehler$2 = 0;
 function pos$2(ebene, nr, zahn, anzahl = 1, extra = {}) {
 	return {
@@ -26052,8 +26077,9 @@ var SUPRA_PROTHESE = /* @__PURE__ */ new Set([
 ]);
 /**
 * Zähne, an denen eine Suprakonstruktion erneuert wird (Befunde 7.1, 7.2, 7.5). Das ist andersartig: Auf dem HKP
-* bleibt Zeile R leer, die Suprakonstruktion steht in Zeile TP (BMV-Z Anlage 14d). Ausgenommen ist der Ausnahmefall
-* Nr. 36 ZE-Richtlinie mit Befund 7.6 (atrophierter zahnloser Kiefer): dort ist die Suprakonstruktion Regelversorgung.
+* bleibt Zeile R leer, die Suprakonstruktion steht in Zeile TP (BMV-Z Anlage 14d). Ausgenommen sind die Ausnahmefälle
+* Nr. 36 ZE-Richtlinie: Befund 7.6 (atrophierter zahnloser Kiefer) und die von der Praxis gesetzte Einzelzahnlücke
+* (klinisch.supraRegel, Befund 7.1) – dort ist die Suprakonstruktion Regelversorgung.
 * Im Plan selbst trägt Zeile R das Kürzel weiter – als Rechengrundlage für Festzuschuss und Leistungen.
 */
 function supraErneuerung(plan) {
@@ -26061,7 +26087,7 @@ function supraErneuerung(plan) {
 		const v = plan.zaehne[z];
 		if (!v || !(v.TP.trim() || v.R.trim()).toUpperCase().startsWith("S")) return false;
 		const b = v.B.trim().toLowerCase();
-		if (SUPRA_FESTSITZEND.has(b)) return true;
+		if (SUPRA_FESTSITZEND.has(b)) return !supraAlsRegelversorgung(plan.zaehne, plan.klinisch, z);
 		return SUPRA_PROTHESE.has(b) && !(kieferVon(z) === "OK" ? plan.klinisch?.atrophieOK : plan.klinisch?.atrophieUK);
 	});
 }
@@ -27181,6 +27207,8 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 	const teleskope = /* @__PURE__ */ new Set();
 	const verblend27 = [];
 	let festsitzend = false;
+	/** erneuerte Implantatkronen, die Regelversorgung sind (Ausnahmefall Nr. 36 a ZE-Richtlinie) */
+	const supraRegel = /* @__PURE__ */ new Set();
 	const prothesenKiefer = [];
 	const teleskopAnker = (z, nr) => {
 		teleskope.add(z);
@@ -27322,10 +27350,20 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 			const verblend = imVerblendbereich(z);
 			R[z] = (k === "skw" ? "SK" : "SB") + (verblend ? "V" : "");
 			if (k === "skw" && verblend) befunde.push(befund("1.3", z));
+			if (supraAlsRegelversorgung(zaehne, optionen.klinisch, z)) {
+				supraRegel.add(z);
+				festsitzend = true;
+				positionen.push(pos("BEMA", verblend ? "20b" : "20a", z), pos("BEMA", "19", z));
+				continue;
+			}
 			const zuo = TP_ZUORDNUNG[R[z]];
 			if (zuo.goz) positionen.push(pos("GOZ", zuo.goz, z));
 			for (const b of zuo.beb) positionen.push(pos("BEB", b, z));
 		}
+		const regelFall = reihe.filter((z) => supraRegel.has(z));
+		if (regelFall.length) hinweise.push(`Suprakonstruktion ${regelFall.join(", ")}: Ausnahmefall Nr. 36 a) ZE-Richtlinie (zahnbegrenzte Einzelzahnlücke) – die Krone ist Regelversorgung und steht in Zeile R, berechnet nach BEMA ${[...new Set(regelFall.map((z) => imVerblendbereich(z) ? "20b" : "20a"))].sort().join("/")} und 19. In der Abrechnung tragen beide Nummern das Kennzeichen i (20 i, 19 i). Implantataufbau, Abformung am Implantat und Implantatteile gehören nicht zur Regelversorgung (Nr. 38 ZE-Richtlinie): Sie bleiben privat im Plan, rechnerisch ist er damit gleichartig.`);
+		const abgelehnt = (optionen.klinisch?.supraRegel ?? []).filter((z) => reihe.includes(z) && !supraRegel.has(z));
+		if (abgelehnt.length) hinweise.push(`Zahn ${abgelehnt.join(", ")}: als Ausnahmefall Nr. 36 a) ZE-Richtlinie markiert, die Voraussetzungen liegen laut Zahnschema aber nicht vor (erneuerungsbedürftige Implantatkrone skw in einer Einzelzahnlücke, Nachbarzähne ohne Befund oder mit intakter Krone) – die Markierung bleibt ohne Wirkung.`);
 		const prothese = reihe.filter((z) => IMPLANTAT_PROTHESE.has(kuerzel(zaehne[z])));
 		if (prothese.length) {
 			befunde.push(befund("7.5", kiefer));
@@ -27345,7 +27383,7 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 			}
 			hinweise.push(`${kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}: Implantatgetragene Prothesenkonstruktion (Befund 7.5) – Leistungen nach GOZ/BEB vorgeschlagen, bitte prüfen. Natürliche Pfeiler (tw) werden gesondert geplant.`);
 		}
-		if (reihe.some((z) => IMPLANTAT_ERNEUERUNG.has(kuerzel(zaehne[z])))) hinweise.push(`${kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}: Suprakonstruktionen werden nach GOZ/BEB abgerechnet; der Festzuschuss richtet sich nach Befund 7.1/7.2. Implantologische Leistungen gehören nicht in den HKP.`);
+		if (reihe.some((z) => IMPLANTAT_ERNEUERUNG.has(kuerzel(zaehne[z])) && !supraRegel.has(z))) hinweise.push(`${kiefer === "OK" ? "Oberkiefer" : "Unterkiefer"}: Suprakonstruktionen werden nach GOZ/BEB abgerechnet; der Festzuschuss richtet sich nach Befund 7.1/7.2. Implantologische Leistungen gehören nicht in den HKP.`);
 	}
 	for (const z of [...OBERKIEFER, ...UNTERKIEFER]) {
 		const k = kuerzel(zaehne[z]);
@@ -27379,10 +27417,12 @@ function regelversorgungErmitteln(zaehne, optionen = {}) {
 		if (r === "PK") positionen.push(pos("BEL", "1022", z));
 		if (r === "B") positionen.push(pos("BEL", "1100", z));
 		if (r === "BV") positionen.push(pos("BEL", "1100", z), pos("BEL", "1620", z));
+		if (supraRegel.has(z)) positionen.push(...r === "SKV" ? [pos("BEL", "1024", z), pos("BEL", "1620", z)] : [pos("BEL", "1021", z)]);
 	}
-	const einheiten = Object.values(R).filter((r) => /^(K|KV|KH|KVH|PK|B|BV)$/.test(r)).length;
+	const einheit = (z) => /^(K|KV|KH|KVH|PK|B|BV)$/.test(R[z]) || supraRegel.has(z);
+	const einheiten = Object.keys(R).filter(einheit).length;
 	if (festsitzend && einheiten) {
-		const kiefer = new Set(Object.keys(R).filter((z) => /^(K|KV|KH|KVH|PK|B|BV)$/.test(R[z])).map((z) => z[0] <= "2" ? "OK" : "UK"));
+		const kiefer = new Set(Object.keys(R).filter(einheit).map((z) => z[0] <= "2" ? "OK" : "UK"));
 		positionen.push(pos("BEL", "0010", "", 1), pos("BEL", "0051", [...kiefer].join(","), kiefer.size), pos("BEL", "0120", ""));
 		positionen.push(pos("BEL", "9700", "", einheiten));
 	}
@@ -29983,7 +30023,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-21 14:49";
+var ENGINE_STAND = "2026-11-21 16:12";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
