@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 69ccd1e26a4d)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 84218e89138b)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26043,11 +26043,33 @@ function zaehneVon(gebiet) {
 	}
 	return [...zaehne];
 }
-/** Zähne, deren Planung (TP) andersartig gegenüber der Regelversorgung ist */
+/** Befunde einer erneuerungsbedürftigen Suprakonstruktion (Befundklasse 7) */
+var SUPRA_FESTSITZEND = /* @__PURE__ */ new Set(["skw", "sbw"]);
+var SUPRA_PROTHESE = /* @__PURE__ */ new Set([
+	"sew",
+	"sow",
+	"stw"
+]);
+/**
+* Zähne, an denen eine Suprakonstruktion erneuert wird (Befunde 7.1, 7.2, 7.5). Das ist andersartig: Auf dem HKP
+* bleibt Zeile R leer, die Suprakonstruktion steht in Zeile TP (BMV-Z Anlage 14d). Ausgenommen ist der Ausnahmefall
+* Nr. 36 ZE-Richtlinie mit Befund 7.6 (atrophierter zahnloser Kiefer): dort ist die Suprakonstruktion Regelversorgung.
+* Im Plan selbst trägt Zeile R das Kürzel weiter – als Rechengrundlage für Festzuschuss und Leistungen.
+*/
+function supraErneuerung(plan) {
+	return ALLE_ZAEHNE.filter((z) => {
+		const v = plan.zaehne[z];
+		if (!v || !(v.TP.trim() || v.R.trim()).toUpperCase().startsWith("S")) return false;
+		const b = v.B.trim().toLowerCase();
+		if (SUPRA_FESTSITZEND.has(b)) return true;
+		return SUPRA_PROTHESE.has(b) && !(kieferVon(z) === "OK" ? plan.klinisch?.atrophieOK : plan.klinisch?.atrophieUK);
+	});
+}
+/** Zähne, deren Planung andersartig gegenüber der Regelversorgung ist: abweichende Zeile TP oder erneuerte Suprakonstruktion */
 function andersartigeZaehne(plan) {
 	const eintraege = Object.entries(plan.zaehne);
 	const prothesenKiefer = new Set(eintraege.filter(([, v]) => v.R === "E").map(([z]) => kieferVon(z)));
-	return new Set(eintraege.filter(([z, v]) => v.TP.trim() && andersartig(v.R, v.TP, prothesenKiefer.has(kieferVon(z)))).map(([z]) => z));
+	return /* @__PURE__ */ new Set([...eintraege.filter(([z, v]) => v.TP.trim() && andersartig(v.R, v.TP, prothesenKiefer.has(kieferVon(z)))).map(([z]) => z), ...supraErneuerung(plan)]);
 }
 /**
 * Direktabrechnung (Festzuschuss von der Kasse an den Versicherten): bei andersartiger Versorgung;
@@ -26517,6 +26539,11 @@ function berechnen(plan, listen) {
 	if (versorgungsart === "andersartig") hinweise.push({
 		stufe: "info",
 		text: direkt.direkt ? `Direktabrechnung: andersartige Versorgung${direkt.anteil < 1 ? ` (${Math.round(direkt.anteil * 100)} % des Honorars andersartig)` : ""} – der Patient erhält die Rechnung über die Gesamtkosten, die Kasse zahlt ihm den Festzuschuss (Vordruck 3e).` : `Mischfall: nur ${Math.round(direkt.anteil * 100)} % des Honorars andersartig (Grenze 50 %) – Abrechnung des Festzuschusses über die KZV, keine Direktabrechnung.`
+	});
+	const supra = supraErneuerung(plan);
+	if (supra.length && versorgungsart === "andersartig") hinweise.push({
+		stufe: "info",
+		text: `Erneuerung der Suprakonstruktion (${supra.join(", ")}): andersartige Versorgung. Auf dem HKP bleibt Zeile R an diesen Zähnen leer, die Suprakonstruktion steht in Zeile TP (BMV-Z Anlage 14d) – so geht der Plan auch an das PVS. Regelversorgung ist sie nur im Ausnahmefall nach Nr. 36 ZE-Richtlinie.`
 	});
 	if (plan.zuschuss.haertefall && versorgungsart !== "regel") hinweise.push({
 		stufe: "info",
@@ -29956,7 +29983,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-21 14:14";
+var ENGINE_STAND = "2026-11-21 14:49";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
