@@ -24,6 +24,21 @@ test("Werkzeug zeigt den Befund auf dem Handy, ohne ihn doppelt vorzulesen", asy
   assert.equal(ohne.rueckfrage, "befund_anzeige");
 });
 
+test("Implantatauftrag ändert den Befund nicht", async () => {
+  const satz = "Es soll Implantat gesetzt werden an der Position 23, 14, 16, und es soll ein interner Sinuslift Regio 16 gemacht werden, mit eigenem Knochen, da ich aus der Regio 15 entferne.";
+  const r = await befundWerkzeug("x", PATIENT, { aenderung: satz }, {
+    pvs: lesen(), aendern: async () => assert.fail("Planungsatz darf keine Zähne auf x setzen"),
+  });
+  assert.equal(r.rueckfrage, "versorgung");
+  assert.match(r.message, /Befund bleibt/);
+  assert.match(r.message, /Kostenvoranschlag Implantologie/);
+  const geplant = "Ja, ich möchte ein Implantat an der Position 35 planen.";
+  const r2 = await befundWerkzeug("x", PATIENT, { aenderung: geplant }, {
+    pvs: lesen(), aendern: async () => assert.fail("Planungsatz darf kein Implantat in den Befund schreiben"),
+  });
+  assert.equal(r2.rueckfrage, "versorgung");
+});
+
 test("Aenderung geht als offen an PlanR, Eva fragt vor dem Schreiben", async () => {
   const gesendet = [];
   const r = await befundWerkzeug("x", PATIENT, { aenderung: "26 fehlt, 47 Implantat", wer: "Eva" }, {

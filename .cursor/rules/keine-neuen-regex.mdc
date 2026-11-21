@@ -1,0 +1,12 @@
+---
+description: Ab heute keine neuen Regex. Verstehen und Korrekturen laufen über Prompt und Werkzeugfelder.
+alwaysApply: true
+---
+
+# Keine neuen Regex
+
+Ab dem 12.11.2026 wird kein neues reguläres Ausdrucksmuster ergänzt, um einen Satz, eine Korrektur oder eine Absicht zu erkennen.
+
+Das Modell entscheidet. Der Prompt und die bestehenden Werkzeugfelder (`erhalten`, `entfernen`, `versorgung`) tragen die Entscheidung. Die Engine wertet diese Felder aus und zerlegt den Satz dafür nicht neu.
+
+Bestehende Muster bleiben, werden aber nicht erweitert, um einen neuen Fall abzudecken.

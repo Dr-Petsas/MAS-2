@@ -105,9 +105,9 @@ if (-not $namedCf) {
 # --- LiveKit SFU ---
 if ($result.livekit -eq 'down' -and -not $NoRestart) {
     WLog "LiveKit SFU: starte..."
-    Start-Process -FilePath 'F:\Clara-Voice\deploy\livekit\livekit-server.exe' `
-        -ArgumentList '--config', 'F:\Clara-Voice\deploy\livekit\livekit.yaml' `
-        -WorkingDirectory 'F:\Clara-Voice\deploy\livekit' -WindowStyle Hidden `
+    Start-Process -FilePath 'F:\Clara-Voice-dev\deploy\livekit\livekit-server.exe' `
+        -ArgumentList '--config', 'F:\Clara-Voice-dev\deploy\livekit\livekit.yaml' `
+        -WorkingDirectory 'F:\Clara-Voice-dev\deploy\livekit' -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $LogDir "livekit_wd_$Stamp.log") `
         -RedirectStandardError  (Join-Path $LogDir "livekit_wd_$Stamp.err.log")
     $result.actions += 'restart-livekit'
@@ -149,11 +149,11 @@ if (($result.lena -ne 'ok') -and -not $NoRestart) {
     }
     Start-Sleep -Seconds 2
     # HF-Cache auf lokales Laufwerk zwingen (I:\ war Permission-denied)
-    $env:HF_HOME = 'F:\Clara-Voice\.cache\huggingface'
-    $env:HF_HUB_CACHE = 'F:\Clara-Voice\.cache\huggingface\hub'
+    $env:HF_HOME = 'F:\Clara-Voice-dev\.cache\huggingface'
+    $env:HF_HUB_CACHE = 'F:\Clara-Voice-dev\.cache\huggingface\hub'
     $env:HF_HUB_DISABLE_XET = '1'
     New-Item -ItemType Directory -Force -Path $env:HF_HOME, $env:HF_HUB_CACHE | Out-Null
-    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice\lena_stt\start-lena-stt.ps1' -Tunnel
+    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Lena-Voice\lena_stt\start-lena-stt.ps1' -Tunnel
     if ($LASTEXITCODE -ne 0) {
         WLog "Lena Start: exit=$LASTEXITCODE" 'ERROR'
     }
@@ -194,7 +194,7 @@ if (($result.clara -ne 'ok') -and -not $NoRestart) {
     WLog "Clara: Cleanup + Neustart DEV (ohne Gate)..."
     Stop-ProcsMatching 'python.exe' { $_.CommandLine -like '*pickadoc_session_worker*' }
     Start-Sleep -Seconds 2
-    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice\tools\clara-switch.ps1' -Mode dev
+    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice-dev\tools\clara-switch.ps1' -Mode dev
     $result.actions += 'restart-clara-dev'
     for ($i = 0; $i -lt 45; $i++) {
         Start-Sleep -Seconds 2

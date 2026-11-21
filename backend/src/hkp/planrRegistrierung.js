@@ -35,6 +35,7 @@ export function eingabePruefen(b) {
     paket: text(b?.paket, 30),
     buchung: text(b?.buchung, 40),
     mandatsreferenz: text(b?.mandatsreferenz, 35),
+    testaboBis: /^\d{4}-\d{2}-\d{2}T/.test(String(b?.testaboBis ?? "")) ? String(b.testaboBis).slice(0, 40) : "",
   };
 }
 
@@ -77,6 +78,7 @@ export async function praxisRegistrieren(roh, { auth = admin.auth(), db = firest
         planr: {
           enabled: true, sprachsteuerung: e.sprachsteuerung, doku: e.doku, paket: e.paket, seit: jetzt.toISOString(),
           buchung: e.buchung, mandatsreferenz: e.mandatsreferenz,
+          ...(e.testaboBis ? { testabo: true, testaboBis: e.testaboBis } : {}),
         },
       },
     }, { merge: true });
@@ -87,4 +89,15 @@ export async function praxisRegistrieren(roh, { auth = admin.auth(), db = firest
     throw err;
   }
   return { clientId: client.id, uid, locationId: ort.id };
+}
+
+/** Reguläres Abo: das Testende am Billing löschen, PlanR bleibt an. */
+export async function testaboFreigeben(clientId, { mandatsreferenz = "" } = {}, { db = firestore } = {}) {
+  if (!clientId) return;
+  await db.collection("clients").doc(clientId).collection("settings").doc("billing").update({
+    "subscriptions.planr.testabo": false,
+    "subscriptions.planr.testaboBis": admin.firestore.FieldValue.delete(),
+    "subscriptions.planr.mandatsreferenz": String(mandatsreferenz || "").slice(0, 35),
+    updatedAt: new Date().toISOString(),
+  });
 }

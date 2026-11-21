@@ -46,7 +46,7 @@ function runDir() {
   if (gesetzt) return gesetzt;
   // Standard: Nachbarordner des Backends (F:\MAS-2\backend -> F:\Clara-Voice\.run)
   const hier = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(hier, "..", "..", "..", "Clara-Voice", ".run");
+  return path.join(hier, "..", "..", "..", "Clara-Voice-dev", ".run");
 }
 
 /**

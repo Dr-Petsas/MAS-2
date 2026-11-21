@@ -8,7 +8,9 @@ export function planrAusBilling(billing) {
   const mas = crew === "premium"
     || Object.values(billing?.locationPackages || {}).some((l) => l?.mas?.enabled === true);
   const abo = billing?.subscriptions?.planr;
-  const planr = abo?.enabled === true;
+  const bis = Date.parse(abo?.testaboBis ?? "");
+  const testaboVorbei = abo?.testabo !== false && Number.isFinite(bis) && bis <= Date.now();
+  const planr = abo?.enabled === true && !testaboVorbei;
   return {
     mas,
     planr,

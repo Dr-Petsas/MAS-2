@@ -137,6 +137,40 @@ export function bonusAus(text, angegeben, akteBonus = "") {
   return erkannt || bonusNorm(angegeben) || bonusNorm(akteBonus);
 }
 
+function jahrVonBesuch(wert) {
+  if (typeof wert === "number" && wert > 10000) {
+    const y = new Intl.DateTimeFormat("en", { timeZone: "Europe/Berlin", year: "numeric" }).format(new Date(wert));
+    return Number(y) || 0;
+  }
+  const m = String(wert || "").match(/^(\d{4})/);
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * Festzuschuss aus den Besuchen: in jedem Kalenderjahr mindestens ein Besuch.
+ * Fünf Jahre lückenlos → 70, zehn Jahre → 75, sonst 60. Gezählt wird der Block
+ * vor dem Behandlungsjahr oder, wenn dieses Jahr schon ein Besuch da ist, der
+ * Block bis einschließlich dieses Jahres. Es wird nicht nachgefragt.
+ */
+export function bonusAusBesuchen(daten, { heute = new Date() } = {}) {
+  const jahr = heute.getFullYear();
+  const jahre = new Set();
+  for (const d of daten || []) {
+    const y = jahrVonBesuch(d);
+    if (y >= jahr - 15 && y <= jahr) jahre.add(y);
+  }
+  const block = (von, bis) => {
+    for (let y = von; y <= bis; y++) if (!jahre.has(y)) return false;
+    return bis >= von;
+  };
+  const zehn = block(jahr - 10, jahr - 1) || (jahre.has(jahr) && block(jahr - 9, jahr));
+  const fuenf = block(jahr - 5, jahr - 1) || (jahre.has(jahr) && block(jahr - 4, jahr));
+  if (!jahre.size) return { bonus: "60", stufe: 0, hinweis: "Ohne Bonus." };
+  if (zehn) return { bonus: "75", stufe: 10, hinweis: "75 Prozent." };
+  if (fuenf) return { bonus: "70", stufe: 5, hinweis: "70 Prozent." };
+  return { bonus: "60", stufe: 0, hinweis: "Ohne Bonus." };
+}
+
 /** Implantation und die spätere Prothese sind ein Fall. Eine Prothese auf schon stehenden Implantaten bleibt ein Plan. */
 export function verbundSatz(text) {
   const t = String(text || "");
@@ -494,10 +528,10 @@ export function fallRechnen(body, ctx = {}) {
   const auf = teileAufloesen(body || {}, { engineArt: Boolean(ctx.muster), akte: akte.versicherung });
   if (auf.frage) return { status: "rueckfrage", frage: auf.frage };
   const kasseText = auf.teile.filter((t) => t.planart === "kasse").map((t) => t.versorgung).join(" ");
-  const bonus = bonusAus(`${body?.versorgung || ""} ${kasseText}`, body?.bonus, akte.bonus);
-  if (!ctx.muster && auf.teile.some((t) => t.planart === "kasse") && !bonus) {
-    return { status: "rueckfrage", frage: "Welcher Bonus steht in der Akte: ohne Bonus, fünf Jahre oder zehn Jahre?" };
-  }
+  const kasseDabei = auf.teile.some((t) => t.planart === "kasse");
+  let bonus = bonusAus(`${body?.versorgung || ""} ${kasseText}`, body?.bonus, akte.bonus)
+    || bonusNorm(body?.bonusAusBesuchen);
+  if (!ctx.muster && kasseDabei && !bonus) bonus = "60";
   let befund = Object.keys(ctx.befund || {}).length ? ctx.befund : ctx.muster ? musterBefund(body) : {};
   let befundAnnahme = "";
   if (ctx.muster && !Object.keys(befund).length) {
@@ -575,8 +609,9 @@ export function fallRechnen(body, ctx = {}) {
   const akteSatz = auf.versicherungQuelle === "akte"
     ? (akte.versicherung === "privat" ? "Die Versicherung steht in der Akte: privat." : "Die Versicherung steht in der Akte: gesetzlich.")
     : "";
-  const bonusSatz = !ctx.muster && bonus && akte.bonus === bonus && !bonusAus(body?.versorgung || "", body?.bonus, "")
-    ? `Der Bonus steht in der Akte: ${bonus} Prozent.`
+  const bonusAusGesagtem = bonusAus(`${body?.versorgung || ""} ${kasseText}`, body?.bonus, "");
+  const bonusSatz = !ctx.muster && kasseDabei && bonus && !bonusAusGesagtem
+    ? (String(body?.bonusHinweis || "").trim() || (akte.bonus === bonus ? `${bonus} Prozent.` : ""))
     : "";
   const message = [modellAnnahme, akteSatz, bonusSatz, befundAnnahme, ...angenommen, satz, ...hinweis, begleitung, schluss]
     .filter(Boolean).join(" ");

@@ -5,6 +5,7 @@
 // Alle anderen Praxen (MAS, meddent, Demo) bleiben bei der Pickadoc-Kartei.
 // Notaus: MAS_PLANR_PVS=0 (dann wieder Pickadoc-Kartei wie bisher).
 import { soundsSame } from "../clara/phonetics.js";
+import { schreibNah } from "../clara/patientCatalog.js";
 import { claraZugangFuer } from "./planrClara.js";
 import { pvsNamenMerken } from "./pvsNamen.js";
 
@@ -65,7 +66,9 @@ const anlautFehlt = (t, w) => w.length >= 5 && t.length === w.length + 1 && t.en
 function wortPunkte(t, w) {
   if (t === w) return 3;
   if (w.length >= 3 && t.startsWith(w)) return 2;
-  return soundsSame(t, w) || knapp(t, w) || anlautFehlt(t, w) ? 1 : 0;
+  // "Petzers" ist "Petsas" (Anruf 11.11.2026): ohne das wartet die Suche die
+  // vollen 12 s auf die Praxissoftware, obwohl die Kartei den Patienten hat.
+  return soundsSame(t, w) || knapp(t, w) || anlautFehlt(t, w) || schreibNah(t, w) ? 1 : 0;
 }
 
 // Chef 06.11.2026: P, F, Ph und B am Wortanfang verwechselt die Erkennung am Telefon ("Panelas" fuer "Fanelas").

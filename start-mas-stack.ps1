@@ -66,9 +66,9 @@ if (Test-PortListening 7880) {
     Write-StackLog "LiveKit SFU: laeuft bereits (Port 7880)"
 } else {
     Write-StackLog "LiveKit SFU: starte..."
-    Start-Process -FilePath 'F:\Clara-Voice\deploy\livekit\livekit-server.exe' `
-        -ArgumentList '--config', 'F:\Clara-Voice\deploy\livekit\livekit.yaml' `
-        -WorkingDirectory 'F:\Clara-Voice\deploy\livekit' -WindowStyle Hidden `
+    Start-Process -FilePath 'F:\Clara-Voice-dev\deploy\livekit\livekit-server.exe' `
+        -ArgumentList '--config', 'F:\Clara-Voice-dev\deploy\livekit\livekit.yaml' `
+        -WorkingDirectory 'F:\Clara-Voice-dev\deploy\livekit' -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $LogDir "livekit_$Stamp.log") `
         -RedirectStandardError  (Join-Path $LogDir "livekit_$Stamp.err.log")
     Start-Sleep -Seconds 3
@@ -100,7 +100,7 @@ if ($claraUp) {
     Write-StackLog "Clara Worker: laeuft bereits ($wo)"
 } else {
     Write-StackLog "Clara Worker: starte DEV (clara-switch)..."
-    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice\tools\clara-switch.ps1' -Mode dev
+    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice-dev\tools\clara-switch.ps1' -Mode dev
     Write-StackLog "Clara Worker: $(if (Test-PortListening 8093) { 'OK (Port 8093 DEV)' } else { 'noch nicht bereit - Modell laedt evtl. weiter' })"
 }
 
@@ -115,7 +115,7 @@ $workerReady = $false
 for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 3
     if ((Test-PortListening 8093) -or (Test-PortListening 8091)) {
-        $wlog = Get-ChildItem 'F:\MAS-2\logs\clara_*.err.log','F:\Clara-Voice\_worker*.err.log','F:\Clara-Voice-dev\_worker*.err.log','F:\Clara-Voice\.run\switch\dev-*.err.log' -ErrorAction SilentlyContinue |
+        $wlog = Get-ChildItem 'F:\MAS-2\logs\clara_*.err.log','F:\Clara-Voice-dev\_worker*.err.log','F:\Clara-Voice-dev\.run\switch\dev-*.err.log' -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($wlog -and (Select-String -Path $wlog.FullName -Pattern 'registered worker' -ErrorAction SilentlyContinue | Select-Object -First 1)) {
             $workerReady = $true; break

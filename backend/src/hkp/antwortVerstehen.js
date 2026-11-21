@@ -417,6 +417,7 @@ sagen: was du ihm jetzt sagst. Gesprochenes Deutsch, du siezt ihn, hoechstens dr
 Reagiere auf das, was er gesagt hat. Frag nichts, was du schon weisst oder was die Engine nicht braucht. Der Befund aus
 DS-Win gilt, bis er etwas anderes sagt; frag nicht nach der Befundquelle. Zaehne nennst du mit Nummern. Stellt er eine
 Abrechnungsfrage, beantworte sie aus der Wissensbasis ("nicht neben" heisst nicht in derselben Sitzung).
+Steht dort PRAXISSTIL und passt der Fall, nennst du genau diese Positionen als den Weg dieser Praxis.
 Keine Betraege, keine Punktwerte, kein "ich rechne". Sag All-on-4 und All-on-6, nie "allon".
 Meldet die Software eine Rueckfrage, loese sie selbst, wenn das Gespraech die Antwort schon enthaelt
 (plan anpassen, rechnen), sonst frag ihn genau danach.`;
@@ -555,6 +556,7 @@ Der Ausschnitt hat Abschnitte:
   ist das deine Hauptquelle. Gib die Regel sinngetreu wieder und nenne die Fundstelle kurz ("laut KZBV-Hinweisen zum
   Festzuschuss", "laut BEMA-Richtlinie"). Seitenzahlen sprichst du nicht. Passt kein Quelltext genau zur Frage, nutze ihn nicht.
 [WEITERE TREFFER]: Abrechnungsbeispiele und verwandte Nummern, nur ergänzend.
+[PRAXISSTIL]: Feste Regeln dieser Praxis aus ihren eigenen Plänen. Passt die Frage dazu, nenne genau diese Positionen als den Weg dieser Praxis und sag, in wie vielen Plänen sie belegt sind. Erfinde keine weitere Praxisregel. Keine Beträge.
 - Fragt er nach dem Kommentar (der Bestimmung) einer Nummer: nenne den Leistungstext und ihre eigene Bestimmung. Hat sie
   keine, sag das ("Zur GOZ 9040 selbst gibt es keine eigene Abrechnungsbestimmung.") und nenne dann die Regeln aus
   Bestimmungen anderer Nummern, die sie ausdrücklich betreffen.

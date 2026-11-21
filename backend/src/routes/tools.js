@@ -215,6 +215,7 @@ function caseSpoken(c) {
 // obwohl Vorgang UND Patient existieren (systemischer Fehler 2026-06-10).
 function cleanSpokenPersonName(raw) {
   return String(raw || "")
+    .replace(/^\s*(?:f(?:ü|ue)r|von|bei)\s+/i, "")
     .replace(/\b(herrn?|frau|fr(?:ä|ae)ulein|hr|fr|dr|prof|doktor|patient(?:in)?)\.?\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -5453,9 +5454,10 @@ router.post("/tools/search-patient", async (req, res) => {
         return res.json({ ok: false, message: `Patientensuche fehlgeschlagen: ${result.error}` });
       }
       patients = result.patients || [];
-      // Niemand in der Kartei passt zum ganzen Namen (z. B. nur Vorname): MAS-Praxis mit PlanR-Bridge fragt das PVS
-      // (fuer Plaene und Befunde reicht das)
-      if (result.quelle !== "pvs" && !patients.some((p) => passtGanz(name, p))) {
+      // Die Praxissoftware hat 12 s Timeout. Liegt schon jemand in der Kartei,
+      // ist das die Antwort (Anruf 11.11.2026, Heiko Räuber: 12 s gewartet,
+      // Ergebnis war trotzdem der Kartei-Treffer). Das PVS fragt der Befund.
+      if (result.quelle !== "pvs" && !patients.length) {
         const pvs = await sucheFuerPlan(clientId, name);
         const ganz = (pvs?.patients || []).filter((p) => passtGanz(name, p));
         if (ganz.length) {

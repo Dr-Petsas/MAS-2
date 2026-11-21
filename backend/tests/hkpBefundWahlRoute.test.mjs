@@ -588,7 +588,7 @@ test("Freies Gespraech: der Satz des Modells steht vor der offenen Entscheidung"
   assert.match(q.message, /^Totalprothese im Oberkiefer\./, q.message);
 });
 
-test("Modell spricht: eigene Worte, die Fakten der Engine bleiben, ohne Modell gilt die Engine", async () => {
+test("Modell-Mund: die Prüfung bleibt streng; die Route spricht den Engine-Satz selbst (seit 11.11.2026)", async () => {
   const { _setMund, mundPruefen } = await import("../src/hkp/antwortVerstehen.js");
   const fakten = "Ich nehme den aktuellen Befund aus DS-Win. Im Oberkiefer stehen noch 16, 14, 13, 23, 24 und 26. Sollen die alle entfernt werden, oder bleiben welche stehen?";
   const gut = "Gut, dann arbeite ich mit dem DS-Win-Befund. Oben stehen noch 16, 14, 13, 23, 24 und 26 – kommen die raus, oder bleiben welche?";
@@ -600,22 +600,18 @@ test("Modell spricht: eigene Worte, die Fakten der Engine bleiben, ohne Modell g
 
   const s = { sitzung: "mund-1" };
   const start = "Ich möchte einen HKP erstellen";
-  let gesehen = "";
-  _setMund(async (messages) => {
-    gesehen = messages.at(-1).content;
-    const f = /ERGEBNIS der Software: «([^»]*)»/.exec(gesehen)?.[1] || "";
-    return { ok: true, text: `Alles klar. ${f}` };
-  });
+  // Die Umformulierung hielt jede Antwort fest und zog sie in die Länge (live 11.11.2026). mundVorschalten ist
+  // seitdem leer: der Engine-Satz geht sofort raus, das Modell wird nach dem Wortlaut gar nicht gefragt.
+  let gefragt = 0;
+  _setMund(async () => { gefragt += 1; return { ok: true, text: "Alles klar, ich lege los." }; });
   try {
     const q = await rufe({ auftrag: start, ...s });
-    assert.equal(q.stimme, "modell", q.message);
-    assert.match(q.message, /^Alles klar\. /);
-    assert.equal(`Alles klar. ${q.fakten}`, q.message);
-    assert.match(gesehen, /Satz des Zahnarztes: «Ich möchte einen HKP erstellen»/);
-    _setMund(async () => ({ ok: true, text: "Passt, ich lege los." }));
+    assert.notEqual(q.stimme, "modell", q.message);
+    assert.ok(q.message.endsWith("steht auf dem Handy. Stimmt er so?"), q.message);
     const r = await rufe({ auftrag: start, chef_satz: "Mach oben eine Totalprothese.", ...s });
-    assert.equal(r.stimme, "daten", "Modell hat die offene Frage verloren -> Engine spricht");
-    assert.match(r.message, /^Totalprothese im Oberkiefer\./);
+    assert.notEqual(r.stimme, "modell", r.message);
+    assert.ok(r.message.startsWith("Totalprothese im Oberkiefer."), r.message);
+    assert.equal(gefragt, 0, "die Route fragt das Modell nicht nach dem Wortlaut");
   } finally {
     _setMund(null);
   }

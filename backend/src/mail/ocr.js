@@ -91,7 +91,7 @@ function cleanReply(text) {
 
 // Ollama-nativ: /api/chat mit images[] + keep_alive (on-demand laden, danach
 // per keep_alive automatisch entladen -> VRAM frei für das residente qwen3.6).
-async function visionOcrOllama(c, buffer, timeoutMs) {
+async function visionOcrOllama(c, buffer, timeoutMs, prompt = OCR_PROMPT, weitere = []) {
   const root = c.base.endsWith("/v1") ? c.base.slice(0, -3) : c.base;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -103,8 +103,8 @@ async function visionOcrOllama(c, buffer, timeoutMs) {
         model: c.model,
         stream: false,
         keep_alive: c.keepAlive,
-        options: { temperature: 0, num_predict: 4000 },
-        messages: [{ role: "user", content: OCR_PROMPT, images: [buffer.toString("base64")] }],
+        options: { temperature: 0, num_predict: prompt === OCR_PROMPT ? 4000 : 3500 },
+        messages: [{ role: "user", content: prompt, images: [buffer, ...weitere].map((b) => b.toString("base64")) }],
       }),
       signal: ctrl.signal,
     });
@@ -121,8 +121,12 @@ async function visionOcrOllama(c, buffer, timeoutMs) {
 }
 
 // OpenAI-kompatibel (vLLM u. a.): /v1/chat/completions mit image_url data-URL.
-async function visionOcrOpenai(c, buffer, contentType, timeoutMs) {
-  const dataUrl = `data:${contentType || "image/png"};base64,${buffer.toString("base64")}`;
+async function visionOcrOpenai(c, buffer, contentType, timeoutMs, prompt = OCR_PROMPT, weitere = []) {
+  const typ = contentType || "image/png";
+  const bilder = [buffer, ...weitere].map((b) => ({
+    type: "image_url",
+    image_url: { url: `data:${typ};base64,${b.toString("base64")}` },
+  }));
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -132,15 +136,12 @@ async function visionOcrOpenai(c, buffer, contentType, timeoutMs) {
       body: JSON.stringify({
         model: c.model,
         temperature: 0,
-        max_tokens: 4000,
+        max_tokens: prompt === OCR_PROMPT ? 4000 : 3500,
         stream: false,
         messages: [
           {
             role: "user",
-            content: [
-              { type: "text", text: OCR_PROMPT },
-              { type: "image_url", image_url: { url: dataUrl } },
-            ],
+            content: [{ type: "text", text: prompt }, ...bilder],
           },
         ],
       }),
@@ -169,6 +170,25 @@ async function visionOcr(buffer, contentType = "image/png", timeoutMs = 90000) {
   const r = c.kind === "ollama"
     ? await visionOcrOllama(c, buffer, timeoutMs)
     : await visionOcrOpenai(c, buffer, contentType, timeoutMs);
+  if (!r.ok && (r.note === "unreachable" || r.note === "timeout")) vlStummBis = Date.now() + VL_STUMM_MS;
+  return r;
+}
+
+/** Ein Aufruf: Bilder plus Auftrag. Die Textschicht steht im Auftrag. Antwort ist der Modelltext, oft JSON. */
+export async function visionAntwort(bilder, contentType, prompt, timeoutMs = 120000) {
+  const liste = (Array.isArray(bilder) ? bilder : [bilder]).filter((b) => b && b.length);
+  if (!liste.length) return { ok: false, text: "", engine: "vision", note: "leer" };
+  const c = visionCfg();
+  if (!c) return { ok: false, text: "", engine: "vision", note: "kein Vision-Endpoint konfiguriert" };
+  if (Date.now() < vlStummBis) return { ok: false, text: "", engine: "vision", note: "zuletzt nicht erreichbar" };
+  if (!(await ensureVlAwake(c))) {
+    vlStummBis = Date.now() + VL_STUMM_MS;
+    return { ok: false, text: "", engine: "vision", note: "nicht bereit" };
+  }
+  const [erstes, ...weitere] = liste;
+  const r = c.kind === "ollama"
+    ? await visionOcrOllama(c, erstes, timeoutMs, prompt, weitere)
+    : await visionOcrOpenai(c, erstes, contentType, timeoutMs, prompt, weitere);
   if (!r.ok && (r.note === "unreachable" || r.note === "timeout")) vlStummBis = Date.now() + VL_STUMM_MS;
   return r;
 }

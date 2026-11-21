@@ -125,18 +125,51 @@ async function planrBefund(clientId, patient, { body = null, ms, pfad = "/api/in
 const obj = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
 
 /**
+ * Freitext in die Karteikarte des Patienten im eingestellten Praxisprogramm (Memo aus Gespraech oder Chat).
+ * -> { ok:true, pvs, patient } | { ok:false, pvs, meldung } | null (kein Praxisprogramm angebunden)
+ */
+export async function karteiNotiz(clientId, patient, text, wer = "") {
+  if (process.env.MAS_KARTEI_NOTIZ === "0" || !planrSchluessel()) return null;
+  const url = `${planrBasis()}/api/intern/pvs/doku?${new URLSearchParams({ clientId })}`;
+  try {
+    const r = await holen(url, {
+      method: "POST",
+      headers: { "X-PlanR-Key": planrSchluessel(), "Content-Type": "application/json" },
+      body: JSON.stringify({ ...pvsKennung(patient), text, wer }),
+      signal: AbortSignal.timeout(70_000),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d?.ok) return { ok: true, pvs: String(d.pvs || "dem Praxisprogramm"), patient: String(d.patient || "") };
+    return d?.pvs || d?.meldung ? { ok: false, pvs: String(d.pvs || ""), meldung: String(d.meldung || `HTTP ${r.status}`) } : null;
+  } catch {
+    return { ok: false, pvs: "", meldung: "PlanR antwortet gerade nicht." };
+  }
+}
+
+/**
  * Aktueller Befund im Praxisprogramm: { ok:true, pvs, datum, befund, nummer, offen, offenWer, stand, geschrieben } | { ok:false, pvs, meldung } | null.
  * offen: im Gespraech (oder in PlanR) geaenderte Zaehne, die noch nicht im Praxisprogramm stehen – PlanR merkt sie
  * sich je Patient und zeigt sie live; offenWer: wer sie zuletzt geaendert hat.
  */
+const befundFrisch = new Map();
+const BEFUND_FRISCH_MS = 90_000;
+const befundSchluessel = (clientId, patient) => `${clientId}|${JSON.stringify(pvsKennung(patient))}`;
+function befundCacheWeg(clientId) {
+  for (const key of befundFrisch.keys()) if (key.startsWith(`${clientId}|`)) befundFrisch.delete(key);
+}
+
 export async function pvsBefund(clientId, patient) {
-  const d = await planrBefund(clientId, patient, { ms: 35000 });
-  if (!d?.ok) return d;
-  return {
+  const key = befundSchluessel(clientId, patient);
+  const alt = befundFrisch.get(key);
+  if (alt && Date.now() - alt.at < BEFUND_FRISCH_MS) return alt.wert;
+  const d = await planrBefund(clientId, patient, { ms: 4000 });
+  const wert = !d?.ok ? d : {
     ok: true, pvs: String(d.pvs || "dem Praxisprogramm"), datum: String(d.datum || ""),
     befund: obj(d.zaehne), nummer: String(d.patient || ""), offen: obj(d.offen), offenWer: String(d.offenWer || ""),
     stand: String(d.stand || ""), geschrieben: String(d.geschrieben || ""),
   };
+  befundFrisch.set(key, { at: Date.now(), wert });
+  return wert;
 }
 
 /** So steht der Befund-Vorschlag eines HKP-Gespraechs in PlanR (wer): vorgeschlagen, nie freigegeben */
@@ -145,6 +178,7 @@ export const hkpVorschlag = (wer) => String(wer || "").endsWith(HKP_VORSCHLAG);
 
 /** Einzelne Zaehne im aktuellen Befund aendern (noch nicht im Praxisprogramm): { ok, befund } | { ok:false, meldung } */
 export async function befundAendernPvs(clientId, nummer, zaehne, wer) {
+  befundCacheWeg(clientId);
   const d = await planrBefund(clientId, null, { body: { patient: nummer, zaehne, wer }, ms: 45000, pfad: "/api/intern/befund/aenderung" });
   if (!d) return { ok: false, meldung: "Für diese Praxis ist kein Praxisprogramm angebunden." };
   return d.ok ? { ok: true, befund: obj(d.befund) } : { ok: false, meldung: d.meldung };
@@ -152,6 +186,7 @@ export async function befundAendernPvs(clientId, nummer, zaehne, wer) {
 
 /** Offene Aenderungen verwerfen – es gilt wieder der Befund im Praxisprogramm */
 export async function befundVerwerfenPvs(clientId, nummer) {
+  befundCacheWeg(clientId);
   const d = await planrBefund(clientId, null, { body: { patient: nummer }, ms: 15000, pfad: "/api/intern/befund/verwerfen" });
   return d?.ok ? { ok: true } : { ok: false, meldung: d?.meldung || "PlanR antwortet gerade nicht." };
 }
@@ -182,6 +217,7 @@ export function planZeilen(plan) {
 
 /** Freigegebenen Befund ins Praxisprogramm (nur die Zaehne der genannten Kiefer): { ok, pvs, geschrieben } | { ok:false, pvs, meldung } */
 export async function befundInsPvs(clientId, patient, { kiefer, zaehne, nummer = "" }) {
+  befundCacheWeg(clientId);
   const kennung = /^\d{1,9}$/.test(String(nummer)) ? { patient: String(nummer) } : pvsKennung(patient);
   const d = await planrBefund(clientId, patient, { body: { ...kennung, kiefer, zaehne }, ms: 90000 });
   if (!d) return { ok: false, pvs: "", meldung: "Für diese Praxis ist kein Praxisprogramm angebunden." };
@@ -402,7 +438,7 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
   if (process.env.MAS_HKP_BEFUND_WERKZEUG === "0") return { ok: true, message: "Den Befund kann ich gerade nur im Heil- und Kostenplan aufnehmen." };
   const p = await pvs(clientId, patient).catch(() => null);
   if (!p) return { ok: true, message: "Für diese Praxis ist kein Praxisprogramm angebunden – den Befund nehme ich deshalb nur im Heil- und Kostenplan auf." };
-  if (!p.ok) return { ok: true, message: `Den Befund aus ${p.pvs || "dem Praxisprogramm"} kann ich gerade nicht lesen: ${p.meldung}` };
+  if (!p.ok) return { ok: true, stimme: "daten", message: `Befund aus ${p.pvs || "dem Praxisprogramm"} gerade nicht da.` };
   const wen = patient.anredeLabel || patient.label;
   if (verwerfen) {
     if (!hat(p.offen)) return { ok: true, message: `Für ${wen} gibt es keine offenen Änderungen, es gilt der Befund aus ${p.pvs}.` };
@@ -411,6 +447,17 @@ export async function befundWerkzeug(clientId, patient, { aenderung = "", uebern
   }
 
   if (aenderung) {
+    // Live 10.11.2026, Maria Tarla: der Implantatauftrag ("gesetzt werden … Sinuslift …
+    // aus der Regio entferne") wurde als Befund gelesen und die Lücken als nicht
+    // erhaltungswürdig markiert. Danach kam die Planung nie über die Zeitpunkt-Frage.
+    const planSatz = /implantat\w*\s+(?:setz|plan)|sinuslift|knochenaufbau|(?:plan|möchte|moechte)[\s\S]{0,80}implantat|implantat[\s\S]{0,80}(?:plan|setz)/i.test(aenderung);
+    const befundSatz = /nicht erhaltungsw|fehl\w*|(?:ü|ue)berkront|ist (?:ein |eine )?implantat|vorhanden|karies|zerst(?:ö|oe)rt|extrahier/i.test(aenderung);
+    if (planSatz && !befundSatz) {
+      return {
+        ok: true, rueckfrage: "versorgung",
+        message: "Das ist der Implantatplan, kein neuer Befund. Der Befund bleibt, wie er ist. Soll ich den Kostenvoranschlag Implantologie jetzt rechnen?",
+      };
+    }
     const zaehne = befundVerstehen(aenderung);
     if (!hat(zaehne)) {
       return { ok: true, rueckfrage: "befund_aenderung", message: "Welche Zähne soll ich im Befund ändern? Zum Beispiel: 26 fehlt, 16 ist überkront, 36 ist nicht erhaltungswürdig." };

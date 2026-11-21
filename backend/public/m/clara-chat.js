@@ -70,8 +70,9 @@ export function renderOverviewCard(card, { when = "", onRemoveKandidat = null } 
       : "";
     const href = safeCardHref(it?.href);
     const label = escapeHtml(it?.text || "");
+    const extern = /^https?:/i.test(href);
     const inner = href
-      ? `<a class="card-link" href="${escapeHtml(href)}"><i>${CARD_ICONS[iconKey]}</i><span>${label}</span></a>`
+      ? `<a class="card-link" href="${escapeHtml(href)}"${extern ? ' target="_blank" rel="noopener noreferrer"' : ""}><i>${CARD_ICONS[iconKey]}</i><span>${label}</span></a>`
       : `<i>${CARD_ICONS[iconKey]}</i><span>${label}</span>`;
     return `<li class="is-${level}">${inner}${tonne}</li>`;
   }).join("");
@@ -408,10 +409,17 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-/** Nur Anruf und Mail — kein javascript: und keine http-Umwege. */
+/** Anruf, Mail und http(s)-Quellen. javascript: und Zugangsdaten bleiben draußen. */
 function safeCardHref(h) {
   const s = String(h || "").trim();
   if (/^tel:[+\d]+$/.test(s)) return s;
   if (/^mailto:[^\s<>"]+$/i.test(s)) return s;
-  return "";
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return "";
+    if (u.username || u.password) return "";
+    return u.href;
+  } catch {
+    return "";
+  }
 }

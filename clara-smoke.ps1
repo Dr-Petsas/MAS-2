@@ -20,7 +20,7 @@ function Add-Check([string]$Name, [bool]$Ok, [string]$Detail, [string]$FixHint =
 }
 
 # --- .env lesen (Modell + LLM-URL) -----------------------------------------
-$envPath = 'F:\Clara-Voice\.env'
+$envPath = 'F:\Clara-Voice-dev\.env'
 $llmModel = 'qwen3:4b-instruct'
 $llmBase  = 'http://127.0.0.1:11434/v1'
 if (Test-Path $envPath) {
@@ -136,7 +136,7 @@ $wproc = @(Get-CimInstance Win32_Process -Filter "name='python.exe'" -ErrorActio
 $workerRunning = $wproc.Count -ge 1
 $logCandidates = @()
 $logCandidates += Get-ChildItem 'F:\MAS-2\logs\clara_*.err.log' -ErrorAction SilentlyContinue
-$logCandidates += Get-ChildItem 'F:\Clara-Voice\_worker*.err.log' -ErrorAction SilentlyContinue
+$logCandidates += Get-ChildItem 'F:\Clara-Voice-dev\_worker*.err.log' -ErrorAction SilentlyContinue
 $newest = $logCandidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 $registered = $false
 $workerDetail = "" + $wproc.Count + " Prozess(e)"

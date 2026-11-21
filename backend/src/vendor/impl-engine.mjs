@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\Implantologie\Privat-Impl (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\Implantologie\Privat-Impl && npm run build:engine   (sha256 89dd3af58cb5)
+// Neu bauen: cd F:\PlanR\Implantologie\Privat-Impl && npm run build:engine   (sha256 88f679955728)
 //#region src/befund01.ts
 var OBERKIEFER$1 = [
 	"18",
@@ -5694,7 +5694,7 @@ function neuerPlan(nummer) {
 * rechnet mit der Engine dieses Planers. `npm run build:engine` baut daraus MAS-2/backend/src/vendor/impl-engine.mjs.
 * Die Versorgung auf den Implantaten (Krone, Brücke, Prothese) plant der Planer Zahnersatz privat.
 */
-var ENGINE_STAND = "2026-11-09 20:09";
+var ENGINE_STAND = "2026-11-10 13:08";
 var GUELTIG = new Set(ALLE_ZAEHNE);
 /** 01: dort steht schon ein Implantat */
 var STEHT_IMPLANTAT = /* @__PURE__ */ new Set([
@@ -5785,14 +5785,14 @@ function implAuftragVerstehen(roh) {
 	if (/knochenring/.test(k)) o.ringEntnahme = true;
 	if (/kollektor|safe ?scraper|knochenfilter|knochenschaber/.test(k)) o.kollektor = true;
 	if (/pins?\b|osteosynthese|fixier/.test(k) && (o.augmentation || o.blockEntnahme || o.ringEntnahme)) o.fixierung = true;
-	if (/eigen(?:e[mnrs]?)? knochen|autolog/.test(k)) o.material = "autolog";
+	if (/eigenknochen|eigen(?:e[mnrs]?)? knochen|autolog/.test(k)) o.material = "autolog";
 	else if (/allogen|spender|maxgraft/.test(k)) o.material = "allogen";
 	else if (/xenogen|bio-? ?oss|rind|bovin|cerabone/.test(k)) o.material = "xenogen";
 	else if (/synthetisch|alloplast|\btcp\b|hydroxyl/.test(k)) o.material = "synthetisch";
 	const jeExtern = !!sinusJe && Object.values(sinusJe).some((x) => x?.sinusExtern);
 	const jeIntern = !!sinusJe && Object.values(sinusJe).some((x) => x?.sinusIntern);
-	const materialAngenommen = !!(o.augmentation || o.sinusIntern || o.sinusExtern || jeExtern || jeIntern || sinusOffen || o.boneSplitting) && !o.material && !o.blockEntnahme && !o.ringEntnahme;
-	if (materialAngenommen && !sinusJe) o.material = "xenogen";
+	o.augmentation || o.sinusIntern || o.sinusExtern || jeExtern || jeIntern || sinusOffen || o.boneSplitting;
+	const materialAngenommen = false;
 	if (/ohne membran|keine membran/.test(k)) o.membran = "keine";
 	else if (/titan/.test(k)) o.membran = "titan";
 	else if (/nicht[\s-]?resorb|ptfe/.test(k)) o.membran = "nicht-resorbierbar";
@@ -5836,8 +5836,17 @@ function implAuftragVerstehen(roh) {
 		global: g,
 		deckung,
 		system,
-		prothetik: /krone|br(?:ü|ue)cke|prothese|teleskop|\bsteg\b|suprakonstruktion/.test(k)
+		prothetik: /krone|br(?:ü|ue)cke|prothese|teleskop|\bsteg\b|suprakonstruktion/.test(k),
+		entnahme: entnahmeVon(k)
 	};
+}
+/** „aus der Regio 15“, „regio 1,5“, retromolar, Kinn, Tuber – nicht die Implantatstelle selbst. */
+function entnahmeVon(k) {
+	const regio = /regio\s*([1-4])\s*[,.]?\s*([1-8])/.exec(k);
+	if (regio) return regio[1] + regio[2];
+	const aus = /(?:aus|von)\s+(?:der |dem |die )?(?:regio |region |zahn )?([1-4]\s*[1-8])/.exec(k);
+	if (aus) return aus[1].replace(/\s/g, "");
+	return /(retromolar\w*|kieferwinkel|\bkinn\b|tuber\w*)/.exec(k)?.[1] ?? "";
 }
 var liste = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} und ${xs.at(-1)}`;
 var sortiert = (zs) => [...zs].sort((a, b) => ALLE_ZAEHNE.indexOf(a) - ALLE_ZAEHNE.indexOf(b));
@@ -5929,6 +5938,16 @@ function implEntwurf(auftragText, befund = {}, optionen = {}) {
 		grund: "sinus",
 		frage: "Interner oder externer Sinuslift?"
 	};
+	if (!!(a.regionen.augmentation || a.regionen.sinusIntern || a.regionen.sinusExtern || a.regionen.boneSplitting || a.sinusJe && Object.values(a.sinusJe).some((x) => x?.sinusIntern || x?.sinusExtern || x?.augmentation)) && !a.regionen.material && !a.regionen.blockEntnahme && !a.regionen.ringEntnahme) return {
+		status: "rueckfrage",
+		grund: "material",
+		frage: "Knochenersatzmaterial oder Eigenknochen?"
+	};
+	if (a.regionen.material === "autolog" && !a.entnahme && !a.regionen.blockEntnahme && !a.regionen.ringEntnahme) return {
+		status: "rueckfrage",
+		grund: "entnahme",
+		frage: "Aus welcher Region soll ich den Eigenknochen entnehmen?"
+	};
 	const einst = {
 		...STANDARD_EINSTELLUNGEN,
 		...optionen.einstellungen,
@@ -5941,11 +5960,16 @@ function implEntwurf(auftragText, befund = {}, optionen = {}) {
 	const system = a.system !== "durchschnitt" ? a.system : implantatkoerper(optionen.implantatSystem ?? "").id;
 	const { sinusIntern, sinusExtern, ...rest } = a.regionen;
 	const planRegionen = {};
+	let entnahmeAn = false;
 	for (const r of regionen) {
 		const ro = { ...rest };
 		if (a.sinusJe && IST_OK_SEITE(r)) Object.assign(ro, a.sinusJe[r] ?? {});
 		else if (IST_OK_SEITE(r)) Object.assign(ro, sinusIntern ? { sinusIntern } : {}, sinusExtern ? { sinusExtern } : {});
 		if ((ro.sinusIntern || ro.sinusExtern) && a.kammZumSinus && !ro.boneSplitting) ro.augmentation = true;
+		if (!entnahmeAn && a.entnahme && a.regionen.material === "autolog" && (ro.sinusIntern || ro.sinusExtern || ro.augmentation || ro.boneSplitting)) {
+			ro.blockEntnahme = true;
+			entnahmeAn = true;
+		}
 		if (a.sinusJe) {
 			if ((ro.sinusIntern || ro.sinusExtern || ro.augmentation) && a.materialAngenommen && !ro.material) ro.material = "xenogen";
 			if ((ro.augmentation || ro.sinusExtern) && a.membranAngenommen && !ro.membran) ro.membran = "resorbierbar";
@@ -5997,6 +6021,10 @@ function implEntwurf(auftragText, befund = {}, optionen = {}) {
 	if (plan.global.bildgebung === "dvt" && !a.global.bildgebung) hinweise.push("Ein DVT zur Planung ist enthalten.");
 	if (plan.global.sedierung === "itn") hinweise.push("Die Vollnarkose rechnet der Anästhesist gesondert ab.");
 	if (a.prothetik) hinweise.push("Die Versorgung auf den Implantaten plant der Planer Zahnersatz privat.");
+	if (new Set(rechnung.honorarGoz.map((z) => z.nr)).has("9140")) {
+		const ort = /^\d\d$/.test(a.entnahme) ? `Region ${a.entnahme}` : a.entnahme;
+		hinweise.unshift(`Anästhesie und die Entnahme des Eigenknochens${ort ? ` aus ${ort}` : ""} nach GOZ 9140 sind im Plan.`);
+	}
 	const { regler: _, ...ablagePlan } = plan;
 	return {
 		status: "ok",

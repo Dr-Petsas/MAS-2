@@ -83,7 +83,7 @@ test.after(() => {
 
 test("Praxisprogramm nicht lesbar: ehrliche Ansage, leeres Zahnschema auf dem Handy, Eintrag in PlanR", async () => {
   const r = await rufe({ name: "Bert Ohnebridge" });
-  assert.match(r.message, /^Den Befund aus DS-Win kann ich gerade nicht lesen: Die PlanR-Bridge in der Praxis braucht ein Update\. Das Zahnschema zeige ich Ihnen trotzdem/);
+  assert.match(r.message, /^Befund aus DS-Win gerade nicht da\. Schema ist auf dem Handy\./);
   assert.equal(new URL(r.card?.url || "http://x").searchParams.get("befund"), "815");
   await new Promise((ok) => setTimeout(ok, 80));
   assert.equal(vorgaenge.at(-1).label, "Ohnebridge, Bert");
@@ -99,7 +99,7 @@ test("aufs Handy, aendern, erst nach der Freigabe nach Dampsoft – nur der geae
   assert.equal(new URL(lesen.card.url).searchParams.get("befund"), "4711");
   assert.equal(lesen.nummer, undefined);
   await new Promise((r) => setTimeout(r, 80));
-  assert.deepEqual(vorgaenge.at(-1), { patient: "4711", phase: "befund" });
+  assert.deepEqual(vorgaenge.at(-1), { patient: "4711", phase: "befund", neu: "1" });
 
   const aendern = await rufe({ aenderung: "36 fehlt" });
   assert.equal(aendern.rueckfrage, "befund_anzeige", aendern.message);

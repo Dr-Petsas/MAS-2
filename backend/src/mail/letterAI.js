@@ -1,4 +1,5 @@
 import { chat, chatStream, llmInfo, strongLlm } from "./llm.js";
+import { weltAntwortText } from "./weltZeile.js";
 import { getCaseContext, listCases } from "../brain/caseStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
 import { getMessage, listMessagesForCase } from "./store.js";
@@ -607,6 +608,8 @@ async function prepareDiscussCompose(clientId, { messages, documents, activeDocu
 }
 
 export async function discussCompose(clientId, { messages, documents, activeDocument, recipient, subjectHint } = {}) {
+  const welt = await weltAntwortText({ messages, documents, activeDocument });
+  if (welt) return { ok: true, text: welt, model: "weltkatalog" };
   const prep = await prepareDiscussCompose(clientId, { messages, documents, activeDocument, recipient, subjectHint });
   if (!prep.ok) return { ok: false, reason: prep.reason, text: "", model: "" };
 
@@ -626,6 +629,13 @@ export async function discussCompose(clientId, { messages, documents, activeDocu
 
 /** Dieselben Prompts wie discussCompose, aber Token-Strom fuer den Chat. */
 export async function* discussComposeStream(clientId, args = {}, { signal } = {}) {
+  const welt = await weltAntwortText(args);
+  if (welt) {
+    yield { type: "start", model: "weltkatalog" };
+    yield { type: "delta", text: welt };
+    yield { type: "done", text: welt, model: "weltkatalog" };
+    return;
+  }
   const prep = await prepareDiscussCompose(clientId, args);
   if (!prep.ok) {
     yield { type: "error", reason: prep.reason, model: "" };

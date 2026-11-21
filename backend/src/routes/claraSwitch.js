@@ -24,9 +24,9 @@ import { log } from "../log.js";
 
 const router = express.Router();
 
-const SWITCH_SCRIPT = process.env.CLARA_SWITCH_SCRIPT || "F:\\Clara-Voice\\tools\\clara-switch.ps1";
-const STATE_FILE = process.env.CLARA_SWITCH_STATE || "F:\\Clara-Voice\\.run\\clara-switch.json";
-const LOG_DIR = process.env.CLARA_SWITCH_LOGS || "F:\\Clara-Voice\\.run\\switch";
+const SWITCH_SCRIPT = process.env.CLARA_SWITCH_SCRIPT || "F:\\Clara-Voice-dev\\tools\\clara-switch.ps1";
+const STATE_FILE = process.env.CLARA_SWITCH_STATE || "F:\\Clara-Voice-dev\\.run\\clara-switch.json";
+const LOG_DIR = process.env.CLARA_SWITCH_LOGS || "F:\\Clara-Voice-dev\\.run\\switch";
 const PORTS = { live: 8091, v6: 8092, dev: 8093 };
 const MODI = ["live", "dev", "v6"];
 // Kaltstart mit Modell-Prewarm dauert bis ~2 min; danach gilt ein haengender

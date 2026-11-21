@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { praxisRegistrieren, RegistrierungFehler } from "../src/hkp/planrRegistrierung.js";
+import { praxisRegistrieren, RegistrierungFehler, testaboFreigeben } from "../src/hkp/planrRegistrierung.js";
 
 function falscheDb() {
   const daten = new Map();
@@ -46,6 +46,25 @@ test("legt Praxis, Admin-Konto und PlanR-Abo an", async () => {
   const nutzer = db.daten.get(`clients/${r.clientId}/users/${r.uid}`);
   assert.equal(nutzer.isAdmin, true);
   assert.equal(db.daten.get(`clients/${r.clientId}`).name, "Zahnarztpraxis Muster");
+});
+
+test("Testabo merkt das Ende am Abo", async () => {
+  const db = falscheDb(), auth = falscheAuth();
+  const r = await praxisRegistrieren({ ...eingabe, testaboBis: "2026-11-29T08:00:00.000Z", doku: true }, { db, auth });
+  const billing = db.daten.get(`clients/${r.clientId}/settings/billing`);
+  assert.equal(billing.subscriptions.planr.testabo, true);
+  assert.equal(billing.subscriptions.planr.testaboBis, "2026-11-29T08:00:00.000Z");
+  assert.equal(billing.subscriptions.planr.doku, true);
+});
+
+test("Testabo-Freigabe löscht das Ende am Abo", async () => {
+  const updates = [];
+  const blatt = { update: async (d) => updates.push(d) };
+  const db = { collection: () => ({ doc: () => ({ collection: () => ({ doc: () => blatt }) }) }) };
+  await testaboFreigeben("praxis-1", { mandatsreferenz: "PLANR-1" }, { db });
+  assert.equal(updates[0]["subscriptions.planr.testabo"], false);
+  assert.equal(updates[0]["subscriptions.planr.mandatsreferenz"], "PLANR-1");
+  assert.ok(updates[0]["subscriptions.planr.testaboBis"]);
 });
 
 test("vorhandenes Konto wird nicht angefasst", async () => {

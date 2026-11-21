@@ -15,7 +15,7 @@ verloren gehen**.
 1. **Vor jedem Backend-Neustart pruefen:** `npm test` in `backend/` (falls
    vorhanden) bzw. mindestens `node --check` auf alle geaenderten Dateien.
    Danach den Clara-Stack-Gate mitlaufen lassen:
-   `powershell -File F:\Clara-Voice\tools\release_gate.ps1` (Clara spricht mit
+   `powershell -File F:\Clara-Voice-dev\tools\release_gate.ps1` (Clara spricht mit
    diesem Backend — ein kaputter Endpoint faellt dort sofort auf).
 2. **Git ist Pflicht.** Jede fertige Aenderung sofort committen (deutsche
    Commit-Message: was + warum). Gruene Staende taggen: `git tag stabil-JJJJ-MM-TT`.

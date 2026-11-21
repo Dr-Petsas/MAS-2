@@ -6092,7 +6092,7 @@ function prothetikIn(text) {
 		aus.anker = "teleskop";
 		aus.sekundaer = sekundaer;
 	} else if (/br(?:ü|ue)cke/.test(t)) aus.versorgung = "bruecke";
-	else if (/totalprothese|vollprothese|\btotale\b/.test(t)) aus.versorgung = "totalprothese";
+	else if (/totalprothese|vollprothese|\btotale\b|interims?\s*prothese|interims?\s*p[oa]these/.test(t)) aus.versorgung = "totalprothese";
 	else if (/prothese/.test(t) && /implantat/.test(t)) {
 		aus.versorgung = "locator";
 		aus.anker = "locator";
@@ -6516,13 +6516,24 @@ function einzelAuftrag(text, kiefer) {
 			if (pfeilerDavor && !(befund && (zahnDort < 0 || befund.index > zahnDort))) auftrag.pfeiler.push(...zs.filter((z) => !auftrag.pfeiler.includes(z)));
 			return;
 		}
+		const fortsetzen = listeDavor;
 		pfeilerDavor = false;
 		listeDavor = void 0;
 		const art = listenArt(teil);
+		let aufgezaehlt = false;
 		if (art) {
 			auftrag[art].push(...zs);
 			if (verbVorn(teil, art)) listeDavor = art;
-		} else if (/teleskop|konus|doppelkrone|pfeiler|krone|anker|locator|locater|druckknopf|kugel(?:kopf|anker)|novaloc|equator|steg|inlay|onlay|tabletop|teilkrone|veneer|galvano|suprakonstruktion|abutment|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil) || (auftrag.versorgung === "implantatkronen" || auftrag.versorgung === "kronen" || auftrag.versorgung === "inlay") && /implantat|\b(?:am|an|bei|f(?:ü|ue)r) (?:zahn )?[1-4][1-8]\b|\bzahn [1-4][1-8]\b|\bregion?\b/.test(teil)) {
+		} else if (fortsetzen) {
+			const schnitt = teil.search(/\b(?:interims?\s*p[oa]these|interims?\s*prothese|totalprothese|vollprothese|prothese)\b/i);
+			const kopf = schnitt > 0 ? teil.slice(0, schnitt) : "";
+			const weiter = kopf ? zaehneIn(kopf, auftrag.kiefer) : [];
+			if (weiter.length) {
+				auftrag[fortsetzen].push(...weiter.filter((z) => !auftrag[fortsetzen].includes(z)));
+				aufgezaehlt = true;
+			}
+		}
+		if (!art && !aufgezaehlt && (/teleskop|konus|doppelkrone|pfeiler|krone|anker|locator|locater|druckknopf|kugel(?:kopf|anker)|novaloc|equator|steg|inlay|onlay|tabletop|teilkrone|veneer|galvano|suprakonstruktion|abutment|auf (den|dem|die)\b|\bauf [1-4][1-8]\b/.test(teil) || (auftrag.versorgung === "implantatkronen" || auftrag.versorgung === "kronen" || auftrag.versorgung === "inlay") && /implantat|\b(?:am|an|bei|f(?:ü|ue)r) (?:zahn )?[1-4][1-8]\b|\bzahn [1-4][1-8]\b|\bregion?\b/.test(teil))) {
 			const vorBefund = teil.split(BEFUND_BEGINN)[0].split(ZAEHNE_NACHGESTELLT)[0];
 			const pf = vorBefund === teil ? zs : zaehneIn(vorBefund, auftrag.kiefer);
 			auftrag.pfeiler.push(...pf.filter((z) => !auftrag.pfeiler.includes(z)));

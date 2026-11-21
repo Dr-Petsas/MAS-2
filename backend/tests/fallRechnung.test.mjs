@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { regioZaehne, fallRechnen } from "../src/hkp/coach.js";
 
-const SATZ = "Implantatversorgung OK mit 6 Implantaten regio 2, 4, 6 auf beiden Quadranten mit externem Sinuslift rechts und internem Sinuslift beim 4er und 6er links inklusive der späteren All-on-6-Prothetik";
+const SATZ = "Implantatversorgung OK mit 6 Implantaten regio 2, 4, 6 auf beiden Quadranten mit externem Sinuslift rechts und internem Sinuslift beim 4er und 6er links inklusive der späteren All-on-6-Prothetik, xenogenes Knochenersatzmaterial";
 
 test("regio 2, 4, 6 auf beiden Quadranten im Oberkiefer", () => {
   assert.deepEqual(regioZaehne(SATZ), ["12", "14", "16", "22", "24", "26"]);
@@ -58,7 +58,7 @@ test("Musterrechnung Mehrkosten zeigt GOZ und die BEMA-Leistung der Kasse", () =
 });
 
 test("Annahme des Modells steht vorne, nur bei einer Musterrechnung und ohne Beträge", () => {
-  const body = { versorgung: "Implantat an 16 mit externem Sinuslift", planart: "impl", annahme: "Als Beispiel nehme ich Zahn 16" };
+  const body = { versorgung: "Implantat an 16 mit externem Sinuslift, xenogenes Knochenersatzmaterial", planart: "impl", annahme: "Als Beispiel nehme ich Zahn 16" };
   const m = fallRechnen(body, { muster: true, befund: {} });
   assert.equal(m.status, "ok", m.frage || "");
   assert.ok(m.message.startsWith("Als Beispiel nehme ich Zahn 16."));
@@ -219,15 +219,28 @@ test("Keine Begleitzeilen bei Implantaten, auf Implantatpfeilern und im Patiente
   assert.deepEqual(nrn(patient), []);
 });
 
-test("Akte setzt Versicherung und Bonus, fehlender Bonus wird gefragt", () => {
+test("Akte setzt Versicherung und Bonus; ohne Angabe gilt ohne Bonus, die Besuche setzen ihn", () => {
   const akte = fallRechnen({ versorgung: SATZ }, { muster: false, befund: {}, akte: { versicherung: "kasse", bonus: "75" } });
   assert.equal(akte.status, "ok", akte.frage || "");
   assert.equal(akte.teile.find((t) => t.planart === "kasse").r.plan.zuschuss.bonus, "75");
   assert.match(akte.message, /Akte: gesetzlich/);
   assert.match(akte.message, /75 Prozent/);
-  const ohne = fallRechnen({ versorgung: "Brücke von 14 auf 16", planart: "kasse" }, { muster: false, befund: { 15: "f", 14: "ww", 16: "ww" } });
-  assert.equal(ohne.status, "rueckfrage");
-  assert.match(ohne.frage, /Bonus/);
+  // Seit 18.11.2026 fragt der Coach den Bonus nicht mehr nach: die Route liest ihn aus den Besuchen, sonst gilt ohne Bonus.
+  const bruecke = { versorgung: "Brücke von 14 auf 16", planart: "kasse" };
+  const ctx = { muster: false, befund: { 15: "f", 14: "ww", 16: "ww" } };
+  const ohne = fallRechnen(bruecke, ctx);
+  assert.equal(ohne.status, "ok", ohne.frage || "");
+  assert.equal(ohne.teile[0].r.plan.zuschuss.bonus, "60");
+  const besuche = fallRechnen({ ...bruecke, bonusAusBesuchen: "70", bonusHinweis: "70 Prozent." }, ctx);
+  assert.equal(besuche.teile[0].r.plan.zuschuss.bonus, "70");
+  assert.ok(besuche.message.startsWith("70 Prozent."), besuche.message);
+});
+
+test("Sinuslift ohne Material: die Engine fragt, sie nimmt kein Material still an (10.11.2026)", () => {
+  const x = fallRechnen({ versorgung: "Implantat an 16 mit externem Sinuslift", planart: "impl" }, { muster: true, befund: {} });
+  assert.equal(x.status, "rueckfrage");
+  assert.equal(x.frage, "Knochenersatzmaterial oder Eigenknochen?");
+  assert.equal(x.card, undefined);
 });
 
 test("Prothese ohne Kasse oder Privat bleibt eine Frage", () => {

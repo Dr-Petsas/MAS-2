@@ -16,7 +16,7 @@ import { log } from "../log.js";
 // Der Lauf selbst ist sicher (dryRun/Simulation, siehe testsuite/README.md).
 // ============================================================================
 
-const CLARA_DIR = (process.env.CLARA_VOICE_DIR || "F:\\Clara-Voice").trim();
+const CLARA_DIR = (process.env.CLARA_VOICE_DIR || "F:\\Clara-Voice-dev").trim();
 const REPORTS_DIR = path.join(CLARA_DIR, ".run", "testsuite", "reports");
 const UI_LOG_DIR = path.join(CLARA_DIR, ".run", "testsuite", "ui_runs");
 const PYTHON_BIN = (process.env.TESTSUITE_PYTHON || "python").trim();

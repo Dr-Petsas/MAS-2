@@ -104,15 +104,27 @@ test("Engine-Rueckfrage kommt als Satz zurueck, ohne Gespraechszustand", async (
 
 test("Kassen-HKP auf dem Befund vom Handy (offene Aenderung 45 ww gilt), Freigabe legt den HKP an", async () => {
   const ohne = await rufe("/tools/plan-rechnen", { planart: "kasse", versorgung: "Brücke von 45 auf 47" });
-  assert.match(ohne.message, /Bonus steht in der Akte/);
+  // Seit 18.11.2026 keine Bonus-Frage mehr: ohne Besuche im Kalender rechnet der Plan ohne Bonus und sagt das.
+  assert.equal(ohne.rueckfrage, "freigabe", ohne.message);
+  assert.ok(ohne.message.startsWith("Ohne Bonus."), ohne.message);
   const v = await rufe("/tools/plan-rechnen", { planart: "kasse", versorgung: "Brücke von 45 auf 47, ohne Bonus" });
   assert.equal(v.rueckfrage, "freigabe", v.message);
-  assert.match(v.message, /Bevor ich anlege/);
+  // Kurze Vorschau seit 18.11.2026: Plan, Patient, Preisspanne, "Anlegen?"
+  assert.ok(v.message.startsWith("Brücken-HKP für Karl Kassentest.") && v.message.endsWith("Anlegen?"), v.message);
   const fertig = await rufe("/tools/plan-ablegen", { freigabe: true });
   assert.ok(fertig.hkpId, fertig.message);
   const h = await hkpLesen(CID, fertig.hkpId);
   assert.equal(h.art, "kasse");
   assert.equal(JSON.parse(h.befundJson)["45"], "ww");
+});
+
+test("Wunsch-Eigenanteil beim Ablegen: das Feld eigenanteil stellt die Regler (Anruf 18.11.2026)", async () => {
+  const v = await rufe("/tools/plan-rechnen", { planart: "kasse", versorgung: "Brücke von 45 auf 47, ohne Bonus" });
+  assert.equal(v.rueckfrage, "freigabe", v.message);
+  assert.doesNotMatch(v.message, /\.\s*\./, "kein doppelter Punkt vor Anlegen");
+  const fertig = await rufe("/tools/plan-ablegen", { freigabe: true, eigenanteil: 600, alte_verwerfen: true });
+  assert.ok(fertig.hkpId, fertig.message);
+  assert.match(fertig.message, /Regler|Wunsch/, fertig.message);
 });
 
 test("Privatplan: planart privat rechnet mit der Privat-Engine", async () => {

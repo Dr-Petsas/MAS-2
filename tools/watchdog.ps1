@@ -39,7 +39,7 @@ $EnvPath      = "F:\MAS-2\backend\.env"
 $CursorAgent  = "C:\Users\Anmeldung2\AppData\Local\cursor-agent\cursor-agent.cmd"
 $WatchScript  = "F:\MAS-2\tools\remote_chat_watch.ps1"
 $MasStart     = "F:\MAS-2\start-mas-stack.ps1"
-$ClaraSwitch  = "F:\Clara-Voice\tools\clara-switch.ps1"
+$ClaraSwitch  = "F:\Clara-Voice-dev\tools\clara-switch.ps1"
 $LenaPy       = "F:\Lena-Voice\.venv-lena-gpu\Scripts\python.exe"
 $LenaRoot     = "F:\Lena-Voice"
 $CfConfig     = "C:\Users\Anmeldung2\.cloudflared\config.yml"
@@ -145,7 +145,7 @@ function Check-Tunnel() {
 function Check-Clara() {
   # 14.08.2026: Betriebsstand ist DEV (8093). Live (8091) nur Rueckweg.
   # Irgendein einzelner Stand = ok. Keiner = DEV starten, nie Live.
-  $claraMaint = 'F:\Clara-Voice\.run\clara-maintenance.flag'
+  $claraMaint = 'F:\Clara-Voice-dev\.run\clara-maintenance.flag'
   if (Test-Path $claraMaint) {
     $script:Status["Clara"] = "wartung"
     Log "Clara-Check pausiert (Wartungs-Flag $claraMaint)"

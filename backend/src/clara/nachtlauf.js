@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { log } from "../log.js";
 
-const CLARA_DIR = (process.env.CLARA_VOICE_DIR || "F:/Clara-Voice").trim();
+const CLARA_DIR = (process.env.CLARA_VOICE_DIR || "F:/Clara-Voice-dev").trim();
 const PYTHON = (process.env.CLARA_PYTHON || "python").trim();
 const LAUF_TIMEOUT_MS = 100 * 60_000;
 const NACHT_MAX_ALTER_MS = 20 * 3600_000;

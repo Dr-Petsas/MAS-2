@@ -81,7 +81,8 @@ test.after(async () => {
 test("Kostenvoranschlag Implantologie: vorlesen mit GOZ/GOÄ-Summe, nach dem Ja als privat-impl-Entwurf ohne Regler, kein HKP", async () => {
   vorgaenge.length = 0;
   const hkpsVorher = (await hkpListe(CID)).length;
-  const auftrag = "Kostenvoranschlag Implantate 46 und 26 mit externem Sinuslift";
+  // Seit 10.11.2026 nimmt die Engine kein Material mehr still an, es steht im Auftrag oder wird erfragt.
+  const auftrag = "Kostenvoranschlag Implantate 46 und 26 mit externem Sinuslift, xenogenes Knochenersatzmaterial";
   const vorschau = await rufe({ auftrag });
   assert.equal(vorschau.rueckfrage, "vorlesen", vorschau.message);
   assert.match(vorschau.message, /^Bevor ich anlege, bitte prüfen: Kostenvoranschlag Implantologie für (Frau )?Petra Privattest/);
@@ -110,7 +111,7 @@ test("Kostenvoranschlag Implantologie: vorlesen mit GOZ/GOÄ-Summe, nach dem Ja 
   assert.deepEqual(vorgaenge.find((v) => v.phase === "angelegt")?.plan, { 26: { TP: "I", R: "" }, 46: { TP: "I", R: "" } });
 });
 
-test("Rueckfragen: Zeitpunkt beim nicht erhaltungswuerdigen Zahn, vorhandenes Implantat, Sinuslift-Art", async () => {
+test("Rueckfragen: Zeitpunkt beim nicht erhaltungswuerdigen Zahn, vorhandenes Implantat, Sinuslift-Art, Material", async () => {
   const z = await rufe({ auftrag: "Implantat 36" });
   assert.equal(z.rueckfrage, "zeitpunkt", z.message);
   assert.equal(z.message, "Laut Befund ist 36 nicht erhaltungswürdig. Soll ich sofort implantieren oder später nach der Entfernung?");
@@ -127,8 +128,11 @@ test("Rueckfragen: Zeitpunkt beim nicht erhaltungswuerdigen Zahn, vorhandenes Im
   assert.equal(sinus.rueckfrage, "sinus", sinus.message);
   assert.equal(sinus.message, "Interner oder externer Sinuslift?");
   const intern = await rufe({ auftrag: "intern" });
-  assert.equal(intern.rueckfrage, "vorlesen", intern.message);
-  assert.match(intern.message, /Implantat an 26; dazu interner Sinuslift/);
+  assert.equal(intern.rueckfrage, "material", intern.message);
+  assert.equal(intern.message, "Knochenersatzmaterial oder Eigenknochen?");
+  const material = await rufe({ auftrag: "xenogenes Knochenersatzmaterial" });
+  assert.equal(material.rueckfrage, "vorlesen", material.message);
+  assert.match(material.message, /Implantat an 26; dazu interner Sinuslift/);
 });
 
 test("Wortlaut und planart: Implantat ohne Prothetik ist Implantologie, Implantatkrone bleibt Zahnersatz", async () => {
@@ -146,8 +150,9 @@ test("Wortlaut und planart: Implantat ohne Prothetik ist Implantologie, Implanta
 });
 
 test("PlanR holt den Implantologie-Entwurf ab; Rueckgaengig vorher verwirft; Notaus MAS_IMPL=0", async () => {
-  await rufe({ auftrag: "Implantat 46 mit Knochenaufbau" });
-  const fertig = await rufe({ auftrag: "Implantat 46 mit Knochenaufbau", bestaetigt: true });
+  const auftrag = "Implantat 46 mit Knochenaufbau, xenogenes Knochenersatzmaterial";
+  await rufe({ auftrag });
+  const fertig = await rufe({ auftrag, bestaetigt: true });
   assert.ok(fertig.entwurfId, fertig.message);
   const da = (await planrRuf("/entwuerfe")).d.entwuerfe.find((x) => x.id === fertig.entwurfId);
   assert.equal(da?.modul, "privat-impl");

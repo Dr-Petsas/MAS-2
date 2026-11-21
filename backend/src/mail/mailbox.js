@@ -477,7 +477,7 @@ export async function backfillInboundMailBrain(clientId, { sinceDays = 14, max =
 // --- IMAP ------------------------------------------------------------------
 
 function imapClient(acc) {
-  return new ImapFlow({
+  const client = new ImapFlow({
     host: acc.imap.host,
     port: acc.imap.port || 993,
     secure: acc.imap.secure !== false,
@@ -487,6 +487,13 @@ function imapClient(acc) {
     greetingTimeout: 10000,
     socketTimeout: 30000,
   });
+  // imapflow wirft "error" ohne Zuhörer als uncaughtException. Der Server
+  // beendet sich darauf (Vorfall 20.11.2026: Socket timeout, Pickadoc
+  // "Failed to fetch"). Der Sync fängt den Fehler im eigenen try ab.
+  client.on("error", (err) => {
+    console.warn("[imap]", err?.code || "", err?.message || err);
+  });
+  return client;
 }
 
 // Translate imapflow/socket errors into a clear, actionable German message so the
