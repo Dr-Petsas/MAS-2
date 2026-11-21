@@ -3688,3 +3688,16 @@ Offen vor dem Bau: welche Stellen in `clara_meddent` (Prompt, Wissen, Namen)
 nur fuer die Standardpraxis gelten. Eingriff am Live-Worker, deshalb eigenes
 Paket mit Voll-Gate. Faellig vor dem ersten zweiten MAS-Kunden; die
 Standardpraxis bleibt bis dahin auf `clara_meddent`.
+
+Gehoert in dasselbe Paket (Chef 21.11.2026: eine Clara pro Praxis):
+
+- Textzeile in PlanR. Der Textdienst (`Clara-Voice-dev/services/text_server.py`)
+  laedt fest `clara_planr`. Eine MAS-Praxis schreibt in PlanR deshalb mit der
+  Clara ohne Kalender, am Handy spricht sie mit der vollen. Knopf, Dialog und
+  Name richten sich schon nach der Stufe der Praxis. Mit dem allgemeinen Profil
+  waehlt der Textdienst das Profil nach der Stufe, die MAS meldet.
+- Zweite Sicherung im Worker. Die Profilbindung prueft nur in MAS
+  (`/clara/session`). Der Worker laedt das Profil, das in der Sitzung steht,
+  ohne Gegenprobe. Nicht gebaut, weil es ein Eingriff am Live-Worker waere und
+  mit dem allgemeinen Profil entfaellt (dann gibt es kein fremdes Praxisprofil
+  mehr, das geladen werden koennte).
