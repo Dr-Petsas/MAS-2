@@ -1,6 +1,14 @@
 // One-time helper: turn the generated Clara artwork into square PWA icons.
 // Usage: node scripts/make-icons.mjs <source.png>
-import sharp from "sharp";
+// sharp steht bewusst NICHT in package.json: nur dieser Einmal-Helfer braucht es, der Betrieb nicht.
+// Vor dem Lauf einmal: npm install --no-save sharp   (ein spaeteres npm ci raeumt es wieder weg)
+let sharp;
+try {
+  sharp = (await import("sharp")).default;
+} catch {
+  console.error("sharp fehlt. Einmal ausfuehren: npm install --no-save sharp  - danach dieses Skript erneut starten.");
+  process.exit(1);
+}
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
