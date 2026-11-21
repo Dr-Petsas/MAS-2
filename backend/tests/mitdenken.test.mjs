@@ -20,7 +20,8 @@ test("All-on-6 auf vorhandenen Implantaten ist Zahnersatz, eine Frage", () => {
   assert.equal(k.antwort.stimme, "daten");
   assert.match(k.hinweis, /planart impl/);
   assert.match(befundMerken(befund), /nicht sprechen/);
-  assert.match(befundMerken(befund), /Implantat vorhanden: 16, 13, 14, 23, 24 und 26/);
+  // Wortlaut seit 09.11.2026: das Kürzel i ist das Implantat ohne Suprakonstruktion (vorlesen.js)
+  assert.ok(befundMerken(befund).includes("Implantat ohne Suprakonstruktion: 16, 13, 14, 23, 24 und 26"), befundMerken(befund));
 });
 
 test("Steht privat oder Kostenvoranschlag schon im Satz, wird mit privat gerechnet", () => {

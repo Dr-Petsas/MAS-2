@@ -17,7 +17,7 @@ const OK = ["18", "17", "16", "15", "14", "13", "12", "11", "21", "22", "23", "2
 const UK = ["48", "47", "46", "45", "44", "43", "42", "41", "31", "32", "33", "34", "35", "36", "37", "38"];
 const ZAEHNE = Object.fromEntries([...OK.map((z) => [z, "f"]), ...UK.map((z) => [z, ""])]);
 
-const SATZ = "Implantatversorgung OK mit 6 Implantaten regio 2, 4, 6 auf beiden Quadranten mit externem Sinuslift rechts und internem Sinuslift beim 4er und 6er links inklusive der späteren All-on-6-Prothetik";
+const SATZ = "Implantatversorgung OK mit 6 Implantaten regio 2, 4, 6 auf beiden Quadranten mit externem Sinuslift rechts und internem Sinuslift beim 4er und 6er links inklusive der späteren All-on-6-Prothetik, xenogenes Knochenersatzmaterial";
 
 const planr = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://planr");

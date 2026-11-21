@@ -33,6 +33,13 @@ await t("Zugang je Buchung", () => {
   assert.equal(P.claraZugang(BILLING.planrOhne), "gesperrt");
 });
 
+await t("Handy-Kopplung: HKP-Clara und volle Clara ja, ohne Buchung nein", () => {
+  assert.equal(P.kopplungErlaubt(BILLING.planrSprache), true);
+  assert.equal(P.kopplungErlaubt(BILLING.mas), true);
+  assert.equal(P.kopplungErlaubt(BILLING.planrOhne), false);
+  assert.equal(P.kopplungErlaubt(null), false);
+});
+
 await t("MAS und Praxen ohne Billing: nichts gesperrt", async () => {
   for (const id of ["meddent", "mas", "unbekannt"]) {
     for (const pfad of ["/tools/send-sms", "/tools/day-briefing", "/clara/team/ask", "/tools/hkp-overview"]) {
