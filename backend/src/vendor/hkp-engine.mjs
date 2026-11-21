@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 767eaa7e6264)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 37ca88453763)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -22394,6 +22394,18 @@ function starten() {
 /** Gilt für die ganze Sitzung; ein Wechsel lädt die Seite neu, damit alle Speicher den neuen Mandanten lesen. */
 var MANDANT_ID = starten().aktiv.id;
 var mk = (key) => schluessel$2(key, MANDANT_ID);
+/**
+* Praxis des angemeldeten PlanR-Kontos. Nur deren Ablage geht an die Übersicht; meldet sich an diesem Browser ein
+* anderes Konto an, bekommt es einen eigenen Speicher – Pläne und Einstellungen zweier Praxen mischen sich nie.
+*/
+var KONTO_KEY = "planr.konto.v1";
+(() => {
+	try {
+		return kennung(speicher()?.getItem(KONTO_KEY) ?? "") || "standard";
+	} catch {
+		return STANDARD_ID;
+	}
+})();
 //#endregion
 //#region src/daten.ts
 var SPEICHER = (datei) => `planr.daten.${datei}`;
@@ -23882,6 +23894,21 @@ function bereich(zahn) {
 		"4": "UK rechts"
 	}[q] ?? q;
 }
+/**
+* »Je Kieferhälfte oder Frontzahnbereich« heißt höchstens zweimal je Kiefer, also viermal je Sitzung
+* (BZÄK-Kommentar zu GOZ 0065 und 4030, Beratungsforum Nr. 24 zu 2030). Sind in einem Kiefer alle drei
+* Bereiche betroffen, zählen die beiden Kieferhälften. `schon` = im Kiefer bereits angesetzte Bereiche.
+*/
+function zweiJeKiefer(bereiche, schon = []) {
+	const out = [];
+	for (const k of ["OK", "UK"]) {
+		const da = [...new Set(schon.filter((b) => b.startsWith(k)))];
+		let neu = [...new Set(bereiche.filter((b) => b.startsWith(k) && !da.includes(b)))];
+		if (da.length + neu.length > 2) neu = neu.filter((b) => !b.endsWith("-Front"));
+		out.push(...neu.slice(0, Math.max(0, 2 - da.length)));
+	}
+	return out;
+}
 var BEREICH_ZAEHNE = {
 	"OK rechts": "18-14",
 	"OK-Front": "13-23",
@@ -23931,7 +23958,7 @@ function zusatzleistungen(plan) {
 		};
 		if (!vorhanden.has(zusatzSchluessel(p)) && !aus.has(zusatzSchluessel(p))) positionen.push(p);
 	};
-	const bereicheVon = (liste) => [...new Set(liste.map(bereich))];
+	const bereicheVon = (liste) => zweiJeKiefer(liste.map(bereich));
 	if (stufe >= 1) {
 		if (!praepariert.length) nichtAngesetzt.push("2030: keine zu präparierenden Zähne");
 		for (const b of bereicheVon(praepariert)) neu("2030", BEREICH_ZAEHNE[b], `Besondere Maßnahmen beim Präparieren (${b}): Retraktion, Blutstillung, Zahnfleischkorrektur`);
@@ -23948,7 +23975,7 @@ function zusatzleistungen(plan) {
 		if (!praepariert.length) nichtAngesetzt.push(implantatKronen.length ? "0065: Implantatabformung laut Implantatangaben (Scan oder Löffel)" : "0065: kein festsitzender Zahnersatz");
 		const konventionell = new Set(plan.positionen.filter((p) => p.ebene === "GOZ" && /^(5170|5180|5190)$/.test(p.nr)).map((p) => p.zahn));
 		const gescannt = new Set(plan.positionen.filter((p) => p.ebene === "GOZ" && p.nr === "0065").map((p) => p.zahn));
-		for (const b of bereicheVon(praepariert)) if (!konventionell.has(BEREICH_ZAEHNE[b]) && !gescannt.has(b)) neu("0065", BEREICH_ZAEHNE[b], `Digitale Abformung (${b}) statt konventioneller Abformung`);
+		for (const b of zweiJeKiefer(praepariert.map(bereich), [...gescannt])) if (!konventionell.has(BEREICH_ZAEHNE[b])) neu("0065", BEREICH_ZAEHNE[b], `Digitale Abformung (${b}) statt konventioneller Abformung`);
 	}
 	const elektronisch = stufe >= 7 && gross;
 	if (stufe >= 4) {
@@ -24770,7 +24797,7 @@ function implantatPositionen(zaehne, a, teileLabor) {
 	});
 	for (const z of imp) positionen.push(pos$2("GOZ", "9050", z, 2));
 	if (a.abformung === "scan") {
-		const regionen = [.../* @__PURE__ */ new Set([...haelften, ...haelften.map((h) => GEGENUEBER[h])])];
+		const regionen = zweiJeKiefer([...haelften, ...haelften.map((h) => GEGENUEBER[h])]);
 		for (const r of regionen) positionen.push(pos$2("GOZ", "0065", r));
 		for (const k of kiefer) positionen.push(pos$2("BEB", "0009", k), pos$2("BEB", "0018", k));
 		for (const z of imp) positionen.push(pos$2("BEB", "0224", z), mat("scanbody", z), mat("laboranalog", z));
@@ -25234,21 +25261,14 @@ var GIPSMODELL = (p) => p.ebene === "BEL" && p.nr === "0051" || p.ebene === "BEB
 var PROTHESE$1 = (p) => (p.zahn === "OK" || p.zahn === "UK") && (p.ebene === "BEMA" && /^(9[67][abcd]|98[b-h])$/.test(p.nr) || p.ebene === "GOZ" && /^(5180|5190|52[0-3]0)$/.test(p.nr));
 /** Funktionsabformung mit individuellem Löffel ist schon enthalten (zahnloser Kiefer) */
 var FUNKTIONSABFORMUNG = (p) => p.ebene === "BEMA" && /^98[bc]$/.test(p.nr) || p.ebene === "GOZ" && /^(5180|5190)$/.test(p.nr);
+/** Ganzer Kiefer = beide Kieferhälften: GOZ 0065 höchstens zweimal je Kiefer (BZÄK-Kommentar: bis zu viermal je Sitzung) */
 var KIEFER_BEREICHE = {
-	OK: [
-		"OK rechts",
-		"OK-Front",
-		"OK links"
-	],
-	UK: [
-		"UK rechts",
-		"UK-Front",
-		"UK links"
-	]
+	OK: ["OK rechts", "OK links"],
+	UK: ["UK rechts", "UK links"]
 };
 /**
 * Zweite Abformung für den herausnehmbaren Teil (z. B. über die eingesetzten Primärkronen):
-* Scan → GOZ 0065 für die drei Bereiche des Kiefers und gedrucktes Modell;
+* Scan → GOZ 0065 für beide Kieferhälften und gedrucktes Modell;
 * Abdruck → individueller Löffel (BEMA 98a/BEL 0211 bei Kassenprothese, sonst GOZ 5170/BEB 1006).
 * Kiefer mit Funktionsabformung (zahnlos, BEMA 98b/c bzw. GOZ 5180/5190) bekommen keine zweite Abformung (Scan dort: zahnlosScannen).
 */
@@ -25289,7 +25309,7 @@ function protheseAbformen(positionen, art, erste) {
 		} : labor);
 	}
 	const hinweise = [];
-	if (bearbeitet.length) hinweise.push(art === "scan" ? `Herausnehmbarer Teil ${bearbeitet.join(", ")}: zweiter Intraoralscan – GOZ 0065 je Bereich des Kiefers und gedrucktes Modell (BEB 0009); Gipsmodelle der Prothese ggf. streichen.` : `Herausnehmbarer Teil ${bearbeitet.join(", ")}: Überabdruck mit individuellem Löffel${neu.length ? ` (${neu.map((p) => `${p.ebene} ${p.nr}`).join(", ")})` : ""}, Meistermodell aus Gips.`);
+	if (bearbeitet.length) hinweise.push(art === "scan" ? `Herausnehmbarer Teil ${bearbeitet.join(", ")}: zweiter Intraoralscan – GOZ 0065 je Kieferhälfte und gedrucktes Modell (BEB 0009); Gipsmodelle der Prothese ggf. streichen.` : `Herausnehmbarer Teil ${bearbeitet.join(", ")}: Überabdruck mit individuellem Löffel${neu.length ? ` (${neu.map((p) => `${p.ebene} ${p.nr}`).join(", ")})` : ""}, Meistermodell aus Gips.`);
 	if (funktion.length && art !== "scan") hinweise.push(`${funktion.join(", ")}: Funktionsabformung mit individuellem Löffel ist schon enthalten – bleibt konventionell.`);
 	return {
 		positionen: [...positionen, ...neu],
@@ -25319,7 +25339,7 @@ var ANALOG_PROTHESE = {
 };
 /**
 * Zahnloser Kiefer (Funktionsabformung, BEMA 98b/c bzw. GOZ 5180/5190) mit Intraoralscan (Chef 09.10.2026):
-* der Scan ersetzt die anatomische Erstabformung – GOZ 0065 für die drei Bereiche des Kiefers und ein
+* der Scan ersetzt die anatomische Erstabformung – GOZ 0065 für beide Kieferhälften (höchstens zweimal je Kiefer, BZÄK-Kommentar zu 0065) und ein
 * gedrucktes Modell (BEB 0009) statt des Situationsmodells. Individueller Löffel und Funktionsabformung bleiben.
 * Voll digital (Chef 15.10.2026, reine Totalprothese ohne Anker im Kiefer): statt Meistermodell,
 * Mittelwertartikulator, Wachsaufstellung und Fertigstellung je Auftrag Oralscan aufbereiten, CAD-Auftragsdaten und
@@ -25335,7 +25355,7 @@ function zahnlosScannen(positionen, digital) {
 	const neu = [];
 	for (const k of kiefer) {
 		const gescannt = new Set(out.filter((p) => p.ebene === "GOZ" && p.nr === "0065").map((p) => p.zahn));
-		neu.push(...KIEFER_BEREICHE[k].filter((b) => !gescannt.has(b)).map((b) => pos$1("GOZ", "0065", b, { text: `Optisch-elektronische Abformung ${k} (zahnloser Kiefer)` })));
+		neu.push(...zweiJeKiefer([...KIEFER_BEREICHE[k]], [...gescannt]).map((b) => pos$1("GOZ", "0065", b, { text: `Optisch-elektronische Abformung ${k} (zahnloser Kiefer)` })));
 		if (out.some((p) => p.ebene === "BEB" && p.nr === "0009" && p.zahn === k)) continue;
 		const modell = out.find(SITUATIONSMODELL(k));
 		if (modell) out = out.flatMap((p) => p !== modell ? [p] : (p.anzahl ?? 1) > 1 ? [{
@@ -25347,7 +25367,7 @@ function zahnlosScannen(positionen, digital) {
 			...modell?.labor ? { labor: modell.labor } : {}
 		}));
 	}
-	const hinweise = [`${kiefer.join(", ")} zahnlos: Intraoralscan statt anatomischer Erstabformung – GOZ 0065 je Bereich des Kiefers, gedrucktes Modell (BEB 0009) statt Situationsmodell; individueller Löffel und Funktionsabformung bleiben.`];
+	const hinweise = [`${kiefer.join(", ")} zahnlos: Intraoralscan statt anatomischer Erstabformung – GOZ 0065 je Kieferhälfte, gedrucktes Modell (BEB 0009) statt Situationsmodell; individueller Löffel und Funktionsabformung bleiben.`];
 	const alle = [...out, ...neu];
 	if (digital !== "voll") return {
 		positionen: alle,
@@ -25522,7 +25542,7 @@ function scanAnwenden(positionen, zaehne) {
 	};
 	const bereiche = [...new Set([...praepariert, ...implantatKronen].map(bereich))];
 	const gescannt = new Set(positionen.filter((p) => p.ebene === "GOZ" && p.nr === "0065").map((p) => p.zahn));
-	const regionen = [.../* @__PURE__ */ new Set([...bereiche, ...bereiche.map((b) => GEGENUEBER[b])])].filter((r) => !gescannt.has(r));
+	const regionen = zweiJeKiefer([...bereiche, ...bereiche.map((b) => GEGENUEBER[b])], [...gescannt]);
 	const labor = positionen.find(GIPSMODELL)?.labor;
 	const gedruckt = new Set(positionen.filter((p) => p.ebene === "BEB" && p.nr === "0009").map((p) => p.zahn));
 	const kiefer = ["OK", "UK"].filter((k) => !gedruckt.has(k));
@@ -28986,9 +29006,67 @@ var MIT_W = {
 var ERNEUERN = /erneuer|kaputt|\bdefekt|insuffizient|undicht|gebrochen|locker/;
 /** „15 sk“, „16 ist k w“: das Kürzel selbst am Ende des Satzteils */
 var KUERZEL_AM_ENDE = new RegExp(`(?:^|\\s)(${[...Object.keys(BEFUND_KUERZEL), "i"].sort((a, b) => b.length - a.length).map((k) => k.replace(/[()]/g, "\\$&")).join("|")})$`);
+/**
+* Die Wörter, mit denen Clara einen Befund vorliest (MAS `hkp/vorlesen.js`, BEFUND_WORT) → Kürzel. Liest die Engine
+* ihren eigenen Satz zurück, gilt diese Tabelle vor den Mustern: „Implantat ohne Suprakonstruktion“ ist i, die
+* Muster lasen daraus sk (das Handy zeigte nach dem Zurücklesen eine Implantatkrone). Feste Tabelle, kein Muster:
+* es zählt nur der ganze Satzteil „<Wort>: <Zähne>“, freie Sätze laufen wie bisher über BEFUND_ARTEN.
+*/
+var VORLESE_WORT = new Map([
+	["nicht erhaltungswürdig", "x"],
+	["weitgehend zerstört", "ww"],
+	["mit Teildefekt", "pw"],
+	["Teilkrone erneuerungsbedürftig", "pkw"],
+	["unzureichende Retention", "ur"],
+	["überkront", "k"],
+	["Krone erneuerungsbedürftig", "kw"],
+	["Teleskop vorhanden", "t"],
+	["Teleskop erneuerungsbedürftig", "tw"],
+	["Teleskop-Sekundärteil erneuerungsbedürftig", "t2w"],
+	["durch Prothese ersetzt", "e"],
+	["durch Prothese ersetzt und erneuerungsbedürftig", "ew"],
+	["Brückenglied", "b"],
+	["Brückenglied erneuerungsbedürftig", "bw"],
+	["Adhäsivbrückenanker", "a"],
+	["Adhäsivbrückenanker erneuerungsbedürftig", "aw"],
+	["Adhäsivbrückenglied", "ab"],
+	["Adhäsivbrückenglied erneuerungsbedürftig", "abw"],
+	["Wurzelstiftkappe", "r"],
+	["Wurzelstiftkappe erneuerungsbedürftig", "rw"],
+	["Implantat ohne Suprakonstruktion", "i"],
+	["Implantat nicht erhaltungswürdig", "ix"],
+	["Implantatkrone", "sk"],
+	["Implantatkrone erneuerungsbedürftig", "skw"],
+	["Implantatbrückenglied", "sb"],
+	["Implantatbrückenglied erneuerungsbedürftig", "sbw"],
+	["Implantatteleskop", "st"],
+	["Implantatteleskop erneuerungsbedürftig", "stw"],
+	["ersetzt durch Implantatprothese", "se"],
+	["ersetzt durch Implantatprothese und erneuerungsbedürftig", "sew"],
+	["Implantatverbindungselement", "so"],
+	["Implantatverbindungselement erneuerungsbedürftig", "sow"],
+	["Lückenschluss", ")("]
+].map(([wort, code]) => [norm(wort).trim(), code]));
+/** Satzteil in Claras Vorleseform („[Oberkiefer:] <Wort>: 16, 13 und 14“) → Kürzel aus der Tabelle, sonst nichts */
+function vorleseWort(teil) {
+	const worte = teil.trim().split(" ").map((w) => w.endsWith(":") ? w.slice(0, -1) : w).filter(Boolean);
+	const istZahn = (w) => REIHE.OK.includes(w) || REIHE.UK.includes(w);
+	let von = 0;
+	let bis = worte.length;
+	while (von < bis && (worte[von] === "oberkiefer" || worte[von] === "unterkiefer")) von++;
+	while (bis > von && (istZahn(worte[bis - 1]) || worte[bis - 1] === "und" || worte[bis - 1] === "bis")) bis--;
+	if (bis === worte.length || von === bis) return void 0;
+	const code = VORLESE_WORT.get(worte.slice(von, bis).join(" "));
+	return code === void 0 ? void 0 : {
+		code,
+		index: Math.max(0, teil.indexOf(worte[von]))
+	};
+}
 /** Befund eines Satzteils → Kürzel und Fundstelle; `imAuftrag` überspringt Kürzel und Wörter, die auch eine Versorgung nennen */
 function befundWort(teil, imAuftrag = false) {
 	if (!imAuftrag) {
+		const eigen = vorleseWort(teil);
+		if (eigen) return eigen;
 		const k = KUERZEL_AM_ENDE.exec(teil.trimEnd().replace(/(?:\s[a-z2])+$/, (m) => ` ${m.replace(/\s/g, "")}`));
 		if (k) return {
 			code: k[1],
@@ -29877,7 +29955,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-14 23:36";
+var ENGINE_STAND = "2026-11-21 07:42";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
