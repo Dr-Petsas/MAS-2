@@ -3666,3 +3666,25 @@ in PlanR, nie gesprochen (Eiserne Regel 6).
 DoD: Referenzfall am echten Modell von der Frage bis zur Darstellung
 (Flip + PlanR, beide Teilplaene, ein Fall), Musterrechnung ohne Patient,
 Routentests gruen, Gate gruen, Chef-Abnahme.
+
+### W-MAS-PROFIL - ein allgemeines MAS-Profil statt Ordner je Praxis (aufgenommen 21.11.2026)
+
+Befund 21.11.2026: Ein Clara-Profil fuer eine MAS-Praxis entsteht heute von
+Hand in drei Teilen (Ordner `profiles/<name>` im Clara-Repo, Feld
+`claraProfileId` in `mas_config/booking`, MAS-Schalter im Superuser-Billing).
+Vollstaendig gibt es das nur fuer die Standardpraxis: `clara_meddent` traegt
+90 Werkzeuge mit fest eingetragener Praxis. `clara_praxis2` hat kein Werkzeug.
+`start-clara.ps1` stellt nur das gestartete Profil und `clara_planr` bereit.
+Seit der Profilbindung (`src/clara/profilBindung.js`) bekommt eine MAS-Praxis
+ohne eigenes Profil keine Sitzung mehr statt der Clara der Standardpraxis.
+
+Vorschlag: der Weg von `clara_planr` (`mandant_aus_sitzung`) auch fuer die
+volle Clara. Ein allgemeines Profil mit allen Werkzeugen, die Praxis kommt aus
+der Sitzung. Name, Behandler, Kalender, Begruessung, Praxiswissen und
+Aussprache kommen aus der Datenbank. "Profil erstellen" ist dann ein
+ausgefuellter Praxis-Datensatz, der beim Buchen von MAS angelegt werden kann.
+
+Offen vor dem Bau: welche Stellen in `clara_meddent` (Prompt, Wissen, Namen)
+nur fuer die Standardpraxis gelten. Eingriff am Live-Worker, deshalb eigenes
+Paket mit Voll-Gate. Faellig vor dem ersten zweiten MAS-Kunden; die
+Standardpraxis bleibt bis dahin auf `clara_meddent`.
