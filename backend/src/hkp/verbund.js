@@ -8,6 +8,7 @@ import { log } from "../log.js";
 const CACHE_MS = 60_000;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const cache = new Map();
+const gaesteCache = new Map();
 
 const aus = () => process.env.MAS_PLANR_VERBUND === "0";
 const clients = () => admin.firestore().collection("clients");
@@ -25,6 +26,7 @@ export function _setVerbundLaden(fn, gaeste) {
   laden = fn;
   if (gaeste) gaesteSuchen = gaeste;
   cache.clear();
+  gaesteCache.clear();
 }
 
 function verbundAus(daten) {
@@ -58,6 +60,22 @@ export async function hauptFuer(clientId) {
   return cache.get(id)?.haupt || "";
 }
 
+/** Praxen, die an diese gekoppelt sind (hoechstens 5, sortiert). Wirft nie; im Zweifel keine. */
+export async function gaesteFuer(clientId) {
+  const id = String(clientId || "").trim();
+  if (!ID_RE.test(id) || aus()) return [];
+  const hit = gaesteCache.get(id);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.gaeste;
+  try {
+    const gaeste = (await gaesteSuchen(id)).map(String).filter((g) => ID_RE.test(g) && g !== id).sort();
+    gaesteCache.set(id, { at: Date.now(), gaeste });
+    return gaeste;
+  } catch (e) {
+    log.warn?.(`[planr-verbund] Gaeste ${id}: ${e?.message || e}`);
+    return hit?.gaeste || [];
+  }
+}
+
 /** Ohne Firestore-Zugriff (z. B. Live-Ansicht, synchron): zuletzt bekanntes Register, sonst die Praxis selbst */
 export function registerBekannt(clientId) {
   const id = String(clientId || "").trim();
@@ -77,13 +95,14 @@ export async function verbundSetzen(gast, { haupt, register, von = "" }) {
   if (!ID_RE.test(g) || !ID_RE.test(h) || !ID_RE.test(r)) return { ok: false, status: 400, message: "Praxis unbekannt." };
   if (g === h) return { ok: false, status: 409, message: "Eine Praxis kann nicht mit sich selbst gekoppelt werden." };
   const [gd, hd] = await Promise.all([laden(g), laden(h)]);
-  if (!hd) return { ok: false, status: 404, message: "Die Haupt-Praxis ist in MAS nicht bekannt." };
+  if (!hd) return { ok: false, status: 404, message: "Die andere Praxis ist in MAS nicht bekannt." };
   if (verbundAus(hd)) return { ok: false, status: 409, message: "Die andere Praxis ist selbst an eine dritte gekoppelt." };
   const alt = verbundAus(gd);
   if (alt && alt.haupt !== h) return { ok: false, status: 409, message: "Ihre Praxis ist schon mit einer anderen gekoppelt. Bitte zuerst entkoppeln." };
   if ((await gaesteSuchen(g)).length) return { ok: false, status: 409, message: "An Ihre Praxis sind schon andere gekoppelt." };
   await clients().doc(g).set({ planrVerbund: { haupt: h, register: r, seit: new Date().toISOString(), von: String(von).slice(0, 200) } }, { merge: true });
   cache.delete(g);
+  gaesteCache.clear();
   log.info?.("planr.verbund.gekoppelt", { gast: g, haupt: h, register: r });
   return { ok: true, hauptName: name(hd, h), gastName: name(gd, g) };
 }
@@ -97,6 +116,7 @@ export async function verbundLoesen(gast) {
     if (e?.code !== 5) throw e;
   }
   cache.delete(g);
+  gaesteCache.clear();
   log.info?.("planr.verbund.geloest", { gast: g });
   return { ok: true };
 }
