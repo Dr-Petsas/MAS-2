@@ -63,7 +63,9 @@ async function run() {
   console.log("  spoken: " + spoken);
 
   const empty = buildSpokenDayBriefing(computeDayBriefing([], { calendars }), { date: DATE });
-  check(/keine Termine gebucht|Kalender leer|steht nichts im Kalender/.test(empty), "Leerer Tag -> ehrliche Meldung");
+  // Die Leer-Meldung rotiert ueber acht Fassungen (daySchedule "brief.leer") - jede davon gilt.
+  const LEER = ["keine Termine gebucht", "Kalender leer", "steht nichts im Kalender", "nichts eingetragen", "nichts.", "bleibt der Kalender frei", "hat niemand einen Termin"];
+  check(LEER.some((s) => empty.includes(s)), "Leerer Tag -> ehrliche Meldung (" + empty + ")");
 
   console.log("\n=== Mittags-Blickwinkel: nur noch kommende Termine (10.07.2026) ===");
   // Zwei Termine vormittags (durch), zwei nachmittags (offen) — jetzt = 12:00.
@@ -78,7 +80,8 @@ async function run() {
   check(bMid.remaining.total === 2 && bMid.remaining.past === 2, "remaining mittags: 2 offen, 2 durch");
   check(bMid.remaining.newPatients === 1, "remaining: nur der noch kommende Neupatient zaehlt (1)");
   const midSpoken = buildSpokenDayBriefing(bMid, { date: DATE, operatorDoctorName: "Dr. Test", overview: true, nowMs: MIDDAY });
-  check(/noch (2 Termine|zwei Termine)/.test(midSpoken) || /kommen noch 2 Termine/.test(midSpoken), "Mittags nennt NUR die 2 noch kommenden Termine");
+  // Sechs Fassungen ("brief.rest"), auch "Was noch offen ist heute: 2 Termine" - die Zahl steht in jeder.
+  check(midSpoken.includes("2 Termine"), "Mittags nennt NUR die 2 noch kommenden Termine");
   check(/2 sind schon durch|zwei sind schon durch/.test(midSpoken), "Mittags haekt den Vormittag kurz ab ('2 sind schon durch')");
   check(!/insgesamt 4/.test(midSpoken) && !/4 Termine/.test(midSpoken), "Mittags zaehlt NICHT alle 4 Termine des Tages");
   check(/ein Neupatient/.test(midSpoken), "Mittags nennt den noch kommenden Neupatienten");
