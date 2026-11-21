@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\ZE\HKP (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 37ca88453763)
+// Neu bauen: cd F:\PlanR\ZE\HKP && npm run build:engine   (sha256 69ccd1e26a4d)
 //#region \0rolldown/runtime.js
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var bel2_bayern_2026_default = {
@@ -26372,7 +26372,9 @@ function berechnen(plan, listen) {
 	});
 	const positionen = allePositionen.map((p) => positionBerechnen(p, listen, plan));
 	const summe = (f) => runden$1(positionen.filter(f).reduce((s, p) => s + p.betrag, 0));
-	const bemaHonorar = summe((p) => p.ebene === "BEMA");
+	const nachPunkten = (p) => p.ebene === "BEMA" && p.punktwert !== void 0;
+	const bemaPunkte = positionen.filter((p) => p.ebene === "BEMA").reduce((s, p) => s + (p.punkte ?? 0) * p.anzahl, 0);
+	const bemaHonorar = runden$1(runden$1(positionen.filter(nachPunkten).reduce((s, p) => s + (p.punkte ?? 0) * p.anzahl, 0) * (listen.bema?.punktwert ?? 0)) + summe((p) => p.ebene === "BEMA" && !nachPunkten(p)));
 	const gozHonorar = summe((p) => p.ebene === "GOZ");
 	const belNetto = summe((p) => p.ebene === "BEL");
 	const bebNetto = summe((p) => p.ebene === "BEB");
@@ -26392,7 +26394,6 @@ function berechnen(plan, listen) {
 	const laborMwst = runden$1(eigenMwst + fremdMwst + materialMwst);
 	const materialUndLabor = runden$1(eigenNetto + fremdNetto + laborMwst + material);
 	const gesamt = runden$1(bemaHonorar + gozHonorar + materialUndLabor);
-	const bemaPunkte = positionen.filter((p) => p.ebene === "BEMA").reduce((s, p) => s + (p.punkte ?? 0) * p.anzahl, 0);
 	const stufe = plan.zuschuss.haertefall ? "100" : plan.zuschuss.bonus;
 	const befunde = plan.befunde.map((b) => {
 		const e = finden(listen.fz, b.nr);
@@ -29955,7 +29956,7 @@ function aufZielpreis(plan, ziel, praxis = {}) {
 }
 //#endregion
 //#region src/clara/index.ts
-var ENGINE_STAND = "2026-11-21 07:42";
+var ENGINE_STAND = "2026-11-21 14:14";
 var ausKatalog = /* @__PURE__ */ new WeakMap();
 /** Eigenlabor-Katalog und Praxis-GOZ wie im Browser nach dem PVS-Abgleich (je Katalog einmal gebildet) */
 function katalogTeile(k, eigen) {
