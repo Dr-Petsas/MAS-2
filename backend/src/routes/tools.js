@@ -4991,6 +4991,14 @@ router.post("/tools/send-sms", async (req, res) => {
     const target = await resolveDelegationTarget(clientId, req.body);
     const smsText = String(req.body?.message || req.body?.text || "").trim();
     if (target.nurImPvs) return res.json({ ok: false, message: target.nurImPvs, directive: NUR_PVS_DIREKTIVE });
+    // Mehrere Treffer zum Namen: nachfragen wie beim Anruf, statt "keine Telefonnummer" zu melden.
+    if (target.ambiguous && target.candidates?.length) {
+      return res.json({
+        ok: false,
+        mehrere: true,
+        message: `Das trifft auf mehrere zu. ${disambiguationQuestion(target.candidates)}`,
+      });
+    }
     if (!target.phone) {
       let missCard = null;
       try {
@@ -5005,9 +5013,13 @@ router.post("/tools/send-sms", async (req, res) => {
       });
     }
     // Testsuite-Schutz: validiert den kompletten Pfad (Kontakt, Nummer),
-    // verschickt aber NICHTS über Twilio.
+    // verschickt aber NICHTS über Twilio. Empfaenger und Nummer stehen dabei,
+    // damit eine Vorschau den Namen aus dem Datensatz nennen kann.
     if (req.body?.dryRun) {
-      return res.json({ ok: true, dryRun: true, message: `Testlauf: Die SMS an ${target.name || target.phone} wäre jetzt verschickt worden.` });
+      return res.json({
+        ok: true, dryRun: true, empfaenger: target.name || "", telefon: target.phone,
+        message: `Testlauf: Die SMS an ${target.name || target.phone} wäre jetzt verschickt worden.`,
+      });
     }
     const out = await lisaSendSms(clientId, {
       phone: target.phone,
