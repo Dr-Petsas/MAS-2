@@ -5825,7 +5825,25 @@ router.post("/tools/book-for-patient", async (req, res) => {
     // Testsuite-Schutz: Kalender/Behandlung/Zeit sind validiert (resolveBooking
     // lief durch), aber es wird NICHTS gebucht und kein Dialog geöffnet.
     if (req.body?.dryRun) {
-      return res.json({ ok: true, dryRun: true, message: `Testlauf: Der Termin für ${who} am ${r.slotIso} bei ${r.calendarName} wäre jetzt gebucht worden.` });
+      // `vorschau` (24.11.2026): die Mini-Clara liest daraus ihre Bestaetigungsfrage
+      // und prueft beim Ja, dass genau dieselbe Buchung gemeint ist.
+      return res.json({
+        ok: true,
+        dryRun: true,
+        message: `Testlauf: Der Termin für ${who} am ${r.slotIso} bei ${r.calendarName} wäre jetzt gebucht worden.`,
+        vorschau: {
+          patientId: selected.id,
+          patient: who,
+          geburtsdatum: selected.birthDate || null,
+          hatTelefon: !!selected.hasPhone,
+          slotIso: r.slotIso,
+          kalenderId: r.calendarId,
+          kalender: r.calendarName,
+          behandlungId: r.visitMotiveId,
+          behandlung: r.visitMotiveName,
+          dauerMin: r.visitMotiveDuration || null,
+        },
+      });
     }
     const patientPayload = {
       id: selected.id,
