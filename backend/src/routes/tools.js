@@ -861,7 +861,11 @@ router.post("/tools/day-appointments", async (req, res) => {
       const verb = fremd
         ? `${vergangen ? "hatte" : "hat"} ${wer}`
         : `${vergangen ? "hatten" : "haben"} Sie`;
-      const spanne = n
+      // Ein einzelner Termin hat keine Spanne: "von 14:30 Uhr bis 14:30 Uhr"
+      // (Chef 24.11.2026) wird "um 14:30 Uhr".
+      const spanne = n === 1
+        ? `, um ${new Date(echte[0].startMs).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr`
+        : n
         ? `, von ${new Date(echte[0].startMs).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr bis ${new Date(echte[n - 1].startMs).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr`
         : "";
       // Abends mit remaining=true heisst 0 nicht "keine Termine" (der Tag hatte

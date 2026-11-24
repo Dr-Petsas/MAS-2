@@ -3788,5 +3788,17 @@ Baustufen und Abnahme:
    Fuer Bianca/Lisa/Ben (Asterisk, 8 kHz, Jitter-Puffer) kommt die
    Telefonstrecke obendrauf; dieselben Hebel (Vorab-Decode, Vorrat-Ton,
    Antwort im Werkzeugaufruf) sind dort noch nicht eingebaut.
+   NACHTRAG 24.11. 20:00: (a) Von ausserhalb des Praxisnetzes erreichbar:
+   LiveKit 1.11.0 laeuft als `livekit-mini.service` auf dem Strato-Server
+   (`asterisk-live`, `/opt/livekit-mini`, Quelle `F:\Clara-Mini\fern`),
+   Signalisierung nur auf 127.0.0.1:7880 (SSH-Tunnel von diesem Rechner,
+   `MINI_LIVEKIT_FERN=asterisk-live` in `.env`), Ton ueber EINEN UDP-Port
+   7882 (neue ufw-Regel). Asterisk dort ist unberuehrt. Ohne die
+   `.env`-Zeile laeuft wieder der lokale LiveKit (nur Praxisnetz).
+   (b) Mund-Text `mini/mund.py`: Uhrzeiten, Daten, Mengen, Dr. gehen als
+   Woerter an die Stimme (Sprech-Schicht der Live-Clara,
+   `response_guard`, wird nur gelesen). Test `python test_mund.py`.
+   (c) MAS `day-appointments` countOnly: ein einzelner Termin heisst
+   "um 14:30 Uhr" statt "von 14:30 Uhr bis 14:30 Uhr".
 3. Schreibende Werkzeuge (Zwei-Schritt), danach Gegenhoeren neben der
    Live-Clara ueber den Umschalter.
