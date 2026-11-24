@@ -3770,6 +3770,21 @@ Baustufen und Abnahme:
    auf Kr02 (4070, Tunnel); auf der 5090 waren es 0,22 bis 0,25 s. Der
    Parakeet-Dienst hat keinen Streaming-Endpunkt; echtes Streaming braeuchte
    einen Umbau des Containers und braechte hoechstens etwa 0,1 s.
+   NACHTRAG 24.11. 19:45 (Chef: "doch, die schnellste Variante"): Parakeet
+   laeuft fuer die Mini-Clara jetzt auf der GPU der 5090 als EIGENER
+   Container `stt-parakeet-gpu:v1`, Port 8216 (Quelle `F:\Clara-Mini\stt_gpu`,
+   auf pickadoc1 `/home/cursor/telefonki/stt_gpu`). Gleiches Modell, gleicher
+   Stille-Trim und gleiche Nachkorrektur wie der CPU-Dienst 8212, der fuer
+   Bianca/Lisa unveraendert weiterlaeuft. WebSocket `/strom`: Ton laeuft
+   laufend ein, Zwischenstand alle 120 ms, Decode 8 bis 21 ms statt 210 bis
+   230 ms. In der Mini-Clara liegt der Text beim Sprech-Ende-Signal bereit
+   (+0,00 s, vorher +0,07 bis +0,23 s); haelt eine Pause 0,12 s, starten LLM
+   und TTS. Rueckfall auf den CPU-Dienst, wenn 8216 nicht antwortet.
+   Dafuer vLLM-Speicheranteil 0.85 -> 0.80 (`.env` Zeile
+   `VLLM_GPU_MEMORY_UTILIZATION`, Sicherung `.env.bak-vor-util080-20261124`):
+   KV-Cache 211.000 statt 313.000 Token (6,4 statt 9,5 volle 32k-Kontexte
+   gleichzeitig). GPU-Belegung 30,5 von 32,6 GB. Probe warm: Werkzeugfragen
+   0,74 s, Plaudern 1,25 bis 1,3 s; Rest ist die TTS auf Kr02.
    Fuer Bianca/Lisa/Ben (Asterisk, 8 kHz, Jitter-Puffer) kommt die
    Telefonstrecke obendrauf; dieselben Hebel (Vorab-Decode, Vorrat-Ton,
    Antwort im Werkzeugaufruf) sind dort noch nicht eingebaut.
