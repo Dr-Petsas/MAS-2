@@ -3310,7 +3310,11 @@ router.post("/tools/plan-rechnen", async (req, res) => {
       : { ok: false, name: pb?.pvs || "", befund: {}, offen: {} };
     const r = await fachRechnen(clientId, patient, b, { plan: versorgung, offen: { ...pz.offen }, uebertragen: "" }, pz,
       { privat: art === "privat", sagen: "", nurVorschau: true });
-    if (r.rueck) return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "engine", message: r.frage || r.rueck }), rueckfrageMerken(r.grund, r.zaehne, r.vorschlag)));
+    // offen: worauf die Engine wartet (Grund und Zaehne), damit der Aufrufer die Antwort zuordnen kann.
+    if (r.rueck) return res.json(mitMerken(mitKarte({
+      ok: true, rueckfrage: "engine", message: r.frage || r.rueck,
+      ...(r.grund ? { offen: { grund: String(r.grund), zaehne: zahnListe(r.zaehne) } } : {}),
+    }), rueckfrageMerken(r.grund, r.zaehne, r.vorschlag)));
     return res.json(mitMerken(mitKarte({ ok: true, rueckfrage: "freigabe", message: r.vorschau, ...(r.doppelt?.length ? { doppelt: r.doppelt.map((h) => h.id) } : {}) })));
   } catch (e) {
     log.error?.(`[hkp] plan-rechnen: ${e?.stack || e}`);

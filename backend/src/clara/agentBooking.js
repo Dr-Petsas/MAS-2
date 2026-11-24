@@ -1,4 +1,5 @@
 import { loadBooking, ensureBerlinTz } from "./booking.js";
+import { resolveVisitMotive } from "./visitMotive.js";
 import { listContextPatientIds } from "./sttPatientNames.js";
 import { findInCatalog, fetchPatientsByIds } from "./patientCatalog.js";
 import { patientenAusPvs, sucheImPvs } from "../hkp/planrPvs.js";
@@ -73,19 +74,6 @@ function resolveCalendar(booking, doctorName) {
   return null;
 }
 
-function resolveVisitMotive(booking, visitMotiveName) {
-  const vms = Array.isArray(booking.visitMotives) ? booking.visitMotives : [];
-  const q = norm(visitMotiveName).toLowerCase();
-  if (!q) return null;
-  const exact = vms.find((v) => norm(v.name).toLowerCase() === q);
-  if (exact) return exact;
-  return (
-    vms.find(
-      (v) =>
-        norm(v.name).toLowerCase().includes(q) || q.includes(norm(v.name).toLowerCase())
-    ) || null
-  );
-}
 
 // Per-tenant default = a "Kontrolltermin". We never hardcode an id: we pick the
 // configured visit motive whose name signals a control appointment, else the

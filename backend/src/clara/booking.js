@@ -1,5 +1,6 @@
 import { masCollection, clientRef } from "../tenant.js";
 import { normTime } from "./gapInvite.js";
+import { resolveVisitMotive } from "./visitMotive.js";
 
 // Clara's calendar actions. MAS-2 is the source of truth: it talks to the same
 // Pickadoc Cloud Functions the phone agent uses (unauthenticated POST JSON) and
@@ -79,14 +80,6 @@ export function resolveCalendar(booking, doctorName) {
   return best;
 }
 
-function resolveVisitMotive(booking, visitMotiveName) {
-  const vms = Array.isArray(booking.visitMotives) ? booking.visitMotives : [];
-  const q = norm(visitMotiveName).toLowerCase();
-  if (!q) return null;
-  let exact = vms.find((v) => norm(v.name).toLowerCase() === q);
-  if (exact) return exact;
-  return vms.find((v) => norm(v.name).toLowerCase().includes(q) || q.includes(norm(v.name).toLowerCase())) || null;
-}
 
 // Europe/Berlin offset (+01:00 / +02:00 DST) for a given instant. The booking
 // backend treats a naive datetime as UTC, so we must always send an offset.
