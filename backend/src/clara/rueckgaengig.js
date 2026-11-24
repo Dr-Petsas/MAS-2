@@ -11,7 +11,7 @@
 
 export const RUECKGAENGIG_MS = 15 * 60 * 1000;
 
-const ARTEN = new Set(["termin", "hkp", "hkp_aenderung", "planr_entwurf", "plan_ki", "plan_weg", "vorgang", "aufgabe", "endgueltig"]);
+const ARTEN = new Set(["termin", "termin_verschoben", "hkp", "hkp_aenderung", "planr_entwurf", "plan_ki", "plan_weg", "vorgang", "aufgabe", "endgueltig"]);
 
 export function rueckgaengigAn() {
   return !/^(0|false|no|off)$/i.test(String(process.env.MAS_RUECKGAENGIG ?? "1").trim());
@@ -45,12 +45,13 @@ async function fallMitnehmen(clientId, u, d) {
 }
 
 async function standardDeps() {
-  const [{ cancelBookingById }, store, cases, entwuerfe, sprache, hkpRoute] = await Promise.all([
+  const [{ cancelBookingById, moveBookingById }, store, cases, entwuerfe, sprache, hkpRoute] = await Promise.all([
     import("./agentBooking.js"), import("../hkp/store.js"), import("../brain/caseStore.js"), import("../hkp/planrEntwuerfe.js"),
     import("../hkp/planSprache.js"), import("../routes/hkp.js"),
   ]);
   return {
     terminAbsagen: cancelBookingById,
+    terminVerschieben: moveBookingById,
     hkpLesen: store.hkpLesen,
     hkpAktualisieren: store.hkpAktualisieren,
     statusText: store.STATUS_TEXT,
@@ -90,6 +91,13 @@ export async function zuruecknehmen(clientId, undo, deps) {
     const r = await d.terminAbsagen(clientId, u.id);
     if (!r?.ok) return { ok: false, undoErledigt: false, message: `Absagen konnte ich ${label} gerade nicht. Bitte im Kalender prüfen.` };
     return { ok: true, undoErledigt: true, message: `Gut, ich habe ${label} wieder abgesagt.` };
+  }
+
+  if (u.art === "termin_verschoben") {
+    // `vorher` ist der alte Beginn: der Termin wandert dorthin zurueck.
+    const r = u.vorher ? await d.terminVerschieben(clientId, u.id, u.vorher) : null;
+    if (!r?.ok) return { ok: false, undoErledigt: false, message: `Zurückverschieben konnte ich ${label} gerade nicht. Bitte im Kalender prüfen.` };
+    return { ok: true, undoErledigt: true, message: `Gut, ${label} steht wieder auf dem alten Platz.` };
   }
 
   if (u.art === "hkp") {

@@ -46,7 +46,7 @@ import { dayInboundComms, buildSpokenComms, cardInboundComms } from "../clara/co
 import { pruefeKontakt } from "../clara/kontaktPruefung.js";
 import { spokenRatings } from "../clara/ratings.js";
 import { notizInNaechstenTermin, terminLabel } from "../clara/terminNotiz.js";
-import { searchPatient, resolveBooking, commitBooking, defaultControlMotive } from "../clara/agentBooking.js";
+import { searchPatient, resolveBooking, commitBooking, defaultControlMotive, cancelBookingById, moveBookingById } from "../clara/agentBooking.js";
 import { mitUndo, rueckgaengigAn, zuruecknehmen } from "../clara/rueckgaengig.js";
 import { nameAusHinweis, spokenLooksLikeNewPerson } from "../clara/patientCatalog.js";
 import { passtGanz, planNurPvs, pvsKennungAufloesen, sucheFuerPlan, sucheNurImPvsFuerPlan } from "../hkp/planrPvs.js";
@@ -5872,29 +5872,33 @@ router.post("/tools/book-for-patient", async (req, res) => {
       calendarId: r.calendarId,
       calendarName: r.calendarName,
     });
-    // step 1: time + calendar (patient + treatment still empty)
-    await emitCommand(clientId, {
-      type: "appointment_draft",
-      status: "collecting",
-      date: r.date,
-      slotIso: r.slotIso,
-      calendarId: r.calendarId,
-      calendarName: r.calendarName,
-    });
-    await sleep(DRAFT_STEP_MS);
-    // step 2: + patient
-    await emitCommand(clientId, {
-      type: "appointment_draft",
-      status: "collecting",
-      date: r.date,
-      slotIso: r.slotIso,
-      calendarId: r.calendarId,
-      calendarName: r.calendarName,
-      patient: patientPayload,
-    });
-    await sleep(DRAFT_STEP_MS);
-    // step 3: + treatment (full draft)
     const fullDraft = { ...baseDraft, patient: patientPayload };
+    // `schnell` (24.11.2026, Mini-Clara): der Dialog erscheint gleich ausgefuellt,
+    // das schrittweise Fuellen (2 x 0,6 s Wartezeit) entfaellt.
+    if (!req.body?.schnell) {
+      // step 1: time + calendar (patient + treatment still empty)
+      await emitCommand(clientId, {
+        type: "appointment_draft",
+        status: "collecting",
+        date: r.date,
+        slotIso: r.slotIso,
+        calendarId: r.calendarId,
+        calendarName: r.calendarName,
+      });
+      await sleep(DRAFT_STEP_MS);
+      // step 2: + patient
+      await emitCommand(clientId, {
+        type: "appointment_draft",
+        status: "collecting",
+        date: r.date,
+        slotIso: r.slotIso,
+        calendarId: r.calendarId,
+        calendarName: r.calendarName,
+        patient: patientPayload,
+      });
+      await sleep(DRAFT_STEP_MS);
+    }
+    // step 3: + treatment (full draft)
     await emitCommand(clientId, fullDraft);
 
     // Dry-run: never write a real appointment.
@@ -5953,6 +5957,19 @@ router.post("/tools/book-for-patient", async (req, res) => {
     });
     await clearSelectedPatient(clientId);
 
+    const pre = c.alreadyBooked ? "Der Termin war bereits gebucht" : "Termin gebucht";
+    const antwort = (memoryHint, proofNote) => ({
+      ok: true,
+      booked: true,
+      message: `${pre} für ${who} am ${prettySlot(r.slotIso)}${r.calendarName ? ` bei ${r.calendarName}` : ""}.${memoryHint}${proofNote}`,
+      ...(c.alreadyBooked || !c.appointmentId ? {} : mitUndo("termin", {
+        id: c.appointmentId, label: `den Termin für ${who} am ${prettySlot(r.slotIso)}`,
+      })),
+    });
+
+    // Gedaechtnis-Hinweis, Zeitstrahl-Eintrag und Beleg. Mit `schnell` laeuft das
+    // nach der Antwort weiter: die Buchung steht, der Anrufer wartet nicht darauf.
+    const nacharbeit = async () => {
     // Read-before-act, spoken back: if this patient ALREADY had an open case
     // in the shared brain, Clara mentions it right after confirming the
     // booking. Looked up BEFORE recording the booking event, so the hint can
@@ -6000,15 +6017,155 @@ router.post("/tools/book-for-patient", async (req, res) => {
       }, { calendarName: c.doctorName || r.calendarName }));
       if (proof?.pushed?.sent > 0) proofNote = " Den Beleg habe ich Ihnen aufs Handy geschickt.";
     } catch { /* Beleg ist Komfort, nie ein Blocker fuer die Buchung */ }
+      return { memoryHint, proofNote };
+    };
 
-    const pre = c.alreadyBooked ? "Der Termin war bereits gebucht" : "Termin gebucht";
+    if (req.body?.schnell) {
+      res.json(antwort("", ""));
+      nacharbeit().catch((err) => log.warn("book-for-patient: Nacharbeit fehlgeschlagen", { clientId, err: String(err?.message || err) }));
+      return;
+    }
+    const { memoryHint, proofNote } = await nacharbeit();
+    return res.json(antwort(memoryHint, proofNote));
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// Termin eines bestehenden Patienten absagen oder verschieben (24.11.2026,
+// Mini-Clara). Gleiches Muster wie book-for-patient: der Patient ist vorher
+// eindeutig gesucht, `dryRun` prueft alles und schreibt nichts und liefert
+// `vorschau` fuer die Bestaetigungsfrage. Welcher Termin gemeint ist, wird
+// hier aus dem echten Kalender bestimmt, nie vom Modell.
+function berlinIso(ms) {
+  const t = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(new Date(ms));
+  return t.replace(" ", "T");
+}
+
+router.post("/tools/change-for-patient", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const aktion = String(req.body?.aktion || "").trim();
+    if (aktion !== "absagen" && aktion !== "verschieben") {
+      return res.json({ ok: false, message: "Soll ich den Termin absagen oder verschieben?" });
+    }
+    const selected = await getSelectedPatient(clientId);
+    if (!selected || !selected.id) {
+      return res.json({ ok: false, message: "Bitte zuerst den Patienten eindeutig suchen." });
+    }
+    const who = `${selected.firstName || ""} ${selected.lastName || ""}`.trim();
+    const termine = await getPatientAppointments(clientId, {
+      patientId: selected.id, firstName: selected.firstName, lastName: selected.lastName,
+    });
+    if (!termine?.ok) return res.json({ ok: false, message: `Die Termine von ${who} kann ich gerade nicht abrufen.` });
+    const kommend = termine.upcoming || [];
+    if (!kommend.length) return res.json({ ok: false, keinTermin: true, message: `${who} hat keinen kommenden Termin.` });
+
+    // Welcher Termin? `terminId` (aus einer frueheren Vorschau) oder `terminDatum`
+    // (Tag, optional mit Uhrzeit). Bei genau einem kommenden Termin ist es der.
+    const wunschId = String(req.body?.terminId || "").trim();
+    const wunsch = String(req.body?.terminDatum || "").trim().replace(" ", "T");
+    let treffer = kommend;
+    if (wunschId) treffer = kommend.filter((a) => a.id === wunschId);
+    else if (wunsch) {
+      const amTag = kommend.filter((a) => berlinIso(a.startMs).slice(0, 10) === wunsch.slice(0, 10));
+      const genau = wunsch.length >= 16 ? amTag.filter((a) => berlinIso(a.startMs) === wunsch.slice(0, 16)) : [];
+      treffer = genau.length ? genau : amTag;
+      if (!treffer.length) {
+        const liste = kommend.slice(0, 4).map((a) => prettySlot(berlinIso(a.startMs))).join(", ");
+        return res.json({ ok: false, message: `An dem Tag hat ${who} keinen Termin. Kommende Termine: ${liste}. Welchen meinen Sie?` });
+      }
+    }
+    if (treffer.length > 1) {
+      const liste = treffer.slice(0, 4).map((a) => prettySlot(berlinIso(a.startMs))).join(", ");
+      return res.json({ ok: false, mehrere: true, message: `${who} hat mehrere kommende Termine: ${liste}. Welchen meinen Sie?` });
+    }
+    const termin = treffer[0];
+    const altIso = berlinIso(termin.startMs);
+
+    let neuIso = "";
+    if (aktion === "verschieben") {
+      if (!req.body?.neuerZeitpunkt) return res.json({ ok: false, message: "Auf welchen Tag und welche Uhrzeit soll ich verschieben?" });
+      neuIso = ensureBerlinTz(req.body.neuerZeitpunkt);
+      const neuMs = Date.parse(neuIso);
+      if (!Number.isFinite(neuMs)) return res.json({ ok: false, message: "Den neuen Zeitpunkt habe ich nicht verstanden. Bitte Tag und Uhrzeit nennen." });
+      if (neuMs <= Date.now()) return res.json({ ok: false, message: "Der neue Zeitpunkt liegt in der Vergangenheit." });
+      if (berlinIso(neuMs) === altIso) return res.json({ ok: false, message: `Der Termin von ${who} steht schon auf ${prettySlot(altIso)}.` });
+    }
+
+    const vorschau = {
+      aktion,
+      patientId: selected.id,
+      patient: who,
+      geburtsdatum: selected.birthDate || null,
+      terminId: termin.id,
+      altIso,
+      neuIso: neuIso ? berlinIso(Date.parse(neuIso)) : null,
+      kalenderId: termin.calendarId || null,
+      kalender: termin.calendarName || null,
+      behandlung: termin.visitMotive || null,
+    };
+    if (req.body?.dryRun) {
+      return res.json({
+        ok: true, dryRun: true, vorschau,
+        message: aktion === "absagen"
+          ? `Testlauf: Der Termin von ${who} am ${prettySlot(altIso)} wäre jetzt abgesagt worden.`
+          : `Testlauf: Der Termin von ${who} wäre jetzt von ${prettySlot(altIso)} auf ${prettySlot(vorschau.neuIso)} verschoben worden.`,
+      });
+    }
+
+    const out = aktion === "absagen"
+      ? await cancelBookingById(clientId, termin.id)
+      : await moveBookingById(clientId, termin.id, neuIso);
+    if (!out.ok) {
+      return res.json({ ok: false, message: `${aktion === "absagen" ? "Absagen" : "Verschieben"} nicht möglich: ${out.error}` });
+    }
+    await emitCommand(clientId, {
+      type: "navigate",
+      date: (vorschau.neuIso || altIso).slice(0, 10),
+      calendarId: termin.calendarId || null,
+      calendarName: termin.calendarName || null,
+    }).catch(() => {});
+    await clearSelectedPatient(clientId);
+
+    const opNow = await getOperator(clientId).catch(() => null);
+    const was = aktion === "absagen"
+      ? `den Termin von ${who} am ${prettySlot(altIso)} abgesagt`
+      : `den Termin von ${who} von ${prettySlot(altIso)} auf ${prettySlot(vorschau.neuIso)} verschoben`;
+    try {
+      await recordCommunication(clientId, {
+        id: `appt-action:${termin.id}:${aktion === "absagen" ? "cancelled" : `moved:${vorschau.neuIso}`}`,
+        channel: "clara_voice",
+        direction: "internal",
+        type: "interaction",
+        counterparty: { kind: "patient", name: who, ref: null },
+        subject: { patientId: selected.id, name: who, matchStatus: "matched", matchMethod: "calendar" },
+        signals: aktion === "absagen" ? { appointmentCancel: true } : { appointmentRequest: true },
+        summary: `${await getAssistantName(clientId)} hat ${was}${opNow?.name ? ` — auf Zuruf von ${opNow.name}` : ""}.`,
+        extractor: "clara@booking",
+        payloadRef: { kind: "appointment", id: termin.id },
+      }, { by: "Clara" });
+    } catch (err) {
+      log.warn("change-for-patient: Gedaechtnis-Eintrag fehlgeschlagen", { clientId, err: String(err?.message || err) });
+    }
+
     return res.json({
       ok: true,
-      booked: true,
-      message: `${pre} für ${who} am ${prettySlot(r.slotIso)}${r.calendarName ? ` bei ${r.calendarName}` : ""}.${memoryHint}${proofNote}`,
-      ...(c.alreadyBooked || !c.appointmentId ? {} : mitUndo("termin", {
-        id: c.appointmentId, label: `den Termin für ${who} am ${prettySlot(r.slotIso)}`,
-      })),
+      erledigt: true,
+      aktion,
+      message: aktion === "absagen"
+        ? `Der Termin von ${who} am ${prettySlot(altIso)} ist abgesagt.`
+        : `Der Termin von ${who} ist von ${prettySlot(altIso)} auf ${prettySlot(vorschau.neuIso)} verschoben.`,
+      ...(aktion === "verschieben"
+        ? mitUndo("termin_verschoben", { id: termin.id, vorher: altIso, label: `der Termin von ${who}` })
+        : {}),
     });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

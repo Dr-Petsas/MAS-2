@@ -399,3 +399,41 @@ export async function cancelBookingById(clientId, appointmentId) {
   if (status === 200 && data?.status === "success") return { ok: true };
   return { ok: false, error: data?.message || `agentCancelAppointmentById failed (${status})` };
 }
+
+// Termin per Kennung auf einen neuen Beginn verschieben (24.11.2026, Mini-Clara).
+// Dieselbe Cloud Function und dieselben Felder wie Claras postponeAppointment;
+// die Verfuegbarkeit prueft die Cloud Function.
+/** Berliner Wanduhrzeit "JJJJ-MM-TT HH:mm". Die Plattform liest newStartDate beim
+ *  Verschieben mit dayjs.tz(…, Berlin) und verwirft dabei einen mitgeschickten
+ *  Offset: "14:00+01:00" landete auf 13 Uhr (echter Lauf 24.11.2026). */
+export function berlinWanduhr(iso) {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return "";
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(t).map((x) => [x.type, x.value]),
+  );
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+export async function moveBookingById(clientId, appointmentId, neuIso) {
+  const id = norm(appointmentId);
+  const neu = ensureBerlinTz(neuIso);
+  if (!id) return { ok: false, error: "no_appointment" };
+  if (!neu) return { ok: false, error: "no_start" };
+  if (process.env.MAS_BOOKING_DRY_RUN === "1") return { ok: true, dryRun: true, neuIso: neu };
+  const booking = await loadBooking(clientId);
+  const { status, data } = await cfPost("updateOrCancelAppointment", {
+    clientId: norm(booking.clientId) || clientId,
+    locationId: norm(booking.locationId),
+    action: "postpone",
+    appointmentId: id,
+    newStartDate: berlinWanduhr(neu) || neu,
+  });
+  if (status === 200 && (data?.success || data?.status === "success")) {
+    return { ok: true, neuIso: norm(data?.newStart) || neu };
+  }
+  return { ok: false, error: data?.message || data?.error || `updateOrCancelAppointment failed (${status})` };
+}

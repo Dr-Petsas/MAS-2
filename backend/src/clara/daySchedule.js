@@ -1152,6 +1152,11 @@ export function buildSpokenDayList(appointments = [], { date, calendars = [], op
 // der Plattform-Collection (per patientId, Fallback ueber den Namen) und
 // blendet virtuelle Platzhalter genauso aus wie der Kalender (Eiserne Regel 4).
 
+/** PatientStatus der Plattform: 4 = abwesend unentschuldigt, 5 = abwesend entschuldigt (Absage). */
+export function istAbgesagt(a) {
+  return a?.patientStatus === 4 || a?.patientStatus === 5;
+}
+
 export function dayOfMs(ms) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
 }
@@ -1200,7 +1205,11 @@ export async function getPatientAppointments(clientId, { patientId, firstName, l
   appts.sort((a, b) => a.startMs - b.startMs);
 
   const now = Date.now();
-  const upcoming = appts.filter((a) => a.startMs >= now);
+  // Eine Absage loescht den Termin nicht: die Plattform setzt patientStatus auf
+  // "abwesend" (4 unentschuldigt, 5 entschuldigt) und laesst ihn stehen. Ein so
+  // markierter KOMMENDER Termin ist abgesagt und zaehlt nicht mehr als naechster
+  // Termin (24.11.2026: nach der Absage hiess es weiter "naechster Besuch morgen").
+  const upcoming = appts.filter((a) => a.startMs >= now && !istAbgesagt(a));
   const past = appts.filter((a) => a.startMs < now);
   return {
     ok: true,

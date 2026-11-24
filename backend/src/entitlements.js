@@ -40,7 +40,23 @@ export function isAppEnabledFromBilling(billing, appId, opts = {}) {
   return true;
 }
 
+// Jedes Clara-Werkzeug prueft die Freischaltung. Das Billing-Dokument dafuer bei
+// jedem Aufruf neu zu lesen, kostete je Werkzeug rund 70 ms (gemessen 24.11.2026).
+// Es wird deshalb kurz gemerkt; ein umgelegter Billing-Schalter wirkt spaetestens
+// nach dieser Zeit. Notaus: MAS_BILLING_MERKEN_S=0 (jedes Mal lesen wie vorher).
+const BILLING_MERKEN_MS = Math.max(0, Number(process.env.MAS_BILLING_MERKEN_S ?? 60)) * 1000;
+const billingGemerkt = new Map();
+
 export async function assertAppEnabled(clientId, appId, opts = {}) {
+  if (!BILLING_MERKEN_MS) {
+    return isAppEnabledFromBilling(await getBilling(clientId), appId, opts);
+  }
+  const eintrag = billingGemerkt.get(clientId);
+  if (eintrag && Date.now() - eintrag.wann < BILLING_MERKEN_MS) {
+    return isAppEnabledFromBilling(eintrag.billing, appId, opts);
+  }
+  // Ein Lesefehler wird nicht gemerkt: er geht wie bisher an den Aufrufer.
   const billing = await getBilling(clientId);
+  billingGemerkt.set(clientId, { billing, wann: Date.now() });
   return isAppEnabledFromBilling(billing, appId, opts);
 }
