@@ -3744,5 +3744,18 @@ Baustufen und Abnahme:
    TTS erster Ton 0,6 bis 0,7 s (Tunnel ueber pickadoc1), Rest Transport.
    Offen: Ziel 1,2 s, Ueberbrueckungssatz waehrend des Werkzeugs, Mund-Text
    (Zahlen als Woerter), Zugang vom Handy.
+   NACHTRAG 24.11. 19:15: Parakeet schreibt schon nach 0,1 s Pause mit
+   (eigener VAD in `stt_node`, Ende bei 0,25 s), vorgezogene Erzeugung samt
+   TTS, erster Sprechteil endet am ersten Komma, vorgerenderte
+   Ueberbrueckungssaetze ("Moment.", "Ich schau nach.") spielen, sobald das
+   Modell ein Daten-Werkzeug waehlt. Probe: letztes Wort bis erster Ton
+   0,91 bis 0,93 s bei Werkzeugfragen (erster Ton = Ueberbrueckung, die
+   Antwort folgt nach der MAS-Laufzeit). vLLM auf pickadoc1 von 0.24 auf
+   0.34.0 (Compose Zeile 93, Sicherung `docker-compose.yml.bak-vor-vllm034-
+   20261124`, Rueckweg-Image `vllm/vllm-openai:v0.24.0-sicher`): 284 statt
+   233 Token/s, erstes Token 0,06 bis 0,08 s, prod_smoke gruen. Textfaelle
+   28/28, erster Text im Median 0,9 s. Sie-Ausrutscher nach Werkzeug-Antwort
+   behoben (Anrede-Hinweis am Werkzeug-Ergebnis). Offen: Mund-Text, Handy,
+   Clara stellt "stornieren" in Aussicht, obwohl sie noch nicht schreibt.
 3. Schreibende Werkzeuge (Zwei-Schritt), danach Gegenhoeren neben der
    Live-Clara ueber den Umschalter.
