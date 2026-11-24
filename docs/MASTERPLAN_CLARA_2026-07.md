@@ -3735,5 +3735,14 @@ Baustufen und Abnahme:
    Live-Clara), Parakeet streamend, Sprech-Ende per Turn-Detector, Cache
    vorwaermen bei stabilem Partial, TTS satzweise ueber Kr02, Unterbrechung.
    Abnahme: letztes Wort bis erster Ton im Median unter 1,2 s bei Lesefragen.
+   STAND 24.11. abends: laeuft auf LiveKit Agents 1.8.13 mit EIGENEM lokalem
+   LiveKit-Server (Port 7890), weil der Live-Worker in der LiveKit-Cloud jeden
+   Raum annimmt. `start-mini.ps1`, Testseite `http://localhost:8196`, Probe
+   ohne Mikrofon `python probe.py`. Gemessen (Probe): 2,0 s beim Plaudern,
+   2,5 bis 3,3 s mit Werkzeug. Anteile: Sprech-Ende 0,65 s (VAD 0,3 +
+   Parakeet 0,23, nicht streamend), LLM 0,15 bis 0,35 s, MAS 0,4 bis 0,5 s,
+   TTS erster Ton 0,6 bis 0,7 s (Tunnel ueber pickadoc1), Rest Transport.
+   Offen: Ziel 1,2 s, Ueberbrueckungssatz waehrend des Werkzeugs, Mund-Text
+   (Zahlen als Woerter), Zugang vom Handy.
 3. Schreibende Werkzeuge (Zwei-Schritt), danach Gegenhoeren neben der
    Live-Clara ueber den Umschalter.
