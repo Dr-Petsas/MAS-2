@@ -1,0 +1,26 @@
+<!doctype html><html lang=de><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta http-equiv=Cache-Control content=no-store>
+<title>Clara STT-Vergleich</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1220;color:#e8ecf5;margin:0;padding:16px}
+h1{font-size:20px;margin:0 0 4px} .sub{color:#9aa4c0;font-size:13px;margin-bottom:16px}
+.card{background:#181c2e;border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.row{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
+.lbl{font-size:14px} .bar{position:relative;flex:1;height:22px;background:#252a42;border-radius:11px;margin-left:12px;overflow:hidden}
+.fill{position:absolute;left:0;top:0;bottom:0;border-radius:11px} .fill.old{background:#ff7a90} .fill.plain{background:#7aa2ff} .fill.boost{background:#39d98a}
+.bar span{position:absolute;right:8px;top:2px;font-size:12px;color:#0b0d16;font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:12px} td{padding:6px 6px;border-top:1px solid #252a42;vertical-align:top}
+th{text-align:left;color:#9aa4c0;font-size:11px;padding:6px} .old{color:#ff9db0} .new{color:#7ff0b6}
+</style></head><body>
+<h1>Clara &ndash; STT-Vergleich</h1>
+<div class=sub>Suite: varianten_20260802_173637.json &middot; 87 Faelle &middot; Praesenzliste 13 Namen &middot; nur Testlabor, Live unberuehrt</div>
+<div class=card>
+<div class=row><div class=lbl>ALT (Worker, letzter Lauf)</div><div class="bar"><div class="fill old" style="width:54.0%"></div><span>54.0%</span></div></div>
+<div class=row><div class=lbl>NEU Parakeet (ohne Boost)</div><div class="bar"><div class="fill plain" style="width:56.3%"></div><span>56.3%</span></div></div>
+<div class=row><div class=lbl>NEU Parakeet (+Boosting)</div><div class="bar"><div class="fill boost" style="width:66.7%"></div><span>66.7%</span></div></div>
+<div class=sub style=margin-top:10px>Exaktreffer (Transkript = Satz). &Oslash; WER: alt 0.095 &middot; neu 0.083 &middot; +Boost 0.065</div>
+</div>
+<div class=card><b>Groesste Verbesserungen (alt &rarr; neu+Boost)</b>
+<table><tr><th>ID</th><th>Gesagt</th><th>ALT</th><th>NEU+Boost</th></tr><tr><td>var-12a</td><td>Was ist bei Lisas Anruf rausgekommen?</td><td class=old>Was ist bei Lisa anrufen rausgekommen?</td><td class=new>Was ist bei Lisas Anruf rausgekommen?</td></tr><tr><td>var-15c</td><td>Zeig mir die Anrufe von gestern.</td><td class=old>Zeigt mir die anrufen von gestern.</td><td class=new>Zeig mir die Anrufe von gestern.</td></tr><tr><td>var-12c</td><td>Gib mir das Ergebnis von Lisas Anruf.</td><td class=old>Gib mir das Ergebnis von Lisa anrufen.</td><td class=new>Gib mir das Ergebnis von Lisas Anruf.</td></tr><tr><td>var-09c</td><td>Schick Frau Skiba kurz eine Kurznachricht, das Rezept kann abgeholt werden.</td><td class=old>Schickfrau Schieber, kurz eine Kurznachricht, das Rezept kann abgeholt werden.</td><td class=new>Schick Frau Skiba kurz eine Kurznachricht, das Rezept kann abgeholt werden.</td></tr><tr><td>var-15a</td><td>Gab es gestern Anrufe?</td><td class=old>Gab es gestern anrufen?</td><td class=new>Gab es gestern Anrufe?</td></tr><tr><td>var-20c</td><td>Wann bin ich wieder da nach dem Urlaub?</td><td class=old>Wann bin ich wieder danach dem Urlaub?</td><td class=new>Wann bin ich wieder da nach dem Urlaub?</td></tr><tr><td>var-13a</td><td>Welche Telefonnummer hat Doktor Petsas?</td><td class=old>Welche Telefonnummer hat Doktor Petzers?</td><td class=new>Welche Telefonnummer hat Doktor Petsas?</td></tr><tr><td>var-23c</td><td>Fass zusammen, was heute reinkam.</td><td class=old>Fast zusammen, was heute reinkam.</td><td class=new>Fass zusammen, was heute reinkam.</td></tr><tr><td>var-06b</td><td>Vergib Frau Skiba bitte einen Termin.</td><td class=old>Vergib Frau Schieber bitte einen Termin.</td><td class=new>Vergib Frau Skiba bitte einen Termin.</td></tr><tr><td>var-06c</td><td>Fuer Frau Skiba brauche ich einen Termin.</td><td class=old>Vor Frau Schieber brauche ich einen Termin.</td><td class=new>Fuher Frau Skiba brauche ich einen Termin.</td></tr><tr><td>var-07a</td><td>Bitte sag Herrn Melzers Termin morgen ab.</td><td class=old>Bitte sag Herrn Meltzers Termin morgen ab.</td><td class=new>Bitte sag Herrn Melzers Termin morgen ab.</td></tr><tr><td>var-13b</td><td>Sag mir die Nummer von Doktor Petsas.</td><td class=old>Sag mir die Nummer von Doktor Petzers.</td><td class=new>Sag mir die Nummer von Doktor Petsas?</td></tr><tr><td>var-05a</td><td>Wann haette ich als Naechstes einen freien Termin?</td><td class=old>Wann heette ich als nächstes einen freien Termin?</td><td class=new>Wann hätte ich als nächstes einen freien Termin?</td></tr><tr><td>var-06a</td><td>Ich moechte fuer Frau Skiba einen Termin vergeben.</td><td class=old>Ich möchte vorher Frau Skiber einen Termin vergeben.</td><td class=new>Ich möchte vorher Frau Skiba einen Termin vergeben.</td></tr><tr><td>var-14b</td><td>Ich brauche Frau Skibas Nummer auf mein Handy.</td><td class=old>Ich brauche Frau Schiebers Nummer auf mein Handy.</td><td class=new>Ich brauche Frau Skibas Nummer auf mein Handy.</td></tr></table></div>
+</body></html>

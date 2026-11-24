@@ -1,5 +1,5 @@
 // GENERIERT aus F:\PlanR\Implantologie\Privat-Impl (src/clara/index.ts) – nicht von Hand ändern.
-// Neu bauen: cd F:\PlanR\Implantologie\Privat-Impl && npm run build:engine   (sha256 88f679955728)
+// Neu bauen: cd F:\PlanR\Implantologie\Privat-Impl && npm run build:engine   (sha256 bcabc6a957fa)
 //#region src/befund01.ts
 var OBERKIEFER$1 = [
 	"18",
@@ -75,7 +75,47 @@ var BEFUND_KUERZEL = {
 	x: "nicht erhaltungswürdiger Zahn",
 	")(": "Lückenschluss"
 };
-`${typeof location === "undefined" ? "http://127.0.0.1:5189" : location.pathname.startsWith("/planer/") ? location.origin : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com" : `http://${location.hostname}:5189`}`;
+/** PlanR-Server; die Sitzung (Cookie) gilt für denselben Host wie der Planer */
+var SERVER = typeof location === "undefined" ? "http://127.0.0.1:5189" : location.pathname.startsWith("/planer/") ? location.origin : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com" : `http://${location.hostname}:5189`;
+/** Patientennummer im Praxisprogramm je Patient (Vorname|Name|Geburtsdatum), wie PlanR sie bei „Neuer Plan“ mitgibt bzw. der erste Abruf sie liefert */
+var NR_KEY = "planr.pvsNr";
+var nrLesen = () => {
+	try {
+		return JSON.parse(localStorage.getItem(NR_KEY) ?? "{}");
+	} catch {
+		return {};
+	}
+};
+var nurZiffern = (nr) => nr.length > 0 && nr.length <= 9 && [...nr].every((z) => z >= "0" && z <= "9");
+function pvsNrMerken(schluessel, nr) {
+	if (!schluessel || !nurZiffern(nr)) return;
+	const alle = Object.entries({
+		...nrLesen(),
+		[schluessel]: nr
+	}).slice(-50);
+	try {
+		localStorage.setItem(NR_KEY, JSON.stringify(Object.fromEntries(alle)));
+	} catch {}
+}
+var patientSchluessel = (p) => `${(p.vorname ?? "").trim()}|${(p.name ?? "").trim()}|${(p.geburtsdatum ?? "").trim()}`;
+/** Übergabe #patient=<base64url-JSON> der PlanR-Übersicht: die Patientennummer merken, bevor der Planer die Adresse aufräumt */
+function pvsNrAusFragmentMerken(hash) {
+	try {
+		const roh = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash).get("patient") ?? "";
+		if (!roh) return;
+		const b64 = roh.replaceAll("-", "+").replaceAll("_", "/");
+		const bytes = Uint8Array.from(atob(b64 + "=".repeat((4 - b64.length % 4) % 4)), (c) => c.charCodeAt(0));
+		const p = JSON.parse(new TextDecoder().decode(bytes));
+		const text = (x) => typeof x === "string" ? x.trim().slice(0, 120) : "";
+		if (typeof p.pvsNr === "string") pvsNrMerken(patientSchluessel({
+			vorname: text(p.vorname),
+			name: text(p.name),
+			geburtsdatum: text(p.geburtsdatum)
+		}), p.pvsNr);
+	} catch {}
+}
+if (typeof window !== "undefined") pvsNrAusFragmentMerken(window.location.hash);
+`${SERVER}`;
 Promise.resolve();
 //#endregion
 //#region src/data/implantatkoerper.ts
@@ -439,17 +479,17 @@ function planen(plan, _einst) {
 		const o = plan.regionen[r] ?? {};
 		const simultan = Object.keys(plan.zaehne).some((z) => regionVon(z) === r && IMPLANTAT_KUERZEL.has(tpVon(plan, z)));
 		const opSitz = simultan ? 3 : 2;
-		const sinus = !!(o.sinusIntern || o.sinusExtern);
+		const kavitaeten = Object.keys(plan.zaehne).filter((z) => regionVon(z) === r && IMPLANTAT_KUERZEL.has(tpVon(plan, z))).length;
+		const intern = !!o.sinusIntern && kavitaeten > 0;
+		if (o.sinusIntern && !kavitaeten) hinweise.push(`${r}: Interner Sinuslift nur zusammen mit einem Implantat, nicht angesetzt.`);
+		const sinus = intern || !!o.sinusExtern;
 		const kamm = o.augmentation === true || sinus && o.augmentation !== false && !o.boneSplitting;
 		if (kamm) push(goz("9100", r, opSitz, "Aufbau des Alveolarfortsatzes (GBR)"));
 		if (o.boneSplitting) push(goz("9130", r, opSitz, "Bone Splitting / Spreading"));
-		if (o.sinusIntern) {
-			const kavitaeten = Object.keys(plan.zaehne).filter((z) => regionVon(z) === r && IMPLANTAT_KUERZEL.has(tpVon(plan, z))).length;
-			push({
-				...goz("9110", r, opSitz, "Interner Sinuslift (geschlossene Sinusbodenelevation)"),
-				anzahl: Math.max(1, kavitaeten)
-			});
-		}
+		if (intern) push({
+			...goz("9110", r, opSitz, "Interner Sinuslift (geschlossene Sinusbodenelevation)"),
+			anzahl: kavitaeten
+		});
 		if (o.sinusExtern) push(goz("9120", r, opSitz, "Externer Sinuslift (Knochenfensterung)"));
 		if (sinus) {
 			push({
@@ -531,6 +571,25 @@ function planen(plan, _einst) {
 		}
 	}
 	if (positionen.some((p) => p.nr === "9110" || p.nr === "9120")) hinweise.push("Sinuslift: das Einbringen von Knochenersatz und Membran steckt in 9110/9120, berechnet wird nur das Material. Der Kammaufbau 9100 gilt daneben nur anteilig und verdrängt 9090 und die plastische Deckung 3100. Der Verschluss der Höhle steckt in 9120, deshalb keine 3090. Die Spülung GOÄ 1479 ist eine spätere Sitzung.");
+	if (positionen.length) {
+		const da = (ebene, nr) => positionen.some((p) => p.ebene === ebene && p.nr === nr);
+		const vorn = [];
+		if (!da("GOZ", "0010")) vorn.push(goz("0010", "", 1, "Eingehende Untersuchung"));
+		const gespraech = (nr, grund) => ({
+			id: `auto:goae:${nr}::1`,
+			ebene: "GOAE",
+			nr,
+			zahn: "",
+			anzahl: 1,
+			sitzung: 1,
+			grund,
+			auto: true
+		});
+		if (!da("GOAE", "3")) vorn.push(gespraech("3", "Eingehende Beratung, mindestens 10 Minuten"));
+		if (!da("GOAE", "6")) vorn.push(gespraech("6", "Untersuchung des Kauorgans"));
+		if (!da("GOAE", "34")) vorn.push(gespraech("34", "Aufklärungsgespräch, mindestens 20 Minuten"));
+		positionen.unshift(...vorn);
+	}
 	return {
 		positionen,
 		hinweise
@@ -2086,6 +2145,51 @@ var goae_zahnarzt_default = {
 	punktwert: .0582873,
 	hinweis: "Nur die nach § 6 Abs. 2 GOZ für Zahnärzte zugänglichen Nummern. Faktorrahmen nach § 5 GOÄ: persönliche Leistungen 1,0–3,5 (Schwelle 2,3); Abschnitte A/E/O 1,0–2,5 (Schwelle 1,8); Nr. 250 höchstens 2,5; Zuschlag 5377 nur einfacher Satz.",
 	eintraege: [
+		{
+			"nr": "1",
+			"text": "Beratung – auch mittels Fernsprecher",
+			"punkte": 80,
+			"abschnitt": "B",
+			"kat": "B",
+			"maxFaktor": 3.5,
+			"schwelle": 2.3
+		},
+		{
+			"nr": "3",
+			"text": "Eingehende, das gewöhnliche Maß übersteigende Beratung – auch mittels Fernsprecher –, mindestens 10 Minuten",
+			"punkte": 150,
+			"abschnitt": "B",
+			"kat": "B",
+			"maxFaktor": 3.5,
+			"schwelle": 2.3
+		},
+		{
+			"nr": "5",
+			"text": "Symptombezogene Untersuchung",
+			"punkte": 80,
+			"abschnitt": "B",
+			"kat": "B",
+			"maxFaktor": 3.5,
+			"schwelle": 2.3
+		},
+		{
+			"nr": "6",
+			"text": "Vollständige Untersuchung mindestens eines Organsystems (Kauorgan)",
+			"punkte": 100,
+			"abschnitt": "B",
+			"kat": "B",
+			"maxFaktor": 3.5,
+			"schwelle": 2.3
+		},
+		{
+			"nr": "34",
+			"text": "Erörterung der Auswirkungen einer Erkrankung auf die Lebensgestaltung, mindestens 20 Minuten (Aufklärungsgespräch)",
+			"punkte": 300,
+			"abschnitt": "B",
+			"kat": "B",
+			"maxFaktor": 3.5,
+			"schwelle": 2.3
+		},
 		{
 			"nr": "250",
 			"text": "Blutentnahme mittels Spritze, Kanüle oder Katheter aus der Vene",
@@ -3918,6 +4022,15 @@ var OP_ZUSCHLAEGE = [
 	"0520",
 	"0530"
 ];
+/** Nur mit dem einfachen Gebührensatz: OP-Zuschläge 0500–0530, Mikroskop 0110, Laser 0120. */
+var EINFACHSATZ = /* @__PURE__ */ new Set([
+	"0110",
+	"0120",
+	...OP_ZUSCHLAEGE
+]);
+function gozEinfachsatz(nr) {
+	return EINFACHSATZ.has(nr);
+}
 /** Chirurgische Leistungen des Planers (Sitzung mit Anästhesie, Kontrollröntgen, ggf. OP-Zuschlag). */
 var OP_LEISTUNGEN = /* @__PURE__ */ new Set([
 	"3000",
@@ -3954,15 +4067,54 @@ var OP_LEISTUNGEN = /* @__PURE__ */ new Set([
 	"9170"
 ]);
 /**
-* OP-Zuschlag nach der Punktzahl der Leistung (GOZ Abschnitt L): 250–499 → 0500 (sowie 4090, 4130),
-* 500–799 → 0510, 800–1199 → 0520, ab 1200 → 0530; unter 250 Punkten kein Zuschlag.
+* OP-Zuschlag (GOZ Abschnitt L). Die Zuschläge gelten nur für die dort ausdrücklich genannten Leistungen,
+* nicht für jede Leistung ab 250 Punkten – 9040 (Freilegung, 626 Punkte) und 4120 sind nicht zuschlagsfähig.
+* Quelle: Allgemeine Bestimmungen zu Abschnitt L und BZÄK-Kommentar zu 0500, 0510, 0520, 0530.
 */
-function opZuschlagStufe(nr, punkte) {
-	if (punkte >= 1200) return "0530";
-	if (punkte >= 800) return "0520";
-	if (punkte >= 500) return "0510";
-	if (punkte >= 250 || nr === "4090" || nr === "4130") return "0500";
-	return null;
+var OP_ZUSCHLAG_ZU = {
+	"0500": [
+		"3020",
+		"3030",
+		"3090",
+		"3100",
+		"3110",
+		"3130",
+		"3190",
+		"3230",
+		"3250",
+		"3280",
+		"4090",
+		"4100",
+		"4130",
+		"9090",
+		"9160"
+	],
+	"0510": [
+		"3040",
+		"3045",
+		"3120",
+		"3140",
+		"3160",
+		"3200",
+		"3240",
+		"3260",
+		"3270",
+		"9020",
+		"9140",
+		"9150",
+		"9170"
+	],
+	"0520": ["4133"],
+	"0530": [
+		"9010",
+		"9100",
+		"9110",
+		"9120",
+		"9130"
+	]
+};
+function opZuschlagStufe(nr) {
+	return OP_ZUSCHLAEGE.find((z) => OP_ZUSCHLAG_ZU[z].includes(nr)) ?? null;
 }
 //#endregion
 //#region src/engine/beb-standard.ts
@@ -4540,9 +4692,9 @@ function sitzungenErgaenzen(plan, eingang, _einst) {
 			auto: true,
 			grund: "Lokalanästhetikum"
 		});
-		const stufe = (p) => OP_ZUSCHLAEGE.indexOf(opZuschlagStufe(p.nr, punkte(p.nr)) ?? "");
+		const stufe = (p) => OP_ZUSCHLAEGE.indexOf(opZuschlagStufe(p.nr) ?? "");
 		const hoechste = inSitzung.slice().sort((a, b) => stufe(b) - stufe(a) || punkte(b.nr) - punkte(a.nr))[0];
-		const zuschlag = hoechste && opZuschlagStufe(hoechste.nr, punkte(hoechste.nr));
+		const zuschlag = hoechste && opZuschlagStufe(hoechste.nr);
 		if (hoechste && zuschlag) positionen.push({
 			id: `auto:opzuschlag:${s}`,
 			ebene: "GOZ",
@@ -5390,8 +5542,8 @@ function kalkulieren(plan, einst) {
 				});
 				continue;
 			}
-			let faktor = Math.min(Math.max(p.faktor ?? stdGoz, 1), gozMax);
-			if (p.preis !== void 0) faktor = p.faktor ?? 1;
+			let faktor = gozEinfachsatz(p.nr) ? 1 : Math.min(Math.max(p.faktor ?? stdGoz, 1), gozMax);
+			if (!gozEinfachsatz(p.nr) && p.preis !== void 0) faktor = p.faktor ?? 1;
 			const einzel = p.preis !== void 0 ? runden(p.preis) : runden(gozEinzel(p.nr, faktor) * anteil);
 			if (!eintrag && p.preis === void 0) hinweise.push(`GOZ ${p.nr} ist im Gebührenverzeichnis nicht vorhanden.`);
 			if (faktor > gozMax) hinweise.push(`GOZ ${p.nr}: Faktor über ${gozMax.toFixed(1)} ist unzulässig.`);
@@ -5418,7 +5570,7 @@ function kalkulieren(plan, einst) {
 				continue;
 			}
 			const rahmen = goaeRahmen(p.nr);
-			const faktor = Math.min(Math.max(p.faktor ?? stdGoae, 1), rahmen.max);
+			const faktor = /^zuschlag/i.test(eintrag?.text ?? "") ? 1 : Math.min(Math.max(p.faktor ?? stdGoae, 1), rahmen.max);
 			const einzel = p.preis !== void 0 ? runden(p.preis) : runden(goaeEinzel(p.nr, faktor) * anteil);
 			if (!eintrag && p.preis === void 0) hinweise.push(`GOÄ ${p.nr} ist nicht in der geöffneten Liste vorhanden.`);
 			honorarGoae.push({
@@ -5524,7 +5676,7 @@ function arztLesen() {
 		return null;
 	}
 }
-var kennung = (s) => `${s.length}:${s.slice(-48)}`;
+var kennung$1 = (s) => `${s.length}:${s.slice(-48)}`;
 /** Dunkle Striche → Stempelblau, Hintergrund (weiß oder transparent) → durchsichtig. */
 function blauFaerben(dataUrl) {
 	return new Promise((fertig) => {
@@ -5585,7 +5737,7 @@ async function arztUebernehmen(roh) {
 	if (!roh || typeof roh.name !== "string" || typeof localStorage === "undefined") return;
 	const original = typeof roh.signatur === "string" && roh.signatur.startsWith("data:image/") ? roh.signatur : "";
 	const alt = arztLesen();
-	const quelle = kennung(original);
+	const quelle = kennung$1(original);
 	if (alt && alt.name === roh.name && alt.quelle === quelle) return;
 	const neu = {
 		name: roh.name,
@@ -5600,6 +5752,69 @@ async function arztUebernehmen(roh) {
 	if (typeof window !== "undefined") window.dispatchEvent(new Event(ARZT_EREIGNIS));
 }
 //#endregion
+//#region src/mandant.ts
+var LISTE_KEY = "planr.mandanten.v1";
+var AKTIV_KEY = "planr.mandant.v1";
+/** Der Standard-Mandant liest die alten Schlüssel ohne Zusatz – vorhandene Daten bleiben ihm erhalten. */
+var STANDARD_ID = "standard";
+var STANDARD = {
+	id: STANDARD_ID,
+	name: "Praxis"
+};
+var speicher = () => typeof localStorage === "undefined" ? null : localStorage;
+function kennung(text) {
+	return text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+function lesen() {
+	let liste = [];
+	try {
+		const roh = JSON.parse(speicher()?.getItem(LISTE_KEY) ?? "[]");
+		if (Array.isArray(roh)) liste = roh.filter((m) => m && typeof m.id === "string" && kennung(m.id) === m.id && m.id);
+	} catch {
+		liste = [];
+	}
+	return [liste.find((m) => m.id === "standard") ?? STANDARD, ...liste.filter((m) => m.id !== STANDARD_ID)].map((m) => ({
+		id: m.id,
+		name: String(m.name || m.id)
+	}));
+}
+var schreiben = (liste) => speicher()?.setItem(LISTE_KEY, JSON.stringify(liste));
+/** Aktiver Mandant beim Laden der Seite; ?mandant=kürzel wählt (und legt bei Bedarf an). */
+function starten() {
+	const liste = lesen();
+	let id = speicher()?.getItem(AKTIV_KEY) ?? "standard";
+	const aufruf = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("mandant");
+	if (aufruf && kennung(aufruf)) {
+		id = kennung(aufruf);
+		if (!liste.some((m) => m.id === id)) {
+			liste.push({
+				id,
+				name: aufruf.trim()
+			});
+			schreiben(liste);
+		}
+		speicher()?.setItem(AKTIV_KEY, id);
+	}
+	return {
+		liste,
+		aktiv: liste.find((m) => m.id === id) ?? liste[0]
+	};
+}
+/** Gilt für die ganze Sitzung; ein Wechsel lädt die Seite neu, damit alle Speicher den neuen Mandanten lesen. */
+var MANDANT_ID = starten().aktiv.id;
+/**
+* Praxis des angemeldeten PlanR-Kontos. Nur deren Ablage geht an die Übersicht; meldet sich an diesem Browser ein
+* anderes Konto an, bekommt es einen eigenen Speicher – Pläne und Einstellungen zweier Praxen mischen sich nie.
+*/
+var KONTO_KEY = "planr.konto.v1";
+(() => {
+	try {
+		return kennung(speicher()?.getItem(KONTO_KEY) ?? "") || "standard";
+	} catch {
+		return STANDARD_ID;
+	}
+})();
+//#endregion
 //#region src/ablage.ts
 /**
 * Ablage gespeicherter Pläne mit Freigabe-Status (im Browser, localStorage).
@@ -5613,6 +5828,7 @@ function planNummer(praefix, lauf, jahr = (/* @__PURE__ */ new Date()).getFullYe
 	const ziffer = String((n - 1) % 999 + 1).padStart(3, "0");
 	return `${praefix}-${jahr}-${String.fromCharCode(65 + reihe % 26)}${ziffer}`;
 }
+`${encodeURIComponent(MANDANT_ID)}`;
 /** PlanR-Übersicht; die Sitzung (Cookie) gilt für denselben Host, daher nicht fest 127.0.0.1 */
 var hubAdresse = () => typeof location === "undefined" ? "http://127.0.0.1:5189/api/plaene" : location.pathname.startsWith("/planer/") ? `${location.origin}/api/plaene` : location.hostname.endsWith(".pickadoc-tunnel.com") ? "https://planr.pickadoc-tunnel.com/api/plaene" : `http://${location.hostname}:5189/api/plaene`;
 /** Praxiskopf vom Server holen; beim ersten neuen Stand einmal neu laden, damit die Planer-Einstellungen ihn übernehmen. */
@@ -5694,7 +5910,7 @@ function neuerPlan(nummer) {
 * rechnet mit der Engine dieses Planers. `npm run build:engine` baut daraus MAS-2/backend/src/vendor/impl-engine.mjs.
 * Die Versorgung auf den Implantaten (Krone, Brücke, Prothese) plant der Planer Zahnersatz privat.
 */
-var ENGINE_STAND = "2026-11-10 13:08";
+var ENGINE_STAND = "2026-11-23 18:36";
 var GUELTIG = new Set(ALLE_ZAEHNE);
 /** 01: dort steht schon ein Implantat */
 var STEHT_IMPLANTAT = /* @__PURE__ */ new Set([
@@ -5790,8 +6006,6 @@ function implAuftragVerstehen(roh) {
 	else if (/xenogen|bio-? ?oss|rind|bovin|cerabone/.test(k)) o.material = "xenogen";
 	else if (/synthetisch|alloplast|\btcp\b|hydroxyl/.test(k)) o.material = "synthetisch";
 	const jeExtern = !!sinusJe && Object.values(sinusJe).some((x) => x?.sinusExtern);
-	const jeIntern = !!sinusJe && Object.values(sinusJe).some((x) => x?.sinusIntern);
-	o.augmentation || o.sinusIntern || o.sinusExtern || jeExtern || jeIntern || sinusOffen || o.boneSplitting;
 	const materialAngenommen = false;
 	if (/ohne membran|keine membran/.test(k)) o.membran = "keine";
 	else if (/titan/.test(k)) o.membran = "titan";
@@ -5879,14 +6093,60 @@ var SEDIERUNG = {
 	itn: "Vollnarkose"
 };
 /** Gesprochener Auftrag + 01 → gerechneter Kostenvoranschlag Implantologie (ohne Nummer) oder Rückfrage */
+/** „Implantat“ ist gewollt. „kein Implantat“ und „ohne Implantat“ zählen nicht. */
+function implantGewollt(text) {
+	const k = text.toLowerCase();
+	let von = 0;
+	while (von < k.length) {
+		const i = k.indexOf("implant", von);
+		if (i < 0) return false;
+		const davor = k.slice(Math.max(0, i - 16), i);
+		if (!(davor.endsWith("kein ") || davor.endsWith("keine ") || davor.endsWith("keinen ") || davor.endsWith("ohne ") || davor.endsWith("nicht "))) return true;
+		von = i + 7;
+	}
+	return false;
+}
+/** Externer Sinuslift ist eine eigene Leistung. Ein Zahn nennt dann die Kieferhälfte, kein Implantat. */
+function externAllein(auftragText, a) {
+	if (implantGewollt(auftragText)) return false;
+	const je = a.sinusJe;
+	const extern = !!(a.regionen.sinusExtern || je?.["OK-R"]?.sinusExtern || je?.["OK-L"]?.sinusExtern);
+	const intern = !!(a.regionen.sinusIntern || je?.["OK-R"]?.sinusIntern || je?.["OK-L"]?.sinusIntern);
+	return extern && !intern && !a.sinusOffen;
+}
+function seitenExtern(a) {
+	const seiten = /* @__PURE__ */ new Set();
+	if (a.sinusJe?.["OK-R"]?.sinusExtern) seiten.add("OK-R");
+	if (a.sinusJe?.["OK-L"]?.sinusExtern) seiten.add("OK-L");
+	if (!seiten.size && a.regionen.sinusExtern) for (const z of a.zaehne) {
+		const r = regionVon(z);
+		if (r === "OK-R" || r === "OK-L") seiten.add(r);
+	}
+	return [...seiten];
+}
 function implEntwurf(auftragText, befund = {}, optionen = {}) {
 	const a = implAuftragVerstehen(auftragText);
-	if (!a.zaehne.length) return {
+	const allein = externAllein(auftragText, a);
+	const internGesagt = !!(a.regionen.sinusIntern || a.sinusJe?.["OK-R"]?.sinusIntern || a.sinusJe?.["OK-L"]?.sinusIntern);
+	if (!allein && a.sinusOffen && !a.zaehne.length) return {
+		status: "rueckfrage",
+		grund: "sinus",
+		frage: "Interner oder externer Sinuslift?"
+	};
+	let regionenVorgabe = null;
+	if (allein) {
+		regionenVorgabe = seitenExtern(a);
+		if (!regionenVorgabe.length) return {
+			status: "rueckfrage",
+			grund: "seite",
+			frage: "Ein externer Sinuslift geht je Kieferhälfte. Rechts oder links im Oberkiefer?"
+		};
+	} else if (!a.zaehne.length) return {
 		status: "rueckfrage",
 		grund: "zaehne",
-		frage: "An welchen Zähnen soll ich Implantate planen?"
+		frage: internGesagt ? "Ein interner Sinuslift geht nur zusammen mit einem Implantat. An welchen Zähnen soll ich das Implantat planen?" : "An welchen Zähnen soll ich Implantate planen?"
 	};
-	const zaehne = sortiert(a.zaehne);
+	const zaehne = allein ? [] : sortiert(a.zaehne);
 	const mitBefund = Object.values(befund).some((c) => String(c ?? "").trim());
 	const hinweise = [];
 	const sofort = [];
@@ -5931,7 +6191,7 @@ function implEntwurf(auftragText, befund = {}, optionen = {}) {
 			frage: `Laut Befund steht an ${zahn} noch ${befundName(code)}. Soll der Zahn raus und sofort implantiert werden, oder meinen Sie einen anderen Zahn?`
 		};
 	}
-	const regionen = REGIONEN.filter((r) => zaehne.some((z) => regionVon(z) === r));
+	const regionen = regionenVorgabe ?? REGIONEN.filter((r) => zaehne.some((z) => regionVon(z) === r));
 	const sinusRegionen = regionen.filter(IST_OK_SEITE);
 	if (a.sinusOffen && sinusRegionen.length) return {
 		status: "rueckfrage",
@@ -6047,7 +6307,9 @@ function implVersorgungSatz(z) {
 	const teile = [];
 	if (z.spaet.length) teile.push(`${z.spaet.length > 1 ? "Implantate" : "Implantat"} an ${liste(z.spaet)}`);
 	if (z.sofort.length) teile.push(`${z.sofort.length > 1 ? "Sofortimplantate" : "Sofortimplantat"} an ${liste(z.sofort)}`);
-	return `${teile.join(", ")}${z.massnahmen.length ? `; dazu ${liste(z.massnahmen)}` : ""}`;
+	const mass = z.massnahmen.length ? liste(z.massnahmen) : "";
+	if (teile.length && mass) return `${teile.join(", ")}; dazu ${mass}`;
+	return teile.join(", ") || mass;
 }
 //#endregion
 export { ENGINE_STAND, euro, implAuftragVerstehen, implEntwurf, implVersorgungSatz };

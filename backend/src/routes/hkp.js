@@ -50,7 +50,7 @@ import { soundsSame } from "../clara/phonetics.js";
 import { disambiguationQuestion, merkmalEingrenzen, ordinalPick } from "../clara/patientDisambig.js";
 import { fetchPatientsByIds, findInCatalog } from "../clara/patientCatalog.js";
 import { planNurPvs, pvsKennungAufloesen, sucheImPvs } from "../hkp/planrPvs.js";
-import { praxisRegistrieren, RegistrierungFehler, testaboFreigeben } from "../hkp/planrRegistrierung.js";
+import { kontoNachEmail, praxisRegistrieren, RegistrierungFehler, testaboFreigeben } from "../hkp/planrRegistrierung.js";
 import { befundSatz, jahrgangWahl, vetternFrage, vorleseSatz, zahnBefundSatz } from "../hkp/vorlesen.js";
 import { befundMerken, entfernenMarken, planartKorrigieren, rueckfrageMerken, zahnListe } from "../hkp/mitdenken.js";
 import { reglerSatz, spanneSatz, zielpreisAus } from "../hkp/zielpreis.js";
@@ -381,6 +381,31 @@ export function hkpKarte(h, clientId = "") {
 const BEFUND_FLIP_STUNDEN = 12;
 const planrServer = () => String(process.env.PLANR_URL || "https://planr.pickadoc.de").trim().replace(/\/+$/, "");
 
+// Dieselbe Kundenliste wie der PlanR-Superuser. Nur ein Pickadoc-Superuser
+// (Firebase-Rolle), der Schlüssel bleibt auf dem Server.
+router.get("/superuser/planr-kunden", async (req, res) => {
+  const a = req.auth || {};
+  if (!(a.kind === "user" && a.superUser)) {
+    return res.status(403).json({ ok: false, error: "superuser_only" });
+  }
+  const key = String(process.env.PLANR_HKP_KEY || "").trim();
+  if (!key) return res.status(503).json({ ok: false, error: "planr_key_fehlt" });
+  try {
+    const r = await fetch(`${planrServer()}/api/intern/kunden`, {
+      headers: { "X-PlanR-Key": key },
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await r.json().catch(() => null);
+    if (!r.ok || !data?.ok || !Array.isArray(data.kunden)) {
+      return res.status(502).json({ ok: false, error: "planr" });
+    }
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, kunden: data.kunden, monat: data.monat || "" });
+  } catch {
+    res.status(502).json({ ok: false, error: "planr" });
+  }
+});
+
 export function befundFlipToken(clientId, nummer, jetztMs = Date.now()) {
   if (!String(process.env.PLANR_HKP_KEY || "").trim() || !clientId || !/^\d{1,9}$/.test(String(nummer || ""))) return "";
   const exp = Math.floor(jetztMs / 1000) + BEFUND_FLIP_STUNDEN * 3600;
@@ -554,10 +579,22 @@ router.post("/planr/testabo-freigeben", planrGuard, async (req, res) => {
   }
 });
 
+// Nur lesen: welche Praxis hängt an dieser E-Mail? Legt nichts an und ändert das Konto nicht.
+router.post("/planr/konto", planrGuard, async (req, res) => {
+  try {
+    const k = await kontoNachEmail(req.body?.email);
+    if (!k) return res.status(404).json({ ok: false, error: "unbekannt" });
+    res.json({ ok: true, ...k });
+  } catch (e) {
+    log.error?.(`[planr] Konto-Lesen fehlgeschlagen: ${e?.message || e}`);
+    res.status(500).json({ ok: false, error: "fehler" });
+  }
+});
+
 router.post("/planr/registrieren", planrGuard, async (req, res) => {
   try {
     const r = await praxisRegistrieren(req.body || {});
-    log.info?.(`[planr] Praxis ${r.clientId} aus PlanR-Buchung angelegt`);
+    log.info?.(`[planr] Praxis ${r.clientId} aus PlanR-Buchung ${r.wieder ? "wieder geöffnet" : "angelegt"}`);
     res.json({ ok: true, ...r });
   } catch (e) {
     if (e instanceof RegistrierungFehler) return res.status(e.status).json({ ok: false, error: e.code, message: e.message });
@@ -922,16 +959,17 @@ const werVon = (req) => {
   return wer ? `PlanR · ${wer}` : "PlanR";
 };
 
-function ausPlanR(body) {
+/** Dieselbe Rechnung wie der Export ins Praxisprogramm: gültige Listen zum Planstichtag, nicht die mitgeschickte Summe. */
+async function ausPlanR(clientId, body) {
   const plan = E.planNormalisieren(body.plan || {});
-  const ergebnis = E.rechnen(plan, {});
-  const z = E.zusammenfassen(plan, ergebnis);
-  return { plan, summen: body.summen || summenAus(ergebnis), zusammenfassung: body.zusammenfassung || z };
+  const praxis = await praxisLaden(clientId).catch(() => ({ preislisten: [], eigen: [] }));
+  const ergebnis = E.rechnen(plan, praxisListen(praxis));
+  return { plan, summen: summenAus(ergebnis), zusammenfassung: E.zusammenfassen(plan, ergebnis) };
 }
 
 router.post("/planr/hkp", planrGuard, async (req, res) => {
   try {
-    const { plan, summen, zusammenfassung } = ausPlanR(req.body || {});
+    const { plan, summen, zusammenfassung } = await ausPlanR(req.planrClientId, req.body || {});
     const label = `${plan.patient.vorname || ""} ${plan.patient.name || ""}`.trim();
     if (!label) return res.status(400).json({ ok: false, error: "patient_fehlt", message: "Bitte zuerst Name und Vorname des Patienten eintragen." });
     const status = STATUS.includes(req.body?.status) ? req.body.status : "wartet_auf_freigabe";
@@ -957,7 +995,7 @@ router.put("/planr/hkp/:id", planrGuard, async (req, res) => {
     const felder = {};
     const was = [];
     if (b.plan) {
-      const { plan, summen, zusammenfassung } = ausPlanR(b);
+      const { plan, summen, zusammenfassung } = await ausPlanR(req.planrClientId, b);
       Object.assign(felder, { planJson: JSON.stringify(plan), summen, zusammenfassung, offeneAenderung: null });
       const label = `${plan.patient.vorname || ""} ${plan.patient.name || ""}`.trim();
       if (label) Object.assign(felder, { "patient.label": label, "patient.firstName": plan.patient.vorname || "", "patient.lastName": plan.patient.name || "" });

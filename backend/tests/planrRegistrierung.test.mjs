@@ -1,14 +1,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { praxisRegistrieren, RegistrierungFehler, testaboFreigeben } from "../src/hkp/planrRegistrierung.js";
+import { kontoNachEmail, praxisRegistrieren, RegistrierungFehler, testaboFreigeben } from "../src/hkp/planrRegistrierung.js";
 
 function falscheDb() {
   const daten = new Map();
   let n = 0;
+  const setzen = (ziel, k, v) => {
+    if (!k.includes(".")) { ziel[k] = v; return; }
+    const teile = k.split(".");
+    let cur = ziel;
+    for (let i = 0; i < teile.length - 1; i++) {
+      cur[teile[i]] = { ...(cur[teile[i]] || {}) };
+      cur = cur[teile[i]];
+    }
+    cur[teile[teile.length - 1]] = v;
+  };
   const ref = (pfad) => ({
     id: pfad.split("/").pop(),
     pfad,
     set: async (d) => { daten.set(pfad, d); },
+    update: async (d) => {
+      if (!daten.has(pfad)) { const err = new Error("not found"); err.code = "not-found"; throw err; }
+      const neu = { ...(daten.get(pfad) || {}) };
+      for (const [k, v] of Object.entries(d)) setzen(neu, k, v);
+      daten.set(pfad, neu);
+    },
     delete: async () => { daten.delete(pfad); },
     collection: (c) => sammlung(`${pfad}/${c}`),
   });
@@ -24,6 +40,7 @@ function falscheAuth({ vorhanden = [], claimsFehler = false } = {}) {
     getUserByEmail: async (e) => { if (konten.has(e)) return konten.get(e); const err = new Error("nf"); err.code = "auth/user-not-found"; throw err; },
     createUser: async ({ email }) => { const u = { uid: `uid-${konten.size + 1}` }; konten.set(email, u); return u; },
     setCustomUserClaims: async (uid, c) => { if (claimsFehler) throw new Error("claims kaputt"); claims.set(uid, c); },
+    updateUser: async (uid, felder) => { for (const u of konten.values()) if (u.uid === uid) Object.assign(u, felder); },
     deleteUser: async (uid) => { for (const [e, u] of konten) if (u.uid === uid) konten.delete(e); },
   };
 }
@@ -67,10 +84,62 @@ test("Testabo-Freigabe löscht das Ende am Abo", async () => {
   assert.ok(updates[0]["subscriptions.planr.testaboBis"]);
 });
 
-test("vorhandenes Konto wird nicht angefasst", async () => {
+test("liest eine bestehende Praxis und fasst sie nicht an", async () => {
+  const auth = {
+    getUserByEmail: async (e) => {
+      if (e !== "max@praxis.de") { const err = new Error("nf"); err.code = "auth/user-not-found"; throw err; }
+      return { uid: "uid-max", displayName: "Max Mustermann", customClaims: { clientId: "praxis-max", role: "doctor" } };
+    },
+    createUser: async () => { throw new Error("angelegt"); },
+  };
+  assert.deepEqual(await kontoNachEmail("Max@Praxis.de", { auth }), {
+    email: "max@praxis.de", clientId: "praxis-max", uid: "uid-max", name: "Max Mustermann",
+  });
+  assert.equal(await kontoNachEmail("fremd@praxis.de", { auth }), null);
+  assert.equal(await kontoNachEmail("keine-mail", { auth }), null);
+});
+
+test("bestehendes Konto behält die Praxis, bekommt das Buchungspasswort und PlanR", async () => {
   const db = falscheDb(), auth = falscheAuth({ vorhanden: ["chefin@praxis-test.de"] });
-  await assert.rejects(praxisRegistrieren(eingabe, { db, auth }), (e) => e instanceof RegistrierungFehler && e.status === 409);
+  const alt = auth.konten.get("chefin@praxis-test.de");
+  alt.customClaims = { clientId: "praxis-alt", role: "doctor", isAdmin: false };
+  db.daten.set("clients/praxis-alt/settings/billing", {
+    useEntitlements: false,
+    subscriptions: { crew: { tier: "telefon" } },
+  });
+  const r = await praxisRegistrieren(eingabe, { db, auth, jetzt: new Date("2026-11-23T12:00:00Z") });
+  assert.equal(r.clientId, "praxis-alt");
+  assert.equal(r.uid, alt.uid);
+  assert.equal(r.wieder, true);
+  assert.equal(alt.password, "geheim123");
+  assert.equal(auth.claims.size, 0);
+  assert.equal(auth.konten.size, 1);
+  const billing = db.daten.get("clients/praxis-alt/settings/billing");
+  assert.equal(billing.subscriptions.planr.enabled, true);
+  assert.equal(billing.subscriptions.planr.paket, "planr_clara");
+  assert.equal(billing.subscriptions.planr.testabo, false);
+  assert.equal(billing.subscriptions.crew.tier, "telefon");
+  assert.equal(billing.useEntitlements, false);
+});
+
+test("bestehendes Konto ohne Praxis bekommt eine neue und bleibt dasselbe Konto", async () => {
+  const db = falscheDb(), auth = falscheAuth({ vorhanden: ["chefin@praxis-test.de"] });
+  const alt = auth.konten.get("chefin@praxis-test.de");
+  const r = await praxisRegistrieren(eingabe, { db, auth });
+  assert.equal(r.wieder, true);
+  assert.equal(r.uid, alt.uid);
+  assert.equal(auth.konten.size, 1);
+  assert.deepEqual(auth.claims.get(alt.uid), { role: "admin", isAdmin: true, clientId: r.clientId });
+  assert.equal(db.daten.get(`clients/${r.clientId}/settings/billing`).subscriptions.planr.enabled, true);
+  assert.equal(alt.password, "geheim123");
+});
+
+test("gesperrtes Konto wird nicht angefasst", async () => {
+  const db = falscheDb(), auth = falscheAuth({ vorhanden: ["chefin@praxis-test.de"] });
+  auth.konten.get("chefin@praxis-test.de").disabled = true;
+  await assert.rejects(praxisRegistrieren(eingabe, { db, auth }), (e) => e instanceof RegistrierungFehler && e.status === 403);
   assert.equal(db.daten.size, 0);
+  assert.equal(auth.konten.get("chefin@praxis-test.de").password, undefined);
 });
 
 test("kurzes Passwort und Notaus", async () => {
