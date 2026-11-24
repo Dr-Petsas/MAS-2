@@ -3701,3 +3701,39 @@ Gehoert in dasselbe Paket (Chef 21.11.2026: eine Clara pro Praxis):
   ohne Gegenprobe. Nicht gebaut, weil es ein Eingriff am Live-Worker waere und
   mit dem allgemeinen Profil entfaellt (dann gibt es kein fremdes Praxisprofil
   mehr, das geladen werden koennte).
+
+### W-MINI - Mini-Clara: neue, eigenstaendige Sprach-Clara (freigegeben Chef 24.11.2026)
+
+Chef 24.11.2026: "sau schnell, gespraechig, fluessig, und dass sie mich immer
+versteht". Eigener Ordner `F:\Clara-Mini` (eigenes Git-Repo), MAS bleibt die
+Werkzeugschicht ueber HTTP. Die Live-Clara (`F:\Clara-Voice-dev`) laeuft
+unveraendert weiter, bis die Mini-Clara im Gegenhoeren besser ist.
+
+Grundsaetze:
+- Das LLM versteht und entscheidet. Kein Routing, keine Satzmuster.
+- Wenige grobe Werkzeuge je Fach-Domaene mit Aktions-Feld, immer alle im
+  Angebot. Lesen und Schreiben getrennt. Lese-Ketten loest MAS auf.
+- Werkzeug-Antwort ist sprechfertig (`sagen`); Zahlen, Daten, Namen kommen nie
+  vom Modell. Ein Datum rechnet das Modell nicht (Datumstabelle im Prompt).
+- Erster Schritt jedes Zugs ist ein Werkzeug (`tool_choice=required`); fuer
+  Gespraech ohne Praxisdaten gibt es `nur_sprechen` mit Modus
+  kurz/normal/plaudern. Messung 24.11.: ohne diese Pflicht 6 von 14 Fragen
+  richtig, der Rest aus dem Kopf erfunden; mit Pflicht 42 von 42.
+- Prompt fuer den Prefix-Cache: fester Teil, Tagesteil, Verlauf; Uhrzeit im
+  Nutzersatz.
+- Schreiben spaeter nur in zwei Schritten (Vorschau aus MAS, Ja, Ausfuehren);
+  den Bestaetigungszustand haelt MAS.
+
+Baustufen und Abnahme:
+1. Textschleife, nur lesend (`python messen.py`, `python chat.py`). Abnahme:
+   richtiges Werkzeug in mindestens 95 % von 50 echten Zuegen aus dem
+   Entscheidungsprotokoll, keine Auskunft ohne Werkzeug. STAND 24.11.: gebaut,
+   14 eigene Faelle dreifach 42/42, LLM-Anteil je Runde rund 0,15 s; die Zeit
+   liegt in den MAS-Endpunkten (0,3 bis 3,2 s). Offen: echte Zuege aus dem
+   Protokoll, Anrede beim Plaudern, kein Inaussichtstellen von Schreibaktionen.
+2. Stimme: LiveKit Agents mit eigenem Agent-Namen (nie am Dispatch der
+   Live-Clara), Parakeet streamend, Sprech-Ende per Turn-Detector, Cache
+   vorwaermen bei stabilem Partial, TTS satzweise ueber Kr02, Unterbrechung.
+   Abnahme: letztes Wort bis erster Ton im Median unter 1,2 s bei Lesefragen.
+3. Schreibende Werkzeuge (Zwei-Schritt), danach Gegenhoeren neben der
+   Live-Clara ueber den Umschalter.
