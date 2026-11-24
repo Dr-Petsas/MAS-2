@@ -10,7 +10,7 @@ import { assertAppEnabled } from "../entitlements.js";
 import { getClientSpecialty } from "../lena/specialty.js";
 import { resolveSpec } from "../lena/domainKnowledge.js";
 import { loadOverlay } from "../lena/lenaLearn.js";
-import { createClaraSession } from "../clara/session.js";
+import { claraZiel, createClaraSession } from "../clara/session.js";
 import { intakeToAbsichten } from "../clara/billingIntake.js";
 import { cacheSophieKatalog } from "../clara/sophieKatalog.js";
 import { resolveAppointmentInfo, readAppointmentSegments, combineActiveSegments } from "../clara/treatmentDoc.js";
@@ -447,7 +447,9 @@ router.post("/clara/session", async (req, res) => {
     const profileId = wahl.profileId;
     const pipelineRaw = String(req.body?.pipeline || "").trim().toLowerCase();
     const pipeline = pipelineRaw === "text" ? "text" : "";
-    const session = await createClaraSession({ clientId, profileId, pipeline });
+    // Clara V8 bedient die Standardpraxis; jede andere Praxis bleibt bei ihrem eigenen Worker.
+    const ziel = clientId === DEFAULT_CLIENT_ID ? await claraZiel(req.body?.ziel || req.query?.ziel) : "alt";
+    const session = await createClaraSession({ clientId, profileId, pipeline, ziel });
     // Optional identification — two PIN-less-friendly paths:
     //   a) paired phone: deviceId + deviceKey (from the QR pairing) resolve the
     //      operator without any typing — that's the "Clara ruft an" flow;

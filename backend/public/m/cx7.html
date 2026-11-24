@@ -49,7 +49,7 @@
   .card .badge{font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
     padding:4px 9px; border-radius:999px; border:1px solid currentColor}
 
-  .card.live{--accent:var(--live)} .card.v6{--accent:var(--v6)} .card.dev{--accent:var(--dev)}
+  .card.live{--accent:var(--live)} .card.v6{--accent:var(--v6)} .card.dev{--accent:var(--dev)} .card.v8{--accent:#f472b6}
   .card .badge{color:var(--accent)}
   .card.active{border-color:var(--accent); background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 14%,var(--card)),var(--card))}
   .card.active .name::before{content:'● '; color:var(--accent)}
@@ -87,6 +87,11 @@
 </div>
 
 <div class="cards">
+  <button class="card v8" id="btnV8" data-mode="v8" data-name="Clara V8">
+    <div class="t"><span class="name">Clara V8</span><span class="badge">Neu</span></div>
+    <div class="desc">Neue Clara aus <code>F:\Clara-V8</code> · Health-Port 8197 · eigener LiveKit-Server · bedient die Praxis; Clara DEV läuft für die anderen Praxen weiter · zurück jederzeit mit „Clara DEV“</div>
+  </button>
+
   <button class="card dev" id="btnDev" data-mode="dev" data-name="Clara DEV">
     <div class="t"><span class="name">Clara DEV</span><span class="badge">Betrieb</span></div>
     <div class="desc">Dauerhafter Stand seit 14.08.2026: <code>F:\Clara-Voice-dev</code> · Worker-Port 8093 · das hängt an der Telefon-App</div>
@@ -128,12 +133,14 @@
   var btnDev = document.getElementById('btnDev');
   var btnOff = document.getElementById('btnOff');
   var errBox = document.getElementById('err');
-  var WAHL = [btnDev, btnLive, btnV6];
+  var btnV8 = document.getElementById('btnV8');
+  var WAHL = [btnV8, btnDev, btnLive, btnV6];
 
   var LABEL = {
     live: { title: 'Clara LIVE läuft (Rückweg)', color: '#4d9bff' },
     v6: { title: 'Clara V6 läuft', color: '#34d399' },
     dev: { title: 'Clara DEV läuft (Betrieb)', color: '#c084fc' },
+    v8: { title: 'Clara V8 läuft (Betrieb)', color: '#f472b6' },
     off: { title: 'Keine Clara läuft', color: '#93a0c4' },
     switching: { title: 'Schalte um…', color: '#f59e0b' },
     conflict: { title: 'ACHTUNG: zwei Worker laufen', color: '#ef4444' }
@@ -165,7 +172,7 @@
     nowTitle.textContent = info.title;
     lamp.style.background = info.color;
     lamp.style.color = info.color;
-    lamp.classList.toggle('on', st.running === 'live' || st.running === 'v6' || st.running === 'dev');
+    lamp.classList.toggle('on', st.running === 'live' || st.running === 'v6' || st.running === 'dev' || st.running === 'v8');
 
     if (busy) {
       var secs = switchStarted ? Math.round((Date.now() - switchStarted) / 1000) : 0;
@@ -234,6 +241,7 @@
     confirmTimer = setTimeout(resetConfirm, 5000);
   }
 
+  btnV8.addEventListener('click', function () { arm(btnV8, 'v8', 'Wirklich auf V8? Nochmal tippen'); });
   btnDev.addEventListener('click', function () { arm(btnDev, 'dev', 'Wirklich auf DEV? Nochmal tippen'); });
   btnLive.addEventListener('click', function () { arm(btnLive, 'live', 'Wirklich auf LIVE? Nochmal tippen'); });
   btnV6.addEventListener('click', function () { arm(btnV6, 'v6', 'Wirklich auf V6? Nochmal tippen'); });

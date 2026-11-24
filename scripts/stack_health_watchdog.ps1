@@ -179,6 +179,28 @@ $claraProc = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAct
     Where-Object { $_.CommandLine -like '*pickadoc_session_worker*' }
 $claraCount = @($claraProc).Count
 
+# Clara V8 (25.11.2026): mit Betriebsmarke bedient SIE die Standardpraxis. Ihr Agent meldet
+# auf Port 8197 mit 200, dass er am LiveKit registriert ist. Die alte Clara laeuft daneben
+# fuer die anderen Praxen weiter und wird unten wie bisher geprueft.
+$v8Betrieb = (Test-Path 'F:\Clara-V8\.run\betrieb.txt') -and ((Get-Content 'F:\Clara-V8\.run\betrieb.txt' -Raw).Trim() -eq 'v8')
+function Test-ClaraV8 {
+    try { return ((Invoke-WebRequest 'http://127.0.0.1:8197/' -UseBasicParsing -TimeoutSec 4).StatusCode -eq 200) } catch { return $false }
+}
+$v8Ok = $true
+if ($v8Betrieb) {
+    if (Test-ClaraV8) {
+        WLog "Clara V8: ok (Port 8197)"
+    } else {
+        $v8Ok = $false
+        WLog "Clara V8: DOWN" 'ERROR'
+        if (-not $NoRestart) {
+            $v8Start = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'F:\Clara-V8\start-clara-v8.ps1' -WindowStyle Hidden -PassThru; [void]$v8Start.WaitForExit(60000)
+            Start-Sleep -Seconds 25
+            $result.actions += 'restart-clara-v8'
+            if (Test-ClaraV8) { $v8Ok = $true; WLog "Clara V8: recovered" } else { WLog "Clara V8: Restart fehlgeschlagen" 'ERROR' }
+        }
+    }
+}
 if ($claraPort -and $claraLock -and $claraCount -eq 1) {
     $result.clara = 'ok'
     WLog "Clara: ok (PID $($claraProc.ProcessId), Port $(if (Test-PortListening 8093) {'8093 DEV'} elseif (Test-PortListening 8091) {'8091 LIVE'} else {'8092 V6'}))"
@@ -212,7 +234,7 @@ if (($result.clara -ne 'ok') -and -not $NoRestart) {
 }
 
 # --- Summary ---
-$allOk = ($result.mas -in @('ok', 'recovered')) -and
+$allOk = $v8Ok -and ($result.mas -in @('ok', 'recovered')) -and
          ($result.clara -in @('ok', 'recovered')) -and
          ($result.lena -in @('ok', 'recovered'))
 $summary = "mas=$($result.mas) clara=$($result.clara) lena=$($result.lena) ollama=$($result.ollama) livekit=$($result.livekit) actions=$($result.actions -join ',')"

@@ -36,6 +36,7 @@ import { getAssistantName, withAssistantName } from "./shared/rufname.js";
 import { zentralEintragen } from "./improveZentrale.js";
 import { entryCodes, buildIndex, catalogMatch } from "./clara/patientCatalog.js";
 import { log } from "./log.js";
+import { v8IstBetrieb } from "./clara/session.js";
 import { chat, strongLlm } from "./mail/llm.js";
 
 const COL_FAELLE = "mas_improve_faelle";
@@ -44,6 +45,7 @@ const COL_FAELLE = "mas_improve_faelle";
 function runDir() {
   const gesetzt = String(process.env.CLARA_RUN_DIR || "").trim();
   if (gesetzt) return gesetzt;
+  if (v8IstBetrieb()) return "F:/Clara-V8/.run";
   // Standard: Nachbarordner des Backends (F:\MAS-2\backend -> F:\Clara-Voice\.run)
   const hier = path.dirname(fileURLToPath(import.meta.url));
   return path.join(hier, "..", "..", "..", "Clara-Voice-dev", ".run");

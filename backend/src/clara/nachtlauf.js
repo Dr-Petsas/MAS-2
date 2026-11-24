@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { log } from "../log.js";
+import { v8IstBetrieb } from "./session.js";
 
 const CLARA_DIR = (process.env.CLARA_VOICE_DIR || "F:/Clara-Voice-dev").trim();
 const PYTHON = (process.env.CLARA_PYTHON || "python").trim();
@@ -50,13 +51,16 @@ export function runNachtlauf({ ohneVolltest = false, tag = "" } = {}) {
   laufAktiv = true;
   return new Promise((resolve) => {
     const args = ["tools/nachtlauf.py"];
-    if (ohneVolltest) args.push("--ohne-volltest");
+    // Clara V8 als Betrieb: Pruefliste aus IHREM Protokoll; der Volltest der alten Clara
+    // sagt ueber sie nichts und entfaellt.
+    const v8 = v8IstBetrieb();
+    if (ohneVolltest || v8) args.push("--ohne-volltest");
     if (/^\d{8}$/.test(tag)) args.push("--tag", tag);
     let out = "";
     let child;
     const fertig = (r) => { laufAktiv = false; resolve(r); };
     try {
-      child = spawn(PYTHON, args, { cwd: CLARA_DIR, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: "utf-8" } });
+      child = spawn(PYTHON, args, { cwd: CLARA_DIR, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: "utf-8", ...(v8 ? { CLARA_PROTOKOLL_DIR: "F:/Clara-V8/.run/protokoll" } : {}) } });
     } catch (e) {
       return fertig({ ok: false, error: String(e?.message || e) });
     }

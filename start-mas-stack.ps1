@@ -95,12 +95,26 @@ if (Test-PortListening 8140) {
 
 # --- 5) Clara Voice Worker (Betriebsstand DEV, Port 8093) ---
 $claraUp = (Test-PortListening 8093) -or (Test-PortListening 8091) -or (Test-PortListening 8092)
+# Clara V8 (25.11.2026): steht die Betriebsmarke, bedient SIE die Standardpraxis (Port
+# 8197). Die alte Clara laeuft daneben weiter fuer die anderen Praxen (PlanR-Sprachsteuerung,
+# praxis2); die beiden teilen keinen LiveKit-Dispatch. Zurueck: clara-switch.ps1 -Mode dev.
+$v8Betrieb = (Test-Path 'F:\Clara-V8\.run\betrieb.txt') -and ((Get-Content 'F:\Clara-V8\.run\betrieb.txt' -Raw).Trim() -eq 'v8')
+if ($v8Betrieb) {
+    if (Test-PortListening 8197) {
+        Write-StackLog "Clara V8: laeuft bereits (Port 8197)"
+    } else {
+        Write-StackLog "Clara V8: starte (clara-switch -Mode v8)..."
+        & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice-dev\tools\clara-switch.ps1' -Mode v8
+        Write-StackLog "Clara V8: $(if (Test-PortListening 8197) { 'OK (Port 8197)' } else { 'NICHT bereit' })"
+    }
+    $claraUp = (Test-PortListening 8093) -or (Test-PortListening 8091) -or (Test-PortListening 8092)
+}
 if ($claraUp) {
     $wo = if (Test-PortListening 8093) { 'DEV 8093' } elseif (Test-PortListening 8091) { 'LIVE-Rueckweg 8091' } else { 'V6 8092' }
     Write-StackLog "Clara Worker: laeuft bereits ($wo)"
 } else {
     Write-StackLog "Clara Worker: starte DEV (clara-switch)..."
-    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice-dev\tools\clara-switch.ps1' -Mode dev
+    & powershell -NoProfile -ExecutionPolicy Bypass -File 'F:\Clara-Voice-dev\tools\clara-switch.ps1' -Mode $(if ($v8Betrieb) { 'v8' } else { 'dev' })
     Write-StackLog "Clara Worker: $(if (Test-PortListening 8093) { 'OK (Port 8093 DEV)' } else { 'noch nicht bereit - Modell laedt evtl. weiter' })"
 }
 
@@ -114,6 +128,7 @@ Write-StackLog "Selbsttest: warte auf Worker-Registrierung (max. 90s)..."
 $workerReady = $false
 for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 3
+    if ($v8Betrieb -and (Test-PortListening 8197)) { $workerReady = $true; break }
     if ((Test-PortListening 8093) -or (Test-PortListening 8091)) {
         $wlog = Get-ChildItem 'F:\MAS-2\logs\clara_*.err.log','F:\Clara-Voice-dev\_worker*.err.log','F:\Clara-Voice-dev\.run\switch\dev-*.err.log' -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1

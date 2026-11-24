@@ -2413,6 +2413,8 @@
       setStatus(forChat ? "Chat-Verbindung …" : "");
       try {
         const body = { clientId };
+        // Testweg: ?ziel=v8 ruft die Clara V8, solange die alte Clara daneben laeuft.
+        { const z = new URLSearchParams(location.search).get("ziel"); if (z) body.ziel = z; }
         if (forChat) body.pipeline = "text";
         if (device?.deviceId && device?.deviceKey && device.clientId === clientId) {
           body.deviceId = device.deviceId; body.deviceKey = device.deviceKey;

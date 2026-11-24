@@ -151,6 +151,19 @@ function Check-Clara() {
     Log "Clara-Check pausiert (Wartungs-Flag $claraMaint)"
     return
   }
+  # Clara V8 (25.11.2026): mit Betriebsmarke bedient SIE die Standardpraxis (Port 8197).
+  # Die alte Clara laeuft daneben fuer die anderen Praxen und wird danach wie bisher geprueft.
+  $v8Marke = 'F:\Clara-V8\.run\betrieb.txt'
+  if ((Test-Path $v8Marke) -and ((Get-Content $v8Marke -Raw).Trim() -eq 'v8')) {
+    if (Test-Port 8197) { $script:Status["ClaraV8"] = "ok (8197)" }
+    else {
+      Log "Clara V8 tot - Neustart"
+      try { $v8Start = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'F:\Clara-V8\start-clara-v8.ps1' -WindowStyle Hidden -PassThru; [void]$v8Start.WaitForExit(60000) } catch { Log "Clara-V8-Start-Fehler: $($_.Exception.Message)" }
+      Start-Sleep -Seconds 25
+      if (Test-Port 8197) { $script:Status["ClaraV8"] = "repariert"; $script:Repairs += "Clara V8 neu gestartet" }
+      else { $script:Status["ClaraV8"] = "DOWN"; $script:Repairs += "Clara V8 kam NICHT hoch" }
+    }
+  }
   if ((Test-Port 8093) -or (Test-Port 8091) -or (Test-Port 8092)) {
     $stand = if (Test-Port 8093) { "ok (DEV 8093)" } elseif (Test-Port 8091) { "ok (LIVE-Rueckweg 8091)" } else { "ok (V6 8092)" }
     $script:Status["Clara"] = $stand

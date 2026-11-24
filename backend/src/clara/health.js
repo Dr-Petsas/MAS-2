@@ -7,6 +7,7 @@
 // WICHTIG: Der Tool-Calling-Check laeuft REIN auf LLM-Ebene (Ollama) und fuehrt
 // KEINE echten Tools aus -> KEINE Pushes/SMS an die Praxis. Sicher gegen Live.
 // ============================================================================
+import { v8IstBetrieb } from "./session.js";
 import net from "node:net";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -418,7 +419,24 @@ export async function checkVersionsstand() {
   return { ok: true, detail: `MAS ${mas} | Clara ${clara} | ${snap}`, fix: "" };
 }
 
+async function checkWorkerV8() {
+  // Clara V8: der Agent meldet sich auf seinem Health-Port selbst (200 = am LiveKit registriert).
+  try {
+    const r = await fetch("http://127.0.0.1:" + (process.env.CLARA_V8_PORT || 8197) + "/", { signal: AbortSignal.timeout(3000) });
+    return { ok: r.ok, detail: `Clara V8 (8197) ${r.ok ? "lauscht und ist am LiveKit registriert" : "antwortet mit " + r.status}`,
+      fix: "clara-switch.ps1 -Mode v8 (zurueck auf die alte Clara: -Mode dev)" };
+  } catch (e) {
+    return { ok: false, detail: "Clara V8 (8197) antwortet nicht: " + String(e?.message || e),
+      fix: "clara-switch.ps1 -Mode v8 (zurueck auf die alte Clara: -Mode dev)" };
+  }
+}
+
 async function checkWorker() {
+  if (v8IstBetrieb()) {
+    // Standardpraxis: Clara V8. Die alte Clara laeuft fuer die anderen Praxen weiter.
+    const [v8, altUp] = await Promise.all([checkWorkerV8(), checkTcp(8093)]);
+    return { ...v8, detail: `${v8.detail} | alte Clara fuer andere Praxen (8093) ${altUp ? "lauscht" : "AUS"}` };
+  }
   // Betriebsstand seit 14.08.2026: DEV (8093). Live (8091) und V6 (8092)
   // sind Rueckweg/Test - nie mehr als einer (siehe clara-switch.ps1).
   const [liveUp, v6Up, devUp] = await Promise.all([checkTcp(8091), checkTcp(8092), checkTcp(8093)]);

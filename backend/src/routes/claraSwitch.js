@@ -21,6 +21,7 @@ import net from "node:net";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { log } from "../log.js";
+import { v8IstBetrieb } from "../clara/session.js";
 
 const router = express.Router();
 
@@ -29,6 +30,10 @@ const STATE_FILE = process.env.CLARA_SWITCH_STATE || "F:\\Clara-Voice-dev\\.run\
 const LOG_DIR = process.env.CLARA_SWITCH_LOGS || "F:\\Clara-Voice-dev\\.run\\switch";
 const PORTS = { live: 8091, v6: 8092, dev: 8093 };
 const MODI = ["live", "dev", "v6"];
+// Clara V8 (25.11.2026): eigener LiveKit-Server, teilt den Dispatch nicht mit den
+// alten Staenden und darf deshalb neben ihnen laufen (Testphase). Betrieb ist sie
+// erst mit der Betriebsmarke (clara-switch.ps1 -Mode v8).
+const V8_PORT = Number(process.env.CLARA_V8_PORT || 8197);
 // Kaltstart mit Modell-Prewarm dauert bis ~2 min; danach gilt ein haengender
 // Umschaltvorgang als abgestorben und die Seite wird wieder bedienbar.
 const SWITCH_STALE_MS = 4 * 60 * 1000;
@@ -60,7 +65,8 @@ function readState() {
 }
 
 async function currentStatus() {
-  const offen = await Promise.all(MODI.map((m) => probePort(PORTS[m])));
+  const [v8Offen, ...offen] = await Promise.all([probePort(V8_PORT), ...MODI.map((m) => probePort(PORTS[m]))]);
+  const v8Betrieb = v8IstBetrieb();
   const laufende = MODI.filter((_, i) => offen[i]);
   const state = readState();
   const age = state?.ts ? Date.now() - Date.parse(state.ts) : Number.POSITIVE_INFINITY;
@@ -73,11 +79,13 @@ async function currentStatus() {
   if (laufende.length > 1) running = "conflict";
   else if (laufende.length === 1) running = laufende[0];
   else if (inFlight) running = "switching";
+  if (v8Offen && (v8Betrieb || laufende.length === 0) && !inFlight) running = "v8";
 
   return {
     ok: true,
     running,
-    busy: inFlight && laufende.length === 0,
+    v8: { laeuft: v8Offen, betrieb: v8Betrieb },
+    busy: inFlight && laufende.length === 0 && !(v8Offen && state?.target === "v8"),
     phase: state?.phase || "idle",
     target: state?.target || null,
     message: state?.message || "",
@@ -96,7 +104,7 @@ router.get("/clara-switch/status", async (req, res) => {
 
 router.post("/clara-switch/set", async (req, res) => {
   const mode = String(req.body?.mode || "").toLowerCase();
-  if (![...MODI, "off"].includes(mode)) {
+  if (![...MODI, "v8", "off"].includes(mode)) {
     return res.status(400).json({ ok: false, error: "mode_invalid" });
   }
   if (process.platform !== "win32") {

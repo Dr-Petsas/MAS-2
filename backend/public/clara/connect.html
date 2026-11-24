@@ -238,6 +238,8 @@
       const pin = (els.pin.value || "").trim();
       try { if (pin) localStorage.setItem(PIN_KEY, pin); } catch {}
       const body = { clientId, pin };
+      // Testweg: ?ziel=v8 ruft die Clara V8, solange die alte Clara daneben laeuft.
+      { const z = new URLSearchParams(location.search).get("ziel"); if (z) body.ziel = z; }
       if (forChat) body.pipeline = "text";
       const resp = await fetch("/clara/session", {
         method: "POST",
