@@ -3757,5 +3757,21 @@ Baustufen und Abnahme:
    28/28, erster Text im Median 0,9 s. Sie-Ausrutscher nach Werkzeug-Antwort
    behoben (Anrede-Hinweis am Werkzeug-Ergebnis). Offen: Mund-Text, Handy,
    Clara stellt "stornieren" in Aussicht, obwohl sie noch nicht schreibt.
+   NACHTRAG 24.11. 19:20: Parakeet meldet den Vorab-Text als
+   PREFLIGHT_TRANSCRIPT (LLM und TTS laufen an, bevor das Sprech-Ende
+   feststeht; Vorab-Decode ab 0,06 s Pause). `nur_sprechen` traegt die Antwort
+   im Feld `antwort`, der Text laeuft schon aus dem Werkzeugaufruf zur Stimme
+   (eine LLM-Runde statt zwei, erster Text 0,21 statt 0,30 s). Prompt: Clara
+   liest nur, sie sagt das gleich ("Stornieren kann ich noch nicht").
+   Textfaelle 42/42. Gemessen im Agenten: Text liegt 0,26 bis 0,38 s nach dem
+   letzten Wort vor, Sprech-Ende entschieden nach 0,31 bis 0,50 s, erster Ton
+   bei Werkzeugfragen direkt danach (Probe 0,86 s inkl. Uebertragung), beim
+   Plaudern 1,25 bis 1,6 s. Groesster Rest: TTS erster Ton 0,45 bis 0,65 s
+   auf Kr02 (4070, Tunnel); auf der 5090 waren es 0,22 bis 0,25 s. Der
+   Parakeet-Dienst hat keinen Streaming-Endpunkt; echtes Streaming braeuchte
+   einen Umbau des Containers und braechte hoechstens etwa 0,1 s.
+   Fuer Bianca/Lisa/Ben (Asterisk, 8 kHz, Jitter-Puffer) kommt die
+   Telefonstrecke obendrauf; dieselben Hebel (Vorab-Decode, Vorrat-Ton,
+   Antwort im Werkzeugaufruf) sind dort noch nicht eingebaut.
 3. Schreibende Werkzeuge (Zwei-Schritt), danach Gegenhoeren neben der
    Live-Clara ueber den Umschalter.
