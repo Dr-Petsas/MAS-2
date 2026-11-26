@@ -258,7 +258,7 @@ export function computeGapWindows(workingDay, busy = [], { minGap = MIN_GAP_MINU
 // Candidates (campaign buckets + due virtual recalls), gated + ranked
 // ----------------------------------------------------------------------------
 
-function durationOfMotive(booking, visitMotiveId, visitMotiveName) {
+export function durationOfMotive(booking, visitMotiveId, visitMotiveName) {
   const vms = Array.isArray(booking?.visitMotives) ? booking.visitMotives : [];
   const byId = vms.find((v) => v.id === visitMotiveId);
   if (byId?.duration) return Number(byId.duration);
@@ -510,7 +510,7 @@ async function recentlyContactedKeys(clientId) {
  * Schutz), then proven responders (booked), then higher-value (longer)
  * treatments, then reachable-with-consent first.
  */
-export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = new Set(), ignorePhoneThrottle = false, ignoreOutreachGates = false, max = MAX_CANDIDATES_STORED } = {}) {
+export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = new Set(), ignorePhoneThrottle = false, ignoreOutreachGates = false, max = MAX_CANDIDATES_STORED, reihenfolge = null } = {}) {
   const fits = candidates.filter((c) => {
     if (c.durationMin > gap.minutes) return false;
     if (c.calendarId && calendarId && c.calendarId !== calendarId) return false;
@@ -525,13 +525,14 @@ export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = 
     return true;
   });
   const consentScore = (c) => (c.consent?.sms === true || c.consent?.reminder === true ? 1 : 0);
-  fits.sort((a, b) =>
+  // "Luecke fuellen" bringt eine eigene Reihenfolge mit (juengster Anlass zuerst); die Tore bleiben dieselben.
+  fits.sort(reihenfolge || ((a, b) =>
     (b.overdueDays - a.overdueDays) ||
     ((a.stats?.recent || 0) - (b.stats?.recent || 0)) ||
     ((b.stats?.booked || 0) - (a.stats?.booked || 0)) ||
     (b.durationMin - a.durationMin) ||
     (consentScore(b) - consentScore(a))
-  );
+  ));
   // One patient appears once per list (dedupe across sources, campaign first).
   const seen = new Set();
   const unique = [];

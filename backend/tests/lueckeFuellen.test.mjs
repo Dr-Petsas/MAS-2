@@ -50,6 +50,9 @@ await t("Gruppen nach Besuchsgrund, groesste zuerst, Reihenfolge der Patienten b
   assert.deepEqual(g.map((x) => [x.besuchsgrund, x.anzahl]), [["Kontrolle", 2], ["Zahnreinigung", 1]]);
   assert.deepEqual(g[0].patienten.map((p) => p.name), ["Bernd Muster", "Carla Probe"]);
   assert.equal(g[0].patienten[0].telefon, true);
+  const gemischt = L.nachBesuchsgrund([15, 30, 15].map((durationMin, i) => ({ patientId: String(i), name: "X", visitMotiveName: "Kontrolle", durationMin })));
+  assert.equal(gemischt[0].dauerMin, 15, "haeufigste Dauer");
+  assert.equal("dauern" in JSON.parse(JSON.stringify(gemischt[0])), false);
 });
 
 await t("Genannter Besuchsgrund waehlt die Gruppe, auch in Kurzform", () => {
@@ -61,6 +64,40 @@ await t("Genannter Besuchsgrund waehlt die Gruppe, auch in Kurzform", () => {
   assert.deepEqual(wahl("Zahnaufhellung"), ["Zahnaufhellung"]);
   assert.equal(wahl("Implantat").length, 5);
   assert.equal(wahl("").length, 5);
+});
+
+await t("Absager und Nichterschienene: nur das Kennzeichen am Termin, nur ohne neuen Termin", () => {
+  const jetzt = new Date("2030-06-01T10:00:00Z").getTime();
+  const tag = (d) => new Date(`${d}T09:00:00Z`);
+  const termin = (pid, d, patientStatus, mehr = {}) => ({ patient: { id: pid }, start: tag(d), patientStatus, status: "confirmed", ...mehr });
+  const aus = L.absagerAusTerminen([
+    termin("a", "2030-03-01", 5),                                   // abgesagt, nichts danach
+    termin("b", "2030-03-01", 4),                                   // nicht erschienen, nichts danach
+    termin("c", "2030-03-01", 5), termin("c", "2030-04-01", 2),     // abgesagt, danach behandelt
+    termin("d", "2030-03-01", 4), termin("d", "2030-07-01", 0),     // nicht erschienen, neuer Termin steht
+    termin("e", "2030-03-01", 5), termin("e", "2030-07-01", 0, { isDeleted: true }), // neuer Termin geloescht
+    termin("f", "2030-03-01", 5), termin("f", "2030-07-01", 0, { status: "needsConfirmation" }), // nur Recall-Platzhalter
+    termin("g", "2030-02-01", 2), termin("g", "2030-03-01", 0),     // nie gefehlt
+    termin("h", "2030-01-01", 5), termin("h", "2030-02-01", 2), termin("h", "2030-05-01", 4), // kam wieder, fehlte dann
+    termin("i", "2030-07-01", 5),                                   // Absage eines kuenftigen Termins: noch kein Anlass
+    termin("j", "2030-03-01", 5, { comments: "kommt sicher" }), termin("j", "2030-03-01", 0, { comments: "abgesagt, nicht erschienen" }),
+  ], jetzt);
+  const kurz = aus.map((x) => `${x.patientId}:${x.art}`).sort();
+  assert.deepEqual(kurz, ["a:absage", "b:nicht_erschienen", "e:absage", "f:absage", "h:nicht_erschienen", "j:absage"]);
+});
+
+await t("Reihenfolge: juengster Anlass zuerst, seit Jahren Faellige hinten", () => {
+  const k = [
+    { name: "alt", overdueDays: 1800, source: "recall" },
+    { name: "frisch", overdueDays: 20, source: "recall" },
+    { name: "absage", overdueDays: 20, source: "absage" },
+    { name: "versaeumt", overdueDays: 5, source: "nicht_erschienen" },
+    { name: "mittel", overdueDays: 400, source: "recall" },
+  ];
+  assert.deepEqual([...k].sort(L.juengsterAnlassZuerst).map((x) => x.name), ["versaeumt", "absage", "frisch", "mittel", "alt"]);
+  const g = L.nachBesuchsgrund([{ patientId: "1", name: "A B", visitMotiveName: "Kontrolle", source: "absage", anlass: "hat den Termin am 3. Mai 2030 abgesagt", overdueDays: 20, phone: "0" }]);
+  assert.equal(g[0].patienten[0].faellig, "hat den Termin am 3. Mai 2030 abgesagt");
+  assert.equal(g[0].patienten[0].quelle, "absage");
 });
 
 await t("Sprechtexte nennen Luecken, Besuchsgruende und Namen, aber keine Anrufliste und keine Freigabe", () => {
@@ -95,6 +132,9 @@ await t("Lese-Lauf gegen die Praxis: Luecken und Passende kommen, angelegt wird 
       assert.ok(!gr.dauerMin || gr.dauerMin <= g.minutes, "Dauer passt in die Luecke");
       assert.ok(gr.patienten.length <= 100 && gr.patienten.length <= gr.anzahl, "je Besuchsgrund hoechstens 100 mitgeliefert");
     }
+    const vorn = passend.gruppen[0].patienten.map((p) => p.overdueDays);
+    assert.deepEqual(vorn, [...vorn].sort((a, b) => a - b), "je Besuchsgrund juengster Anlass zuerst");
+    console.log(`     davon ${passend.absager} Absager/Nichterschienene, ${passend.faelligBisZweiJahre} bis zwei Jahre faellig; vorn seit ${vorn.slice(0, 3).join(", ")} Tagen`);
     const satz = L.passendSatz(passend);
     assert.ok(satz.includes(`passen ${passend.gesamt === 1 ? "ein Patient" : passend.gesamt + " Patienten"}`), "Satz nennt die echte Zahl");
     console.log(`     erste Luecke ${g.minutes} Minuten: ${passend.gesamt} Passende in ${passend.gruppen.length} Besuchsgruenden`);

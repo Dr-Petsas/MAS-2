@@ -63,7 +63,7 @@ import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, ph
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
-import { lueckenFinden, lueckenMitAusblick, tagGesprochen as lueckenTag, lueckeZurUhrzeit, passendFuerLuecke, lueckenSatz, passendSatz, uhrzeitMinuten, NICHTS_ANGELEGT } from "../clara/lueckeFuellen.js";
+import { lueckenFinden, lueckenMitAusblick, tagGesprochen as lueckenTag, lueckeZurUhrzeit, passendFuerLuecke, lueckenSatz, passendSatz, uhrzeitMinuten, NICHTS_ANGELEGT, START_GESPERRT } from "../clara/lueckeFuellen.js";
 import { createCase, getCase, listCases, listActiveCasesByPatientIds, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext } from "../brain/caseStore.js";
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "../brain/caseBriefing.js";
 import { recordCommunication } from "../brain/record.js";
@@ -2951,6 +2951,7 @@ router.post("/tools/luecke-fuellen", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
+    if (req.body?.action === "start") return res.json({ ok: true, message: START_GESPERRT, gestartet: false });
     const { calendarId } = await resolveDayCalendarScope(clientId, req.body);
     const minuten = uhrzeitMinuten(req.body?.time);
     if (minuten == null) {
@@ -2958,7 +2959,14 @@ router.post("/tools/luecke-fuellen", async (req, res) => {
       const vorweg = leerAm ? `Für ${lueckenTag(leerAm)} sehe ich keine Lücke. In den Tagen danach: ` : "";
       return res.json({ ok: true, message: vorweg + lueckenSatz(fund), context: NICHTS_ANGELEGT, luecken: fund.gaps });
     }
-    const fund = await lueckenFinden(clientId, { date: req.body?.date, horizonDays: 1, calendarId });
+    // Ohne Datum ("die um Viertel nach neun" nach einer Liste ueber mehrere Tage): der erste Tag mit einer Luecke zu dieser Uhrzeit.
+    const ohneDatum = !String(req.body?.date || "").trim();
+    let fund = await lueckenFinden(clientId, { date: req.body?.date, horizonDays: 1, calendarId });
+    if (ohneDatum && !lueckeZurUhrzeit(fund.gaps, minuten)) {
+      const weiter = (await lueckenMitAusblick(clientId, { calendarId })).fund;
+      const treffer = lueckeZurUhrzeit(weiter.gaps, minuten);
+      if (treffer) fund = { ...weiter, gaps: weiter.gaps.filter((g) => g.date === treffer.date) };
+    }
     if (!fund.ok || !fund.gaps.length) {
       return res.json({ ok: true, message: lueckenSatz(fund), context: NICHTS_ANGELEGT, luecken: fund.gaps });
     }
@@ -2969,8 +2977,9 @@ router.post("/tools/luecke-fuellen", async (req, res) => {
     const passend = await passendFuerLuecke(clientId, {
       date: gap.date, calendarId: gap.calendarId, startMin: gap.startMin, minutes: gap.minutes,
       besuchsgrund: req.body?.visitMotiveName,
+      nurAbsager: req.body?.onlyMissed === true || req.body?.onlyMissed === "true",
     });
-    res.json({ ok: true, message: passendSatz(passend, { namenJeGrund: req.body?.visitMotiveName ? 8 : 3 }), context: NICHTS_ANGELEGT, luecke: passend.luecke, gruppen: passend.gruppen, gesamt: passend.gesamt });
+    res.json({ ok: true, message: passendSatz(passend, { namenJeGrund: req.body?.visitMotiveName || req.body?.onlyMissed ? 8 : 3 }), context: NICHTS_ANGELEGT, luecke: passend.luecke, gruppen: passend.gruppen, gesamt: passend.gesamt });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
