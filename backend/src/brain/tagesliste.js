@@ -17,17 +17,32 @@
 // Anruflisten fuer Lisa, die auf eine Freigabe warten, tragen `freigabe`;
 // freigegeben wird ueber den bestehenden Weg POST /brain/gap-fill/:id/approve.
 //
+// Reihenfolge: Patienten-Vorgaenge zuerst, danach Rechnungen, Mahnungen und
+// Fristsachen. Der Bereich kommt aus dem, was am Vorgang und an seinen
+// Eintraegen schon steht (Patient zugeordnet, Kennzeichen "rechnung"/"mahnung",
+// erkannte Frist) — hier wird kein Text neu gelesen.
+//
+// "Ich kuemmere mich" (Status in Arbeit) und "Erledigt" nehmen den Vorgang aus
+// der offenen Liste. Beides steht im Verlauf des Vorgangs (wer, wann, von, nach)
+// und kommt von dort als `uebernommen` bzw. `erledigtHeute` zurueck.
+//
 // Julias QM-Aufgaben sind ein eigener, nachgeordneter Abschnitt. Er ist
 // vorerst ausgeblendet (mitQm), bis der Rueckstand bei Julia aufgeraeumt ist.
 
 import { isActiveStatus, TOPICS, TOPIC_LABELS, UPDATE_KINDS, tsToMs } from "./cases.js";
 import { listCases } from "./caseStore.js";
 import { queryLatest } from "./eventStore.js";
+import { MAX_CANDIDATES_PER_LIST } from "../clara/gapFill.js";
 import { listCalendar as qmListCalendar } from "../qm/jobs.js";
 
 const EVENT_FENSTER_MS = 14 * 24 * 3_600_000;
 const LIEFERANTEN = ["Bianca", "Lisa", "Nadine", "Clara"];
 const RANG = { sofort: 0, heute: 1, normal: 2 };
+const BEREICH_RANG = { patient: 0, rechnung: 1, mahnung: 2, frist: 3, sonstiges: 4 };
+const TAG_MS = 24 * 3_600_000;
+// Eine Frist, die laenger als das zurueckliegt, gilt als erledigt oder verfallen.
+const FRIST_ALT_MS = 30 * TAG_MS;
+const FRIST_NAH_MS = 3 * TAG_MS;
 const QM_OFFEN = new Set(["planned", "assigned", "seen", "in_progress", "overdue", "escalated"]);
 export const QM_HOECHSTENS = 20;
 // Kennung der Kalender-Automatik (clara/calendarWatch.js).
@@ -80,19 +95,36 @@ export function quelleVon(c, eventsById = new Map()) {
 
 function signaleVon(c, eventsById) {
   const out = {};
+  const tags = new Set();
   let telefon = "";
+  let fristMs = 0;
+  let patientKontakt = false;
   for (const id of Array.isArray(c?.eventIds) ? c.eventIds : []) {
     const e = eventsById.get(id);
     if (!e || e.channel === "system") continue;
     for (const [k, v] of Object.entries(e.signals || {})) if (v === true) out[k] = true;
+    for (const t of Array.isArray(e.tags) ? e.tags : []) tags.add(text(t).toLowerCase());
+    if (e.deadlineStrong === true && Number(e.deadlineMs) > fristMs) fristMs = Number(e.deadlineMs);
+    if (e.counterparty?.kind === "patient") patientKontakt = true;
     const ref = text(e.counterparty?.ref);
     if (!telefon && !ref.includes("@") && ziffern(ref).length >= 7) telefon = ref;
   }
-  return { signale: out, telefon };
+  return { signale: out, telefon, tags, fristMs, patientKontakt };
+}
+
+/** patient | rechnung | mahnung | frist | sonstiges — aus vorhandenen Feldern. */
+export function bereichVon(c, quelle, merkmale = {}) {
+  const { signale = {}, tags = new Set(), fristMs = 0, patientKontakt = false } = merkmale;
+  if (c?.callList) return "patient";
+  if (text(c?.subject?.patientId) || patientKontakt || quelle === "Bianca" || quelle === "Lisa") return "patient";
+  if (tags.has("mahnung")) return "mahnung";
+  if (tags.has("rechnung") || signale.invoiceOrPayment || signale.billingQuestion || c?.topic === TOPICS.BILLING) return "rechnung";
+  if (fristMs) return "frist";
+  return "sonstiges";
 }
 
 /** sofort | heute | normal — oder null, wenn der Vorgang nicht in die Liste gehoert. */
-export function einstufen(c, quelle, signale) {
+export function einstufen(c, quelle, signale, { bereich = "", fristMs = 0, nowMs = Date.now(), endOfDayMs = nowMs } = {}) {
   if (!isActiveStatus(c?.status)) return null;
   if (!quelle) return null;
   const hoch = c.priority === "high" || c.priority === "urgent";
@@ -101,7 +133,12 @@ export function einstufen(c, quelle, signale) {
   if (wartetAufFreigabe) return "heute";
   // Eine KI-Kollegin arbeitet daran; ihr Ergebnis kommt als neuer Kontakt zurueck.
   if (lieferant(c.assignee)) return null;
-  if (quelle === "Nadine") return null;
+  if (quelle === "Nadine") {
+    // Gewoehnliche Post bleibt draussen; Mahnungen und laufende Fristen nicht.
+    if (bereich === "mahnung") return "heute";
+    if (fristMs && fristMs >= nowMs - FRIST_ALT_MS) return fristMs <= endOfDayMs + FRIST_NAH_MS ? "heute" : "normal";
+    return null;
+  }
   if (c.topic === TOPICS.APPOINTMENT) {
     return signale.callbackRequested || signale.needsHuman ? "heute" : null;
   }
@@ -116,9 +153,17 @@ function freigabeVon(c, heute) {
   const l = c?.callList;
   if (!l || c.status !== "waiting_approval") return null;
   const datum = text(l.date);
+  const aktiv = (Array.isArray(l.candidates) ? l.candidates : []).filter((k) => k && !k.removed);
   return {
     art: "anrufliste",
-    kandidaten: (Array.isArray(l.candidates) ? l.candidates : []).filter((k) => k && !k.removed).length,
+    kandidaten: aktiv.length,
+    // Kontaktiert werden nur die obersten Kandidaten; der Rest rueckt nach.
+    anrufe: Math.min(aktiv.length, MAX_CANDIDATES_PER_LIST),
+    patienten: aktiv.slice(0, MAX_CANDIDATES_PER_LIST).map((k) => ({
+      name: text(k.name) || "Ohne Namen",
+      grund: text(k.campaignName) || text(k.visitMotiveName),
+      weg: k.consent?.sms === true && k.consent?.reminder !== true ? "SMS" : "Anruf",
+    })),
     datum,
     zeit: text(l.slot?.label),
     kalender: text(l.calendarName),
@@ -128,7 +173,8 @@ function freigabeVon(c, heute) {
   };
 }
 
-function zeile(c, quelle, dringlichkeit, signale, telefon, eventsById, heute) {
+function zeile(c, quelle, dringlichkeit, merkmale, eventsById, heute, bereich) {
+  const { signale, telefon, fristMs } = merkmale;
   const liste = kontakte(c, eventsById);
   const letzter = liste[liste.length - 1];
   const zuletzt = Number(c.lastContactAt) || tsToMs(c.updatedAt) || 0;
@@ -137,6 +183,8 @@ function zeile(c, quelle, dringlichkeit, signale, telefon, eventsById, heute) {
     art: "vorgang",
     quelle,
     dringlichkeit,
+    bereich,
+    fristMs: fristMs || null,
     thema: TOPIC_LABELS[c.topic] || TOPIC_LABELS.other,
     name: text(c.subject?.name),
     patientId: text(c.subject?.patientId) || null,
@@ -152,24 +200,79 @@ function zeile(c, quelle, dringlichkeit, signale, telefon, eventsById, heute) {
   };
 }
 
+function istMensch(wer) {
+  const name = text(wer);
+  return !!name && name !== "System" && !lieferant(name);
+}
+
+function statusSchritte(c) {
+  return (Array.isArray(c?.updates) ? c.updates : []).filter((u) => u?.kind === UPDATE_KINDS.STATUS && u.statusTo);
+}
+
+/** Eintrag fuer "uebernommen" / "heute erledigt": der letzte Statusschritt eines Menschen. */
+function verlaufZeile(c, quelle, bereich, eventsById) {
+  const schritte = statusSchritte(c);
+  const letzter = schritte[schritte.length - 1];
+  if (!letzter || letzter.statusTo !== c.status || !istMensch(letzter.by)) return null;
+  // Rueckgaengig fuehrt auf den letzten Stand, in dem der Vorgang noch offen war.
+  let zurueck = "open";
+  for (let i = schritte.length - 1; i >= 0; i -= 1) {
+    if (isActiveStatus(schritte[i].statusFrom) && schritte[i].statusFrom !== c.status) { zurueck = schritte[i].statusFrom; break; }
+  }
+  const liste = kontakte(c, eventsById);
+  return {
+    id: c.id,
+    quelle,
+    bereich,
+    thema: TOPIC_LABELS[c.topic] || TOPIC_LABELS.other,
+    name: text(c.subject?.name),
+    anrufliste: !!c.callList,
+    kurz: text(liste[liste.length - 1]?.text || c.title).slice(0, 200),
+    wer: text(letzter.by),
+    wannMs: Number(letzter.ts) || 0,
+    von: text(letzter.statusFrom) || zurueck,
+    nach: c.status,
+    zurueck,
+  };
+}
+
 /**
- * @param {{cases?:object[], events?:object[], qmJobs?:object[], nowMs?:number, endOfDayMs?:number, heute?:string}} daten
+ * @param {{cases?:object[], events?:object[], qmJobs?:object[], nowMs?:number, endOfDayMs?:number, startOfDayMs?:number, heute?:string}} daten
  *   heute = "JJJJ-MM-TT" (Berlin); ohne Angabe gilt jede wartende Anrufliste als freigebbar.
  */
-export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = Date.now(), endOfDayMs = nowMs, heute = "" } = {}) {
+export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = Date.now(), endOfDayMs = nowMs, startOfDayMs = endOfDayMs - TAG_MS + 1, heute = "" } = {}) {
   const eventsById = new Map();
   for (const e of events) if (e?.id) eventsById.set(e.id, e);
 
   const patienten = [];
+  const uebernommen = [];
+  const erledigtHeute = [];
   for (const c of cases) {
     const quelle = quelleVon(c, eventsById);
-    const { signale, telefon } = signaleVon(c, eventsById);
-    const dringlichkeit = einstufen(c, quelle, signale);
-    if (!dringlichkeit) continue;
-    patienten.push(zeile(c, quelle, dringlichkeit, signale, telefon, eventsById, heute));
+    const merkmale = signaleVon(c, eventsById);
+    const bereich = bereichVon(c, quelle, merkmale);
+    const lage = { bereich, fristMs: merkmale.fristMs, nowMs, endOfDayMs };
+    const aktiv = isActiveStatus(c?.status);
+    const inArbeitBeimTeam = aktiv && c.status === "in_progress" && !c.callList && !lieferant(c.assignee);
+    const v = aktiv && !inArbeitBeimTeam ? null : verlaufZeile(c, quelle, bereich, eventsById);
+    // In Arbeit ohne erkennbaren Klick eines Menschen bleibt sichtbar — nichts verschwindet still.
+    if (aktiv && !v) {
+      const dringlichkeit = einstufen(c, quelle, merkmale.signale, lage);
+      if (dringlichkeit) patienten.push(zeile(c, quelle, dringlichkeit, merkmale, eventsById, heute, bereich));
+      continue;
+    }
+    if (!v) continue;
+    // Nur was vor dem Klick in der Liste gestanden haette, gehoert in den Verlauf.
+    if (!einstufen({ ...c, status: v.zurueck }, quelle, merkmale.signale, lage)) continue;
+    if (inArbeitBeimTeam) uebernommen.push(v);
+    else if (v.wannMs >= startOfDayMs) erledigtHeute.push(v);
   }
-  // Dringendes zuerst, darin das am laengsten Wartende oben.
-  patienten.sort((a, b) => RANG[a.dringlichkeit] - RANG[b.dringlichkeit] || a.zuletztMs - b.zuletztMs);
+  // Patienten zuerst, dann Rechnungen, Mahnungen, Fristsachen; darin Dringendes
+  // zuerst und das am laengsten Wartende oben.
+  patienten.sort((a, b) => BEREICH_RANG[a.bereich] - BEREICH_RANG[b.bereich]
+    || RANG[a.dringlichkeit] - RANG[b.dringlichkeit] || a.zuletztMs - b.zuletztMs);
+  uebernommen.sort((a, b) => b.wannMs - a.wannMs);
+  erledigtHeute.sort((a, b) => b.wannMs - a.wannMs);
 
   const qmAlle = [];
   for (const j of qmJobs) {
@@ -196,6 +299,8 @@ export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = D
   for (const p of patienten) zaehler[p.dringlichkeit] += 1;
   return {
     patienten,
+    uebernommen,
+    erledigtHeute,
     qm: qmAlle.slice(0, QM_HOECHSTENS),
     zaehler: {
       ...zaehler,
@@ -207,7 +312,7 @@ export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = D
 }
 
 /** Laedt die Quellen einzeln weich (eine ausgefallene Quelle leert nur ihren Teil). */
-export async function ladeTagesliste(clientId, { nowMs = Date.now(), endOfDayMs = nowMs, heute = "", mitQm = false } = {}) {
+export async function ladeTagesliste(clientId, { nowMs = Date.now(), endOfDayMs = nowMs, startOfDayMs = endOfDayMs - TAG_MS + 1, heute = "", mitQm = false } = {}) {
   const hinweise = [];
   const weich = async (name, fn) => {
     try {
@@ -218,9 +323,9 @@ export async function ladeTagesliste(clientId, { nowMs = Date.now(), endOfDayMs 
     }
   };
   const [cases, events, qmJobs] = await Promise.all([
-    weich("cases", () => listCases(clientId, { activeOnly: true, limit: 300 })),
+    weich("cases", () => listCases(clientId, { limit: 300 })),
     weich("events", () => queryLatest(clientId, nowMs - EVENT_FENSTER_MS, 800)),
     mitQm ? weich("qm", () => qmListCalendar(clientId, { fromMs: 0, toMs: endOfDayMs })) : [],
   ]);
-  return { ...baueTagesliste({ cases, events, qmJobs, nowMs, endOfDayMs, heute }), qmAusgeblendet: !mitQm, hinweise };
+  return { ...baueTagesliste({ cases, events, qmJobs, nowMs, endOfDayMs, startOfDayMs, heute }), qmAusgeblendet: !mitQm, hinweise };
 }

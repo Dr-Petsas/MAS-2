@@ -39,7 +39,8 @@ router.get("/brain/tagesliste", async (req, res) => {
     }
     const date = todayBerlin();
     const nowMs = Date.now();
-    const liste = await ladeTagesliste(clientId, { nowMs, endOfDayMs: endeDesTagesBerlin(date), heute: date, mitQm: req.query?.qm === "1" });
+    const endOfDayMs = endeDesTagesBerlin(date);
+    const liste = await ladeTagesliste(clientId, { nowMs, endOfDayMs, startOfDayMs: endOfDayMs - 24 * 3_600_000 + 1, heute: date, mitQm: req.query?.qm === "1" });
     res.json({ ok: true, clientId, date, ...liste });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });

@@ -1,6 +1,6 @@
 // Tagesliste der Clara-Seite: was gehoert hinein, in welcher Reihenfolge, und
 // dass QM getrennt und nachgeordnet bleibt. Reine Logik, ohne Firestore.
-import { baueTagesliste, quelleVon, einstufen, QM_HOECHSTENS } from "../src/brain/tagesliste.js";
+import { baueTagesliste, quelleVon, einstufen, bereichVon, QM_HOECHSTENS } from "../src/brain/tagesliste.js";
 import { vorlagenSaeubern } from "../src/brain/notizVorlagen.js";
 
 function check(cond, msg) {
@@ -60,8 +60,8 @@ check(ids.includes("mail-kritisch") && ids.includes("mail-freigabe"), "dringende
 check(!ids.includes("erledigt"), "Erledigtes fehlt");
 check(!ids.includes("ampel") && !ids.includes("kalender"), "Beobachtungen der Kalender-Automatik stehen nicht in der Liste");
 check(!ids.includes("bei-lisa"), "Auftrag, an dem Lisa arbeitet, steht nicht in der Liste");
-check(ids.join(",") === "beschwerde,mail-kritisch,termin-rueckruf,rueckruf,lisa,mail-freigabe,clara-aufgabe",
-  `Reihenfolge: Dringendes zuerst, darin das Älteste oben (${ids.join(",")})`);
+check(ids.join(",") === "beschwerde,termin-rueckruf,rueckruf,lisa,mail-kritisch,mail-freigabe,clara-aufgabe",
+  `Reihenfolge: Patienten zuerst, darin Dringendes und das Älteste oben (${ids.join(",")})`);
 
 const rueckruf = out.patienten.find((p) => p.id === "rueckruf");
 check(rueckruf.quelle === "Bianca" && rueckruf.telefon === "+49 170 0000101" && rueckruf.dringlichkeit === "heute", "Rückruf trägt Quelle, Nummer und Dringlichkeit");
@@ -85,6 +85,67 @@ const frei = baueTagesliste({ cases: [liste("2026-12-01")], heute: "2026-11-26" 
 check(frei && frei.dringlichkeit === "heute" && frei.freigabe.kandidaten === 2 && frei.freigabe.moeglich === true, "wartende Anrufliste trägt die Freigabe mit aktiven Kandidaten");
 check(baueTagesliste({ cases: [liste("2026-11-20")], heute: "2026-11-26" }).patienten[0].freigabe.moeglich === false, "Anrufliste für einen vergangenen Tag wird nicht zur Freigabe angeboten");
 check(out.patienten.every((p) => p.freigabe === null), "Vorgänge ohne Anrufliste tragen keine Freigabe");
+
+// Bereiche und ihre Reihenfolge — nur aus vorhandenen Feldern.
+const TAG = 24 * STD;
+const ev2 = [
+  { id: "m-mahnung", signals: { critical: true, invoiceOrPayment: true }, tags: ["kritisch", "mahnung", "rechnung"], counterparty: { kind: "unknown", ref: "inkasso@example.org" } },
+  { id: "m-rechnung", signals: { invoiceOrPayment: true }, tags: ["rechnung"], deadlineMs: NOW + 2 * TAG, deadlineStrong: true, counterparty: { kind: "unknown", ref: "labor@example.org" } },
+  { id: "m-frist", signals: {}, tags: [], deadlineMs: NOW + 10 * TAG, deadlineStrong: true, counterparty: { kind: "unknown", ref: "amt@example.org" } },
+  { id: "m-frist-alt", signals: {}, deadlineMs: NOW - 40 * TAG, deadlineStrong: true, counterparty: { kind: "unknown", ref: "amt@example.org" } },
+  { id: "m-frist-schwach", signals: {}, deadlineMs: NOW + TAG, counterparty: { kind: "unknown", ref: "werbung@example.org" } },
+  { id: "m-rechnung-ohne", signals: { invoiceOrPayment: true }, tags: ["rechnung"], counterparty: { kind: "unknown", ref: "shop@example.org" } },
+  { id: "m-patient", signals: { critical: true }, tags: ["kritisch", "anwalt"], counterparty: { kind: "patient", ref: "patient@example.org" } },
+  { id: "b-rueckruf", signals: { callbackRequested: true }, counterparty: { kind: "patient", ref: "01700000109" } },
+];
+const post = (id, eventId, o = {}) => fall(id, { eventIds: [eventId], updates: [kontakt("Nadine", id, eventId)], ...o });
+const c2 = [
+  post("frist", "m-frist"),
+  post("mahnung", "m-mahnung"),
+  post("rechnung", "m-rechnung", { topic: "billing" }),
+  post("frist-alt", "m-frist-alt"),
+  post("frist-schwach", "m-frist-schwach"),
+  post("rechnung-ohne", "m-rechnung-ohne", { topic: "billing" }),
+  post("patientenpost", "m-patient"),
+  fall("anruf", { topic: "callback", eventIds: ["b-rueckruf"], updates: [kontakt("Bianca", "Rückruf", "b-rueckruf")] }),
+];
+const o2 = baueTagesliste({ cases: c2, events: ev2, nowMs: NOW, endOfDayMs: NOW + 6 * STD });
+const reihe = o2.patienten.map((p) => `${p.id}:${p.bereich}:${p.dringlichkeit}`).join(" ");
+check(reihe === "patientenpost:patient:sofort anruf:patient:heute rechnung:rechnung:heute mahnung:mahnung:sofort frist:frist:normal",
+  `Patienten vor Rechnungen, Mahnungen und Fristsachen — auch vor einer dringenden Mahnung (${reihe})`);
+check(!o2.patienten.some((p) => ["frist-alt", "frist-schwach", "rechnung-ohne"].includes(p.id)), "verfallene Frist, schwache Frist und Rechnung ohne Frist bleiben gewöhnliche Post");
+check(o2.patienten.find((p) => p.id === "rechnung").fristMs === NOW + 2 * TAG, "die Frist steht an der Zeile");
+check(bereichVon(fall("x", { subject: { patientId: "p1" }, topic: "billing" }), "Nadine", {}) === "patient", "Rechnungsfrage eines Patienten ist ein Patienten-Vorgang");
+
+// "Ich kümmere mich" und "Erledigt" tragen aus; der Verlauf am Vorgang liefert die Listen.
+const schritt = (by, von, nach, ts) => ({ kind: "status", by, statusFrom: von, statusTo: nach, ts });
+const START = NOW - 8 * STD;
+const c3 = [
+  fall("genommen", { topic: "callback", status: "in_progress", updates: [kontakt("Bianca", "Rückruf"), schritt("Sabine", "open", "in_progress", NOW - STD)] }),
+  fall("fertig", { topic: "callback", status: "resolved", updates: [kontakt("Bianca", "Rückruf"), schritt("Sabine", "open", "in_progress", NOW - 3 * STD), schritt("Sabine", "in_progress", "resolved", NOW - 2 * STD)] }),
+  fall("mehrfach", { topic: "callback", status: "resolved", updates: [kontakt("Bianca", "Rückruf"), schritt("Chef", "open", "resolved", NOW - STD), schritt("Chef", "resolved", "resolved", NOW - STD + 1)] }),
+  fall("gestern", { topic: "callback", status: "resolved", updates: [kontakt("Bianca", "Rückruf"), schritt("Sabine", "open", "resolved", START - STD)] }),
+  fall("von-ki", { topic: "callback", status: "resolved", updates: [kontakt("Bianca", "Rückruf"), schritt("Clara", "open", "resolved", NOW - STD)] }),
+  fall("termin-fertig", { topic: "appointment", status: "resolved", updates: [kontakt("Bianca", "Termin gebucht"), schritt("Sabine", "open", "resolved", NOW - STD)] }),
+  fall("bei-lisa-arbeit", { topic: "callback", status: "in_progress", assignee: "Lisa", updates: [kontakt("Bianca", "Rückruf"), schritt("Sabine", "open", "in_progress", NOW - STD)] }),
+  fall("offen", { topic: "callback", updates: [kontakt("Bianca", "Rückruf")] }),
+  fall("arbeit-ohne-klick", { topic: "callback", status: "in_progress", assignee: "Team", updates: [kontakt("Bianca", "Rückruf"), { kind: "note", by: "Clara", text: "Delegiert an Team" }] }),
+];
+const o3 = baueTagesliste({ cases: c3, nowMs: NOW, endOfDayMs: NOW + 6 * STD, startOfDayMs: START });
+check(o3.patienten.map((p) => p.id).sort().join(",") === "arbeit-ohne-klick,offen", "übernommene und erledigte Vorgänge stehen nicht mehr in der offenen Liste; in Arbeit ohne Klick eines Menschen bleibt sichtbar");
+const gen = o3.uebernommen[0];
+check(o3.uebernommen.length === 1 && gen.id === "genommen" && gen.wer === "Sabine" && gen.von === "open" && gen.nach === "in_progress" && gen.zurueck === "open" && gen.wannMs === NOW - STD,
+  "übernommen: wer, wann, von, nach und der Stand fürs Rückgängig");
+check(o3.erledigtHeute.map((v) => v.id).join(",") === "mehrfach,fertig", "heute erledigt: nur heutige Schritte von Menschen an Vorgängen der Liste, Neuestes oben");
+check(o3.erledigtHeute.find((v) => v.id === "fertig").zurueck === "in_progress", "Rückgängig nach Erledigt führt zurück auf übernommen");
+check(o3.erledigtHeute.find((v) => v.id === "mehrfach").zurueck === "open", "Mehrfachklick: Rückgängig findet den letzten offenen Stand");
+
+const mitNamen = fall("liste2", { status: "waiting_approval", topic: "appointment", assignee: "Lisa", createdBy: "Clara", updates: [],
+  callList: { date: "2026-12-01", slot: { label: "10:00–11:00" }, calendarName: "Dr. Beispiel", bucketLabel: "Prophylaxe",
+    candidates: [{ name: "Erika Musterfrau", visitMotiveName: "Zahnreinigung", consent: { sms: true, reminder: true } }, { name: "Weg", removed: true }, { name: "Otto Normal", campaignName: "Recall Herbst", consent: { sms: true } }] } });
+const fl = baueTagesliste({ cases: [mitNamen], heute: "2026-11-26" }).patienten[0];
+check(fl.bereich === "patient" && fl.freigabe.anrufe === 2 && fl.freigabe.patienten.map((k) => `${k.name}/${k.grund}/${k.weg}`).join(";") === "Erika Musterfrau/Zahnreinigung/Anruf;Otto Normal/Recall Herbst/SMS",
+  "Anrufliste nennt ihre Patienten mit Anlass und Weg");
 
 const sauber = vorlagenSaeubern({ "ze-da": "  Eigener Text  ", leer: "   ", zahl: 5, "": "x" });
 check(Object.keys(sauber).join(",") === "ze-da" && sauber["ze-da"] === "Eigener Text", "Knopf-Texte: nur saubere Einträge bleiben");

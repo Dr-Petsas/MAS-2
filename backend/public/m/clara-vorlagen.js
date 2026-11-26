@@ -3,12 +3,14 @@
 // kann jeden Text auf der Seite aendern und fuer den Knopf merken; gemerkte
 // Texte liegen je Praxis im Backend (GET/PUT /brain/notiz-vorlagen).
 //
+// kurz: Name des Reiters (wie im Termin-Fenster der Plattform)
 // termin: true  -> der Anrufer soll einen Termin bekommen
 // rueckruf: true -> die Praxis moechte zurueckrufen
 window.CLARA_VORLAGEN = [
   {
     id: "allgemein",
     titel: "Allgemein",
+    kurz: "Allgemein",
     knoepfe: [
       {
         id: "rueckruf",
@@ -50,6 +52,7 @@ window.CLARA_VORLAGEN = [
   {
     id: "ze",
     titel: "Zahnersatz und Schienen (ZE)",
+    kurz: "ZE",
     knoepfe: [
       {
         id: "ze-da",
@@ -86,6 +89,7 @@ window.CLARA_VORLAGEN = [
   {
     id: "par",
     titel: "Zahnfleisch (PAR)",
+    kurz: "PAR",
     knoepfe: [
       {
         id: "upt",
@@ -110,6 +114,7 @@ window.CLARA_VORLAGEN = [
   {
     id: "kons",
     titel: "Füllungen und Wurzelbehandlung (Kons)",
+    kurz: "KONS",
     knoepfe: [
       {
         id: "fuellung",
@@ -128,6 +133,7 @@ window.CLARA_VORLAGEN = [
   {
     id: "slm",
     titel: "Schlafmedizin (SLM)",
+    kurz: "SLM",
     knoepfe: [
       {
         id: "schlafschiene-da",
