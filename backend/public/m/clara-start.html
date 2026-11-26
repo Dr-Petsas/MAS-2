@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clara – Notiz für Bianca und Tagesliste</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --karte: #ffffff; --rand: #dfe4ea; --text: #1c2733; --leise: #627084;
+    --akzent: #0b6b62; --akzent-hell: #e3f3f0; --rot: #b3261e; --rot-hell: #fdecea;
+    --gelb: #8a5a00; --gelb-hell: #fff4d6; --grau-hell: #eef1f4;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; }
+  header { background: var(--karte); border-bottom: 1px solid var(--rand); padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; flex: 1; min-width: 200px; }
+  header label { color: var(--leise); font-size: 14px; }
+  select, input, textarea, button { font: inherit; color: inherit; }
+  select, input[type=text], input[type=tel], textarea { border: 1px solid var(--rand); border-radius: 8px; padding: 9px 11px; background: #fff; width: 100%; }
+  select:focus, input:focus, textarea:focus { outline: 2px solid var(--akzent); outline-offset: 0; border-color: var(--akzent); }
+  header select { width: auto; min-width: 220px; }
+  .demo { background: var(--gelb-hell); color: var(--gelb); padding: 8px 24px; font-size: 14px; border-bottom: 1px solid #f0dfae; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; padding: 14px; } }
+  section.karte { background: var(--karte); border: 1px solid var(--rand); border-radius: 12px; padding: 20px; }
+  section.karte > h2 { margin: 0 0 4px; font-size: 19px; }
+  .unter { color: var(--leise); margin: 0 0 16px; font-size: 14.5px; }
+  .schritt { margin-top: 18px; }
+  .schritt > .kopf { display: flex; align-items: center; gap: 9px; font-weight: 600; margin-bottom: 8px; }
+  .nr { width: 24px; height: 24px; border-radius: 50%; background: var(--akzent); color: #fff; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .suche { position: relative; }
+  .treffer { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--rand); border-radius: 8px; box-shadow: 0 8px 24px rgba(20,30,45,.12); max-height: 280px; overflow: auto; }
+  .treffer button { display: flex; width: 100%; gap: 10px; align-items: baseline; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--grau-hell); padding: 9px 12px; cursor: pointer; }
+  .treffer button:hover, .treffer button:focus { background: var(--akzent-hell); outline: none; }
+  .treffer .leer { padding: 10px 12px; color: var(--leise); }
+  .klein { color: var(--leise); font-size: 13.5px; }
+  .gewaehlt { display: flex; align-items: center; gap: 10px; background: var(--akzent-hell); border-radius: 8px; padding: 9px 12px; }
+  .gewaehlt strong { flex: 1; }
+  .zeile2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+  @media (max-width: 560px) { .zeile2 { grid-template-columns: 1fr; } }
+  .feld label { display: block; font-size: 13.5px; color: var(--leise); margin-bottom: 3px; }
+  .gruppe { margin-bottom: 12px; }
+  .gruppe h3 { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; color: var(--leise); }
+  .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; }
+  .knopf { border: 1px solid var(--rand); background: #fff; border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+  .knopf:hover { border-color: var(--akzent); }
+  .knopf.an { background: var(--akzent); border-color: var(--akzent); color: #fff; }
+  .knopf .eigen { font-size: 11px; margin-left: 6px; opacity: .8; }
+  textarea { min-height: 110px; resize: vertical; }
+  .textfuss { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+  .link { background: none; border: 0; padding: 0; color: var(--akzent); cursor: pointer; text-decoration: underline; font-size: 13.5px; }
+  .link[disabled] { color: var(--leise); text-decoration: none; cursor: default; }
+  .haupt { background: var(--akzent); color: #fff; border: 0; border-radius: 8px; padding: 11px 22px; font-weight: 600; cursor: pointer; }
+  .haupt[disabled] { background: #a9b6c2; cursor: default; }
+  .neben { background: #fff; border: 1px solid var(--rand); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+  .neben:hover { border-color: var(--akzent); }
+  .speichern { display: flex; align-items: center; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
+  .meldung { font-size: 14.5px; }
+  .meldung.gut { color: var(--akzent); }
+  .meldung.schlecht { color: var(--rot); }
+  h2.zwischen { font-size: 16px; margin: 26px 0 8px; padding-top: 18px; border-top: 1px solid var(--rand); }
+  ul.liste { list-style: none; margin: 0; padding: 0; }
+  ul.liste > li { border: 1px solid var(--rand); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  ul.liste > li.sofort { border-left: 5px solid var(--rot); }
+  ul.liste > li.heute { border-left: 5px solid #d99a00; }
+  ul.liste > li.normal { border-left: 5px solid #b9c3cd; }
+  .kopfzeile { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .kopfzeile strong { font-size: 16px; }
+  .marke { font-size: 12.5px; border-radius: 999px; padding: 2px 9px; background: var(--grau-hell); color: var(--leise); white-space: nowrap; }
+  .marke.sofort { background: var(--rot-hell); color: var(--rot); font-weight: 600; }
+  .marke.heute { background: var(--gelb-hell); color: var(--gelb); font-weight: 600; }
+  .marke.quelle { background: var(--akzent-hell); color: var(--akzent); }
+  .rechts { margin-left: auto; }
+  .inhalt { margin: 6px 0 8px; }
+  .aktionen { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .aktionen a { color: var(--akzent); font-weight: 600; text-decoration: none; margin-right: 6px; }
+  .leerhinweis { color: var(--leise); padding: 14px; border: 1px dashed var(--rand); border-radius: 10px; text-align: center; }
+  .zaehler { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  details.qm { margin-top: 22px; border-top: 1px solid var(--rand); padding-top: 14px; }
+  details.qm summary { cursor: pointer; color: var(--leise); font-weight: 600; font-size: 15px; }
+  details.qm ul.liste > li { padding: 8px 12px; border-left: 5px solid var(--grau-hell); font-size: 14.5px; }
+  details.qm ul.liste > li.spaet { border-left-color: #d99a00; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Clara</h1>
+  <label for="praxis">Praxis</label>
+  <select id="praxis" aria-label="Praxis wählen"></select>
+</header>
+<div class="demo" id="demoHinweis" hidden>Vorschau mit erfundenen Namen und Nummern. Hier wird nichts gespeichert.</div>
+
+<main>
+  <section class="karte" aria-labelledby="hNotiz">
+    <h2 id="hNotiz">Notiz für Bianca</h2>
+    <p class="unter">Ruft der Patient zurück, weiß Bianca, worum es geht.</p>
+
+    <div class="schritt">
+      <div class="kopf"><span class="nr">1</span>Patient</div>
+      <div id="patientSuche" class="suche">
+        <input type="text" id="patientFeld" placeholder="Name eintippen" autocomplete="off" aria-label="Patient suchen">
+        <div class="treffer" id="treffer" hidden></div>
+      </div>
+      <div id="patientGewaehlt" class="gewaehlt" hidden>
+        <strong id="patientName"></strong>
+        <button type="button" class="link" id="patientAendern">ändern</button>
+      </div>
+      <div class="zeile2">
+        <div class="feld">
+          <label for="telefon">Telefonnummer, von der der Patient anruft</label>
+          <input type="tel" id="telefon" placeholder="z. B. 0171 2345678" autocomplete="off">
+        </div>
+        <div class="feld">
+          <label for="wer">Eingetragen von</label>
+          <input type="text" id="wer" placeholder="Ihr Name" autocomplete="off">
+        </div>
+      </div>
+      <div class="klein" style="margin-top:6px">An der Nummer erkennt Bianca den Anrufer. Ohne Nummer kann sie die Notiz nicht zuordnen.</div>
+    </div>
+
+    <div class="schritt">
+      <div class="kopf"><span class="nr">2</span>Worum geht es?</div>
+      <div id="gruppen"></div>
+    </div>
+
+    <div class="schritt">
+      <div class="kopf"><span class="nr">3</span>Das weiß Bianca dann</div>
+      <textarea id="text" placeholder="Anliegen oben anklicken oder hier frei schreiben" aria-label="Text der Notiz"></textarea>
+      <div class="textfuss">
+        <span class="klein">Der Text lässt sich frei ändern.</span>
+        <span>
+          <button type="button" class="link" id="merken" disabled>Diesen Text für den Knopf merken</button>
+          <button type="button" class="link" id="vorgabe" hidden>Vorgabe wiederherstellen</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="speichern">
+      <button type="button" class="haupt" id="speichern" disabled>Speichern</button>
+      <span class="meldung" id="meldung" role="status"></span>
+    </div>
+
+    <h2 class="zwischen">Offene Notizen <span class="klein" id="notizZahl"></span></h2>
+    <ul class="liste" id="notizen"></ul>
+  </section>
+
+  <section class="karte" aria-labelledby="hListe">
+    <h2 id="hListe">Heute zu erledigen</h2>
+    <p class="unter">Rückrufwünsche und Dringendes von Bianca, Lisa, Nadine und Clara. Gewöhnliche Termintelefonate stehen hier nicht.</p>
+    <div class="zaehler" id="zaehler"></div>
+    <ul class="liste" id="tagesliste"></ul>
+    <details class="qm" id="qmBlock" hidden>
+      <summary id="qmTitel">Qualitätsmanagement (Julia)</summary>
+      <p class="klein">Erledigt werden diese Aufgaben wie bisher bei Julia.</p>
+      <ul class="liste" id="qmListe"></ul>
+    </details>
+  </section>
+</main>
+
+<script src="clara-vorlagen.js"></script>
+<script>
+(function () {
+  "use strict";
+  const params = new URLSearchParams(location.search);
+  const DEMO = params.get("demo") === "1" || location.protocol === "file:";
+  const TOKEN = params.get("t") || "";
+  const $ = (id) => document.getElementById(id);
+  const zustand = {
+    clientId: params.get("clientId") || "",
+    patient: null,
+    knopf: null,
+    eigeneTexte: {},
+    suchLauf: 0,
+    suchTimer: null,
+  };
+
+  // ---------------------------------------------------------------- Demo-Daten
+  const jetzt = Date.now();
+  const STD = 3600000;
+  const demo = {
+    praxen: [{ id: "demo-1", name: "Zahnarztpraxis Beispielstadt" }, { id: "demo-2", name: "Praxis am Musterplatz" }],
+    patienten: [
+      { id: "p1", firstName: "Erika", lastName: "Musterfrau", phone: "0170 0000101" },
+      { id: "p2", firstName: "Max", lastName: "Mustermann", phone: "0170 0000102" },
+      { id: "p3", firstName: "Lena", lastName: "Beispiel", phone: "" },
+      { id: "p4", firstName: "Jonas", lastName: "Probe", phone: "0170 0000104" },
+    ],
+    notizen: [
+      { id: "n1", ts: jetzt - 20 * STD, by: "Sabine", channel: "frontdesk", status: "open", counterparty: { name: "Max Mustermann", ref: "01700000102" },
+        summary: "Wir haben angerufen, weil der Zahnersatz aus dem Labor da ist. Bitte einen Termin zum Einsetzen vereinbaren." },
+      { id: "n2", ts: jetzt - 3 * 24 * STD, by: "Sabine", channel: "frontdesk", status: "open", counterparty: { name: "Jonas Probe", ref: "01700000104" },
+        summary: "Wir haben angerufen, weil der nächste Nachsorgetermin nach der Zahnfleischbehandlung fällig ist (in der Praxis UPT genannt). Bitte diesen Termin vereinbaren." },
+    ],
+    liste: {
+      patienten: [
+        { id: "c1", quelle: "Nadine", dringlichkeit: "sofort", thema: "Beschwerde", name: "Anna Testfall", telefon: null, kurz: "E-Mail: Patientin beschwert sich über die Rechnung zur Krone und kündigt an, sich an die Kammer zu wenden.", status: "waiting_approval", wartetAufFreigabe: true, kontakte: 2, zuletztMs: jetzt - 26 * STD },
+        { id: "c2", quelle: "Bianca", dringlichkeit: "sofort", thema: "Beschwerde", name: "Paul Platzhalter", telefon: "0170 0000201", kurz: "Hat seit der Füllung am Montag weiter Schmerzen und möchte, dass ihn heute noch jemand zurückruft.", status: "open", kontakte: 2, zuletztMs: jetzt - 2 * STD, rueckrufGewuenscht: true },
+        { id: "c3", quelle: "Bianca", dringlichkeit: "heute", thema: "Rückruf", name: "Erika Musterfrau", telefon: "0170 0000101", kurz: "Bittet um Rückruf wegen des Kostenplans. Erreichbar ab 14 Uhr.", status: "open", kontakte: 1, zuletztMs: jetzt - 4 * STD, rueckrufGewuenscht: true },
+        { id: "c4", quelle: "Lisa", dringlichkeit: "heute", thema: "Rückruf", name: "Otto Normal", telefon: "0170 0000202", kurz: "Lisa hat wegen der Zahnreinigung angerufen. Er möchte lieber mit jemandem aus der Praxis sprechen.", status: "in_progress", zustaendig: "Sabine", kontakte: 1, zuletztMs: jetzt - 5 * STD, rueckrufGewuenscht: true },
+        { id: "c5", quelle: "Clara", dringlichkeit: "normal", thema: "Dokumente", name: "Dentallabor Beispiel", telefon: null, kurz: "Laborrechnung für Oktober fehlt noch. Bitte beim Labor nachfragen.", status: "open", kontakte: 1, zuletztMs: jetzt - 30 * STD },
+      ],
+      qm: [
+        { id: "q1", titel: "Sterilisator: Chargenkontrolle", detail: "Gerät 1", zustaendig: "Sabine", faelligMs: jetzt - 20 * STD, ueberfaellig: true },
+        { id: "q2", titel: "Kühlschrank-Temperatur eintragen", detail: "", zustaendig: null, faelligMs: jetzt + 3 * STD, ueberfaellig: false },
+      ],
+    },
+  };
+
+  // ------------------------------------------------------------------- Zugriff
+  async function api(pfad, { method = "GET", body } = {}) {
+    const url = new URL(pfad, location.origin);
+    if (zustand.clientId) url.searchParams.set("clientId", zustand.clientId);
+    const headers = { "Content-Type": "application/json" };
+    if (TOKEN) headers.Authorization = "Bearer " + TOKEN;
+    if (zustand.clientId) headers["X-Client-Id"] = zustand.clientId;
+    const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const daten = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(daten.error || "Fehler " + r.status);
+    return daten;
+  }
+
+  function ziffern(v) {
+    let out = "";
+    for (const z of String(v || "")) if (z >= "0" && z <= "9") out += z;
+    return out;
+  }
+
+  function el(tag, attrs, ...kinder) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k === "class") node.className = v;
+      else if (k === "onclick") node.addEventListener("click", v);
+      else node.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kind of kinder) if (kind != null) node.append(kind);
+    return node;
+  }
+
+  function wann(ms) {
+    if (!ms) return "";
+    const d = new Date(ms);
+    const heute = new Date();
+    const tag = (x) => x.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" });
+    const zeit = d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
+    if (tag(d) === tag(heute)) return "heute " + zeit;
+    if (tag(d) === tag(new Date(heute.getTime() - 24 * STD))) return "gestern " + zeit;
+    return d.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit" }) + " " + zeit;
+  }
+
+  function melden(text, art) {
+    const m = $("meldung");
+    m.textContent = text || "";
+    m.className = "meldung " + (art || "");
+  }
+
+  // -------------------------------------------------------------------- Praxis
+  async function praxenLaden() {
+    let daten;
+    if (DEMO) daten = { aktuell: "demo-1", praxen: demo.praxen };
+    else daten = await api("/brain/praxen").catch(() => ({ aktuell: zustand.clientId, praxen: [] }));
+    const wahl = $("praxis");
+    wahl.replaceChildren();
+    const liste = daten.praxen && daten.praxen.length ? daten.praxen : [{ id: zustand.clientId, name: zustand.clientId || "Praxis" }];
+    for (const p of liste) wahl.append(el("option", { value: p.id }, p.name));
+    if (!zustand.clientId) zustand.clientId = daten.aktuell || liste[0].id;
+    wahl.value = zustand.clientId;
+    wahl.disabled = liste.length < 2;
+  }
+
+  // ------------------------------------------------------------------- Patient
+  function patientZeigen() {
+    const p = zustand.patient;
+    $("patientSuche").hidden = !!p;
+    $("patientGewaehlt").hidden = !p;
+    $("patientName").textContent = p ? p.name : "";
+    pruefen();
+  }
+
+  function patientWaehlen(p) {
+    zustand.patient = p;
+    $("treffer").hidden = true;
+    $("telefon").value = p.phone || "";
+    patientZeigen();
+    (p.phone ? $("text") : $("telefon")).focus();
+  }
+
+  async function suchen(begriff) {
+    const q = begriff.trim();
+    const box = $("treffer");
+    if (q.length < 2) { box.hidden = true; return; }
+    const lauf = ++zustand.suchLauf;
+    let leute = [];
+    try {
+      if (DEMO) {
+        const klein = q.toLowerCase();
+        leute = demo.patienten.filter((p) => (p.firstName + " " + p.lastName).toLowerCase().includes(klein))
+          .map((p) => ({ id: p.id, name: p.firstName + " " + p.lastName, phone: p.phone, art: "Patient" }));
+      } else {
+        const r = await api("/mail/address-book?q=" + encodeURIComponent(q));
+        const pat = (r.patients || []).map((p) => ({
+          id: p.id,
+          name: ((p.firstName || "") + " " + (p.lastName || "")).trim() || "Patient",
+          phone: String(p.phone || p.mobilePhoneNumber || p.phoneNumber || ""),
+          art: "Patient",
+        }));
+        const kon = (r.contacts || []).map((c) => ({
+          id: "", name: c.name || c.address || "Kontakt", phone: String((c.phones || [])[0] || ""), art: "Kontakt",
+        }));
+        leute = pat.concat(kon).slice(0, 12);
+      }
+    } catch (e) { leute = []; }
+    if (lauf !== zustand.suchLauf) return;
+    box.replaceChildren();
+    if (!leute.length) box.append(el("div", { class: "leer" }, "Niemand gefunden. Der Name lässt sich trotzdem so übernehmen."));
+    for (const p of leute) {
+      box.append(el("button", { type: "button", onclick: () => patientWaehlen(p) },
+        el("strong", null, p.name),
+        el("span", { class: "klein" }, p.art + (p.phone ? " · " + p.phone : " · keine Nummer hinterlegt"))));
+    }
+    box.hidden = false;
+  }
+
+  // ------------------------------------------------------------------ Anliegen
+  function textFuer(k) { return zustand.eigeneTexte[k.id] || k.text; }
+
+  function gruppenZeichnen() {
+    const ziel = $("gruppen");
+    ziel.replaceChildren();
+    for (const g of window.CLARA_VORLAGEN) {
+      const reihe = el("div", { class: "knoepfe" });
+      for (const k of g.knoepfe) {
+        const an = zustand.knopf && zustand.knopf.id === k.id;
+        reihe.append(el("button", {
+          type: "button", class: "knopf" + (an ? " an" : ""), "aria-pressed": an ? "true" : "false",
+          title: zustand.eigeneTexte[k.id] ? "Eigener Text Ihrer Praxis" : null,
+          onclick: () => knopfWaehlen(k),
+        }, k.label, zustand.eigeneTexte[k.id] ? el("span", { class: "eigen" }, "✎") : null));
+      }
+      ziel.append(el("div", { class: "gruppe" }, el("h3", null, g.titel), reihe));
+    }
+  }
+
+  function knopfWaehlen(k) {
+    zustand.knopf = zustand.knopf && zustand.knopf.id === k.id ? null : k;
+    if (zustand.knopf) $("text").value = textFuer(k);
+    gruppenZeichnen();
+    pruefen();
+  }
+
+  function pruefen() {
+    const text = $("text").value.trim();
+    const name = zustand.patient ? zustand.patient.name : $("patientFeld").value.trim();
+    const nummerOk = ziffern($("telefon").value).length >= 7;
+    $("speichern").disabled = !(text && name && nummerOk);
+    const k = zustand.knopf;
+    $("merken").disabled = !(k && text && text !== textFuer(k));
+    $("vorgabe").hidden = !(k && zustand.eigeneTexte[k.id]);
+  }
+
+  async function vorlageSetzen(text) {
+    const k = zustand.knopf;
+    if (!k) return;
+    try {
+      if (DEMO) { if (text) zustand.eigeneTexte[k.id] = text; else delete zustand.eigeneTexte[k.id]; }
+      else zustand.eigeneTexte = (await api("/brain/notiz-vorlagen", { method: "PUT", body: { id: k.id, text, by: $("wer").value.trim() || "Team" } })).texte || {};
+      if (!text) $("text").value = k.text;
+      melden(text ? "Text für „" + k.label + "“ gemerkt." : "Vorgabe für „" + k.label + "“ wiederhergestellt.", "gut");
+    } catch (e) { melden("Das Merken hat nicht geklappt: " + e.message, "schlecht"); }
+    gruppenZeichnen();
+    pruefen();
+  }
+
+  // ----------------------------------------------------------------- Speichern
+  async function speichern() {
+    const text = $("text").value.trim();
+    const name = zustand.patient ? zustand.patient.name : $("patientFeld").value.trim();
+    const nummer = ziffern($("telefon").value);
+    const wer = $("wer").value.trim() || "Team";
+    const k = zustand.knopf;
+    const signals = {};
+    if (k && k.termin) signals.appointmentRequest = true;
+    if (k && k.rueckruf) signals.callbackRequested = true;
+    $("speichern").disabled = true;
+    try {
+      const eintrag = {
+        channel: "frontdesk", type: "note", direction: "internal", status: "open", ts: Date.now(), by: wer,
+        counterparty: { kind: zustand.patient && zustand.patient.id ? "patient" : "unknown", name, ref: nummer },
+        subject: {
+          patientId: (zustand.patient && zustand.patient.id) || null, name,
+          matchStatus: zustand.patient && zustand.patient.id ? "matched" : "ambiguous",
+        },
+        summary: text, signals,
+      };
+      if (DEMO) demo.notizen.unshift({ ...eintrag, id: "n" + Date.now() });
+      else await api("/brain/events", { method: "POST", body: eintrag });
+      try { localStorage.setItem("clara-start-wer", $("wer").value.trim()); } catch (e) { /* ohne Speicher weiter */ }
+      zustand.patient = null; zustand.knopf = null;
+      $("patientFeld").value = ""; $("telefon").value = ""; $("text").value = "";
+      patientZeigen(); gruppenZeichnen();
+      melden("Gespeichert. Bianca weiß Bescheid, wenn " + name + " anruft.", "gut");
+      await notizenLaden();
+    } catch (e) {
+      melden("Nicht gespeichert: " + e.message, "schlecht");
+      pruefen();
+    }
+  }
+
+  // ------------------------------------------------------------ Offene Notizen
+  async function notizenLaden() {
+    let events = [];
+    try {
+      events = DEMO ? demo.notizen : (await api("/brain/timeline?sinceMinutes=20160")).events || [];
+    } catch (e) { events = []; }
+    const offen = events.filter((e) => e.channel === "frontdesk" && (e.status === "open" || e.status === "none"))
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const ziel = $("notizen");
+    ziel.replaceChildren();
+    $("notizZahl").textContent = offen.length ? "(" + offen.length + ")" : "";
+    if (!offen.length) ziel.append(el("li", { class: "leerhinweis" }, "Keine offenen Notizen."));
+    for (const e of offen) {
+      const name = (e.counterparty && e.counterparty.name) || (e.subject && e.subject.name) || "Ohne Namen";
+      const nummer = (e.counterparty && e.counterparty.ref) || "";
+      ziel.append(el("li", null,
+        el("div", { class: "kopfzeile" }, el("strong", null, name), el("span", { class: "klein" }, nummer),
+          el("span", { class: "klein rechts" }, wann(e.ts) + (e.by ? " · " + e.by : ""))),
+        el("div", { class: "inhalt" }, e.summary || ""),
+        el("div", { class: "aktionen" }, el("button", { type: "button", class: "neben", onclick: () => notizErledigen(e) }, "Erledigt"))));
+    }
+  }
+
+  async function notizErledigen(e) {
+    const wer = $("wer").value.trim() || "Team";
+    try {
+      if (DEMO) demo.notizen = demo.notizen.filter((n) => n.id !== e.id);
+      else if (e.caseId) await api("/brain/cases/" + encodeURIComponent(e.caseId) + "/status", { method: "POST", body: { status: "resolved", by: wer, note: "Team-Notiz erledigt" } });
+      else if (ziffern(e.counterparty && e.counterparty.ref).length >= 7) await api("/brain/caller-context/resolve", { method: "POST", body: { phone: e.counterparty.ref, actor: wer, note: "Team-Notiz erledigt" } });
+      else await api("/brain/events/" + encodeURIComponent(e.id) + "/resolve", { method: "POST", body: { actor: wer, note: "Team-Notiz erledigt" } });
+    } catch (err) { melden("Das Erledigen hat nicht geklappt: " + err.message, "schlecht"); }
+    await notizenLaden();
+  }
+
+  // ---------------------------------------------------------------- Tagesliste
+  const DRINGLICH = { sofort: "Sofort", heute: "Heute", normal: "Ohne Eile" };
+
+  async function listeLaden() {
+    let daten;
+    try { daten = DEMO ? demo.liste : await api("/brain/tagesliste"); }
+    catch (e) { daten = { patienten: [], qm: [], fehler: e.message }; }
+    const ziel = $("tagesliste");
+    ziel.replaceChildren();
+    const pat = daten.patienten || [];
+    const zahl = (art) => pat.filter((p) => p.dringlichkeit === art).length;
+    const z = $("zaehler");
+    z.replaceChildren();
+    if (pat.length) {
+      for (const art of ["sofort", "heute", "normal"]) {
+        if (zahl(art)) z.append(el("span", { class: "marke " + art }, zahl(art) + " " + DRINGLICH[art].toLowerCase()));
+      }
+    }
+    if (daten.fehler) ziel.append(el("li", { class: "leerhinweis" }, "Die Liste lässt sich gerade nicht laden: " + daten.fehler));
+    else if (!pat.length) ziel.append(el("li", { class: "leerhinweis" }, "Nichts offen. Niemand wartet auf eine Antwort."));
+    for (const p of pat) {
+      const tel = p.telefon ? el("a", { href: "tel:" + ziffern(p.telefon) }, "☎ " + p.telefon) : null;
+      const zusatz = [];
+      if (p.wartetAufFreigabe) zusatz.push("Antwort-Entwurf wartet auf Freigabe");
+      if (p.zustaendig) zusatz.push(p.zustaendig + " kümmert sich");
+      if (p.kontakte > 1) zusatz.push(p.kontakte + " Kontakte");
+      ziel.append(el("li", { class: p.dringlichkeit },
+        el("div", { class: "kopfzeile" },
+          el("span", { class: "marke " + p.dringlichkeit }, DRINGLICH[p.dringlichkeit]),
+          el("strong", null, p.name || "Unbekannter Anrufer"),
+          el("span", { class: "marke" }, p.thema),
+          el("span", { class: "marke quelle" }, "von " + p.quelle),
+          el("span", { class: "klein rechts" }, wann(p.zuletztMs))),
+        el("div", { class: "inhalt" }, p.kurz || ""),
+        zusatz.length ? el("div", { class: "klein", style: "margin-bottom:8px" }, zusatz.join(" · ")) : null,
+        el("div", { class: "aktionen" }, tel,
+          p.status === "open" ? el("button", { type: "button", class: "neben", onclick: () => vorgangSetzen(p, "in_progress") }, "Ich kümmere mich") : null,
+          el("button", { type: "button", class: "neben", onclick: () => vorgangSetzen(p, "resolved") }, "Erledigt"))));
+    }
+
+    const qm = daten.qm || [];
+    $("qmBlock").hidden = !qm.length;
+    const z2 = daten.zaehler || {};
+    const gesamt = z2.qm || qm.length;
+    const spaet = z2.qmUeberfaellig != null ? z2.qmUeberfaellig : qm.filter((q) => q.ueberfaellig).length;
+    $("qmTitel").textContent = "Qualitätsmanagement (Julia): " + gesamt + " offen" + (spaet ? ", davon " + spaet + " überfällig" : "")
+      + (gesamt > qm.length ? " – gezeigt sind die neuesten " + qm.length : "");
+    const qz = $("qmListe");
+    qz.replaceChildren();
+    for (const q of qm) {
+      qz.append(el("li", { class: q.ueberfaellig ? "spaet" : "" },
+        el("div", { class: "kopfzeile" }, el("span", null, q.titel),
+          q.ueberfaellig ? el("span", { class: "marke heute" }, "überfällig") : null,
+          el("span", { class: "klein rechts" }, [q.detail, q.zustaendig || "noch nicht verteilt", wann(q.faelligMs)].filter(Boolean).join(" · ")))));
+    }
+  }
+
+  async function vorgangSetzen(p, status) {
+    const wer = $("wer").value.trim() || "Team";
+    try {
+      if (DEMO) {
+        if (status === "resolved") demo.liste.patienten = demo.liste.patienten.filter((x) => x.id !== p.id);
+        else { p.status = status; p.zustaendig = wer; }
+      } else {
+        if (status === "in_progress") await api("/brain/cases/" + encodeURIComponent(p.id) + "/assign", { method: "POST", body: { assignee: "Team", instruction: wer + " kümmert sich", by: wer } }).catch(() => null);
+        await api("/brain/cases/" + encodeURIComponent(p.id) + "/status", { method: "POST", body: { status, by: wer } });
+      }
+    } catch (e) { melden("Das hat nicht geklappt: " + e.message, "schlecht"); }
+    await listeLaden();
+  }
+
+  // --------------------------------------------------------------------- Start
+  async function allesLaden() {
+    if (!DEMO) zustand.eigeneTexte = (await api("/brain/notiz-vorlagen").catch(() => ({}))).texte || {};
+    gruppenZeichnen();
+    await Promise.all([notizenLaden(), listeLaden()]);
+  }
+
+  $("patientFeld").addEventListener("input", (ev) => {
+    clearTimeout(zustand.suchTimer);
+    zustand.suchTimer = setTimeout(() => suchen(ev.target.value), 160);
+    pruefen();
+  });
+  $("patientAendern").addEventListener("click", () => { zustand.patient = null; patientZeigen(); $("patientFeld").focus(); });
+  $("telefon").addEventListener("input", pruefen);
+  $("text").addEventListener("input", pruefen);
+  $("merken").addEventListener("click", () => vorlageSetzen($("text").value.trim()));
+  $("vorgabe").addEventListener("click", () => vorlageSetzen(""));
+  $("speichern").addEventListener("click", speichern);
+  $("praxis").addEventListener("change", (ev) => { zustand.clientId = ev.target.value; zustand.patient = null; patientZeigen(); allesLaden(); });
+  document.addEventListener("click", (ev) => { if (!$("patientSuche").contains(ev.target)) $("treffer").hidden = true; });
+
+  $("demoHinweis").hidden = !DEMO;
+  try { $("wer").value = localStorage.getItem("clara-start-wer") || ""; } catch (e) { /* ohne Speicher weiter */ }
+  praxenLaden().then(allesLaden);
+  if (!DEMO) setInterval(listeLaden, 60000);
+
+  // Nur fuer die Vorschau: ?zeige=ausgefuellt fuellt das Formular mit einem Beispiel.
+  if (DEMO && params.get("zeige") === "ausgefuellt") {
+    setTimeout(() => {
+      patientWaehlen({ id: "p1", name: "Erika Musterfrau", phone: "0170 0000101" });
+      $("wer").value = "Sabine";
+      knopfWaehlen(window.CLARA_VORLAGEN[1].knoepfe[0]);
+    }, 50);
+  }
+})();
+</script>
+</body>
+</html>
