@@ -29,7 +29,7 @@ import { buildWiedervorlage, spokenWiedervorlage, resolveWiedervorlage, formatEu
 import { specialtyKeyForClient } from "../clara/dokuPflicht.js";
 import { effektiveAnforderungen, applyAnpassung } from "../clara/dokuLernen.js";
 import { pruefeDoku, baueRueckfragenSatz } from "../clara/dokuCheck.js";
-import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey, removeCandidateByName, spokenGapAnswer, spokenAnrede, discardWaitingLists } from "../clara/gapFill.js";
+import { runGapFill, buildSpokenGapBriefing, buildSpokenGapCandidates, gapCandidateCardData, listRecallBuckets, listRecallFachbereiche, spokenFachbereichFrage, resolveBucketKey, removeCandidateByName, spokenGapAnswer, spokenAnrede, discardWaitingLists, anruflistenAktiv } from "../clara/gapFill.js";
 import { composeInviteInstruction, inviteReadback, dateDe, normTime } from "../clara/gapInvite.js";
 import { outreachForClient, buildAutoInviteMessage } from "../clara/outreachTemplates.js";
 import { recordContact } from "../clara/outreachStats.js";
@@ -2950,6 +2950,27 @@ router.post("/tools/gap-briefing", async (req, res) => {
     }
     const demoOnly = req.body?.demoOnly === true || req.body?.demoOnly === "true";
     const thema = String(req.body?.thema || req.body?.bucket || "").trim();
+
+    // Schalter (Chef 26.11.2026): ohne MAS_GAP_LISTEN=1 nur die ehrliche
+    // Luecken-Antwort — keine Themenfrage, keine Liste, kein Freigabe-Hinweis.
+    if (!anruflistenAktiv()) {
+      const { calendarId: nurCalId } = await resolveDayCalendarScope(clientId, req.body);
+      const scan = await runGapFill(clientId, {
+        date: req.body?.date,
+        horizonDays: Number(req.body?.horizonDays) || 1,
+        calendarId: nurCalId,
+        scanOnly: true,
+      });
+      const hatLuecken = !!scan?.gaps?.length;
+      return res.json({
+        ok: true,
+        listenAus: true,
+        message: hatLuecken
+          ? `${spokenGapAnswer(scan)} Anruflisten für Lisa lege ich dazu im Moment nicht an.`
+          : spokenGapAnswer(scan),
+        card: null, cards: [], gaps: scan?.gaps?.length || 0, callLists: 0, bucketKey: null, bucketLabel: null,
+      });
+    }
 
     // Themen-Rueckfrage (nicht im Demo-Modus — dort bleibt der Ablauf starr):
     let bucketKey = null;

@@ -939,7 +939,21 @@ function themaLabel(pool, themaKey) {
  * Behandler, gate+rank candidates, upsert one approval-pending call-list case
  * per gap. Returns everything the voice/UI layer needs.
  */
-export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false, calendarId = null, bucketKey = null, bucketExplicit = false, scanOnly = false } = {}) {
+/**
+ * Schalter (Chef 26.11.2026): Anruflisten fuer Lisa entstehen nicht mehr von
+ * selbst — Luecken werden kuenftig im Kalender gefuellt ("Luecke fuellen").
+ * Ohne MAS_GAP_LISTEN=1 findet und zaehlt runGapFill nur noch Luecken; es
+ * laedt keine Kandidaten und legt keine Liste an. Das gilt fuer JEDEN Aufrufer
+ * (Zeitplan, Morgenbriefing, Clara im Gespraech, Plattform-Knopf, Service-
+ * Route). Rueckweg: MAS_GAP_LISTEN=1 in der .env und Neustart.
+ */
+export function anruflistenAktiv() {
+  return process.env.MAS_GAP_LISTEN === "1";
+}
+
+export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = false, calendarId = null, bucketKey = null, bucketExplicit = false, scanOnly: nurScanGewuenscht = false } = {}) {
+  const listenAus = !anruflistenAktiv();
+  const scanOnly = nurScanGewuenscht || listenAus;
   // C5: ohne Datum gilt nach Feierabend der naechste Werktag (23:50-Vorfall).
   const startDate = s(date) || gapFillDefaultDate();
   const booking = await loadBooking(clientId).catch(() => null);
@@ -1057,6 +1071,7 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
     ok: true, date: startDate, demoOnly: !!demoOnly, gaps, callLists,
     candidatesTotal: allCandidates.length,
     bucketKey: wantBucket, bucketLabel,
+    listenAus,
   };
 }
 
