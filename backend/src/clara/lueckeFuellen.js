@@ -11,13 +11,16 @@ const TZ = "Europe/Berlin";
 const s = (v) => String(v ?? "").trim();
 const hhmm = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")}`;
 
-/** "2026-11-27" -> "Freitag, den 27. November". */
-export function tagGesprochen(day) {
+const ymd = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(d);
+
+/** "2026-11-27" -> "Freitag, den 27. November"; heute und morgen werden dazugesagt. */
+export function tagGesprochen(day, jetzt = new Date()) {
   const d = new Date(`${day}T12:00:00Z`);
   if (Number.isNaN(d.getTime())) return s(day);
   const wt = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, weekday: "long" }).format(d);
   const dm = new Intl.DateTimeFormat("de-DE", { timeZone: TZ, day: "numeric", month: "long" }).format(d);
-  return `${wt}, den ${dm}`;
+  const nah = day === ymd(jetzt) ? "heute, " : day === ymd(new Date(jetzt.getTime() + 86400000)) ? "morgen, " : "";
+  return `${nah}${wt}, den ${dm}`;
 }
 
 export const lueckeGesprochen = (g) => `${hhmm(g.startMin)} bis ${hhmm(g.endMin)} Uhr (${g.minutes} Minuten)`;
@@ -36,6 +39,19 @@ export async function lueckenFinden(clientId, { date, horizonDays = 1, calendarI
   return { ok: !!lauf?.ok, reason: lauf?.reason || null, date: lauf?.date || s(date), gaps: lauf?.gaps || [] };
 }
 
+/**
+ * Luecken fuers Gespraech: ist am gefragten Tag nichts frei und kein Zeitraum genannt, gleich die
+ * naechsten Tage mitsehen, damit Clara etwas zum Besprechen hat. `leerAm` nennt dann den leeren Tag.
+ */
+export async function lueckenMitAusblick(clientId, { date, horizonDays, calendarId = null } = {}) {
+  const tage = Number(horizonDays) || 0;
+  const fund = await lueckenFinden(clientId, { date, horizonDays: tage || 1, calendarId });
+  if (!fund.ok || fund.gaps.length || tage > 1) return { fund, leerAm: "" };
+  const weiter = await lueckenFinden(clientId, { date, horizonDays: AUSBLICK_TAGE, calendarId });
+  return weiter.gaps.length ? { fund: weiter, leerAm: fund.date } : { fund, leerAm: "" };
+}
+const AUSBLICK_TAGE = 5;
+
 /** Die Luecke, in der die genannte Uhrzeit liegt; sonst die, deren Beginn am naechsten liegt (bis 30 Minuten). */
 export function lueckeZurUhrzeit(gaps, minuten) {
   if (minuten == null) return null;
@@ -44,6 +60,8 @@ export function lueckeZurUhrzeit(gaps, minuten) {
   const nah = [...gaps].sort((a, b) => Math.abs(a.startMin - minuten) - Math.abs(b.startMin - minuten))[0];
   return nah && Math.abs(nah.startMin - minuten) <= 30 ? nah : null;
 }
+
+const JE_GRUND = 100;
 
 /** Pure: Kandidaten einer Luecke nach Besuchsgrund gruppieren, groesste Gruppe zuerst. */
 export function nachBesuchsgrund(kandidaten) {
@@ -68,6 +86,28 @@ export function nachBesuchsgrund(kandidaten) {
     .sort((a, b) => b.anzahl - a.anzahl);
 }
 
+const woerter = (text) => s(text).toLowerCase().split("/").join(" ").split("-").join(" ").split(" ").filter((w) => w.length >= 4);
+const gleicherAnfang = (a, b) => {
+  let n = 0;
+  while (n < a.length && n < b.length && a[n] === b[n]) n += 1;
+  return n;
+};
+
+/**
+ * Pure: die Gruppen zum genannten Besuchsgrund. Erst der Name selbst ("Zahnreinigung" in
+ * "professionelle Zahnreinigung"), sonst ein Wort mit gleichem Anfang ("Kontrolle" und
+ * "Kontrolluntersuchung"). Passt nichts, bleiben alle Gruppen.
+ */
+export function besuchsgrundWaehlen(gruppen, besuchsgrund) {
+  const wunsch = s(besuchsgrund).toLowerCase();
+  if (!wunsch) return gruppen;
+  const genau = gruppen.filter((g) => g.besuchsgrund.toLowerCase().includes(wunsch) || wunsch.includes(g.besuchsgrund.toLowerCase()));
+  if (genau.length) return genau;
+  const ww = woerter(wunsch);
+  const nah = gruppen.filter((g) => woerter(g.besuchsgrund).some((a) => ww.some((b) => gleicherAnfang(a, b) >= Math.min(6, a.length, b.length))));
+  return nah.length ? nah : gruppen;
+}
+
 /**
  * Wer passt in diese eine Luecke? Dieselben Tore und dieselbe Reihenfolge wie frueher bei den
  * Anruflisten (Dauer passt, Behandler passt, nicht kuerzlich kontaktiert, kein Spam-Risiko),
@@ -80,20 +120,19 @@ export async function passendFuerLuecke(clientId, { date, calendarId, startMin, 
   if (!s(date) || !s(calendarId) || !(dauer > 0)) return { ok: false, reason: "luecke_unvollstaendig", gruppen: [], gesamt: 0 };
   const { allCandidates, throttled } = await kandidatenBestand(clientId, booking);
   const gap = { startMin: Number(startMin) || 0, endMin: (Number(startMin) || 0) + dauer, minutes: dauer };
-  let passend = rankCandidatesForGap(allCandidates, gap, { calendarId: s(calendarId), throttled, max: 300 });
-  const wunsch = s(besuchsgrund).toLowerCase();
-  let gruppen = nachBesuchsgrund(passend);
-  if (wunsch) {
-    const treffer = gruppen.filter((g) => g.besuchsgrund.toLowerCase().includes(wunsch) || wunsch.includes(g.besuchsgrund.toLowerCase()));
-    if (treffer.length) gruppen = treffer;
-  }
-  passend = gruppen.flatMap((g) => g.patienten);
+  let passend = rankCandidatesForGap(allCandidates, gap, { calendarId: s(calendarId), throttled, max: Infinity });
+  const gruppen0 = nachBesuchsgrund(passend);
+  let gruppen = besuchsgrundWaehlen(gruppen0, besuchsgrund);
+  // Gezaehlt werden alle, mitgeliefert je Besuchsgrund nur die vordersten (am laengsten faellig).
+  const gesamt = gruppen.reduce((n, g) => n + g.anzahl, 0);
+  gruppen = gruppen.map((g) => ({ ...g, patienten: g.patienten.slice(0, JE_GRUND) }));
   const calendar = (booking.calendars || []).find((c) => c.id === s(calendarId));
   return {
     ok: true,
     luecke: { date: s(date), calendarId: s(calendarId), calendarName: s(calendar?.name), ...gap },
     gruppen,
-    gesamt: passend.length,
+    gesamt,
+    jeGrundHoechstens: JE_GRUND,
   };
 }
 
@@ -132,4 +171,5 @@ export function passendSatz(fund, { namenJeGrund = 3 } = {}) {
 }
 
 export const NICHTS_ANGELEGT = "Es ist nichts angelegt und niemand wird angerufen: besprochen wird nur die Auswahl. "
-  + "Der Start über Lisa ist noch nicht freigeschaltet.";
+  + "Der Start über Lisa ist noch nicht freigeschaltet, freigeben lässt sich also nichts; will der Arzt, dass Lisa anruft, das ehrlich sagen und nichts ersatzweise anlegen (keine Aufgabe, keine Nachricht). "
+  + "Einen Termin eintragen nur für einen Patienten, den der Arzt selbst ausdrücklich nennt.";

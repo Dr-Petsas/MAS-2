@@ -63,7 +63,7 @@ import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, ph
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
-import { lueckenFinden, lueckeZurUhrzeit, passendFuerLuecke, lueckenSatz, passendSatz, uhrzeitMinuten, NICHTS_ANGELEGT } from "../clara/lueckeFuellen.js";
+import { lueckenFinden, lueckenMitAusblick, tagGesprochen as lueckenTag, lueckeZurUhrzeit, passendFuerLuecke, lueckenSatz, passendSatz, uhrzeitMinuten, NICHTS_ANGELEGT } from "../clara/lueckeFuellen.js";
 import { createCase, getCase, listCases, listActiveCasesByPatientIds, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext } from "../brain/caseStore.js";
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "../brain/caseBriefing.js";
 import { recordCommunication } from "../brain/record.js";
@@ -2953,12 +2953,13 @@ router.post("/tools/luecke-fuellen", async (req, res) => {
     }
     const { calendarId } = await resolveDayCalendarScope(clientId, req.body);
     const minuten = uhrzeitMinuten(req.body?.time);
-    const fund = await lueckenFinden(clientId, {
-      date: req.body?.date,
-      horizonDays: minuten == null ? Number(req.body?.horizonDays) || 1 : 1,
-      calendarId,
-    });
-    if (minuten == null || !fund.ok || !fund.gaps.length) {
+    if (minuten == null) {
+      const { fund, leerAm } = await lueckenMitAusblick(clientId, { date: req.body?.date, horizonDays: req.body?.horizonDays, calendarId });
+      const vorweg = leerAm ? `Für ${lueckenTag(leerAm)} sehe ich keine Lücke. In den Tagen danach: ` : "";
+      return res.json({ ok: true, message: vorweg + lueckenSatz(fund), context: NICHTS_ANGELEGT, luecken: fund.gaps });
+    }
+    const fund = await lueckenFinden(clientId, { date: req.body?.date, horizonDays: 1, calendarId });
+    if (!fund.ok || !fund.gaps.length) {
       return res.json({ ok: true, message: lueckenSatz(fund), context: NICHTS_ANGELEGT, luecken: fund.gaps });
     }
     const gap = lueckeZurUhrzeit(fund.gaps, minuten);

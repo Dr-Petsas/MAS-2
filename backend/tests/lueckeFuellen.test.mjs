@@ -18,6 +18,13 @@ const gaps = [
   { date: "2030-01-10", calendarId: "a", calendarName: "Dr. Beispiel", startMin: 840, endMin: 900, minutes: 60 },
 ];
 
+await t("Tag wird mit heute und morgen angesagt", () => {
+  const jetzt = new Date("2030-01-09T10:00:00Z");
+  assert.equal(L.tagGesprochen("2030-01-09", jetzt), "heute, Mittwoch, den 9. Januar");
+  assert.equal(L.tagGesprochen("2030-01-10", jetzt), "morgen, Donnerstag, den 10. Januar");
+  assert.equal(L.tagGesprochen("2030-01-11", jetzt), "Freitag, den 11. Januar");
+});
+
 await t("Uhrzeit wird gelesen, Unsinn nicht", () => {
   assert.equal(L.uhrzeitMinuten("9:30"), 570);
   assert.equal(L.uhrzeitMinuten("09.30"), 570);
@@ -43,6 +50,17 @@ await t("Gruppen nach Besuchsgrund, groesste zuerst, Reihenfolge der Patienten b
   assert.deepEqual(g.map((x) => [x.besuchsgrund, x.anzahl]), [["Kontrolle", 2], ["Zahnreinigung", 1]]);
   assert.deepEqual(g[0].patienten.map((p) => p.name), ["Bernd Muster", "Carla Probe"]);
   assert.equal(g[0].patienten[0].telefon, true);
+});
+
+await t("Genannter Besuchsgrund waehlt die Gruppe, auch in Kurzform", () => {
+  const g = ["Kontrolluntersuchung", "professionelle Zahnreinigung", "Zahnaufhellung", "PAR Kontrolluntersuchung", "Füllung klein"].map((besuchsgrund) => ({ besuchsgrund }));
+  const wahl = (w) => L.besuchsgrundWaehlen(g, w).map((x) => x.besuchsgrund);
+  assert.deepEqual(wahl("Kontrolle"), ["Kontrolluntersuchung", "PAR Kontrolluntersuchung"]);
+  assert.deepEqual(wahl("Zahnreinigung"), ["professionelle Zahnreinigung"]);
+  assert.deepEqual(wahl("eine Füllung"), ["Füllung klein"]);
+  assert.deepEqual(wahl("Zahnaufhellung"), ["Zahnaufhellung"]);
+  assert.equal(wahl("Implantat").length, 5);
+  assert.equal(wahl("").length, 5);
 });
 
 await t("Sprechtexte nennen Luecken, Besuchsgruende und Namen, aber keine Anrufliste und keine Freigabe", () => {
@@ -73,9 +91,18 @@ await t("Lese-Lauf gegen die Praxis: Luecken und Passende kommen, angelegt wird 
     const passend = await L.passendFuerLuecke(clientId, { date: g.date, calendarId: g.calendarId, startMin: g.startMin, minutes: g.minutes });
     assert.equal(passend.ok, true);
     assert.equal(passend.gesamt, passend.gruppen.reduce((n, x) => n + x.anzahl, 0));
-    for (const gr of passend.gruppen) assert.ok(!gr.dauerMin || gr.dauerMin <= g.minutes, "Dauer passt in die Luecke");
+    for (const gr of passend.gruppen) {
+      assert.ok(!gr.dauerMin || gr.dauerMin <= g.minutes, "Dauer passt in die Luecke");
+      assert.ok(gr.patienten.length <= 100 && gr.patienten.length <= gr.anzahl, "je Besuchsgrund hoechstens 100 mitgeliefert");
+    }
+    const satz = L.passendSatz(passend);
+    assert.ok(satz.includes(`passen ${passend.gesamt === 1 ? "ein Patient" : passend.gesamt + " Patienten"}`), "Satz nennt die echte Zahl");
     console.log(`     erste Luecke ${g.minutes} Minuten: ${passend.gesamt} Passende in ${passend.gruppen.length} Besuchsgruenden`);
   }
+  const heute = await L.lueckenMitAusblick(clientId, {});
+  assert.equal(heute.fund.ok, true);
+  assert.ok(!heute.leerAm || heute.fund.gaps.length > 0, "Ausblick nur, wenn er Luecken bringt");
+  console.log(`     ohne Datum: ${heute.fund.gaps.length} Luecken${heute.leerAm ? ", heute leer, Ausblick auf die naechsten Tage" : ""}`);
   assert.deepEqual(await listen(), vorher);
 });
 
