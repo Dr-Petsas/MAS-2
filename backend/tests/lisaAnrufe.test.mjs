@@ -11,7 +11,8 @@ import { pruefeAnruf, satzFuer, istOffen, gleicheSache, nummerMitVorwahl, beimRu
 const CID = "zzz-mas2-lisaanrufe";
 const NUMMER = "+491700000301";
 const jetzt = Date.now();
-const MIN = 60_000;
+// Abstaende in Sekunden: die Anrufe sollen auch kurz nach Mitternacht "heute" liegen.
+const MIN = 1_000;
 
 const { default: brainRouter } = await import("../src/routes/brain.js");
 const { default: seiteRouter } = await import("../src/routes/claraSeite.js");
@@ -153,6 +154,27 @@ test("Termin gebucht schließt den offenen Versuch und ist selbst nicht offen", 
   const s = await seite();
   const z = s.heute.find((x) => x.id === "lisa-anruf-t-5");
   assert.ok(z && !z.offen && z.termin.includes("10:30 Uhr"), "der Termin steht als Tatsache des Tages auf der Seite");
+});
+
+test("resolve mit Kennungen schließt nur diese, das andere Familienmitglied bleibt offen", async () => {
+  const nr = "+491700000302";
+  await melde({ anruf_id: "f-1", nummer: nr, beginn: jetzt - 9 * MIN });
+  await melde({ anruf_id: "f-2", nummer: nr, beginn: jetzt - 8 * MIN, patient: { id: "pat-b", vorname: "Anna", nachname: "Petsas" } });
+  const loese = (body) => rufe("/brain/caller-context/resolve", { method: "POST", body: { phone: nr, actor: "Bianca", note: "Am Telefon mitgeteilt", ...body } });
+
+  const fremd = await loese({ ids: ["lisa-anruf-t-3", "gibt-es-nicht"] });
+  assert.deepEqual(fremd.daten.resolved, [], "Kennungen einer anderen Nummer oder unbekannte schließen nichts");
+  const leer = await loese({ ids: [] });
+  assert.deepEqual(leer.daten.resolved, [], "leere Liste schließt nichts");
+
+  const eins = await loese({ ids: ["lisa-anruf-f-1"] });
+  assert.deepEqual(eins.daten.resolved, ["lisa-anruf-f-1"]);
+  assert.deepEqual((await kontext(nr)).openEventIds, ["lisa-anruf-f-2"], "Annas Eintrag bleibt offen");
+  const nochmal = await loese({ ids: ["lisa-anruf-f-1"] });
+  assert.deepEqual({ ok: nochmal.daten.ok, resolved: nochmal.daten.resolved }, { ok: true, resolved: [] }, "zweimal dieselbe Kennung ist kein Fehler");
+
+  const alle = await loese({});
+  assert.deepEqual(alle.daten.resolved, ["lisa-anruf-f-2"], "ohne Kennungen wie bisher alle offenen der Nummer");
 });
 
 test("nicht mehr anrufen: für das Team offen, für Bianca nur eine Tatsache", async () => {

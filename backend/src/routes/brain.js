@@ -473,6 +473,8 @@ router.post("/brain/caller-context/resolve", async (req, res) => {
     const out = await resolveOpenCallerItems(clientId, phone, {
       actor: String(req.body?.actor || "Bianca").trim() || "Bianca",
       note: String(req.body?.note || "").trim(),
+      // Zusatz: nur diese Kennungen schliessen; ohne das Feld wie bisher alle offenen der Nummer.
+      ids: Array.isArray(req.body?.ids) ? req.body.ids : null,
     });
     res.json({ ok: true, clientId, ...out });
   } catch (e) {

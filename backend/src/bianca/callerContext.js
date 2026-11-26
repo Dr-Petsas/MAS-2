@@ -71,14 +71,14 @@ function nurTatsache(event) {
 }
 
 /** Offene Treffer zur Nummer, neueste zuerst — erledigte nie. */
-export function openCallerHits(events, phone) {
+export function openCallerHits(events, phone, max = MAX_ITEMS) {
   const digits = canonDigits(phone);
   if (digits.length < 7) return [];
   return (events || [])
     .map((e) => applyHumanReview(e))
     .filter((e) => istOffenFuerBianca(e) && !nurTatsache(e) && eventMatchesPhone(e, digits))
     .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-    .slice(0, MAX_ITEMS);
+    .slice(0, max);
 }
 
 /** Offene Tatsachen zur Nummer, die Bianca kennen, aber nicht vortragen soll. */
@@ -160,11 +160,14 @@ export async function buildCallerContext(clientId, phone) {
  * Sekunde, in der der Rückrufer nach dem Grund fragt (mitgeteilt), oder
  * das Team per Löschen. Schließt auch Vorgänge, die NUR diese Events tragen.
  */
-export async function resolveOpenCallerItems(clientId, phone, { actor = "Bianca", note = "" } = {}) {
+export async function resolveOpenCallerItems(clientId, phone, { actor = "Bianca", note = "", ids = null } = {}) {
   const digits = canonDigits(phone);
   if (digits.length < 7) return { ok: true, resolved: [], cases: [] };
   const events = await queryLatest(clientId, Date.now() - LOOKBACK_MS, 800);
-  const hits = openCallerHits(events, digits);
+  // Mit Kennungen schliesst Bianca nur diese (Familien teilen sich eine Nummer);
+  // nur was zur Nummer offen ist, nie eine fremde oder schon erledigte Kennung.
+  const nur = Array.isArray(ids) ? new Set(ids.map((x) => String(x || "").trim()).filter(Boolean)) : null;
+  const hits = openCallerHits(events, digits, nur ? Infinity : MAX_ITEMS).filter((e) => !nur || nur.has(e.id));
   const resolved = [];
   for (const e of hits) {
     const out = await resolveItem(clientId, e.id, { actor, note });
