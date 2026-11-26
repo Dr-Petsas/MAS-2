@@ -510,7 +510,7 @@ async function recentlyContactedKeys(clientId) {
  * Schutz), then proven responders (booked), then higher-value (longer)
  * treatments, then reachable-with-consent first.
  */
-export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = new Set(), ignorePhoneThrottle = false, ignoreOutreachGates = false } = {}) {
+export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = new Set(), ignorePhoneThrottle = false, ignoreOutreachGates = false, max = MAX_CANDIDATES_STORED } = {}) {
   const fits = candidates.filter((c) => {
     if (c.durationMin > gap.minutes) return false;
     if (c.calendarId && calendarId && c.calendarId !== calendarId) return false;
@@ -541,7 +541,7 @@ export function rankCandidatesForGap(candidates, gap, { calendarId, throttled = 
     seen.add(key);
     unique.push(c);
   }
-  return unique.slice(0, MAX_CANDIDATES_STORED);
+  return unique.slice(0, max);
 }
 
 /** Nicht weggewischte Kandidaten einer Liste (Chef entfernt per Swipe). */
@@ -786,6 +786,9 @@ async function candidatePool(clientId, booking, { demoOnly = false, mitStats = t
   });
   return { allCandidates, throttled };
 }
+
+/** Kandidaten-Bestand fuer "Luecke fuellen" (clara/lueckeFuellen.js): liest nur. */
+export const kandidatenBestand = (clientId, booking, opts) => candidatePool(clientId, booking, opts);
 
 /** Anzeige-Name eines Buckets: sprechbar, ohne Praxis-Abkuerzungen. */
 function bucketLabelFor(candidates, bucketKey) {

@@ -8,6 +8,7 @@ import { getDayAppointments, listLocationCalendars, computeDayBriefing, buildSpo
 import { listLessons, proposeLesson, decideLesson, retireLesson } from "../brain/lessons.js";
 import { getActivePrompt, publishPromptVersion, rollbackPrompt, listPromptVersions, promptVersionMetrics, PROMPT_AGENTS } from "../brain/livingPrompt.js";
 import { reflectOnce } from "../brain/reflect.js";
+import { passendFuerLuecke } from "../clara/lueckeFuellen.js";
 import { runGapFill, gapFillOverview, approveCallList, removeCandidateFromList, listRecallBuckets, setListBucket } from "../clara/gapFill.js";
 import { dailyInitiativeScan } from "../clara/recallCoach.js";
 import { listLisaTasks } from "../lisa/outbound.js";
@@ -1026,6 +1027,26 @@ router.post("/brain/gap-fill/run", async (req, res) => {
   }
 });
 
+
+// Maske "Luecke fuellen" im Kalender: wer passt in diese eine Luecke, nach Besuchsgrund.
+// Dieselbe Quelle wie Claras Gespraech (/tools/luecke-fuellen). Liest nur.
+router.post("/brain/luecke-fuellen", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await passendFuerLuecke(clientId, {
+      date: req.body?.date,
+      calendarId: req.body?.calendarId,
+      startMin: Number(req.body?.startMin),
+      minutes: Number(req.body?.minutes),
+    });
+    res.json({ clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
 
 // UI read-model: gaps, candidates and pending call lists for the monitor.
 router.get("/brain/gap-fill", async (req, res) => {

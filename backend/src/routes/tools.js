@@ -63,6 +63,7 @@ import { lisaSendSms, lisaStartCall, findLisaCallResult, ensureDialogSummary, ph
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { appendEvent, queryRecent } from "../brain/eventStore.js";
 import { resolvePatientSubject } from "../brain/identity.js";
+import { lueckenFinden, lueckeZurUhrzeit, passendFuerLuecke, lueckenSatz, passendSatz, uhrzeitMinuten, NICHTS_ANGELEGT } from "../clara/lueckeFuellen.js";
 import { createCase, getCase, listCases, listActiveCasesByPatientIds, addUpdate, setStatus, linkEventToCase, assignCase, getCaseContext } from "../brain/caseStore.js";
 import { buildCaseBriefing, buildSpokenCaseBriefing } from "../brain/caseBriefing.js";
 import { recordCommunication } from "../brain/record.js";
@@ -2942,6 +2943,38 @@ router.post("/tools/running-late", async (req, res) => {
 // Abkuerzungen (KCH/PRO). Erst die Antwort (thema) formt die Listen.
 const RECALL_ALLE_THEMEN_RE = /\b(alle|alles|egal|gemischt|querbeet|komplett|s?aemtliche)(\s+themen?)?\b/i;
 
+// Luecke fuellen im Gespraech (Chef 26.11.2026): ohne Uhrzeit die Luecken nennen, mit Uhrzeit
+// sagen, welche Patienten sich zu welchem Besuchsgrund anbieten. Liest nur.
+router.post("/tools/luecke-fuellen", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const { calendarId } = await resolveDayCalendarScope(clientId, req.body);
+    const minuten = uhrzeitMinuten(req.body?.time);
+    const fund = await lueckenFinden(clientId, {
+      date: req.body?.date,
+      horizonDays: minuten == null ? Number(req.body?.horizonDays) || 1 : 1,
+      calendarId,
+    });
+    if (minuten == null || !fund.ok || !fund.gaps.length) {
+      return res.json({ ok: true, message: lueckenSatz(fund), context: NICHTS_ANGELEGT, luecken: fund.gaps });
+    }
+    const gap = lueckeZurUhrzeit(fund.gaps, minuten);
+    if (!gap) {
+      return res.json({ ok: true, message: `Zu dieser Uhrzeit sehe ich keine Lücke. ${lueckenSatz(fund)}`, context: NICHTS_ANGELEGT, luecken: fund.gaps });
+    }
+    const passend = await passendFuerLuecke(clientId, {
+      date: gap.date, calendarId: gap.calendarId, startMin: gap.startMin, minutes: gap.minutes,
+      besuchsgrund: req.body?.visitMotiveName,
+    });
+    res.json({ ok: true, message: passendSatz(passend, { namenJeGrund: req.body?.visitMotiveName ? 8 : 3 }), context: NICHTS_ANGELEGT, luecke: passend.luecke, gruppen: passend.gruppen, gesamt: passend.gesamt });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
 router.post("/tools/gap-briefing", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -3101,6 +3134,14 @@ router.post("/tools/recall-approve", async (req, res) => {
     // Testsuite-Schutz: niemand wird kontaktiert, keine Liste freigegeben.
     if (req.body?.dryRun) {
       return res.json({ ok: true, dryRun: true, message: "Testlauf: Die wartenden Anruflisten wären jetzt freigegeben worden. Es wurde niemand kontaktiert." });
+    }
+    // Ohne Anruflisten (Schalter 26.11.2026) nicht nach einer "wartenden Liste" rueckfragen, die es nicht gibt.
+    if (!anruflistenAktiv()) {
+      const wartet = (await listCases(clientId, { activeOnly: true, assignee: "Lisa", limit: 100 }).catch(() => []))
+        .some((c) => String(c.id).startsWith("gapfill_") && c.callList && c.status === "waiting_approval");
+      if (!wartet) {
+        return res.json({ ok: true, approved: 0, message: "Es wartet keine Anrufliste auf Freigabe. Ich lege im Moment auch keine an." });
+      }
     }
     const freigabe = pruefeRecallFreigabe(clientId);
     if (!freigabe.ok) {
