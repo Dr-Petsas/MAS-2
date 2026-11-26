@@ -14,7 +14,11 @@
 //  - Beobachtungen der Kalender-Automatik (Dokumenten-Ampel, Termin entfernt)
 //  - Auftraege, an denen Lisa, Nadine oder Clara gerade selbst arbeiten
 //
-// Julias QM-Aufgaben sind ein eigener, nachgeordneter Abschnitt.
+// Anruflisten fuer Lisa, die auf eine Freigabe warten, tragen `freigabe`;
+// freigegeben wird ueber den bestehenden Weg POST /brain/gap-fill/:id/approve.
+//
+// Julias QM-Aufgaben sind ein eigener, nachgeordneter Abschnitt. Er ist
+// vorerst ausgeblendet (mitQm), bis der Rueckstand bei Julia aufgeraeumt ist.
 
 import { isActiveStatus, TOPICS, TOPIC_LABELS, UPDATE_KINDS, tsToMs } from "./cases.js";
 import { listCases } from "./caseStore.js";
@@ -107,7 +111,24 @@ export function einstufen(c, quelle, signale) {
   return "normal";
 }
 
-function zeile(c, quelle, dringlichkeit, signale, telefon, eventsById) {
+/** Anrufliste, die auf die Freigabe wartet — sonst null. */
+function freigabeVon(c, heute) {
+  const l = c?.callList;
+  if (!l || c.status !== "waiting_approval") return null;
+  const datum = text(l.date);
+  return {
+    art: "anrufliste",
+    kandidaten: (Array.isArray(l.candidates) ? l.candidates : []).filter((k) => k && !k.removed).length,
+    datum,
+    zeit: text(l.slot?.label),
+    kalender: text(l.calendarName),
+    anlass: text(l.bucketLabel),
+    // Eine Liste fuer einen vergangenen Tag wird nicht mehr zur Freigabe angeboten.
+    moeglich: !heute || !datum || datum >= heute,
+  };
+}
+
+function zeile(c, quelle, dringlichkeit, signale, telefon, eventsById, heute) {
   const liste = kontakte(c, eventsById);
   const letzter = liste[liste.length - 1];
   const zuletzt = Number(c.lastContactAt) || tsToMs(c.updatedAt) || 0;
@@ -127,13 +148,15 @@ function zeile(c, quelle, dringlichkeit, signale, telefon, eventsById) {
     kontakte: Number(c.contactCount) || liste.length || 1,
     zuletztMs: zuletzt,
     rueckrufGewuenscht: !!signale.callbackRequested || c.topic === TOPICS.CALLBACK,
+    freigabe: freigabeVon(c, heute),
   };
 }
 
 /**
- * @param {{cases?:object[], events?:object[], qmJobs?:object[], nowMs?:number, endOfDayMs?:number}} daten
+ * @param {{cases?:object[], events?:object[], qmJobs?:object[], nowMs?:number, endOfDayMs?:number, heute?:string}} daten
+ *   heute = "JJJJ-MM-TT" (Berlin); ohne Angabe gilt jede wartende Anrufliste als freigebbar.
  */
-export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = Date.now(), endOfDayMs = nowMs } = {}) {
+export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = Date.now(), endOfDayMs = nowMs, heute = "" } = {}) {
   const eventsById = new Map();
   for (const e of events) if (e?.id) eventsById.set(e.id, e);
 
@@ -143,7 +166,7 @@ export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = D
     const { signale, telefon } = signaleVon(c, eventsById);
     const dringlichkeit = einstufen(c, quelle, signale);
     if (!dringlichkeit) continue;
-    patienten.push(zeile(c, quelle, dringlichkeit, signale, telefon, eventsById));
+    patienten.push(zeile(c, quelle, dringlichkeit, signale, telefon, eventsById, heute));
   }
   // Dringendes zuerst, darin das am laengsten Wartende oben.
   patienten.sort((a, b) => RANG[a.dringlichkeit] - RANG[b.dringlichkeit] || a.zuletztMs - b.zuletztMs);
@@ -184,7 +207,7 @@ export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = D
 }
 
 /** Laedt die Quellen einzeln weich (eine ausgefallene Quelle leert nur ihren Teil). */
-export async function ladeTagesliste(clientId, { nowMs = Date.now(), endOfDayMs = nowMs } = {}) {
+export async function ladeTagesliste(clientId, { nowMs = Date.now(), endOfDayMs = nowMs, heute = "", mitQm = false } = {}) {
   const hinweise = [];
   const weich = async (name, fn) => {
     try {
@@ -197,7 +220,7 @@ export async function ladeTagesliste(clientId, { nowMs = Date.now(), endOfDayMs 
   const [cases, events, qmJobs] = await Promise.all([
     weich("cases", () => listCases(clientId, { activeOnly: true, limit: 300 })),
     weich("events", () => queryLatest(clientId, nowMs - EVENT_FENSTER_MS, 800)),
-    weich("qm", () => qmListCalendar(clientId, { fromMs: 0, toMs: endOfDayMs })),
+    mitQm ? weich("qm", () => qmListCalendar(clientId, { fromMs: 0, toMs: endOfDayMs })) : [],
   ]);
-  return { ...baueTagesliste({ cases, events, qmJobs, nowMs, endOfDayMs }), hinweise };
+  return { ...baueTagesliste({ cases, events, qmJobs, nowMs, endOfDayMs, heute }), qmAusgeblendet: !mitQm, hinweise };
 }

@@ -4,7 +4,22 @@
 // Praxis daran geaendert hat: je Knopf der eigene Text, unter
 // clients/{id}/mas_config/notiz_vorlagen. Ohne Eintrag gilt die Vorgabe.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 import { masCollection } from "../tenant.js";
+
+let vorgabenCache = null;
+
+/** Die Knopf-Vorgaben aus public/m/clara-vorlagen.js — EINE Quelle fuer MAS-Seite und Plattform. */
+export function ladeVorgaben() {
+  if (vorgabenCache) return vorgabenCache;
+  const datei = fileURLToPath(new URL("../../public/m/clara-vorlagen.js", import.meta.url));
+  const fenster = {};
+  vm.runInNewContext(readFileSync(datei, "utf8"), { window: fenster });
+  vorgabenCache = Array.isArray(fenster.CLARA_VORLAGEN) ? fenster.CLARA_VORLAGEN : [];
+  return vorgabenCache;
+}
 
 export const MAX_VORLAGEN = 80;
 export const MAX_TEXT = 600;
