@@ -247,13 +247,14 @@
         { id: "c8", quelle: "Bianca", thema: "Rückruf", name: "Anna Testfall", anrufliste: false, kurz: "Fragt, ob das Rezept abgeholt werden kann.", wer: "Sabine", wannMs: jetzt - 2 * STD, von: "open", nach: "resolved", zurueck: "open" },
       ],
       qm: [],
+      callrUrl: "https://docgenda.web.app/phoneCalls",
       lisaAnrufe: {
         offen: [
           { id: "l1", zeitMs: jetzt - 5 * STD, patient: "Jonas Probe", telefon: "+49 170 0000104", anlass: "Zahnreinigung, ein freier Termin morgen um 10 Uhr bei Dr. Beispiel", ausgang: "niemand", versuche: 2, gesagt: "", angebot: [], termin: "", rueckrufWann: "",
             beimRueckruf: "Sagen, dass die Praxis angerufen hat. Anlass: Zahnreinigung, ein freier Termin morgen um 10 Uhr bei Dr. Beispiel. Das Anliegen gleich klären.", offen: true },
           { id: "l2", zeitMs: jetzt - 3 * STD, patient: "Lena Beispiel", telefon: "+49 170 0000103", anlass: "Kontrolluntersuchung bei Dr. Beispiel", ausgang: "mailbox", mailboxNachricht: true, versuche: 1, gesagt: "Auf den Anrufbeantworter: Die Praxis bittet um Rückruf wegen der Kontrolluntersuchung.", angebot: [], termin: "", rueckrufWann: "",
             beimRueckruf: "Einen Termin für die Kontrolluntersuchung anbieten.", offen: true },
-          { id: "l3", zeitMs: jetzt - 2 * STD, patient: "Max Mustermann", telefon: "+49 170 0000102", anlass: "Kontrolle des Zahnersatzes", ausgang: "rueckruf_gewuenscht", versuche: 1, gesagt: "Lisa hat zwei Termine angeboten, er wollte erst in seinen Kalender sehen.", angebot: ["Montag, 30. November, 09:30 Uhr bei Dr. Beispiel", "Mittwoch, 2. Dezember, 14:00 Uhr bei Dr. Beispiel"], termin: "", rueckrufWann: "heute nach 16 Uhr",
+          { id: "l3", zeitMs: jetzt - 2 * STD, patient: "Max Mustermann", telefon: "+49 170 0000102", anlass: "Kontrolle des Zahnersatzes", ausgang: "rueckruf_gewuenscht", phoneCallId: "demo-anruf", versuche: 1, gesagt: "Lisa hat zwei Termine angeboten, er wollte erst in seinen Kalender sehen.", angebot: ["Montag, 30. November, 09:30 Uhr bei Dr. Beispiel", "Mittwoch, 2. Dezember, 14:00 Uhr bei Dr. Beispiel"], termin: "", rueckrufWann: "heute nach 16 Uhr",
             beimRueckruf: "Hat um Rückruf gebeten. Anlass: Kontrolle des Zahnersatzes. Das Anliegen gleich klären.", offen: true },
           { id: "l4", zeitMs: jetzt - 1 * STD, patient: "Otto Normal", telefon: "+49 170 0000105", anlass: "Zahnreinigung", ausgang: "nicht_mehr_anrufen", versuche: 1, gesagt: "", angebot: [], termin: "", rueckrufWann: "",
             beimRueckruf: "Möchte nicht mehr von der Praxis angerufen werden. Nur wissen, nicht ansprechen.", nichtMehrAnrufen: true, offen: true },
@@ -627,6 +628,11 @@
     if (z.offen && z.nichtMehrAnrufen) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Bianca weiß das, spricht es bei einem Anruf dieser Person aber nicht an. Bitte in der Kartei vermerken und dann auf erledigt setzen."));
     else if (z.offen && z.beimRueckruf) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Wenn die Person zurückruft: " + z.beimRueckruf));
     if (!z.offen && z.erledigtVon) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Erledigt von " + z.erledigtVon + (z.erledigtMs ? ", " + wann(z.erledigtMs) : "")));
+    // Aufnahme und Wortlaut liegen im CallR; dort gibt es keinen Sprung auf den einzelnen Anruf, nur die Liste.
+    const callr = z.phoneCallId && listenDaten.callrUrl
+      ? el("a", { href: listenDaten.callrUrl, target: "_blank", rel: "noopener", title: "Öffnet die Anrufliste im CallR. Den Anruf dort über Uhrzeit und Nummer finden." }, "Aufnahme und Wortlaut im CallR")
+      : null;
+    if (!z.offen && callr) zeilen.push(el("div", { class: "aktionen" }, callr));
     const art = z.offen ? (z.nichtMehrAnrufen ? "sofort" : "heute") : "";
     return el("li", { class: art },
       el("div", { class: "kopfzeile" },
@@ -637,7 +643,8 @@
       ...zeilen,
       z.offen ? el("div", { class: "aktionen" },
         z.telefon && !z.nichtMehrAnrufen ? el("a", { href: "tel:+" + ziffern(z.telefon) }, "☎ " + z.telefon) : (z.telefon ? el("span", { class: "klein" }, z.telefon) : null),
-        el("button", { type: "button", class: "neben", onclick: () => lisaErledigen(z) }, "Erledigt")) : null);
+        el("button", { type: "button", class: "neben", onclick: () => lisaErledigen(z) }, "Erledigt"),
+        callr) : null);
   }
 
   function lisaZeichnen() {

@@ -104,6 +104,38 @@ function env(name) {
   return (process.env[name] || "").trim();
 }
 
+/**
+ * Schreibt diese Strecke ihre eigenen Anruf-Eintraege ins Praxisgedaechtnis
+ * (Notiz beim Waehlen, `lisa-result-<Auftrag>`)? Standard: ja, wie bisher.
+ * MAS_LISA_ALT_EINTRAEGE=0, sobald Lisa V8 jeden Anruf selbst ueber
+ * POST /brain/lisa-anrufe meldet — sonst stuende der Anruf doppelt da.
+ * Auftrag, Ergebnis am Auftrag und Push bleiben in beiden Faellen.
+ */
+export function alteAnrufEintraegeAn() {
+  return env("MAS_LISA_ALT_EINTRAEGE") !== "0";
+}
+
+/** Stammt der Bericht von Lisa V8 (`telefonki-lisa-v8` ueber /brain/events oder `lisa-v8` ueber /brain/lisa-anrufe)? */
+export function istLisaV8Bericht(report) {
+  const absender = String(report?.extractor || "");
+  return absender === "lisa-v8" || absender.startsWith("telefonki-lisa-v8");
+}
+
+/**
+ * Schreibt der Abschluss eines Auftrags ein `lisa-result-<Auftrag>`? Nie zu einem
+ * Bericht von Lisa V8: ihr Anruf steht schon selbst im Praxisgedaechtnis.
+ */
+export function schreibtLisaResult(report) {
+  return alteAnrufEintraegeAn() && !istLisaV8Bericht(report);
+}
+
+/** Anruf-Eintrag der alten Strecke schreiben, wenn der Schalter es erlaubt. */
+export async function altEintrag(clientId, eintrag, schreiben = appendEvent) {
+  if (!alteAnrufEintraegeAn()) return { geschrieben: false };
+  await schreiben(clientId, eintrag);
+  return { geschrieben: true };
+}
+
 function clip(s, n) {
   const v = String(s || "").trim();
   return v.length > n ? v.slice(0, n - 1) + "…" : v;
@@ -847,7 +879,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   });
 
   try {
-    await appendEvent(clientId, {
+    await altEintrag(clientId, {
       channel: CHANNELS.LISA_CALL,
       direction: DIRECTIONS.OUT,
       type: EVENT_TYPES.INTERACTION,
@@ -979,10 +1011,12 @@ export function telefonkiReportFuer(task, events) {
   if (!ziel) return null;
   // Die TelefonKI meldet das Gespraechsergebnis ueber den mit Bianca geteilten
   // Dienst als bianca_call, nur die Notiz beim Waehlen kommt als lisa_call.
+  // Lisa V8 meldet ueber POST /brain/lisa-anrufe (extractor "lisa-v8"); auch das
+  // ist der Bericht zum Auftrag.
   return (events || []).find((e) =>
     (e?.channel === CHANNELS.LISA_CALL || e?.channel === CHANNELS.BIANCA_CALL)
     && e?.type === EVENT_TYPES.INTERACTION
-    && String(e?.extractor || "").startsWith("telefonki")
+    && (String(e?.extractor || "").startsWith("telefonki") || e?.extractor === "lisa-v8")
     && Number(e?.ts || 0) >= Number(task.ts || 0) - 60_000
     && String(e?.counterparty?.ref || "").replace(/\D/g, "").endsWith(ziel)) || null;
 }
@@ -992,7 +1026,8 @@ async function telefonkiAbschliessen(clientId, doc, task) {
   const report = telefonkiReportFuer(task, events);
   if (!report && Date.now() - Number(task.ts || 0) < TELEFONKI_REPORT_WARTE_MS) return false;
   const who = task.contactName || task.phone;
-  const outcome = report ? "reached" : "no_answer";
+  // Ein Bericht von Lisa V8 kann auch "nicht erreicht" heissen.
+  const outcome = report && !(report.anruf && report.anruf.erreicht !== "person") ? "reached" : "no_answer";
   const dialogSummary = report
     ? String(report.summary || "").trim()
     : "Es ist kein Gespräch zustande gekommen (nicht abgenommen, besetzt oder sofort aufgelegt).";
@@ -1004,7 +1039,7 @@ async function telefonkiAbschliessen(clientId, doc, task) {
     reportEventId: report?.id || null,
     endedAt: FieldValue.serverTimestamp(),
   });
-  await appendEvent(clientId, {
+  if (schreibtLisaResult(report)) await appendEvent(clientId, {
     id: `lisa-result-${task.id}`,
     channel: CHANNELS.LISA_CALL,
     direction: DIRECTIONS.OUT,
@@ -1080,7 +1115,7 @@ export async function finalizeLisaCalls(clientId) {
           endedAt: FieldValue.serverTimestamp(),
         });
 
-        await appendEvent(clientId, {
+        await altEintrag(clientId, {
           id: `lisa-result-${task.id}`,
           channel: CHANNELS.LISA_CALL,
           direction: DIRECTIONS.OUT,

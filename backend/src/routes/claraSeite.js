@@ -44,7 +44,9 @@ router.get("/brain/tagesliste", async (req, res) => {
     const nowMs = Date.now();
     const endOfDayMs = endeDesTagesBerlin(date);
     const liste = await ladeTagesliste(clientId, { nowMs, endOfDayMs, startOfDayMs: endOfDayMs - 24 * 3_600_000 + 1, heute: date, mitQm: req.query?.qm === "1" });
-    res.json({ ok: true, clientId, date, ...liste });
+    // Aufnahme und Wortlaut eines Anrufs liegen im CallR der Plattform; die Seite verweist nur dorthin.
+    const callrUrl = `${(process.env.PLATFORM_WEB_URL || "https://docgenda.web.app").trim().replace(/\/+$/, "")}/phoneCalls`;
+    res.json({ ok: true, clientId, date, ...liste, callrUrl });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }
