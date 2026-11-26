@@ -76,9 +76,77 @@ function mailHref(e) {
   return `mailto:${raw}`;
 }
 
+const ZIFFERN = "0123456789";
+
+/**
+ * Nummer zum Ablesen: "+4917661520421" -> "0176 615 204 21", "030/1234567" -> "030 123 45 67".
+ * Deutsche Vorwahl +49 wird zur fuehrenden Null, andere Laender behalten ihr "+". Gruppen von
+ * zwei bis drei Ziffern, nie eine einzelne Ziffer am Ende. Unklares bleibt, wie es ist.
+ */
+export function nummerAnzeige(n) {
+  const roh = String(n || "").trim();
+  let d = "";
+  for (const z of roh) if (ZIFFERN.includes(z) || (z === "+" && !d)) d += z;
+  if (d.startsWith("+49")) d = "0" + d.slice(3);
+  else if (d.startsWith("0049")) d = "0" + d.slice(4);
+  const ziffern = d.startsWith("+") ? d.slice(1) : d;
+  if (ziffern.length < 6 || ziffern.length > 15) return roh;
+  let kopf;
+  let rest;
+  if (d.startsWith("+")) { kopf = d.slice(0, 3); rest = d.slice(3); }
+  else if (d.startsWith("01")) { kopf = d.slice(0, 4); rest = d.slice(4); }
+  else if (d.startsWith("0")) {
+    // Festnetz: steht in der Eingabe ein Trennzeichen nach der Vorwahl, gilt die; sonst vier Stellen.
+    let ende = 0;
+    while (ende < roh.length && ZIFFERN.includes(roh[ende])) ende++;
+    const vorwahl = ende >= 3 && ende <= 6 && ende < roh.length ? ende : Math.min(4, d.length - 3);
+    kopf = d.slice(0, vorwahl); rest = d.slice(vorwahl);
+  } else { kopf = ""; rest = d; }
+  const gruppen = [];
+  let i = 0;
+  while (i < rest.length) {
+    const uebrig = rest.length - i;
+    const nimm = uebrig === 4 || uebrig === 2 ? 2 : Math.min(3, uebrig);
+    gruppen.push(rest.slice(i, i + nimm));
+    i += nimm;
+  }
+  return [kopf, ...gruppen].filter(Boolean).join(" ");
+}
+
+/**
+ * Erste Telefonnummer in einem Kartentext ("Tel: +4915758270888.") — damit JEDE Kartenzeile mit
+ * Nummer anwaehlbar wird, nicht nur die Kontaktkarte. Eine Nummer beginnt mit "+" oder "0", traegt
+ * mindestens acht Ziffern und darf Leerzeichen, "/" und "-" enthalten. Daten ("03.05.1971") und
+ * Uhrzeiten enthalten Punkt oder Doppelpunkt und fallen so heraus.
+ */
+export function nummerImText(text) {
+  const s = String(text || "");
+  for (let i = 0; i < s.length; i++) {
+    const z = s[i];
+    if (z !== "+" && z !== "0") continue;
+    const davor = s[i - 1] || " ";
+    if (ZIFFERN.includes(davor) || davor === "." || davor === ":" || davor === ",") continue;
+    let j = i + 1;
+    let roh = z;
+    while (j < s.length) {
+      const c = s[j];
+      if (ZIFFERN.includes(c)) { roh += c; j++; continue; }
+      if ((c === " " || c === "/" || c === "-") && ZIFFERN.includes(s[j + 1] || "")) { j++; continue; }
+      break;
+    }
+    const danach = s[j] || "";
+    const stellen = roh.startsWith("+") ? roh.length - 1 : roh.length;
+    const istDatumOderZeit = (danach === "." || danach === ":") && ZIFFERN.includes(s[j + 1] || "");
+    if (stellen >= 8 && stellen <= 15 && !istDatumOderZeit) return roh;
+    i = j;
+  }
+  return "";
+}
+
 function item(level, icon, text, href) {
   const row = { level, icon, text: clip(text, 110) };
-  if (href) row.href = href;
+  const ziel = href || telHref(nummerImText(text));
+  if (ziel) row.href = ziel;
   return row;
 }
 
@@ -344,8 +412,8 @@ export function karteZeitraum({ label = "Zeitraum", from = "", to = "", days = [
  */
 export function karteKontakt({ name = "", mobile = "", phone = "", email = "", pushed = false } = {}) {
   const items = [];
-  if (mobile) items.push(item("info", "phone", `Mobil: ${mobile}`, telHref(mobile)));
-  if (phone) items.push(item("info", "phone", `Festnetz: ${phone}`, telHref(phone)));
+  if (mobile) items.push(item("info", "phone", `Mobil: ${nummerAnzeige(mobile)}`, telHref(mobile)));
+  if (phone) items.push(item("info", "phone", `Festnetz: ${nummerAnzeige(phone)}`, telHref(phone)));
   if (email) items.push(item("info", "mail", email, mailHref(email)));
   if (!items.length) items.push(item("warn", "question", "Keine Kontaktdaten hinterlegt"));
 
@@ -359,7 +427,7 @@ export function karteKontakt({ name = "", mobile = "", phone = "", email = "", p
     tag: "Kontakt",
     title: clip(name, 40) || "Kontakt",
     time: "",
-    subtitle: mobile || phone || email || "",
+    subtitle: (mobile || phone) ? "Nummer antippen, das Handy wählt." : (email || ""),
     heading: "Erreichbar über",
     items,
     detail: detailText(dLines),
@@ -440,7 +508,7 @@ export function karteLisaSms({
     heading: "Vorgang",
     items: [
       item("info", "person", `Sucht ${wer}`),
-      item(phone ? "ok" : "warn", "phone", phone ? `Nummer ${clip(phone, 24)}` : "Keine Nummer"),
+      item(phone ? "ok" : "warn", "phone", phone ? `Nummer ${nummerAnzeige(clip(phone, 24))}` : "Keine Nummer", telHref(phone)),
       ...(body ? [item("info", "note", clip(body, 110))] : []),
       item(ok ? "ok" : "alert", "mail", ok ? "SMS versendet" : "Nicht versendet"),
     ].slice(0, 6),

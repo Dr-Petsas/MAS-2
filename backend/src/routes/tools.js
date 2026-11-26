@@ -5708,6 +5708,23 @@ function spokenPhoneNumber(raw) {
 }
 
 
+/**
+ * Was Clara zur Kontaktkarte sagt — nur, was stimmt. Die Karte steht auf der Kartenseite, sobald sie
+ * in der Antwort mitgeht; die Mitteilung aufs Handy kommt dazu, wenn ein Geraet gekoppelt ist. Nur
+ * wenn BEIDES fehlt, ist etwas nicht gegangen. Not-Aus MAS_KONTAKTKARTE_SATZ=0 (alte Saetze).
+ */
+function kontaktkarteSatz({ karte, pushed }) {
+  if (process.env.MAS_KONTAKTKARTE_SATZ === "0") {
+    return pushed
+      ? "Ich habe Ihnen die Kontaktkarte aufs Handy geschickt — antippen und Sie können direkt anrufen."
+      : "Die Karte konnte ich nicht aufs Handy schicken — kein gekoppeltes Gerät erreichbar.";
+  }
+  if (karte && pushed) return "Die Kontaktkarte steht auf der Kartenseite und ist zusätzlich als Mitteilung aufs Handy gegangen. Nummer antippen, dann wählt das Handy.";
+  if (karte) return "Die Kontaktkarte steht auf der Kartenseite. Nummer antippen, dann wählt das Handy.";
+  if (pushed) return "Die Kontaktkarte ist als Mitteilung aufs Handy gegangen. Antippen, dann wählt das Handy.";
+  return "Eine Kontaktkarte konnte ich nicht anzeigen.";
+}
+
 router.post("/tools/contact-card", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -5743,15 +5760,23 @@ router.post("/tools/contact-card", async (req, res) => {
           { name: kollege.name, phone: nummer, email: kollege.email },
           { note: kollege.role || "Praxis-Team" },
         );
+        // Die Karte geht mit der Antwort auf die Kartenseite (Flip). Die Mitteilung aufs Handy ist
+        // nur die Zugabe: fehlt sie, ist nichts gescheitert, was der Arzt wissen muss (Chef 26.11.2026:
+        // Clara meldete "konnte nicht aufs Handy schicken", waehrend die Karte vor ihm lag).
+        let karte = null;
+        try {
+          karte = karteKontakt({
+            name: kollege.name, mobile: kollege.mobile || "", phone: kollege.mobile ? "" : (kollege.phone || ""),
+            email: kollege.email || "", pushed: pushed?.sent > 0,
+          });
+        } catch { /* Karte ist Komfort */ }
         const gesprochen = [
           `${kollege.name}:`,
           kollege.mobile ? `Mobil ${spokenPhoneNumber(kollege.mobile)}.` : "",
           !kollege.mobile && kollege.phone ? `Festnetz ${spokenPhoneNumber(kollege.phone)}.` : "",
-          pushed?.sent > 0
-            ? "Ich habe Ihnen die Kontaktkarte aufs Handy geschickt - antippen und Sie können direkt anrufen."
-            : "Die Karte konnte ich nicht aufs Handy schicken - kein gekoppeltes Gerät erreichbar.",
+          kontaktkarteSatz({ karte, pushed: pushed?.sent > 0 }),
         ].filter(Boolean).join(" ");
-        return res.json({ ok: true, pushed: pushed?.sent > 0, message: gesprochen });
+        return res.json({ ok: true, pushed: pushed?.sent > 0, message: gesprochen, card: karte });
       }
     }
 
@@ -5847,14 +5872,12 @@ router.post("/tools/contact-card", async (req, res) => {
     if (mobile) parts.push(`Mobil ${spokenPhoneNumber(mobile)}.`);
     if (!mobile && phone) parts.push(`Festnetz ${spokenPhoneNumber(phone)}.`);
     if (!mobile && !phone && email) parts.push(`Keine Telefonnummer, aber eine E-Mail-Adresse ist hinterlegt.`);
-    parts.push(pushed
-      ? "Ich habe Ihnen die Kontaktkarte aufs Handy geschickt — antippen und Sie können direkt anrufen."
-      : "Die Karte konnte ich nicht aufs Handy schicken — kein gekoppeltes Gerät erreichbar.");
     // 27.07.2026: bisher ging NUR eine Push-Nachricht raus; auf der Flip-
     // Rueckseite stand nichts, obwohl Clara "Karte aufs Handy geschickt" sagte.
     let card = null;
     try { card = karteKontakt({ name: who, mobile, phone, email, pushed }); } catch { /* Karte ist Komfort */ }
-    return res.json({ ok: true, message: parts.join(" "), card });
+    parts.push(kontaktkarteSatz({ karte: card, pushed }));
+    return res.json({ ok: true, pushed, message: parts.join(" "), card });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

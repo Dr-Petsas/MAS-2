@@ -71,8 +71,14 @@ export function renderOverviewCard(card, { when = "", onRemoveKandidat = null } 
     const href = safeCardHref(it?.href);
     const label = escapeHtml(it?.text || "");
     const extern = /^https?:/i.test(href);
+    // Telefonzeile: die ganze Zeile ist der Anruf-Knopf, rechts steht es ausdruecklich dran
+    // (Chef 26.11.2026: der Link war da, aber als unterstrichener Text nicht zu erkennen).
+    const tel = href.startsWith("tel:");
+    const knopf = tel
+      ? '<span class="card-call" style="margin-left:auto;flex:none;padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:800;background:rgba(46,230,200,.18);color:#2ee6c8;border:1px solid rgba(46,230,200,.45);text-decoration:none;white-space:nowrap">Anrufen</span>'
+      : "";
     const inner = href
-      ? `<a class="card-link" href="${escapeHtml(href)}"${extern ? ' target="_blank" rel="noopener noreferrer"' : ""}><i>${CARD_ICONS[iconKey]}</i><span>${label}</span></a>`
+      ? `<a class="card-link${tel ? " is-tel" : ""}" href="${escapeHtml(href)}"${tel ? ' style="text-decoration:none;min-height:34px;font-size:14px;font-weight:700"' : ""}${extern ? ' target="_blank" rel="noopener noreferrer"' : ""}><i>${CARD_ICONS[iconKey]}</i><span>${label}</span>${knopf}</a>`
       : `<i>${CARD_ICONS[iconKey]}</i><span>${label}</span>`;
     return `<li class="is-${level}">${inner}${tonne}</li>`;
   }).join("");
