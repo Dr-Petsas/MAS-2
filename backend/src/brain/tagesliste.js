@@ -26,6 +26,10 @@
 // der offenen Liste. Beides steht im Verlauf des Vorgangs (wer, wann, von, nach)
 // und kommt von dort als `uebernommen` bzw. `erledigtHeute` zurueck.
 //
+// "Spaeter" (zurueckgestellt bis zu einem Zeitpunkt) nimmt den Vorgang ebenfalls
+// aus der offenen Liste; er steht solange unter `zurueckgestellt` und kommt danach
+// mit dem Vermerk `wiederVorgelegt` zurueck. Ein neuer Kontakt holt ihn sofort zurueck.
+//
 // Julias QM-Aufgaben sind ein eigener, nachgeordneter Abschnitt. Er ist
 // vorerst ausgeblendet (mitQm), bis der Rueckstand bei Julia aufgeraeumt ist.
 
@@ -34,6 +38,7 @@ import { listCases } from "./caseStore.js";
 import { queryLatest } from "./eventStore.js";
 import { MAX_CANDIDATES_PER_LIST } from "../clara/gapFill.js";
 import { listCalendar as qmListCalendar } from "../qm/jobs.js";
+import { zurueckgestelltVon } from "./zurueckstellen.js";
 
 const EVENT_FENSTER_MS = 14 * 24 * 3_600_000;
 const LIEFERANTEN = ["Bianca", "Lisa", "Nadine", "Clara"];
@@ -247,18 +252,37 @@ export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = D
   const patienten = [];
   const uebernommen = [];
   const erledigtHeute = [];
+  const zurueckgestellt = [];
   for (const c of cases) {
     const quelle = quelleVon(c, eventsById);
     const merkmale = signaleVon(c, eventsById);
     const bereich = bereichVon(c, quelle, merkmale);
     const lage = { bereich, fristMs: merkmale.fristMs, nowMs, endOfDayMs };
     const aktiv = isActiveStatus(c?.status);
+    const zs = aktiv && !c.callList ? zurueckgestelltVon(c, nowMs) : null;
+    if (zs?.aktiv) {
+      // Nur was ohne die Rueckstellung in der Liste stuende (offen oder vom Team uebernommen).
+      const offen = c.status === "in_progress" && !lieferant(c.assignee) ? "open" : c.status;
+      if (einstufen({ ...c, status: offen }, quelle, merkmale.signale, lage)) {
+        const liste = kontakte(c, eventsById);
+        zurueckgestellt.push({
+          id: c.id, quelle, bereich, thema: TOPIC_LABELS[c.topic] || TOPIC_LABELS.other, name: text(c.subject?.name),
+          kurz: text(liste[liste.length - 1]?.text || c.title).slice(0, 200), status: c.status,
+          wer: zs.wer, bisMs: zs.bisMs, seitMs: zs.seitMs, anzahl: zs.anzahl,
+        });
+      }
+      continue;
+    }
     const inArbeitBeimTeam = aktiv && c.status === "in_progress" && !c.callList && !lieferant(c.assignee);
     const v = aktiv && !inArbeitBeimTeam ? null : verlaufZeile(c, quelle, bereich, eventsById);
     // In Arbeit ohne erkennbaren Klick eines Menschen bleibt sichtbar — nichts verschwindet still.
     if (aktiv && !v) {
       const dringlichkeit = einstufen(c, quelle, merkmale.signale, lage);
-      if (dringlichkeit) patienten.push(zeile(c, quelle, dringlichkeit, merkmale, eventsById, heute, bereich));
+      if (dringlichkeit) {
+        const z = zeile(c, quelle, dringlichkeit, merkmale, eventsById, heute, bereich);
+        if (zs) z.wiederVorgelegt = { bisMs: zs.bisMs, wer: zs.wer, anzahl: zs.anzahl, neuerKontakt: zs.neuerKontakt };
+        patienten.push(z);
+      }
       continue;
     }
     if (!v) continue;
@@ -273,6 +297,7 @@ export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = D
     || RANG[a.dringlichkeit] - RANG[b.dringlichkeit] || a.zuletztMs - b.zuletztMs);
   uebernommen.sort((a, b) => b.wannMs - a.wannMs);
   erledigtHeute.sort((a, b) => b.wannMs - a.wannMs);
+  zurueckgestellt.sort((a, b) => a.bisMs - b.bisMs);
 
   const qmAlle = [];
   for (const j of qmJobs) {
@@ -301,10 +326,12 @@ export function baueTagesliste({ cases = [], events = [], qmJobs = [], nowMs = D
     patienten,
     uebernommen,
     erledigtHeute,
+    zurueckgestellt,
     qm: qmAlle.slice(0, QM_HOECHSTENS),
     zaehler: {
       ...zaehler,
       patienten: patienten.length,
+      zurueckgestellt: zurueckgestellt.length,
       qm: qmAlle.length,
       qmUeberfaellig: qmAlle.filter((q) => q.ueberfaellig).length,
     },

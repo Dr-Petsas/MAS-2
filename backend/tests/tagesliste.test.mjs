@@ -2,6 +2,7 @@
 // dass QM getrennt und nachgeordnet bleibt. Reine Logik, ohne Firestore.
 import { baueTagesliste, quelleVon, einstufen, bereichVon, QM_HOECHSTENS } from "../src/brain/tagesliste.js";
 import { vorlagenSaeubern } from "../src/brain/notizVorlagen.js";
+import { bisAus, bisGesprochen, naechsterArbeitstag, berlinMs } from "../src/brain/zurueckstellen.js";
 
 function check(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -150,5 +151,44 @@ check(fl.bereich === "patient" && fl.freigabe.anrufe === 2 && fl.freigabe.patien
 const sauber = vorlagenSaeubern({ "ze-da": "  Eigener Text  ", leer: "   ", zahl: 5, "": "x" });
 check(Object.keys(sauber).join(",") === "ze-da" && sauber["ze-da"] === "Eigener Text", "Knopf-Texte: nur saubere Einträge bleiben");
 check(Object.keys(vorlagenSaeubern(["a"])).length === 0, "Knopf-Texte: Liste statt Objekt wird verworfen");
+
+// --- Zurueckstellen ("spaeter, am Montag") ---------------------------------
+const ZTAG = 24 * STD;
+const zs = (bisMs, seitMs = NOW - STD, anzahl = 1) => ({ bisMs, seitMs, by: "Chef", anzahl });
+const zFaelle = [
+  fall("z-laeuft", { topic: "callback", updates: [kontakt("Bianca", "Bittet um Rückruf")], lastContactAt: NOW - 5 * STD, zurueckgestellt: zs(NOW + ZTAG) }),
+  fall("z-vorbei", { topic: "callback", updates: [kontakt("Bianca", "Bittet um Rückruf")], lastContactAt: NOW - 50 * STD, zurueckgestellt: zs(NOW - STD, NOW - 30 * STD, 2) }),
+  fall("z-neuer-anruf", { topic: "callback", updates: [kontakt("Bianca", "Ruft wieder an")], lastContactAt: NOW - 10 * 60_000, zurueckgestellt: zs(NOW + ZTAG) }),
+  fall("z-uebernommen", { status: "in_progress", topic: "callback", updates: [kontakt("Bianca", "Rückruf"), { kind: "status", by: "Sabine", statusFrom: "open", statusTo: "in_progress", ts: NOW - 4 * STD }], lastContactAt: NOW - 5 * STD, zurueckgestellt: zs(NOW + 2 * ZTAG) }),
+  fall("z-post", { eventIds: ["e-mail"], updates: [kontakt("Nadine", "Newsletter", "e-mail")], zurueckgestellt: zs(NOW + ZTAG) }),
+  fall("z-erledigt", { status: "resolved", topic: "callback", updates: [kontakt("Bianca", "Rückruf")], zurueckgestellt: zs(NOW + ZTAG) }),
+];
+const zOut = baueTagesliste({ cases: zFaelle, events, nowMs: NOW, endOfDayMs: NOW + 6 * STD });
+const zOffen = zOut.patienten.map((p) => p.id).join(",");
+check(zOut.zurueckgestellt.map((p) => p.id).join(",") === "z-laeuft,z-uebernommen" && zOut.zaehler.zurueckgestellt === 2,
+  `zurückgestellt: steht in eigener Liste, das Früheste oben (${zOut.zurueckgestellt.map((p) => p.id)})`);
+check(!zOffen.includes("z-laeuft") && !zOut.uebernommen.some((v) => v.id === "z-uebernommen"), "zurückgestellt: nicht offen und nicht unter übernommen");
+check(zOut.zurueckgestellt[0].wer === "Chef" && zOut.zurueckgestellt[0].bisMs === NOW + ZTAG, "zurückgestellt: trägt Wer und Bis");
+const vorbei = zOut.patienten.find((p) => p.id === "z-vorbei");
+check(vorbei && vorbei.wiederVorgelegt.anzahl === 2 && vorbei.wiederVorgelegt.wer === "Chef", "nach Ablauf wieder offen, mit Vermerk und Zahl der Rückstellungen");
+check(zOut.patienten.find((p) => p.id === "z-neuer-anruf")?.wiederVorgelegt?.neuerKontakt === true, "neuer Anruf holt den Vorgang sofort zurück");
+check(!zOffen.includes("z-post") && !zOut.zurueckgestellt.some((p) => p.id === "z-post" || p.id === "z-erledigt"), "was nie in der Liste stand oder erledigt ist, erscheint auch zurückgestellt nicht");
+process.env.MAS_ZURUECKSTELLEN = "0";
+check(baueTagesliste({ cases: zFaelle, events, nowMs: NOW, endOfDayMs: NOW + 6 * STD }).zurueckgestellt.length === 0, "Not-Aus MAS_ZURUECKSTELLEN=0: alles wie vorher offen");
+delete process.env.MAS_ZURUECKSTELLEN;
+
+// Donnerstag, 26.11.2026 16:00 Berlin
+const DO = berlinMs("2026-11-26", 16 * 60);
+check(new Date(DO).toISOString() === "2026-11-26T15:00:00.000Z" && new Date(berlinMs("2026-07-01", 0)).toISOString() === "2026-06-30T22:00:00.000Z", "Berliner Uhr: Winter- und Sommerzeit");
+check(naechsterArbeitstag(DO) === "2026-11-27" && naechsterArbeitstag(berlinMs("2026-11-27", 600)) === "2026-11-30", "nächster Arbeitstag überspringt das Wochenende");
+check(naechsterArbeitstag(berlinMs("2026-12-24", 600)) === "2026-12-28", "nächster Arbeitstag überspringt Feiertage");
+const ohne = bisAus({ nowMs: DO });
+check(ohne.ok && ohne.tag === "2026-11-27" && !ohne.mitUhrzeit && bisGesprochen(ohne.bisMs, { nowMs: DO }) === "morgen, Freitag, den 27. November", "ohne Angabe: nächster Arbeitstag");
+const mo = bisAus({ date: "2026-11-30", time: "14:30", nowMs: DO });
+check(mo.ok && bisGesprochen(mo.bisMs, { mitUhrzeit: true, nowMs: DO }) === "Montag, den 30. November um 14:30 Uhr", "Datum mit Uhrzeit");
+const heuteAbend = bisAus({ time: "18", nowMs: DO });
+check(heuteAbend.ok && bisGesprochen(heuteAbend.bisMs, { mitUhrzeit: true, nowMs: DO }) === "heute um 18:00 Uhr", "nur Uhrzeit: heute");
+check(bisAus({ time: "9:00", nowMs: DO }).reason === "vergangen" && bisAus({ date: "2026-11-20", nowMs: DO }).reason === "vergangen", "Vergangenes wird abgelehnt");
+check(bisAus({ date: "nächste Woche", nowMs: DO }).reason === "datum_unlesbar" && bisAus({ date: "2026-11-30", time: "halb drei", nowMs: DO }).reason === "uhrzeit_unlesbar" && bisAus({ date: "2028-01-01", nowMs: DO }).reason === "zu_weit", "Unlesbares und zu Fernes wird abgelehnt");
 
 console.log("tagesliste ok");

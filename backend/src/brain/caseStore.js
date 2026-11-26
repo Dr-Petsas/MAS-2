@@ -160,6 +160,28 @@ export async function setStatus(clientId, caseId, status, { by, note } = {}) {
 }
 
 /**
+ * Vorgang zuruckstellen ("spaeter, am Montag") oder die Rueckstellung aufheben (bisMs leer).
+ * Der Status bleibt, wie er ist; der Schritt steht mit Wer und Wann im Verlauf.
+ */
+export async function setzeZurueckgestellt(clientId, caseId, { bisMs = 0, by, text = "" } = {}) {
+  const id = (caseId || "").trim();
+  if (!id) return { ok: false, reason: "missing_case_id" };
+  const ref = col(clientId).doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: "not_found" };
+  const current = snap.data();
+  if (!isActiveStatus(current.status)) return { ok: false, reason: "nicht_offen" };
+  const wer = by || "Team";
+  const update = buildUpdate({ by: wer, kind: UPDATE_KINDS.NOTE, text });
+  const bis = Number(bisMs) || 0;
+  const zurueckgestellt = bis > 0
+    ? { bisMs: bis, seitMs: update.ts, by: wer, anzahl: (Number(current.zurueckgestellt?.anzahl) || 0) + 1 }
+    : FieldValue.delete();
+  await ref.update({ zurueckgestellt, updates: FieldValue.arrayUnion(update), updatedAt: FieldValue.serverTimestamp() });
+  return { ok: true, bisMs: bis || null, anzahl: bis > 0 ? zurueckgestellt.anzahl : 0, update };
+}
+
+/**
  * Delegate a case to an assignee (Nadine for a letter, Lisa for a callback, a
  * human, …) with an instruction. Records the handoff in the log (who delegated,
  * to whom, what) and moves an open case to in_progress. The assignee then has

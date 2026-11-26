@@ -5,6 +5,8 @@ import express from "express";
 import { assertAppEnabled } from "../entitlements.js";
 import { todayBerlin } from "../clara/daySchedule.js";
 import { ladeTagesliste } from "../brain/tagesliste.js";
+import { setzeZurueckgestellt } from "../brain/caseStore.js";
+import { bisAus, bisGesprochen, zurueckstellenAktiv } from "../brain/zurueckstellen.js";
 import { ladeVorgaben, ladeVorlagen, setzeVorlage } from "../brain/notizVorlagen.js";
 import { aktiveMandanten } from "../tenants.js";
 import { ladeLisaIdentitaet } from "../lisa/identitaet.js";
@@ -42,6 +44,41 @@ router.get("/brain/tagesliste", async (req, res) => {
     const endOfDayMs = endeDesTagesBerlin(date);
     const liste = await ladeTagesliste(clientId, { nowMs, endOfDayMs, startOfDayMs: endOfDayMs - 24 * 3_600_000 + 1, heute: date, mitQm: req.query?.qm === "1" });
     res.json({ ok: true, clientId, date, ...liste });
+  } catch (e) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Vorgang zurueckstellen ("spaeter"): Body { date?, time?, by?, dryRun? } bzw. { aufheben: true, by? }.
+// Ohne Datum und Uhrzeit: bis zum naechsten Arbeitstag. Der Status des Vorgangs bleibt unveraendert.
+const NICHT_MOEGLICH = {
+  vergangen: "Der Zeitpunkt liegt in der Vergangenheit.",
+  zu_weit: "Der Zeitpunkt liegt mehr als ein Jahr entfernt.",
+  datum_unlesbar: "Das Datum ist nicht lesbar.",
+  uhrzeit_unlesbar: "Die Uhrzeit ist nicht lesbar.",
+  nicht_offen: "Der Vorgang ist nicht mehr offen.",
+  not_found: "Den Vorgang gibt es nicht mehr.",
+};
+router.post("/brain/cases/:id/zurueckstellen", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    if (!zurueckstellenAktiv()) return res.json({ ok: false, reason: "abgeschaltet", message: "Zurückstellen ist abgeschaltet." });
+    const by = String(req.body?.by || "Team").trim() || "Team";
+    if (req.body?.aufheben === true) {
+      const out = await setzeZurueckgestellt(clientId, req.params.id, { bisMs: 0, by, text: "Wieder vorgelegt" });
+      return res.json(out.ok ? { ok: true, clientId, bisMs: null } : { ok: false, reason: out.reason, message: NICHT_MOEGLICH[out.reason] || "" });
+    }
+    const nowMs = Date.now();
+    const bis = bisAus({ date: req.body?.date, time: req.body?.time, nowMs });
+    if (!bis.ok) return res.json({ ok: false, reason: bis.reason, message: NICHT_MOEGLICH[bis.reason] || "" });
+    const bisText = bisGesprochen(bis.bisMs, { mitUhrzeit: bis.mitUhrzeit, nowMs });
+    if (req.body?.dryRun) return res.json({ ok: true, dryRun: true, clientId, bisMs: bis.bisMs, bisText });
+    const out = await setzeZurueckgestellt(clientId, req.params.id, { bisMs: bis.bisMs, by, text: `Zurückgestellt bis ${bisText}` });
+    if (!out.ok) return res.json({ ok: false, reason: out.reason, message: NICHT_MOEGLICH[out.reason] || "" });
+    res.json({ ok: true, clientId, bisMs: bis.bisMs, bisText, anzahl: out.anzahl });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

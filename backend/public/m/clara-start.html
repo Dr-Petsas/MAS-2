@@ -162,6 +162,11 @@
     <p class="unter">Zuerst die Patienten, danach Rechnungen, Mahnungen und Fristsachen. Gewöhnliche Termintelefonate und gewöhnliche Post stehen hier nicht.</p>
     <div class="zaehler" id="zaehler"></div>
     <div id="tagesliste"></div>
+    <details class="verlauf" id="spaeter" hidden>
+      <summary id="spaeterTitel"></summary>
+      <p class="klein">Diese Vorgänge hat jemand auf später gelegt. Sie erscheinen zum genannten Zeitpunkt von selbst wieder oben, oder sofort, wenn die Person noch einmal anruft.</p>
+      <ul class="liste" id="spaeterListe"></ul>
+    </details>
     <details class="verlauf" id="verlauf" hidden>
       <summary id="verlaufTitel"></summary>
       <div id="verlaufInhalt"></div>
@@ -224,6 +229,9 @@
       ],
       uebernommen: [
         { id: "c4", quelle: "Lisa", thema: "Rückruf", name: "Otto Normal", anrufliste: false, kurz: "Lisa hat wegen der Zahnreinigung angerufen. Er möchte lieber mit jemandem aus der Praxis sprechen.", wer: "Sabine", wannMs: jetzt - 1 * STD, von: "open", nach: "in_progress", zurueck: "open" },
+      ],
+      zurueckgestellt: [
+        { id: "c9", quelle: "Bianca", bereich: "patient", thema: "Rückruf", name: "Lena Beispiel", kurz: "Hat eine Frage zum Kostenplan und bittet um Rückruf.", status: "open", wer: "Chef", bisMs: jetzt + 20 * STD, seitMs: jetzt - 1 * STD, anzahl: 1 },
       ],
       erledigtHeute: [
         { id: "c8", quelle: "Bianca", thema: "Rückruf", name: "Anna Testfall", anrufliste: false, kurz: "Fragt, ob das Rezept abgeholt werden kann.", wer: "Sabine", wannMs: jetzt - 2 * STD, von: "open", nach: "resolved", zurueck: "open" },
@@ -493,6 +501,7 @@
       if (p.fristMs) zusatz.push("Frist bis " + new Date(p.fristMs).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" }));
       if (p.wartetAufFreigabe) zusatz.push("Antwort-Entwurf wartet bei Nadine auf Freigabe");
       if (p.zustaendig) zusatz.push(p.zustaendig + " kümmert sich");
+      if (p.wiederVorgelegt) zusatz.push(p.wiederVorgelegt.neuerKontakt ? "war auf später gelegt, hat sich wieder gemeldet" : "war auf später gelegt bis " + bisWann(p.wiederVorgelegt.bisMs) + (p.wiederVorgelegt.wer ? " (" + p.wiederVorgelegt.wer + ")" : ""));
       if (p.kontakte > 1) zusatz.push(p.kontakte + " Kontakte");
     }
     let inhalt = p.kurz || "";
@@ -538,7 +547,44 @@
         el("button", { type: "button", class: "neben", onclick: () => statusSetzen(v.id, v.zurueck, (v.anrufliste ? "Lisas Anrufliste" : (v.name || "Der Vorgang")) + ": steht wieder in der Liste.", "Rückgängig") }, "Rückgängig")));
   }
 
-  let listenDaten = { patienten: [], uebernommen: [], erledigtHeute: [] };
+  function bisWann(ms) {
+    const d = new Date(ms);
+    const tag = d.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", weekday: "long", day: "numeric", month: "long" });
+    const zeit = d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
+    return zeit === "00:00" ? tag : tag + ", " + zeit + " Uhr";
+  }
+
+  function spaeterZeile(v) {
+    return el("li", null,
+      el("div", { class: "kopfzeile" },
+        el("strong", null, v.name || "Unbekannter Anrufer"),
+        el("span", { class: "marke" }, v.thema),
+        el("span", { class: "klein rechts" }, "zurückgestellt bis " + bisWann(v.bisMs))),
+      v.kurz ? el("div", { class: "inhalt" }, v.kurz) : null,
+      el("div", { class: "klein", style: "margin-bottom:8px" }, "Von " + (v.wer || "Team") + " auf später gelegt, " + wann(v.seitMs) + (v.anzahl > 1 ? " · schon " + v.anzahl + "-mal verschoben" : "")),
+      el("div", { class: "aktionen" },
+        el("button", { type: "button", class: "neben", onclick: () => wiederVorlegen(v) }, "Jetzt wieder vorlegen")));
+  }
+
+  async function wiederVorlegen(v) {
+    if (zustand.unterwegs.includes(v.id)) return;
+    zustand.unterwegs.push(v.id);
+    zustand.ladeLauf += 1;
+    listeZeichnen();
+    try {
+      if (DEMO) demo.liste.zurueckgestellt = demo.liste.zurueckgestellt.filter((x) => x.id !== v.id);
+      else {
+        const aus = await api("/brain/cases/" + encodeURIComponent(v.id) + "/zurueckstellen", { method: "POST", body: { aufheben: true, by: $("wer").value.trim() || "Team" } });
+        if (!aus.ok) throw new Error(aus.message || "nicht möglich");
+      }
+      melden((v.name || "Der Vorgang") + ": steht wieder in der Liste.", "gut");
+    } catch (e) { melden("Nicht gespeichert: " + e.message, "schlecht"); }
+    await listeLaden();
+    zustand.unterwegs = zustand.unterwegs.filter((x) => x !== v.id);
+    listeZeichnen();
+  }
+
+  let listenDaten = { patienten: [], uebernommen: [], erledigtHeute: [], zurueckgestellt: [] };
 
   function listeZeichnen() {
     const daten = listenDaten;
@@ -561,6 +607,12 @@
       for (const p of teil) ul.append(listenZeile(p));
       ziel.append(el("h3", { class: "bereich" }, titel + " ", el("span", { class: "klein" }, "(" + teil.length + ")")), ul);
     }
+    const spaeter = (daten.zurueckgestellt || []).filter(sichtbar);
+    $("spaeter").hidden = !spaeter.length;
+    $("spaeterTitel").textContent = "Auf später gelegt (" + spaeter.length + ")";
+    const sl = $("spaeterListe");
+    sl.replaceChildren();
+    for (const v of spaeter) sl.append(spaeterZeile(v));
     const ueb = (daten.uebernommen || []).filter(sichtbar);
     const erl = (daten.erledigtHeute || []).filter(sichtbar);
     $("verlauf").hidden = !(ueb.length || erl.length);
