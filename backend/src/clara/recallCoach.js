@@ -501,7 +501,9 @@ export async function approveAndExecute(clientId, { date, caseId, by } = {}) {
         return { ok: true, approved: 0, alreadyRunning: laufend.length, message: `Die Anrufliste ${s(l.date)} ${s(l.slot?.label)} ist bereits freigegeben und alle Kandidaten sind kontaktiert — Zusagen melde ich, sobald sie eintreffen. Für eine frische Runde nennen Sie mir ein Thema: Prophylaxe, Kons oder ZE.` };
       }
     } catch { /* Ehrlichkeit ist Zugabe — Standardantwort unten bleibt */ }
-    return { ok: true, approved: 0, message: "Es wartet gerade keine Anrufliste auf Freigabe. Soll ich die Lücken prüfen und eine neue Liste zusammenstellen?" };
+    return { ok: true, approved: 0, message: anruflistenAktiv()
+      ? "Es wartet gerade keine Anrufliste auf Freigabe. Soll ich die Lücken prüfen und eine neue Liste zusammenstellen?"
+      : "Es wartet keine Anrufliste auf Freigabe. Ich lege im Moment auch keine an." };
   }
 
   let approved = 0;
@@ -922,6 +924,8 @@ export async function snoozeInitiative(clientId) {
 const INITIATIVE_MENTION_COOLDOWN_MS = 30 * 60 * 1000;
 
 export async function initiativeSuffix(clientId) {
+  // Ohne Anruflisten (Schalter 26.11.2026) gibt es nichts anzubieten.
+  if (!anruflistenAktiv()) return "";
   const ref = configRef(clientId);
   const snap = await ref.get().catch(() => null);
   if (!snap?.exists) return "";
