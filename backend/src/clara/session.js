@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import { AccessToken } from "livekit-server-sdk";
+import { praxenLesen, zielFuerWeiterePraxis } from "./v8Praxen.js";
 
 // LiveKit endpoint + creds. Defaults match the bundled local SFU dev creds
 // from the voice repo (deploy/livekit/livekit.yaml) so a Node-minted token is
@@ -63,6 +64,19 @@ export async function claraZiel(gewuenscht) {
   if (!v8) return "alt";
   if (v8IstBetrieb() || String(gewuenscht || "").toLowerCase() === "v8") return "v8";
   return alt.some(Boolean) ? "alt" : "v8";
+}
+
+// Ziel je Praxis. Die Standardpraxis entscheidet wie bisher (claraZiel). Jede andere Praxis geht nur
+// zur Clara V8, wenn sie in der Schalterliste steht (v8Praxen.js); ohne Eintrag bleibt sie beim
+// bisherigen Worker. Die Liste ist anfangs leer.
+export async function claraZielFuer(clientId, gewuenscht, standardClient) {
+  if (clientId === standardClient) return claraZiel(gewuenscht);
+  const eintrag = praxenLesen().get(String(clientId || ""));
+  if (!eintrag) return "alt";
+  return zielFuerWeiterePraxis({
+    eintrag, wunsch: gewuenscht, v8Laeuft: await portOffen(V8_PORT),
+    betrieb: v8IstBetrieb(), notaus: process.env.CLARA_V8 === "0",
+  });
 }
 
 async function createV8Session({ clientId, profileId, pipe, metadata, short }) {
