@@ -79,6 +79,13 @@ check(out.zaehler.sofort === 2 && out.zaehler.heute === 4 && out.zaehler.normal 
 check(quelleVon(fall("x", { updates: [kontakt("Bianca", "a"), kontakt("Sabine", "b")] })) === "Bianca", "Team-Ergänzung ändert die Quelle nicht");
 check(einstufen(fall("x", { status: "closed" }), "Bianca", {}) === null, "geschlossener Vorgang wird nicht eingestuft");
 
+const liste = (date) => fall("liste", { status: "waiting_approval", topic: "appointment", assignee: "Lisa", createdBy: "Clara",
+  updates: [{ kind: "note", by: "Clara", text: "Lücke erkannt" }], callList: { date, slot: { label: "10:00–11:00" }, calendarName: "Dr. Beispiel", candidates: [{}, { removed: true }, {}] } });
+const frei = baueTagesliste({ cases: [liste("2026-12-01")], heute: "2026-11-26" }).patienten[0];
+check(frei && frei.dringlichkeit === "heute" && frei.freigabe.kandidaten === 2 && frei.freigabe.moeglich === true, "wartende Anrufliste trägt die Freigabe mit aktiven Kandidaten");
+check(baueTagesliste({ cases: [liste("2026-11-20")], heute: "2026-11-26" }).patienten[0].freigabe.moeglich === false, "Anrufliste für einen vergangenen Tag wird nicht zur Freigabe angeboten");
+check(out.patienten.every((p) => p.freigabe === null), "Vorgänge ohne Anrufliste tragen keine Freigabe");
+
 const sauber = vorlagenSaeubern({ "ze-da": "  Eigener Text  ", leer: "   ", zahl: 5, "": "x" });
 check(Object.keys(sauber).join(",") === "ze-da" && sauber["ze-da"] === "Eigener Text", "Knopf-Texte: nur saubere Einträge bleiben");
 check(Object.keys(vorlagenSaeubern(["a"])).length === 0, "Knopf-Texte: Liste statt Objekt wird verworfen");

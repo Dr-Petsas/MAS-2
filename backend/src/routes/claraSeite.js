@@ -5,7 +5,7 @@ import express from "express";
 import { assertAppEnabled } from "../entitlements.js";
 import { todayBerlin } from "../clara/daySchedule.js";
 import { ladeTagesliste } from "../brain/tagesliste.js";
-import { ladeVorlagen, setzeVorlage } from "../brain/notizVorlagen.js";
+import { ladeVorgaben, ladeVorlagen, setzeVorlage } from "../brain/notizVorlagen.js";
 import { aktiveMandanten } from "../tenants.js";
 import { ladeLisaIdentitaet } from "../lisa/identitaet.js";
 import { resolveClientId } from "./_shared.js";
@@ -30,7 +30,7 @@ async function praxisName(clientId) {
 }
 
 // Alles, worauf heute jemand reagieren muss: Patienten-Vorgaenge zuerst,
-// Julias QM-Aufgaben als nachgeordneter Abschnitt.
+// Julias QM-Aufgaben als nachgeordneter Abschnitt — vorerst nur mit ?qm=1.
 router.get("/brain/tagesliste", async (req, res) => {
   try {
     const clientId = resolveClientId(req);
@@ -39,7 +39,7 @@ router.get("/brain/tagesliste", async (req, res) => {
     }
     const date = todayBerlin();
     const nowMs = Date.now();
-    const liste = await ladeTagesliste(clientId, { nowMs, endOfDayMs: endeDesTagesBerlin(date) });
+    const liste = await ladeTagesliste(clientId, { nowMs, endOfDayMs: endeDesTagesBerlin(date), heute: date, mitQm: req.query?.qm === "1" });
     res.json({ ok: true, clientId, date, ...liste });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
@@ -52,7 +52,7 @@ router.get("/brain/notiz-vorlagen", async (req, res) => {
     if (!(await assertAppEnabled(clientId, "clara"))) {
       return res.status(403).json({ error: "clara_not_entitled", clientId });
     }
-    res.json({ ok: true, clientId, texte: await ladeVorlagen(clientId) });
+    res.json({ ok: true, clientId, texte: await ladeVorlagen(clientId), vorgaben: ladeVorgaben() });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
   }

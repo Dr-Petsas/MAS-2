@@ -52,6 +52,7 @@
   .link { background: none; border: 0; padding: 0; color: var(--akzent); cursor: pointer; text-decoration: underline; font-size: 13.5px; }
   .link[disabled] { color: var(--leise); text-decoration: none; cursor: default; }
   .haupt { background: var(--akzent); color: #fff; border: 0; border-radius: 8px; padding: 11px 22px; font-weight: 600; cursor: pointer; }
+  .haupt.klein-knopf { padding: 6px 14px; font-size: 14px; }
   .haupt[disabled] { background: #a9b6c2; cursor: default; }
   .neben { background: #fff; border: 1px solid var(--rand); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
   .neben:hover { border-color: var(--akzent); }
@@ -147,7 +148,7 @@
 
   <section class="karte" aria-labelledby="hListe">
     <h2 id="hListe">Heute zu erledigen</h2>
-    <p class="unter">Rückrufwünsche und Dringendes von Bianca, Lisa, Nadine und Clara. Gewöhnliche Termintelefonate stehen hier nicht.</p>
+    <p class="unter">Rückrufwünsche, dringende Post und Freigaben von Bianca, Lisa, Nadine und Clara. Gewöhnliche Termintelefonate stehen hier nicht.</p>
     <div class="zaehler" id="zaehler"></div>
     <ul class="liste" id="tagesliste"></ul>
     <details class="qm" id="qmBlock" hidden>
@@ -198,12 +199,11 @@
         { id: "c2", quelle: "Bianca", dringlichkeit: "sofort", thema: "Beschwerde", name: "Paul Platzhalter", telefon: "0170 0000201", kurz: "Hat seit der Füllung am Montag weiter Schmerzen und möchte, dass ihn heute noch jemand zurückruft.", status: "open", kontakte: 2, zuletztMs: jetzt - 2 * STD, rueckrufGewuenscht: true },
         { id: "c3", quelle: "Bianca", dringlichkeit: "heute", thema: "Rückruf", name: "Erika Musterfrau", telefon: "0170 0000101", kurz: "Bittet um Rückruf wegen des Kostenplans. Erreichbar ab 14 Uhr.", status: "open", kontakte: 1, zuletztMs: jetzt - 4 * STD, rueckrufGewuenscht: true },
         { id: "c4", quelle: "Lisa", dringlichkeit: "heute", thema: "Rückruf", name: "Otto Normal", telefon: "0170 0000202", kurz: "Lisa hat wegen der Zahnreinigung angerufen. Er möchte lieber mit jemandem aus der Praxis sprechen.", status: "in_progress", zustaendig: "Sabine", kontakte: 1, zuletztMs: jetzt - 5 * STD, rueckrufGewuenscht: true },
+        { id: "c6", quelle: "Clara", dringlichkeit: "heute", thema: "Termin", name: "", telefon: null, kurz: "", status: "waiting_approval", wartetAufFreigabe: true, kontakte: 1, zuletztMs: jetzt - 3 * STD,
+          freigabe: { art: "anrufliste", kandidaten: 6, datum: new Date(jetzt + 24 * STD).toISOString().slice(0, 10), zeit: "10:00–11:00", kalender: "Dr. Beispiel", anlass: "Kontrolle Zahnersatz", moeglich: true } },
         { id: "c5", quelle: "Clara", dringlichkeit: "normal", thema: "Dokumente", name: "Dentallabor Beispiel", telefon: null, kurz: "Laborrechnung für Oktober fehlt noch. Bitte beim Labor nachfragen.", status: "open", kontakte: 1, zuletztMs: jetzt - 30 * STD },
       ],
-      qm: [
-        { id: "q1", titel: "Sterilisator: Chargenkontrolle", detail: "Gerät 1", zustaendig: "Sabine", faelligMs: jetzt - 20 * STD, ueberfaellig: true },
-        { id: "q2", titel: "Kühlschrank-Temperatur eintragen", detail: "", zustaendig: null, faelligMs: jetzt + 3 * STD, ueberfaellig: false },
-      ],
+      qm: [],
     },
   };
 
@@ -464,21 +464,31 @@
     for (const p of pat) {
       const tel = p.telefon ? el("a", { href: "tel:" + ziffern(p.telefon) }, "☎ " + p.telefon) : null;
       const zusatz = [];
-      if (p.wartetAufFreigabe) zusatz.push("Antwort-Entwurf wartet auf Freigabe");
-      if (p.zustaendig) zusatz.push(p.zustaendig + " kümmert sich");
-      if (p.kontakte > 1) zusatz.push(p.kontakte + " Kontakte");
+      const f = p.freigabe;
+      if (f) {
+        zusatz.push([f.kandidaten + " Patienten auf der Liste", f.anlass, f.kalender,
+          [f.datum ? datumKurz(f.datum) : "", f.zeit].filter(Boolean).join(" ")].filter(Boolean).join(" · "));
+        if (!f.moeglich) zusatz.push("der Tag ist vorbei");
+      } else {
+        if (p.wartetAufFreigabe) zusatz.push("Antwort-Entwurf wartet bei Nadine auf Freigabe");
+        if (p.zustaendig) zusatz.push(p.zustaendig + " kümmert sich");
+        if (p.kontakte > 1) zusatz.push(p.kontakte + " Kontakte");
+      }
       ziel.append(el("li", { class: p.dringlichkeit },
         el("div", { class: "kopfzeile" },
           el("span", { class: "marke " + p.dringlichkeit }, DRINGLICH[p.dringlichkeit]),
-          el("strong", null, p.name || "Unbekannter Anrufer"),
-          el("span", { class: "marke" }, p.thema),
+          el("strong", null, f ? "Anrufliste für Lisa" : (p.name || "Unbekannter Anrufer")),
+          el("span", { class: "marke" }, f ? "Freigabe" : p.thema),
           el("span", { class: "marke quelle" }, "von " + p.quelle),
           el("span", { class: "klein rechts" }, wann(p.zuletztMs))),
-        el("div", { class: "inhalt" }, p.kurz || ""),
+        el("div", { class: "inhalt" }, f
+          ? "Lisa möchte diese Patienten anrufen, um eine freie Zeit im Kalender zu füllen. Sie ruft erst nach Ihrer Freigabe an."
+          : (p.kurz || "")),
         zusatz.length ? el("div", { class: "klein", style: "margin-bottom:8px" }, zusatz.join(" · ")) : null,
         el("div", { class: "aktionen" }, tel,
+          f && f.moeglich ? el("button", { type: "button", class: "haupt klein-knopf", onclick: () => freigeben(p) }, "Freigeben") : null,
           p.status === "open" ? el("button", { type: "button", class: "neben", onclick: () => vorgangSetzen(p, "in_progress") }, "Ich kümmere mich") : null,
-          el("button", { type: "button", class: "neben", onclick: () => vorgangSetzen(p, "resolved") }, "Erledigt"))));
+          el("button", { type: "button", class: "neben", onclick: () => vorgangSetzen(p, "resolved") }, f ? "Nicht anrufen" : "Erledigt"))));
     }
 
     const qm = daten.qm || [];
@@ -496,6 +506,24 @@
           q.ueberfaellig ? el("span", { class: "marke heute" }, "überfällig") : null,
           el("span", { class: "klein rechts" }, [q.detail, q.zustaendig || "noch nicht verteilt", wann(q.faelligMs)].filter(Boolean).join(" · ")))));
     }
+  }
+
+  function datumKurz(iso) {
+    const t = String(iso).split("-");
+    return t.length === 3 ? t[2] + "." + t[1] + "." : iso;
+  }
+
+  // Freigabe einer Anrufliste: der bestehende Weg, danach ruft Lisa wirklich an.
+  async function freigeben(p) {
+    const f = p.freigabe;
+    if (!window.confirm("Lisa ruft dann " + f.kandidaten + " Patienten an. Jetzt freigeben?")) return;
+    const wer = $("wer").value.trim() || "Team";
+    try {
+      if (DEMO) demo.liste.patienten = demo.liste.patienten.filter((x) => x.id !== p.id);
+      else await api("/brain/gap-fill/" + encodeURIComponent(p.id) + "/approve", { method: "POST", body: { by: wer } });
+      melden("Freigegeben. Lisa ruft die Patienten an.", "gut");
+    } catch (e) { melden("Die Freigabe hat nicht geklappt: " + e.message, "schlecht"); }
+    await listeLaden();
   }
 
   async function vorgangSetzen(p, status) {
