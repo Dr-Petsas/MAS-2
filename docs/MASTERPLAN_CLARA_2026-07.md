@@ -3701,3 +3701,65 @@ Gehoert in dasselbe Paket (Chef 21.11.2026: eine Clara pro Praxis):
   ohne Gegenprobe. Nicht gebaut, weil es ein Eingriff am Live-Worker waere und
   mit dem allgemeinen Profil entfaellt (dann gibt es kein fremdes Praxisprofil
   mehr, das geladen werden koennte).
+
+### W-CLARA-SEITE - einfache Clara-Seite: Notiz fuer Bianca + Tagesliste (Chef 26.11.2026, LIVE)
+
+Auftrag Chef (26.11.2026): Der Clara-Reiter der Plattform war ein Monitor, den
+am Empfang niemand bediente. Er zeigt jetzt zwei Dinge: links die Notiz fuer
+Bianca (Patient, Anliegen, Text, Speichern), rechts die Tagesliste der
+Vorgaenge, auf die heute jemand reagieren muss. Der alte Monitor bleibt ueber
+"Bisherige Ansicht oeffnen" erreichbar (`?ansicht=alt`).
+
+Stand 26.11.2026, live seit 11:48 (erste Fassung) bzw. 12:55 (Umbau nach
+Chef-Rueckmeldung):
+
+- **MAS** (`src/brain/tagesliste.js`, `src/brain/notizVorlagen.js`,
+  `src/routes/claraSeite.js`): `GET /brain/tagesliste`,
+  `GET/PUT /brain/notiz-vorlagen`, `GET /brain/praxen`. Rein additiv; die
+  Notiz selbst geht weiter ueber `POST /brain/events` (Kanal frontdesk),
+  Statuswechsel ueber `POST /brain/cases/:id/status`.
+- **Plattform** (`docgendaweb/src/components/pages/claraStart.tsx`, `.css`,
+  eingehaengt in `claraPage.tsx`). Vorschau ohne Anmeldung und ohne
+  Speichern: `backend/public/m/clara-start.html?demo=1`.
+- **Anliegen-Knoepfe** kommen aus EINER Liste (`public/m/clara-vorlagen.js`,
+  Gruppen Allgemein, ZE, PAR, KONS, SLM), links als Reiter wie im
+  Termin-Fenster. Eine Praxis kann jeden Text aendern und fuer den Knopf
+  merken (`mas_config/notiz_vorlagen`).
+- **Tagesliste:** Patienten zuerst, danach Rechnungen, Mahnungen,
+  Fristsachen, Sonstiges; darin Dringendes und das am laengsten Wartende
+  oben. Der Bereich kommt nur aus vorhandenen Feldern (Patient zugeordnet,
+  Kennzeichen rechnung/mahnung aus der Einstufung, erkannte Frist) - kein
+  Text wird neu gelesen, keine Wortmuster. Nicht in der Liste: gewoehnliche
+  Termintelefonate, gewoehnliche Post, eigene Team-Notizen, Beobachtungen
+  der Kalender-Automatik, Auftraege, an denen eine KI-Kollegin arbeitet.
+  Julias QM-Aufgaben sind ausgeblendet (nur mit `?qm=1`).
+- **"Ich kuemmere mich" und "Erledigt"** nehmen die Zeile sofort aus der
+  Liste (Vorfall 26.11. 12:30: die Zeile verschwand erst nach dem Neuladen,
+  Mehrfachklicks stauten sich). Darunter eingeklappt "Heute erledigt /
+  uebernommen" mit wer, wann, altem und neuem Status und "Rueckgaengig".
+  Keine zweite Datenhaltung: gelesen werden die Statusschritte am Vorgang.
+  "Erledigt" schliesst auch die zugehoerigen Eintraege (faellt bei Clara und
+  Bianca weg); "Ich kuemmere mich" laesst sie offen, Claras Wiedervorlage
+  kann den Vorgang weiter nennen; "Rueckgaengig" nach "Erledigt" oeffnet die
+  geschlossenen Eintraege nicht wieder.
+- **Lisa-Anruflisten** (Lueckenfueller) stehen als ganzer Satz in der Liste,
+  Patienten aufklappbar, Knopf "Nicht anrufen". **Der Klick startet keine
+  Anrufe** (Entscheidung Chef 26.11.2026, 13:00): `POST
+  /brain/gap-fill/:id/approve` markiert nur; Anrufe starten allein ueber
+  die muendliche Freigabe bei Clara (`recallCoach.approveAndExecute`). Die
+  Seite sagt das so. Keine Aenderung an Lisa.
+- Absicherung: `node tests/tagesliste.test.mjs` (reine Logik),
+  `node tests/claraSeiteRoute.test.mjs` (Testmandant
+  `zzz-mas2-claraseite`), beide im `npm test`.
+- Rueckweg: Hosting-Version `41f54b15ac8960dd` (erste Fassung) bzw.
+  `6c96697ad5ae09c3` (vor der Clara-Seite); MAS-Tags
+  `vor-clara-seite-2026-11-26` und `vor-clara-seite-2-2026-11-26`.
+
+Offen:
+- [ ] Angemeldet im Plattform-Rahmen durchklicken (Test-Login
+      `automation.tests@pickadoc.de` wird abgelehnt) und echtes Bildschirmfoto.
+- [ ] Soll der Klick Lisas Anrufe spaeter doch starten, gehoert der
+      Freigabeweg an Lisas Ausfuehrung angeschlossen - eigenes Paket, nur
+      nach Freigabe des Chefs.
+- [ ] Die muendliche Freigabe ohne Datum gibt ALLE wartenden Listen frei
+      (26.11.: neun Listen mit je bis zu acht Kontakten).
