@@ -149,6 +149,46 @@ export async function loadOpeningHoursForCalendar(clientId, locationId, calendar
 }
 
 // ----------------------------------------------------------------------------
+// Interne Kalender (Chef 26.11.2026): "interne Kalender kriegen keinen
+// Lueckenfuell-Mechanismus (bei uns Labor, bei Blessing z. B. Blessing OP)".
+// Intern ist, was die Praxis in der Plattform so gekennzeichnet hat (Feld
+// `internal` am Kalender) - nicht der Name. Dort wird keine Luecke gesucht und
+// niemand vorgeschlagen. Rueckweg: MAS_GAP_INTERNE_KALENDER=1 (wie vorher).
+// ----------------------------------------------------------------------------
+
+/** Pure: Kennungen der intern gekennzeichneten, nicht geloeschten Kalender. */
+export function interneKalenderAus(kalender) {
+  return new Set((kalender || []).filter((k) => k?.internal === true && k?.isDeleted !== true).map((k) => s(k.id)).filter(Boolean));
+}
+
+/** Pure: Kalenderliste ohne die internen. */
+export function ohneInterneKalender(kalender, interne) {
+  if (!interne?.size) return kalender || [];
+  return (kalender || []).filter((k) => !interne.has(s(k.id)));
+}
+
+const interneCache = new Map(); // `${clientId}:${locationId}` -> {at, ids}
+
+/** Interne Kalender der Praxis (10 min gemerkt). Lesefehler: keiner gilt als intern, mit Warnung. */
+export async function interneKalender(clientId, locationId) {
+  if (process.env.MAS_GAP_INTERNE_KALENDER === "1") return new Set();
+  const key = `${clientId}:${locationId}`;
+  const hit = interneCache.get(key);
+  if (hit && Date.now() - hit.at < HOURS_TTL_MS) return hit.ids;
+  try {
+    const snap = await db.collection("clients").doc(clientId)
+      .collection("locations").doc(locationId)
+      .collection("calendars").where("internal", "==", true).get();
+    const ids = interneKalenderAus(snap.docs.map((d) => ({ ...d.data(), id: d.id })));
+    interneCache.set(key, { at: Date.now(), ids });
+    return ids;
+  } catch (e) {
+    log.warn("gapfill.interne_kalender_unlesbar", { clientId, error: String(e?.message || e) });
+    return new Set();
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Gap computation (pure)
 // ----------------------------------------------------------------------------
 
@@ -974,6 +1014,8 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
   // an, obwohl diese Clara Dr. Petsas gehoert.
   const boundary = await gapFillCalendarBoundary(clientId);
   const onlyCalId = boundary || s(calendarId) || null;
+  // Interne Kalender (Labor, OP): keine Lueckensuche, auch nicht auf ausdruecklichen Wunsch.
+  const interne = await interneKalender(clientId, locationId);
 
   // scanOnly (Chef 28.07. 20:52 "habe ich morgen eine terminlücke" — die Frage
   // MUSS zuerst beantwortet werden, BEVOR die Themenfrage kommt): nur Luecken
@@ -1003,7 +1045,7 @@ export async function runGapFill(clientId, { date, horizonDays = 1, demoOnly = f
 
     // Gueltige Luecken-Identitaeten dieses Tages — alles andere ist ueberholt.
     const gueltigeCaseIds = new Set();
-    const scopedCalendars = (booking.calendars || []).filter((c) => !onlyCalId || c.id === onlyCalId);
+    const scopedCalendars = ohneInterneKalender(booking.calendars, interne).filter((c) => !onlyCalId || c.id === onlyCalId);
     for (const calendar of scopedCalendars) {
       const hours = await loadOpeningHoursForCalendar(clientId, locationId, calendar.id);
       const wd = workingDayOf(hours, weekday);

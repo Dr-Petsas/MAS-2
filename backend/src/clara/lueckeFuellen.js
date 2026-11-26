@@ -8,7 +8,7 @@
 import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
 import { normalizePhone } from "./callerLookup.js";
-import { runGapFill, kandidatenBestand, rankCandidatesForGap, spokenMotiveLabel, faelligSeit, durationOfMotive } from "./gapFill.js";
+import { runGapFill, interneKalender, kandidatenBestand, rankCandidatesForGap, spokenMotiveLabel, faelligSeit, durationOfMotive } from "./gapFill.js";
 
 const TZ = "Europe/Berlin";
 const s = (v) => String(v ?? "").trim();
@@ -228,6 +228,10 @@ export async function passendFuerLuecke(clientId, { date, calendarId, startMin, 
   if (!booking?.locationId) return { ok: false, reason: "no_booking_config", gruppen: [], gesamt: 0 };
   const dauer = Number(minutes) || 0;
   if (!s(date) || !s(calendarId) || !(dauer > 0)) return { ok: false, reason: "luecke_unvollstaendig", gruppen: [], gesamt: 0 };
+  // Interne Kalender (Labor, OP) bekommen keine Vorschlaege - auch nicht aus der Maske im Kalender.
+  if ((await interneKalender(clientId, booking.locationId)).has(s(calendarId))) {
+    return { ok: false, reason: "interner_kalender", gruppen: [], gesamt: 0 };
+  }
   const [{ allCandidates, throttled }, absager] = await Promise.all([
     kandidatenBestand(clientId, booking),
     absagerKandidaten(clientId, booking).catch(() => []),
@@ -285,6 +289,7 @@ export function lueckenSatz(fund) {
 
 /** Sprechtext: wer sich fuer eine Luecke anbietet, je Besuchsgrund mit den am laengsten Faelligen. */
 export function passendSatz(fund, { namenJeGrund = 3 } = {}) {
+  if (fund.reason === "interner_kalender") return "Das ist ein interner Kalender. Dort fülle ich keine Lücken.";
   if (!fund.ok) return "Dazu fehlt mir die Buchungskonfiguration der Praxis.";
   const l = fund.luecke;
   const tag = tagGesprochen(l.date);
