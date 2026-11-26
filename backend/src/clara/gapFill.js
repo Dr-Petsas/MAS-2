@@ -1569,7 +1569,9 @@ export async function buildSpokenGapCandidates(clientId, { date } = {}) {
   const day = date ? s(date) : null;
   const lists = [...(ov.pending || []), ...(ov.approved || [])].filter((l) => !day || l.date === day);
   if (!lists.length) {
-    return "Aktuell warten keine Anruflisten mit Kandidaten. Sage Recall starten, dann suche ich passende Patienten.";
+    return anruflistenAktiv()
+      ? "Aktuell warten keine Anruflisten mit Kandidaten. Sage Recall starten, dann suche ich passende Patienten."
+      : "Es gibt keine Anruflisten. Ich lege im Moment auch keine an.";
   }
   // Mehrere Luecken teilen sich oft DIESELBEN Kandidaten (gleicher Tag,
   // gleicher Kalender) — die Namen werden dann nur EINMAL vorgelesen und die

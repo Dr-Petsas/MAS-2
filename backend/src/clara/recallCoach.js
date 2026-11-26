@@ -2,7 +2,7 @@ import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { loadBooking, loadPraxisIdentitaet, ensureBerlinTz, resolveCalendar } from "./booking.js";
 import { commitBooking } from "./agentBooking.js";
-import { runGapFill, approveCallList } from "./gapFill.js";
+import { runGapFill, approveCallList, anruflistenAktiv } from "./gapFill.js";
 import { lisaSendSms, lisaStartCall, smsConfigured, callConfigured } from "../lisa/outbound.js";
 import { liveBookingConfigured } from "../lisa/agentTools.js";
 import { listCases, addUpdate, setStatus } from "../brain/caseStore.js";
@@ -383,7 +383,9 @@ async function resolvePendingList(clientId, caseId) {
 export async function recallInstructionPreview(clientId, { caseId } = {}) {
   const c = await resolvePendingList(clientId, caseId);
   if (!c || !c.callList) {
-    return { ok: false, reason: "no_pending", message: "Gerade wartet keine Anrufliste auf Freigabe — die Ansage bespreche ich am besten, bevor Lisa loslegt. Sage zuerst: Recall starten." };
+    return { ok: false, reason: "no_pending", message: anruflistenAktiv()
+      ? "Gerade wartet keine Anrufliste auf Freigabe — die Ansage bespreche ich am besten, bevor Lisa loslegt. Sage zuerst: Recall starten."
+      : "Es gibt keine Anrufliste. Ich lege im Moment auch keine an." };
   }
   const list = c.callList;
   const specialtyKey = await specialtyKeyForClient(clientId).catch(() => "");
@@ -965,7 +967,9 @@ export async function recallStatusSpoken(clientId, { date } = {}) {
     if (wartendSatz) {
       return `Lisa hat noch keine Anrufe gestartet. ${wartendSatz}`;
     }
-    return "Es laufen gerade keine Recall-Aktionen. Sage: Recall starten — dann schaue ich nach Lücken und Kandidaten.";
+    return anruflistenAktiv()
+      ? "Es laufen gerade keine Recall-Aktionen. Sage: Recall starten — dann schaue ich nach Lücken und Kandidaten."
+      : "Es laufen gerade keine Recall-Aktionen. Anruflisten lege ich im Moment nicht an.";
   }
 
   let booked = 0, declined = 0, noAnswer = 0, pending = 0, smsSent = 0, unclear = 0, complaints = 0, wantsOther = 0, webBooked = 0;
