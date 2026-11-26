@@ -5,6 +5,7 @@ import express from "express";
 import { assertAppEnabled } from "../entitlements.js";
 import { todayBerlin } from "../clara/daySchedule.js";
 import { ladeTagesliste } from "../brain/tagesliste.js";
+import { speichereLisaAnruf } from "../brain/lisaAnrufe.js";
 import { setzeZurueckgestellt } from "../brain/caseStore.js";
 import { bisAus, bisGesprochen, zurueckstellenAktiv } from "../brain/zurueckstellen.js";
 import { ladeVorgaben, ladeVorlagen, setzeVorlage } from "../brain/notizVorlagen.js";
@@ -46,6 +47,23 @@ router.get("/brain/tagesliste", async (req, res) => {
     res.json({ ok: true, clientId, date, ...liste });
   } catch (e) {
     res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Lisa V8 meldet jeden Anruf, auch den ohne Abnehmen. Ein Eintrag je Anruf im
+// Praxisgedaechtnis (feste Kennung, doppeltes Schicken erzeugt nichts). Bianca
+// liest ihn ueber /brain/caller-context, die Seite ueber /brain/tagesliste.
+router.post("/brain/lisa-anrufe", async (req, res) => {
+  try {
+    const clientId = resolveClientId(req);
+    if (!(await assertAppEnabled(clientId, "clara"))) {
+      return res.status(403).json({ error: "clara_not_entitled", clientId });
+    }
+    const out = await speichereLisaAnruf(clientId, req.body || {});
+    if (!out.ok) return res.status(400).json(out);
+    res.status(out.neu && !out.trocken ? 201 : 200).json({ clientId, ...out });
+  } catch (e) {
+    res.status(400).json({ ok: false, grund: "fehler", klartext: String(e?.message || e) });
   }
 });
 

@@ -177,6 +177,16 @@
       <ul class="liste" id="qmListe"></ul>
     </details>
   </section>
+
+  <section class="karte" aria-labelledby="hLisa">
+    <h2 id="hLisa">Lisas Anrufe <span class="klein" id="lisaZahl"></span></h2>
+    <p class="unter">Jeder Anruf, den Lisa für die Praxis geführt hat, auch wenn niemand abgenommen hat. Was hier offen steht, weiß Bianca, wenn die Person zurückruft.</p>
+    <ul class="liste" id="lisaOffen"></ul>
+    <details class="verlauf" id="lisaHeute" hidden>
+      <summary id="lisaHeuteTitel"></summary>
+      <ul class="liste" id="lisaHeuteListe"></ul>
+    </details>
+  </section>
 </main>
 
 <script src="clara-vorlagen.js"></script>
@@ -237,6 +247,22 @@
         { id: "c8", quelle: "Bianca", thema: "Rückruf", name: "Anna Testfall", anrufliste: false, kurz: "Fragt, ob das Rezept abgeholt werden kann.", wer: "Sabine", wannMs: jetzt - 2 * STD, von: "open", nach: "resolved", zurueck: "open" },
       ],
       qm: [],
+      lisaAnrufe: {
+        offen: [
+          { id: "l1", zeitMs: jetzt - 5 * STD, patient: "Jonas Probe", telefon: "+49 170 0000104", anlass: "Zahnreinigung, ein freier Termin morgen um 10 Uhr bei Dr. Beispiel", ausgang: "niemand", versuche: 2, gesagt: "", angebot: [], termin: "", rueckrufWann: "",
+            beimRueckruf: "Sagen, dass die Praxis angerufen hat. Anlass: Zahnreinigung, ein freier Termin morgen um 10 Uhr bei Dr. Beispiel. Das Anliegen gleich klären.", offen: true },
+          { id: "l2", zeitMs: jetzt - 3 * STD, patient: "Lena Beispiel", telefon: "+49 170 0000103", anlass: "Kontrolluntersuchung bei Dr. Beispiel", ausgang: "mailbox", mailboxNachricht: true, versuche: 1, gesagt: "Auf den Anrufbeantworter: Die Praxis bittet um Rückruf wegen der Kontrolluntersuchung.", angebot: [], termin: "", rueckrufWann: "",
+            beimRueckruf: "Einen Termin für die Kontrolluntersuchung anbieten.", offen: true },
+          { id: "l3", zeitMs: jetzt - 2 * STD, patient: "Max Mustermann", telefon: "+49 170 0000102", anlass: "Kontrolle des Zahnersatzes", ausgang: "rueckruf_gewuenscht", versuche: 1, gesagt: "Lisa hat zwei Termine angeboten, er wollte erst in seinen Kalender sehen.", angebot: ["Montag, 30. November, 09:30 Uhr bei Dr. Beispiel", "Mittwoch, 2. Dezember, 14:00 Uhr bei Dr. Beispiel"], termin: "", rueckrufWann: "heute nach 16 Uhr",
+            beimRueckruf: "Hat um Rückruf gebeten. Anlass: Kontrolle des Zahnersatzes. Das Anliegen gleich klären.", offen: true },
+          { id: "l4", zeitMs: jetzt - 1 * STD, patient: "Otto Normal", telefon: "+49 170 0000105", anlass: "Zahnreinigung", ausgang: "nicht_mehr_anrufen", versuche: 1, gesagt: "", angebot: [], termin: "", rueckrufWann: "",
+            beimRueckruf: "Möchte nicht mehr von der Praxis angerufen werden. Nur wissen, nicht ansprechen.", nichtMehrAnrufen: true, offen: true },
+        ],
+        heute: [
+          { id: "l5", zeitMs: jetzt - 4 * STD, patient: "Erika Musterfrau", telefon: "+49 170 0000101", anlass: "Zahnreinigung", ausgang: "termin", versuche: 1, gesagt: "", angebot: [], termin: "Freitag, 4. Dezember, 10:30 Uhr bei Dr. Beispiel", offen: false },
+          { id: "l6", zeitMs: jetzt - 6 * STD, patient: "Anna Testfall", telefon: "+49 170 0000106", anlass: "Kontrolluntersuchung", ausgang: "besetzt", versuche: 1, gesagt: "", angebot: [], termin: "", offen: false, erledigtVon: "Bianca", erledigtMs: jetzt - 2 * STD },
+        ],
+      },
     },
   };
 
@@ -584,6 +610,72 @@
     listeZeichnen();
   }
 
+  // -------------------------------------------------------------- Lisas Anrufe
+  const LISA_AUSGANG = { niemand: "Nicht erreicht", besetzt: "Besetzt", abgelehnt: "Anruf nicht angenommen", mailbox: "Anrufbeantworter",
+    andere_person: "Jemand anderes am Telefon", gescheitert: "Anruf kam nicht zustande", termin: "Termin vereinbart", rueckruf_gewuenscht: "Bittet um Rückruf",
+    meldet_sich_selbst: "Meldet sich selbst", kein_interesse: "Möchte das Angebot nicht", nicht_mehr_anrufen: "Nicht mehr anrufen",
+    falsche_person: "Falsche Nummer", nachricht_ausgerichtet: "Nachricht ausgerichtet", anderes_anliegen: "Anderes Anliegen" };
+
+  function lisaZeile(z) {
+    let ausgang = LISA_AUSGANG[z.ausgang] || "Anruf";
+    if (z.ausgang === "mailbox") ausgang += z.mailboxNachricht ? ", Nachricht hinterlassen" : ", keine Nachricht hinterlassen";
+    const zeilen = [el("div", { class: "inhalt" }, "Anlass: " + (z.anlass || "nicht angegeben"))];
+    if (z.termin) zeilen.push(el("div", { class: "inhalt" }, "Termin: " + z.termin));
+    if (z.gesagt) zeilen.push(el("div", { class: "inhalt" }, z.gesagt));
+    if (z.angebot && z.angebot.length) zeilen.push(el("div", { class: "inhalt" }, "Angeboten: " + z.angebot.join(" oder ")));
+    if (z.rueckrufWann) zeilen.push(el("div", { class: "inhalt" }, "Rückruf erwünscht: " + z.rueckrufWann));
+    if (z.offen && z.nichtMehrAnrufen) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Bianca weiß das, spricht es bei einem Anruf dieser Person aber nicht an. Bitte in der Kartei vermerken und dann auf erledigt setzen."));
+    else if (z.offen && z.beimRueckruf) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Wenn die Person zurückruft: " + z.beimRueckruf));
+    if (!z.offen && z.erledigtVon) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Erledigt von " + z.erledigtVon + (z.erledigtMs ? ", " + wann(z.erledigtMs) : "")));
+    const art = z.offen ? (z.nichtMehrAnrufen ? "sofort" : "heute") : "";
+    return el("li", { class: art },
+      el("div", { class: "kopfzeile" },
+        el("span", { class: "marke " + art }, ausgang),
+        el("strong", null, z.patient || "Ohne Namen"),
+        z.versuche > 1 ? el("span", { class: "marke" }, z.versuche + ". Versuch") : null,
+        el("span", { class: "klein rechts" }, wann(z.zeitMs))),
+      ...zeilen,
+      z.offen ? el("div", { class: "aktionen" },
+        z.telefon && !z.nichtMehrAnrufen ? el("a", { href: "tel:+" + ziffern(z.telefon) }, "☎ " + z.telefon) : (z.telefon ? el("span", { class: "klein" }, z.telefon) : null),
+        el("button", { type: "button", class: "neben", onclick: () => lisaErledigen(z) }, "Erledigt")) : null);
+  }
+
+  function lisaZeichnen() {
+    const daten = listenDaten.lisaAnrufe || { offen: [], heute: [] };
+    const sichtbar = (x) => !zustand.unterwegs.includes(x.id);
+    const offen = (daten.offen || []).filter(sichtbar);
+    const sonst = (daten.heute || []).filter((x) => !x.offen);
+    $("lisaZahl").textContent = offen.length ? "(" + offen.length + " offen)" : "";
+    const ziel = $("lisaOffen");
+    ziel.replaceChildren();
+    if (!offen.length) ziel.append(el("li", { class: "leerhinweis" }, "Nichts offen. Bei Lisas Anrufen wartet niemand auf eine Antwort."));
+    for (const z of offen) ziel.append(lisaZeile(z));
+    $("lisaHeute").hidden = !sonst.length;
+    $("lisaHeuteTitel").textContent = "Heute abgeschlossen (" + sonst.length + ")";
+    const hl = $("lisaHeuteListe");
+    hl.replaceChildren();
+    for (const z of sonst) hl.append(lisaZeile(z));
+  }
+
+  async function lisaErledigen(z) {
+    if (zustand.unterwegs.includes(z.id)) return;
+    zustand.unterwegs.push(z.id);
+    zustand.ladeLauf += 1;
+    listeZeichnen();
+    const wer = $("wer").value.trim() || "Team";
+    try {
+      if (DEMO) {
+        const l = demo.liste.lisaAnrufe;
+        l.offen = l.offen.filter((x) => x.id !== z.id);
+        l.heute.unshift(Object.assign({}, z, { offen: false, erledigtVon: wer, erledigtMs: Date.now() }));
+      } else await api("/brain/events/" + encodeURIComponent(z.id) + "/resolve", { method: "POST", body: { actor: wer, note: "Lisas Anruf erledigt" } });
+      melden((z.patient || "Der Anruf") + ": erledigt. Bianca spricht es bei einem Rückruf nicht mehr an.", "gut");
+    } catch (e) { melden("Nicht gespeichert, der Anruf steht wieder in der Liste: " + e.message, "schlecht"); }
+    await listeLaden();
+    zustand.unterwegs = zustand.unterwegs.filter((x) => x !== z.id);
+    listeZeichnen();
+  }
+
   let listenDaten = { patienten: [], uebernommen: [], erledigtHeute: [], zurueckgestellt: [] };
 
   function listeZeichnen() {
@@ -625,6 +717,7 @@
       for (const v of liste) ul.append(verlaufZeile(v, offen));
       vz.append(el("h3", { class: "bereich" }, titel), ul);
     }
+    lisaZeichnen();
   }
 
   async function listeLaden() {

@@ -39,6 +39,7 @@ import { queryLatest } from "./eventStore.js";
 import { MAX_CANDIDATES_PER_LIST } from "../clara/gapFill.js";
 import { listCalendar as qmListCalendar } from "../qm/jobs.js";
 import { zurueckgestelltVon } from "./zurueckstellen.js";
+import { lisaAnrufeFuerSeite } from "./lisaAnrufe.js";
 
 const EVENT_FENSTER_MS = 14 * 24 * 3_600_000;
 const LIEFERANTEN = ["Bianca", "Lisa", "Nadine", "Clara"];
@@ -354,5 +355,7 @@ export async function ladeTagesliste(clientId, { nowMs = Date.now(), endOfDayMs 
     weich("events", () => queryLatest(clientId, nowMs - EVENT_FENSTER_MS, 800)),
     mitQm ? weich("qm", () => qmListCalendar(clientId, { fromMs: 0, toMs: endOfDayMs })) : [],
   ]);
-  return { ...baueTagesliste({ cases, events, qmJobs, nowMs, endOfDayMs, startOfDayMs, heute }), qmAusgeblendet: !mitQm, hinweise };
+  // Lisas Anrufe sind ein eigener Abschnitt: dieselben Eintraege, die Bianca beim Rueckruf liest.
+  const lisaAnrufe = lisaAnrufeFuerSeite(events, { startOfDayMs });
+  return { ...baueTagesliste({ cases, events, qmJobs, nowMs, endOfDayMs, startOfDayMs, heute }), lisaAnrufe, qmAusgeblendet: !mitQm, hinweise };
 }

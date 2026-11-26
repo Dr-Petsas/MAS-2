@@ -3,6 +3,7 @@ import { applyHumanReview } from "../brain/events.js";
 import { findContactsByPhone } from "../brain/addressBook.js";
 import { listCases, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
+import { itemAus, istLisaAnruf, nichtMehrAnrufen } from "../brain/lisaAnrufe.js";
 
 // ============================================================================
 // Rückrufer-Kontext für Bianca (Telefon-Loop 2/2, Nacht 11./12.06.2026).
@@ -63,13 +64,29 @@ function istOffenFuerBianca(event) {
   return event.status === "none" && event.channel === "frontdesk";
 }
 
+// "Nicht mehr anrufen" aus einem Lisa-Anruf: offen fuer das Team, fuer Bianca
+// nur eine Tatsache. Steht nicht im Text fuer den Anrufer, und Bianca schliesst es nicht.
+function nurTatsache(event) {
+  return istLisaAnruf(event) && nichtMehrAnrufen(event.anruf);
+}
+
 /** Offene Treffer zur Nummer, neueste zuerst — erledigte nie. */
 export function openCallerHits(events, phone) {
   const digits = canonDigits(phone);
   if (digits.length < 7) return [];
   return (events || [])
     .map((e) => applyHumanReview(e))
-    .filter((e) => istOffenFuerBianca(e) && eventMatchesPhone(e, digits))
+    .filter((e) => istOffenFuerBianca(e) && !nurTatsache(e) && eventMatchesPhone(e, digits))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    .slice(0, MAX_ITEMS);
+}
+
+/** Offene Tatsachen zur Nummer, die Bianca kennen, aber nicht vortragen soll. */
+export function callerTatsachen(events, phone) {
+  const digits = canonDigits(phone);
+  if (digits.length < 7) return [];
+  return (events || [])
+    .filter((e) => e?.status === "open" && nurTatsache(e) && eventMatchesPhone(e, digits))
     .sort((a, b) => (b.ts || 0) - (a.ts || 0))
     .slice(0, MAX_ITEMS);
 }
@@ -83,10 +100,13 @@ export function openCallerHits(events, phone) {
  */
 export async function buildCallerContext(clientId, phone) {
   const digits = canonDigits(phone);
-  if (digits.length < 7) return { found: false, name: "", context: "", openEventIds: [] };
+  if (digits.length < 7) return { found: false, name: "", context: "", openEventIds: [], items: [] };
 
   const events = await queryLatest(clientId, Date.now() - LOOKBACK_MS, 800);
   const hits = openCallerHits(events, digits);
+  // Zusatz fuer Bianca V8: dieselben offenen Eintraege als Liste, dazu Tatsachen
+  // ("nicht mehr anrufen"), die weder in `context` noch in `openEventIds` stehen.
+  const items = [...hits, ...callerTatsachen(events, digits)].map(itemAus);
 
   // Geteiltes Adressbuch: kennt die Nummer auch dann, wenn (noch) kein Event
   // passt — z.B. ein Lieferant, der bisher nur per E-Mail Kontakt hatte und
@@ -94,7 +114,7 @@ export async function buildCallerContext(clientId, phone) {
   const bookHit = (await findContactsByPhone(clientId, phone))[0] || null;
 
   if (!hits.length) {
-    if (!bookHit?.name) return { found: false, name: "", context: "", openEventIds: [] };
+    if (!bookHit?.name) return { found: false, name: "", context: "", openEventIds: [], items };
     const aboutLast = bookHit.lastSubject ? ` Zuletzt ging es um: „${bookHit.lastSubject}“.` : "";
     return {
       found: true,
@@ -104,6 +124,7 @@ export async function buildCallerContext(clientId, phone) {
         `${bookHit.category ? ` (${bookHit.category})` : ""}.${aboutLast} ` +
         "Sprich die Person entsprechend an, statt nach dem Namen zu fragen.",
       openEventIds: [],
+      items,
     };
   }
 
@@ -130,6 +151,7 @@ export async function buildCallerContext(clientId, phone) {
     name,
     context,
     openEventIds: hits.map((e) => e.id).filter(Boolean),
+    items,
   };
 }
 
