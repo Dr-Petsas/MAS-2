@@ -176,7 +176,7 @@ export function spokenWiedervorlage({ items = [] } = {}, { max = 4 } = {}) {
 export async function resolveWiedervorlage(clientId, { wer = "", actor = "Chef" } = {}) {
   const stichwort = String(wer || "").trim().toLowerCase();
   if (!stichwort) {
-    return { ok: false, reason: "no_keyword", message: "Wessen Vorgang soll ich abhaken? Nenne mir den Absender." };
+    return { ok: false, reason: "no_keyword", message: "Was soll ich abhaken? Nenne mir den Absender." };
   }
   const { items } = await buildWiedervorlage(clientId);
   if (!items.length) {
@@ -209,7 +209,7 @@ export async function resolveWiedervorlage(clientId, { wer = "", actor = "Chef" 
     if (r.ok) geloest++;
   }
   if (!geloest) {
-    return { ok: false, reason: "resolve_failed", message: "Das Abhaken hat nicht geklappt — der Vorgang war nicht mehr offen." };
+    return { ok: false, reason: "resolve_failed", message: "Das Abhaken hat nicht geklappt — das war nicht mehr offen." };
   }
   return {
     ok: true,

@@ -34,7 +34,7 @@ import { pick } from "./variation.js";
 const OPEN_LOOKBACK_MS = 48 * 60 * 60 * 1000; // wie Morgen-Moment: 48 h zaehlen
 
 function catLabel(category) {
-  return SPOKEN_CATEGORY[category] || "einen kritischen Vorgang";
+  return SPOKEN_CATEGORY[category] || "eine kritische Sache";
 }
 
 // Volles Datum (16.06.2026): genau das Format, das die Sprech-Schicht in
@@ -98,7 +98,7 @@ export async function buildAsapQueue(clientId, { mailAccountIds } = {}) {
       eventId: d.eventId,
       who: d.who,
       summary: d.summary || "",
-      spoken: `${d.who !== "Unbekannt" ? d.who : "ein Vorgang"} — ${when}`,
+      spoken: `${d.who !== "Unbekannt" ? d.who : "eine Fristsache"} — ${when}`,
       ts: d.ts,
       deadlineMs: d.deadlineMs,
     });
@@ -227,7 +227,7 @@ export function spokenAsapQueue(queue) {
     return pick([
       "Gerade brennt nichts: keine kritischen Vorgaenge, keine Fristen, nichts Dringendes aus Post oder Telefon.",
       "Nichts Dringendes — rote Liste leer, keine Fristen, keine wartenden Freigaben.",
-      "Alles ruhig: kein kritischer Vorgang, keine faellige Frist, nichts wartet auf Sie.",
+      "Alles ruhig: nichts Kritisches, keine faellige Frist, nichts wartet auf Sie.",
     ]);
   }
   const p0 = items.filter((i) => i.prio === "P0");
