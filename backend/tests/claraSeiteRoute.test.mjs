@@ -1,7 +1,7 @@
 // Clara-Seite gegen einen Testmandanten: die Notiz geht ueber den bestehenden
 // Weg ins Praxisgedaechtnis und kommt bei Biancas Abfrage an; die Tagesliste
-// zeigt eine wartende Anrufliste und gibt sie ueber den bestehenden
-// Freigabeweg frei. Schreibt nur unter clients/zzz-mas2-claraseite.
+// zeigt eine wartende Anrufliste; Uebernehmen, Erledigen und Rueckgaengig
+// laufen ueber den bestehenden Statusweg der Vorgaenge. Schreibt nur unter clients/zzz-mas2-claraseite.
 import "dotenv/config";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -88,7 +88,7 @@ test("Knopf-Text merken und Vorgabe wiederherstellen", async () => {
   assert.deepEqual(zurueck.daten.texte, {});
 });
 
-test("wartende Anrufliste steht in der Tagesliste und wird ueber den bestehenden Weg freigegeben", async () => {
+test("wartende Anrufliste steht in der Tagesliste, Nicht anrufen und Rückgängig", async () => {
   const id = "gapfill_test_liste";
   // Form wie clara/gapFill.upsertCallListCase; Kandidaten ohne Nummer.
   await createCase(CID, {
@@ -109,13 +109,58 @@ test("wartende Anrufliste steht in der Tagesliste und wird ueber den bestehenden
   const zeile = vorher.daten.patienten.find((p) => p.id === id);
   assert.ok(zeile, "wartende Anrufliste steht in der Liste");
   assert.equal(zeile.dringlichkeit, "heute");
-  assert.deepEqual(zeile.freigabe, { art: "anrufliste", kandidaten: 1, datum: "2099-01-05", zeit: "10:00–11:00", kalender: "Dr. Beispiel", anlass: "Kontrolle Zahnersatz", moeglich: true });
+  assert.deepEqual(zeile.freigabe, {
+    art: "anrufliste", kandidaten: 1, anrufe: 1, patienten: [{ name: "Test Eins", grund: "", weg: "Anruf" }],
+    datum: "2099-01-05", zeit: "10:00–11:00", kalender: "Dr. Beispiel", anlass: "Kontrolle Zahnersatz", moeglich: true,
+  });
+  assert.equal(zeile.bereich, "patient");
 
-  const frei = await rufe(`/brain/gap-fill/${id}/approve`, { method: "POST", body: { by: "Sabine" } });
-  assert.equal(frei.status, 200);
-  assert.equal(frei.daten.approvedBy, "Sabine");
+  // "Nicht anrufen" auf der Seite: Status erledigt, mit Rueckgaengig wieder wartend.
+  const status = (st, note) => rufe(`/brain/cases/${id}/status`, { method: "POST", body: { status: st, by: "Sabine", note } });
+  assert.equal((await status("resolved")).status, 200);
+  const weg = await rufe("/brain/tagesliste");
+  assert.ok(!weg.daten.patienten.some((p) => p.id === id), "abgelehnte Liste steht nicht mehr in der Tagesliste");
+  const eintrag = weg.daten.erledigtHeute.find((v) => v.id === id);
+  assert.ok(eintrag && eintrag.anrufliste && eintrag.wer === "Sabine" && eintrag.zurueck === "waiting_approval", "sie steht unter heute erledigt, Rückgängig führt auf wartend");
+  await status(eintrag.zurueck, "Rückgängig");
+  const wieder = await rufe("/brain/tagesliste");
+  assert.ok(wieder.daten.patienten.some((p) => p.id === id && p.freigabe.moeglich), "nach Rückgängig wartet die Liste wieder");
+  const doc = (await masCollection(CID, "mas_cases").doc(id).get()).data();
+  assert.equal(doc.callList.approvedBy, null, "auf diesem Weg wird nichts freigegeben");
+});
 
-  const nachher = await rufe("/brain/tagesliste");
-  assert.ok(!nachher.daten.patienten.some((p) => p.id === id), "freigegebene Liste liegt bei Lisa und steht nicht mehr in der Tagesliste");
-  assert.equal((await rufe(`/brain/gap-fill/${id}/approve`, { method: "POST", body: { by: "Sabine" } })).status, 409, "zweite Freigabe wird abgelehnt");
+test("Ich kümmere mich und Erledigt tragen aus, der Verlauf steht am Vorgang, Rückgängig holt zurück", async () => {
+  const id = "case_test_rueckruf";
+  await createCase(CID, {
+    id, title: "Rückruf", topic: "callback", subject: { name: "Erika Musterfrau" }, status: "open", createdBy: "Bianca",
+    updates: [{ by: "Bianca", kind: "contact", text: "Bittet um Rückruf wegen des Kostenplans." }],
+  });
+  const status = (st, by, note) => rufe(`/brain/cases/${id}/status`, { method: "POST", body: { status: st, by, note } });
+  const liste = async () => (await rufe("/brain/tagesliste")).daten;
+
+  assert.ok((await liste()).patienten.some((p) => p.id === id), "offener Rückrufwunsch steht in der Liste");
+
+  await status("in_progress", "Sabine", "Sabine kümmert sich");
+  let l = await liste();
+  assert.ok(!l.patienten.some((p) => p.id === id), "übernommen: nicht mehr in der offenen Liste");
+  const ueb = l.uebernommen.find((v) => v.id === id);
+  assert.ok(ueb && ueb.wer === "Sabine" && ueb.von === "open" && ueb.nach === "in_progress" && ueb.wannMs > 0, "übernommen: wer, wann, von, nach");
+
+  await status("resolved", "Chef");
+  l = await liste();
+  assert.ok(!l.uebernommen.some((v) => v.id === id) && !l.patienten.some((p) => p.id === id), "erledigt: weder offen noch übernommen");
+  const erl = l.erledigtHeute.find((v) => v.id === id);
+  assert.ok(erl && erl.wer === "Chef" && erl.von === "in_progress" && erl.nach === "resolved" && erl.zurueck === "in_progress", "erledigt: wer, von, nach");
+
+  await status(erl.zurueck, "Chef", "Rückgängig");
+  l = await liste();
+  assert.ok(l.uebernommen.some((v) => v.id === id), "Rückgängig nach Erledigt: wieder übernommen");
+  await status("open", "Chef", "Rückgängig");
+  l = await liste();
+  assert.ok(l.patienten.some((p) => p.id === id) && !l.uebernommen.some((v) => v.id === id), "Rückgängig nach Übernehmen: wieder offen in der Liste");
+
+  const schritte = (await masCollection(CID, "mas_cases").doc(id).get()).data().updates.filter((u) => u.kind === "status");
+  assert.deepEqual(schritte.map((u) => `${u.by}:${u.statusFrom}>${u.statusTo}`),
+    ["Sabine:open>in_progress", "Chef:in_progress>resolved", "Chef:resolved>in_progress", "Chef:in_progress>open"], "jeder Schritt steht mit Name und altem/neuem Status am Vorgang");
+  assert.ok(schritte.every((u) => Number(u.ts) > 0), "jeder Schritt trägt seine Uhrzeit");
 });

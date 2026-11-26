@@ -40,8 +40,19 @@
   .zeile2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
   @media (max-width: 560px) { .zeile2 { grid-template-columns: 1fr; } }
   .feld label { display: block; font-size: 13.5px; color: var(--leise); margin-bottom: 3px; }
-  .gruppe { margin-bottom: 12px; }
-  .gruppe h3 { margin: 0 0 6px; font-size: 13.5px; font-weight: 600; color: var(--leise); }
+  .wahl { display: flex; flex-direction: column; gap: 10px; border: 1px solid rgb(238,238,238); border-radius: 10px; padding: 12px 14px 14px; background: #fcfcfd; }
+  .reiter { display: grid; grid-template-columns: repeat(auto-fill, minmax(94px, 94px)); gap: 6px; padding: 4px; background: #fff; border: 1px solid rgb(238,238,238); border-radius: 8px; }
+  .tab { cursor: pointer; background: #fff; padding: 6px 8px; border: 1px solid rgb(238,238,238); border-radius: 6px; text-align: center; font-size: 13px; font-weight: 500; }
+  .tab:hover { background: #405064; border-color: #405064; color: #fff; }
+  .tab.an { background: #24374e; border-color: #24374e; color: #fff; font-weight: 700; box-shadow: 0 1px 3px rgba(36,55,78,.25); }
+  @media (max-width: 980px) { .reiter { grid-template-columns: repeat(auto-fill, minmax(50px, 92px)); } }
+  h3.bereich { margin: 16px 0 8px; font-size: 14px; font-weight: 600; color: var(--leise); }
+  details.auf { margin: 0 0 8px; font-size: 14.5px; }
+  details.auf summary, details.verlauf summary { cursor: pointer; color: var(--akzent); }
+  details.auf ul { margin: 6px 0 0; padding-left: 20px; }
+  details.verlauf { margin-top: 20px; border-top: 1px solid var(--rand); padding-top: 14px; }
+  details.verlauf summary { font-weight: 600; font-size: 15px; }
+  details.verlauf ul.liste > li { border-left: 5px solid var(--grau-hell); }
   .knoepfe { display: flex; flex-wrap: wrap; gap: 8px; }
   .knopf { border: 1px solid var(--rand); background: #fff; border-radius: 999px; padding: 7px 14px; cursor: pointer; }
   .knopf:hover { border-color: var(--akzent); }
@@ -148,9 +159,13 @@
 
   <section class="karte" aria-labelledby="hListe">
     <h2 id="hListe">Heute zu erledigen</h2>
-    <p class="unter">Rückrufwünsche, dringende Post und Freigaben von Bianca, Lisa, Nadine und Clara. Gewöhnliche Termintelefonate stehen hier nicht.</p>
+    <p class="unter">Zuerst die Patienten, danach Rechnungen, Mahnungen und Fristsachen. Gewöhnliche Termintelefonate und gewöhnliche Post stehen hier nicht.</p>
     <div class="zaehler" id="zaehler"></div>
-    <ul class="liste" id="tagesliste"></ul>
+    <div id="tagesliste"></div>
+    <details class="verlauf" id="verlauf" hidden>
+      <summary id="verlaufTitel"></summary>
+      <div id="verlaufInhalt"></div>
+    </details>
     <details class="qm" id="qmBlock" hidden>
       <summary id="qmTitel">Qualitätsmanagement (Julia)</summary>
       <p class="klein">Erledigt werden diese Aufgaben wie bisher bei Julia.</p>
@@ -171,6 +186,9 @@
     clientId: params.get("clientId") || "",
     patient: null,
     knopf: null,
+    reiter: "",
+    unterwegs: [],
+    ladeLauf: 0,
     eigeneTexte: {},
     suchLauf: 0,
     suchTimer: null,
@@ -195,13 +213,20 @@
     ],
     liste: {
       patienten: [
-        { id: "c1", quelle: "Nadine", dringlichkeit: "sofort", thema: "Beschwerde", name: "Anna Testfall", telefon: null, kurz: "E-Mail: Patientin beschwert sich über die Rechnung zur Krone und kündigt an, sich an die Kammer zu wenden.", status: "waiting_approval", wartetAufFreigabe: true, kontakte: 2, zuletztMs: jetzt - 26 * STD },
-        { id: "c2", quelle: "Bianca", dringlichkeit: "sofort", thema: "Beschwerde", name: "Paul Platzhalter", telefon: "0170 0000201", kurz: "Hat seit der Füllung am Montag weiter Schmerzen und möchte, dass ihn heute noch jemand zurückruft.", status: "open", kontakte: 2, zuletztMs: jetzt - 2 * STD, rueckrufGewuenscht: true },
-        { id: "c3", quelle: "Bianca", dringlichkeit: "heute", thema: "Rückruf", name: "Erika Musterfrau", telefon: "0170 0000101", kurz: "Bittet um Rückruf wegen des Kostenplans. Erreichbar ab 14 Uhr.", status: "open", kontakte: 1, zuletztMs: jetzt - 4 * STD, rueckrufGewuenscht: true },
-        { id: "c4", quelle: "Lisa", dringlichkeit: "heute", thema: "Rückruf", name: "Otto Normal", telefon: "0170 0000202", kurz: "Lisa hat wegen der Zahnreinigung angerufen. Er möchte lieber mit jemandem aus der Praxis sprechen.", status: "in_progress", zustaendig: "Sabine", kontakte: 1, zuletztMs: jetzt - 5 * STD, rueckrufGewuenscht: true },
-        { id: "c6", quelle: "Clara", dringlichkeit: "heute", thema: "Termin", name: "", telefon: null, kurz: "", status: "waiting_approval", wartetAufFreigabe: true, kontakte: 1, zuletztMs: jetzt - 3 * STD,
-          freigabe: { art: "anrufliste", kandidaten: 6, datum: new Date(jetzt + 24 * STD).toISOString().slice(0, 10), zeit: "10:00–11:00", kalender: "Dr. Beispiel", anlass: "Kontrolle Zahnersatz", moeglich: true } },
-        { id: "c5", quelle: "Clara", dringlichkeit: "normal", thema: "Dokumente", name: "Dentallabor Beispiel", telefon: null, kurz: "Laborrechnung für Oktober fehlt noch. Bitte beim Labor nachfragen.", status: "open", kontakte: 1, zuletztMs: jetzt - 30 * STD },
+        { id: "c2", bereich: "patient", quelle: "Bianca", dringlichkeit: "sofort", thema: "Beschwerde", name: "Paul Platzhalter", telefon: "0170 0000201", kurz: "Hat seit der Füllung am Montag weiter Schmerzen und möchte, dass ihn heute noch jemand zurückruft.", status: "open", kontakte: 2, zuletztMs: jetzt - 2 * STD, rueckrufGewuenscht: true },
+        { id: "c3", bereich: "patient", quelle: "Bianca", dringlichkeit: "heute", thema: "Rückruf", name: "Erika Musterfrau", telefon: "0170 0000101", kurz: "Bittet um Rückruf wegen des Kostenplans. Erreichbar ab 14 Uhr.", status: "open", kontakte: 1, zuletztMs: jetzt - 4 * STD, rueckrufGewuenscht: true },
+        { id: "c6", bereich: "patient", quelle: "Clara", dringlichkeit: "heute", thema: "Termin", name: "", telefon: null, kurz: "", status: "waiting_approval", wartetAufFreigabe: true, kontakte: 1, zuletztMs: jetzt - 3 * STD,
+          freigabe: { art: "anrufliste", kandidaten: 11, anrufe: 3, datum: new Date(jetzt + 24 * STD).toISOString().slice(0, 10), zeit: "10:00–11:00", kalender: "Dr. Beispiel", anlass: "Prophylaxe", moeglich: true,
+            patienten: [{ name: "Jonas Probe", grund: "Zahnreinigung", weg: "Anruf" }, { name: "Lena Beispiel", grund: "Zahnreinigung", weg: "SMS" }, { name: "Max Mustermann", grund: "Kontrolle", weg: "Anruf" }] } },
+        { id: "c7", bereich: "rechnung", quelle: "Nadine", dringlichkeit: "heute", thema: "Abrechnung", name: "Dentallabor Beispiel", telefon: null, kurz: "E-Mail: Rechnung für Oktober, zahlbar innerhalb von 14 Tagen.", status: "open", kontakte: 1, zuletztMs: jetzt - 20 * STD, fristMs: jetzt + 2 * 24 * STD },
+        { id: "c1", bereich: "mahnung", quelle: "Nadine", dringlichkeit: "sofort", thema: "Abrechnung", name: "Musterversand GmbH", telefon: null, kurz: "E-Mail: zweite Mahnung zur Materialrechnung vom September.", status: "open", kontakte: 2, zuletztMs: jetzt - 26 * STD },
+        { id: "c5", bereich: "frist", quelle: "Nadine", dringlichkeit: "normal", thema: "Dokumente", name: "Kammer Beispielland", telefon: null, kurz: "E-Mail: Fortbildungsnachweise bitte bis Monatsende einreichen.", status: "open", kontakte: 1, zuletztMs: jetzt - 30 * STD, fristMs: jetzt + 9 * 24 * STD },
+      ],
+      uebernommen: [
+        { id: "c4", quelle: "Lisa", thema: "Rückruf", name: "Otto Normal", anrufliste: false, kurz: "Lisa hat wegen der Zahnreinigung angerufen. Er möchte lieber mit jemandem aus der Praxis sprechen.", wer: "Sabine", wannMs: jetzt - 1 * STD, von: "open", nach: "in_progress", zurueck: "open" },
+      ],
+      erledigtHeute: [
+        { id: "c8", quelle: "Bianca", thema: "Rückruf", name: "Anna Testfall", anrufliste: false, kurz: "Fragt, ob das Rezept abgeholt werden kann.", wer: "Sabine", wannMs: jetzt - 2 * STD, von: "open", nach: "resolved", zurueck: "open" },
       ],
       qm: [],
     },
@@ -328,18 +353,25 @@
   function gruppenZeichnen() {
     const ziel = $("gruppen");
     ziel.replaceChildren();
-    for (const g of window.CLARA_VORLAGEN) {
-      const reihe = el("div", { class: "knoepfe" });
-      for (const k of g.knoepfe) {
-        const an = zustand.knopf && zustand.knopf.id === k.id;
-        reihe.append(el("button", {
-          type: "button", class: "knopf" + (an ? " an" : ""), "aria-pressed": an ? "true" : "false",
-          title: zustand.eigeneTexte[k.id] ? "Eigener Text Ihrer Praxis" : null,
-          onclick: () => knopfWaehlen(k),
-        }, k.label, zustand.eigeneTexte[k.id] ? el("span", { class: "eigen" }, "✎") : null));
-      }
-      ziel.append(el("div", { class: "gruppe" }, el("h3", null, g.titel), reihe));
+    const alle = window.CLARA_VORLAGEN;
+    const gruppe = alle.find((g) => g.id === zustand.reiter) || alle[0];
+    const reiter = el("div", { class: "reiter", role: "tablist", "aria-label": "Bereich" });
+    for (const g of alle) {
+      reiter.append(el("button", {
+        type: "button", role: "tab", class: "tab" + (g === gruppe ? " an" : ""), "aria-selected": g === gruppe ? "true" : "false", title: g.titel,
+        onclick: () => { zustand.reiter = g.id; gruppenZeichnen(); },
+      }, g.kurz || g.titel));
     }
+    const reihe = el("div", { class: "knoepfe", role: "tabpanel" });
+    for (const k of gruppe.knoepfe) {
+      const an = zustand.knopf && zustand.knopf.id === k.id;
+      reihe.append(el("button", {
+        type: "button", class: "knopf" + (an ? " an" : ""), "aria-pressed": an ? "true" : "false",
+        title: zustand.eigeneTexte[k.id] ? "Eigener Text Ihrer Praxis" : null,
+        onclick: () => knopfWaehlen(k),
+      }, k.label, zustand.eigeneTexte[k.id] ? el("span", { class: "eigen" }, "✎") : null));
+    }
+    ziel.append(el("div", { class: "wahl" }, reiter, el("div", { class: "klein" }, gruppe.titel), reihe));
   }
 
   function knopfWaehlen(k) {
@@ -444,52 +476,114 @@
   // ---------------------------------------------------------------- Tagesliste
   const DRINGLICH = { sofort: "Sofort", heute: "Heute", normal: "Ohne Eile" };
 
-  async function listeLaden() {
-    let daten;
-    try { daten = DEMO ? demo.liste : await api("/brain/tagesliste"); }
-    catch (e) { daten = { patienten: [], qm: [], fehler: e.message }; }
+  const BEREICHE = [["patient", "Patienten"], ["rechnung", "Rechnungen"], ["mahnung", "Mahnungen"], ["frist", "Fristsachen"], ["sonstiges", "Sonstiges"]];
+  const STATUS_WORT = { open: "offen", in_progress: "übernommen", waiting_approval: "wartet auf Zustimmung", waiting_external: "wartet auf Antwort", resolved: "erledigt", closed: "geschlossen" };
+
+  function tagLang(iso) {
+    const d = new Date(iso + "T12:00:00Z");
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", weekday: "long", day: "numeric", month: "long" });
+  }
+
+  function listenZeile(p) {
+    const f = p.freigabe;
+    const tel = p.telefon ? el("a", { href: "tel:" + ziffern(p.telefon) }, "☎ " + p.telefon) : null;
+    const zusatz = [];
+    if (!f) {
+      if (p.fristMs) zusatz.push("Frist bis " + new Date(p.fristMs).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" }));
+      if (p.wartetAufFreigabe) zusatz.push("Antwort-Entwurf wartet bei Nadine auf Freigabe");
+      if (p.zustaendig) zusatz.push(p.zustaendig + " kümmert sich");
+      if (p.kontakte > 1) zusatz.push(p.kontakte + " Kontakte");
+    }
+    let inhalt = p.kurz || "";
+    let auf = null;
+    if (f) {
+      const anrufe = f.anrufe != null ? f.anrufe : f.kandidaten;
+      inhalt = "Am " + (f.datum ? tagLang(f.datum) : "genannten Tag") + (f.zeit ? ", " + f.zeit + " Uhr," : "") + " ist" + (f.kalender ? " bei " + f.kalender : "") + " noch frei."
+        + " Lisa möchte dafür " + (anrufe === 1 ? "einen Patienten" : anrufe + " Patienten") + " anrufen" + (f.anlass ? ", bei denen „" + f.anlass + "“ ansteht," : "") + " und ihnen diesen Termin anbieten."
+        + (f.kandidaten > anrufe ? " Insgesamt kämen " + f.kandidaten + " Patienten in Frage; sie beginnt mit diesen " + anrufe + "." : "")
+        + " " + (f.moeglich ? "Sie ruft niemanden an, solange Sie nicht zugestimmt haben. Zustimmen geht zurzeit nur im Gespräch mit Clara („Recall freigeben“)." : "Der Tag ist vorbei, die Liste kann weg.");
+      const leute = f.patienten || [];
+      if (leute.length) {
+        const ul = el("ul");
+        for (const k of leute) ul.append(el("li", null, k.name + (k.grund ? " · " + k.grund : "") + (k.weg === "SMS" ? " · bekommt eine SMS statt eines Anrufs" : "")));
+        auf = el("details", { class: "auf" }, el("summary", null, "Diese " + (leute.length === 1 ? "Person" : leute.length + " Patienten") + " ansehen"), ul);
+      }
+    }
+    return el("li", { class: p.dringlichkeit },
+      el("div", { class: "kopfzeile" },
+        el("span", { class: "marke " + p.dringlichkeit }, DRINGLICH[p.dringlichkeit]),
+        el("strong", null, f ? "Lisa möchte Patienten anrufen" : (p.name || "Unbekannter Anrufer")),
+        f ? null : el("span", { class: "marke" }, p.thema),
+        el("span", { class: "marke quelle" }, "von " + (f ? "Lisa" : p.quelle)),
+        el("span", { class: "klein rechts" }, wann(p.zuletztMs))),
+      el("div", { class: "inhalt" }, inhalt),
+      auf,
+      zusatz.length ? el("div", { class: "klein", style: "margin-bottom:8px" }, zusatz.join(" · ")) : null,
+      el("div", { class: "aktionen" }, tel,
+        f ? null : el("button", { type: "button", class: "neben", onclick: () => statusSetzen(p.id, "in_progress", (p.name || "Der Vorgang") + ": übernommen. Steht jetzt unten unter „Heute erledigt / übernommen“.", "kümmert sich") }, "Ich kümmere mich"),
+        el("button", { type: "button", class: "neben", onclick: () => statusSetzen(p.id, "resolved", f ? "Lisa ruft für diese Liste niemanden an. Rückgängig geht unten unter „Heute erledigt / übernommen“." : (p.name || "Der Vorgang") + ": erledigt. Rückgängig geht unten unter „Heute erledigt / übernommen“.") }, f ? "Nicht anrufen" : "Erledigt")));
+  }
+
+  function verlaufZeile(v, offen) {
+    return el("li", null,
+      el("div", { class: "kopfzeile" },
+        el("strong", null, v.anrufliste ? "Lisas Anrufliste" : (v.name || "Unbekannter Anrufer")),
+        v.anrufliste ? null : el("span", { class: "marke" }, v.thema),
+        el("span", { class: "klein rechts" }, v.wer + " · " + wann(v.wannMs))),
+      v.kurz && !v.anrufliste ? el("div", { class: "inhalt" }, v.kurz) : null,
+      el("div", { class: "klein", style: "margin-bottom:8px" }, v.anrufliste && !offen ? "Nicht anrufen" : "Status: " + (STATUS_WORT[v.von] || v.von) + " → " + (STATUS_WORT[v.nach] || v.nach)),
+      el("div", { class: "aktionen" },
+        offen ? el("button", { type: "button", class: "neben", onclick: () => statusSetzen(v.id, "resolved", (v.name || "Der Vorgang") + ": erledigt.") }, "Erledigt") : null,
+        el("button", { type: "button", class: "neben", onclick: () => statusSetzen(v.id, v.zurueck, (v.anrufliste ? "Lisas Anrufliste" : (v.name || "Der Vorgang")) + ": steht wieder in der Liste.", "Rückgängig") }, "Rückgängig")));
+  }
+
+  let listenDaten = { patienten: [], uebernommen: [], erledigtHeute: [] };
+
+  function listeZeichnen() {
+    const daten = listenDaten;
+    const sichtbar = (x) => !zustand.unterwegs.includes(x.id);
     const ziel = $("tagesliste");
     ziel.replaceChildren();
-    const pat = daten.patienten || [];
+    const pat = (daten.patienten || []).filter(sichtbar);
     const zahl = (art) => pat.filter((p) => p.dringlichkeit === art).length;
     const z = $("zaehler");
     z.replaceChildren();
-    if (pat.length) {
-      for (const art of ["sofort", "heute", "normal"]) {
-        if (zahl(art)) z.append(el("span", { class: "marke " + art }, zahl(art) + " " + DRINGLICH[art].toLowerCase()));
-      }
+    for (const art of ["sofort", "heute", "normal"]) {
+      if (zahl(art)) z.append(el("span", { class: "marke " + art }, zahl(art) + " " + DRINGLICH[art].toLowerCase()));
     }
-    if (daten.fehler) ziel.append(el("li", { class: "leerhinweis" }, "Die Liste lässt sich gerade nicht laden: " + daten.fehler));
-    else if (!pat.length) ziel.append(el("li", { class: "leerhinweis" }, "Nichts offen. Niemand wartet auf eine Antwort."));
-    for (const p of pat) {
-      const tel = p.telefon ? el("a", { href: "tel:" + ziffern(p.telefon) }, "☎ " + p.telefon) : null;
-      const zusatz = [];
-      const f = p.freigabe;
-      if (f) {
-        zusatz.push([f.kandidaten + " Patienten auf der Liste", f.anlass, f.kalender,
-          [f.datum ? datumKurz(f.datum) : "", f.zeit].filter(Boolean).join(" ")].filter(Boolean).join(" · "));
-        if (!f.moeglich) zusatz.push("der Tag ist vorbei");
-      } else {
-        if (p.wartetAufFreigabe) zusatz.push("Antwort-Entwurf wartet bei Nadine auf Freigabe");
-        if (p.zustaendig) zusatz.push(p.zustaendig + " kümmert sich");
-        if (p.kontakte > 1) zusatz.push(p.kontakte + " Kontakte");
-      }
-      ziel.append(el("li", { class: p.dringlichkeit },
-        el("div", { class: "kopfzeile" },
-          el("span", { class: "marke " + p.dringlichkeit }, DRINGLICH[p.dringlichkeit]),
-          el("strong", null, f ? "Anrufliste für Lisa" : (p.name || "Unbekannter Anrufer")),
-          el("span", { class: "marke" }, f ? "Freigabe" : p.thema),
-          el("span", { class: "marke quelle" }, "von " + p.quelle),
-          el("span", { class: "klein rechts" }, wann(p.zuletztMs))),
-        el("div", { class: "inhalt" }, f
-          ? "Lisa möchte diese Patienten anrufen, um eine freie Zeit im Kalender zu füllen. Sie ruft erst nach Ihrer Freigabe an."
-          : (p.kurz || "")),
-        zusatz.length ? el("div", { class: "klein", style: "margin-bottom:8px" }, zusatz.join(" · ")) : null,
-        el("div", { class: "aktionen" }, tel,
-          f && f.moeglich ? el("button", { type: "button", class: "haupt klein-knopf", onclick: () => freigeben(p) }, "Freigeben") : null,
-          p.status === "open" ? el("button", { type: "button", class: "neben", onclick: () => vorgangSetzen(p, "in_progress") }, "Ich kümmere mich") : null,
-          el("button", { type: "button", class: "neben", onclick: () => vorgangSetzen(p, "resolved") }, f ? "Nicht anrufen" : "Erledigt"))));
+    if (daten.fehler) ziel.append(el("div", { class: "leerhinweis" }, "Die Liste lässt sich gerade nicht laden: " + daten.fehler));
+    else if (!pat.length) ziel.append(el("div", { class: "leerhinweis" }, "Nichts offen. Niemand wartet auf eine Antwort."));
+    for (const [id, titel] of BEREICHE) {
+      const teil = pat.filter((p) => (p.bereich || "patient") === id);
+      if (!teil.length) continue;
+      const ul = el("ul", { class: "liste" });
+      for (const p of teil) ul.append(listenZeile(p));
+      ziel.append(el("h3", { class: "bereich" }, titel + " ", el("span", { class: "klein" }, "(" + teil.length + ")")), ul);
     }
+    const ueb = (daten.uebernommen || []).filter(sichtbar);
+    const erl = (daten.erledigtHeute || []).filter(sichtbar);
+    $("verlauf").hidden = !(ueb.length || erl.length);
+    $("verlaufTitel").textContent = "Heute erledigt / übernommen (" + (ueb.length + erl.length) + ")";
+    const vz = $("verlaufInhalt");
+    vz.replaceChildren();
+    for (const [titel, liste, offen] of [["Übernommen, noch nicht erledigt", ueb, true], ["Heute erledigt", erl, false]]) {
+      if (!liste.length) continue;
+      const ul = el("ul", { class: "liste" });
+      for (const v of liste) ul.append(verlaufZeile(v, offen));
+      vz.append(el("h3", { class: "bereich" }, titel), ul);
+    }
+  }
+
+  async function listeLaden() {
+    const lauf = ++zustand.ladeLauf;
+    let daten;
+    try { daten = DEMO ? demo.liste : await api("/brain/tagesliste"); }
+    catch (e) { daten = { patienten: [], qm: [], fehler: e.message }; }
+    // Eine Antwort, die vor einem spaeteren Klick losging, zeigt einen alten Stand.
+    if (lauf !== zustand.ladeLauf) return;
+    listenDaten = daten;
+    listeZeichnen();
 
     const qm = daten.qm || [];
     $("qmBlock").hidden = !qm.length;
@@ -508,36 +602,39 @@
     }
   }
 
-  function datumKurz(iso) {
-    const t = String(iso).split("-");
-    return t.length === 3 ? t[2] + "." + t[1] + "." : iso;
-  }
-
-  // Freigabe einer Anrufliste: der bestehende Weg, danach ruft Lisa wirklich an.
-  async function freigeben(p) {
-    const f = p.freigabe;
-    if (!window.confirm("Lisa ruft dann " + f.kandidaten + " Patienten an. Jetzt freigeben?")) return;
+  // Klick auf "Ich kümmere mich", "Erledigt", "Nicht anrufen", "Rückgängig":
+  // sofort aus der Anzeige, gegen Doppelklick gesperrt, der Status steht am Vorgang.
+  async function statusSetzen(id, status, gut, notiz) {
+    if (zustand.unterwegs.includes(id)) return;
+    zustand.unterwegs.push(id);
+    zustand.ladeLauf += 1;
+    listeZeichnen();
     const wer = $("wer").value.trim() || "Team";
     try {
-      if (DEMO) demo.liste.patienten = demo.liste.patienten.filter((x) => x.id !== p.id);
-      else await api("/brain/gap-fill/" + encodeURIComponent(p.id) + "/approve", { method: "POST", body: { by: wer } });
-      melden("Freigegeben. Lisa ruft die Patienten an.", "gut");
-    } catch (e) { melden("Die Freigabe hat nicht geklappt: " + e.message, "schlecht"); }
+      if (DEMO) demoStatus(id, status, wer);
+      else await api("/brain/cases/" + encodeURIComponent(id) + "/status", { method: "POST", body: { status, by: wer, note: notiz === "kümmert sich" ? wer + " kümmert sich" : notiz } });
+      melden(gut, "gut");
+    } catch (e) { melden("Nicht gespeichert, der Eintrag steht wieder in der Liste: " + e.message, "schlecht"); }
     await listeLaden();
+    zustand.unterwegs = zustand.unterwegs.filter((x) => x !== id);
+    listeZeichnen();
   }
 
-  async function vorgangSetzen(p, status) {
-    const wer = $("wer").value.trim() || "Team";
-    try {
-      if (DEMO) {
-        if (status === "resolved") demo.liste.patienten = demo.liste.patienten.filter((x) => x.id !== p.id);
-        else { p.status = status; p.zustaendig = wer; }
-      } else {
-        if (status === "in_progress") await api("/brain/cases/" + encodeURIComponent(p.id) + "/assign", { method: "POST", body: { assignee: "Team", instruction: wer + " kümmert sich", by: wer } }).catch(() => null);
-        await api("/brain/cases/" + encodeURIComponent(p.id) + "/status", { method: "POST", body: { status, by: wer } });
-      }
-    } catch (e) { melden("Das hat nicht geklappt: " + e.message, "schlecht"); }
-    await listeLaden();
+  // Nur fuer die Vorschau: verschiebt den erfundenen Eintrag zwischen den Listen.
+  function demoStatus(id, status, wer) {
+    const l = demo.liste;
+    const p = l.patienten.find((x) => x.id === id);
+    const v = l.uebernommen.find((x) => x.id === id) || l.erledigtHeute.find((x) => x.id === id);
+    l.patienten = l.patienten.filter((x) => x.id !== id);
+    l.uebernommen = l.uebernommen.filter((x) => x.id !== id);
+    l.erledigtHeute = l.erledigtHeute.filter((x) => x.id !== id);
+    if (p) demo.merk = demo.merk || {}, demo.merk[id] = p;
+    const kopf = p || v;
+    const eintrag = { id, quelle: kopf.quelle, thema: kopf.thema, name: kopf.name, anrufliste: !!(kopf.freigabe || kopf.anrufliste), kurz: kopf.kurz, wer, wannMs: Date.now(),
+      von: p ? p.status : v.nach, nach: status, zurueck: p ? p.status : v.zurueck };
+    if (status === "in_progress" && (p || v.nach === "resolved")) l.uebernommen.unshift(eintrag);
+    else if (status === "resolved") l.erledigtHeute.unshift(eintrag);
+    else if (demo.merk && demo.merk[id]) l.patienten.push(demo.merk[id]);
   }
 
   // --------------------------------------------------------------------- Start
