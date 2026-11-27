@@ -9,8 +9,9 @@ import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
 import { normalizePhone } from "./callerLookup.js";
 import { runGapFill, interneKalender, kandidatenBestand, rankCandidatesForGap, spokenMotiveLabel, faelligSeit, durationOfMotive, bucketKeyOf, fachbereichOf } from "./gapFill.js";
+import { anlassAbgleichen } from "./anlassAbgleich.js";
 import { bestaetigterAbstand, mitKontrollabstand, SPIEL_BUCKET_TAGE } from "./kontrollabstand.js";
-import { anlassAn, anlassErgaenzen } from "./leistungsAnlass.js";
+import { anlassAn } from "./leistungsAnlass.js";
 import { ladeVisitMotives } from "./motiveOverwatch.js";
 import { loadStatsMap, contactsInWindow, isBookedSuppressed, isSpamRisk } from "./outreachStats.js";
 import { log } from "../log.js";
@@ -487,7 +488,7 @@ export async function bucketKandidaten(clientId, booking, vorhandene, jetzt = Da
  * Anruflisten (Dauer passt, Behandler passt, nicht kuerzlich kontaktiert, kein Spam-Risiko),
  * aber ohne etwas zu speichern.
  */
-export async function passendFuerLuecke(clientId, { date, calendarId, startMin, minutes, besuchsgrund = "", nurAbsager = false } = {}) {
+export async function passendFuerLuecke(clientId, { date, calendarId, startMin, minutes, besuchsgrund = "", nurAbsager = false, anlassFuer = [] } = {}) {
   const booking = await loadBooking(clientId).catch(() => null);
   if (!booking?.locationId) return { ok: false, reason: "no_booking_config", gruppen: [], gesamt: 0 };
   const dauer = Number(minutes) || 0;
@@ -539,7 +540,8 @@ export async function passendFuerLuecke(clientId, { date, calendarId, startMin, 
   const absagerZahl = gezaehlt.filter(hatAbgesagt).length;
   const juengst = gezaehlt.filter((c) => !hatAbgesagt(c) && (Number(c.overdueDays) || 0) <= 730).length;
   gruppen = gruppen.map((g) => ({ ...g, patienten: g.patienten.slice(0, JE_GRUND) }));
-  if (anlassAn(clientId)) gruppen = await anlassErgaenzen(clientId, gruppen);
+  // Anlass-Abgleich Praxisprogramm gegen Terminhistorie; `anlassFuer`: Patienten, die die Maske zuerst geprueft haben will.
+  if (anlassAn(clientId)) gruppen = await anlassAbgleichen(clientId, gruppen, { zuerst: anlassFuer });
   const calendar = (booking.calendars || []).find((c) => c.id === s(calendarId));
   return {
     ok: true,

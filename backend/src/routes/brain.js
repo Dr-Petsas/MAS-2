@@ -1043,6 +1043,7 @@ router.post("/brain/luecke-fuellen", async (req, res) => {
       calendarId: req.body?.calendarId,
       startMin: Number(req.body?.startMin),
       minutes: Number(req.body?.minutes),
+      anlassFuer: Array.isArray(req.body?.anlassFuer) ? req.body.anlassFuer.slice(0, 20).map((x) => String(x || "")) : [],
     });
     res.json({ clientId, ...out });
   } catch (e) {
