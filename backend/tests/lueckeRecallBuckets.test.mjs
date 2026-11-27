@@ -22,7 +22,7 @@ const mitglied = (x = {}) => ({
   smsAllowed: true, calendarId: "kalA", dueAtMs: JETZT - 40 * TAG, recallReason: "recall",
   sourceVisitMotiveId: "pzr", targetVisitMotiveId: "pzr", targetVisitMotiveName: "Professionelle Zahnreinigung", ...x,
 });
-const aus = (m, o = {}) => L.bucketKandidatenAus(m, { motive, kalender, jetzt: JETZT, gruende: new Set(["recall"]), ...o });
+const aus = (m, o = {}) => L.bucketKandidatenAus(m, { motive, kalender, jetzt: JETZT, gruende: new Set(["recall"]), hoechstensTage: 0, nurGruende: new Set(), ...o });
 
 test("Schalter: aus ohne Eintrag, an je Praxis oder fuer alle", () => {
   assert.equal(L.bucketsAn("praxisX", ""), false);
@@ -82,6 +82,47 @@ test("Folgetermine und Reaktivierung bleiben draussen, solange sie nicht gewuens
   const m = [mitglied({ recallReason: "successor" }), mitglied({ patientId: "p2", recallReason: "reactivation" }), mitglied({ patientId: "p3" })];
   assert.deepEqual(aus(m).map((c) => c.patientId), ["p3"]);
   assert.deepEqual(aus(m, { gruende: new Set(["recall", "successor"]) }).map((c) => c.patientId), ["p1", "p3"]);
+});
+
+test("Einstellung Faelligkeit: ohne Angabe zwei Jahre, 0 hebt die Grenze auf, Unsinn faellt auf zwei Jahre", () => {
+  assert.equal(L.bucketHoechstensTage(""), 730);
+  assert.equal(L.bucketHoechstensTage(undefined), 730);
+  assert.equal(L.bucketHoechstensTage("365"), 365);
+  assert.equal(L.bucketHoechstensTage(" 400.9 "), 400);
+  assert.equal(L.bucketHoechstensTage("0"), 0);
+  assert.equal(L.bucketHoechstensTage("-5"), 730);
+  assert.equal(L.bucketHoechstensTage("zwei Jahre"), 730);
+});
+
+test("wer laenger faellig ist als die Grenze, kommt aus den Buckets nicht; die Grenze selbst zaehlt noch", () => {
+  const m = [
+    mitglied({ patientId: "p1", dueAtMs: JETZT - 3 * TAG }),
+    mitglied({ patientId: "p2", dueAtMs: JETZT - 730 * TAG }),
+    mitglied({ patientId: "p3", dueAtMs: JETZT - 731 * TAG }),
+    mitglied({ patientId: "p4", dueAtMs: JETZT - 1600 * TAG }),
+  ];
+  assert.deepEqual(aus(m, { hoechstensTage: 730 }).map((c) => c.patientId), ["p1", "p2"]);
+  assert.deepEqual(aus(m, { hoechstensTage: 365 }).map((c) => c.patientId), ["p1"]);
+  assert.deepEqual(aus(m, { hoechstensTage: 0 }).map((c) => c.patientId), ["p1", "p2", "p3", "p4"]);
+  assert.ok(aus(m, { hoechstensTage: 730 }).every((c) => c.overdueDays <= 730));
+});
+
+test("Einstellung Besuchsgruende: leer heisst alle, sonst Kennung, Name der Praxis oder gesprochene Kurzform", () => {
+  assert.equal(L.bucketBesuchsgruende("").size, 0);
+  assert.deepEqual([...L.bucketBesuchsgruende(" pzr , Kontrolle ")], ["pzr", "kontrolle"]);
+  const m = [
+    mitglied({ patientId: "p1" }),
+    mitglied({ patientId: "p2", targetVisitMotiveId: "ko" }),
+    mitglied({ patientId: "p3", targetVisitMotiveId: "lang" }),
+  ];
+  const wahl = (roh) => aus(m, { nurGruende: L.bucketBesuchsgruende(roh) }).map((c) => c.patientId);
+  assert.deepEqual(wahl(""), ["p1", "p2", "p3"]);
+  assert.deepEqual(wahl("ko"), ["p2"]);
+  assert.deepEqual(wahl("PRO professionelle Zahnreinigung"), ["p1"]);
+  assert.deepEqual(wahl("kontrolle,LANG"), ["p2", "p3"]);
+  const kurz = G.spokenMotiveLabel("PRO professionelle Zahnreinigung");
+  assert.deepEqual(wahl(kurz), ["p1"]);
+  assert.deepEqual(wahl("gibt es nicht"), []);
 });
 
 test("wer fuer den Besuchsgrund schon einen Termin vor sich hat, wird nicht vorgeschlagen", () => {

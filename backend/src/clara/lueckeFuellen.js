@@ -298,6 +298,23 @@ export function bucketsAn(clientId, roh = process.env.MAS_LUECKE_BUCKETS) {
 /** Welche Anlaesse zaehlen: "recall" (Recall-Muster des Besuchsgrunds), auf Wunsch auch "successor" (Folgetermin). */
 export const bucketGruende = (roh = process.env.MAS_LUECKE_BUCKET_GRUENDE) => new Set(liste(roh).length ? liste(roh) : ["recall"]);
 
+// Einengung der Bucket-Quelle (Chef 27.11.2026: hoechstens zwei Jahre faellig, alle Besuchsgruende).
+// MAS_LUECKE_BUCKET_TAGE=<Tage>: wer laenger faellig ist, kommt aus den Buckets nicht. 0 = ohne Grenze.
+// MAS_LUECKE_BUCKET_BESUCHSGRUENDE=<Kennung oder Name,...>: nur diese Besuchsgruende. Leer = alle.
+// Beides gilt nur fuer die Bucket-Quelle, die bisherigen Quellen bleiben, wie sie sind.
+const BUCKET_TAGE_VORGABE = 730;
+
+export function bucketHoechstensTage(roh = process.env.MAS_LUECKE_BUCKET_TAGE) {
+  if (!s(roh)) return BUCKET_TAGE_VORGABE;
+  const n = Number(s(roh));
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : BUCKET_TAGE_VORGABE;
+}
+
+export const bucketBesuchsgruende = (roh = process.env.MAS_LUECKE_BUCKET_BESUCHSGRUENDE) => new Set(liste(roh).map((x) => x.toLowerCase()));
+
+const grundGewaehlt = (nur, id, name) => !nur.size || nur.has(s(id).toLowerCase()) || nur.has(s(name).toLowerCase())
+  || nur.has((spokenMotiveLabel(name) || "").toLowerCase());
+
 async function bucketMitgliederLesen(clientId, locationId) {
   const loc = admin.firestore().collection("clients").doc(clientId).collection("locations").doc(locationId);
   const stand = (await loc.collection("recallBucketsSummary").doc("default").get()).data() || {};
@@ -357,8 +374,12 @@ export function _bucketCacheLeeren() { bucketCache.clear(); bucketZaehlerCache.c
  * Pure: Bucket-Mitglieder in der Form der Recall-Kandidaten. Bleibt nur, wer faellig und erreichbar ist und fuer
  * den Besuchsgrund (Ausloeser oder Ziel) keinen Termin vor sich hat. `motive`: Kennung -> { name, duration },
  * `kalender`: Kennung -> Name, `kommend`: Patient -> Kennungen der Besuchsgruende mit bevorstehendem Termin.
+ * `hoechstensTage`: laenger Faellige bleiben draussen (0 = ohne Grenze), `nurGruende`: nur diese Besuchsgruende (leer = alle).
  */
-export function bucketKandidatenAus(mitglieder, { motive = new Map(), kalender = new Map(), kommend = new Map(), gruende = bucketGruende(), jetzt = Date.now() } = {}) {
+export function bucketKandidatenAus(mitglieder, {
+  motive = new Map(), kalender = new Map(), kommend = new Map(), gruende = bucketGruende(),
+  hoechstensTage = bucketHoechstensTage(), nurGruende = bucketBesuchsgruende(), jetzt = Date.now(),
+} = {}) {
   const aus = [];
   for (const m of mitglieder || []) {
     const patientId = s(m.patientId);
@@ -368,10 +389,13 @@ export function bucketKandidatenAus(mitglieder, { motive = new Map(), kalender =
     const name = `${s(m.firstName)} ${s(m.lastName)}`.trim();
     if (!patientId || !grundId || !phone || !name || !gruende.has(s(m.recallReason))) continue;
     if (!faelligMs || faelligMs > jetzt) continue;
+    const overdueDays = Math.max(0, Math.round((jetzt - faelligMs) / TAG_MS));
+    if (hoechstensTage > 0 && overdueDays > hoechstensTage) continue;
     const vor = kommend.get(patientId);
     if (vor && (vor.has(grundId) || vor.has(s(m.sourceVisitMotiveId)))) continue;
     const grund = motive.get(grundId);
     const grundName = s(grund?.name) || s(m.targetVisitMotiveName);
+    if (!grundGewaehlt(nurGruende, grundId, grundName)) continue;
     aus.push({
       source: "recall",
       herkunft: "bucket",
@@ -386,7 +410,7 @@ export function bucketKandidatenAus(mitglieder, { motive = new Map(), kalender =
       durationMin: Number(grund?.duration) || 30,
       calendarId: s(m.calendarId) || null,
       doctorName: s(kalender.get(s(m.calendarId))),
-      overdueDays: Math.max(0, Math.round((jetzt - faelligMs) / TAG_MS)),
+      overdueDays,
       alreadyCalled: false,
       consent: { sms: m.smsAllowed === true ? true : null, reminder: null },
     });
