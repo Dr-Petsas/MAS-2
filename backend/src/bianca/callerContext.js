@@ -3,7 +3,7 @@ import { applyHumanReview } from "../brain/events.js";
 import { findContactsByPhone } from "../brain/addressBook.js";
 import { listCases, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
-import { itemAus, istLisaAnruf, nichtMehrAnrufen } from "../brain/lisaAnrufe.js";
+import { anliegenFuerKontext, itemAus, istLisaAnruf, nichtMehrAnrufen, ohneRegie } from "../brain/lisaAnrufe.js";
 
 // ============================================================================
 // Rückrufer-Kontext für Bianca (Telefon-Loop 2/2, Nacht 11./12.06.2026).
@@ -91,6 +91,12 @@ export function callerTatsachen(events, phone) {
     .slice(0, MAX_ITEMS);
 }
 
+/** Eine Zeile im Text fuer Bianca. Regieanweisungen aus alten Auftraegen stehen nie darin. */
+export function kontextZeile(e) {
+  const anliegen = istLisaAnruf(e) ? anliegenFuerKontext(e.anruf) : "";
+  return `- ${fmtWhen(e.ts)}: ${ohneRegie(e.summary)} (noch offen)${anliegen ? ` ${anliegen}` : ""}`;
+}
+
 /**
  * Compact German context for an inbound caller, from the shared brain.
  *
@@ -133,11 +139,7 @@ export async function buildCallerContext(clientId, phone) {
         .find((n) => n && !/^\+?\d/.test(n)) ||
     String(bookHit?.name || "").trim() || "";
 
-  const lines = hits.map((e) => {
-    const when = fmtWhen(e.ts);
-    const summary = String(e.summary || "").trim();
-    return `- ${when}: ${summary} (noch offen)`;
-  });
+  const lines = hits.map(kontextZeile);
 
   const context =
     `Praxisgedächtnis zu dieser Rufnummer${name ? ` (vermutlich ${name})` : ""}:\n` +

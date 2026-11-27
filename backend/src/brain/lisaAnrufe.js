@@ -58,6 +58,22 @@ function text(v, max = 0) {
   return max && t.length > max ? t.slice(0, max).trim() : t;
 }
 
+// Anweisungen an Lisa, die MAS frueher hinten an den Auftrag haengte. Die alte
+// Lisa schrieb den Auftrag samt Anweisung in ihren Bericht.
+const REGIE_ANFAENGE = ["[regieanweisung", "[identitaet fuer dieses gespraech", "[identität für dieses gespräch"];
+
+/** Text ohne angehaengte Regieanweisung: alles ab der ersten Anweisung entfaellt. */
+export function ohneRegie(v) {
+  const t = text(v);
+  const klein = t.toLowerCase();
+  let ab = -1;
+  for (const anfang of REGIE_ANFAENGE) {
+    const i = klein.indexOf(anfang);
+    if (i >= 0 && (ab < 0 || i < ab)) ab = i;
+  }
+  return ab < 0 ? t : t.slice(0, ab).trim();
+}
+
 function ziffern(v) {
   let out = "";
   for (const z of text(v)) if (z >= "0" && z <= "9") out += z;
@@ -174,6 +190,7 @@ export function pruefeAnruf(roh = {}) {
     phone_call_id: text(roh.phone_call_id, 160),
     auftrag_id: text(roh.auftrag_id, 160),
     standort: text(roh.standort, 120),
+    auftrag: auftragAus(roh.auftrag, roh.behandler),
   };
   return { ok: true, anruf };
 }
@@ -230,8 +247,113 @@ export function satzFuer(anruf) {
   }
 }
 
+// --- Auftrag der Praxis: was Bianca beim Rueckruf selbst aufgreift ----------
+
+const AUFTRAG_ARTEN = ["recall", "luecke", "nachricht"];
+// Bei diesen Ausgaengen ist das Anliegen der Praxis noch offen und Bianca fuehrt es beim Rueckruf weiter.
+const AUFGREIFEN = new Set(["abgebrochen", "niemand", "besetzt", "abgelehnt", "mailbox", "andere_person",
+  "rueckruf_gewuenscht", "meldet_sich_selbst"]);
+
+function datumText(datum) {
+  const ms = text(datum) ? new Date(`${text(datum)}T12:00:00Z`).getTime() : NaN;
+  if (!Number.isFinite(ms)) return "";
+  return new Intl.DateTimeFormat("de-DE", { timeZone: TZ, day: "numeric", month: "long", year: "numeric" }).format(new Date(ms));
+}
+
+/** Lisas `auftrag` in die gespeicherte Form bringen (rein). Ohne brauchbaren Inhalt: null. */
+function auftragAus(roh, behandler) {
+  if (!roh || typeof roh !== "object") return null;
+  const art = AUFTRAG_ARTEN.includes(text(roh.art)) ? text(roh.art) : "";
+  const nachricht = text(roh.nachricht, 400);
+  const ba = roh.behandlungsart && typeof roh.behandlungsart === "object" ? roh.behandlungsart : { name: roh.behandlungsart };
+  const lb = roh.letzter_besuch && typeof roh.letzter_besuch === "object" ? roh.letzter_besuch : {};
+  const kg = roh.kontrollgrund && typeof roh.kontrollgrund === "object" ? roh.kontrollgrund.text : roh.kontrollgrund;
+  const letzter = { datum: datumText(lb.datum) ? text(lb.datum, 10) : "", grund: text(lb.grund, 120) };
+  const a = {
+    art,
+    ziel: art === "nachricht" || (!art && nachricht) ? "nachricht_ausrichten" : "termin_vereinbaren",
+    behandler: text(roh.behandler, 80) || text(behandler, 80),
+    behandlungsart: text(ba.name, 120),
+    behandlungsart_id: text(ba.id, 120),
+    kalender_id: text(roh.kalender_id, 120),
+    letzter_besuch: letzter.datum || letzter.grund ? letzter : null,
+    kontrollgrund: text(kg, 300),
+    nachricht,
+  };
+  const leer = !a.art && !a.behandlungsart && !a.behandlungsart_id && !a.letzter_besuch && !a.kontrollgrund && !a.nachricht;
+  return leer ? null : a;
+}
+
+/** Was die Praxis will, in einem Satzteil ("einen Termin für … bei … vereinbaren"). */
+function zielText(anruf) {
+  const au = anruf?.auftrag;
+  if (!au) return "";
+  if (au.ziel === "nachricht_ausrichten") return "eine Nachricht ausrichten";
+  const was = au.behandlungsart || text(anruf.anlass);
+  const beh = au.behandler || text(anruf.behandler);
+  return `einen Termin${was ? ` für ${was}` : ""}${beh && !was.toLowerCase().includes(beh.toLowerCase()) ? ` bei ${beh}` : ""} vereinbaren`;
+}
+
+function hintergrundText(au) {
+  const teile = [];
+  if (au?.letzter_besuch) {
+    const wann = datumText(au.letzter_besuch.datum);
+    teile.push(`Letzter Besuch${wann ? ` am ${wann}` : ""}${au.letzter_besuch.grund ? ` (${au.letzter_besuch.grund})` : ""}.`);
+  }
+  if (au?.kontrollgrund) teile.push(`Grund für die Kontrolle: ${au.kontrollgrund}${au.kontrollgrund.endsWith(".") ? "" : "."}`);
+  return teile.join(" ");
+}
+
+function schonText(anruf) {
+  const teile = [];
+  if (text(anruf?.gesagt)) teile.push(`Lisa hat schon gesagt: ${text(anruf.gesagt)}${text(anruf.gesagt).endsWith(".") ? "" : "."}`);
+  const angebot = (Array.isArray(anruf?.angebot) ? anruf.angebot : []).map(terminText).filter(Boolean);
+  if (angebot.length) teile.push(`Lisa hat schon angeboten: ${angebot.join("; ")}.`);
+  return teile.join(" ");
+}
+
+/** Greift Bianca das Anliegen der Praxis beim Rueckruf selbst auf? Nur mit `auftrag` und offenem Anliegen. */
+export function wirdAufgegriffen(anruf) {
+  return !!anruf?.auftrag && AUFGREIFEN.has(ausgangVon(anruf));
+}
+
+/** Der Auftrag an Bianca fuer den Rueckruf. Wird nie vorgelesen. */
+function auftragAnBianca(anruf) {
+  const au = anruf.auftrag;
+  const lage = { abgebrochen: "Das Gespräch mit Lisa brach ab, bevor etwas feststand.", mailbox: "Lisa hat nur den Anrufbeantworter erreicht.",
+    andere_person: "Lisa hatte jemand anderen am Telefon.", rueckruf_gewuenscht: "Die Person hat um Rückruf gebeten.",
+    meldet_sich_selbst: "Die Person wollte sich selbst melden." }[ausgangVon(anruf)] || "Lisa hat niemanden erreicht.";
+  const tun = au.ziel === "nachricht_ausrichten"
+    ? `Auftrag: Die Nachricht der Praxis jetzt selbst ausrichten${au.nachricht ? `: „${au.nachricht}“` : "."}`
+    : `Auftrag: Jetzt selbst ${zielText(anruf)}. Sagen, warum die Praxis angerufen hat, und gleich freie Zeiten anbieten.`
+      + (au.behandlungsart ? ` Zu buchen ist die Behandlungsart „${au.behandlungsart}“.` : "");
+  const hinweis = text(anruf.beim_rueckruf) ? `Hinweis von Lisa: ${text(anruf.beim_rueckruf)}` : "";
+  return [lage, tun, hintergrundText(au), schonText(anruf), hinweis].filter(Boolean).join(" ");
+}
+
+/** Zusatz fuer den Text an Bianca (`context`): was die Praxis will. Leer, wenn nichts aufzugreifen ist. */
+export function anliegenFuerKontext(anruf) {
+  if (!wirdAufgegriffen(anruf)) return "";
+  const au = anruf.auftrag;
+  const will = au.ziel === "nachricht_ausrichten"
+    ? `Die Praxis möchte eine Nachricht ausrichten${au.nachricht ? `: „${au.nachricht}“` : ""}. Richte sie jetzt selbst aus.`
+    : `Die Praxis möchte ${zielText(anruf)}. Greif das von dir aus auf und biete den Termin jetzt selbst an`
+      + `${au.behandlungsart ? ` (Behandlungsart „${au.behandlungsart}“)` : ""}.`;
+  return [will, hintergrundText(au), schonText(anruf)].filter(Boolean).join(" ");
+}
+
+/** `auftrag` fuer Bianca (`items`): die gespeicherten Felder, dazu Ziel und Datum als Text. */
+function auftragFuerItem(anruf) {
+  const au = anruf?.auftrag;
+  if (!au) return null;
+  return { ...au, ziel_text: zielText(anruf), aufgreifen: wirdAufgegriffen(anruf),
+    letzter_besuch: au.letzter_besuch ? { ...au.letzter_besuch, datum_text: datumText(au.letzter_besuch.datum) } : null };
+}
+
 /** Anweisung fuer den Rueckruf, wenn Lisa keine mitgegeben hat. Wird nie vorgelesen. */
 export function beimRueckrufVon(anruf) {
+  // Mit Auftrag der Praxis und offenem Anliegen baut MAS die Anweisung selbst: Bianca fuehrt das Anliegen weiter.
+  if (wirdAufgegriffen(anruf)) return auftragAnBianca(anruf);
   if (text(anruf?.beim_rueckruf)) return text(anruf.beim_rueckruf);
   const anlass = `Anlass: ${grundVon(anruf)}.`;
   switch (ausgangVon(anruf)) {
@@ -290,8 +412,8 @@ export function itemAus(event) {
   if (!istLisaAnruf(event)) {
     return {
       id: event.id, ts: event.ts || 0, zeit: event.ts ? tagLang(event.ts) : "", art: "notiz",
-      patient: text(event.counterparty?.name || event.subject?.name), grund: text(event.summary),
-      ausgang: "", ausgang_text: "", versuche: 1, gesagt: "", angebot: [], beim_rueckruf: "", nicht_vortragen: false,
+      patient: text(event.counterparty?.name || event.subject?.name), grund: ohneRegie(event.summary),
+      ausgang: "", ausgang_text: "", versuche: 1, gesagt: "", angebot: [], beim_rueckruf: "", auftrag: null, nicht_vortragen: false,
     };
   }
   const a = event.anruf;
@@ -309,6 +431,8 @@ export function itemAus(event) {
     gesagt: text(a.gesagt),
     angebot: Array.isArray(a.angebot) ? a.angebot : [],
     beim_rueckruf: beimRueckrufVon(a),
+    // Was die Praxis will; null, wenn Lisa keinen Auftrag mitgeschickt hat.
+    auftrag: auftragFuerItem(a),
     // Tatsache fuer Bianca, kein Anlass: nicht vortragen, nicht von Bianca erledigen.
     nicht_vortragen: nichtMehrAnrufen(a),
   };
