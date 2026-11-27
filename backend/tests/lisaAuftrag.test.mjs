@@ -1,25 +1,32 @@
 // Lisas Anruf mit Auftrag der Praxis: Bianca greift das Anliegen beim Rueckruf selbst auf.
-// Reine Funktionen, ohne Datenbank.
+// Feldnamen wie Lisa V8 sie schickt. Reine Funktionen, ohne Datenbank.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pruefeAnruf, eintragAus, itemAus, beimRueckrufVon, anliegenFuerKontext, wirdAufgegriffen } from "../src/brain/lisaAnrufe.js";
+import { pruefeAnruf, eintragAus, itemAus, lisaAnrufeFuerSeite, beimRueckrufVon, anliegenFuerKontext, wirdAufgegriffen } from "../src/brain/lisaAnrufe.js";
 import { kontextZeile } from "../src/bianca/callerContext.js";
 
+// Wortgleich das Beispiel aus Lisas Beschreibung (27.11.2026).
 const AUFTRAG = {
   art: "recall",
-  behandler: "Dr. Beispiel",
-  behandlungsart: { id: "vm-kontrolle", name: "Kontrolluntersuchung" },
-  kalender_id: "kal-1",
-  letzter_besuch: { datum: "2026-05-12", grund: "Füllung" },
-  kontrollgrund: { quelle: "recall", text: "halbjährliche Kontrolle ist fällig" },
+  ziel: "Kontrolltermin vereinbaren",
+  arzt: "Dr. Muster",
+  behandlungsart: { id: "g1", name: "Kontrolluntersuchung" },
+  kalender: [{ id: "k1", name: "Dr. Muster" }],
+  letzter_besuch: { datum: "2026-10-14", grund: "Implantat-Besprechung" },
+  kontrollgrund: "Kontrolle nach der Besprechung",
+  anlass_quelle: "recall",
+  kampagne: "Herbstaktion",
+  zusatz: "freier Zusatz der Praxis aus der Maske",
+  vorgegebene_zeiten: [{ datum: "2026-12-02", uhrzeit: "10:30", behandler: "Dr. Muster" }],
 };
+const LISAS_TEXT = "Den Termin selbst anbieten und buchen: Kontrolluntersuchung bei Dr. Muster. Letzter Besuch: Oktober 2026, Implantat-Besprechung.";
 
 function anruf(mehr = {}) {
   return {
     anruf_id: "auftrag-1", nummer: "+491700000302", beginn: Date.UTC(2026, 10, 27, 0, 37), erreicht: "person", ausgang: "abgebrochen",
-    anlass: "Kontrolluntersuchung", behandler: "Dr. Beispiel", patient: { vorname: "Michael", nachname: "Petsas" },
-    gesagt: "Dass die Kontrolle ansteht.", angebot: [{ datum: "2026-12-01", uhrzeit: "10:30", behandler: "Dr. Beispiel" }],
-    auftrag: AUFTRAG, ...mehr,
+    anlass: "Kontrolluntersuchung", behandler: "Dr. Muster", patient: { vorname: "Michael", nachname: "Petsas" },
+    gesagt: "Lisa hat sich vorgestellt, zum Anlass kam sie noch nicht.", angebot: [{ datum: "2026-12-02", uhrzeit: "10:30", behandler: "Dr. Muster" }],
+    beim_rueckruf: LISAS_TEXT, auftrag: AUFTRAG, ...mehr,
   };
 }
 
@@ -29,58 +36,57 @@ function eintrag(mehr) {
   return eintragAus("zzz-ohne-datenbank", p.anruf);
 }
 
-test("abgebrochen mit Auftrag: Bianca bekommt den Auftrag, den Termin selbst anzubieten", () => {
+test("der Auftrag wird mit Lisas Feldnamen gespeichert und an Bianca durchgereicht", () => {
   const e = eintrag();
-  const item = itemAus(e);
-  assert.equal(item.auftrag.ziel, "termin_vereinbaren");
-  assert.equal(item.auftrag.ziel_text, "einen Termin für Kontrolluntersuchung bei Dr. Beispiel vereinbaren");
-  assert.equal(item.auftrag.aufgreifen, true);
-  assert.equal(item.auftrag.behandler, "Dr. Beispiel");
-  assert.equal(item.auftrag.behandlungsart, "Kontrolluntersuchung");
-  assert.equal(item.auftrag.behandlungsart_id, "vm-kontrolle");
-  assert.equal(item.auftrag.kalender_id, "kal-1");
-  assert.deepEqual(item.auftrag.letzter_besuch, { datum: "2026-05-12", grund: "Füllung", datum_text: "12. Mai 2026" });
-  assert.equal(item.auftrag.kontrollgrund, "halbjährliche Kontrolle ist fällig");
-
-  const br = item.beim_rueckruf;
-  for (const stueck of ["brach ab", "Jetzt selbst einen Termin für Kontrolluntersuchung bei Dr. Beispiel vereinbaren", "freie Zeiten anbieten",
-    "Behandlungsart „Kontrolluntersuchung“", "Letzter Besuch am 12. Mai 2026 (Füllung)", "halbjährliche Kontrolle ist fällig",
-    "Lisa hat schon gesagt: Dass die Kontrolle ansteht.", "Lisa hat schon angeboten:", "10:30 Uhr"]) {
-    assert.ok(br.includes(stueck), `beim_rueckruf ohne "${stueck}": ${br}`);
-  }
-  assert.ok(!br.includes("klären"), br);
-
-  const zeile = kontextZeile(e);
-  for (const stueck of ["Das Gespräch brach ab", "Die Praxis möchte einen Termin für Kontrolluntersuchung bei Dr. Beispiel vereinbaren",
-    "biete den Termin jetzt selbst an", "Letzter Besuch am 12. Mai 2026 (Füllung)", "Lisa hat schon angeboten:"]) {
-    assert.ok(zeile.includes(stueck), `context ohne "${stueck}": ${zeile}`);
-  }
+  const { aufgreifen, letzter_besuch, ...rest } = itemAus(e).auftrag;
+  const { letzter_besuch: lb, ...geschickt } = AUFTRAG;
+  assert.deepEqual(rest, { ...geschickt, nachricht: "", vorgegebene_zeiten: [{ datum: "2026-12-02", uhrzeit: "10:30", behandler: "Dr. Muster", termin_id: "" }] });
+  assert.deepEqual(letzter_besuch, { ...lb, datum_text: "14. Oktober 2026" });
+  assert.equal(aufgreifen, true);
+  assert.equal(itemAus(e).beim_rueckruf, LISAS_TEXT, "Lisas eigener Text gilt");
 });
 
-test("nicht erreicht und Anrufbeantworter greifen das Anliegen ebenso auf, erledigte Ausgaenge nicht", () => {
+test("abgebrochen: im Text fuer Bianca steht, was die Praxis will, mit Hintergrund und dem schon Gesagten", () => {
+  const zeile = kontextZeile(eintrag());
+  for (const stueck of ["Das Gespräch brach ab", "Die Praxis möchte: Kontrolltermin vereinbaren (Kontrolluntersuchung) bei Dr. Muster.",
+    "biete den Termin jetzt selbst an", "Letzter Besuch am 14. Oktober 2026 (Implantat-Besprechung).", "Grund für die Kontrolle: Kontrolle nach der Besprechung.",
+    "Lisa hat sich vorgestellt, zum Anlass kam sie noch nicht.", "Lisa hat schon angeboten:", "10:30 Uhr"]) {
+    assert.ok(zeile.includes(stueck), `context ohne "${stueck}": ${zeile}`);
+  }
+  assert.ok(!zeile.includes("Lisa hat schon gesagt: Lisa hat"), zeile);
+});
+
+test("ohne Lisas Text baut MAS den Auftrag an Bianca: Termin anbieten, nicht klaeren", () => {
   for (const erreicht of ["niemand", "mailbox"]) {
-    const e = eintrag({ erreicht, ausgang: "", gesagt: "", angebot: [] });
+    const e = eintrag({ erreicht, ausgang: "", gesagt: "", angebot: [], beim_rueckruf: "" });
     assert.equal(wirdAufgegriffen(e.anruf), true, erreicht);
-    assert.ok(beimRueckrufVon(e.anruf).includes("Jetzt selbst einen Termin"), beimRueckrufVon(e.anruf));
-    assert.ok(!beimRueckrufVon(e.anruf).includes("Lisa hat schon"), "nichts gesagt, nichts angeboten");
+    const br = beimRueckrufVon(e.anruf);
+    assert.ok(br.startsWith("Den Termin jetzt selbst anbieten und buchen: Kontrolltermin vereinbaren (Kontrolluntersuchung) bei Dr. Muster."), br);
+    assert.ok(br.includes("Letzter Besuch am 14. Oktober 2026 (Implantat-Besprechung).") && !br.includes("klären"), br);
     assert.ok(anliegenFuerKontext(e.anruf).includes("biete den Termin jetzt selbst an"));
   }
+  const n = eintrag({ erreicht: "niemand", ausgang: "", gesagt: "", angebot: [], beim_rueckruf: "",
+    auftrag: { art: "nachricht", ziel: "eine Nachricht der Praxis ausrichten", nachricht: "Ihr Zahnersatz ist da." } });
+  assert.equal(beimRueckrufVon(n.anruf), "Die Nachricht der Praxis jetzt selbst ausrichten: „Ihr Zahnersatz ist da.“");
+  assert.ok(anliegenFuerKontext(n.anruf).includes("Richte sie jetzt selbst aus"), anliegenFuerKontext(n.anruf));
+});
+
+test("erledigte Ausgaenge tragen den Auftrag nur als Angabe", () => {
   for (const ausgang of ["kein_interesse", "nicht_mehr_anrufen", "falsche_person", "anderes_anliegen"]) {
-    const e = eintrag({ ausgang });
+    const e = eintrag({ ausgang, beim_rueckruf: "" });
     assert.equal(wirdAufgegriffen(e.anruf), false, ausgang);
     assert.equal(anliegenFuerKontext(e.anruf), "", ausgang);
     assert.equal(itemAus(e).auftrag.aufgreifen, false, ausgang);
+    assert.ok(!beimRueckrufVon(e.anruf).includes("anbieten"), ausgang);
   }
 });
 
-test("Lisas eigener Hinweis bleibt als Hinweis stehen; eine Nachricht wird ausgerichtet statt ein Termin angeboten", () => {
-  const mitHinweis = eintrag({ beim_rueckruf: "Erst ab 16 Uhr erreichbar." });
-  assert.ok(beimRueckrufVon(mitHinweis.anruf).endsWith("Hinweis von Lisa: Erst ab 16 Uhr erreichbar."), beimRueckrufVon(mitHinweis.anruf));
-
-  const n = eintrag({ erreicht: "niemand", ausgang: "", gesagt: "", angebot: [], auftrag: { art: "nachricht", nachricht: "Ihr Zahnersatz ist da." } });
-  assert.equal(itemAus(n).auftrag.ziel, "nachricht_ausrichten");
-  assert.ok(beimRueckrufVon(n.anruf).includes("Die Nachricht der Praxis jetzt selbst ausrichten: „Ihr Zahnersatz ist da.“"), beimRueckrufVon(n.anruf));
-  assert.ok(!beimRueckrufVon(n.anruf).includes("Termin"), beimRueckrufVon(n.anruf));
+test("die Clara-Seite zeigt, was die Praxis wollte", () => {
+  const e = eintrag();
+  const zeile = lisaAnrufeFuerSeite([e], { startOfDayMs: 0 }).offen[0];
+  assert.equal(zeile.auftrag.ziel, "Kontrolltermin vereinbaren (Kontrolluntersuchung) bei Dr. Muster");
+  assert.ok(zeile.auftrag.hintergrund.includes("Letzter Besuch am 14. Oktober 2026"), zeile.auftrag.hintergrund);
+  assert.equal(zeile.beimRueckruf, LISAS_TEXT);
 });
 
 test("ohne auftrag bleibt alles wie bisher", () => {
@@ -90,6 +96,7 @@ test("ohne auftrag bleibt alles wie bisher", () => {
   assert.equal(item.auftrag, null);
   assert.equal(item.beim_rueckruf, "Das Anliegen klären.");
   assert.ok(kontextZeile(e).endsWith("(noch offen)"), kontextZeile(e));
+  assert.equal(lisaAnrufeFuerSeite([e], { startOfDayMs: 0 }).offen[0].auftrag, null);
   assert.equal(eintrag({ auftrag: {} }).anruf.auftrag, null, "leerer Auftrag zaehlt nicht");
   assert.equal(eintrag({ auftrag: "Kontrolle" }).anruf.auftrag, null, "nur ein Objekt zaehlt");
 });

@@ -621,6 +621,8 @@
     let ausgang = LISA_AUSGANG[z.ausgang] || "Anruf";
     if (z.ausgang === "mailbox") ausgang += z.mailboxNachricht ? ", Nachricht hinterlassen" : ", keine Nachricht hinterlassen";
     const zeilen = [el("div", { class: "inhalt" }, "Anlass: " + (z.anlass || "nicht angegeben"))];
+    if (z.auftrag && z.auftrag.ziel) zeilen.push(el("div", { class: "inhalt" }, "Die Praxis wollte: " + z.auftrag.ziel + (z.auftrag.nachricht ? ": „" + z.auftrag.nachricht + "“" : "")));
+    if (z.auftrag && z.auftrag.hintergrund) zeilen.push(el("div", { class: "klein", style: "margin-bottom:6px" }, z.auftrag.hintergrund));
     if (z.termin) zeilen.push(el("div", { class: "inhalt" }, "Termin: " + z.termin));
     if (z.gesagt) zeilen.push(el("div", { class: "inhalt" }, z.gesagt));
     if (z.angebot && z.angebot.length) zeilen.push(el("div", { class: "inhalt" }, "Angeboten: " + z.angebot.join(" oder ")));
