@@ -18,7 +18,7 @@ import { zentraleListe, zentraleAnzahl, setzeStand } from "../improveZentrale.js
 import admin from "../firebase.js";
 import { log } from "../log.js";
 import { exportTenant, eraseTenant, applyRetention } from "../dsgvo.js";
-import { DEFAULT_CLIENT_ID, resolveClientId, resolveUser } from "./_shared.js";
+import { DEFAULT_CLIENT_ID, nurAngemeldet, resolveClientId, resolveUser } from "./_shared.js";
 
 const router = express.Router();
 
@@ -223,6 +223,7 @@ router.post("/cf/updateOrCancelAppointment", async (req, res) => {
 // confirmation matching the clientId to guard against accidents.
 
 function requireAdmin(req, res) {
+  if (!nurAngemeldet(req, res)) return false;
   const { isAdmin } = resolveUser(req);
   if (!isAdmin) {
     res.status(403).json({ ok: false, error: "admin_required" });

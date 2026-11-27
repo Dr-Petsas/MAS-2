@@ -56,6 +56,15 @@ export function resolveUser(req) {
   return { userId: "", isAdmin: true };
 }
 
+// Pfade, die auch ohne erzwungene Anmeldung nie ohne Nachweis gehen (alle Daten einer Praxis herausgeben oder
+// loeschen, Aufraeumen starten): nur ein angemeldeter Nutzer oder der Dienstschluessel. Antwortet selbst mit 401.
+export function nurAngemeldet(req, res) {
+  const art = req.auth?.kind;
+  if (art === "user" || art === "service") return true;
+  res.status(401).json({ ok: false, error: "unauthenticated", grund: "anmeldung_noetig", klartext: "Das geht nur mit Anmeldung." });
+  return false;
+}
+
 // Welche Postfächer darf dieser Aufrufer sehen? Rein, ohne Firestore —
 // mailAccess() lädt die Konten und ruft das hier auf.
 //

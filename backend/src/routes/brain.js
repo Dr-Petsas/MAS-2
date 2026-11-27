@@ -32,7 +32,7 @@ import { enqueueBrainWrite } from "../brain/outbox.js";
 import { sendMail } from "../mail/mailbox.js";
 import { prepareCaseDraft } from "../mail/nadineAuto.js";
 import { buildLetterPdf, letterFilename, archiveLetter } from "../mail/letter.js";
-import { PUBLIC_BASE_URL, actorName, fmtDay, renderArgs, resolveAnsweredEvent, resolveClientId } from "./_shared.js";
+import { PUBLIC_BASE_URL, actorName, fmtDay, nurAngemeldet, renderArgs, resolveAnsweredEvent, resolveClientId } from "./_shared.js";
 
 const router = express.Router();
 
@@ -1151,6 +1151,7 @@ router.post("/brain/gap-fill/:caseId/remove-candidate", async (req, res) => {
 // als RETENTION_DAYS (Standard 90 Tage) sind — endgültig.
 router.post("/brain/retention/run", async (req, res) => {
   try {
+    if (!nurAngemeldet(req, res)) return;
     const clientId = resolveClientId(req);
     const days = Number(req.body?.days) || undefined; // ohne Angabe: Mandanten-Regler
     const out = await runRetentionSweep(clientId, { days });
