@@ -3,7 +3,7 @@ import { applyHumanReview } from "../brain/events.js";
 import { findContactsByPhone } from "../brain/addressBook.js";
 import { listCases, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
-import { anliegenFuerKontext, itemAus, istLisaAnruf, nichtMehrAnrufen, ohneRegie } from "../brain/lisaAnrufe.js";
+import { anliegenFuerKontext, itemAus, istLisaAnruf, nichtMehrAnrufen, ohneRegie, weiteresFuerKontext } from "../brain/lisaAnrufe.js";
 
 // ============================================================================
 // Rückrufer-Kontext für Bianca (Telefon-Loop 2/2, Nacht 11./12.06.2026).
@@ -93,7 +93,7 @@ export function callerTatsachen(events, phone) {
 
 /** Eine Zeile im Text fuer Bianca. Regieanweisungen aus alten Auftraegen stehen nie darin. */
 export function kontextZeile(e) {
-  const anliegen = istLisaAnruf(e) ? anliegenFuerKontext(e.anruf) : "";
+  const anliegen = istLisaAnruf(e) ? [anliegenFuerKontext(e.anruf), weiteresFuerKontext(e.anruf)].filter(Boolean).join(" ") : "";
   return `- ${fmtWhen(e.ts)}: ${ohneRegie(e.summary)} (noch offen)${anliegen ? ` ${anliegen}` : ""}`;
 }
 

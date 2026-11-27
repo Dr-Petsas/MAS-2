@@ -625,6 +625,7 @@
     if (z.auftrag && z.auftrag.hintergrund) zeilen.push(el("div", { class: "klein", style: "margin-bottom:6px" }, z.auftrag.hintergrund));
     if (z.termin) zeilen.push(el("div", { class: "inhalt" }, "Termin: " + z.termin));
     if (z.gesagt) zeilen.push(el("div", { class: "inhalt" }, z.gesagt));
+    if (z.weiteresAnliegen) zeilen.push(el("div", { class: "inhalt" }, "Weiteres Anliegen: „" + z.weiteresAnliegen + "“"));
     if (z.angebot && z.angebot.length) zeilen.push(el("div", { class: "inhalt" }, "Angeboten: " + z.angebot.join(" oder ")));
     if (z.rueckrufWann) zeilen.push(el("div", { class: "inhalt" }, "Rückruf erwünscht: " + z.rueckrufWann));
     if (z.offen && z.nichtMehrAnrufen) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Bianca weiß das, spricht es bei einem Anruf dieser Person aber nicht an. Bitte in der Kartei vermerken und dann auf erledigt setzen."));

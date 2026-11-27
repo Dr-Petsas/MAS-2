@@ -191,6 +191,8 @@ export function pruefeAnruf(roh = {}) {
     auftrag_id: text(roh.auftrag_id, 160),
     standort: text(roh.standort, 120),
     auftrag: auftragAus(roh.auftrag),
+    // Ein Anliegen neben dem Auftrag (Rezept, Rechnung), im Wortlaut der Person. Haelt den Eintrag offen.
+    weiteres_anliegen: text(roh.weiteres_anliegen, 400),
   };
   return { ok: true, anruf };
 }
@@ -200,8 +202,20 @@ export function ausgangVon(anruf) {
   return anruf?.erreicht === "person" ? text(anruf.ausgang) : text(anruf?.erreicht);
 }
 
+/** Das Anliegen neben dem Auftrag, im Wortlaut der Person. Leer, wenn Lisa keines gemeldet hat. */
+export function weiteresAnliegen(anruf) {
+  return text(anruf?.weiteres_anliegen);
+}
+
+/** Offen fuer die Praxis: nach dem Ausgang, und immer, solange ein weiteres Anliegen wartet (auch bei `termin`). */
 export function istOffen(anruf) {
-  return !NICHT_OFFEN.has(ausgangVon(anruf));
+  return !NICHT_OFFEN.has(ausgangVon(anruf)) || !!weiteresAnliegen(anruf);
+}
+
+/** Zusatz fuer den Text an Bianca (`context`): das weitere Anliegen als Tatsache. */
+export function weiteresFuerKontext(anruf) {
+  const w = weiteresAnliegen(anruf);
+  return w ? `Dabei kam ein weiteres Anliegen zur Sprache, das die Praxis noch klären muss: „${w}“` : "";
 }
 
 export function nichtMehrAnrufen(anruf) {
@@ -435,7 +449,7 @@ export function itemAus(event) {
     return {
       id: event.id, ts: event.ts || 0, zeit: event.ts ? tagLang(event.ts) : "", art: "notiz",
       patient: text(event.counterparty?.name || event.subject?.name), grund: ohneRegie(event.summary),
-      ausgang: "", ausgang_text: "", versuche: 1, gesagt: "", angebot: [], beim_rueckruf: "", auftrag: null, nicht_vortragen: false,
+      ausgang: "", ausgang_text: "", versuche: 1, gesagt: "", angebot: [], beim_rueckruf: "", auftrag: null, weiteres_anliegen: "", nicht_vortragen: false,
     };
   }
   const a = event.anruf;
@@ -455,6 +469,8 @@ export function itemAus(event) {
     beim_rueckruf: beimRueckrufVon(a),
     // Was die Praxis will; null, wenn Lisa keinen Auftrag mitgeschickt hat.
     auftrag: auftragFuerItem(a),
+    // Anliegen neben dem Auftrag, im Wortlaut der Person; leer, wenn keines gemeldet ist.
+    weiteres_anliegen: weiteresAnliegen(a),
     // Tatsache fuer Bianca, kein Anlass: nicht vortragen, nicht von Bianca erledigen.
     nicht_vortragen: nichtMehrAnrufen(a),
   };
@@ -481,6 +497,7 @@ function seitenZeile(event) {
     rueckrufWann: text(a.rueckruf_wann),
     beimRueckruf: beimRueckrufVon(a),
     auftrag: auftragFuerSeite(a),
+    weiteresAnliegen: weiteresAnliegen(a),
     nichtMehrAnrufen: nichtMehrAnrufen(a),
     offen: event.status === ITEM_STATUS.OPEN,
     erledigtVon: event.status === ITEM_STATUS.RESOLVED ? text(event.resolvedBy?.actor) : "",
@@ -527,7 +544,8 @@ export async function speichereLisaAnruf(clientId, roh = {}) {
   const versuche = 1 + fruehere.reduce((m, e) => Math.max(m, Number(e.anruf?.versuche) || 1), 0);
   const eintrag = eintragAus(clientId, anruf, { versuche });
   // Ein technisch gescheiterter Anruf ersetzt nichts: der fruehere Eintrag bleibt offen.
-  const ersetzt = ausgangVon(anruf) === "gescheitert" ? [] : fruehere.map((e) => e.id);
+  // Ebenso bleibt ein frueherer Eintrag offen, in dem noch ein weiteres Anliegen wartet.
+  const ersetzt = ausgangVon(anruf) === "gescheitert" ? [] : fruehere.filter((e) => !weiteresAnliegen(e.anruf)).map((e) => e.id);
   const antwort = { ok: true, id: anruf.kennung, neu: true, offen: eintrag.status === ITEM_STATUS.OPEN, satz: eintrag.summary, versuche, ersetzt };
   if (roh.trocken === true) return { ...antwort, trocken: true };
 
