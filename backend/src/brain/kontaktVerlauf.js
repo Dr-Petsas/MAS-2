@@ -14,6 +14,7 @@ import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { loadBooking } from "../clara/booking.js";
 import { queryByPatient } from "./eventStore.js";
+import { getRetentionConfig } from "./retention.js";
 import { LISA_ANRUF_EXTRACTOR } from "./lisaAnrufe.js";
 import {
   ZURECHNEN_MS, abfrageAus, berlinTag, berlinUhrzeit, einhaltungAus, eintragFuerReaktion, ersatzTermin, mitPruefen, monateVon, passtZurAbfrage,
@@ -56,14 +57,26 @@ async function ladeMonate(clientId, monate) {
   return teile.flatMap((s) => s.docs.map((d) => d.data()));
 }
 
+// Aufbewahrung der Praxis in Tagen, zehn Minuten gemerkt: eine Kampagne meldet tausende Sendungen hintereinander.
+const tageGemerkt = new Map();
+async function aufbewahrungTage(clientId) {
+  const hit = tageGemerkt.get(clientId);
+  if (hit && Date.now() - hit.wann < TAKT_MS) return hit.tage;
+  const tage = (await getRetentionConfig(clientId)).days;
+  tageGemerkt.set(clientId, { tage, wann: Date.now() });
+  return tage;
+}
+
 /** Meldung der Plattform zu einer SMS oder E-Mail annehmen. Dieselbe `kontakt_id` noch einmal erzeugt nichts Neues. */
 export async function speichereSendung(clientId, roh = {}) {
   const p = pruefeSendung(roh);
   if (!p.ok) return p;
-  const eintrag = sendungEintrag(clientId, p.sendung);
-  const ref = col(clientId).doc(eintrag.id);
-  if ((await ref.get()).exists) return { ok: true, id: eintrag.id, neu: false };
-  if (roh.trocken === true) return { ok: true, id: eintrag.id, neu: true, trocken: true };
+  const ref = col(clientId).doc(p.sendung.kennung);
+  if ((await ref.get()).exists) return { ok: true, id: ref.id, neu: false };
+  if (roh.trocken === true) return { ok: true, id: ref.id, neu: true, trocken: true };
+  // Der Eintrag steht ausserhalb der Zeitreihe und verfaellt deshalb ueber eine eigene Frist: so lange, wie die
+  // Praxis ihr Gedaechtnis aufbewahrt (Regler, Standard 90 Tage), gerechnet ab dem Versand.
+  const eintrag = sendungEintrag(clientId, p.sendung, { verfallMs: p.sendung.ms + (await aufbewahrungTage(clientId)) * 86_400_000 });
   try {
     await ref.create({ ...eintrag, createdAt: FieldValue.serverTimestamp() });
   } catch (err) {

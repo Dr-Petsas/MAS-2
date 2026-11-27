@@ -243,12 +243,24 @@ function sendungSatz(s) {
     : `Die Praxis wollte ${um} ${was} an ${wer} schicken. Der Versand ist fehlgeschlagen.${worum}`;
 }
 
-/** Der Eintrag fuers Praxisgedaechtnis zu einer gemeldeten Sendung (rein). */
-export function sendungEintrag(clientId, s) {
-  const event = buildEvent({
+/**
+ * Der Eintrag fuers Praxisgedaechtnis zu einer gemeldeten Sendung (rein).
+ *
+ * Er steht AUSSERHALB der Zeitreihe: er traegt kein Feld `ts`, seine Zeit steht in `zeitMs`. Alle Stellen, die
+ * "die neuesten N Eintraege seit einem Zeitpunkt" lesen (Biancas Auskunft ueber den Anrufer, Tagesliste, Suche,
+ * Morgenlage, rote Liste), fragen ueber `ts` und sehen ihn deshalb nie. So verdraengt eine Kampagne mit
+ * tausenden Sendungen dort keinen offenen Anruf von Lisa. Gefunden wird der Eintrag ueber den Patienten
+ * (eventStore.queryByPatient gibt ihm die Zeit zurueck) und ueber `verlauf.monat` (die Auskunft).
+ *
+ * Weil die Aufbewahrung der Praxis ueber `ts` loescht, braucht er eine eigene Frist: `verfallMs` wird zu
+ * `expiresAtMs`, der taegliche Aufraeumlauf (retention.js, Schritt 1b) loescht ihn danach.
+ */
+export function sendungEintrag(clientId, s, { verfallMs = 0 } = {}) {
+  const { ts: _ausserhalbDerZeitreihe, ...event } = buildEvent({
     clientId,
     id: s.kennung,
     ts: s.ms,
+    expiresAtMs: verfallMs,
     channel: s.weg === "sms" ? CHANNELS.PRAXIS_SMS : CHANNELS.PRAXIS_EMAIL,
     direction: DIRECTIONS.OUT,
     type: EVENT_TYPES.INTERACTION,
@@ -272,7 +284,7 @@ export function sendungEintrag(clientId, s) {
     einhaltung: { stand: "kein_termin", geprueft_ms: 0, verlegt: false },
     pruefen: false,
   };
-  return { ...event, sendung: { kontakt_id: s.kontakt_id, anlass: s.anlass, link: s.link, angebot_termin_id: s.angebot_termin_id }, verlauf };
+  return { ...event, zeitMs: s.ms, sendung: { kontakt_id: s.kontakt_id, anlass: s.anlass, link: s.link, angebot_termin_id: s.angebot_termin_id }, verlauf };
 }
 
 // --- Meldung der Plattform: eine Reaktion ------------------------------------

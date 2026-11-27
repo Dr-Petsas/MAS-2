@@ -64,10 +64,19 @@ export async function upsertEvent(clientId, input) {
   return { event };
 }
 
+/**
+ * Gemeldete Sendungen (SMS, E-Mail aus Luecke fuellen und Kampagne) stehen ausserhalb der Zeitreihe: sie tragen
+ * kein Feld `ts`, damit sie in queryRecent/queryLatest nie vorkommen und dort nichts verdraengen (siehe
+ * kontaktVerlaufLogik.sendungEintrag). Wer sie gezielt liest, bekommt ihre Zeit aus `zeitMs` als `ts` zurueck.
+ */
+function mitZeit(e) {
+  return e && e.ts == null && Number(e.zeitMs) > 0 ? { ...e, ts: Number(e.zeitMs) } : e;
+}
+
 /** Fetch a single event by id, or null. */
 export async function getEvent(clientId, eventId) {
   const snap = await col(clientId).doc((eventId || "").trim()).get();
-  return snap.exists ? snap.data() : null;
+  return snap.exists ? mitZeit(snap.data()) : null;
 }
 
 /**
@@ -114,7 +123,7 @@ export async function queryByPatient(clientId, patientId, limit = 100) {
     .where("subject.patientId", "==", pid)
     .limit(500)
     .get();
-  const events = snap.docs.map((d) => d.data());
+  const events = snap.docs.map((d) => mitZeit(d.data()));
   events.sort((a, b) => (b.ts || 0) - (a.ts || 0));
   return events.slice(0, Math.max(1, limit));
 }

@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import express from "express";
 import admin from "../src/firebase.js";
 import { masCollection } from "../src/tenant.js";
-import { appendEvent } from "../src/brain/eventStore.js";
+import { appendEvent, getEvent, queryByPatient, queryLatest, queryRecent } from "../src/brain/eventStore.js";
+import { getRetentionConfig } from "../src/brain/retention.js";
 import { fortschreiben, _taktVergessen } from "../src/brain/kontaktVerlauf.js";
 import {
   abfrageAus, berlinTag, berlinUhrzeit, bezugAus, einhaltungAus, ersatzTermin, monateVon, pruefeReaktion, pruefeSendung, quelleVonAnruf,
@@ -19,10 +20,12 @@ const jetzt = Date.now();
 const STD = 3_600_000;
 const TAG = 24 * STD;
 
+const { default: brainRouter } = await import("../src/routes/brain.js");
 const { default: seiteRouter } = await import("../src/routes/claraSeite.js");
 const { default: verlaufRouter } = await import("../src/routes/kontaktVerlauf.js");
 const app = express();
 app.use(express.json());
+app.use(brainRouter);
 app.use(seiteRouter);
 app.use(verlaufRouter);
 const srv = await new Promise((r) => { const s = app.listen(0, "127.0.0.1", () => r(s)); });
@@ -101,8 +104,11 @@ test("Meldungen der Plattform pruefen ohne Datenbank", () => {
   assert.equal(grund({ patient: {} }), "patient_fehlt");
   assert.equal(grund({ standort: "" }), "standort_fehlt");
 
-  const e = sendungEintrag(CID, pruefeSendung(sendung({ quelle: "kampagne", kampagne_id: "k1", kampagne_name: "Prophylaxe" })).sendung);
+  const gemeldet = pruefeSendung(sendung({ quelle: "kampagne", kampagne_id: "k1", kampagne_name: "Prophylaxe" })).sendung;
+  const e = sendungEintrag(CID, gemeldet, { verfallMs: gemeldet.ms + 90 * TAG });
   assert.equal(e.id, "kontakt-s-1");
+  assert.equal("ts" in e, false, "ausserhalb der Zeitreihe: kein Feld ts");
+  assert.deepEqual([e.zeitMs, e.expiresAtMs], [gemeldet.ms, gemeldet.ms + 90 * TAG], "die Zeit steht in zeitMs, geloescht wird ueber die eigene Frist");
   assert.equal(e.channel, "praxis_sms", "eigener Kanal: die Sperre der alten Lisa-SMS und die Anrufliste aendern sich nicht");
   assert.equal(e.status, "none");
   assert.deepEqual({ quelle: e.verlauf.quelle, kampagne: e.verlauf.kampagne_id, stand: e.verlauf.kontakt.stand, erreicht: e.verlauf.kontakt.erreicht },
@@ -313,4 +319,58 @@ test("ein Anruf aus der Zeit vor dem Block wird einmal nachgetragen", async () =
   const v = (await ref.get()).data().verlauf;
   assert.deepEqual([v.weg, v.quelle, v.termin.stand, v.termin.termin_id], ["anruf", "recall", "vereinbart", "t-d"], "nachgetragen und im selben Lauf wieder mit dem Termin verknuepft");
   assert.deepEqual(await fortschreiben(CID), { uebersprungen: true }, "hoechstens alle zehn Minuten");
+});
+
+test("Sendungen stehen ausserhalb der Zeitreihe: 801 neuere Sendungen verdraengen den offenen Anruf von Lisa nicht", async () => {
+  const NUMMER = "+491700000409";
+  const offen = await rufe("/brain/lisa-anrufe", { method: "POST", body: { anruf_id: "v-9", nummer: NUMMER, beginn: jetzt - 3 * STD, erreicht: "niemand",
+    patient: { id: "pat-z", vorname: "Otto", nachname: "Beispiel" }, anlass: "Kontrolluntersuchung", standort: ORT } });
+  assert.deepEqual([offen.status, offen.daten.offen], [201, true]);
+
+  // Eine Kampagne meldet danach 801 Sendungen: mehr, als Biancas Auskunft und die Tagesliste lesen (800).
+  const ANZAHL = 801;
+  const db = admin.firestore();
+  for (let von = 0; von < ANZAHL; von += 400) {
+    const batch = db.batch();
+    for (let i = von; i < Math.min(ANZAHL, von + 400); i += 1) {
+      const s = pruefeSendung(sendung({ kontakt_id: `m-${i}`, zeit: jetzt - STD + i, quelle: "kampagne", aktion_id: "", kampagne_id: "kam-gross", kampagne_name: "Grosse Kampagne",
+        patient: { id: `pat-m-${i}`, nachname: `Muster${i}` } })).sendung;
+      const e = sendungEintrag(CID, s, { verfallMs: s.ms + 90 * TAG });
+      batch.create(masCollection(CID, "mas_events").doc(e.id), e);
+    }
+    await batch.commit();
+  }
+
+  // Wer "die neuesten N seit" liest, sieht keine Sendung und findet den Anruf.
+  for (const lesen of [queryLatest, queryRecent]) {
+    const reihe = await lesen(CID, jetzt - 14 * TAG, 800);
+    assert.equal(reihe.filter((e) => e.extractor === "plattform-versand").length, 0, `${lesen.name}: keine Sendung in der Zeitreihe`);
+    assert.ok(reihe.some((e) => e.id === "lisa-anruf-v-9"), `${lesen.name}: der offene Anruf ist da`);
+  }
+  const k = (await rufe(`/brain/caller-context?phone=${encodeURIComponent(NUMMER)}`)).daten;
+  assert.deepEqual([k.found, k.openEventIds], [true, ["lisa-anruf-v-9"]], "Bianca kennt den offenen Anruf beim Rueckruf");
+  const seite = (await rufe("/brain/tagesliste")).daten.lisaAnrufe;
+  assert.ok(seite.offen.some((z) => z.id === "lisa-anruf-v-9"), "die Tagesliste zeigt den offenen Anruf");
+  // Ein spaeterer Anruf von Lisa findet den frueheren Versuch und ersetzt ihn.
+  const zweiter = await rufe("/brain/lisa-anrufe", { method: "POST", body: { anruf_id: "v-10", nummer: NUMMER, beginn: jetzt - 1 * STD, erreicht: "mailbox",
+    patient: { id: "pat-z", vorname: "Otto", nachname: "Beispiel" }, anlass: "Kontrolluntersuchung", standort: ORT } });
+  assert.deepEqual([zweiter.daten.ersetzt, zweiter.daten.versuche], [["lisa-anruf-v-9"], 2]);
+
+  // Gezaehlt werden die Sendungen trotzdem, und je Patient sind sie mit ihrer Zeit zu finden.
+  const d = await auskunft("?kampagne_id=kam-gross&eintraege=0");
+  assert.deepEqual([d.zahlen.gesamt.versuche, d.zahlen.je_quelle.kampagne.kontaktiert, d.zahlen.je_quelle.luecke.versuche], [ANZAHL, ANZAHL, 0]);
+  const einer = await queryByPatient(CID, "pat-m-5");
+  assert.deepEqual([einer.length, einer[0].id, einer[0].ts], [1, "kontakt-m-5", jetzt - STD + 5]);
+  assert.equal((await getEvent(CID, "kontakt-m-5")).ts, jetzt - STD + 5);
+
+  // Ueber die Schnittstelle gemeldet: ohne ts, mit der Aufbewahrung der Praxis als eigener Frist. Der taegliche
+  // Aufraeumlauf loescht ueber genau diese Abfrage (retention.js, Schritt 1b).
+  const alt = jetzt - 400 * TAG;
+  const gemeldet = await rufe("/brain/kontakt-verlauf/sendung", { method: "POST", body: sendung({ kontakt_id: "uralt", zeit: alt, patient: { id: "pat-alt", nachname: "Alt" } }) });
+  assert.equal(gemeldet.status, 201);
+  const roh = (await masCollection(CID, "mas_events").doc("kontakt-uralt").get()).data();
+  const tage = (await getRetentionConfig(CID)).days;
+  assert.deepEqual(["ts" in roh, roh.zeitMs, roh.expiresAtMs], [false, alt, alt + tage * TAG]);
+  const abgelaufen = await masCollection(CID, "mas_events").where("expiresAtMs", "<", Date.now()).get();
+  assert.deepEqual(abgelaufen.docs.map((x) => x.id), ["kontakt-uralt"], "abgelaufen ist nur die alte Sendung");
 });
