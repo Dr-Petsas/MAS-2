@@ -93,6 +93,22 @@
   details.qm summary { cursor: pointer; color: var(--leise); font-weight: 600; font-size: 15px; }
   details.qm ul.liste > li { padding: 8px 12px; border-left: 5px solid var(--grau-hell); font-size: 14.5px; }
   details.qm ul.liste > li.spaet { border-left-color: #d99a00; }
+  table.kv { width: 100%; border-collapse: collapse; margin: 12px 0 6px; font-size: 14.5px; }
+  table.kv th, table.kv td { padding: 7px 8px; border-bottom: 1px solid var(--grau-hell); text-align: right; white-space: nowrap; }
+  table.kv th:first-child, table.kv td:first-child { text-align: left; white-space: normal; }
+  table.kv thead th { color: var(--leise); font-weight: 600; font-size: 13px; }
+  table.kv tr.unterzeile td { color: var(--leise); font-size: 13.5px; padding-top: 3px; padding-bottom: 3px; }
+  table.kv tr.unterzeile td:first-child { padding-left: 20px; }
+  table.kv tr.summe td { font-weight: 600; border-top: 2px solid var(--rand); border-bottom: 0; }
+  .marke.q-kampagne { background: #e8eefc; color: #2a4fa3; }
+  .marke.q-luecke { background: var(--akzent-hell); color: var(--akzent); }
+  .marke.q-recall { background: #f3e9fb; color: #6b3fa0; }
+  .marke.q-sonst { background: var(--grau-hell); color: var(--leise); }
+  ul.liste > li.q-kampagne { border-left: 5px solid #2a4fa3; }
+  ul.liste > li.q-luecke { border-left: 5px solid var(--akzent); }
+  ul.liste > li.q-recall { border-left: 5px solid #6b3fa0; }
+  ul.liste > li.q-sonst { border-left: 5px solid #b9c3cd; }
+  .kv-wahl { margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -187,6 +203,15 @@
       <ul class="liste" id="lisaHeuteListe"></ul>
     </details>
   </section>
+
+  <section class="karte" aria-labelledby="hKontakt">
+    <h2 id="hKontakt">Was aus den Kontakten wurde</h2>
+    <p class="unter">Jede SMS, jede E-Mail und jeder Anruf an Patienten aus Kampagnen, aus „Lücke füllen“ und von Lisa: wer reagiert hat, wer einen Termin bekam und ob der Termin eingehalten wurde. Die drei Quellen stehen getrennt.</p>
+    <div class="knoepfe" id="kvZeitraum"></div>
+    <div id="kvZahlen"></div>
+    <div class="knoepfe kv-wahl" id="kvFilter"></div>
+    <ul class="liste" id="kvListe" style="margin-top:12px"></ul>
+  </section>
 </main>
 
 <script src="clara-vorlagen.js"></script>
@@ -265,6 +290,48 @@
         ],
       },
     },
+  };
+
+  // Vorschau fuer "Was aus den Kontakten wurde": dieselbe Form wie GET /brain/kontakt-verlauf.
+  const kvDemo = (id, std, quelle, weg, patient, anlass, kontakt, termin, einhaltung, mehr) => Object.assign({ id, zeitMs: jetzt - std * STD, quelle, weg, patient, anlass, kampagne_id: "", kampagne_name: "", aktion_id: "",
+    kontakt: Object.assign({ stand: "", erreicht: false, text: "", reaktion: "", reaktionMs: 0 }, kontakt),
+    termin: Object.assign({ stand: "keiner", text: "", ueber: "" }, termin),
+    einhaltung: Object.assign({ stand: "kein_termin", text: "" }, einhaltung) }, mehr);
+  const kvZahl = (kontaktiert, erreicht, termin, eingehalten, versuche, einhaltung) => ({ kontaktiert, erreicht, termin, eingehalten, versuche, einhaltung: einhaltung || {} });
+  const KAMPAGNE = { kampagne_id: "k1", kampagne_name: "Prophylaxe im November" };
+  demo.kontakt = {
+    zahlen: {
+      je_quelle: {
+        kampagne: kvZahl(4, 3, 2, 1, 4, { wahrgenommen: 1, unklar: 1 }),
+        luecke: kvZahl(2, 1, 1, 0, 3, { offen: 1 }),
+        recall: kvZahl(5, 4, 1, 0, 5, { offen: 1 }),
+        sonst: kvZahl(0, 0, 0, 0, 0),
+      },
+      gesamt: kvZahl(7, 6, 3, 1, 12, { wahrgenommen: 1, offen: 2, unklar: 1 }),
+      je_aktion: [
+        { quelle: "luecke", aktion_id: "a1", name: "", zuletztMs: jetzt - 5 * STD, zahlen: kvZahl(2, 1, 1, 0, 3, { offen: 1 }) },
+        { quelle: "kampagne", kampagne_id: "k1", name: KAMPAGNE.kampagne_name, zuletztMs: jetzt - 240 * STD, zahlen: kvZahl(4, 3, 2, 1, 4, { wahrgenommen: 1, unklar: 1 }) },
+      ],
+    },
+    eintraege: [
+      kvDemo("l4", 1, "recall", "anruf", "Otto Normal", "Zahnreinigung", { stand: "erreicht", erreicht: true, text: "erreicht" }),
+      kvDemo("l3", 2, "recall", "anruf", "Max Mustermann", "Kontrolle des Zahnersatzes", { stand: "erreicht", erreicht: true, text: "erreicht" }),
+      kvDemo("l2", 3, "recall", "anruf", "Lena Beispiel", "Kontrolluntersuchung bei Dr. Beispiel", { stand: "anrufbeantworter", text: "Anrufbeantworter" }),
+      kvDemo("l5", 4, "recall", "anruf", "Erika Musterfrau", "Zahnreinigung", { stand: "erreicht", erreicht: true, text: "erreicht" },
+        { stand: "vereinbart", ueber: "lisa", text: "Freitag, 4. Dezember, 10:30 Uhr bei Dr. Beispiel, gebucht von Lisa" }, { stand: "offen", text: "steht noch aus" }),
+      kvDemo("l1", 5, "luecke", "anruf", "Jonas Probe", "Zahnreinigung, ein freier Termin morgen um 10 Uhr bei Dr. Beispiel", { stand: "nicht_erreicht", text: "nicht erreicht" }, null, null, { aktion_id: "a1" }),
+      kvDemo("s1", 5.2, "luecke", "sms", "Jonas Probe", "Zahnreinigung", { stand: "gesendet", text: "verschickt, keine Reaktion" }, null, null, { aktion_id: "a1" }),
+      kvDemo("s2", 5.2, "luecke", "sms", "Paul Platzhalter", "Zahnreinigung", { stand: "gesendet", erreicht: true, reaktion: "buchung", reaktionMs: jetzt - 4.5 * STD, text: "verschickt, hat gebucht" },
+        { stand: "vereinbart", ueber: "online", text: "Samstag, 28. November, 10:00 Uhr bei Dr. Beispiel, gebucht online" }, { stand: "offen", text: "steht noch aus" }, { aktion_id: "a1" }),
+      kvDemo("l6", 6, "recall", "anruf", "Anna Testfall", "Kontrolluntersuchung", { stand: "nicht_erreicht", erreicht: true, reaktion: "rueckruf", reaktionMs: jetzt - 2 * STD, text: "nicht erreicht, hat zurückgerufen" }),
+      kvDemo("c1", 240, "kampagne", "sms", "Erika Musterfrau", "Zahnreinigung", { stand: "gesendet", erreicht: true, reaktion: "buchung", reaktionMs: jetzt - 236 * STD, text: "verschickt, hat gebucht" },
+        { stand: "vereinbart", ueber: "online", text: "Dienstag, 24. November, 09:00 Uhr bei Dr. Beispiel, gebucht online" }, { stand: "wahrgenommen", text: "wahrgenommen" }, KAMPAGNE),
+      kvDemo("c2", 240, "kampagne", "sms", "Max Mustermann", "Zahnreinigung", { stand: "gesendet", text: "verschickt, keine Reaktion" }, null, null, KAMPAGNE),
+      kvDemo("c3", 240, "kampagne", "email", "Lena Beispiel", "Zahnreinigung", { stand: "gesendet", erreicht: true, reaktion: "link_geoeffnet", reaktionMs: jetzt - 230 * STD, text: "verschickt, Link geöffnet" }, null, null, KAMPAGNE),
+      kvDemo("c4", 240, "kampagne", "sms", "Anna Testfall", "Zahnreinigung", { stand: "gesendet", erreicht: true, reaktion: "buchung", reaktionMs: jetzt - 200 * STD, text: "verschickt, hat gebucht" },
+        { stand: "vereinbart", ueber: "praxis", text: "Mittwoch, 25. November, 14:00 Uhr bei Dr. Beispiel, gebucht von der Praxis" }, { stand: "unklar", text: "unklar, im Kalender ist nichts vermerkt" }, KAMPAGNE),
+    ],
+    abgeschnitten: false,
   };
 
   // ------------------------------------------------------------------- Zugriff
@@ -611,6 +678,111 @@
     listeZeichnen();
   }
 
+  // ------------------------------------------------ Was aus den Kontakten wurde
+  // Eine Auskunft (GET /brain/kontakt-verlauf) fuer Zahlen und Eintraege. Kampagnen, Luecke fuellen und
+  // Lisas Recall-Anrufe bleiben getrennt; die Summe steht nur unter der Aufschluesselung.
+  const QUELLEN_REIHE = ["kampagne", "luecke", "recall", "sonst"];
+  const QUELLE_NAME = { kampagne: "Kampagnen", luecke: "Lücke füllen", recall: "Lisas Recall-Anrufe", sonst: "Sonstiges" };
+  const QUELLE_EINZAHL = { kampagne: "Kampagne", luecke: "Lücke füllen", recall: "Recall-Anruf", sonst: "Sonstiges" };
+  const WEG_NAME = { anruf: "Anruf", sms: "SMS", email: "E-Mail" };
+  const REAKTION_NAME = { link_geoeffnet: "hat den Link geöffnet", antwort: "hat geantwortet", rueckruf: "hat zurückgerufen", buchung: "hat einen Termin gebucht" };
+  const EINHALTUNG_NAME = [["wahrgenommen", "wahrgenommen"], ["offen", "noch ausstehend"], ["verlegt", "verlegt"], ["abgesagt", "abgesagt"], ["nicht_erschienen", "nicht erschienen"], ["unklar", "unklar"]];
+  const KV_ZEIGEN = 30;
+  const kv = { tage: 30, quelle: "", daten: null, fehler: "", lauf: 0, alle: false, karte: {} };
+
+  const tagVor = (tage) => new Date(Date.now() - (tage - 1) * 24 * STD).toLocaleDateString("en-CA", { timeZone: "Europe/Berlin" });
+  const tagKurz = (ms) => new Date(ms).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit" });
+
+  function kvZahlZeile(titel, z, klasse) {
+    return el("tr", { class: klasse || "" }, el("td", null, titel),
+      ...[z.kontaktiert, z.erreicht, z.termin, z.eingehalten, z.versuche].map((n) => el("td", null, String(n || 0))));
+  }
+
+  function kvTermine(z) {
+    const teile = EINHALTUNG_NAME.filter(([k]) => z.einhaltung && z.einhaltung[k]).map(([k, name]) => z.einhaltung[k] + " " + name);
+    return teile.length ? "Termine: " + teile.join(", ") : "";
+  }
+
+  function kvZeile(z) {
+    const zeilen = [];
+    if (z.anlass) zeilen.push(el("div", { class: "inhalt" }, "Anlass: " + z.anlass));
+    zeilen.push(el("div", { class: "inhalt" }, "Kontakt: " + z.kontakt.text + (z.kontakt.reaktionMs ? " (" + wann(z.kontakt.reaktionMs) + ")" : "")));
+    if (z.termin.text) zeilen.push(el("div", { class: "inhalt" }, "Termin: " + z.termin.text));
+    if (z.einhaltung.text) zeilen.push(el("div", { class: "inhalt" }, "Termin eingehalten: " + z.einhaltung.text));
+    return el("li", { class: "q-" + z.quelle },
+      el("div", { class: "kopfzeile" },
+        el("span", { class: "marke q-" + z.quelle }, z.quelle === "kampagne" && z.kampagne_name ? "Kampagne: " + z.kampagne_name : QUELLE_EINZAHL[z.quelle] || z.quelle),
+        el("span", { class: "marke" }, WEG_NAME[z.weg] || z.weg),
+        el("strong", null, z.patient || "Ohne Namen"),
+        el("span", { class: "klein rechts" }, wann(z.zeitMs))),
+      ...zeilen);
+  }
+
+  function kontaktZeichnen() {
+    const zr = $("kvZeitraum");
+    zr.replaceChildren();
+    for (const t of [7, 30, 90]) {
+      zr.append(el("button", { type: "button", class: "knopf" + (kv.tage === t ? " an" : ""), onclick: () => { kv.tage = t; kv.alle = false; kontaktZeichnen(); kontaktLaden(); } }, "Letzte " + t + " Tage"));
+    }
+    const zahlen = $("kvZahlen");
+    const filter = $("kvFilter");
+    const liste = $("kvListe");
+    zahlen.replaceChildren();
+    filter.replaceChildren();
+    liste.replaceChildren();
+    if (!kv.daten) {
+      zahlen.append(el("div", { class: "leerhinweis", style: "margin-top:12px" }, kv.fehler ? "Die Zahlen lassen sich gerade nicht laden: " + kv.fehler : "Wird geladen …"));
+      return;
+    }
+    const d = kv.daten;
+    const tbody = el("tbody");
+    for (const q of QUELLEN_REIHE) {
+      const z = d.zahlen.je_quelle[q];
+      if (!z || (q === "sonst" && !z.versuche)) continue;
+      tbody.append(kvZahlZeile(el("span", { class: "marke q-" + q }, QUELLE_NAME[q]), z));
+      const termine = kvTermine(z);
+      if (termine) tbody.append(el("tr", { class: "unterzeile" }, el("td", { colspan: "6" }, termine)));
+      for (const a of (d.zahlen.je_aktion || []).filter((x) => x.quelle === q).slice(0, 5)) {
+        tbody.append(kvZahlZeile(a.name || (q === "luecke" ? "Aktion vom " : "Kampagne vom ") + tagKurz(a.zuletztMs), a.zahlen, "unterzeile"));
+      }
+    }
+    tbody.append(kvZahlZeile("Zusammen", d.zahlen.gesamt, "summe"));
+    zahlen.append(el("table", { class: "kv" },
+      el("thead", null, el("tr", null, ...["", "Kontaktiert", "Erreicht", "Termin", "Eingehalten", "Versuche"].map((t) => el("th", null, t)))), tbody));
+    zahlen.append(el("div", { class: "klein" }, "Gezählt werden Patienten, daneben die Zahl der Versuche. Kontaktiert: verschickt oder angerufen. Erreicht: am Telefon gesprochen, den Link geöffnet, geantwortet, zurückgerufen oder gebucht. Ein Termin zählt, wenn er bis 14 Tage nach dem Kontakt gebucht wurde. Eingehalten: im Kalender als wahrgenommen vermerkt. „Unklar“ heißt: Der Termin ist vorbei und im Kalender ist nichts vermerkt. Wer in mehreren Zeilen steht, zählt bei „Zusammen“ einmal."));
+
+    const alle = d.eintraege || [];
+    const zahlVon = (q) => alle.filter((z) => !q || z.quelle === q).length;
+    for (const q of [""].concat(QUELLEN_REIHE)) {
+      if (q && !zahlVon(q)) continue;
+      filter.append(el("button", { type: "button", class: "knopf" + (kv.quelle === q ? " an" : ""), onclick: () => { kv.quelle = q; kv.alle = false; kontaktZeichnen(); } },
+        (q ? QUELLE_NAME[q] : "Alle Einträge") + " (" + zahlVon(q) + ")"));
+    }
+    const gefiltert = alle.filter((z) => !kv.quelle || z.quelle === kv.quelle);
+    if (!gefiltert.length) liste.append(el("li", { class: "leerhinweis" }, "In diesem Zeitraum gibt es keine Kontakte."));
+    for (const z of kv.alle ? gefiltert : gefiltert.slice(0, KV_ZEIGEN)) liste.append(kvZeile(z));
+    if (!kv.alle && gefiltert.length > KV_ZEIGEN) {
+      liste.append(el("li", { class: "leerhinweis" }, "Gezeigt sind die neuesten " + KV_ZEIGEN + " von " + gefiltert.length + ". ",
+        el("button", { type: "button", class: "link", onclick: () => { kv.alle = true; kontaktZeichnen(); } }, "Alle zeigen")));
+    }
+    if (d.abgeschnitten) liste.append(el("li", { class: "leerhinweis" }, "Es gibt mehr Einträge, als hier Platz haben. Die Zahlen oben sind vollständig."));
+  }
+
+  async function kontaktLaden() {
+    const lauf = ++kv.lauf;
+    let daten = null;
+    let fehler = "";
+    try { daten = DEMO ? demo.kontakt : await api("/brain/kontakt-verlauf?von=" + tagVor(kv.tage)); }
+    catch (e) { fehler = e.message; }
+    if (lauf !== kv.lauf) return;
+    kv.daten = daten;
+    kv.fehler = fehler;
+    kv.karte = {};
+    for (const z of (daten && daten.eintraege) || []) kv.karte[z.id] = z;
+    kontaktZeichnen();
+    lisaZeichnen();
+  }
+
   // -------------------------------------------------------------- Lisas Anrufe
   const LISA_AUSGANG = { niemand: "Nicht erreicht", besetzt: "Besetzt", abgelehnt: "Anruf nicht angenommen", mailbox: "Anrufbeantworter",
     andere_person: "Jemand anderes am Telefon", gescheitert: "Anruf kam nicht zustande", termin: "Termin vereinbart", rueckruf_gewuenscht: "Bittet um Rückruf",
@@ -626,6 +798,11 @@
     if (z.auftrag && z.auftrag.hintergrund) zeilen.push(el("div", { class: "klein", style: "margin-bottom:6px" }, z.auftrag.hintergrund));
     if (z.termin) zeilen.push(el("div", { class: "inhalt" }, "Termin: " + z.termin));
     if (z.vonHandEintragen) zeilen.push(el("div", { class: "inhalt" }, "Zugesagt, aber nicht eingetragen" + (z.zugesagt ? ": " + z.zugesagt : " (Zeit siehe unten)")));
+    // Was danach geschah: dieselbe Zeile wie unter "Was aus den Kontakten wurde".
+    const v = kv.karte[z.id] || z.verlauf || null;
+    if (v && v.kontakt && v.kontakt.reaktion) zeilen.push(el("div", { class: "inhalt" }, "Danach: " + (REAKTION_NAME[v.kontakt.reaktion] || v.kontakt.reaktion) + (v.kontakt.reaktionMs ? ", " + wann(v.kontakt.reaktionMs) : "")));
+    if (v && v.termin && v.termin.text && v.termin.ueber !== "lisa") zeilen.push(el("div", { class: "inhalt" }, "Termin danach: " + v.termin.text));
+    if (v && v.einhaltung && v.einhaltung.text) zeilen.push(el("div", { class: "inhalt" }, "Termin eingehalten: " + v.einhaltung.text));
     if (z.gesagt) zeilen.push(el("div", { class: "inhalt" }, z.gesagt));
     if (z.weiteresAnliegen) zeilen.push(el("div", { class: "inhalt" }, "Weiteres Anliegen: „" + z.weiteresAnliegen + "“"));
     if (z.angebot && z.angebot.length) zeilen.push(el("div", { class: "inhalt" }, "Angeboten: " + z.angebot.join(" oder ")));
@@ -644,6 +821,7 @@
       el("div", { class: "kopfzeile" },
         el("span", { class: "marke " + art }, ausgang),
         el("strong", null, z.patient || "Ohne Namen"),
+        v && v.quelle && v.quelle !== "sonst" ? el("span", { class: "marke q-" + v.quelle }, v.quelle === "kampagne" && v.kampagne_name ? "Kampagne: " + v.kampagne_name : QUELLE_EINZAHL[v.quelle]) : null,
         z.versuche > 1 ? el("span", { class: "marke" }, z.versuche + ". Versuch") : null,
         el("span", { class: "klein rechts" }, wann(z.zeitMs))),
       ...zeilen,
@@ -800,6 +978,12 @@
     if (!DEMO) zustand.eigeneTexte = (await api("/brain/notiz-vorlagen").catch(() => ({}))).texte || {};
     gruppenZeichnen();
     await Promise.all([notizenLaden(), listeLaden()]);
+    // Nach der Tagesliste und ohne zu warten: die Auskunft sieht beim ersten Mal im Kalender nach.
+    kv.daten = null;
+    kv.fehler = "";
+    kv.karte = {};
+    kontaktZeichnen();
+    kontaktLaden();
   }
 
   $("patientFeld").addEventListener("input", (ev) => {
@@ -820,6 +1004,7 @@
   try { $("wer").value = localStorage.getItem("clara-start-wer") || ""; } catch (e) { /* ohne Speicher weiter */ }
   praxenLaden().then(allesLaden);
   if (!DEMO) setInterval(listeLaden, 60000);
+  if (!DEMO) setInterval(kontaktLaden, 5 * 60000);
 
   // Nur fuer die Vorschau: ?zeige=ausgefuellt fuellt das Formular mit einem Beispiel.
   if (DEMO && params.get("zeige") === "ausgefuellt") {

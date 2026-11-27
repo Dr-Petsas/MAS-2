@@ -37,6 +37,8 @@ export const CHANNELS = Object.freeze({
   BIANCA_CALL: "bianca_call", // inbound phone (AI)
   LISA_CALL: "lisa_call", // outbound phone (AI)
   LISA_SMS: "lisa_sms", // outbound SMS (AI)
+  PRAXIS_SMS: "praxis_sms", // SMS der Praxis ueber die Plattform (Luecke fuellen, Kampagne), von der Plattform gemeldet
+  PRAXIS_EMAIL: "praxis_email", // E-Mail der Praxis ueber die Plattform (Luecke fuellen, Kampagne), von der Plattform gemeldet
   NADINE_EMAIL: "nadine_email", // inbound/outbound e-mail (AI)
   NADINE_LETTER: "nadine_letter", // scanned letter / fax (AI, OCR)
   CLARA_VOICE: "clara_voice", // in-practice voice copilot

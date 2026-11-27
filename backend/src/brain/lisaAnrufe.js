@@ -22,6 +22,7 @@ import admin from "../firebase.js";
 import { masCollection } from "../tenant.js";
 import { buildEvent, nameKeyOf, CHANNELS, DIRECTIONS, EVENT_TYPES, ITEM_STATUS } from "./events.js";
 import { queryLatest, resolveItem } from "./eventStore.js";
+import { bezugAus, verlaufAusAnruf, verlaufZeile } from "./kontaktVerlaufLogik.js";
 
 const FieldValue = admin.firestore.FieldValue;
 export const LISA_ANRUF_EXTRACTOR = "lisa-v8";
@@ -187,6 +188,8 @@ export function pruefeAnruf(roh = {}) {
   if (ausgang === "termin" && !termin) return nein("termin_fehlt", "Bei ausgang=termin fehlen Datum und Uhrzeit des Termins.");
   const angebot = (Array.isArray(roh.angebot) ? roh.angebot : []).map(terminAus).filter(Boolean).slice(0, 5);
   const dauer = Number(roh.dauer_s);
+  // Woher der Auftrag kam (Aktion aus Luecke fuellen, Kampagne): von Lisa aus dem Auftrag der Plattform durchgereicht.
+  const bezug = bezugAus(roh.bezug);
   const anruf = {
     anruf_id: text(roh.anruf_id, 120),
     kennung: `${KENNUNG_PREFIX}${kennung}`,
@@ -206,10 +209,11 @@ export function pruefeAnruf(roh = {}) {
     rueckruf_wann: text(roh.rueckruf_wann, 120),
     beim_rueckruf: text(roh.beim_rueckruf, 300),
     dauer_s: Number.isFinite(dauer) && dauer >= 0 ? Math.round(dauer) : null,
-    phone_call_id: text(roh.phone_call_id, 160),
+    phone_call_id: text(roh.phone_call_id, 160) || bezug?.phone_call_id || "",
     auftrag_id: text(roh.auftrag_id, 160),
     standort: text(roh.standort, 120),
     auftrag: auftragAus(roh.auftrag),
+    bezug,
     // Ein Anliegen neben dem Auftrag (Rezept, Rechnung), im Wortlaut der Person. Haelt den Eintrag offen.
     weiteres_anliegen: text(roh.weiteres_anliegen, 400),
   };
@@ -481,7 +485,8 @@ export function eintragAus(clientId, anruf, { versuche = 1 } = {}) {
     extractor: LISA_ANRUF_EXTRACTOR,
     tags: ["lisa", "call", "anruf"],
   });
-  return { ...event, anruf: { ...anruf, versuche } };
+  // Kontakt, Termin und Einhaltung dieses Versuchs (kontaktVerlaufLogik.js); Termin und Einhaltung schreibt MAS spaeter fort.
+  return { ...event, anruf: { ...anruf, versuche }, verlauf: verlaufAusAnruf(anruf) };
 }
 
 /** Zeile fuer Bianca (`items` in /brain/caller-context). */
@@ -552,7 +557,15 @@ function seitenZeile(event) {
     phoneCallId: text(a.phone_call_id) || null,
     auftragId: text(a.auftrag_id) || null,
     standort: text(a.standort) || null,
+    // Kontakt, Termin, Einhaltung und Quelle: dieselbe Zeile wie in GET /brain/kontakt-verlauf.
+    verlauf: ohneSchluessel(verlaufZeile(event)),
   };
+}
+
+function ohneSchluessel(zeile) {
+  if (!zeile) return null;
+  const { patientSchluessel, ...rest } = zeile;
+  return rest;
 }
 
 /**

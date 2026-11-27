@@ -24,6 +24,8 @@ const CHANNEL_LABELS = {
   bianca_call: "Anruf (Bianca)",
   lisa_call: "Anruf (Lisa)",
   lisa_sms: "SMS",
+  praxis_sms: "SMS (Praxis)",
+  praxis_email: "E-Mail (Praxis)",
   nadine_email: "E-Mail",
   nadine_letter: "Brief",
   clara_voice: "Clara",
