@@ -8,8 +8,11 @@
 import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
 import { normalizePhone } from "./callerLookup.js";
-import { runGapFill, interneKalender, kandidatenBestand, rankCandidatesForGap, spokenMotiveLabel, faelligSeit, durationOfMotive } from "./gapFill.js";
+import { runGapFill, interneKalender, kandidatenBestand, rankCandidatesForGap, spokenMotiveLabel, faelligSeit, durationOfMotive, bucketKeyOf, fachbereichOf } from "./gapFill.js";
 import { anlassAn, anlassErgaenzen } from "./leistungsAnlass.js";
+import { ladeVisitMotives } from "./motiveOverwatch.js";
+import { loadStatsMap, contactsInWindow, isBookedSuppressed, isSpamRisk } from "./outreachStats.js";
+import { log } from "../log.js";
 
 const TZ = "Europe/Berlin";
 const s = (v) => String(v ?? "").trim();
@@ -152,6 +155,22 @@ export async function absagerKandidaten(clientId, booking, jetzt = Date.now()) {
   return rows;
 }
 
+/** Pure: je Patient die Besuchsgruende, fuer die ein Termin bevorsteht (bestaetigt oder reserviert, nicht geloescht, nicht abgesagt). */
+export function kommendeGruendeAus(termine, jetzt = Date.now()) {
+  const aus = new Map();
+  for (const t of termine || []) {
+    const pid = s(t.patient?.id);
+    const grund = s(t.visitMotive?.id);
+    if (!pid || !grund || t.isDeleted || millis(t.start) <= jetzt) continue;
+    if (t.status !== "confirmed" && t.status !== "reserved") continue;
+    const ps = Number(t.patientStatus) || 0;
+    if (ps === NICHT_ERSCHIENEN || ps === ABGESAGT) continue;
+    if (!aus.has(pid)) aus.set(pid, new Set());
+    aus.get(pid).add(grund);
+  }
+  return aus;
+}
+
 const istAbsager = (c) => c.source === "absage" || c.source === "nicht_erschienen";
 
 /**
@@ -258,6 +277,179 @@ export function nurMitAkte(kandidaten, vorhanden) {
 /** Nur fuer Tests. */
 export function _akteCacheLeeren() { akteCache.clear(); }
 
+// Faellige Recalls aus den Recall-Buckets der Plattform (27.11.2026). Die Plattform legt seit Juni 2026 keine
+// Platzhalter-Termine mehr an: sie rechnet jede Nacht aus den bestaetigten Terminen, wer faellig ist, und schreibt
+// das an die Akte (recallBuckets) und als Mitgliederliste je Bucket. Gelesen wird die Mitgliederliste, weil nur
+// dort die Faelligkeit steht, und nur je Kalender und Besuchsgrund ("calmot:"), damit jeder Anlass einmal vorkommt.
+// Die Liste ist bis zu einem Tag alt: wer inzwischen einen Termin fuer den Besuchsgrund hat, faellt hier heraus.
+// Schalter je Praxis: MAS_LUECKE_BUCKETS=<clientId,...> oder *. Leer = wie vorher.
+const BUCKET_CACHE_MS = 10 * 60 * 1000;
+const BUCKET_ZAEHLER_MS = 45 * 1000;
+const bucketCache = new Map();
+const bucketZaehlerCache = new Map();
+const kommendCache = new Map();
+const liste = (roh) => s(roh).split(",").map(s).filter(Boolean);
+
+export function bucketsAn(clientId, roh = process.env.MAS_LUECKE_BUCKETS) {
+  const praxen = liste(roh);
+  return praxen.includes("*") || (!!s(clientId) && praxen.includes(s(clientId)));
+}
+
+/** Welche Anlaesse zaehlen: "recall" (Recall-Muster des Besuchsgrunds), auf Wunsch auch "successor" (Folgetermin). */
+export const bucketGruende = (roh = process.env.MAS_LUECKE_BUCKET_GRUENDE) => new Set(liste(roh).length ? liste(roh) : ["recall"]);
+
+async function bucketMitgliederLesen(clientId, locationId) {
+  const loc = admin.firestore().collection("clients").doc(clientId).collection("locations").doc(locationId);
+  const stand = (await loc.collection("recallBucketsSummary").doc("default").get()).data() || {};
+  const generation = s(stand.memberGenerationId);
+  const keys = Object.entries(stand.counts || {}).filter(([k, n]) => k.startsWith("calmot:") && Number(n) > 0).map(([k]) => k);
+  if (!generation || !keys.length) return [];
+  const aus = [];
+  for (let i = 0; i < keys.length; i += 10) {
+    const teil = await Promise.all(keys.slice(i, i + 10).map((k) => loc.collection("recallBucketMembers").doc(k).collection("patients")
+      .where("generationId", "==", generation)
+      .select("patientId", "firstName", "lastName", "mobilePhoneNumber", "phoneNumber", "smsAllowed", "calendarId", "dueAtMs",
+        "recallReason", "sourceVisitMotiveId", "targetVisitMotiveId", "targetVisitMotiveName")
+      .get()));
+    for (const snap of teil) for (const d of snap.docs) aus.push(d.data());
+  }
+  return aus;
+}
+
+/** Mitglieder der Recall-Buckets einer Praxis, zehn Minuten gemerkt. */
+export async function bucketMitglieder(clientId, locationId, { lesen = bucketMitgliederLesen, jetzt = Date.now() } = {}) {
+  const c = bucketCache.get(clientId);
+  if (c && jetzt - c.at < BUCKET_CACHE_MS) return c.rows;
+  const rows = await lesen(clientId, locationId);
+  bucketCache.set(clientId, { at: jetzt, rows });
+  return rows;
+}
+
+async function kommendeTermineLesen(clientId, locationId, jetzt) {
+  const base = admin.firestore().collection("clients").doc(clientId).collection("locations").doc(locationId).collection("appointments")
+    .where("start", ">", admin.firestore.Timestamp.fromMillis(jetzt))
+    .select("start", "patientStatus", "status", "isDeleted", "patient.id", "visitMotive.id")
+    .orderBy("start").limit(2000);
+  const termine = [];
+  let cursor = null;
+  for (;;) {
+    const snap = await (cursor ? base.startAfter(cursor) : base).get();
+    for (const d of snap.docs) termine.push(d.data());
+    if (snap.size < 2000) return termine;
+    if (termine.length >= 60000) throw new Error("zu_viele_kommende_termine");
+    cursor = snap.docs[snap.docs.length - 1];
+  }
+}
+
+/** Je Patient die Besuchsgruende mit bevorstehendem Termin, zehn Minuten gemerkt. */
+export async function kommendeGruende(clientId, locationId, { lesen = kommendeTermineLesen, jetzt = Date.now() } = {}) {
+  const c = kommendCache.get(clientId);
+  if (c && jetzt - c.at < BUCKET_CACHE_MS) return c.map;
+  const map = kommendeGruendeAus(await lesen(clientId, locationId, jetzt), jetzt);
+  kommendCache.set(clientId, { at: jetzt, map });
+  return map;
+}
+
+/** Nur fuer Tests. */
+export function _bucketCacheLeeren() { bucketCache.clear(); bucketZaehlerCache.clear(); kommendCache.clear(); }
+
+/**
+ * Pure: Bucket-Mitglieder in der Form der Recall-Kandidaten. Bleibt nur, wer faellig und erreichbar ist und fuer
+ * den Besuchsgrund (Ausloeser oder Ziel) keinen Termin vor sich hat. `motive`: Kennung -> { name, duration },
+ * `kalender`: Kennung -> Name, `kommend`: Patient -> Kennungen der Besuchsgruende mit bevorstehendem Termin.
+ */
+export function bucketKandidatenAus(mitglieder, { motive = new Map(), kalender = new Map(), kommend = new Map(), gruende = bucketGruende(), jetzt = Date.now() } = {}) {
+  const aus = [];
+  for (const m of mitglieder || []) {
+    const patientId = s(m.patientId);
+    const grundId = s(m.targetVisitMotiveId);
+    const faelligMs = Number(m.dueAtMs) || 0;
+    const phone = s(m.mobilePhoneNumber) || s(m.phoneNumber);
+    const name = `${s(m.firstName)} ${s(m.lastName)}`.trim();
+    if (!patientId || !grundId || !phone || !name || !gruende.has(s(m.recallReason))) continue;
+    if (!faelligMs || faelligMs > jetzt) continue;
+    const vor = kommend.get(patientId);
+    if (vor && (vor.has(grundId) || vor.has(s(m.sourceVisitMotiveId)))) continue;
+    const grund = motive.get(grundId);
+    const grundName = s(grund?.name) || s(m.targetVisitMotiveName);
+    aus.push({
+      source: "recall",
+      herkunft: "bucket",
+      patientId,
+      name,
+      phone,
+      phoneNorm: normalizePhone(phone),
+      visitMotiveId: grundId,
+      visitMotiveName: grundName,
+      bucketKey: bucketKeyOf(grundName),
+      fachbereich: fachbereichOf(grundName),
+      durationMin: Number(grund?.duration) || 30,
+      calendarId: s(m.calendarId) || null,
+      doctorName: s(kalender.get(s(m.calendarId))),
+      overdueDays: Math.max(0, Math.round((jetzt - faelligMs) / TAG_MS)),
+      alreadyCalled: false,
+      consent: { sms: m.smsAllowed === true ? true : null, reminder: null },
+    });
+  }
+  return aus;
+}
+
+const grundSchluessel = (c) => (spokenMotiveLabel(c.visitMotiveName) || s(c.visitMotiveName)).toLowerCase();
+
+/**
+ * Pure: neue Kandidaten ohne die Anlaesse, die es schon gibt. Derselbe Anlass ist derselbe Patient mit demselben
+ * Besuchsgrund (Kennung oder gesprochener Name), gleich aus welcher Quelle.
+ */
+export function ohneDoppelte(vorhandene, neue) {
+  const da = new Set();
+  const merken = (c) => {
+    const pid = s(c.patientId);
+    if (s(c.visitMotiveId)) da.add(`${pid}|id|${s(c.visitMotiveId)}`);
+    if (grundSchluessel(c)) da.add(`${pid}|name|${grundSchluessel(c)}`);
+  };
+  for (const c of vorhandene || []) merken(c);
+  const aus = [];
+  for (const c of neue || []) {
+    const pid = s(c.patientId);
+    if (da.has(`${pid}|id|${s(c.visitMotiveId)}`) || da.has(`${pid}|name|${grundSchluessel(c)}`)) continue;
+    merken(c);
+    aus.push(c);
+  }
+  return aus;
+}
+
+// Dieselben Kontakt-Zaehler wie am uebrigen Bestand (frisch gebucht, Spam-Wache), kurz gemerkt.
+async function mitZaehlern(clientId, kandidaten, jetzt) {
+  if (!kandidaten.length) return kandidaten;
+  let c = bucketZaehlerCache.get(clientId);
+  if (!c || jetzt - c.at >= BUCKET_ZAEHLER_MS) {
+    c = { at: jetzt, map: await loadStatsMap(clientId, kandidaten.map((k) => k.patientId)) };
+    bucketZaehlerCache.set(clientId, c);
+  }
+  return kandidaten.map((k) => {
+    const st = c.map.get(k.patientId);
+    if (!st) return k;
+    return { ...k, stats: { contacts: st.contacts, booked: st.booked, recent: contactsInWindow(st), suppressed: isBookedSuppressed(st), spamRisk: isSpamRisk(st) } };
+  });
+}
+
+/** Faellige aus den Recall-Buckets, die der uebrige Bestand noch nicht kennt. Liest nur. */
+export async function bucketKandidaten(clientId, booking, vorhandene, jetzt = Date.now()) {
+  // Sind die kommenden Termine nicht lesbar, wirft das hier: dann kommt aus den Buckets niemand.
+  const [mitglieder, kommend, motive] = await Promise.all([
+    bucketMitglieder(clientId, booking.locationId, { jetzt }),
+    kommendeGruende(clientId, booking.locationId, { jetzt }),
+    ladeVisitMotives(clientId, booking.locationId, booking),
+  ]);
+  const roh = bucketKandidatenAus(mitglieder, {
+    motive: new Map((motive || []).map((v) => [s(v.id), v])),
+    kalender: new Map((booking.calendars || []).map((k) => [s(k.id), s(k.name)])),
+    kommend,
+    jetzt,
+  });
+  return mitZaehlern(clientId, ohneDoppelte(vorhandene, roh), jetzt);
+}
+
 /**
  * Wer passt in diese eine Luecke? Dieselben Tore und dieselbe Reihenfolge wie frueher bei den
  * Anruflisten (Dauer passt, Behandler passt, nicht kuerzlich kontaktiert, kein Spam-Risiko),
@@ -280,9 +472,19 @@ export async function passendFuerLuecke(clientId, { date, calendarId, startMin, 
   // Wer abgesagt hat UND im Recall faellig ist, zaehlt als Absager, gleich welcher Eintrag vorn steht.
   const absagerIds = new Set(absager.map((c) => s(c.patientId)));
   const hatAbgesagt = (c) => istAbsager(c) || absagerIds.has(s(c.patientId));
-  const passendRoh = rankCandidatesForGap([...absager, ...allCandidates], gap, {
-    calendarId: s(calendarId), throttled, max: Infinity, reihenfolge: juengsterAnlassZuerst,
-  }).filter((c) => !nurAbsager || hatAbgesagt(c));
+  // Faellige aus den Recall-Buckets der Plattform kommen dazu, die bisherigen Quellen bleiben und gehen vor.
+  const ausBuckets = bucketsAn(clientId)
+    ? await bucketKandidaten(clientId, booking, [...absager, ...allCandidates]).catch((e) => {
+      log.warn("luecke.buckets_nicht_lesbar", { clientId, error: String(e?.message || e) });
+      return [];
+    })
+    : [];
+  const tore = { calendarId: s(calendarId), throttled, max: Infinity, reihenfolge: juengsterAnlassZuerst };
+  const bisher = [...absager, ...allCandidates];
+  // Wer schon ueber eine bisherige Quelle in dieser Luecke steht, behaelt genau diesen Eintrag.
+  const schonDa = new Set(ausBuckets.length ? rankCandidatesForGap(bisher, gap, tore).map((c) => s(c.patientId)) : []);
+  const passendRoh = rankCandidatesForGap([...bisher, ...ausBuckets.filter((c) => !schonDa.has(s(c.patientId)))], gap, tore)
+    .filter((c) => !nurAbsager || hatAbgesagt(c));
   let vorhanden;
   try {
     vorhanden = await aktenVorhanden(clientId, booking.locationId, passendRoh.map((c) => c.patientId));
