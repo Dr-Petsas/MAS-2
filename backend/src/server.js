@@ -56,6 +56,7 @@ import { qwenAsrProxy } from "./routes/qwenAsrProxy.js";
 import { voiceEnhanceProxy } from "./routes/voiceEnhanceProxy.js";
 import lisaV8Proxy from "./routes/lisaV8Proxy.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
+import { herkunft, programm, seite } from "./zugang.js";
 import { fuerAlleMandanten } from "./tenants.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
 import { planrClaraSperre } from "./hkp/planrClara.js";
@@ -93,6 +94,13 @@ app.use((req, res, next) => {
       ms: Date.now() - start,
       clientId: req.auth?.clientId || undefined,
       auth: req.auth?.kind || undefined,
+      // Zugang (zugang.js): woher, womit, welches Programm, von welcher Seite. Keine Adresse, kein Inhalt.
+      herkunft: herkunft(req),
+      mit: req.zugang?.mit,
+      programm: programm(req),
+      seite: seite(req),
+      wuerde: req.zugang?.wuerde,
+      abgelehnt: req.zugang?.abgelehnt,
     });
   });
   next();

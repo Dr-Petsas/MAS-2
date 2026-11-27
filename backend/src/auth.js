@@ -1,5 +1,6 @@
 import admin from "./firebase.js";
 import { timingSafeEqual } from "node:crypto";
+import { tunnelLehntAb } from "./zugang.js";
 
 // Authentication for the MAS-2 HTTP API.
 //
@@ -154,8 +155,10 @@ function isPublic(req) {
 
 export function authMiddleware() {
   return async function auth(req, res, next) {
+    // req.zugang geht nur ins Zugriffsprotokoll (server.js): was die Anfrage mitbrachte.
     if (isPublic(req)) {
       req.auth = { kind: "public", isAdmin: true, userId: "", clientId: "" };
+      req.zugang = { mit: "offen" };
       return next();
     }
 
@@ -163,6 +166,7 @@ export function authMiddleware() {
     const svc = (req.header("X-Service-Token") || "").trim();
     if (SERVICE_TOKEN && svc && safeEq(svc, SERVICE_TOKEN)) {
       req.auth = { kind: "service", isAdmin: true, userId: "", clientId: "" };
+      req.zugang = { mit: "schluessel" };
       return next();
     }
 
@@ -188,12 +192,21 @@ export function authMiddleware() {
           name: String(dec.name || "").trim(),
           email: String(dec.email || "").trim(),
         };
+        req.zugang = { mit: "anmeldung" };
         return next();
       } catch {
+        req.zugang = { mit: "anmeldung_ungueltig" };
         if (AUTH_ENFORCED) return res.status(401).json({ error: "invalid_token" });
         // dev (not enforced): fall through to anon below
       }
     }
+
+    // Ohne gueltigen Nachweis. "wuerde" haelt fest, ob die Regel fuer den Tunnel (zugang.js) diese Anfrage
+    // ablehnt; hier wird nur gezaehlt.
+    req.zugang = {
+      mit: req.zugang?.mit || (svc ? "schluessel_unbekannt" : "nichts"),
+      wuerde: tunnelLehntAb(req) || undefined,
+    };
 
     if (AUTH_ENFORCED) return res.status(401).json({ error: "unauthenticated" });
 
