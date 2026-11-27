@@ -97,7 +97,8 @@ router.post("/pvs/outbox", async (req, res) => {
       const who = (deviceId && deviceKey)
         ? await identifyByDevice(clientId, deviceId, deviceKey).catch(() => null)
         : null;
-      if (!who && AUTH_ENFORCED) {
+      // geraetNoetig: von aussen ohne Anmeldung (auth.js, MAS_TUNNEL_NUR_ANGEMELDET) nur das gekoppelte Geraet.
+      if (!who && (AUTH_ENFORCED || req.zugang?.geraetNoetig)) {
         return res.status(403).json({ ok: false, error: "forbidden" });
       }
     }

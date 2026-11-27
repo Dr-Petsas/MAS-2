@@ -1,6 +1,6 @@
 import admin from "./firebase.js";
 import { timingSafeEqual } from "node:crypto";
-import { tunnelLehntAb } from "./zugang.js";
+import { herkunft, tunnelLehntAb } from "./zugang.js";
 
 // Authentication for the MAS-2 HTTP API.
 //
@@ -81,9 +81,7 @@ function isPublic(req) {
   // Jede Route prueft selbst den signierten Ein-Job-Token (routes/qm.js ->
   // portalGuard, timing-safe). Gibt nur GENAU EINEN Job frei.
   if (p.startsWith("/clara/qm/portal/")) return true;
-  // /clara/<clientId> (QR landing HTML), /clara/<clientId>/connect (phone page)
-  // und /clara/<clientId>/status (System-Status-Seite, nur Read-only-Health).
-  if (/^\/clara\/[^/]+(\/connect|\/status)?$/.test(p)) return true;
+  // (/clara/<clientId> mit /connect und /status: siehe CLARA_ALLGEMEIN am Ende.)
   // /clara/health (globaler Stack-Health als JSON, keine PII, nebenwirkungsfrei).
   if (p === "/clara/health") return true;
   // Ruf-Name der Assistentin (Phase W-NAME): gekoppelte Geraete (Companion-App,
@@ -98,9 +96,14 @@ function isPublic(req) {
   if (p.startsWith("/clara-switch/")) return true;
   // Dampsoft-VDDS-Knopf auf diesem Rechner: Text holen/ablegen, nur Loopback
   // (die Route selbst lehnt Nicht-Localhost ab).
-  if (p === "/pvs/pending-chart") return true;
-  if (p === "/pvs/outbox" && (req.method === "GET" || req.method === "POST")) return true;
-  if (/^\/pvs\/outbox\/[^/]+\/(collected|undo)$/.test(p) && req.method === "POST") return true;
+  // "Nur Loopback" prueft routes/pvs.js an der Adresse der Verbindung. Ueber den Tunnel ist das immer dieser
+  // Rechner (cloudflared laeuft hier), und GET /pvs/outbox prueft gar nicht, sobald req.auth gesetzt ist. Von
+  // aussen waren Ablage und Karteitext damit ohne Nachweis lesbar. Deshalb eigene Werte statt "offen":
+  // die Anmeldung behandelt sie wie "offen", ausser ueber den Tunnel (siehe authMiddleware).
+  if (p === "/pvs/pending-chart") return NUR_LOKAL;
+  if (p === "/pvs/outbox" && req.method === "GET") return NUR_LOKAL;
+  if (p === "/pvs/outbox" && req.method === "POST") return MIT_GERAET;
+  if (/^\/pvs\/outbox\/[^/]+\/(collected|undo)$/.test(p) && req.method === "POST") return NUR_LOKAL;
   // STT-Bench (Mikrofon-Vergleich) hinter mas.pickadoc-tunnel.com/stt-bench.
   // Kein Login: die Seite selbst ist der Teststand, Proxy vor Auth in server.js.
   if (p === "/stt-bench" || p.startsWith("/stt-bench/")) return true;
@@ -159,13 +162,80 @@ function isPublic(req) {
   // selbst ihren eigenen Schluessel im Kopf X-Service-Token (brain/kontaktVerlaufZugang.js, timing-safe).
   // Die Auskunft (GET /brain/kontakt-verlauf) gehoert nicht dazu.
   if (req.method === "POST" && (p === "/brain/kontakt-verlauf/sendung" || p === "/brain/kontakt-verlauf/reaktion")) return true;
+  // /clara/<clientId> (QR landing HTML), /clara/<clientId>/connect (phone page)
+  // und /clara/<clientId>/status (System-Status-Seite, nur Read-only-Health).
+  // Das Muster trifft auch jede feste Route mit einem Abschnitt (/clara/team, /clara/directory,
+  // /clara/stt-patient-names, /clara/pruefliste, /clara/devices ...). Deshalb ein eigener Wert: die Anmeldung
+  // behandelt ihn wie "offen", ausser ueber den Tunnel (claraKoppelseite weiter unten).
+  if (/^\/clara\/[^/]+(\/connect|\/status)?$/.test(p)) return CLARA_ALLGEMEIN;
   return false;
+}
+
+// Freistellungen, die ueber den Tunnel nicht tragen (isPublic liefert sie statt true):
+// CLARA_ALLGEMEIN  das Muster /clara/<ein Abschnitt>, gedacht fuer die Koppelseite
+// NUR_LOKAL        Routen, die sich auf "nur dieser Rechner" verlassen
+// MIT_GERAET       POST /pvs/outbox: die Route prueft die Geraetekennung, lehnt aber nur bei erzwungener
+//                  Anmeldung ab; von aussen ohne Anmeldung verlangt sie das Geraet (req.zugang.geraetNoetig)
+const CLARA_ALLGEMEIN = "clara_allgemein";
+const NUR_LOKAL = "nur_lokal";
+const MIT_GERAET = "mit_geraet";
+
+// Wofuer das allgemeine Muster gedacht ist: die drei Seiten zum Koppeln, GET mit einer Praxiskennung
+// (Firestore-Kennung, 20 Buchstaben und Ziffern). Feste Routen heissen nie so.
+function claraKoppelseite(req) {
+  return req.method === "GET" && /^\/clara\/[A-Za-z0-9]{20}(\/connect|\/status)?$/.test(req.path || "");
+}
+
+function tokenAus(req) {
+  const m = /^Bearer\s+(.+)$/i.exec(req.header("Authorization") || "");
+  return (m && m[1]) || (typeof req.query?.t === "string" ? req.query.t : "");
+}
+
+/**
+ * Feste Clara-Route mit einem Abschnitt, ueber den Tunnel: offen wie bisher nur mit gueltigem Dienstschluessel
+ * oder gueltiger Anmeldung. Liefert, was die Anfrage mitbrachte.
+ */
+async function nachweisVonAussen(req) {
+  const svc = (req.header("X-Service-Token") || "").trim();
+  if (SERVICE_TOKEN && svc && safeEq(svc, SERVICE_TOKEN)) return "schluessel";
+  const token = tokenAus(req);
+  if (!token) return svc ? "schluessel_unbekannt" : "nichts";
+  try {
+    await admin.auth().verifyIdToken(token);
+    return "anmeldung";
+  } catch {
+    return "anmeldung_ungueltig";
+  }
 }
 
 export function authMiddleware() {
   return async function auth(req, res, next) {
     // req.zugang geht nur ins Zugriffsprotokoll (server.js): was die Anfrage mitbrachte.
-    if (isPublic(req)) {
+    const offen = isPublic(req);
+    if (offen && offen !== true && herkunft(req) === "tunnel" && !(offen === CLARA_ALLGEMEIN && claraKoppelseite(req))) {
+      // Von aussen auf einer Freistellung, die ueber den Tunnel nicht traegt: mit gueltigem Nachweis wie bisher
+      // (unveraendert "public"), ohne Nachweis abgelehnt, sobald der Schalter an ist.
+      const mit = await nachweisVonAussen(req);
+      const belegt = mit === "schluessel" || mit === "anmeldung";
+      if (!belegt && offen === MIT_GERAET) {
+        req.zugang = { mit, geraetNoetig: TUNNEL_NUR_ANGEMELDET || undefined };
+        req.auth = { kind: "public", isAdmin: true, userId: "", clientId: "" };
+        return next();
+      }
+      req.zugang = { mit, wuerde: belegt ? undefined : true };
+      if (!belegt && TUNNEL_NUR_ANGEMELDET) {
+        req.zugang.abgelehnt = "tunnel";
+        return res.status(401).json({
+          ok: false,
+          error: mit === "anmeldung_ungueltig" ? "invalid_token" : "unauthenticated",
+          grund: "anmeldung_noetig",
+          klartext: "Von außen geht das nur mit Anmeldung.",
+        });
+      }
+      req.auth = { kind: "public", isAdmin: true, userId: "", clientId: "" };
+      return next();
+    }
+    if (offen) {
       req.auth = { kind: "public", isAdmin: true, userId: "", clientId: "" };
       req.zugang = { mit: "offen" };
       return next();

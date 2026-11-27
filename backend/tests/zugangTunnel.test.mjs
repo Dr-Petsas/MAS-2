@@ -73,6 +73,84 @@ test("von aussen weiter offen: was sich selbst schuetzt, der Dienstschluessel, d
   }
 });
 
+test("feste Clara-Routen mit einem Abschnitt: von aussen nur mit Nachweis, die Koppelseite bleibt offen", async () => {
+  // Das alte Muster /clara/<ein Abschnitt> stellte sie alle frei, auch die mit Patientennamen.
+  for (const [method, pfad] of [
+    ["GET", "/clara/stt-patient-names"], ["GET", "/clara/pruefliste"], ["GET", "/clara/team"], ["PUT", "/clara/team"],
+    ["GET", "/clara/directory"], ["POST", "/clara/directory"], ["DELETE", "/clara/directory"], ["GET", "/clara/devices"],
+    ["POST", "/clara/call-operator"], ["POST", "/clara/session-start"], ["POST", "/clara/session-end"],
+    ["GET", "/clara/sophie-hinweis"], ["POST", "/clara/billing-intake"], ["GET", "/clara/greeting-context"],
+    ["POST", "/clara/stt-korrektur"], ["GET", "/clara/tool-errors"], ["GET", "/clara/noch-nicht-erfunden"],
+    ["GET", "/clara/team/"], ["GET", "/CLARA/Team"], ["GET", "/clara/team/status"], ["GET", "/clara/devices/connect"],
+    // Eine Praxiskennung macht nur GET zur Koppelseite.
+    ["POST", "/clara/MEe4ZQHEzOPzLcexyhdT"], ["DELETE", "/clara/MEe4ZQHEzOPzLcexyhdT/status"],
+  ]) {
+    const a = await rufe(pfad, { method, kopf: TUNNEL, body: ["POST", "PUT"].includes(method) ? {} : undefined });
+    assert.deepEqual([a.status, a.daten.grund], [401, "anmeldung_noetig"], `${method} ${pfad}`);
+  }
+  const erfunden = await rufe("/clara/team", { kopf: { ...TUNNEL, Authorization: "Bearer nicht-echt" } });
+  assert.deepEqual([erfunden.status, erfunden.daten.error], [401, "invalid_token"]);
+  // Mit dem Dienstschluessel wie bisher offen.
+  const dienst = await rufe("/clara/devices", { kopf: { ...TUNNEL, "X-Service-Token": DIENST } });
+  assert.deepEqual([dienst.status, dienst.daten.art, dienst.daten.zugang.mit], [200, "public", "schluessel"]);
+  // Die Koppelseite und die namentlich freigestellten Pfade bleiben von aussen offen.
+  for (const [method, pfad] of [
+    ["GET", "/clara/MEe4ZQHEzOPzLcexyhdT"], ["GET", "/clara/MEe4ZQHEzOPzLcexyhdT/connect"], ["GET", "/clara/MEe4ZQHEzOPzLcexyhdT/status"],
+    ["POST", "/clara/session"], ["POST", "/clara/identify"], ["GET", "/clara/health"], ["GET", "/clara/assistant-name"],
+    ["POST", "/clara/pending-context"],
+  ]) {
+    const a = await rufe(pfad, { method, kopf: TUNNEL, body: method === "POST" ? {} : undefined });
+    assert.deepEqual([a.status, a.daten.art], [200, "public"], `${method} ${pfad}`);
+  }
+  // Dieser Rechner (Sprach-Worker, Clara V8): unveraendert offen.
+  for (const [method, pfad] of [["GET", "/clara/stt-patient-names"], ["GET", "/clara/greeting-context"], ["POST", "/clara/stt-korrektur"], ["GET", "/clara/devices"], ["POST", "/clara/session-start"]]) {
+    const a = await rufe(pfad, { method, body: method === "POST" ? {} : undefined });
+    assert.deepEqual([a.status, a.daten.art, a.daten.zugang.mit], [200, "public", "offen"], `lokal ${method} ${pfad}`);
+  }
+});
+
+test("PVS-Ablage und Karteitext: von aussen nur mit Nachweis, Ablegen nur mit gekoppeltem Geraet", async () => {
+  // "Nur dieser Rechner" traegt ueber den Tunnel nicht: cloudflared laeuft auf diesem Rechner.
+  for (const [method, pfad] of [
+    ["GET", "/pvs/outbox"], ["GET", "/pvs/outbox?status=collected"], ["GET", "/pvs/pending-chart"], ["PUT", "/pvs/pending-chart"],
+    ["POST", "/pvs/outbox/abc/collected"], ["POST", "/pvs/outbox/abc/undo"], ["PUT", "/pvs/write-path"], ["GET", "/pvs/paths"],
+  ]) {
+    const a = await rufe(pfad, { method, kopf: TUNNEL, body: ["POST", "PUT"].includes(method) ? {} : undefined });
+    assert.deepEqual([a.status, a.daten.grund], [401, "anmeldung_noetig"], `${method} ${pfad}`);
+  }
+  const dienst = await rufe("/pvs/outbox", { kopf: { ...TUNNEL, "X-Service-Token": DIENST } });
+  assert.deepEqual([dienst.status, dienst.daten.art], [200, "public"]);
+  // Der Name des Schreibwegs bleibt fuer das iPad lesbar.
+  assert.equal((await rufe("/pvs/write-path", { kopf: TUNNEL })).status, 200);
+  // Dieser Rechner (Connector, VDDS-Knopf): unveraendert.
+  for (const [method, pfad] of [["GET", "/pvs/outbox"], ["GET", "/pvs/pending-chart"], ["POST", "/pvs/outbox/abc/collected"], ["POST", "/pvs/outbox"]]) {
+    const a = await rufe(pfad, { method, body: method === "POST" ? {} : undefined });
+    assert.deepEqual([a.status, a.daten.art, a.daten.zugang.mit, a.daten.zugang.geraetNoetig], [200, "public", "offen", undefined], `lokal ${method} ${pfad}`);
+  }
+  // Ablegen von aussen ohne Anmeldung: die Anmeldung laesst durch, die Route verlangt dann das Geraet.
+  const ablegen = await rufe("/pvs/outbox", { method: "POST", kopf: TUNNEL, body: {} });
+  assert.deepEqual([ablegen.status, ablegen.daten.art, ablegen.daten.zugang.geraetNoetig], [200, "public", true]);
+
+  // Die echte Route: ohne Geraet 403, bevor irgendetwas abgelegt wird.
+  const { default: pvsRouter } = await import("../src/routes/pvs.js");
+  const echt = express();
+  echt.use(express.json());
+  echt.use(authMiddleware());
+  echt.use(pvsRouter);
+  const s2 = await new Promise((r) => { const s = echt.listen(0, "127.0.0.1", () => r(s)); });
+  try {
+    const r = await fetch(`http://127.0.0.1:${s2.address().port}/pvs/outbox`, {
+      method: "POST", headers: { "Content-Type": "application/json", ...TUNNEL },
+      body: JSON.stringify({ clientId: "zzz-mas2-zugang", text: "darf nie ankommen", lastName: "Test", firstName: "Test" }),
+    });
+    assert.deepEqual([r.status, (await r.json()).error], [403, "forbidden"]);
+    const lesen = await fetch(`http://127.0.0.1:${s2.address().port}/pvs/outbox?clientId=zzz-mas2-zugang`, { headers: TUNNEL });
+    assert.equal(lesen.status, 401);
+  } finally {
+    s2.close();
+  }
+});
+
 test("dieser Rechner bleibt, wie er ist", async () => {
   for (const [method, pfad] of [["GET", "/brain/search"], ["POST", "/tools/send-sms"], ["GET", "/mail/accounts"], ["POST", "/mail/sync"], ["GET", "/brain/tagesliste"]]) {
     const a = await rufe(pfad, { method, body: method === "POST" ? {} : undefined });
