@@ -219,6 +219,45 @@ export function besuchsgrundWaehlen(gruppen, besuchsgrund) {
   return nah.length ? nah : gruppen;
 }
 
+// Vorschlaege nur fuer Patienten, deren Akte es in der Kartei gibt (27.11.2026): an einer geloeschten
+// Dublette hingen noch alte Recall-Termine, sie wurde vorgeschlagen, und die Plattform fand die Akte nicht.
+const AKTE_CACHE_MS = 5 * 60 * 1000;
+const akteCache = new Map();
+
+async function akteHolen(clientId, locationId, ids) {
+  const col = admin.firestore().collection("clients").doc(clientId).collection("locations").doc(locationId).collection("patients");
+  const docs = await admin.firestore().getAll(...ids.map((id) => col.doc(id)), { fieldMask: ["lastName"] });
+  return docs.filter((d) => d.exists).map((d) => d.id);
+}
+
+/** Welche dieser Patienten-Kennungen haben eine Akte? Wirft, wenn die Kartei nicht lesbar ist. */
+export async function aktenVorhanden(clientId, locationId, ids, { holen = akteHolen, jetzt = Date.now() } = {}) {
+  const alle = [...new Set((ids || []).map(s).filter(Boolean))];
+  const da = new Set();
+  const offen = [];
+  for (const id of alle) {
+    const c = akteCache.get(`${clientId}/${locationId}/${id}`);
+    if (c && jetzt - c.at < AKTE_CACHE_MS) { if (c.da) da.add(id); } else offen.push(id);
+  }
+  for (let i = 0; i < offen.length; i += 300) {
+    const teil = offen.slice(i, i + 300);
+    const gefunden = new Set(await holen(clientId, locationId, teil));
+    for (const id of teil) {
+      akteCache.set(`${clientId}/${locationId}/${id}`, { at: jetzt, da: gefunden.has(id) });
+      if (gefunden.has(id)) da.add(id);
+    }
+  }
+  return da;
+}
+
+/** Pure: nur Kandidaten, deren Akte vorhanden ist. */
+export function nurMitAkte(kandidaten, vorhanden) {
+  return (kandidaten || []).filter((c) => vorhanden.has(s(c.patientId)));
+}
+
+/** Nur fuer Tests. */
+export function _akteCacheLeeren() { akteCache.clear(); }
+
 /**
  * Wer passt in diese eine Luecke? Dieselben Tore und dieselbe Reihenfolge wie frueher bei den
  * Anruflisten (Dauer passt, Behandler passt, nicht kuerzlich kontaktiert, kein Spam-Risiko),
@@ -241,9 +280,17 @@ export async function passendFuerLuecke(clientId, { date, calendarId, startMin, 
   // Wer abgesagt hat UND im Recall faellig ist, zaehlt als Absager, gleich welcher Eintrag vorn steht.
   const absagerIds = new Set(absager.map((c) => s(c.patientId)));
   const hatAbgesagt = (c) => istAbsager(c) || absagerIds.has(s(c.patientId));
-  const passend = rankCandidatesForGap([...absager, ...allCandidates], gap, {
+  const passendRoh = rankCandidatesForGap([...absager, ...allCandidates], gap, {
     calendarId: s(calendarId), throttled, max: Infinity, reihenfolge: juengsterAnlassZuerst,
   }).filter((c) => !nurAbsager || hatAbgesagt(c));
+  let vorhanden;
+  try {
+    vorhanden = await aktenVorhanden(clientId, booking.locationId, passendRoh.map((c) => c.patientId));
+  } catch {
+    // Ohne Blick in die Kartei wird nichts vorgeschlagen, statt eine geloeschte Akte anzubieten.
+    return { ok: false, reason: "kartei_nicht_lesbar", gruppen: [], gesamt: 0 };
+  }
+  const passend = nurMitAkte(passendRoh, vorhanden);
   const gruppen0 = nachBesuchsgrund(passend);
   let gruppen = besuchsgrundWaehlen(gruppen0, besuchsgrund);
   // Gezaehlt werden alle, mitgeliefert je Besuchsgrund nur die vordersten (juengster Anlass zuerst).
@@ -292,6 +339,7 @@ export function lueckenSatz(fund) {
 /** Sprechtext: wer sich fuer eine Luecke anbietet, je Besuchsgrund mit den am laengsten Faelligen. */
 export function passendSatz(fund, { namenJeGrund = 3 } = {}) {
   if (fund.reason === "interner_kalender") return "Das ist ein interner Kalender. Dort fülle ich keine Lücken.";
+  if (fund.reason === "kartei_nicht_lesbar") return "Die Kartei kann ich gerade nicht lesen, deshalb schlage ich niemanden vor. Bitte gleich noch einmal.";
   if (!fund.ok) return "Dazu fehlt mir die Buchungskonfiguration der Praxis.";
   const l = fund.luecke;
   const tag = tagGesprochen(l.date);
