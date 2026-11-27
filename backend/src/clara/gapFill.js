@@ -527,18 +527,37 @@ async function recallCandidates(clientId, locationId, booking) {
   return out;
 }
 
+/**
+ * Testnummern (Chef 27.11.2026): Nummern aus MAS_GAP_TESTNUMMERN (Komma-Liste,
+ * jede Schreibweise) sind von der 14-Tage-Sperre ausgenommen, damit sich
+ * "Luecke fuellen" mit Lisa wiederholt an der eigenen Nummer proben laesst.
+ * Leer = keine Ausnahme. Fuer alle anderen Nummern bleibt die Sperre gleich.
+ */
+export function testnummernAus(roh = process.env.MAS_GAP_TESTNUMMERN) {
+  return new Set(s(roh).split(",").map((n) => normalizePhone(n)).filter(Boolean));
+}
+
+/**
+ * Pure: Sperr-Schluessel aus den Lisa-Kontakten der letzten 14 Tage. Ein
+ * Kontakt an eine Testnummer sperrt weder die Nummer noch den Patienten.
+ */
+export function sperrSchluessel(events, testnummern = new Set()) {
+  const keys = new Set();
+  for (const e of events || []) {
+    if (e.channel !== "lisa_call" && e.channel !== "lisa_sms") continue;
+    const ref = normalizePhone(e.counterparty?.ref || "");
+    if (ref && testnummern.has(ref)) continue;
+    if (e.subject?.patientId) keys.add(`p:${e.subject.patientId}`);
+    if (ref) keys.add(`t:${ref}`);
+  }
+  return keys;
+}
+
 /** Patients contacted via Lisa within the throttle window (brain = history). */
 async function recentlyContactedKeys(clientId) {
   const since = Date.now() - THROTTLE_DAYS * 86400000;
   const events = await queryRecent(clientId, since, 1000).catch(() => []);
-  const keys = new Set();
-  for (const e of events) {
-    if (e.channel !== "lisa_call" && e.channel !== "lisa_sms") continue;
-    if (e.subject?.patientId) keys.add(`p:${e.subject.patientId}`);
-    const ref = normalizePhone(e.counterparty?.ref || "");
-    if (ref) keys.add(`t:${ref}`);
-  }
-  return keys;
+  return sperrSchluessel(events, testnummernAus());
 }
 
 /**
