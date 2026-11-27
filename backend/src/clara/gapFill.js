@@ -420,7 +420,7 @@ async function scanRecallInventory(clientId, locationId) {
     .collection("locations").doc(locationId)
     .collection("appointments")
     .where("status", "==", "needsConfirmation")
-    .select("createdBy", "start", "remindLaterCount",
+    .select("createdBy", "start", "remindLaterCount", "parentRecallId",
       "patient.id", "patient.firstName", "patient.lastName",
       "patient.mobilePhoneNumber", "patient.phoneNumber",
       "visitMotive.id", "visitMotive.name",
@@ -504,6 +504,8 @@ async function recallCandidates(clientId, locationId, booking) {
     out.push({
       source: "recall",
       recallAppointmentId: a.id,
+      // Termin, aus dem der Recall entstand, und Tag des Platzhalters: daraus liest "Luecke fuellen" den Kontrollabstand.
+      ...(createdBy === "recaller" && s(a.parentRecallId) ? { parentRecallId: s(a.parentRecallId), recallStartMs: startMs } : {}),
       patientId: s(a.patient.id),
       name: `${s(a.patient.firstName)} ${s(a.patient.lastName)}`.trim(),
       phone,

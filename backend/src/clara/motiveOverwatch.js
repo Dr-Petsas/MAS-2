@@ -364,6 +364,9 @@ export async function ladeVisitMotives(clientId, locationId, booking = null) {
         duration: Number(x.duration) || 0,
         color: String(x.color || ""),
         specialityId: String(x.specialityId || ""),
+        // Recall-Muster, wie die Praxis es am Besuchsgrund eingestellt hat (0 = kein Recall; Abstand "6-m", "1-y").
+        recurrenceCount: x.recurrenceCount ?? null,
+        recurrenceInterval: String(x.recurrenceInterval || ""),
       };
     }).filter((v) => v.name);
   } catch { /* Fallback unten */ }

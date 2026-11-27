@@ -9,6 +9,7 @@ import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
 import { normalizePhone } from "./callerLookup.js";
 import { runGapFill, interneKalender, kandidatenBestand, rankCandidatesForGap, spokenMotiveLabel, faelligSeit, durationOfMotive, bucketKeyOf, fachbereichOf } from "./gapFill.js";
+import { bestaetigterAbstand, mitKontrollabstand, SPIEL_BUCKET_TAGE } from "./kontrollabstand.js";
 import { anlassAn, anlassErgaenzen } from "./leistungsAnlass.js";
 import { ladeVisitMotives } from "./motiveOverwatch.js";
 import { loadStatsMap, contactsInWindow, isBookedSuppressed, isSpamRisk } from "./outreachStats.js";
@@ -209,6 +210,8 @@ export function nachBesuchsgrund(kandidaten) {
       quelle: istAbsager(c) ? c.source : c.campaignId ? "kampagne" : "recall",
       kampagne: s(c.campaignName),
       behandler: s(c.doctorName),
+      // Nur mit verlaesslichem Wert aus der Recall-Einstellung des Besuchsgrunds; sonst fehlt das Feld.
+      ...(Number.isInteger(c.kontrollabstandMonate) ? { kontrollabstand_monate: c.kontrollabstandMonate } : {}),
     });
   }
   return [...gruppen.values()]
@@ -326,7 +329,7 @@ async function bucketMitgliederLesen(clientId, locationId) {
     const teil = await Promise.all(keys.slice(i, i + 10).map((k) => loc.collection("recallBucketMembers").doc(k).collection("patients")
       .where("generationId", "==", generation)
       .select("patientId", "firstName", "lastName", "mobilePhoneNumber", "phoneNumber", "smsAllowed", "calendarId", "dueAtMs",
-        "recallReason", "sourceVisitMotiveId", "targetVisitMotiveId", "targetVisitMotiveName")
+        "lastAppointmentDateMs", "recallReason", "sourceVisitMotiveId", "targetVisitMotiveId", "targetVisitMotiveName")
       .get()));
     for (const snap of teil) for (const d of snap.docs) aus.push(d.data());
   }
@@ -396,6 +399,10 @@ export function bucketKandidatenAus(mitglieder, {
     const grund = motive.get(grundId);
     const grundName = s(grund?.name) || s(m.targetVisitMotiveName);
     if (!grundGewaehlt(nurGruende, grundId, grundName)) continue;
+    // Kontrollabstand: Recall-Abstand am ausloesenden Besuchsgrund, wenn die Faelligkeit genau so gerechnet ist.
+    const monate = s(m.recallReason) === "recall"
+      ? bestaetigterAbstand(motive.get(s(m.sourceVisitMotiveId)), Number(m.lastAppointmentDateMs), faelligMs, SPIEL_BUCKET_TAGE)
+      : null;
     aus.push({
       source: "recall",
       herkunft: "bucket",
@@ -413,6 +420,7 @@ export function bucketKandidatenAus(mitglieder, {
       overdueDays,
       alreadyCalled: false,
       consent: { sms: m.smsAllowed === true ? true : null, reminder: null },
+      ...(monate ? { kontrollabstandMonate: monate } : {}),
     });
   }
   return aus;
@@ -516,7 +524,12 @@ export async function passendFuerLuecke(clientId, { date, calendarId, startMin, 
     // Ohne Blick in die Kartei wird nichts vorgeschlagen, statt eine geloeschte Akte anzubieten.
     return { ok: false, reason: "kartei_nicht_lesbar", gruppen: [], gesamt: 0 };
   }
-  const passend = nurMitAkte(passendRoh, vorhanden);
+  const mitAkte = nurMitAkte(passendRoh, vorhanden);
+  // Alte Recall-Platzhalter: Kontrollabstand aus dem Besuchsgrund des Termins, aus dem der Recall entstand.
+  const passend = mitAkte.some((c) => c.parentRecallId)
+    ? await mitKontrollabstand(clientId, booking.locationId, mitAkte,
+      new Map(((await ladeVisitMotives(clientId, booking.locationId, booking).catch(() => [])) || []).map((v) => [s(v.id), v])))
+    : mitAkte;
   const gruppen0 = nachBesuchsgrund(passend);
   let gruppen = besuchsgrundWaehlen(gruppen0, besuchsgrund);
   // Gezaehlt werden alle, mitgeliefert je Besuchsgrund nur die vordersten (juengster Anlass zuerst).
