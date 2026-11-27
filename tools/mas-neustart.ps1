@@ -6,10 +6,12 @@
 # Ruhe heisst (Vorfall 26.11.2026: Neustart 6 s nach einem Anruf, Pruefung lief, wurde aber nicht
 # ausgewertet):
 #   1. Kein offener Gespraechsraum bei Clara V8 (LiveKit).
+#   1b. Bianca V8 meldet "laeuft: false" (kein Anruf auf der Leitung, keiner im Abschluss).
+#       Antwortet sie nicht, ist der Stand unbekannt: kein Neustart.
 #   2. In den letzten -RuheMinuten kam bei MAS nichts ausser den Dauerabfragen der offenen Seiten an
 #      (kein Anruf-Kontext, kein Werkzeug, kein Eintrag ins Praxisgedaechtnis).
 # Die Pruefung laeuft zweimal im Abstand von 20 s; beide muessen ruhig sein.
-param([int]$RuheMinuten = 3, [switch]$NurPruefen)
+param([int]$RuheMinuten = 3, [switch]$NurPruefen, [string]$BiancaServer = 'pickadoc1')
 $ErrorActionPreference = 'Stop'
 $LogDir = 'F:\MAS-2\logs'
 # Dauerabfragen offener Seiten und reine Leseseiten - zaehlen nicht als Betrieb.
@@ -56,10 +58,27 @@ function Betrieb {
     return $treffer
 }
 
+# Bianca V8 (pickadoc1) sagt selbst, ob ein Anruf auf der Leitung ist oder noch abschliesst
+# (Meldung ans MAS). Gibt 'frei' zurueck, sonst den Grund. Keine oder unlesbare Antwort ist
+# "Stand unbekannt" und damit KEINE Ruhe (Vorfall 27.11.2026 11:45: der Abschluss eines Gespraechs
+# fiel in den Neustart, das Ereignis kam nicht an).
+function Bianca {
+    try {
+        $aus = & ssh -o BatchMode=yes -o ConnectTimeout=5 $BiancaServer 'curl -s -m 5 http://127.0.0.1:40103/laeuft' 2>$null
+        if ($LASTEXITCODE -ne 0) { return "Stand unbekannt (keine Antwort, Code $LASTEXITCODE)" }
+        $j = ($aus -join '') | ConvertFrom-Json
+    } catch { return 'Stand unbekannt (keine lesbare Antwort)' }
+    if ($null -eq $j -or $j.laeuft -isnot [bool]) { return 'Stand unbekannt (Antwort ohne "laeuft")' }
+    if ($j.laeuft) { return "Gespraeche $($j.gespraeche), im Abschluss $($j.abschluss)" }
+    return 'frei'
+}
+
 function Pruefen([string]$name) {
     $r = Raeume
     $b = @(Betrieb)
-    Write-Host "[$name $(Get-Date -Format HH:mm:ss)] Gespraechsraeume: $r | Betrieb in $RuheMinuten min: $($b.Count)"
+    $bi = Bianca
+    Write-Host "[$name $(Get-Date -Format HH:mm:ss)] Gespraechsraeume: $r | Bianca V8: $bi | Betrieb in $RuheMinuten min: $($b.Count)"
+    if ($bi -ne 'frei') { Write-Host "  KEINE RUHE: Bianca V8 = $bi"; return $false }
     if ($r -ne '0') { Write-Host "  KEINE RUHE: Gespraechsraeume = $r"; return $false }
     if ($b.Count) { $b | Select-Object -Last 8 | ForEach-Object { Write-Host "  KEINE RUHE: $_" }; return $false }
     return $true
@@ -69,6 +88,10 @@ if (-not (Pruefen 'Pruefung 1')) { Write-Host 'ABBRUCH: kein Neustart.'; exit 2 
 Start-Sleep -Seconds 20
 if (-not (Pruefen 'Pruefung 2')) { Write-Host 'ABBRUCH: kein Neustart.'; exit 2 }
 if ($NurPruefen) { Write-Host 'Ruhe. (Nur geprueft, kein Neustart.)'; exit 0 }
+
+# Zwischen Pruefung 2 und dem Beenden vergehen Sekunden: Bianca direkt davor noch einmal fragen.
+$bi = Bianca
+if ($bi -ne 'frei') { Write-Host "  KEINE RUHE: Bianca V8 = $bi"; Write-Host 'ABBRUCH: kein Neustart.'; exit 2 }
 
 $alt = (Get-NetTCPConnection -State Listen -LocalPort 4000 -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1
 if ($alt) { Stop-Process -Id $alt -Force; Start-Sleep -Seconds 2 }
