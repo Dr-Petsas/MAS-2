@@ -3,6 +3,10 @@
 import "dotenv/config";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
+import { rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import express from "express";
 import admin from "../src/firebase.js";
 import { masCollection } from "../src/tenant.js";
@@ -10,7 +14,7 @@ import { appendEvent, getEvent, queryByPatient, queryLatest, queryRecent } from 
 import { getRetentionConfig } from "../src/brain/retention.js";
 import { fortschreiben, _taktVergessen } from "../src/brain/kontaktVerlauf.js";
 import {
-  abfrageAus, berlinTag, berlinUhrzeit, bezugAus, einhaltungAus, ersatzTermin, monateVon, pruefeReaktion, pruefeSendung, quelleVonAnruf,
+  abfrageAus, aufbewahrungAus, berlinTag, berlinUhrzeit, bezugAus, einhaltungAus, ersatzTermin, monateVon, pruefeReaktion, pruefeSendung, quelleVonAnruf,
   reaktionAnwenden, sendungEintrag, terminForm, termineZurechnen, verlaufAusAnruf, verlaufZeile, zahlenAus,
 } from "../src/brain/kontaktVerlaufLogik.js";
 
@@ -19,6 +23,12 @@ const ORT = "ort-1";
 const jetzt = Date.now();
 const STD = 3_600_000;
 const TAG = 24 * STD;
+
+// Die Meldepfade nehmen nur mit Schluessel an. Der Test bringt seinen eigenen mit, in einer Datei wie im Betrieb.
+const SCHLUESSEL = randomBytes(32).toString("hex");
+const SCHLUESSEL_DATEI = join(tmpdir(), `mas-kontaktverlauf-test-${process.pid}.txt`);
+writeFileSync(SCHLUESSEL_DATEI, `${SCHLUESSEL}\n`);
+process.env.MAS_KONTAKT_VERLAUF_SCHLUESSEL_DATEI = SCHLUESSEL_DATEI;
 
 const { default: brainRouter } = await import("../src/routes/brain.js");
 const { default: seiteRouter } = await import("../src/routes/claraSeite.js");
@@ -30,9 +40,10 @@ app.use(seiteRouter);
 app.use(verlaufRouter);
 const srv = await new Promise((r) => { const s = app.listen(0, "127.0.0.1", () => r(s)); });
 
-async function rufe(pfad, { method = "GET", body } = {}) {
+async function rufe(pfad, { method = "GET", body, schluessel = method === "POST" && pfad.startsWith("/brain/kontakt-verlauf/") ? SCHLUESSEL : "" } = {}) {
   const r = await fetch(`http://127.0.0.1:${srv.address().port}${pfad}`, {
-    method, headers: { "Content-Type": "application/json", "X-Client-Id": CID }, body: body ? JSON.stringify(body) : undefined,
+    method, headers: { "Content-Type": "application/json", "X-Client-Id": CID, ...(schluessel ? { "X-Service-Token": schluessel } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
   });
   return { status: r.status, daten: await r.json() };
 }
@@ -40,9 +51,11 @@ async function rufe(pfad, { method = "GET", body } = {}) {
 const termine = () => admin.firestore().collection("clients").doc(CID).collection("locations").doc(ORT).collection("appointments");
 const ts = (ms) => admin.firestore.Timestamp.fromMillis(ms);
 
+const buchung = () => masCollection(CID, "mas_config").doc("booking");
+
 async function leeren() {
   const snaps = await Promise.all([masCollection(CID, "mas_events").get(), masCollection(CID, "mas_cases").get(), termine().get()]);
-  await Promise.all(snaps.flatMap((s) => s.docs.map((d) => d.ref.delete())));
+  await Promise.all([...snaps.flatMap((s) => s.docs.map((d) => d.ref.delete())), buchung().delete()]);
 }
 
 function termin(id, patientId, mehr = {}) {
@@ -64,6 +77,7 @@ const zeile = (d, id) => d.eintraege.find((z) => z.id === id);
 test.before(leeren);
 test.after(async () => {
   await leeren();
+  rmSync(SCHLUESSEL_DATEI, { force: true });
   srv.close();
   await admin.app().delete().catch(() => {});
 });
@@ -192,6 +206,49 @@ test("Zahlen: Patienten einmal, Versuche daneben, je Quelle getrennt", () => {
   assert.deepEqual(monateVon("2026-10-15", "2027-01-03"), ["2026-10", "2026-11", "2026-12", "2027-01"]);
   const ohne = abfrageAus({}, { jetzt: new Date("2026-11-27T12:00:00Z").getTime() });
   assert.deepEqual([ohne.von, ohne.bis], ["2026-10-29", "2026-11-27"], "ohne Angabe die letzten 30 Tage");
+  assert.deepEqual([ohne.standorte, abfrageAus({ standort: "ort-1, ort-2,,ort-1" }).standorte], [[], ["ort-1", "ort-2"]]);
+
+  // Aufbewahrung 90 Tage am 27.11.: der 29.08. ist nur noch zum Teil da, ab dem 30.08. ist alles da.
+  const mittag = new Date("2026-11-27T12:00:00Z").getTime();
+  assert.deepEqual(aufbewahrungAus(90, "2026-10-29", { jetzt: mittag }), { tage: 90, vollstaendig_ab: "2026-08-30", zeitraum_vollstaendig: true });
+  assert.equal(aufbewahrungAus(90, "2026-08-30", { jetzt: mittag }).zeitraum_vollstaendig, true);
+  assert.equal(aufbewahrungAus(90, "2026-08-29", { jetzt: mittag }).zeitraum_vollstaendig, false);
+});
+
+test("Zugang: die Meldepfade nehmen nur mit dem Schluessel an, alles andere bleibt offen wie bisher", async () => {
+  const melden = (pfad, schluessel, body) => rufe(`/brain/kontakt-verlauf/${pfad}`, { method: "POST", schluessel, body });
+  const reaktion = { art: "antwort", zeit: jetzt, patient_id: "pat-niemand", trocken: true };
+  for (const [pfad, body] of [["sendung", sendung({ kontakt_id: "s-zugang", trocken: true })], ["reaktion", reaktion]]) {
+    const ohne = await melden(pfad, "", body);
+    assert.deepEqual([ohne.status, ohne.daten.ok, ohne.daten.grund], [401, false, "schluessel_ungueltig"], `${pfad} ohne Schluessel`);
+    const falsch = await melden(pfad, `${SCHLUESSEL.slice(0, -1)}x`, body);
+    assert.deepEqual([falsch.status, falsch.daten.grund], [401, "schluessel_ungueltig"], `${pfad} mit falschem Schluessel`);
+    const mit = await melden(pfad, SCHLUESSEL, body);
+    assert.deepEqual([mit.status, mit.daten.ok], [200, true], `${pfad} mit Schluessel`);
+  }
+  assert.equal((await masCollection(CID, "mas_events").get()).size, 0, "abgelehnt und trocken schreiben nichts");
+
+  // Kein Schluessel eingerichtet, Datei fehlt oder Inhalt zu kurz: nichts wird angenommen, auch nicht mit dem alten Schluessel.
+  const kurz = join(tmpdir(), `mas-kontaktverlauf-test-kurz-${process.pid}.txt`);
+  writeFileSync(kurz, "zu-kurz");
+  try {
+    for (const datei of ["", join(tmpdir(), "mas-kontaktverlauf-gibt-es-nicht.txt"), kurz]) {
+      process.env.MAS_KONTAKT_VERLAUF_SCHLUESSEL_DATEI = datei;
+      const r = await melden("sendung", datei === kurz ? "zu-kurz" : SCHLUESSEL, sendung({ trocken: true }));
+      assert.deepEqual([r.status, r.daten.grund], [503, "schluessel_nicht_eingerichtet"]);
+    }
+  } finally {
+    process.env.MAS_KONTAKT_VERLAUF_SCHLUESSEL_DATEI = SCHLUESSEL_DATEI;
+    rmSync(kurz, { force: true });
+  }
+
+  // Auskunft, Tagesliste und Lisas Meldung brauchen den Schluessel nicht.
+  assert.equal((await rufe("/brain/kontakt-verlauf?eintraege=0")).status, 200);
+  assert.equal((await rufe("/brain/tagesliste")).status, 200);
+  const lisa = await rufe("/brain/lisa-anrufe", { method: "POST", body: {} });
+  assert.equal(lisa.status, 400, "Lisas Meldung wird inhaltlich geprueft, nicht am Schluessel abgewiesen");
+  assert.ok(lisa.daten.grund && !String(lisa.daten.grund).startsWith("schluessel"));
+  assert.equal((await masCollection(CID, "mas_events").get()).size, 0);
 });
 
 test("Sendung melden: ein Eintrag, doppelt und trocken erzeugen nichts", async () => {
@@ -319,6 +376,32 @@ test("ein Anruf aus der Zeit vor dem Block wird einmal nachgetragen", async () =
   const v = (await ref.get()).data().verlauf;
   assert.deepEqual([v.weg, v.quelle, v.termin.stand, v.termin.termin_id], ["anruf", "recall", "vereinbart", "t-d"], "nachgetragen und im selben Lauf wieder mit dem Termin verknuepft");
   assert.deepEqual(await fortschreiben(CID), { uebersprungen: true }, "hoechstens alle zehn Minuten");
+});
+
+test("Auskunft: Filter nach Standort, die Aufbewahrung der Praxis steht in der Antwort", async () => {
+  await rufe("/brain/kontakt-verlauf/sendung", { method: "POST", body: sendung({ kontakt_id: "o-2", standort: "ort-2", aktion_id: "akt-2", patient: { id: "pat-e", nachname: "Zwei" } }) });
+  // Ein Anruf von Lisa ohne Standort gehoert zum Standardstandort der Praxis.
+  await buchung().set({ locationId: ORT });
+  const ohne = await rufe("/brain/lisa-anrufe", { method: "POST", body: { anruf_id: "v-ohne-ort", nummer: "+491700000405", beginn: jetzt - 2 * STD, erreicht: "niemand",
+    patient: { id: "pat-f", vorname: "Ida", nachname: "Beispiel" }, anlass: "Zahnreinigung" } });
+  assert.equal(ohne.status, 201);
+
+  const alle = await auskunft();
+  const zwei = await auskunft("?standort=ort-2");
+  const eins = await auskunft(`?standort=${ORT}`);
+  const beide = await auskunft(`?standort=${ORT},ort-2`);
+  assert.deepEqual(zwei.eintraege.map((z) => z.id), ["kontakt-o-2"]);
+  assert.deepEqual([zwei.zahlen.gesamt.versuche, zwei.zahlen.je_quelle.luecke.kontaktiert, zwei.zahlen.je_aktion.map((a) => a.aktion_id)], [1, 1, ["akt-2"]], "der Filter gilt auch fuer die Zahlen");
+  assert.ok(eins.eintraege.length > 1 && eins.eintraege.every((z) => z.standort === ORT));
+  assert.equal(zeile(eins, "lisa-anruf-v-ohne-ort").standort, ORT, "ohne eigenen Standort: Standardstandort");
+  assert.equal(eins.zahlen.gesamt.versuche + zwei.zahlen.gesamt.versuche, alle.zahlen.gesamt.versuche);
+  assert.equal(beide.zahlen.gesamt.versuche, alle.zahlen.gesamt.versuche);
+  assert.equal((await auskunft("?standort=gibt-es-nicht")).zahlen.gesamt.versuche, 0);
+
+  const tage = (await getRetentionConfig(CID)).days;
+  assert.deepEqual(alle.aufbewahrung, { tage, vollstaendig_ab: berlinTag(Date.now() - (tage - 1) * TAG), zeitraum_vollstaendig: true });
+  const weit = await auskunft(`?von=${berlinTag(jetzt - 300 * TAG)}&eintraege=0`);
+  assert.equal(weit.aufbewahrung.zeitraum_vollstaendig, tage >= 301, "weiter zurueck als die Aufbewahrung ist als unvollstaendig gekennzeichnet");
 });
 
 test("Sendungen stehen ausserhalb der Zeitreihe: 801 neuere Sendungen verdraengen den offenen Anruf von Lisa nicht", async () => {

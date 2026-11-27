@@ -4,6 +4,7 @@
 import express from "express";
 import { assertAppEnabled } from "../entitlements.js";
 import { auskunft, speichereReaktion, speichereSendung } from "../brain/kontaktVerlauf.js";
+import { nurMitSchluessel } from "../brain/kontaktVerlaufZugang.js";
 import { resolveClientId } from "./_shared.js";
 
 const router = express.Router();
@@ -22,11 +23,13 @@ function annahme(speichern) {
   };
 }
 
+// Beide Meldepfade nehmen nur mit dem eigenen Schluessel an (kontaktVerlaufZugang.js), auch im Trockenlauf.
+
 // Die Plattform meldet jede SMS und E-Mail aus Luecke fuellen und Kampagne.
-router.post("/brain/kontakt-verlauf/sendung", annahme(speichereSendung));
+router.post("/brain/kontakt-verlauf/sendung", nurMitSchluessel, annahme(speichereSendung));
 
 // Die Plattform meldet eine Reaktion: Link geoeffnet, Antwort, Buchung ueber die Buchungsseite.
-router.post("/brain/kontakt-verlauf/reaktion", annahme(speichereReaktion));
+router.post("/brain/kontakt-verlauf/reaktion", nurMitSchluessel, annahme(speichereReaktion));
 
 // Eintraege und Zahlen (kontaktiert, erreicht, Termin, eingehalten), je Quelle getrennt.
 router.get("/brain/kontakt-verlauf", async (req, res) => {

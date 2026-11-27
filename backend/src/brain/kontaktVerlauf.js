@@ -17,7 +17,7 @@ import { queryByPatient } from "./eventStore.js";
 import { getRetentionConfig } from "./retention.js";
 import { LISA_ANRUF_EXTRACTOR } from "./lisaAnrufe.js";
 import {
-  ZURECHNEN_MS, abfrageAus, berlinTag, berlinUhrzeit, einhaltungAus, eintragFuerReaktion, ersatzTermin, mitPruefen, monateVon, passtZurAbfrage,
+  ZURECHNEN_MS, abfrageAus, aufbewahrungAus, berlinTag, berlinUhrzeit, einhaltungAus, eintragFuerReaktion, ersatzTermin, mitPruefen, monateVon, passtZurAbfrage,
   pruefeReaktion, pruefeSendung, reaktionAnwenden, sendungEintrag, terminForm, terminNachZeit, termineZurechnen, verlaufAusAnruf, verlaufVon,
   verlaufZeile, zahlenAus,
 } from "./kontaktVerlaufLogik.js";
@@ -65,6 +65,16 @@ async function aufbewahrungTage(clientId) {
   const tage = (await getRetentionConfig(clientId)).days;
   tageGemerkt.set(clientId, { tage, wann: Date.now() });
   return tage;
+}
+
+// Standardstandort der Praxis (mas_config/booking), zehn Minuten gemerkt; ein leeres Ergebnis wird nicht gemerkt.
+const standardGemerkt = new Map();
+async function standardStandort(clientId) {
+  const hit = standardGemerkt.get(clientId);
+  if (hit && Date.now() - hit.wann < TAKT_MS) return hit.standort;
+  const standort = text((await loadBooking(clientId).catch(() => null))?.locationId);
+  if (standort) standardGemerkt.set(clientId, { standort, wann: Date.now() });
+  return standort;
 }
 
 /** Meldung der Plattform zu einer SMS oder E-Mail annehmen. Dieselbe `kontakt_id` noch einmal erzeugt nichts Neues. */
@@ -118,6 +128,8 @@ export function _taktVergessen() {
   letzterLauf.clear();
   nachgetragen.clear();
   zuletztGesehen.clear();
+  tageGemerkt.clear();
+  standardGemerkt.clear();
 }
 
 /**
@@ -311,11 +323,19 @@ export async function auskunft(clientId, abfrage = {}, { jetzt = Date.now() } = 
     hinweise.push(`fortschreiben:${String(e?.message || e)}`);
   }
   const events = await ladeMonate(clientId, monateVon(a.von, a.bis));
-  const zeilen = events.map(verlaufZeile).filter((z) => z && passtZurAbfrage(z, a)).sort((x, y) => y.zeitMs - x.zeitMs);
+  let alle = events.map(verlaufZeile).filter(Boolean);
+  // Ein Eintrag ohne eigenen Standort (Anruf von Lisa ohne Angabe) gehoert zum Standardstandort der Praxis,
+  // dort wird auch sein Termin gesucht.
+  if (alle.some((z) => !z.standort)) {
+    const standard = await standardStandort(clientId);
+    if (standard) alle = alle.map((z) => (z.standort ? z : { ...z, standort: standard }));
+  }
+  const zeilen = alle.filter((z) => passtZurAbfrage(z, a)).sort((x, y) => y.zeitMs - x.zeitMs);
   return {
     ok: true,
     clientId,
     zeitraum: { von: a.von, bis: a.bis },
+    aufbewahrung: aufbewahrungAus(await aufbewahrungTage(clientId), a.von, { jetzt }),
     zahlen: zahlenAus(zeilen),
     ...(a.mitEintraegen ? { eintraege: zeilen.slice(0, EINTRAEGE_HOECHSTENS).map(({ patientSchluessel, ...z }) => z) } : {}),
     abgeschnitten: a.mitEintraegen && zeilen.length > EINTRAEGE_HOECHSTENS,

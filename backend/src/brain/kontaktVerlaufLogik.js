@@ -579,8 +579,18 @@ export function abfrageAus(q = {}, { jetzt = Date.now() } = {}) {
   const fruehest = berlinTag(new Date(`${bis}T12:00:00Z`).getTime() - 365 * TAG_MS);
   if (von < fruehest) von = fruehest;
   const liste = (v, erlaubt) => text(v).split(",").map((x) => x.trim()).filter((x) => erlaubt.includes(x));
-  return { von, bis, quellen: liste(q.quelle, QUELLEN), wege: liste(q.weg, WEGE), kampagne_id: text(q.kampagne_id, 120), aktion_id: text(q.aktion_id, 120),
+  const standorte = [...new Set(text(q.standort).split(",").map((x) => text(x, 120)).filter(Boolean))].slice(0, 20);
+  return { von, bis, quellen: liste(q.quelle, QUELLEN), wege: liste(q.weg, WEGE), standorte, kampagne_id: text(q.kampagne_id, 120), aktion_id: text(q.aktion_id, 120),
     mitEintraegen: text(q.eintraege) !== "0" };
+}
+
+/**
+ * Was die Aufbewahrung der Praxis fuer den Zeitraum bedeutet (rein). Aelteres als `tage` Tage loescht der taegliche
+ * Aufraeumlauf; `vollstaendig_ab` ist der erste Berliner Tag, von dem noch alles da ist.
+ */
+export function aufbewahrungAus(tage, von, { jetzt = Date.now() } = {}) {
+  const ab = berlinTag(jetzt - (tage - 1) * TAG_MS);
+  return { tage, vollstaendig_ab: ab, zeitraum_vollstaendig: von >= ab };
 }
 
 /** Die Monate ("JJJJ-MM") eines Zeitraums, beide Enden eingeschlossen. */
@@ -604,6 +614,7 @@ export function passtZurAbfrage(z, a) {
   if (tag < a.von || tag > a.bis) return false;
   if (a.quellen.length && !a.quellen.includes(z.quelle)) return false;
   if (a.wege.length && !a.wege.includes(z.weg)) return false;
+  if (a.standorte?.length && !a.standorte.includes(z.standort)) return false;
   if (a.kampagne_id && z.kampagne_id !== a.kampagne_id) return false;
   if (a.aktion_id && z.aktion_id !== a.aktion_id) return false;
   return true;

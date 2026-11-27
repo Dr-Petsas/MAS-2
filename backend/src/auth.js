@@ -145,6 +145,10 @@ function isPublic(req) {
   // prueft selbst den Praxis-Schluessel X-PlanR-Key (routes/hkp.js, timing-safe).
   if (p.startsWith("/planr/")) return true;
   if (p === "/treatment/lena-stt-url" && req.method === "GET") return true;
+  // Meldungen der Plattform zum Kontaktverlauf (Cloud Functions, kein Nutzer-Login): beide Pfade pruefen
+  // selbst ihren eigenen Schluessel im Kopf X-Service-Token (brain/kontaktVerlaufZugang.js, timing-safe).
+  // Die Auskunft (GET /brain/kontakt-verlauf) gehoert nicht dazu.
+  if (req.method === "POST" && (p === "/brain/kontakt-verlauf/sendung" || p === "/brain/kontakt-verlauf/reaktion")) return true;
   return false;
 }
 
