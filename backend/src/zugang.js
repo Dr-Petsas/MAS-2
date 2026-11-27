@@ -52,13 +52,19 @@ export function seite(req) {
   }
 }
 
-// Uebergang (27.11.2026): Bianca V8 und Lisa V8 schicken noch keinen Schluessel. Ihre vier Pfade bleiben am
-// Tunnel offen, bis sie einen schicken; danach wird diese Liste leer.
+// Uebergang (27.11.2026): Bianca V8, Lisa V8 und die alte Telefon-KI schicken noch keinen Schluessel. Ihre Pfade
+// bleiben am Tunnel offen, bis sie einen schicken; danach wird diese Liste leer. Jede Anfrage, die nur deshalb
+// durchgeht, steht im Zugriffsprotokoll mit `uebergang: true`, Herkunft und Programm.
 const UEBERGANG = new Set([
   "GET /brain/caller-context",
   "POST /brain/caller-context/resolve",
   "POST /brain/events",
   "POST /brain/lisa-anrufe",
+  // Alte Telefon-KI (bianca-and-lisa.pickadoc-tunnel.com): fuehrt Claras Anrufe, solange LISA_OUTBOUND_BASE_URL
+  // dorthin zeigt. Entfaellt mit der Umstellung auf Lisa V8.
+  "GET /brain/karteikarte",
+  "GET /brain/search",
+  "POST /tools/patient-appointments",
 ]);
 
 export function uebergang(req) {

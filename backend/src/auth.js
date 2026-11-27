@@ -1,6 +1,6 @@
 import admin from "./firebase.js";
 import { timingSafeEqual } from "node:crypto";
-import { herkunft, tunnelLehntAb } from "./zugang.js";
+import { herkunft, tunnelLehntAb, uebergang } from "./zugang.js";
 
 // Authentication for the MAS-2 HTTP API.
 //
@@ -288,6 +288,8 @@ export function authMiddleware() {
     req.zugang = {
       mit: req.zugang?.mit || (svc ? "schluessel_unbekannt" : "nichts"),
       wuerde: tunnelLehntAb(req) || undefined,
+      // Von aussen ohne Nachweis nur wegen der Uebergangsliste durchgelassen: wird mitgezaehlt.
+      uebergang: (herkunft(req) === "tunnel" && uebergang(req)) || undefined,
     };
     if (req.zugang.wuerde && TUNNEL_NUR_ANGEMELDET) {
       req.zugang.abgelehnt = "tunnel";

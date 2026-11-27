@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { herkunft, programm, seite, tunnelLehntAb, uebergang } from "../src/zugang.js";
 
-const anfrage = ({ koepfe = {}, von = "127.0.0.1", method = "GET", path = "/brain/search" } = {}) => ({
+const anfrage = ({ koepfe = {}, von = "127.0.0.1", method = "GET", path = "/brain/tagesliste" } = {}) => ({
   headers: koepfe, socket: { remoteAddress: von }, method, path,
 });
 
@@ -46,18 +46,21 @@ test("Seite: Rechnername, bei einer Seite des MAS der Dateiname, nie Abfrage ode
   assert.equal(s({ referer: "kein-url" }), undefined);
 });
 
-test("Regel fuer den Tunnel: von aussen abgelehnt, ausser auf den vier Pfaden des Uebergangs", () => {
+test("Regel fuer den Tunnel: von aussen abgelehnt, ausser auf den sieben Pfaden des Uebergangs", () => {
   const tunnel = { "cf-ray": "x" };
   assert.equal(tunnelLehntAb(anfrage({ koepfe: tunnel })), true);
   assert.equal(tunnelLehntAb(anfrage({ koepfe: tunnel, method: "POST", path: "/tools/send-sms" })), true);
   assert.equal(tunnelLehntAb(anfrage()), false, "dieser Rechner");
   assert.equal(tunnelLehntAb(anfrage({ von: "192.168.0.17" })), false, "Praxisnetz");
-  for (const [method, path] of [["GET", "/brain/caller-context"], ["POST", "/brain/caller-context/resolve"], ["POST", "/brain/events"], ["POST", "/brain/lisa-anrufe"]]) {
+  for (const [method, path] of [["GET", "/brain/caller-context"], ["POST", "/brain/caller-context/resolve"], ["POST", "/brain/events"], ["POST", "/brain/lisa-anrufe"],
+    ["GET", "/brain/karteikarte"], ["GET", "/brain/search"], ["POST", "/tools/patient-appointments"]]) {
     assert.equal(uebergang(anfrage({ method, path })), true, path);
     assert.equal(tunnelLehntAb(anfrage({ koepfe: tunnel, method, path })), false, path);
   }
   // Andere Methode, anderer Pfad darunter, andere Schreibweise: keine Ausnahme.
-  for (const [method, path] of [["POST", "/brain/caller-context"], ["GET", "/brain/events"], ["GET", "/brain/events/abc"], ["GET", "/brain/lisa-anrufe"], ["POST", "/Brain/Events"], ["POST", "/brain/events/"]]) {
+  for (const [method, path] of [["POST", "/brain/caller-context"], ["GET", "/brain/events"], ["GET", "/brain/events/abc"], ["GET", "/brain/lisa-anrufe"], ["POST", "/Brain/Events"], ["POST", "/brain/events/"],
+    ["POST", "/brain/search"], ["POST", "/brain/karteikarte"], ["GET", "/brain/karteikarte/abc"], ["GET", "/tools/patient-appointments"],
+    ["POST", "/tools/patient-appointments/x"], ["POST", "/tools/search-patient"], ["GET", "/brain/patient"]]) {
     assert.equal(tunnelLehntAb(anfrage({ koepfe: tunnel, method, path })), true, `${method} ${path}`);
   }
 });

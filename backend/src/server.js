@@ -101,6 +101,7 @@ app.use((req, res, next) => {
       seite: seite(req),
       wuerde: req.zugang?.wuerde,
       abgelehnt: req.zugang?.abgelehnt,
+      uebergang: req.zugang?.uebergang,
     });
   });
   next();

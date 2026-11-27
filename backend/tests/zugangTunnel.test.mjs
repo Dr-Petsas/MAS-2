@@ -36,7 +36,7 @@ test("von aussen ohne Nachweis: abgelehnt, lesend wie schreibend", async () => {
   assert.equal(AUTH_ENFORCED, false);
   assert.equal(TUNNEL_NUR_ANGEMELDET, true);
   for (const [method, pfad] of [
-    ["GET", "/brain/search?q=x"], ["GET", "/brain/karteikarte"], ["GET", "/brain/tagesliste"], ["GET", "/brain/kontakt-verlauf"],
+    ["GET", "/brain/tagesliste?x=1"], ["POST", "/brain/search"], ["GET", "/brain/karteikarte/abc"], ["GET", "/brain/kontakt-verlauf"],
     ["GET", "/mail/accounts"], ["GET", "/mail/messages"], ["POST", "/mail/send"], ["POST", "/tools/send-sms"],
     ["POST", "/tools/delegate-call"], ["POST", "/tools/search-patient"], ["POST", "/cf/createAppointment"],
     ["GET", "/lisa/tasks"], ["GET", "/clara/qm/praxen"], ["GET", "/admin/tenant/export"], ["POST", "/brain/luecke-fuellen"],
@@ -46,11 +46,11 @@ test("von aussen ohne Nachweis: abgelehnt, lesend wie schreibend", async () => {
     assert.deepEqual([a.status, a.daten.grund, a.daten.error], [401, "anmeldung_noetig", "unauthenticated"], `${method} ${pfad}`);
   }
   // Ein einziger Kopf des Tunnels genuegt; ein erfundener Nachweis oder ein falscher Schluessel hilft nicht.
-  assert.equal((await rufe("/brain/search", { kopf: { "X-Forwarded-For": "203.0.113.7" } })).status, 401);
-  const erfunden = await rufe("/brain/search", { kopf: { ...TUNNEL, Authorization: "Bearer nicht-echt" } });
+  assert.equal((await rufe("/brain/tagesliste", { kopf: { "X-Forwarded-For": "203.0.113.7" } })).status, 401);
+  const erfunden = await rufe("/brain/tagesliste", { kopf: { ...TUNNEL, Authorization: "Bearer nicht-echt" } });
   assert.deepEqual([erfunden.status, erfunden.daten.error], [401, "invalid_token"]);
-  assert.equal((await rufe("/brain/search?t=nicht-echt", { kopf: TUNNEL })).status, 401);
-  assert.equal((await rufe("/brain/search", { kopf: { ...TUNNEL, "X-Service-Token": "falsch" } })).status, 401);
+  assert.equal((await rufe("/brain/tagesliste?t=nicht-echt", { kopf: TUNNEL })).status, 401);
+  assert.equal((await rufe("/brain/tagesliste", { kopf: { ...TUNNEL, "X-Service-Token": "falsch" } })).status, 401);
 });
 
 test("von aussen weiter offen: was sich selbst schuetzt, der Dienstschluessel, der Uebergang", async () => {
@@ -67,10 +67,15 @@ test("von aussen weiter offen: was sich selbst schuetzt, der Dienstschluessel, d
   }
   const dienst = await rufe("/mail/accounts", { kopf: { ...TUNNEL, "X-Service-Token": DIENST } });
   assert.deepEqual([dienst.status, dienst.daten.art], [200, "service"]);
-  for (const [method, pfad] of [["GET", "/brain/caller-context?phone=0"], ["POST", "/brain/caller-context/resolve"], ["POST", "/brain/events"], ["POST", "/brain/lisa-anrufe"]]) {
+  // Uebergang: durchgelassen und im Protokoll als solcher gekennzeichnet. Die drei letzten ruft die alte Telefon-KI.
+  for (const [method, pfad] of [["GET", "/brain/caller-context?phone=0"], ["POST", "/brain/caller-context/resolve"], ["POST", "/brain/events"], ["POST", "/brain/lisa-anrufe"],
+    ["GET", "/brain/karteikarte?name=x"], ["GET", "/brain/search?q=x"], ["POST", "/tools/patient-appointments"]]) {
     const a = await rufe(pfad, { method, kopf: TUNNEL, body: method === "POST" ? {} : undefined });
-    assert.deepEqual([a.status, a.daten.art], [200, "anon"], `${method} ${pfad}`);
+    assert.deepEqual([a.status, a.daten.art, a.daten.zugang], [200, "anon", { mit: "nichts", uebergang: true }], `${method} ${pfad}`);
   }
+  // Dieselben Pfade von diesem Rechner: kein Vermerk.
+  const lokal = await rufe("/brain/search?q=x");
+  assert.deepEqual([lokal.status, lokal.daten.zugang], [200, { mit: "nichts" }]);
 });
 
 test("feste Clara-Routen mit einem Abschnitt: von aussen nur mit Nachweis, die Koppelseite bleibt offen", async () => {
