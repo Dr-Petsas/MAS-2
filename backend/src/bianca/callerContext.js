@@ -3,7 +3,7 @@ import { applyHumanReview } from "../brain/events.js";
 import { findContactsByPhone } from "../brain/addressBook.js";
 import { listCases, setStatus } from "../brain/caseStore.js";
 import { CASE_STATUS } from "../brain/cases.js";
-import { anliegenFuerKontext, itemAus, istLisaAnruf, nichtMehrAnrufen, ohneRegie, weiteresFuerKontext } from "../brain/lisaAnrufe.js";
+import { anliegenFuerKontext, itemAus, istLisaAnruf, nichtMehrAnrufen, ohneRegie, vonHandEintragen, vonHandFuerKontext, weiteresFuerKontext } from "../brain/lisaAnrufe.js";
 
 // ============================================================================
 // Rückrufer-Kontext für Bianca (Telefon-Loop 2/2, Nacht 11./12.06.2026).
@@ -70,6 +70,12 @@ function nurTatsache(event) {
   return istLisaAnruf(event) && nichtMehrAnrufen(event.anruf);
 }
 
+// Zugesagter Termin, dessen Eintragen gescheitert ist: Bianca weiss es und sagt es, erledigen kann es nur die
+// Praxis (Termin von Hand eintragen). Steht im Text und in `items`, aber nicht unter den Kennungen zum Schliessen.
+export function nurPraxisErledigt(event) {
+  return istLisaAnruf(event) && vonHandEintragen(event.anruf);
+}
+
 /** Offene Treffer zur Nummer, neueste zuerst — erledigte nie. */
 export function openCallerHits(events, phone, max = MAX_ITEMS) {
   const digits = canonDigits(phone);
@@ -93,7 +99,8 @@ export function callerTatsachen(events, phone) {
 
 /** Eine Zeile im Text fuer Bianca. Regieanweisungen aus alten Auftraegen stehen nie darin. */
 export function kontextZeile(e) {
-  const anliegen = istLisaAnruf(e) ? [anliegenFuerKontext(e.anruf), weiteresFuerKontext(e.anruf)].filter(Boolean).join(" ") : "";
+  const anliegen = istLisaAnruf(e)
+    ? [vonHandFuerKontext(e.anruf), anliegenFuerKontext(e.anruf), weiteresFuerKontext(e.anruf)].filter(Boolean).join(" ") : "";
   return `- ${fmtWhen(e.ts)}: ${ohneRegie(e.summary)} (noch offen)${anliegen ? ` ${anliegen}` : ""}`;
 }
 
@@ -152,7 +159,7 @@ export async function buildCallerContext(clientId, phone) {
     found: true,
     name,
     context,
-    openEventIds: hits.map((e) => e.id).filter(Boolean),
+    openEventIds: hits.filter((e) => !nurPraxisErledigt(e)).map((e) => e.id).filter(Boolean),
     items,
   };
 }
@@ -169,7 +176,8 @@ export async function resolveOpenCallerItems(clientId, phone, { actor = "Bianca"
   // Mit Kennungen schliesst Bianca nur diese (Familien teilen sich eine Nummer);
   // nur was zur Nummer offen ist, nie eine fremde oder schon erledigte Kennung.
   const nur = Array.isArray(ids) ? new Set(ids.map((x) => String(x || "").trim()).filter(Boolean)) : null;
-  const hits = openCallerHits(events, digits, nur ? Infinity : MAX_ITEMS).filter((e) => !nur || nur.has(e.id));
+  const hits = openCallerHits(events, digits, nur ? Infinity : MAX_ITEMS)
+    .filter((e) => !nurPraxisErledigt(e) && (!nur || nur.has(e.id)));
   const resolved = [];
   for (const e of hits) {
     const out = await resolveItem(clientId, e.id, { actor, note });

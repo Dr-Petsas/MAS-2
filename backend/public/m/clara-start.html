@@ -615,7 +615,8 @@
   const LISA_AUSGANG = { niemand: "Nicht erreicht", besetzt: "Besetzt", abgelehnt: "Anruf nicht angenommen", mailbox: "Anrufbeantworter",
     andere_person: "Jemand anderes am Telefon", gescheitert: "Anruf kam nicht zustande", termin: "Termin vereinbart", rueckruf_gewuenscht: "Bittet um Rückruf",
     meldet_sich_selbst: "Meldet sich selbst", kein_interesse: "Möchte das Angebot nicht", nicht_mehr_anrufen: "Nicht mehr anrufen",
-    falsche_person: "Falsche Nummer", nachricht_ausgerichtet: "Nachricht ausgerichtet", anderes_anliegen: "Anderes Anliegen", abgebrochen: "Gespräch abgebrochen" };
+    falsche_person: "Falsche Nummer", nachricht_ausgerichtet: "Nachricht ausgerichtet", anderes_anliegen: "Anderes Anliegen", abgebrochen: "Gespräch abgebrochen",
+    eintrag_gescheitert: "Termin von Hand eintragen" };
 
   function lisaZeile(z) {
     let ausgang = LISA_AUSGANG[z.ausgang] || "Anruf";
@@ -624,11 +625,13 @@
     if (z.auftrag && z.auftrag.ziel) zeilen.push(el("div", { class: "inhalt" }, "Die Praxis wollte: " + z.auftrag.ziel + (z.auftrag.nachricht ? ": „" + z.auftrag.nachricht + "“" : "")));
     if (z.auftrag && z.auftrag.hintergrund) zeilen.push(el("div", { class: "klein", style: "margin-bottom:6px" }, z.auftrag.hintergrund));
     if (z.termin) zeilen.push(el("div", { class: "inhalt" }, "Termin: " + z.termin));
+    if (z.vonHandEintragen) zeilen.push(el("div", { class: "inhalt" }, "Zugesagt, aber nicht eingetragen" + (z.zugesagt ? ": " + z.zugesagt : " (Zeit siehe unten)")));
     if (z.gesagt) zeilen.push(el("div", { class: "inhalt" }, z.gesagt));
     if (z.weiteresAnliegen) zeilen.push(el("div", { class: "inhalt" }, "Weiteres Anliegen: „" + z.weiteresAnliegen + "“"));
     if (z.angebot && z.angebot.length) zeilen.push(el("div", { class: "inhalt" }, "Angeboten: " + z.angebot.join(" oder ")));
     if (z.rueckrufWann) zeilen.push(el("div", { class: "inhalt" }, "Rückruf erwünscht: " + z.rueckrufWann));
     if (z.offen && z.nichtMehrAnrufen) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Bianca weiß das, spricht es bei einem Anruf dieser Person aber nicht an. Bitte in der Kartei vermerken und dann auf erledigt setzen."));
+    else if (z.offen && z.vonHandEintragen) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Das Eintragen durch Lisa ist gescheitert, der Termin steht nicht im Kalender. Bitte von Hand eintragen, der Person Bescheid geben und dann auf erledigt setzen. Ruft die Person vorher an, sagt Bianca ihr, dass die Praxis den Termin einträgt; Bianca bucht ihn nicht selbst und schließt den Eintrag nicht."));
     else if (z.offen && z.beimRueckruf) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Wenn die Person zurückruft: " + z.beimRueckruf));
     if (!z.offen && z.erledigtVon) zeilen.push(el("div", { class: "klein", style: "margin-bottom:8px" }, "Erledigt von " + z.erledigtVon + (z.erledigtMs ? ", " + wann(z.erledigtMs) : "")));
     // Aufnahme und Wortlaut liegen im CallR; dort gibt es keinen Sprung auf den einzelnen Anruf, nur die Liste.
@@ -636,7 +639,7 @@
       ? el("a", { href: listenDaten.callrUrl, target: "_blank", rel: "noopener", title: "Öffnet die Anrufliste im CallR. Den Anruf dort über Uhrzeit und Nummer finden." }, "Aufnahme und Wortlaut im CallR")
       : null;
     if (!z.offen && callr) zeilen.push(el("div", { class: "aktionen" }, callr));
-    const art = z.offen ? (z.nichtMehrAnrufen ? "sofort" : "heute") : "";
+    const art = z.offen ? (z.nichtMehrAnrufen || z.vonHandEintragen ? "sofort" : "heute") : "";
     return el("li", { class: art },
       el("div", { class: "kopfzeile" },
         el("span", { class: "marke " + art }, ausgang),

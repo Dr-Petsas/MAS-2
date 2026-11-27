@@ -32,7 +32,9 @@ const TZ = "Europe/Berlin";
 
 const ERREICHT = ["person", "andere_person", "mailbox", "niemand", "besetzt", "abgelehnt", "gescheitert"];
 const AUSGAENGE = ["termin", "rueckruf_gewuenscht", "meldet_sich_selbst", "kein_interesse", "nicht_mehr_anrufen",
-  "falsche_person", "nachricht_ausgerichtet", "anderes_anliegen", "abgebrochen"];
+  "falsche_person", "nachricht_ausgerichtet", "anderes_anliegen", "abgebrochen", "eintrag_gescheitert"];
+// Die Person hat einer Zeit zugestimmt, das Eintragen ist gescheitert: eingetragen ist nichts, die Praxis traegt von Hand nach.
+const VON_HAND = "eintrag_gescheitert";
 const NICHT_OFFEN = new Set(["termin", "nachricht_ausgerichtet", "kein_interesse", "gescheitert"]);
 
 const AUSGANG_TEXT = {
@@ -51,6 +53,7 @@ const AUSGANG_TEXT = {
   nachricht_ausgerichtet: "Nachricht ausgerichtet",
   anderes_anliegen: "hatte ein anderes Anliegen",
   abgebrochen: "Gespräch brach ab, bevor etwas feststand",
+  eintrag_gescheitert: "hat einem Termin zugestimmt, das Eintragen ist gescheitert; die Praxis trägt den Termin von Hand ein",
 };
 
 function text(v, max = 0) {
@@ -141,6 +144,20 @@ function terminAus(roh) {
   return t.datum || t.uhrzeit ? t : null;
 }
 
+const zwei = (v) => String(v).padStart(2, "0");
+
+/**
+ * Die zugesagte Zeit bei gescheitertem Eintragen: aus `termin` (ohne Kennung, es gibt keinen Termin), sonst aus
+ * Lisas Satz in `gesagt` ("... dem Termin am 30.11.2026 um 10:00 Uhr bei Dr. Muster zugestimmt."). Sonst null.
+ */
+function zugesagtAus(roh) {
+  const t = terminAus(roh?.termin);
+  if (t) return { datum: t.datum, uhrzeit: t.uhrzeit, behandler: t.behandler };
+  const m = /dem Termin am (\d{1,2})\.(\d{1,2})\.(\d{4}) um (\d{1,2}):(\d{2}) Uhr(?: bei (.+?))? zugestimmt/.exec(text(roh?.gesagt));
+  if (!m) return null;
+  return { datum: `${m[3]}-${zwei(m[2])}-${zwei(m[1])}`, uhrzeit: `${zwei(m[4])}:${m[5]}`, behandler: text(m[6], 80) };
+}
+
 /**
  * Lisas Meldung pruefen und in die gespeicherte Form bringen (rein).
  * @returns {{ok:true, anruf:object}|{ok:false, grund:string, klartext:string}}
@@ -184,6 +201,8 @@ export function pruefeAnruf(roh = {}) {
     gesagt: text(roh.gesagt, 400),
     angebot,
     termin: ausgang === "termin" ? termin : null,
+    // Nur bei gescheitertem Eintragen: die Zeit, der die Person zugestimmt hat. Eingetragen ist sie nicht.
+    zugesagt: ausgang === VON_HAND ? zugesagtAus(roh) : null,
     rueckruf_wann: text(roh.rueckruf_wann, 120),
     beim_rueckruf: text(roh.beim_rueckruf, 300),
     dauer_s: Number.isFinite(dauer) && dauer >= 0 ? Math.round(dauer) : null,
@@ -222,6 +241,18 @@ export function nichtMehrAnrufen(anruf) {
   return ausgangVon(anruf) === "nicht_mehr_anrufen";
 }
 
+/** Zugesagt, aber nicht eingetragen: die Praxis muss den Termin von Hand eintragen. */
+export function vonHandEintragen(anruf) {
+  return ausgangVon(anruf) === VON_HAND;
+}
+
+/** Zusatz fuer den Text an Bianca (`context`): der Termin steht nicht im Kalender. Leer bei jedem anderen Ausgang. */
+export function vonHandFuerKontext(anruf) {
+  if (!vonHandEintragen(anruf)) return "";
+  return "Dieser Termin ist NICHT eingetragen: bestätige ihn nicht als gebucht und buche ihn nicht selbst. "
+    + "Die Praxis trägt ihn von Hand ein und meldet sich bei der Person.";
+}
+
 /** Anlass mit Behandler, ohne Anweisung: darf der Person selbst gesagt werden. */
 export function grundVon(anruf) {
   const anlass = text(anruf?.anlass);
@@ -257,6 +288,9 @@ export function satzFuer(anruf) {
     case "falsche_person": return `${versucht}. Unter dieser Nummer ist die Person nicht zu erreichen.${worum}`;
     case "nachricht_ausgerichtet": return `${gesprochen} und die Nachricht ausgerichtet.${worum}`;
     case "abgebrochen": return `${gesprochen}. Das Gespräch brach ab, bevor etwas feststand.${worum}`;
+    case VON_HAND:
+      return `${gesprochen}. ${wer} hat einem Termin zugestimmt${anruf.zugesagt ? `: ${terminText(anruf.zugesagt)}` : ""}. `
+        + `Das Eintragen ist gescheitert, der Termin steht noch nicht im Kalender; die Praxis trägt ihn von Hand ein.${worum}`;
     default: return `${gesprochen}. ${wer} hatte ein anderes Anliegen.${worum}`;
   }
 }
@@ -388,6 +422,13 @@ function auftragFuerSeite(anruf) {
 
 /** Anweisung fuer den Rueckruf. Lisas eigener Text gilt; sonst baut MAS sie. Wird nie vorgelesen. */
 export function beimRueckrufVon(anruf) {
+  // Zugesagt, aber nicht eingetragen: Lisas allgemeiner Text ("Termin selbst anbieten und buchen") passt hier nicht.
+  if (vonHandEintragen(anruf)) {
+    const zeit = anruf.zugesagt ? ` (${terminText(anruf.zugesagt)})` : "";
+    return `Hat bei Lisa einem Termin zugestimmt${zeit}; das Eintragen ist gescheitert, eingetragen ist nichts. `
+      + "Den Termin nicht als gebucht bestätigen und nicht selbst buchen. Sagen, dass die Praxis ihn von Hand einträgt und sich dazu meldet. "
+      + "Möchte die Person inzwischen eine andere Zeit, den Wunsch für die Praxis aufnehmen.";
+  }
   if (text(anruf?.beim_rueckruf)) return text(anruf.beim_rueckruf);
   // Mit Auftrag der Praxis und offenem Anliegen fuehrt Bianca das Anliegen weiter.
   if (wirdAufgegriffen(anruf)) return auftragAnBianca(anruf);
@@ -450,6 +491,7 @@ export function itemAus(event) {
       id: event.id, ts: event.ts || 0, zeit: event.ts ? tagLang(event.ts) : "", art: "notiz",
       patient: text(event.counterparty?.name || event.subject?.name), grund: ohneRegie(event.summary),
       ausgang: "", ausgang_text: "", versuche: 1, gesagt: "", angebot: [], beim_rueckruf: "", auftrag: null, weiteres_anliegen: "", nicht_vortragen: false,
+      zugesagt: null, von_hand_eintragen: false,
     };
   }
   const a = event.anruf;
@@ -473,6 +515,9 @@ export function itemAus(event) {
     weiteres_anliegen: weiteresAnliegen(a),
     // Tatsache fuer Bianca, kein Anlass: nicht vortragen, nicht von Bianca erledigen.
     nicht_vortragen: nichtMehrAnrufen(a),
+    // Zugesagt, aber nicht eingetragen: die Zeit (ohne Kennung) und das Kennzeichen; sonst null und false.
+    zugesagt: vonHandEintragen(a) && a.zugesagt ? { ...a.zugesagt, text: terminText(a.zugesagt) } : null,
+    von_hand_eintragen: vonHandEintragen(a),
   };
 }
 
@@ -494,6 +539,8 @@ function seitenZeile(event) {
     gesagt: text(a.gesagt),
     angebot: (Array.isArray(a.angebot) ? a.angebot : []).map(terminText).filter(Boolean),
     termin: terminText(a.termin),
+    zugesagt: vonHandEintragen(a) ? terminText(a.zugesagt) : "",
+    vonHandEintragen: vonHandEintragen(a),
     rueckrufWann: text(a.rueckruf_wann),
     beimRueckruf: beimRueckrufVon(a),
     auftrag: auftragFuerSeite(a),
@@ -544,8 +591,10 @@ export async function speichereLisaAnruf(clientId, roh = {}) {
   const versuche = 1 + fruehere.reduce((m, e) => Math.max(m, Number(e.anruf?.versuche) || 1), 0);
   const eintrag = eintragAus(clientId, anruf, { versuche });
   // Ein technisch gescheiterter Anruf ersetzt nichts: der fruehere Eintrag bleibt offen.
-  // Ebenso bleibt ein frueherer Eintrag offen, in dem noch ein weiteres Anliegen wartet.
-  const ersetzt = ausgangVon(anruf) === "gescheitert" ? [] : fruehere.filter((e) => !weiteresAnliegen(e.anruf)).map((e) => e.id);
+  // Ebenso bleibt ein frueherer Eintrag offen, in dem noch ein weiteres Anliegen wartet oder ein zugesagter
+  // Termin von Hand einzutragen ist: das erledigt nur die Praxis.
+  const ersetzt = ausgangVon(anruf) === "gescheitert" ? []
+    : fruehere.filter((e) => !weiteresAnliegen(e.anruf) && !vonHandEintragen(e.anruf)).map((e) => e.id);
   const antwort = { ok: true, id: anruf.kennung, neu: true, offen: eintrag.status === ITEM_STATUS.OPEN, satz: eintrag.summary, versuche, ersetzt };
   if (roh.trocken === true) return { ...antwort, trocken: true };
 
