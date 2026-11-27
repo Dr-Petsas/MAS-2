@@ -53,6 +53,7 @@ import { conformerBenchProxy } from "./routes/conformerBench.js";
 import { qwenTtsProxy } from "./routes/qwenTtsProxy.js";
 import { qwenAsrProxy } from "./routes/qwenAsrProxy.js";
 import { voiceEnhanceProxy } from "./routes/voiceEnhanceProxy.js";
+import lisaV8Proxy from "./routes/lisaV8Proxy.js";
 import { DEFAULT_CLIENT_ID, PUBLIC_BASE_URL, resolveClientId } from "./routes/_shared.js";
 import { fuerAlleMandanten } from "./tenants.js";
 import { testRedirectMiddleware } from "./clara/testRedirect.js";
@@ -67,6 +68,8 @@ const app = express();
 app.use("/qwen-tts", qwenTtsProxy);
 app.use("/qwen-asr", qwenAsrProxy);
 app.use("/voice-enhance", voiceEnhanceProxy);
+// Lisa V8 (Auftragsannahme im LAN) fuer die Plattform. VOR express.json: der Koerper geht roh durch.
+app.use("/lisa-v8", lisaV8Proxy);
 // 25mb: Nadines Composer erlaubt bis 15 MB Anhaenge pro Mail; base64 in JSON
 // blaeht das auf ~20 MB auf. Mit dem alten 8mb-Limit scheiterte /mail/send ab
 // ~6 MB echter Dateigroesse mit einem nichtssagenden HTTP 413.

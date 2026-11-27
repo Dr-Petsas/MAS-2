@@ -105,6 +105,9 @@ function isPublic(req) {
   if (p === "/qwen-tts" || p.startsWith("/qwen-tts/")) return true;
   if (p === "/qwen-asr" || p.startsWith("/qwen-asr/")) return true;
   if (p === "/voice-enhance" || p.startsWith("/voice-enhance/")) return true;
+  // Weiterleitung zur Auftragsannahme von Lisa V8 (routes/lisaV8Proxy.js). Steht vor der Anmeldung;
+  // den Schluessel im Kopf Authorization prueft Lisa selbst, zugelassen sind nur vier Pfade.
+  if (p.startsWith("/lisa-v8/")) return true;
   // Termin-Bildbeleg (SVG) fuer Handy-Push und Chat-Vorschau.
   if (/^\/clara\/proof\/[^/]+\/[^/]+\.svg$/.test(p)) return true;
   // Online-Zusage aus Recall-SMS (Patient klickt den SMS-Link, nicht
