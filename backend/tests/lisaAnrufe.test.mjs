@@ -71,9 +71,13 @@ test("Pruefung, Satz und Regeln ohne Datenbank", () => {
 
   for (const erreicht of ["niemand", "besetzt", "abgelehnt", "mailbox", "andere_person"]) assert.equal(istOffen(pruefeAnruf(anruf({ erreicht })).anruf), true, erreicht);
   assert.equal(istOffen(pruefeAnruf(anruf({ erreicht: "gescheitert" })).anruf), false);
-  for (const ausgang of ["rueckruf_gewuenscht", "meldet_sich_selbst", "nicht_mehr_anrufen", "falsche_person", "anderes_anliegen"]) {
+  for (const ausgang of ["rueckruf_gewuenscht", "meldet_sich_selbst", "nicht_mehr_anrufen", "falsche_person", "anderes_anliegen", "abgebrochen"]) {
     assert.equal(istOffen(pruefeAnruf(anruf({ erreicht: "person", ausgang })).anruf), true, ausgang);
   }
+  // Gespraech mit der bestaetigten Person brach ab: kein "anderes Anliegen" behaupten.
+  const ab = pruefeAnruf(anruf({ erreicht: "person", ausgang: "abgebrochen" })).anruf;
+  assert.ok(satzFuer(ab).includes("gesprochen") && satzFuer(ab).includes("brach ab") && !satzFuer(ab).includes("anderes Anliegen"), satzFuer(ab));
+  assert.ok(beimRueckrufVon(ab).includes("brach ab") && beimRueckrufVon(ab).includes("Kontrolluntersuchung"), beimRueckrufVon(ab));
   for (const ausgang of ["nachricht_ausgerichtet", "kein_interesse"]) assert.equal(istOffen(pruefeAnruf(anruf({ erreicht: "person", ausgang })).anruf), false, ausgang);
 
   const p = (patient, nummer = NUMMER) => pruefeAnruf(anruf({ patient, nummer })).anruf;

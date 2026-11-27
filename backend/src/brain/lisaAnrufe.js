@@ -32,7 +32,7 @@ const TZ = "Europe/Berlin";
 
 const ERREICHT = ["person", "andere_person", "mailbox", "niemand", "besetzt", "abgelehnt", "gescheitert"];
 const AUSGAENGE = ["termin", "rueckruf_gewuenscht", "meldet_sich_selbst", "kein_interesse", "nicht_mehr_anrufen",
-  "falsche_person", "nachricht_ausgerichtet", "anderes_anliegen"];
+  "falsche_person", "nachricht_ausgerichtet", "anderes_anliegen", "abgebrochen"];
 const NICHT_OFFEN = new Set(["termin", "nachricht_ausgerichtet", "kein_interesse", "gescheitert"]);
 
 const AUSGANG_TEXT = {
@@ -50,6 +50,7 @@ const AUSGANG_TEXT = {
   falsche_person: "unter der Nummer nicht zu erreichen",
   nachricht_ausgerichtet: "Nachricht ausgerichtet",
   anderes_anliegen: "hatte ein anderes Anliegen",
+  abgebrochen: "Gespräch brach ab, bevor etwas feststand",
 };
 
 function text(v, max = 0) {
@@ -224,6 +225,7 @@ export function satzFuer(anruf) {
     case "nicht_mehr_anrufen": return `${gesprochen}. ${wer} möchte nicht mehr angerufen werden.${worum}`;
     case "falsche_person": return `${versucht}. Unter dieser Nummer ist die Person nicht zu erreichen.${worum}`;
     case "nachricht_ausgerichtet": return `${gesprochen} und die Nachricht ausgerichtet.${worum}`;
+    case "abgebrochen": return `${gesprochen}. Das Gespräch brach ab, bevor etwas feststand.${worum}`;
     default: return `${gesprochen}. ${wer} hatte ein anderes Anliegen.${worum}`;
   }
 }
@@ -237,6 +239,7 @@ export function beimRueckrufVon(anruf) {
     case "rueckruf_gewuenscht": return `Hat um Rückruf gebeten. ${anlass} Das Anliegen gleich klären.`;
     case "meldet_sich_selbst": return `Wollte sich selbst melden. ${anlass} Das Anliegen gleich klären.`;
     case "falsche_person": return "Unter dieser Nummer war die gemeinte Person nicht zu erreichen. Nach der richtigen Nummer fragen.";
+    case "abgebrochen": return `Das Gespräch mit Lisa brach ab, bevor etwas feststand. ${anlass} Das Anliegen gleich klären.`;
     case "anderes_anliegen": return `Hatte beim Anruf ein anderes Anliegen. Nachfragen, worum es geht. ${anlass}`;
     case "termin": case "nachricht_ausgerichtet": case "kein_interesse": case "gescheitert": return "";
     default: return `Sagen, dass die Praxis angerufen hat. ${anlass} Das Anliegen gleich klären.`;
