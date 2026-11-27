@@ -4086,6 +4086,7 @@ router.post("/tools/dictate", async (req, res) => {
         contactName: pendingCall.name || target.name,
         callLanguage: req.body?.callLanguage,
         by,
+        quelle: "clara",
       });
       await clearPendingLisaCall(clientId).catch(() => {});
       if (out?.taskId) {
@@ -5154,6 +5155,7 @@ router.post("/tools/delegate-call", async (req, res) => {
         callLanguage: req.body?.callLanguage,
         by: op?.name || "Team",
         sofort,
+        quelle: "clara",
       });
       await clearPendingLisaCall(clientId).catch(() => {});
       if (out?.taskId) {

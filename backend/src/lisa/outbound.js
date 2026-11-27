@@ -555,13 +555,17 @@ async function lisaOutboundAgent(clientId) {
 }
 
 /** Auftrag an die TelefonKI-Lisa (Asterisk/Zaluma). Rein bis auf fetch. */
-export function telefonkiBundle({ clientId, locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext, vorab }) {
+// `quelle: "clara"`: Clara hat diesen Anruf im Auftrag eines Menschen der Praxis bestellt. Lisa V8 waehlt samstags
+// nur solche Anrufe (oder wenn die Praxis samstags geoeffnet hat). Recall-Coach, Abwesenheitsplaner und Anruflisten
+// tragen das Feld nicht.
+export function telefonkiBundle({ clientId, locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext, vorab, quelle }) {
   const [vor, ...rest] = String(name || "").trim().split(/\s+/);
   const extra = vorab?.slots?.length
     ? { freeTimeSlots: vorab.slots.map((iso) => ({ iso, spoken: terminSprech(iso) })) }
     : {};
   return {
     ...extra,
+    ...(quelle === "clara" ? { quelle: "clara" } : {}),
     phoneCallId: taskId,
     clientId,
     locationId: locationId || agent?.locationId || "",
@@ -589,13 +593,13 @@ export function telefonkiBundle({ clientId, locationId, taskId, to, fromDid, auf
   };
 }
 
-async function telefonkiOutboundCall(clientId, { taskId, to, auftrag, name, bookingContext, vorab }) {
+async function telefonkiOutboundCall(clientId, { taskId, to, auftrag, name, bookingContext, vorab, quelle }) {
   const agent = await lisaOutboundAgent(clientId);
   const fromDid = normalizePhoneE164(env("LISA_FROM_DID") || agent?.phoneNumber || "");
   if (!fromDid) return { ok: false, error: "keine Absender-Nummer (LISA_FROM_DID / Outbound-Agent)" };
   const booking = await loadBooking(clientId).catch(() => null);
   const body = telefonkiBundle({
-    clientId, locationId: booking?.locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext, vorab,
+    clientId, locationId: booking?.locationId, taskId, to, fromDid, auftrag, name, agent, bookingContext, vorab, quelle,
   });
   const headers = { "Content-Type": "application/json" };
   const token = env("LISA_OUTBOUND_API_TOKEN");
@@ -669,7 +673,9 @@ export function rahmeAuftrag(prompt) {
     + `oder einen Grund erfinden.]`;
 }
 
-export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext, taskId, identitaet, sofort } = {}) {
+export async function lisaStartCall(clientId, { phone, instruction, contactName, by, callLanguage, bookingContext, taskId, identitaet, sofort, quelle } = {}) {
+  // Herkunft des Auftrags fuer Lisa V8 (siehe telefonkiBundle). Nur "clara" wird weitergereicht.
+  const vonClara = String(quelle || "").trim().toLowerCase() === "clara";
   if (!callConfigured()) {
     return { ok: false, message: "Outbound-Anrufe sind nicht konfiguriert." };
   }
@@ -741,6 +747,8 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
       assignedBy: by || "Team",
       callLanguage: (callLanguage || "de").toLowerCase(),
       bookingContext: bookingContext && typeof bookingContext === "object" ? bookingContext : null,
+      // Bleibt am eingeplanten Anruf, damit die Wiedervorlage (startScheduledLisaCalls) sie mitgibt.
+      ...(vonClara ? { quelle: "clara" } : {}),
       outcome: null,
       resultSummary: null,
       transcriptText: null,
@@ -833,6 +841,7 @@ export async function lisaStartCall(clientId, { phone, instruction, contactName,
   const call = provider === "telefonki"
     ? await telefonkiOutboundCall(clientId, {
       taskId: taskRef.id, to, auftrag: dynamicVariables.task_prompt, name, bookingContext, vorab,
+      quelle: vonClara ? "clara" : "",
     })
     : await elevenOutboundCall({ to, dynamicVariables });
   // ElevenLabs meldet einen sofort gescheiterten Anruf mit HTTP 200, aber ohne
@@ -1178,6 +1187,7 @@ export async function startScheduledLisaCalls(clientId) {
         callLanguage: t.callLanguage,
         bookingContext: t.bookingContext || null,
         taskId: doc.id,
+        quelle: t.quelle,
       }).catch((e) => ({ ok: false, message: String(e?.message || e) }));
       if (out?.ok === false) {
         await doc.ref.update({
