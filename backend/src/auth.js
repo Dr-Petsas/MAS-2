@@ -29,6 +29,11 @@ const AUTH_ENFORCED = (() => {
   return process.env.NODE_ENV === "production";
 })();
 
+// Von aussen (ueber den Tunnel) nur mit Anmeldung oder Schluessel. Schalter in der .env; aus = wie bisher.
+const TUNNEL_NUR_ANGEMELDET = ["1", "true", "yes", "on"].includes(
+  (process.env.MAS_TUNNEL_NUR_ANGEMELDET || "").trim().toLowerCase(),
+);
+
 function safeEq(a, b) {
   const ba = Buffer.from(String(a));
   const bb = Buffer.from(String(b));
@@ -146,6 +151,10 @@ function isPublic(req) {
   // prueft selbst den Praxis-Schluessel X-PlanR-Key (routes/hkp.js, timing-safe).
   if (p.startsWith("/planr/")) return true;
   if (p === "/treatment/lena-stt-url" && req.method === "GET") return true;
+  // Drei weitere Pfade des gekoppelten iPads: jede Route prueft selbst die Geraetekennung (companionDeviceOk in
+  // routes/treatment.js) und antwortet sonst mit 403. Sie fehlten hier; ohne erzwungene Anmeldung fiel das nicht auf.
+  // GET /treatment/room-capture-state gehoert NICHT dazu: die Route prueft nur, wenn LENA_STT_PUBLISH_TOKEN gesetzt ist.
+  if (req.method === "POST" && (p === "/treatment/room-capture" || p === "/treatment/lena-suggest" || p === "/treatment/lena-consolidate-01")) return true;
   // Meldungen der Plattform zum Kontaktverlauf (Cloud Functions, kein Nutzer-Login): beide Pfade pruefen
   // selbst ihren eigenen Schluessel im Kopf X-Service-Token (brain/kontaktVerlaufZugang.js, timing-safe).
   // Die Auskunft (GET /brain/kontakt-verlauf) gehoert nicht dazu.
@@ -202,11 +211,23 @@ export function authMiddleware() {
     }
 
     // Ohne gueltigen Nachweis. "wuerde" haelt fest, ob die Regel fuer den Tunnel (zugang.js) diese Anfrage
-    // ablehnt; hier wird nur gezaehlt.
+    // ablehnt. Mit MAS_TUNNEL_NUR_ANGEMELDET=1 wird sie abgelehnt: von aussen geht dann nur noch, was sich
+    // selbst schuetzt (isPublic), was Anmeldung oder Dienstschluessel mitbringt, und der Uebergang fuer Bianca
+    // und Lisa. Aufrufer auf diesem Rechner und im Praxisnetz sind nicht betroffen.
+    const ungueltig = req.zugang?.mit === "anmeldung_ungueltig";
     req.zugang = {
       mit: req.zugang?.mit || (svc ? "schluessel_unbekannt" : "nichts"),
       wuerde: tunnelLehntAb(req) || undefined,
     };
+    if (req.zugang.wuerde && TUNNEL_NUR_ANGEMELDET) {
+      req.zugang.abgelehnt = "tunnel";
+      return res.status(401).json({
+        ok: false,
+        error: ungueltig ? "invalid_token" : "unauthenticated",
+        grund: "anmeldung_noetig",
+        klartext: "Von außen geht das nur mit Anmeldung.",
+      });
+    }
 
     if (AUTH_ENFORCED) return res.status(401).json({ error: "unauthenticated" });
 
@@ -217,4 +238,4 @@ export function authMiddleware() {
   };
 }
 
-export { AUTH_ENFORCED, SERVICE_TOKEN };
+export { AUTH_ENFORCED, SERVICE_TOKEN, TUNNEL_NUR_ANGEMELDET };

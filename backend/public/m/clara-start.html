@@ -343,8 +343,20 @@
     if (zustand.clientId) headers["X-Client-Id"] = zustand.clientId;
     const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
     const daten = await r.json().catch(() => ({}));
+    if (r.status === 401) { anmeldungFehlt(); throw new Error(daten.klartext || "Anmeldung fehlt"); }
     if (!r.ok) throw new Error(daten.error || "Fehler " + r.status);
     return daten;
+  }
+
+  // Von außen nimmt das MAS ohne Anmeldung nichts mehr an (401). Dann ein klarer Hinweis statt einer leeren Seite.
+  function anmeldungFehlt() {
+    if (document.getElementById("ohne-anmeldung")) return;
+    const kasten = document.createElement("div");
+    kasten.id = "ohne-anmeldung";
+    kasten.setAttribute("role", "alert");
+    kasten.style.cssText = "margin:16px;padding:16px 18px;border-radius:12px;background:#fff4e5;color:#5c3b00;border:1px solid #f0c27b;font:16px/1.45 system-ui,sans-serif";
+    kasten.textContent = "Diese Seite zeigt hier nichts an, weil die Anmeldung fehlt oder abgelaufen ist. Bitte öffnen Sie Clara in der Plattform (Pickadoc): dort sind Sie angemeldet.";
+    document.body.prepend(kasten);
   }
 
   function ziffern(v) {
