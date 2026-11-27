@@ -9,6 +9,7 @@ import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
 import { normalizePhone } from "./callerLookup.js";
 import { runGapFill, interneKalender, kandidatenBestand, rankCandidatesForGap, spokenMotiveLabel, faelligSeit, durationOfMotive } from "./gapFill.js";
+import { anlassAn, anlassErgaenzen } from "./leistungsAnlass.js";
 
 const TZ = "Europe/Berlin";
 const s = (v) => String(v ?? "").trim();
@@ -252,6 +253,7 @@ export async function passendFuerLuecke(clientId, { date, calendarId, startMin, 
   const absagerZahl = gezaehlt.filter(hatAbgesagt).length;
   const juengst = gezaehlt.filter((c) => !hatAbgesagt(c) && (Number(c.overdueDays) || 0) <= 730).length;
   gruppen = gruppen.map((g) => ({ ...g, patienten: g.patienten.slice(0, JE_GRUND) }));
+  if (anlassAn(clientId)) gruppen = await anlassErgaenzen(clientId, gruppen);
   const calendar = (booking.calendars || []).find((c) => c.id === s(calendarId));
   return {
     ok: true,
