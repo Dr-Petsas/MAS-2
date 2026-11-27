@@ -671,6 +671,9 @@ export async function fetchPatientsByIds(clientId, ids) {
       email: String(d.email || ""),
       hasPhone: phone.length > 0,
       createdAt: created && !isNaN(created.getTime()) ? created.toISOString() : null,
+      // Herkunft der Akte: bei Uebernahme aus dem Praxisprogramm dessen Name und die Patientennummer dort.
+      importSource: String(d.importSource || ""),
+      importId: String(d.importId || ""),
     });
   }
   return out;

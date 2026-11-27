@@ -10,7 +10,8 @@ const A = await import("../src/clara/anlassAbgleich.js");
 
 const JETZT = Date.parse("2026-11-27T10:00:00Z");
 const um = (tag, uhr = "09:00") => Date.parse(`${tag}T${uhr}:00+02:00`);
-const zeile = (date, kind, text, anzahl = 1) => ({ date, kind, nr: kind, text, zahn: "", anzahl });
+// Zeile wie von PlanR: vierstellige Nummern sind GOZ, alles andere BEMA; ohne Nummer keine Art.
+const zeile = (date, nr, text, anzahl = 1) => ({ date, kind: !nr ? "" : nr.length === 4 && Number(nr) >= 0 ? "goz" : "bema", nr, text, zahn: "", anzahl });
 const termin = (tag, name, x = {}) => ({ start: um(tag), status: "confirmed", patientStatus: 2, isDeleted: false, visitMotive: { id: `id-${name}`, name }, ...x });
 const ok = (...leistungen) => ({ stand: "ok", leistungen });
 const ab = (dampsoft, termine, o = {}) => A.abgleichen(dampsoft, termine, { jetzt: JETZT, toleranz: 1, ...o });
@@ -24,7 +25,7 @@ test("Toleranz: Vorgabe ein Tag, einstellbar von 0 bis 7", () => {
   assert.equal(A.toleranzTage("viel"), 1);
 });
 
-test("Behandlungsart aus dem Text: nur ueber die feste Tabelle", () => {
+test("Behandlungsart des Besuchsgrunds: nur ueber die feste Tabelle", () => {
   const arten = (t) => [...A.behandlungsarten(t)];
   assert.deepEqual(arten("PRO professionelle Zahnreinigung"), ["zahnreinigung"]);
   assert.deepEqual(arten("Professionelle Zahnreinigung"), ["zahnreinigung"]);
@@ -62,11 +63,11 @@ test("uebereinstimmend: gleicher Tag, gleiche Behandlungsart: Dampsoft gilt", ()
     [termin("2026-03-03", "KCH Kontrolluntersuchung"), termin("2026-09-14", "PRO professionelle Zahnreinigung")]);
   assert.equal(e.anlass_abgleich, "uebereinstimmend");
   assert.equal(e.anlass_sicher, true);
-  assert.deepEqual(e.letzter_besuch, { datum: "2026-09-14", grund: "Professionelle Zahnreinigung, Beratung" });
-  assert.equal(e.kontrollgrund, "Zuletzt am 14. September 2026 abgerechnet: Professionelle Zahnreinigung, Beratung.");
+  assert.deepEqual(e.letzter_besuch, { datum: "2026-09-14", grund: "Professionelle Zahnreinigung" });
+  assert.equal(e.kontrollgrund, "Zuletzt am 14. September 2026 abgerechnet: Professionelle Zahnreinigung.");
   assert.equal(e.anlass_quelle, "abrechnung");
   assert.deepEqual(e.anlass_kandidaten.map((k) => [k.quelle, k.behandlung, k.datum, k.vorauswahl]), [
-    ["dampsoft", "Professionelle Zahnreinigung, Beratung", "2026-09-14", true],
+    ["dampsoft", "Professionelle Zahnreinigung", "2026-09-14", true],
     ["pickadoc", "professionelle Zahnreinigung", "2026-09-14", false],
   ]);
 });
@@ -111,6 +112,44 @@ test("nicht vergleichbar: eine Seite laesst sich keiner Behandlungsart zuordnen,
   assert.equal(a.anlass_abweichung, "nicht_vergleichbar");
   const b = ab(ok(zeile("2026-09-14", "1040", "Professionelle Zahnreinigung")), [termin("2026-09-14", "Sprechstunde")]);
   assert.equal(b.anlass_abweichung, "nicht_vergleichbar");
+});
+
+test("die Nummer entscheidet, nicht der Text: Fuellung ohne das Wort, Extraktion ohne das Wort", () => {
+  const f = ab(ok(zeile("2026-09-14", "13d", "mehr als dreiflächig o.Eckenaufbau")), [termin("2026-09-14", "KCH Füllung groß")]);
+  assert.equal(f.anlass_abgleich, "uebereinstimmend");
+  const x = ab(ok(zeile("2026-09-14", "45", "Entfernen eines tieffrakturierten Zahnes")), [termin("2026-09-14", "KCH Extraktion klein")]);
+  assert.equal(x.anlass_abgleich, "uebereinstimmend");
+  const w = ab(ok(zeile("2026-09-14", "35", "Wurzelfüllung")), [termin("2026-09-14", "KCH Füllung klein")]);
+  assert.equal(w.anlass_abweichung, "behandlung", "Wurzelfuellung ist Wurzelbehandlung, keine Fuellung");
+  const fremd = ab(ok(zeile("2026-09-14", "9999", "Professionelle Zahnreinigung")), [termin("2026-09-14", "PRO professionelle Zahnreinigung")]);
+  assert.equal(fremd.anlass_abweichung, "nicht_vergleichbar", "unbekannte Nummer: der Text zaehlt nicht");
+});
+
+test("Begleitleistungen werden uebergangen, der Grund nennt die Hauptbehandlung", () => {
+  const e = ab(ok(
+    zeile("2026-09-14", "40", "Infiltrationsanästhesie"), zeile("2026-09-14", "Ä925a", "Röntgendiagnostik d.Zähne bis2 Aufnahmen"),
+    zeile("2026-09-14", "8", "Vitalitätsprüfung"), zeile("2026-09-14", "45", "Entfernen eines tieffrakturierten Zahnes"),
+  ), [termin("2026-09-14", "KCH Extraktion klein")]);
+  assert.equal(e.anlass_abgleich, "uebereinstimmend");
+  assert.deepEqual(e.letzter_besuch, { datum: "2026-09-14", grund: "Entfernen eines tieffrakturierten Zahnes" });
+  const nur = ab(ok(zeile("2026-09-14", "40", "Infiltrationsanästhesie"), zeile("2026-09-14", "12", "Besondere Maßnahmen beim Füllen")), [termin("2026-09-14", "KCH Füllung klein")]);
+  assert.equal(nur.anlass_abweichung, "nicht_vergleichbar");
+  assert.equal(nur.anlass_kandidaten[0].behandlung, "Besondere Maßnahmen beim Füllen", "ohne Hauptleistung: alles ausser Begleitleistungen");
+  const begleit = ab(ok(zeile("2026-09-14", "40", "Infiltrationsanästhesie")), [termin("2026-09-14", "KCH Füllung klein")]);
+  assert.equal(begleit.anlass_kandidaten[0].behandlung, "Infiltrationsanästhesie", "nur Begleitleistungen: sie werden genannt, eine Art gibt es nicht");
+  assert.equal(begleit.anlass_abweichung, "nicht_vergleichbar");
+});
+
+test("Untersuchung neben einer anderen Behandlung zaehlt nicht; allein oder neben Zahnstein schon", () => {
+  const mit = ab(ok(zeile("2026-09-14", "01", "Untersuchung"), zeile("2026-09-14", "40", "Infiltrationsanästhesie"), zeile("2026-09-14", "13b", "Füllung zweiflächig")),
+    [termin("2026-09-14", "KCH Kontrolluntersuchung")]);
+  assert.equal(mit.anlass_abweichung, "behandlung");
+  assert.equal(mit.anlass_kandidaten[0].behandlung, "Füllung zweiflächig");
+  const fuellung = ab(ok(zeile("2026-09-14", "01", "Untersuchung"), zeile("2026-09-14", "13b", "Füllung zweiflächig")), [termin("2026-09-14", "KCH Füllung klein")]);
+  assert.equal(fuellung.anlass_abgleich, "uebereinstimmend");
+  const kontrolle = ab(ok(zeile("2026-09-14", "01", "Untersuchung"), zeile("2026-09-14", "107", "Entfernen harter Zahnbeläge")), [termin("2026-09-14", "KCH Kontrolluntersuchung")]);
+  assert.equal(kontrolle.anlass_abgleich, "uebereinstimmend");
+  assert.equal(kontrolle.letzter_besuch.grund, "Untersuchung");
 });
 
 test("Dampsoft hat abgerechnet, Pickadoc kennt keinen Besuch: abweichend, nur der Dampsoft-Kandidat", () => {
@@ -234,5 +273,29 @@ test("Abruf bei PlanR: leere Liste ist eine Antwort, alles andere nennt den Grun
   A._setHolen(async (url) => { rufe.push(url); return { ok: true, status: 200, json: async () => ({ ok: true, leistungen: [] }) }; });
   assert.equal((await A.leistungenAbfragen("praxisA", { ...wer, geburt: "" })).stand, "kein_geburtsdatum");
   assert.equal(rufe.length, 0, "ohne Geburtsdatum kein Abruf");
+  await A.leistungenAbfragen("praxisA", { ...wer, nummer: "4711" });
+  assert.ok(rufe[0].endsWith("&geburt=1970-01-01&nummer=4711"), "die Nummer aus der Uebernahme geht mit");
+  await A.leistungenAbfragen("praxisA", { ...wer, nummer: "" });
+  assert.ok(rufe[1].endsWith("&geburt=1970-01-01"));
   A._setHolen(null);
+});
+
+test("Patientennummer im Praxisprogramm: nur bei Uebernahme aus Dampsoft und nur Ziffern", async () => {
+  assert.equal(A.pvsNummer({ importSource: "dampsoft", importId: "4711" }), "4711");
+  assert.equal(A.pvsNummer({ importSource: "Dampsoft", importId: " 17 " }), "17");
+  assert.equal(A.pvsNummer({ importSource: "", importId: "4711" }), "");
+  assert.equal(A.pvsNummer({ importSource: "dens", importId: "4711" }), "");
+  assert.equal(A.pvsNummer({ importSource: "dampsoft", importId: "A17" }), "");
+  assert.equal(A.pvsNummer({ importSource: "dampsoft", importId: "" }), "");
+  assert.equal(A.pvsNummer(null), "");
+  const gefragt = [];
+  await A.anlassAbgleichen("praxisA", gruppen(), {
+    jetzt: JETZT, historie: async () => [],
+    laden: async () => [
+      { id: "p1", firstName: "Erika", lastName: "Beispiel", birthDate: "1970-01-01", importSource: "dampsoft", importId: "41" },
+      { id: "p3", firstName: "Otto", lastName: "Beispiel", birthDate: "1980-05-05", importSource: "", importId: "" },
+    ],
+    leistungen: async (cid, wer) => { gefragt.push([wer.name, wer.vorname, wer.nummer]); return ok(); },
+  });
+  assert.deepEqual(gefragt.sort(), [["Beispiel", "Erika", "41"], ["Beispiel", "Otto", ""]]);
 });

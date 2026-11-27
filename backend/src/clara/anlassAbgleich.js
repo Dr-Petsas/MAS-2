@@ -6,15 +6,17 @@
 //   1. Datum: der letzte Tag mit abgerechneten Positionen und ein wahrgenommener Pickadoc-Termin liegen
 //      hoechstens TOLERANZ_TAGE Kalendertage auseinander (Vorgabe 1: am Abend behandelt, am Morgen erfasst),
 //      und Pickadoc kennt danach keinen spaeteren wahrgenommenen Termin.
-//   2. Behandlungsart: der Besuchsgrund dieses Termins und mindestens eine Position des Tages fallen in
-//      dieselbe Behandlungsart der Tabelle ARTEN. Laesst sich eine Seite keiner Art zuordnen, ist das keine
-//      Uebereinstimmung ("nicht_vergleichbar").
+//   2. Behandlungsart: der Besuchsgrund dieses Termins und mindestens eine Hauptleistung des Tages haben
+//      dieselbe Behandlungsart. Beim Besuchsgrund entscheidet die Tabelle ARTEN (Woerter), bei der Leistung
+//      die Gebuehrennummer (gebuehrenArt.js). Begleitleistungen (Betaeubung, Roentgen, Vitalitaetspruefung)
+//      und die Untersuchung neben einer anderen Behandlung zaehlen nicht. Laesst sich eine Seite keiner Art
+//      zuordnen, ist das keine Uebereinstimmung ("nicht_vergleichbar").
 //
 // Gilt nur hinter MAS_ANLASS_LEISTUNGEN (je Praxis), liest nur, wirft nie.
 import admin from "../firebase.js";
 import { loadBooking } from "./booking.js";
 import { spokenMotiveLabel } from "./gapFill.js";
-import { anlassAusLeistungen } from "./leistungsAnlass.js";
+import { hauptleistungen } from "./gebuehrenArt.js";
 import { fetchPatientsByIds } from "./patientCatalog.js";
 
 const TZ = "Europe/Berlin";
@@ -22,6 +24,8 @@ const TAG_MS = 86400000;
 const s = (v) => String(v ?? "").trim();
 const ymd = (ms) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(ms));
 const tagMs = (tag) => Date.parse(`${tag}T12:00:00Z`);
+const istTag = (t) => t.length === 10 && !Number.isNaN(tagMs(t));
+const tagLang = (tag) => new Intl.DateTimeFormat("de-DE", { timeZone: TZ, day: "numeric", month: "long", year: "numeric" }).format(new Date(tagMs(tag)));
 const millis = (v) => v?.toMillis?.() ?? (v ? new Date(v).getTime() : 0);
 
 export const ABGLEICH = {
@@ -42,8 +46,8 @@ export function toleranzTage(roh = process.env.MAS_ANLASS_TOLERANZ_TAGE) {
   return Number.isInteger(n) && n >= 0 && n <= 7 ? n : 1;
 }
 
-// Behandlungsarten: ein Wort des Textes muss das Stichwort enthalten; kurze Stichworte (bis vier Zeichen)
-// muessen das ganze Wort sein. Die Tabelle steht bewusst hier und nirgends sonst.
+// Behandlungsarten des Besuchsgrunds: ein Wort des Textes muss das Stichwort enthalten; kurze Stichworte
+// (bis vier Zeichen) muessen das ganze Wort sein. Fuer abgerechnete Leistungen gilt die Nummer, nicht diese Tabelle.
 const ARTEN = [
   ["zahnreinigung", ["zahnreinigung", "pzr"]],
   ["untersuchung", ["untersuchung"]],
@@ -69,7 +73,7 @@ function woerter(text) {
   return aus;
 }
 
-/** Pure: die Behandlungsarten, die in einem Text genannt sind (Besuchsgrund oder Positionstext). */
+/** Pure: die Behandlungsarten, die in einem Besuchsgrund genannt sind. */
 export function behandlungsarten(text) {
   const ww = woerter(text);
   const aus = new Set();
@@ -103,6 +107,32 @@ export function besuchteTermine(termine, jetzt = Date.now()) {
 
 const tageZwischen = (a, b) => Math.round(Math.abs(tagMs(a) - tagMs(b)) / TAG_MS);
 
+const TEXTE_HOECHSTENS = 3;
+
+/**
+ * Pure: der letzte Tag mit abgerechneten Positionen und was dort die Hauptbehandlung war. Eine Zeile zaehlt
+ * nur mit Art, Anzahl ueber null und einem Datum, das nicht in der Zukunft liegt. Genannt wird die
+ * Hauptleistung, nicht die Betaeubung. null, wenn nichts Sprechbares da ist.
+ */
+export function letzteBehandlung(leistungen, jetzt = Date.now()) {
+  const heute = ymd(jetzt);
+  const posten = (Array.isArray(leistungen) ? leistungen : []).filter((e) => e && typeof e === "object"
+    && s(e.kind) && Number(e.anzahl) > 0 && istTag(s(e.date)) && s(e.date) <= heute);
+  if (!posten.length) return null;
+  const tag = posten.reduce((a, e) => (s(e.date) > a ? s(e.date) : a), "");
+  const { arten, texte } = hauptleistungen(posten.filter((e) => s(e.date) === tag));
+  if (!texte.length) return null;
+  const grund = texte.slice(0, TEXTE_HOECHSTENS).map((t) => t.slice(0, 60)).join(", ").slice(0, 120);
+  return {
+    arten,
+    anlass: {
+      letzter_besuch: { datum: tag, grund },
+      kontrollgrund: `Zuletzt am ${tagLang(tag)} abgerechnet: ${grund}.`,
+      anlass_quelle: "abrechnung",
+    },
+  };
+}
+
 function kandidatDampsoft(anlass) {
   return { quelle: "dampsoft", behandlung: anlass.letzter_besuch.grund, datum: anlass.letzter_besuch.datum, vorauswahl: true,
     letzter_besuch: anlass.letzter_besuch, kontrollgrund: anlass.kontrollgrund, anlass_quelle: anlass.anlass_quelle };
@@ -124,8 +154,9 @@ export function abgleichen(dampsoft, termine, { jetzt = Date.now(), toleranz = t
     return { anlass_abgleich: ABGLEICH.NICHT_GELESEN, anlass_abgleich_grund: s(dampsoft?.stand) || "nicht_erreichbar",
       anlass_sicher: false, anlass_kandidaten: nurPickadoc };
   }
-  const anlass = anlassAusLeistungen(dampsoft.leistungen, jetzt);
-  if (!anlass) return { anlass_abgleich: ABGLEICH.DAMPSOFT_LEER, anlass_sicher: false, anlass_kandidaten: nurPickadoc };
+  const letzte = letzteBehandlung(dampsoft.leistungen, jetzt);
+  if (!letzte) return { anlass_abgleich: ABGLEICH.DAMPSOFT_LEER, anlass_sicher: false, anlass_kandidaten: nurPickadoc };
+  const { anlass, arten: artenDampsoft } = letzte;
 
   const tag = anlass.letzter_besuch.datum;
   const ds = kandidatDampsoft(anlass);
@@ -136,8 +167,6 @@ export function abgleichen(dampsoft, termine, { jetzt = Date.now(), toleranz = t
   const spaeter = besucht.find((t) => t.datum > tag && tageZwischen(t.datum, tag) > toleranz);
   if (!nah.length || spaeter) return abweichend("datum", besucht[0]);
 
-  const artenDampsoft = new Set();
-  for (const e of dampsoft.leistungen) if (s(e?.date) === tag && Number(e?.anzahl) > 0) for (const a of behandlungsarten(e.text)) artenDampsoft.add(a);
   const gleich = nah.find((t) => [...behandlungsarten(t.behandlung)].some((a) => artenDampsoft.has(a)));
   if (gleich) {
     return { ...anlass, anlass_abgleich: ABGLEICH.GLEICH, anlass_sicher: true, anlass_kandidaten: [ds, kandidatPickadoc(gleich, false)] };
@@ -156,14 +185,23 @@ export function _setHolen(fn) { holen = fn || ((...a) => fetch(...a)); }
 // Was PlanR antwortet, wenn es keine Liste gibt: der Grund steht spaeter am Vorschlag.
 const STAND_JE_STATUS = { 403: "nicht_freigegeben", 409: "nicht_gefunden", 501: "anderes_programm" };
 
+/** Pure: die Patientennummer im Praxisprogramm, wenn die Akte aus Dampsoft uebernommen ist; sonst "". */
+export function pvsNummer(akte) {
+  const nr = s(akte?.importId);
+  const ziffern = nr.length > 0 && nr.length <= 9 && [...nr].every((z) => z >= "0" && z <= "9");
+  return s(akte?.importSource).toLowerCase() === "dampsoft" && ziffern ? nr : "";
+}
+
 /**
  * Leistungsliste aus dem Praxisprogramm, mit dem Grund, falls es keine gibt. Stand "ok" heisst: der Patient
- * ist eindeutig gefunden und die Liste gelesen (sie darf leer sein). Wirft nie.
+ * ist eindeutig gefunden und die Liste gelesen (sie darf leer sein). Mit `nummer` (Patientennummer aus der
+ * Uebernahme) holt PlanR genau diesen Patienten und prueft Name und Geburtsdatum dagegen. Wirft nie.
  */
-export async function leistungenAbfragen(clientId, { vorname, name, geburt } = {}) {
+export async function leistungenAbfragen(clientId, { vorname, name, geburt, nummer } = {}) {
   if (!s(name) || !s(geburt)) return { stand: "kein_geburtsdatum" };
   if (!schluessel()) return { stand: "nicht_erreichbar" };
-  const url = `${basis()}/api/intern/pvs/leistungen?${new URLSearchParams({ clientId: s(clientId), vorname: s(vorname), name: s(name), geburt: s(geburt) })}`;
+  const frage = { clientId: s(clientId), vorname: s(vorname), name: s(name), geburt: s(geburt), ...(s(nummer) ? { nummer: s(nummer) } : {}) };
+  const url = `${basis()}/api/intern/pvs/leistungen?${new URLSearchParams(frage)}`;
   try {
     const r = await holen(url, { headers: { "X-PlanR-Key": schluessel() }, signal: AbortSignal.timeout(8000) });
     if (!r.ok) return { stand: STAND_JE_STATUS[r.status] || "nicht_erreichbar" };
@@ -208,7 +246,7 @@ export async function anlassAbgleichen(clientId, gruppen, {
     await Promise.all(ids.map(async (id) => {
       const p = kartei.get(id);
       const [dampsoft, termine] = await Promise.all([
-        p ? leistungen(clientId, { vorname: p.firstName, name: p.lastName, geburt: p.birthDate }).catch(() => ({ stand: "nicht_erreichbar" })) : { stand: "nicht_gefunden" },
+        p ? leistungen(clientId, { vorname: p.firstName, name: p.lastName, geburt: p.birthDate, nummer: pvsNummer(p) }).catch(() => ({ stand: "nicht_erreichbar" })) : { stand: "nicht_gefunden" },
         historie(clientId, id).catch(() => null),
       ]);
       // Ohne lesbare Terminhistorie gibt es keinen Abgleich: der Patient gilt als nicht geprueft.
